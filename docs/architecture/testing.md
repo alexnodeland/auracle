@@ -1,7 +1,7 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
 last_updated: 2026-10-06
-related_adrs: [3, 5, 22]
+related_adrs: [3, 5, 22, 23]
 ---
 
 # Testing: every gate, what it proves, when to run it
@@ -46,19 +46,56 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every PR; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine), then Browser smoke (`make smoke`'s two specs, against the same engine); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); the same tests instrumented for coverage (built once, run on three runners, then one report: [Coverage](#coverage)); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 
+**The two lanes.** One workflow, and its *What changed* job picks the lane:
+
+| Change | A PR's own run (the fast lane) |
+| --- | --- |
+| Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
+| Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
+| The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
+| `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; no other spec |
+| An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, and that module's specs on up to four runners |
+| A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
+| A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke |
+| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site |
+| Another script (`scripts/*.py`: the changelog's assembler and its tests) | Web, whose `dev-check` runs the scripts' tests |
+| A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
+| A workflow or an action (`.github/`) | The full gate, as the queue runs it |
+
+- **The fast lane** narrows by the paths the PR changed. Its browser specs
+  are the ones `make browser-changed` picks (`tests/web/changed.mjs`): a
+  changed spec, the specs that require a changed helper, the specs named for
+  a changed app module, one runner per file up to four, dealt by time. A
+  change that reaches every level (`main.js`, `worker.js`, the engine) picks
+  none, and gets the smoke only; so does a change that reaches more than
+  twenty spec files (a helper nearly every spec requires, or that many specs
+  changed at once). A green fast lane puts the PR in the queue. It is not the
+  gate: a `main.js` change has run two specs when it enters the queue.
+- **The full gate** is the merge queue's run: CI on the draft PR Mergify
+  opens for a batch of up to three PRs (a release PR alone), from a branch
+  under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that
+  lands. There is no Browser smoke job there, since the browser tier runs its
+  two specs itself. The `Full gate` job, green when `CI` is, is the check
+  the queue merges on; it is a check of its own because Mergify merges a
+  one-step queue's PRs without a draft PR when they are on `main`'s tip.
+- A push to `main` and a run by hand are the full gate too.
+
 **How long.** The fast tier's browser tests are about seventy-five minutes
 of test time in one worker (284 tests at `42bd322`, each a fresh boot), so
-they set the check's length: about eleven minutes, the engine job and twelve
-runners planned at about six minutes each (the hosted runners differ in
-speed by about two times, and each shard's log and the run's summary name
-its CPU). Rust takes about seven and a half (a two-minute compile,
-then the tests); Coverage about nine, estimated (a build, three runners and
-a report: [Coverage](#coverage)); Web and Site take two to three.
+they set the full gate's length: about twelve minutes, the engine job and
+twelve runners planned at about six minutes each (the hosted runners differ
+in speed by about two times, and each shard's log and the run's summary name
+its CPU). Coverage takes about nine, estimated (a build, three runners and a
+report: [Coverage](#coverage)); the Doctests two or three (a compile); Web
+and Site two to three. So a PR's fast lane is about five minutes for docs,
+and up to about ten when Rust changed (Coverage sets the length) or an app
+module's specs run (`patch.js` reaches about 23 test-minutes, on four
+runners).
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
 equal count, which left one of five runners with twice another's work.
@@ -78,8 +115,9 @@ run's into one HTML report, every test with the traces of what failed,
 uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). The summary also lists every
 speed budget a test recorded over its limit (`shard.mjs budgets`), which the
-gate records and never fails on. On main it also folds the
-run's times into the timings the next run deals by. A runner that would
+gate records and never fails on. In the merge queue's run and on main it
+also folds the run's times into the timings the next run deals by (*The
+timings come from the queue's run*, below). A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
@@ -99,34 +137,47 @@ minutes with a message naming the registry; the image's pull, which
 happens before any step, is bounded by the job's limit.
 `.github/actions/playwright` says why the image and why those options.
 
-**A PR that changes only specs** runs those specs and nothing else, on one
-runner per spec up to twelve: no other spec's code changed, and the app it
-runs against is main's. A change to a spec's helpers, the config or anything
-else the browser tier reads runs the whole tier; main always does.
+**On main, what the queue already passed is not run again.** A push to main
+is a squash merge by the merge queue
+([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)), which merges
+each PR of a batch on its own once the batch's full gate is green. After the
+batch's last merge, main's files are exactly the files that run tested (a
+pull_request run tests the draft PR merged into main). The queue's run
+leaves a record (its `CI` job writes the artifact `verified-tree-<git
+tree>`, kept 14 days) of the jobs that passed on those files, and main's
+*What changed* job reads it: Lint, Web, the Doctests, Coverage and the
+browser tier are skipped there when the record says they passed, and the
+run's summary says so, with a link. Only a queue run's record counts: a PR's
+fast lane runs part of the gate and leaves none. Everything runs on main
+when no record matches (a merge by hand, outside the queue), on a manual
+run, and for a PR from a fork. The Site job always runs on main: its build
+is what deploys. The *Slow suite* and the nightly flake hunt still run in
+full.
 
-**On main, what the PR already passed is not run again.** A push to main is
-a squash merge by the merge queue
-([ADR-021](../decisions/021-merges-go-through-mergifys-queue.md)), which
-merges a PR only on a run that tested it on main's tip, so its files are
-exactly the files the PR's run tested (a pull_request run tests the PR
-merged into main). That run's `CI` job leaves a record (the artifact
-`verified-tree-<git tree>`, kept 14 days) of the jobs that passed on those
-files, and main's *What changed* job reads it: Lint, Web, the Rust tests,
-Coverage and the browser tier are skipped there when the record says they passed, and the
-run's summary says so, with a link. A job the PR skipped or ran in part (a
-spec-only PR's browser tier) runs on main as before; so does everything when
-main moved on after the PR's run (a merge by hand, outside the queue), on a
-manual run, and for a PR from a fork.
-The Site job always runs on main: its build is what deploys. The *Slow
-suite* and the nightly flake hunt still run in full.
+**Latest only.** A batch lands as two or three merges seconds apart, and
+only the last one's files are the files the queue tested. So main keeps its
+latest run only (`queue: single`): a run in progress is not cancelled, the
+newest waiting run replaces any older one, and a run whose commit main has
+already moved past runs nothing and says so in its summary, its `CI` green
+with every job skipped. The newest push's run covers it. A run that reads
+main's tip before the batch's next merge has landed finds nothing newer, and
+runs in full. The *Slow suite* on main does the same.
 
 **The site deploys from CI.** On main, the Site job keeps the site it built
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
-a red run deploys nothing and the last green build stays live. A run on
-main is not cancelled by the next push, and none is skipped: main's runs
-wait in a queue (`queue: max`) and run in turn, so when three merges land
-inside one run's length each is tested and deployed in order. Lint, the Rust tests and Coverage are reused only while
-`rust-toolchain.toml` still pins the release they ran on (the record keeps `rustc --version`).
+a red run deploys nothing and the last green build stays live. Lint, the
+Doctests and Coverage are reused only while `rust-toolchain.toml` still
+pins the release they ran on (the record keeps `rustc --version`). After a
+batch that changed `rust-toolchain.toml` or `Cargo.lock`, Lint and Coverage
+run on main anyway: their caches are saved from main only, under a key that
+holds the compiler's release and the lockfile, so reused they would never be
+saved for a new compiler or a bumped dependency.
+
+**The timings come from the queue's run.** Main no longer runs the browser
+tier when it reuses the queue's verdict, so the queue run's *Browser report*
+folds its times into main's timings and keeps the file as an artifact, and
+main's *What changed* job saves it to the cache the next run deals from (a
+cache saved by a pull_request run is restored by that PR's runs only).
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every job runs on
@@ -139,7 +190,8 @@ a commit SHA with its version in a comment; Dependabot
 one for `tests/web`'s npm packages (whose `@playwright/test` is also the
 tag of the browser jobs' image, so its bump is one PR).
 
-**When the slow tier runs.** On every push to `main` and nightly, in full; a
+**When the slow tier runs.** On `main`, in full: the newest push (its run
+covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
 failure there opens an issue titled *Slow suite failing on main*, or comments
 on the open one. On demand from the Actions tab. On a PR, only when the PR
 carries the `full-ci` label: adding it starts a run, and every push to the
@@ -155,24 +207,30 @@ test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
 offers. Otherwise the push to `main` is where a slow
 test catches it.
 
-**Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
-widest holds 19 (twelve browser runners, Site, the two Rust test runners,
-the three Coverage runners and one more; Browser smoke waits for Site and
-takes its place); the *Slow suite* holds at most four (`max-parallel`: one
-Rust leg and three browser runners). The two no longer fit together: 23
-against 20, so while the *Slow suite* runs on `main` a PR can wait for up
-to three runners. Folding Test into Coverage, which runs the same tests,
-gives two of them back ([Coverage](#coverage)). A merge also starts
-`main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
-on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
-15, Site in all). Coverage is re-run as Test is: after every merge of a PR
-that changed no Rust, whose record says both were skipped, since `main` runs
-everything: three runners at once (five jobs in a chain: the build, three
-runners, the report) where Test holds two. So a PR pushed right after a
-merge can wait for runners until `main`'s run is done; the merge queue
-([ADR-021](../decisions/021-merges-go-through-mergifys-queue.md)) keeps
-merges one at a time. At night the *Flake hunt* holds four and its *Speed
-budgets* two, beside *Search health*'s three long jobs: nine in all.
+**Runners.** The account runs at most 20 jobs at once.
+- **The queue's run** at its widest holds about 17: twelve browser runners,
+  Site, the three Coverage runners, and one more for a Lint, Web or Doctests
+  job still running, or the *Browser report*. One batch is tested at a
+  time.
+- **A PR's fast lane** holds at most eleven: four browser runners, the three
+  Coverage runners, Site (then Browser smoke, which waits for Site and takes
+  its place), and Lint, Web and the Doctests while they last. Only a PR that
+  changes both Rust and an app module with specs of its own reaches that.
+  A docs PR holds two (Web, then the engine and Site), an app PR without
+  Rust five or six, a Rust PR seven.
+- **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
+  three browser runners), on `main`, latest only.
+- **After a merge**, main's `CI` reuses the queue's verdict and runs the
+  engine and Site for the deploy: two.
+
+So the queue's run and the *Slow suite* together are 21, one over: a merge
+starts the *Slow suite* just as the queue starts its next batch, and that
+batch can wait a few minutes for a runner. A PR's fast lane beside a queue
+run fits when it is small (a docs or app PR) and waits for a few runners
+when it is wide. Before two lanes, every PR's run was the full gate at 19
+(the two plain Test runners as well), and a second PR in CI could not fit
+beside it. At night the *Flake hunt* holds four and its *Speed budgets* two,
+beside *Search health*'s three long jobs: nine in all.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
@@ -197,9 +255,12 @@ compiler's `llvm-tools`. What the gate holds, how to read it and what is
 measured are the crates' rules, in
 [`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage).
 
-**In CI**, on a PR that changes Rust and on every push to `main`, inside the
-required `CI` check: three jobs, the way cargo-llvm-cov merges runs made on
-several machines.
+**In CI**, in a PR's fast lane when it changes Rust, in the merge queue's
+run, and on `main` unless the queue's run passed them on the same files,
+inside the required `CI` check: three jobs, the way cargo-llvm-cov merges runs
+made on several machines. They are the Rust tests' gate as well: a failing
+test fails its runner, and there is no uninstrumented run beside them.
+`make test-fast-tier` runs the same tier uninstrumented, locally.
 
 1. *Coverage build* builds the instrumented test binaries once, into a
    nextest archive (`make coverage-archive`).
@@ -221,10 +282,10 @@ minutes, was cargo-llvm-cov 0.6, which instrumented every dependency,
 quiver's DSP loops included; 0.7 and later instrument the workspace's
 crates alone, and the Makefile and CI ask for 0.9.1.
 
-**Beside Test, for now.** The Coverage jobs run the same tests as Test,
-instrumented. Folding Test into them would run the tests once and give back
-two runners ([Runners](#ci-tiers)); it waits for a run that has measured the
-instrumented time on a runner.
+**Instead of Test.** The two plain Test runners ran the same tests
+uninstrumented, beside these. They are folded in: the tests run once, and
+two runners come back ([Runners](#ci-tiers)). The doctests, which nextest
+doesn't run, have a *Doctests* job of their own.
 
 **Locally.** `make coverage` (about two minutes on a 16-core Mac) runs the
 whole tier, writes `target/llvm-cov/html/index.html`, `lcov.info` and

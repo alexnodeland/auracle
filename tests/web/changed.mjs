@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// The specs a change reaches, for `make browser-changed`: what to run on a
-// workstation before pushing, while CI runs the whole tier twelve wide.
+// The specs a change reaches: for `make browser-changed`, what to run on a
+// workstation before pushing, and for CI's fast lane on a PR (ci.yml's
+// `changes` job), what runs there. The merge queue's run is the whole tier,
+// twelve wide.
 //
 //   node changed.mjs [base]     prints spec files, one per line (base: origin/main)
 //
@@ -8,7 +10,8 @@
 // changed app module runs the specs named for what it draws (MODULES below).
 // main.js, worker.js, index.html, style.css and the engine reach every level,
 // so a change to them prints nothing and says so: pick the specs for what you
-// changed by name, or let CI run them.
+// changed by name, or let CI run them (a PR's fast lane then runs the smoke
+// only, and the merge queue's run the whole tier).
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";

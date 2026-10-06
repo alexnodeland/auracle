@@ -8,9 +8,9 @@ set-up, and what it asks of your machine.</p>
 
 1. Open [**auracle.alexnodeland.com/play/**](../../play/).
 
-That’s the live build. It tracks `main`: every push to `main` deploys it. A
-tagged release doesn’t deploy on its own; it is cut from a `main` that has
-already deployed.
+That’s the live build. It tracks `main`: it deploys from `main` once
+`main`’s CI is green. A tagged release doesn’t deploy on its own; it is tagged
+on `main`, and the live build follows `main`.
 
 There is nothing to install, and nothing leaves your machine. The engine is
 WebAssembly running in your tab, and your sounds and taste live in your

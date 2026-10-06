@@ -37,13 +37,18 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   app module; `BASE=` to diff against something other than `origin/main`), or
   name them (`npx playwright test patch_ perform_layout.spec.js`). The full
   tier is CI's job: about seventy-five minutes in one worker, twelve runners
-  wide there.
+  wide in the merge queue's run.
 
 ## In CI
 
 - The fast tier (every spec not tagged `@slow` or `@quarantine`) is inside the
-  required `CI` check, dealt to twelve runners by main's last timings
-  (`tests/web/shard.mjs`). A PR that changes only specs runs only those specs.
+  required `CI` check. The merge queue's run, the full gate, runs all of it,
+  dealt to twelve runners by main's last timings (`tests/web/shard.mjs`). A
+  PR's own run, the fast lane, runs only the specs its change reaches
+  (`tests/web/changed.mjs`, as `make browser-changed`), on up to four
+  runners, and the smoke pair when the app, the engine or what runs the
+  specs (a helper, the config, the lockfile) changed; for
+  `main.js`, `worker.js` or a crate, the smoke pair alone.
 - The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on
   a PR only with the `full-ci` label; the nightly *Flake hunt* runs the fast
   tier three times each.

@@ -112,9 +112,9 @@ git -C "$WT" rebase --onto origin/main <the one ahead's last head>
 
 Don't push it stacked on the open one: once that one squash-merges, a branch
 still carrying its commits conflicts wherever both changed the same lines,
-and the queue can't rebase it. Any other
-branch goes up now, based on `main`: the queue brings it up to date when it
-reaches the front. Otherwise rebase only to resolve a conflict.
+and the queue can't merge it. Any other branch goes up now, based on
+`main`: the queue tests it on top of `main` when its batch is made.
+Otherwise rebase only to resolve a conflict.
 
 New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
@@ -125,13 +125,23 @@ have the builder commit the approved rows.
 git -C "$WT" push -q -u origin claude/<topic>
 gh -R alexnodeland/auracle pr create --base main --head claude/<topic> \
   --title "<what is true now>" --body-file <scratch>/pr-<topic>.md --label queue
+gh -R alexnodeland/auracle pr comment <n> --body "@mergifyio queue"
 ```
 
-The `queue` label is the one act of enqueueing: the PR enters Mergify's
-merge queue once its `CI` is green, and the queue merges it (`process.md`
-§ CI and merging). The title becomes the squash commit's subject,
-`<title> (#<n>)`, and its body is the PR's commit messages (the repository's
-squash setting), so each commit's why reaches `main`.
+The `@mergifyio queue` comment is the act of enqueueing, for now: the
+`queue` label queues a PR through Mergify's auto-merge conditions, which act
+only once the maintainer switches on Merge Protections in Mergify's
+dashboard. Put the label on anyway; once Merge Protections is on, the label
+alone queues the PR and the comment is only for putting one back. The PR
+enters Mergify's merge queue once its own `CI`, the fast lane, is green; the
+queue runs the full gate on its batch and merges it (`process.md` § CI and
+merging). The title becomes the squash commit's subject, `<title> (#<n>)`,
+and its body is the PR's commit messages (the repository's squash setting),
+so each commit's why reaches `main`.
+
+A PR that fixes CI or quarantines a flaky test also gets the `priority`
+label (`gh -R alexnodeland/auracle pr edit <n> --add-label priority`): it
+goes into the queue's next batch ahead of the rest.
 
 The body: what changed, why, how (what a reviewer should look at), checks
 (gates, specs and counts, the review and its findings), `Closes #<n>`, and,
@@ -150,9 +160,11 @@ generations or PERFORM's offers. It does not block the merge.
 
 ## 6. The merge, waited on by state
 
-The queue rebases the PR onto `main` if `main` moved, runs `CI` on that
-head, and merges. Wait until it merges, its `CI` goes red, or it leaves the
-queue:
+The PR's own `CI` is the fast lane (a few minutes). Green, the PR is in the
+queue, which tests it in a batch of up to three (a release PR alone) on a
+draft PR (the full gate, about twelve minutes, from a `mergify/merge-queue/`
+branch) and merges each PR of a green batch. Wait until it merges, its own `CI` goes red, or it
+leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
@@ -164,35 +176,50 @@ until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheck
 
 Run the wait in the background; never sleep a fixed time and assume.
 
-- **`MERGED`:** watch `main`'s run. It reuses the PR's verdict (the queue
-  merged the files that run tested) and deploys the site once green. Then
-  step 8.
-- **`CI red`:** read the run on the PR's head:
+- **`MERGED`:** watch `main`'s run. It reuses the queue's verdict (on the
+  batch's last merge, `main` has the files that run tested) and deploys the
+  site once green; a run for an earlier merge of the batch runs nothing.
+  Then step 8.
+- **`CI red`:** the fast lane, on the PR's own head; the PR never entered
+  the queue. Read it:
   `gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> --json databaseId,conclusion,headSha`,
   then `gh -R alexnodeland/auracle run view <run> --log-failed`, and the
   run summary's merged browser report. Then step 7.
-- **`dequeued`:** it left the queue without merging: a red run on the
-  rebased head, a conflict with `main`, or a run that was cancelled.
+- **`dequeued`:** it left the queue without merging. Red in the queue (the
+  full gate failed on its batch, and the split narrowed the failure to this
+  PR), a conflict, or a run that was cancelled.
   `gh -R alexnodeland/auracle pr checks <n>` (the *Mergify Merge Queue*
   check) and the queue's comment (`gh -R alexnodeland/auracle pr view <n> --comments`)
-  say why. Then step 7.
+  say why. The red run is the draft PR's, on its own branch:
+  `gh -R alexnodeland/auracle run list --workflow ci.yml --event pull_request --json databaseId,conclusion,headBranch,createdAt -q '[.[] | select(.headBranch | startswith("mergify/merge-queue/"))] | .[:5]'`,
+  then `--log-failed` and its browser report as above. Then step 7.
+
+Red in the queue doesn't prove the PR at fault: Mergify doesn't run a red
+batch again, so a flake leaves the PR it was last narrowed to dequeued. If
+the red run failed a test the PR doesn't touch, for a cause outside it, it
+is a flake case (`process.md` § Flakes, step 4): quarantine the test with one
+commit on this PR, and put it back in (step 7).
 
 ## 7. When it doesn't merge
 
 Green, with no blocking finding, the PR is in the queue: nothing is added to
 it, and a later finding is an issue or the next PR. When it comes back red
-or dequeued:
+or dequeued (red on its own run, or red in the queue):
 
-1. **Bring the worktree to the branch on GitHub.** The queue may have
-   rebased it:
+1. **Check the worktree is at the branch on GitHub.** The queue never pushes
+   to a PR's branch, so the two should match; if they don't, find out who
+   pushed before going on:
 
    ```bash
    git -C "$WT" fetch -q origin
-   git -C "$WT" reset -q --hard origin/claude/<topic>
+   [ "$(git -C "$WT" rev-parse HEAD)" = "$(git -C "$WT" rev-parse origin/claude/<topic>)" ] && echo same
    ```
 
 2. **Fix it on the branch.** The app or the test is fixed there (by the
-   builder). A red test the PR doesn't touch, for a cause outside it
+   builder). Red in the queue, the fix is checked by the fast lane first and
+   the full gate again in the queue; run the specs it touches locally
+   (`make browser-changed`), since a `main.js` change's fast lane runs the
+   smoke only. A red test the PR doesn't touch, for a cause outside it
    (`process.md` § Flakes, step 4), gets one commit that quarantines it with
    its `flake` issue; don't root-cause it here. Never re-run a red check
    until it passes. A run that was cancelled rather than failed needs no
@@ -219,18 +246,28 @@ or dequeued:
    entered the queue, and enters by itself once `CI` is green. Then step 6
    again.
 
-**By hand, only when Mergify is down.** On green, and up to date with
-`main` (if `main` moved, rebase it with the lease above and wait for `CI` on
-the new head):
+**By hand, only when Mergify is down.** The PR's own `CI` is the fast lane,
+not the full gate, and the ruleset requires only that one, so nothing stops
+a merge by hand that skips the full gate: run it first. Up to date with
+`main` (if `main` moved, rebase it with the lease above), start a run by
+hand, which is the full gate, wait for it to finish, and merge only if it is
+green on the PR's head and the PR's own `CI` is too:
 
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
+gh -R alexnodeland/auracle workflow run ci.yml --ref claude/<topic>
+until run=$(gh -R alexnodeland/auracle run list --workflow ci.yml --event workflow_dispatch \
+    --branch claude/<topic> --json databaseId,headSha -q "[.[] | select(.headSha == \"$sha\")][0].databaseId // empty"); \
+  [ -n "$run" ]; do sleep 10; done
+gh -R alexnodeland/auracle run watch "$run" --exit-status && \
 gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" \
   --subject "<title> (#<n>)"
 ```
 
-Only the SHA that was checked; `main`'s ruleset refuses anything else. A
-merge from outside the queue makes the queue start over on the new `main`.
+`run watch --exit-status` fails on a red run, so the merge runs only after a
+green one. Only the SHA that was checked; `main`'s ruleset refuses anything
+else. A merge from outside the queue makes the queue start over on the new
+`main`, and `main`'s own run, finding no queue record, runs everything.
 
 ## 8. Clean up
 

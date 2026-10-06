@@ -3,7 +3,8 @@
 # actionlint 1.7.12, the latest release, does not know concurrency's `queue`
 # key (rhysd/actionlint#654), which GitHub accepts since May 2026 ("Control
 # the concurrency of workflows and jobs"). ci.yml and slow-suite.yml use it
-# to queue runs on main; drop this once a release knows the key.
+# to say that main keeps only its newest waiting run (`queue: single`, the
+# default, written out); drop this once a release knows the key.
 paths:
   .github/workflows/ci.yml:
     ignore:

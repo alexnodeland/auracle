@@ -32,25 +32,30 @@ name: Slow suite
 #   that holds an @slow or @quarantine test. Also a main.js change that
 #   reaches EVOLVE's generations or PERFORM's offers. Otherwise the push to
 #   main is where a slow test catches it.
-# - on every push to main and nightly, always and in full. A failure there
-#   opens an issue titled "Slow suite failing on main", or comments on it if
-#   one is already open, so a regression that merged on the fast tier is found
-#   within one push or one night.
+# - on main, in full: the latest push, and nightly. A failure there opens an
+#   issue titled "Slow suite failing on main", or comments on it if one is
+#   already open, so a regression that merged on the fast tier is found
+#   within one merge or one night. Latest only: a run in progress finishes,
+#   and of the pushes that land meanwhile only the newest waits, since its
+#   run covers everything before it. A batch from the merge queue lands as
+#   two or three merges seconds apart; a run whose commit main has already
+#   moved past runs nothing (the `scope` job).
 # - on demand (Actions → Slow suite → Run workflow), in full.
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
-# Rust leg and three browser runners). A PR's whole `CI` at its widest is
-# twelve browser runners, the Site job (then the Browser smoke, in its
-# place), the two Rust test runners and the three Coverage runners, 18, and
-# one more for the Browser report or a Lint or Web job still running:
-# 19 + 4 = 23, over the account's cap of 20, so a PR can wait for up to
-# three runners while this runs (folding Test into Coverage gives two back;
-# testing.md § Coverage). And the push to main that starts this workflow
-# also starts main's own CI, which re-runs what the merged PR's run did not
-# cover (of the 20 runs on main before Oct 6, the whole browser tier in 9,
-# both Rust test jobs in 15, and Site in all 20, for the deploy). So a PR
-# pushed right after a merge can wait for runners until main's run is done;
-# the merge queue (ADR-021) keeps merges one at a time.
+# Rust leg and three browser runners). The account runs at most 20 jobs at
+# once. The merge queue's run of CI, the full gate, holds about 17 at its
+# widest: twelve browser runners, the Site job, the three Coverage runners
+# and one more for a Lint, Web or Doctests job still running, or the
+# Browser report. 17 + 4 = 21, one over, and a merge starts this workflow
+# just as the queue starts on its next batch, beside main's own CI (which
+# reuses the queue's verdict and runs the engine and Site for the deploy,
+# two runners). So the queue's next run can wait a few minutes for runners
+# while this one's first jobs hold them. A PR's fast lane holds at most
+# eleven (four browser runners, the three Coverage runners, Site and three
+# of Lint, Web and Doctests), only when it changes both Rust and an app
+# module with specs of its own; most hold two to six (testing.md § CI tiers,
+# Runners).
 
 on:
   pull_request:
@@ -65,17 +70,16 @@ permissions:
   contents: read
 
 # A new push to a PR makes its in-flight run obsolete. On main nothing is
-# cancelled, and nothing is skipped: main's runs (each push, the nightly run)
-# wait in a queue (`queue: max`) and run in turn, so every push there gets
-# its own verdict. On a PR the queue is `single`, since `queue: max` beside
-# `cancel-in-progress: true` is a validation error (ci.yml's concurrency
-# says more). Adding an unrelated label to a PR starts a run too (GitHub
-# cannot filter `labeled` by name); it gets a group of its own, so it does
-# nothing rather than cancel a real run.
+# cancelled: a run in progress finishes, and of the runs that arrive
+# meanwhile (pushes, the nightly run) only the newest waits (`queue:
+# single`), since the newest covers everything before it. Adding an
+# unrelated label to a PR starts a run too (GitHub cannot filter `labeled`
+# by name); it gets a group of its own, so it does nothing rather than
+# cancel a real run.
 concurrency:
   group: slow-suite-${{ github.head_ref || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && '-label' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
+  queue: single
 
 env:
   CARGO_TERM_COLOR: always
@@ -89,7 +93,9 @@ jobs:
   # this event is another label being added to it, which asks for nothing:
   # the last push's run stands (and the concurrency group above keeps this
   # run from cancelling it). When this job is skipped, so is every job after
-  # it, and the run costs no runner.
+  # it, and the run costs no runner. A push to main that main has already
+  # moved past (main is ahead of it) runs nothing either (`run` is false):
+  # the newest push's run covers it, as ci.yml's changes job does for CI.
   scope:
     name: Asked for
     if: >-
@@ -98,16 +104,29 @@ jobs:
       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      run: ${{ steps.why.outputs.run }}
     steps:
       - name: Say why
+        id: why
         env:
           EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           if [ "$EVENT" = pull_request ]; then
             echo "the PR carries full-ci: running everything"
+          elif [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ] &&
+            read -r status tip <<<"$(gh api "repos/$REPO/compare/$GITHUB_SHA...main" -q '"\(.status) \(.commits[-1].sha // "")"')" &&
+            [ "$status" = ahead ] && [ -n "$tip" ]; then
+            echo "superseded: main is at ${tip:0:12} now, and that push's run covers this one"
+            echo "Superseded: main moved on to \`${tip:0:12}\` before this run began, and that push's run covers this one." >> "$GITHUB_STEP_SUMMARY"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
           else
             echo "$EVENT: running everything"
           fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
 
   # The slow Rust tests, in two legs: the search floor gets a runner to itself
   # (it walks 16 seeds, one thread each, and on a 4-core runner those threads
@@ -117,6 +136,7 @@ jobs:
   rust:
     name: Slow Rust (${{ matrix.name }})
     needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -132,11 +152,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      # CI's test cache (ci.yml saves it from main); never saved from here.
+      # The test cache, which ci.yml's Doctests job restores too. Saved from
+      # main by one leg (both build the same test binaries): CI's own Rust
+      # jobs on main reuse the merge queue's verdict and seldom run there.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.target == 'test-slow-rest' }}
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: nextest
@@ -148,6 +170,7 @@ jobs:
   engine:
     name: Engine for the browser
     needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -219,7 +242,7 @@ jobs:
         with:
           name: slow
           failed: ${{ needs.browser.result == 'failure' }}
-          timings: slow
+          timings: ${{ github.ref == 'refs/heads/main' && 'slow' || '' }}
 
   # A red slow tier on main is a regression that merged on the fast tier.
   # Nobody is watching a nightly run, so it files an issue: one open issue at
