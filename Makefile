@@ -110,7 +110,9 @@ install-hooks:
 ## issues), the Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), and the tests of the coverage gate's, the mutation
-## report's and CI stats' scripts
+## report's, CI stats' and the release's scripts (scripts/test_release.py:
+## the version the titles call for, the bump, what a tag owes, the list of
+## what merged by type)
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
 ## atomically), so they are prerequisites that `make -j` runs side by side; a
@@ -118,7 +120,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-release
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -156,6 +158,8 @@ dev-mutants:
 	@python3 scripts/test_mutants_report.py
 dev-ci-stats:
 	@python3 scripts/test_ci_stats.py
+dev-release:
+	@python3 scripts/test_release.py
 
 ## tokens: write the colors, font families, type scale, spacing, radii and
 ## motion in www/brand/tokens.json into every surface's stylesheet (the
