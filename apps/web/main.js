@@ -6540,10 +6540,11 @@ function retireForecast() {
 // dealt at random under a rule that otherwise chooses.
 //
 // The rule is read from the deals themselves, as the method of the last deal
-// that was not a scheduled check. Under `Random` the engine still tags every
-// tenth pair "check", though it is drawn exactly like the other nine; reading
-// the rule from the rest keeps that from being taken for a change of rule.
-// (An engine's first deal is never a check.)
+// that was not a scheduled check. Under `Random` the engine says "random" of
+// every pair, the scheduled slot included (auracle-session's
+// `the_default_rule_deals_every_pair_at_random_and_says_so` pins it); a
+// "check" that reached the page under `Random` all the same would still not
+// be taken for a change of rule. (An engine's first deal is never a check.)
 let dealRule = null;
 
 const DEAL_RULE = {
