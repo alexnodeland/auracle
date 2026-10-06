@@ -74,6 +74,7 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   const alarm = page.locator("#alarm");
   const question = await page.evaluate(async () =>
     (await import("/words.js")).resetQuestion({ picks: 2, stars: 0, cuts: 0, generations: 0, saved: 1 }));
+  await expect(alarm).toContainText("Reset your taste?");
   await expect(alarm).toContainText(question);
   await expect(alarm.locator("button", { hasText: "download & reset" })).toBeVisible();
   await alarm.locator("button", { hasText: "keep it" }).click();

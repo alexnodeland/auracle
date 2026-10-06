@@ -271,6 +271,8 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   // In the model's voice: the side it guessed, its probability, and a word.
   await expect(pred).toHaveText(/^it guessed (this|the other) · \d+% · (a hunch|leaning|fairly sure)$/, { timeout: 5_000 });
   await expect(rule).toHaveText(RANDOM);
+  // The default's line is never a check's.
+  await expect(rule).not.toHaveClass(/\bcheck\b/);
 
   // Under Random the engine says "random" of every pair (auracle-session's
   // the_default_rule_deals_every_pair_at_random_and_says_so pins it), so the
@@ -292,7 +294,6 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
     }
     await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   };
-  await expect(rule).not.toHaveClass(/\bcheck\b/);
   // Under a choosing rule, the one-in-ten mark means what it says.
   await deal("bald");
   await expect(rule).toHaveText("chosen where it’s least sure");
