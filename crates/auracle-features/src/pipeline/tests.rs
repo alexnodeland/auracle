@@ -275,3 +275,36 @@ fn phi_is_eighteen_audio_then_twenty_six_structural_coordinates() {
     assert_eq!(phi[..18], v.features.audio.to_vec());
     assert_eq!(phi[18..], v.features.structural.to_vec());
 }
+
+/// **A coordinate that is not a number never leaves the featurizer.** The
+/// guard names the first one, by its φ name, whichever half of φ it is in;
+/// a φ whose every coordinate is finite passes as it was.
+#[test]
+fn a_non_finite_coordinate_is_refused_by_name() {
+    let good = featurize(&vco(Waveform::Saw), &PhraseSpec::default())
+        .expect("a saw vets")
+        .features;
+    assert_eq!(good.clone().finite().unwrap().phi(), good.phi());
+
+    let mut audio_nan = good.clone();
+    audio_nan.audio.flux_mean = f64::NAN;
+    audio_nan.audio.motion_fast = f64::INFINITY;
+    match audio_nan.finite() {
+        Err(FeaturizeError::NonFiniteFeature { name, value }) => {
+            assert_eq!(name, "flux_mean:p2", "the first one, by name");
+            assert!(value.is_nan());
+        }
+        other => panic!("a NaN in φ_audio got through: {:?}", other.map(|_| ())),
+    }
+    let mut struct_inf = good;
+    struct_inf.structural.amp_release = f64::INFINITY;
+    match struct_inf.finite() {
+        Err(FeaturizeError::NonFiniteFeature { name, value }) => {
+            assert_eq!((name.as_str(), value), ("amp_release", f64::INFINITY));
+        }
+        other => panic!(
+            "an infinity in φ_struct got through: {:?}",
+            other.map(|_| ())
+        ),
+    }
+}

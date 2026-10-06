@@ -150,20 +150,33 @@ pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate,
         lufs_before: norm.lufs_before,
         gain_db: norm.gain_db,
         peak_reduction_db: norm.peak_reduction_db,
-    };
-    // The second half of the same guard, on the vector rather than the term.
-    // Costs one pass over φ's 44 doubles against a render that took most of a
-    // second, and it is the only thing standing between a NaN out of a
-    // spectral descriptor and a posterior fit that returns all-NaN θ.
-    for (name, value) in Features::phi_names().iter().zip(features.phi()) {
-        if !value.is_finite() {
-            return Err(FeaturizeError::NonFiniteFeature {
-                name: (*name).to_string(),
+    }
+    .finite()?;
+    Ok(VettedCandidate { render, features })
+}
+
+impl Features {
+    /// These features, or the first coordinate of φ that is not a finite
+    /// number, by name.
+    ///
+    /// The second half of the guard at the top of [`featurize`], on the
+    /// vector rather than the term. Costs one pass over φ's 44 doubles against
+    /// a render that took most of a second, and it is the only thing standing
+    /// between a NaN out of a spectral descriptor and a posterior fit that
+    /// returns all-NaN θ.
+    fn finite(self) -> Result<Features, FeaturizeError> {
+        match Features::phi_names()
+            .into_iter()
+            .zip(self.phi())
+            .find(|(_, value)| !value.is_finite())
+        {
+            Some((name, value)) => Err(FeaturizeError::NonFiniteFeature {
+                name: name.to_string(),
                 value,
-            });
+            }),
+            None => Ok(self),
         }
     }
-    Ok(VettedCandidate { render, features })
 }
 
 #[cfg(test)]
