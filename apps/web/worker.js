@@ -199,6 +199,14 @@ const MAX_TRIES = 2;
 // up and taking the serial path. Farm boot overlaps the IndexedDB read, so by
 // the time we get here they are usually already in.
 const FARM_HANDSHAKE_MS = 5000;
+// How long a crew waits for this worker to stamp the render store before it is
+// handed the phrase anyway (`renderStoreReady`). On a first visit the stamp was
+// done 42 to 53 ms after init, most of it importing render-store.js (#200).
+// This bounds an open that never answers, as one does behind a deletion of the
+// store that another tab's connections hold pending; without it the veil would
+// stay up for good. Past it the farm workers open the store themselves, as
+// they did before #200.
+const RENDER_STAMP_MS = 2000;
 // Audition buffers to carry back with the fill. The engine's pool is
 // `RenderPolicy::Lazy` — it keeps no audio at admission — but the memo does,
 // and the first few patches are precisely the ones the user auditions while
@@ -263,12 +271,15 @@ function farmSetup(ports) {
 // the veil waited about 1.5 s for them (#200). Started at init whatever the
 // farm's width, and once per worker: the namespace never sees the audition
 // clip, so a phrase sent again (`farmResendPhrase`) leaves the stamp as it is,
-// and a walk crew raised after boot finds the store stamped.
+// and a walk crew raised after boot finds the store stamped. Settles when the
+// store is stamped or cannot be opened, or after `RENDER_STAMP_MS`, whichever
+// comes first; an open that answers later still stamps the store if it needs
+// it, and its connection is closed.
 const renderStoreModule = () => import(`./render-store.js?v=${V}`);
 let renderStamped = null;
 function renderStoreReady(ns) {
   if (!renderStamped) {
-    renderStamped = (async () => {
+    const stamping = (async () => {
       try {
         const { renderStoreOpen } = await renderStoreModule();
         const db = await renderStoreOpen(self.indexedDB, ns);
@@ -277,12 +288,18 @@ function renderStoreReady(ns) {
         /* each farm worker creates and stamps it, as before */
       }
     })();
+    let timer = null;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, RENDER_STAMP_MS);
+    });
+    renderStamped = Promise.race([stamping, late]).finally(() => clearTimeout(timer));
   }
   return renderStamped;
 }
 
-// Boot's crew: the store stamped, then the phrase handed to each worker, then
-// the wait for one to report ready. True when one did.
+// Boot's crew: the store stamped (or `RENDER_STAMP_MS` gone by), then the
+// phrase handed to each worker, then the wait for one to report ready. True
+// when one did.
 async function farmBoot(ports, ns) {
   await renderStoreReady(ns);
   farmSetup(ports);

@@ -38,10 +38,20 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 // IndexedDB, as far as the store uses it. `as(who)` is one thread's
 // `indexedDB`; `log` is every open, upgrade, transaction (by its mode) and
-// close, in order, each with who made it.
+// close, in order, each with who made it. `hold(who)` keeps that thread's opens
+// unanswered until the function it returns is called.
 function fakeIndexedDB() {
   const log = [];
   const dbs = new Map(); // name -> { version, stores: Map<name, Map> }
+  const held = new Map(); // who -> a promise their opens wait on
+  const hold = (who) => {
+    let release;
+    held.set(who, new Promise((resolve) => (release = resolve)));
+    return () => {
+      held.delete(who);
+      release();
+    };
+  };
   function connection(who, db) {
     return {
       objectStoreNames: { contains: (s) => db.stores.has(s) },
@@ -82,17 +92,21 @@ function fakeIndexedDB() {
     open(name, version) {
       const req = {};
       log.push({ who, op: "open" });
-      later(() => {
-        let db = dbs.get(name);
-        if (!db) dbs.set(name, (db = { version: 0, stores: new Map() }));
-        req.result = connection(who, db);
-        if (version > db.version) {
-          db.version = version;
-          log.push({ who, op: "upgrade" });
-          req.onupgradeneeded?.();
-        }
-        req.onsuccess?.();
-      });
+      const answer = () =>
+        later(() => {
+          let db = dbs.get(name);
+          if (!db) dbs.set(name, (db = { version: 0, stores: new Map() }));
+          req.result = connection(who, db);
+          if (version > db.version) {
+            db.version = version;
+            log.push({ who, op: "upgrade" });
+            req.onupgradeneeded?.();
+          }
+          req.onsuccess?.();
+        });
+      const gate = held.get(who);
+      if (gate) gate.then(answer);
+      else answer();
       return req;
     },
   });
@@ -104,7 +118,7 @@ function fakeIndexedDB() {
   };
   const store = () => dbs.get(RENDER_DB);
   const writes = (who) => log.filter((e) => e.op === "readwrite" && (who == null || e.who === who));
-  return { log, as, seed, store, writes };
+  return { log, as, hold, seed, store, writes };
 }
 
 test("a first visit's open creates the store and stamps it with the namespace", async () => {
@@ -201,17 +215,22 @@ function phraseOnlyThroughTheStamp() {
   );
 }
 
+// How long a crew waits on the stamp, as worker.js has it.
+const RENDER_STAMP_MS = Number(/^const RENDER_STAMP_MS = (\d+);$/m.exec(workerSrc)?.[1]);
+
 // The engine worker's side of boot's crew, as written: `farmBoot` and what it
 // calls, over `engine` and `glue` stand-ins, and `farmHandshake` answered at
 // once. `renderStoreModule` is render-store.js itself, or `module`.
 function engineWorker(idb, { module = async () => renderStore } = {}) {
+  assert.ok(RENDER_STAMP_MS > 0, "worker.js has no RENDER_STAMP_MS");
   assert.ok(
     /^const renderStoreModule = \(\) => import\(`\.\/render-store\.js\?v=\$\{V\}`\);$/m.test(workerSrc),
     "worker.js does not import render-store.js as renderStoreModule",
   );
   phraseOnlyThroughTheStamp();
   return new Function(
-    "self", "engine", "glue", "renderStoreModule", "farmHandshake", "FARM_HANDSHAKE_MS", "onFarmMessage",
+    "self", "engine", "glue", "renderStoreModule", "farmHandshake", "FARM_HANDSHAKE_MS", "RENDER_STAMP_MS",
+    "onFarmMessage",
     [
       "const farm = [];",
       "const farmPreDead = new Set();",
@@ -229,6 +248,7 @@ function engineWorker(idb, { module = async () => renderStore } = {}) {
     module,
     async () => true,
     5000,
+    RENDER_STAMP_MS,
     () => {},
   );
 }
@@ -303,4 +323,31 @@ test("a render store the engine worker could not open is created by the crew, wh
   assert.ok(idb.log.some((e) => e.who.startsWith("farm") && e.op === "upgrade"), "no farm worker created the store");
   assert.equal(idb.store().stores.get(RENDER_META).get("ns"), NS);
   for (const f of farms) assert.ok(f.opened().db, "a farm worker has no store");
+});
+
+test("an engine-worker open that does not answer holds boot's crew for RENDER_STAMP_MS and no longer, and its late connection is closed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const idb = fakeIndexedDB();
+  const release = idb.hold("engine");
+  const engine = engineWorker(idb);
+  const phrased = [];
+  const ports = Array.from({ length: 3 }, (_, k) => ({
+    postMessage: (msg) => msg.type === "phrase" && phrased.push(k),
+  }));
+  engine.renderStoreReady(NS);
+  let booted = null;
+  engine.farmBoot(ports, NS).then((ok) => (booted = ok));
+  for (let i = 0; i < 4; i++) await settle();
+  t.mock.timers.tick(RENDER_STAMP_MS - 1);
+  for (let i = 0; i < 4; i++) await settle();
+  assert.deepEqual(phrased, [], "boot's crew was handed the phrase before the stamp or the bound");
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 4; i++) await settle();
+  assert.deepEqual(phrased, [0, 1, 2], "boot's crew was not handed the phrase once the bound had gone by");
+  assert.equal(booted, true);
+  // The open answers at last: the store is stamped and the connection let go.
+  release();
+  for (let i = 0; i < 10; i++) await settle();
+  assert.equal(idb.store().stores.get(RENDER_META).get("ns"), NS);
+  assert.ok(idb.log.some((e) => e.who === "engine" && e.op === "close"), "the engine worker kept the late connection");
 });

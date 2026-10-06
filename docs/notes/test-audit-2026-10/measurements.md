@@ -283,6 +283,13 @@ Milliseconds from `boot-start` to `veil-down`, median (range), 6 boots each:
 - **The cache still serves.** A cold boot at width 6 left 34 rows under the
   stamp, and a reload in the same context served 22 and then 11 of them
   (73% and 100% of its two waves), with nothing in the console.
+- **The stamp itself is short.** Timed in a scratch copy of the fix (a
+  `BroadcastChannel` post from `renderStoreReady`, not committed), cold, 5
+  boots at each of widths 6 and 2: done 42 to 53 ms after `init` on disk and
+  45 to 51 ms in memory, of which importing `render-store.js` was 40 to 50 ms
+  and the open and the stamp 1 to 11 ms. `RENDER_STAMP_MS`, how long a crew
+  waits for it, is 2 s: about 40 times that, and there for an open that never
+  answers, which would otherwise keep the veil up.
 
 ## Left open
 

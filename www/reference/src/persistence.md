@@ -151,7 +151,9 @@ The engine worker opens the store once at boot, before any farm worker is handed
 the phrase: it creates the store on a first visit and stamps it with the
 namespace (below), so the farm workers’ own opens only read it. When each farm
 worker created and stamped it, their writes queued behind one another, and a
-first visit at six workers waited about 1.5 s longer for its first sounds.
+first visit at six workers waited about 1.5 s longer for its first sounds. The
+farm waits two seconds at most for the stamp, which takes about 50 ms; past
+that, its workers open the store themselves, as they did before.
 
 ### The key is not enough
 

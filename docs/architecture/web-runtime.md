@@ -885,7 +885,14 @@ and closes it. So every crew's opens find it stamped and only read. When each
 worker of a crew created and stamped it itself, their writes queued behind one
 another's first renders, and on a first visit at width 6 the veil waited about
 1.5 s for them (#200). Where the engine worker cannot open it, the farm
-workers create and stamp it as they did before, at that cost.
+workers create and stamp it as they did before, at that cost. **A crew waits
+for the stamp `RENDER_STAMP_MS` (2 s) at most.** On a first visit the stamp
+was done 42 to 53 ms after `init`, most of that importing `render-store.js`.
+The bound is for an open that never answers, as one does queued behind a
+deletion of the store that another tab's connections hold pending: without it
+the veil would stay up for good. Past it the crew is handed the phrase and
+opens the store itself, as it did before #200, and an open that answers later
+still stamps the store if it needs it and is closed.
 `tests/render-store.test.mjs` runs the two workers' code as written, in that
 order, over a stand-in IndexedDB.
 

@@ -4,7 +4,8 @@
 //
 // - The engine worker opens it once, at boot, before any farm worker is handed
 //   the phrase (worker.js `farmBoot`), and closes it again. On a first visit
-//   that is where the store is created and stamped with the namespace.
+//   that is where the store is created and stamped with the namespace. A crew
+//   waits for that `RENDER_STAMP_MS` at most, for an open that never answers.
 // - Each farm worker opens it when the phrase arrives and keeps it, to read and
 //   write rows (farm.js `cacheOpen`). The store is stamped by then, so its open
 //   only reads.
