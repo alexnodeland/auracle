@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-05
+last_updated: 2026-10-06
 related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
@@ -151,6 +151,16 @@ a CI runner). The jobs cut this way are
 PERFORM's measurement (`measure`, a render at a time), the model's guess and
 PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
 most one render, at a time; below).
+
+So a `now` request waits for the call in progress when it arrives, and then
+for its own: one render of a measurement, of the guess's floor, of a face or of a
+cable probe (0.5 to 2.3 s each at `AURACLE_CPU_THROTTLE=4` on a 16-core M3 Max, and
+1.5 to 3 s on a CI runner), a refit, which is one MCMC call, or, while the
+bank fills with no farm (`?farm=0`), one step of the fill (renders until two
+draws are admitted: 0.2 to 0.9 s on that laptop, unthrottled). The rule is held by
+`apps/web/tests/worker-lanes.test.mjs`, which runs the worker's own
+`serveNow`, `breathe`, `guessRun` and `measure`: a request that arrives
+during a render is answered before the next one.
 
 ### Offers and drifts are jobs
 
