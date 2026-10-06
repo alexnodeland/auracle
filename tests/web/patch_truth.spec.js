@@ -100,9 +100,11 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   const t0 = await app.now();
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^set aside/ }).first().click();
   // The new tree reaches the voices as the engine takes the edit (its early
-  // `tree_json`), which waits for the render the engine is in: the open's
-  // probe or a measurement, 2 to 3 s on a slow CI runner (#176). An
-  // engine wait; the swap is timed from there.
+  // `tree_json`), which waits for the call the engine is in when the click
+  // arrives: the open's probe, a measurement's render, or a dealt pair's
+  // sound rendered in the background. On a slow CI runner the tree came 2.2
+  // to 2.9 s after the click (#176). An engine wait; the swap is timed from
+  // there.
   const early = await app.reply("tree_json", { where: { edited: "restore" }, after: t0, timeout: 30_000 });
   // Quiet promptly once the voices have the tree. (A saw never goes quiet at
   // all, so the margin here is for a loaded machine, not for the behaviour.)

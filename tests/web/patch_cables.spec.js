@@ -90,9 +90,10 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
   await page.mouse.up();
-  // The edit's answer waits for the render the engine is in when it arrives
-  // (a probe's, a measurement's): an engine wait. The rack is drawn for it in
-  // the task that hands it to the page, so the first paint after it is that.
+  // The edit's answer waits for the call the engine is in when it arrives (a
+  // probe, a measurement's render, a dealt pair's sound rendered in the
+  // background): an engine wait. The rack is drawn for it in the task that
+  // hands it to the page, so the first paint after it is that.
   const edit = await app.reply("bench", { where: { edited: true }, after: t0, timeout: 30_000 });
   const painted = await page.evaluate((at) => window.__pwMarks.find((p) => p.t >= at) || null, edit._at);
   expect(painted, "the rack was drawn for the edit's answer").not.toBeNull();
