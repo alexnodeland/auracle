@@ -157,11 +157,54 @@ class Floors(Tree):
         self.assertTrue(C.Tally(0, 0).at_least(100.0))
 
     def test_a_crate_with_no_floor_fails_and_a_floor_with_no_crate_fails(self):
-        self.floors({"gone": {"lines": 50.0, "functions": 50.0}})
+        self.write("crates/unrun/Cargo.toml", "[package]\n")
+        self.floors({"unrun": {"lines": 50.0, "functions": 50.0}, "gone": {"lines": 50.0, "functions": 50.0}})
         code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (10, 10, 1, 1)}))
         self.assertEqual(code, 1)
         self.assertIn("a: no floor yet", err)
-        self.assertIn("gone: has a floor, but the run measured no file of it", err)
+        # A crate that is still there but was not measured: the run is short.
+        self.assertIn("unrun: has a floor, but the run measured no file of it", err)
+        # A crate whose directory is gone: its floor is dropped, not kept.
+        self.assertIn("gone: has a floor, but the crate is gone; `make coverage-floors` drops it", err)
+
+    def test_raise_drops_the_floor_of_a_removed_crate_and_keeps_the_rest(self):
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}, "old": {"lines": 80.0, "functions": 80.0}})
+        s = self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)})
+        code, out, err = self.run_main("floors", s, "--raise")
+        self.assertEqual(code, 0, err)
+        self.assertIn("old: dropped (the crate is gone)", out)
+        self.assertEqual(json.loads(read(os.path.join(self.root, C.BASELINE))), {"a": {"lines": 90.0, "functions": 90.0}})
+        self.assertEqual(self.run_main("floors", s)[0], 0)
+
+    def test_a_crate_still_there_keeps_its_floor_through_raise(self):
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.write("crates/b/Cargo.toml", "[package]\n")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}, "b": {"lines": 80.0, "functions": 80.0}})
+        code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)}), "--raise")
+        self.assertEqual(code, 1)
+        self.assertIn("b: has a floor, but the run measured no file of it", err)
+        self.assertIn("wrote nothing", err)
+
+    def test_base_lets_a_removed_crates_floor_go_and_no_other(self):
+        self.git("init", "-q", "-b", "main")
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.write("crates/b/Cargo.toml", "[package]\n")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}, "b": {"lines": 80.0, "functions": 80.0}})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "floors")
+        self.git("rm", "-q", "-r", "crates/b")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        s = self.summary_file({"crates/a/src/lib.rs": (100, 95, 10, 10)})
+        code, _, err = self.run_main("floors", s, "--base", "HEAD")
+        self.assertEqual(code, 0, err)
+        # Dropping the floor of a crate that is still there is lowering it.
+        self.floors({"b": {"lines": 80.0, "functions": 80.0}})
+        self.write("crates/b/Cargo.toml", "[package]\n")
+        s = self.summary_file({"crates/b/src/lib.rs": (100, 95, 10, 10)})
+        code, _, err = self.run_main("floors", s, "--base", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("a: its floor was removed", err)
 
     def test_raise_writes_todays_values_truncated_so_the_run_passes(self):
         self.floors({"a": {"lines": 90.0, "functions": 50.0}})
@@ -204,6 +247,8 @@ class Floors(Tree):
 
     def test_base_fails_a_floor_that_went_down_or_away(self):
         self.git("init", "-q", "-b", "main")
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.write("crates/b/Cargo.toml", "[package]\n")
         self.floors({"a": {"lines": 90.0, "functions": 90.0}, "b": {"lines": 80.0, "functions": 80.0}})
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "floors")
@@ -222,6 +267,26 @@ class Floors(Tree):
         self.floors({"a": {"lines": 95.0, "functions": 90.0}})
         code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 95, 10, 10)}), "--base", "HEAD")
         self.assertEqual(code, 0, err)
+
+    def test_the_table_prints_before_any_failure_and_the_summary_names_them(self):
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.floors({"a": {"lines": 99.0, "functions": 99.0}})
+        md = self.write("summary.md", "")
+        code, out, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)}), "--markdown", md)
+        self.assertEqual(code, 1)
+        self.assertRegex(out, r"a\s+90\.00%\s+90\.00%\s+90\.00%\s+99\.00%\s+99\.00%\s+UNDER")
+        text = read(md)
+        self.assertIn("| `a` | 90.00% (10 of 100 missed) | 90.00% (1 of 10 missed) | 90.00% (10 of 100 missed) | 99.00% | 99.00% | UNDER |", text)
+        self.assertIn("**Failed:**\n\n- a: lines 90.00% (10 of 100 not covered) is under its floor of 99.00%", text)
+
+    def test_a_broken_floors_file_still_prints_the_table(self):
+        self.write(C.BASELINE, '{"a": {"lines": 90}}')
+        md = self.write("summary.md", "")
+        code, out, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)}), "--markdown", md)
+        self.assertEqual(code, 1)
+        self.assertRegex(out, r"a\s+90\.00%\s+90\.00%")
+        self.assertIn("needs exactly lines and functions", err)
+        self.assertIn("| `a` | 90.00%", read(md))
 
     def test_markdown_appends_the_table(self):
         self.floors({"a": {"lines": 90.0, "functions": 90.0}})

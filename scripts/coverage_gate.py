@@ -24,7 +24,10 @@ floor up to the measured value, truncated to two decimals so the run that
 wrote it passes; it never lowers one, and it writes nothing while a crate is
 under its floor. `--base BRANCH` compares the file with its copy at the
 merge base with BRANCH and fails when a floor went down or went away: a
-floor only rises.
+floor only rises. The one floor that may go is a removed crate's (no
+crates/<name>/Cargo.toml): it fails until `--raise` drops it, and `--base`
+lets it go. A renamed crate is a removed one and a new one with no floor
+yet. The table prints in full before anything fails.
 
 **The changed lines.** `diff` reads `git diff` from the merge base to the
 working tree (and untracked files, whole), keeps the Rust under `crates/`,
@@ -144,13 +147,28 @@ class Verdict:
     raised: dict[str, dict[str, float]]
 
 
-def judge(crates: dict[str, Crate], floors: dict[str, dict[str, float]]) -> Verdict:
-    """What fails, and the floors raised to today's values (never lowered)."""
+GONE = "the crate is gone"
+
+
+def gone_crates(names, root: str = ROOT) -> set[str]:
+    """The crates among `names` with no crates/<name>/Cargo.toml: removed, or
+    renamed (the new name is a crate with no floor yet)."""
+    return {n for n in names if not os.path.isfile(os.path.join(root, "crates", n, "Cargo.toml"))}
+
+
+def judge(crates: dict[str, Crate], floors: dict[str, dict[str, float]], gone: set[str] = frozenset()) -> Verdict:
+    """What fails, and the floors raised to today's values (never lowered).
+    A floor for a crate in `gone` fails until it is dropped, and the raised
+    floors drop it."""
     failures = []
     raised = {c: dict(f) for c, f in floors.items()}
     for name in sorted(set(crates) | set(floors)):
         if name not in crates:
-            failures.append(f"{name}: has a floor, but the run measured no file of it")
+            if name in gone:
+                failures.append(f"{name}: has a floor, but {GONE}; `{RAISE}` drops it")
+                del raised[name]
+            else:
+                failures.append(f"{name}: has a floor, but the run measured no file of it")
             continue
         c = crates[name]
         if name not in floors:
@@ -168,12 +186,14 @@ def judge(crates: dict[str, Crate], floors: dict[str, dict[str, float]]) -> Verd
     return Verdict(failures, raised)
 
 
-def lowered(old: dict[str, dict[str, float]], new: dict[str, dict[str, float]]) -> list[str]:
-    """Every floor `new` holds lower than `old` did, or no longer holds."""
+def lowered(old: dict[str, dict[str, float]], new: dict[str, dict[str, float]], gone: set[str] = frozenset()) -> list[str]:
+    """Every floor `new` holds lower than `old` did, or no longer holds,
+    except the floor of a crate in `gone`, which goes with its crate."""
     out = []
     for crate in sorted(old):
         if crate not in new:
-            out.append(f"{crate}: its floor was removed")
+            if crate not in gone:
+                out.append(f"{crate}: its floor was removed")
             continue
         for k in GATED:
             if round(new[crate][k] * 100) < round(old[crate][k] * 100):
@@ -254,25 +274,39 @@ def cmd_floors(a: argparse.Namespace, root: str = ROOT) -> int:
     with open(a.summary) as f:
         crates = per_crate(json.load(f), root)
     path = os.path.join(root, BASELINE)
-    floors = {}
+    floors, unreadable = {}, None
     if os.path.exists(path):
         with open(path) as f:
-            floors = read_floors(f.read())
-    v = judge(crates, floors)
-    print("\n".join(table(crates, floors)))
-    if a.markdown:
-        with open(a.markdown, "a") as f:
-            f.write("### Coverage of the fast tier, by crate\n\n" + "\n".join(table(crates, floors, True)) + "\n\n")
-    failures = list(v.failures)
+            try:
+                floors = read_floors(f.read())
+            except ValueError as e:
+                # The table still prints, with no floors, so a run's numbers
+                # are never lost to a broken file.
+                unreadable = str(e)
+    v = judge(crates, floors, gone_crates(floors, root))
+    failures = ([unreadable] if unreadable else []) + list(v.failures)
     if a.base:
         mb = git(["merge-base", a.base, "HEAD"], root).strip()
         old = git(["show", f"{mb}:{BASELINE}"], root, check=False)
         if old:
-            failures += [f"{BASELINE}: {s} since {a.base}; a floor only rises" for s in lowered(read_floors(old), floors)]
+            was = read_floors(old)
+            failures += [
+                f"{BASELINE}: {s} since {a.base}; a floor only rises" for s in lowered(was, floors, gone_crates(was, root))
+            ]
         else:
             print(f"  coverage: {a.base} ({mb[:12]}) has no {BASELINE}, so no floor of it can have gone down")
+    # The whole table first, to the log and the run's summary, whatever fails.
+    print("\n".join(table(crates, floors)))
+    if a.markdown:
+        with open(a.markdown, "a") as f:
+            md = ["### Coverage of the fast tier, by crate", "", *table(crates, floors, True), ""]
+            if failures:
+                md += ["**Failed:**", "", *[f"- {s}" for s in failures], ""]
+            f.write("\n".join(md) + "\n")
     if a.raise_:
-        under = [s for s in failures if "no floor yet" not in s]
+        under = [s for s in failures if "no floor yet" not in s and GONE not in s]
+        if unreadable:
+            under.append(unreadable)
         if under:
             warn("\n".join(f"  {s}" for s in under))
             warn("  coverage: wrote nothing; a floor is never lowered (raise the coverage, not the file)")
@@ -282,9 +316,11 @@ def cmd_floors(a: argparse.Namespace, root: str = ROOT) -> int:
         changed = [
             f"{c}: {k} {floors[c][k]:.2f} → {v.raised[c][k]:.2f}"
             for c in sorted(floors)
+            if c in v.raised
             for k in GATED
             if round(v.raised[c][k] * 100) != round(floors[c][k] * 100)
         ]
+        changed += [f"{c}: dropped ({GONE})" for c in sorted(floors) if c not in v.raised]
         changed += [
             f"{c}: new, lines {v.raised[c]['lines']:.2f} and functions {v.raised[c]['functions']:.2f}"
             for c in sorted(v.raised)
