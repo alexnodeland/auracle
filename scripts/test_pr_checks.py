@@ -262,6 +262,13 @@ class Parse(unittest.TestCase):
         self.assertEqual(P.parse("No issue:", REPO).no_issue, "")
         self.assertIsNone(P.parse("There is no issue: really", REPO).no_issue)
 
+    def test_a_body_saved_with_crlf_reads_as_with_lf(self):
+        # GitHub's web editor saves a body with CRLF line ends.
+        self.assertEqual(P.parse("## Why\r\n\r\nNo issue: a typo\r\n", REPO).no_issue, "a typo")
+        self.assertEqual(P.parse("No issue:\r\nThe rest.", REPO).no_issue, "")
+        links = P.parse("```\r\nCloses #1, #2\r\n```\r\nCloses #3\r\n", REPO)
+        self.assertEqual((links.closes, links.problems), ([3], []))
+
 
 class Links(unittest.TestCase):
     def check(self, body, fake):
@@ -467,8 +474,10 @@ class OnMerge(unittest.TestCase):
         self.assertEqual((code, fake.writes), (0, []))
 
     def test_a_failed_read_fails_the_job(self):
-        fake = Fake({5: {}}, fail={f"repos/{REPO}/issues/5"})
-        self.assertEqual(merge("Refs #5", fake)[0], 1)
+        for body in ["Refs #5", "Closes #5"]:
+            fake = Fake({5: {}}, fail={f"repos/{REPO}/issues/5"})
+            self.assertEqual(merge(body, fake)[0], 1, body)
+            self.assertEqual(fake.writes, [], body)
 
     def test_dependabot_a_fork_and_a_pr_with_no_issue_write_nothing(self):
         fake = Fake({1: {}})
