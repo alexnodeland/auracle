@@ -94,8 +94,8 @@ jobs:
   # the last push's run stands (and the concurrency group above keeps this
   # run from cancelling it). When this job is skipped, so is every job after
   # it, and the run costs no runner. A push to main that main has already
-  # moved past runs nothing either (`run` is false): the newest push's run
-  # covers it, as ci.yml's changes job does for CI.
+  # moved past (main is ahead of it) runs nothing either (`run` is false):
+  # the newest push's run covers it, as ci.yml's changes job does for CI.
   scope:
     name: Asked for
     if: >-
@@ -117,8 +117,8 @@ jobs:
           if [ "$EVENT" = pull_request ]; then
             echo "the PR carries full-ci: running everything"
           elif [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ] &&
-            tip="$(gh api "repos/$REPO/git/ref/heads/main" -q .object.sha)" &&
-            [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+            read -r status tip <<<"$(gh api "repos/$REPO/compare/$GITHUB_SHA...main" -q '"\(.status) \(.commits[-1].sha // "")"')" &&
+            [ "$status" = ahead ] && [ -n "$tip" ]; then
             echo "superseded: main is at ${tip:0:12} now, and that push's run covers this one"
             echo "Superseded: main moved on to \`${tip:0:12}\` before this run began, and that push's run covers this one." >> "$GITHUB_STEP_SUMMARY"
             echo "run=false" >> "$GITHUB_OUTPUT"

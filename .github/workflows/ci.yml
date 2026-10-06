@@ -15,14 +15,16 @@ name: CI
 #   specs did; and the browser specs the change reaches
 #   (tests/web/changed.mjs), on up to four runners. A change whose specs
 #   can't be told (main.js, worker.js, a crate) runs the smoke only, and a
-#   change to CI itself runs the full gate. About five minutes without Rust;
-#   with it, Coverage sets the length, about nine (an estimate). A green
-#   fast lane puts the PR in the merge queue. It is not the whole gate.
+#   change to CI itself runs the full gate. About five minutes for docs; up
+#   to about ten when Rust changed (Coverage sets the length, about nine, an
+#   estimate) or an app module's specs run (patch.js reaches about 23
+#   test-minutes, on four runners). A green fast lane puts the PR in the
+#   merge queue. It is not the whole gate.
 # - The merge queue's run (Mergify's draft PR, from a branch under
 #   mergify/merge-queue/: .mergify.yml) is the FULL GATE, about twelve
 #   minutes: everything, as on main, the browser tier on twelve runners. It
-#   tests the tree that lands, up to three queued PRs at once, and its `Full
-#   gate` job is the check the queue merges on.
+#   tests the tree that lands, up to three queued PRs at once (a release PR
+#   alone), and its `Full gate` job is the check the queue merges on.
 #
 # The branch ruleset requires one check, `CI`, in both lanes. The browser
 # shards are inside it; the Slow suite is not.
@@ -155,10 +157,12 @@ jobs:
             # queue tested. A run whose commit main has already moved past
             # runs nothing; the run of the newest push, which the concurrency
             # queue always keeps, tests these changes with the ones after
-            # them. Main's tip unread is no reason to skip: run everything.
+            # them. "Moved past" is main being ahead of this commit, which
+            # it then contains, not merely elsewhere. An answer the API
+            # can't give is no reason to skip: run everything.
             if [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-              tip="$(gh api "repos/$REPO/git/ref/heads/main" -q .object.sha || true)"
-              if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+              read -r status tip <<<"$(gh api "repos/$REPO/compare/$GITHUB_SHA...main" -q '"\(.status) \(.commits[-1].sha // "")"' || true)"
+              if [ "${status:-}" = ahead ] && [ -n "${tip:-}" ]; then
                 echo "superseded: main is at ${tip:0:12} now, and that push's run tests this one's changes with it"
                 {
                   echo "rust=false"
@@ -237,9 +241,10 @@ jobs:
           # require a changed helper, the specs named for a changed app
           # module. main.js, worker.js, index.html, style.css, the config and
           # the engine reach every level and select nothing, and say so
-          # below. More than twenty files is a helper that nearly every spec
-          # requires, the tier in all but name: the smoke runs here, and the
-          # queue runs the rest. One runner per spec file, at most four,
+          # below. More than twenty files (a helper nearly every spec
+          # requires, or that many specs changed at once) is the tier in all
+          # but name: the smoke pair runs here instead, whatever changed, and
+          # the queue runs them all. One runner per spec file, at most four,
           # dealt by time like the full tier.
           browser=false
           specs=""
@@ -248,7 +253,8 @@ jobs:
             sel="$(cd tests/web && node changed.mjs "origin/$BASE_REF")" || { echo "changed.mjs could not say: smoke only"; sel=""; }
             count="$(echo "$sel" | grep -c . || true)"
             if [ "$count" -gt 20 ]; then
-              echo "the change reaches $count spec files: smoke only here, and the queue runs them all"
+              echo "the change reaches $count spec files: the smoke pair here, and the queue runs them all"
+              smoke=true
             elif [ "$count" -gt 0 ]; then
               browser=true
               # Anchored at a path separator, as shard.mjs does, so a spec's
@@ -317,20 +323,20 @@ jobs:
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
           echo "rustc: recorded '$recorded', pinned '$pinned'"
           # Lint and Coverage run here anyway after a batch that changed
-          # rust-toolchain.toml, for their caches. rust-cache restores by a
-          # key that holds the rustc release, and these jobs save their caches
-          # from main only: reused, nothing would save under the new release's
-          # key, and both would build cold on every run after. (The test
-          # cache is the Slow suite's to save; a Cargo.lock change needs
-          # nothing, since the caches restore across it and rebuild only what
-          # changed.) The batch is everything since main's tip when the queue
+          # rust-toolchain.toml or Cargo.lock, for their caches, which these
+          # jobs save from main only. rust-cache keys a cache by the rustc
+          # release and the lockfile: reused, nothing would save under a new
+          # release's key, and both jobs would build cold on every run after;
+          # nothing would save a bumped dependency either, which every run
+          # after would build again. (The test cache is the Slow suite's to
+          # save.) The batch is everything since main's tip when the queue
           # tested it (the record's `base`; the push's `before` for a record
           # without one). A diff that can't be read runs them too.
           since="$(jq -r '.base // empty' verified/verified.json)"
           since="${since:-$BEFORE}"
           fresh=""
-          if ! git diff --quiet "$since" HEAD -- rust-toolchain.toml; then
-            echo "rust-toolchain.toml changed since ${since:0:12} (or the diff failed): Lint and Coverage run, to save their caches"
+          if ! git diff --quiet "$since" HEAD -- rust-toolchain.toml Cargo.lock; then
+            echo "rust-toolchain.toml or Cargo.lock changed since ${since:0:12} (or the diff failed): Lint and Coverage run, to save their caches"
             fresh=" lint coverage "
           fi
           reused=""
@@ -1016,9 +1022,13 @@ jobs:
   # already on main's tip on the PR's own run, with no draft PR: the fast
   # lane would be the gate again. A PR's own run skips it, so a skipped
   # `Full gate` on a PR is expected.
+  #
+  # It also waits for the Browser report, which keeps the run's browser times
+  # for main's run to save (the changes job): the queue merges once this is
+  # green, and main's run then finds them there.
   full-gate:
     name: Full gate
-    needs: [changes, ci]
+    needs: [changes, ci, report]
     if: always() && needs.changes.outputs.lane == 'queue'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
