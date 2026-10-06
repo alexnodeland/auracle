@@ -168,7 +168,7 @@ Run ${RUN} (hours; cargo-mutants must be the Makefile's MUTANTS_VERSION: make se
 Change nothing in the worktree but what the run writes (mutants.out is not committed).
 
 ${RULES}`,
-  { label: 'measure before', phase: 'Measure', agentType: 'engine-engineer', schema: MEASURE },
+  { label: `measure ${KEY}`, phase: 'Measure', agentType: 'engine-engineer', schema: MEASURE },
 )
 if (!before) {
   return { workflow: 'mutants-burndown', session: SESSION, before: null, after: null, groups: [], items: [{ key: KEY, issue: ISSUE, branch: args.branch, worktree: WT, status: 'failed', problems: ['the first mutation run did not return'] }] }
@@ -188,7 +188,7 @@ ${g.survivors.map(m => `- ${g.file}:${m.line} ${m.function}: ${m.change}`).join(
 For each: find the behavior the change breaks and write the test that asserts it, in the module's tests (<module>/tests.rs); or argue it equivalent and exclude it narrowly in .cargo/mutants.toml with its reason. Confirm with a focused run: cd ${WT} && nice -n 19 make mutants CRATE=${CRATE} MUTANTS_ARGS='--file ${g.file}'. Then make test-crate CRATE=${CRATE} and make lint. One commit for the file.
 
 ${RULES}`,
-    { label: `kill ${g.file}`, phase: 'Kill', agentType: 'engine-engineer', schema: KILL },
+    { label: `kill ${KEY} ${g.file}`, phase: 'Kill', agentType: 'engine-engineer', schema: KILL },
   )
   if (k) {
     kills.push(k)
@@ -213,7 +213,7 @@ ${json(kills)}
 ${RULES}
 
 Report with the structured output: after (the counts), the gates, every commit on the branch, a survivor still left as an open item (in_area when a test could still kill it; decision when it needs the maintainer), and the pr_title and pr_body drafts.`,
-  { label: 'measure after', phase: 'Measure', agentType: 'engine-engineer', schema: REPORT },
+  { label: `measure ${KEY} after`, phase: 'Measure', agentType: 'engine-engineer', schema: REPORT },
 )
 if (!report) {
   return { workflow: 'mutants-burndown', session: SESSION, before: before.counts, after: null, groups: kills, items: [{ key: KEY, issue: ISSUE, branch: args.branch, worktree: WT, status: 'failed', problems: ['the second mutation run did not return; the branch holds the kills so far'] }] }
