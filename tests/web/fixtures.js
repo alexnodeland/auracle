@@ -16,6 +16,10 @@
 //   `pageerror` on any page of the test's context is collected, and the test
 //   fails at teardown if there was one. `test.use({ consoleErrors: true })`
 //   counts `console.error` too.
+// - **A failed test names its machine** (the auto fixture `runner`): the
+//   annotation `runner`, "<cores> × <CPU model>", which the run's report
+//   shows and a flake's issue quotes (flakes.mjs). CI's hosted runners differ
+//   in speed by about two times.
 // - **`app`** (per test, only when a test asks for it) installs the engine
 //   worker's tap before anything else runs, so main.js's own `onmessage` is
 //   always the last to hear a reply, and a spec's own init scripts (added
@@ -71,6 +75,7 @@
 // marks (`app.marks`).
 const base = require("@playwright/test");
 const { expect } = base;
+const os = require("node:os");
 const shell = require("./shell");
 const performBudget = require("./perform_budget");
 
@@ -964,8 +969,20 @@ async function openApp(page) {
   return app;
 }
 
+/** This machine, as a failed test's `runner` annotation names it. */
+const RUNNER = `${os.cpus().length} × ${(os.cpus()[0] || {}).model || "unknown CPU"}`;
+
 const test = base.test.extend({
   consoleErrors: [false, { option: true }],
+  // First, so it is torn down last and sees a failure the others' teardown
+  // found (a page error) too.
+  runner: [
+    async ({}, use, testInfo) => {
+      await use();
+      if (testInfo.status !== testInfo.expectedStatus) testInfo.annotations.push({ type: "runner", description: RUNNER });
+    },
+    { auto: true },
+  ],
   pageErrors: [
     async ({ context, consoleErrors }, use) => {
       const errors = [];

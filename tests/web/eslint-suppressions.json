@@ -39,7 +39,7 @@
       "count": 1
     },
     "playwright/no-wait-for-timeout": {
-      "count": 13
+      "count": 12
     },
     "playwright/prefer-locator": {
       "count": 1
@@ -66,10 +66,10 @@
   },
   "bank_lineage.spec.js": {
     "playwright/no-conditional-expect": {
-      "count": 9
+      "count": 1
     },
     "playwright/no-conditional-in-test": {
-      "count": 11
+      "count": 6
     },
     "playwright/no-skipped-test": {
       "count": 4
@@ -170,15 +170,12 @@
       "count": 8
     },
     "playwright/no-conditional-in-test": {
-      "count": 14
+      "count": 13
     },
     "playwright/no-wait-for-timeout": {
       "count": 1
     },
     "playwright/prefer-to-have-count": {
-      "count": 1
-    },
-    "playwright/prefer-to-have-length": {
       "count": 1
     }
   },

@@ -465,43 +465,132 @@ test("each sound on the map is drawn as its face: taller than it is wide, in the
   }, { timeout: 30_000 }).toBeGreaterThanOrEqual(8);
 });
 
-// Quarantined (#237): the SOUND baseline is one read of whichever sound is
-// liked least at that moment, compared with a later read that may be of
-// another sound or a settled frame (CI read 70 against 3 again).
-test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", { tag: "@quarantine" }, async ({ page, app }) => {
+/** The map draws each of `ids` as its face, not as a dot. main.js
+ *  `drawMapFace` draws a sound's face once main has two things: the face (a
+ *  `faces` reply naming its id) and the bank's statistics, which `faceRestat`
+ *  takes over the faces of the pool's rows that have landed, and only once
+ *  there are FACE_MIN_BANK of them (faces.js `bankStats`). Until then the map
+ *  draws a dot. So: an engine wait until the `faces` replies name both ids
+ *  and FACE_MIN_BANK of the pool's in all (a face not rendered yet comes
+ *  later, from the worker's faces lane, as news with no request number), then
+ *  one frame. `faceRestat` runs in a frame `facesChanged` asks for when the
+ *  reply is handled, and the tap and main hear a reply in the same task, so
+ *  that frame was asked for before this one and runs first. */
+async function facesDrawn(page, app, ids) {
+  const landed = () => page.evaluate(async (want) => {
+    const { FACE_MIN_BANK } = await import("/faces.js");
+    const pool = new Set((window.__tap.facts.ranked || []).map((r) => r.id));
+    const have = new Set();
+    for (const r of window.__tap.replies) {
+      if (r.type !== "faces") continue;
+      for (const it of r.d.items || []) if (pool.has(it.id)) have.add(it.id);
+    }
+    return want.every((id) => have.has(id)) && have.size >= FACE_MIN_BANK;
+  }, ids);
+  await app.engine((timeout) => expect.poll(landed, { timeout, message: `the faces of sounds ${ids.join(", ")}, and the bank's` }).toBe(true));
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done())));
+}
+
+/** How strongly TASTE draws each of `ids`' marks against SOUND, read off the
+ *  map's pixels (`alpha`); the alpha taste.js `drawMap` gives it in TASTE
+ *  (`drawnAt`: 0.22 + 0.78 × liking, from the rating last posted to main,
+ *  through taste-geom's `liking`); and the toggle's `aria-pressed` at each
+ *  read.
+ *
+ *  One task: the toggle is pressed in the page, twice, and its click handler
+ *  redraws the map before it returns, so TASTE's read and SOUND's are of one
+ *  map, one rating and one face; no reply or frame lands between them.
+ *
+ *  The measure: the face is copied onto the map in one `drawImage` at that
+ *  alpha, over its halo, which both modes draw alike and which changes
+ *  slowly across a mark. Between two neighbouring pixels the halo cancels,
+ *  and TASTE's difference is SOUND's times the alpha, so the least-squares
+ *  ratio of the two over a box the size of the largest face is that alpha. */
+function dimming(page, ids) {
+  return page.evaluate(async (ids) => {
+    const geom = await import("/taste-geom.js");
+    // Nothing below awaits.
+    const f = window.__tap.facts;
+    const well = document.getElementById("taste-well");
+    const pts = f.views.map.points.filter((p) => p.id != null);
+    const track = document.getElementById("taste-time").classList.contains("on");
+    const frame = geom.mapFrame(Math.max(200, well.clientWidth), Math.max(160, well.clientHeight), pts.length, { track });
+    const pos = geom.mapLayout(pts, frame.box, frame.minD);
+    const mean = new Map(f.ratings.ranked.map((r) => [r.id, r.mean]));
+    const ctx = document.getElementById("taste-crt").getContext("2d");
+    const d = window.devicePixelRatio || 1;
+    // The largest face is 28 × 17 px (main.js `drawMapFace`, at taste-geom's
+    // MAP_R_UNSURE), and marks keep about 33 px apart here (`mapFrame`'s
+    // `minD`): the box holds the mark's face and none of another's.
+    const hw = Math.ceil(8 * d), hh = Math.ceil(14 * d), w = 2 * hw + 1;
+    const box = (id) => {
+      const q = pos.get(id);
+      return q ? ctx.getImageData(Math.round(q.x * d) - hw, Math.round(q.y * d) - hh, w, 2 * hh + 1).data : null;
+    };
+    const tog = document.getElementById("taste-tog");
+    tog.click();
+    const taste = { pressed: tog.getAttribute("aria-pressed"), px: ids.map(box) };
+    tog.click();
+    const sound = { pressed: tog.getAttribute("aria-pressed"), px: ids.map(box) };
+    const marks = ids.map((id, n) => {
+      const s = sound.px[n], t = taste.px[n];
+      if (!s) return { id, alpha: null };
+      let st = 0, ss = 0;
+      for (let y = 0; y <= 2 * hh; y++) for (let x = 0; x <= 2 * hw; x++) {
+        const i = (y * w + x) * 4 + 3;
+        for (const j of [x < 2 * hw ? i + 4 : -1, y < 2 * hh ? i + 4 * w : -1]) {
+          if (j < 0) continue;
+          st += (s[i] - s[j]) * (t[i] - t[j]);
+          ss += (s[i] - s[j]) ** 2;
+        }
+      }
+      return { id, alpha: ss ? st / ss : null, drawnAt: 0.22 + 0.78 * geom.liking(mean.get(id)) };
+    });
+    return { taste: taste.pressed, sound: sound.pressed, marks };
+  }, ids);
+}
+
+// SOUND draws every mark whole; TASTE draws each at 0.22 + 0.78 × liking,
+// from the rating the engine posted. Checked on two sounds chosen once, the
+// one liked least and the one liked most, by the alpha `dimming` reads off
+// the map for each, within DIM_TOLERANCE of the alpha drawn. It read within
+// 0.01 of it for every sound but the one in hand on four maps: the pools
+// dealt with the page's Math.random seeded 20261001 (this test's `random`),
+// 7, 424242 and 99. With no `?seed`, main draws the session's seed from that
+// Math.random, so each `random` deals one pool every run. A TASTE drawn
+// whole reads 1, a SOUND dimmed as TASTE is reads 1, and one dimming for
+// every sound cannot be within the tolerance of both (they are drawn about
+// 0.4 apart).
+//
+// The SOUND it compares with is read in the same task as TASTE (#237): a
+// SOUND read once at the start and compared with later ones was of a dot
+// drawn while the sound's face was on its way (255), and every later read of
+// the face that replaced it (185), "70 against 3". And the read waits until
+// the map draws both marks as faces (`facesDrawn`): a dot is a fill and its
+// shadow, which do not scale as one image does.
+const DIM_TOLERANCE = 0.05;
+
+test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page, app }) => {
   await boot(app);
+  // A new rating is drawn at once, not tweened, so the alpha drawn is the
+  // posted rating's.
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
-  const tog = page.locator("#taste-tog");
-  await expect(tog).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#taste-tog")).toHaveAttribute("aria-pressed", "false");
   // Fitted, SOUND shows the glows (the prototype's `halosOn`).
   await expect(page.locator("#taste-legend")).toHaveClass(/\bon\b/);
-  // How opaque the mark of the sound it likes least is at its centre: SOUND
-  // draws it whole, TASTE at 0.22 + 0.78 × liking. Found afresh on every read:
-  // the map redraws as the pool and the fit move on, which can move the mark
-  // or change which sound is liked least, and a pixel read where the mark
-  // used to be reads the glow beside it (CI read 70 against 3).
-  const green = async () => {
-    const { pos } = await mapPositions(page);
-    return page.evaluate((pos) => {
-      const r = window.__tap.facts.views.ratings.ranked;
-      const at = pos[r[r.length - 1].id];
-      const cv = document.getElementById("taste-crt");
-      const d = window.devicePixelRatio || 1;
-      return cv.getContext("2d").getImageData(Math.round(at.x * d), Math.round(at.y * d), 1, 1).data[3];
-    }, pos);
-  };
-  const sound = await green();
-  await tog.click();
-  await expect(tog).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(green, { timeout: 5_000 }).toBeLessThan(sound - 40);
-  await tog.click();
-  await expect(tog).toHaveAttribute("aria-pressed", "false");
-  // Back to SOUND: whole again. Within a few levels of alpha, not to the
-  // level: the map redraws as the pool and the fit move on, and a redraw can
-  // land a unit off at one pixel (CI read 175 for 176). TASTE's dimming is
-  // forty-plus levels, so a few cannot hide it.
-  await expect.poll(async () => Math.abs((await green()) - sound), { timeout: 5_000 }).toBeLessThanOrEqual(3);
+  // Not the sound in hand (the warm start's first pick, `warm_done`'s
+  // `first`): its green ring is drawn whole in both modes, over its face.
+  const inHand = (await app.reply("warm_done")).first;
+  const { ratings } = await app.facts();
+  const rated = ratings.ranked.filter((r) => r.id !== inHand).sort((a, b) => a.mean - b.mean);
+  const ids = [rated[0].id, rated[rated.length - 1].id];
+  await facesDrawn(page, app, ids);
+  const read = await dimming(page, ids);
+  expect([read.taste, read.sound]).toEqual(["true", "false"]);
+  const [least, most] = read.marks;
+  expect(Math.abs(least.alpha - least.drawnAt), `the sound liked least, ${JSON.stringify(least)}`).toBeLessThanOrEqual(DIM_TOLERANCE);
+  expect(Math.abs(most.alpha - most.drawnAt), `the sound liked most, ${JSON.stringify(most)}`).toBeLessThanOrEqual(DIM_TOLERANCE);
 });
 
 /** A string as a pattern's source that matches it and nothing else. */

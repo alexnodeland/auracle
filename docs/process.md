@@ -24,7 +24,7 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 9. Checked | Green `CI` (the fast lane) and `PR checks` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
-| 12. Closed | The issues it finishes closed, the ones it advances and their parents told; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
+| 12. Closed | The issues it finishes closed, the ones it advances and their parents told, the boxes naming them in other issues ticked; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
 
 Small fixes skip stages 2–4: an issue (or a failing test) is enough. Stages 2
 and 3 are for changes big enough to argue about first, as
@@ -65,10 +65,15 @@ in a plan's prose, a session's notes or a conversation.
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:
   real, not yet scheduled.
 - **Titles** say the outcome, not the activity: "Faces on the PRESETS rows",
-  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`.
+  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`
+  (the file without `.spec.js`; the title may be cut short with … and a note
+  may follow it): the nightly *Flake hunt* finds an open flake's issue by it.
 - **Bodies** follow the templates in `.github/ISSUE_TEMPLATE/`: a task names
   its plan, its brief and what done means; a flake names the test, the run
-  that caught it, why it fails, the fix, and whether it is quarantined.
+  that caught it, why it fails, the fix, and whether it is quarantined. A
+  flake's issue the *Flake hunt* opens begins as its first report instead
+  (the run, the test, how many of its runs failed, the first error line, the
+  CPU); whoever takes it adds the template's sections.
 - **Plans link their issues.** A plan's progress table has an issue column,
   and each task row links its issue and, once merged, its PR. The plan stays
   the design; the issue tracks the work.
@@ -204,12 +209,24 @@ Findings come back ranked, and review is **one round**:
   minute first, since GitHub closes them a moment after the merge), with a
   comment saying why; and tells the parent of each issue that closed
   (GitHub's sub-issues) which closed, with which PR, and how many of its
-  sub-issues are closed. A merge into another branch (a PR stacked on
-  another) closes nothing, as GitHub's own closing keywords don't. It
-  writes one comment per issue, each line in it marked: run again (a red
-  run is a read or a write that failed), it posts only the lines missing,
-  and nothing twice. A PR from a fork gets a read-only token there, so its
-  issues are updated by hand.
+  sub-issues are closed. In the other open issues (an umbrella's
+  checklist), it ticks each box that names an issue that closed, once
+  every issue the box names is closed as completed: a box naming
+  `#130 + #153` waits for both. So a box names only the issues whose
+  closing finishes it; a step beyond them (a setting, a rule) gets a box
+  of its own. A PR a box names is not an issue to wait for. A box in code,
+  in an HTML comment or in a quote is left, and so is one that names
+  another repository's issue, or an issue closed as not planned or as a
+  duplicate. It changes only the `[ ]`, and only on a line still as it was
+  read: it reads the body again just before the write, and again a few
+  seconds after it, to tick again a box another merge's run put back (a
+  queue batch merges its PRs seconds apart). A merge into another branch
+  (a PR stacked on another) closes nothing, as GitHub's own closing
+  keywords don't. It writes one comment per issue, each line in it marked
+  (each box it ticked is a line of its own, quoted in code so no one is
+  notified again): run again (a red run is a read or a write that failed),
+  it posts only the lines missing, and nothing twice. A PR from a fork gets
+  a read-only token there, so its issues are updated by hand.
   `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what it
   would do.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
@@ -224,9 +241,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   site, the docs or the app changed (Web alone for a script's own tests, and
   nothing more for a changelog entry, which *What changed* checks on every
   run); Browser smoke when the app, the engine or what runs the specs changed
-  (not the specs' lint, which no browser reads); Worker protocol
-  (`make worker-test`) when the app, the engine or `tests/worker/` changed;
-  and the browser specs the change reaches
+  (not the specs' lint or CI's flake routing, which no browser reads);
+  Worker protocol (`make worker-test`) when the app, the engine or
+  `tests/worker/` changed; and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them before it
   follows the views), on up to
   four runners. About five minutes for docs; up to about ten when Rust
@@ -258,6 +275,14 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `make mutants DIFF=1` before review, so they are answered before the PR.
   On the queue's draft PRs it passes at once, since each PR's own run has
   judged their code.
+- **Codecov comments on the PR** when the PR's own run uploads coverage
+  (the Rust's, or the web units' or the worker-protocol tests'), each flag
+  the run didn't reach carried forward from `main`. It is a view,
+  not a gate: its statuses are informational and never block the queue,
+  and Coverage's own gate (`scripts/coverage_gate.py`) is what holds a
+  Rust change. Read its JavaScript numbers knowing that the browser specs
+  aren't measured
+  ([`architecture/testing.md` § Coverage](architecture/testing.md#coverage)).
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
@@ -282,10 +307,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
   - It enters the queue once its fast lane's `CI` and its `PR checks` are
-    green. The PRs already open when `PR checks` reached `main` need only
-    `CI`: `.mergify.yml` names them by number, with the reason, and says how
-    one opened while it was on its way gets its first run (any edit to its
-    title or body, or a push).
+    green. Both are required of every PR, in either of `.mergify.yml`'s
+    queues.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
     at most three minutes for company. One batch is tested at a time.
@@ -369,9 +392,17 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 
 After the merge: the issues it finishes close (GitHub reads `Closes #N`, and
 `PR checks` closes any it missed), the ones it advances and their parents get a
-comment, the plan's progress table gets the PR, and the PR's branch deletes
-itself on GitHub (the repository deletes merged branches). Remove the worktree and the local branch:
-`git worktree remove ../auracle-wt-<topic>`, `git branch -D claude/<topic>`.
+comment, the boxes in other open issues that name what closed are ticked once
+every issue each names is closed as completed, the plan's progress table gets
+the PR, and the PR's branch deletes itself on GitHub (the repository deletes
+merged branches). Tick by hand only a box the job leaves, since no later merge
+comes back for it: one that names no issue (only PRs, or nothing); one that
+names another repository's issue, or an issue closed as not planned or as a
+duplicate; one whose issue closed without a merge; one the search missed
+(added in the minute before the merge, so the run's log says nothing of it);
+and one the run's log says changed as it was read. Remove the worktree and
+the local branch: `git worktree remove ../auracle-wt-<topic>`,
+`git branch -D claude/<topic>`.
 
 ## Flakes
 
@@ -388,9 +419,15 @@ how long something took is a budget, not a gate assertion.
    an injected reply the engine can overwrite, a count a slow runner can
    double, a speed bound that should be a budget, or a real race in the app.
 3. **Or quarantine it** while it is fixed: open a `flake` issue (the template
-   says what goes in it), tag the test `@quarantine` with a comment naming the
-   issue, label the issue `quarantined`. It leaves the gate and runs in the
-   *Slow suite*. The PR that fixes it removes the tag and closes the issue.
+   says what goes in it), tag the test `@quarantine` with the issue named
+   beside the tag, `{ tag: "@quarantine", annotation: { type: "issue",
+   description: "#N" } }` (`make spec-lint` fails a quarantined test that
+   names none), and label the issue `quarantined`. It leaves the gate and
+   runs in the *Slow suite*'s job for quarantined tests, where a failure is a
+   comment on its issue and never turns the suite red while the issue is
+   open. The PR that fixes it removes the tag and its annotation and closes
+   the issue; an issue closed with the tag still on its test owns nothing,
+   and that test's next failure turns the suite red.
 4. **On a PR, an unrelated failure is quarantined on sight**, on its own run
    or in the queue's run that dequeued it. The failure qualifies when all
    three hold:
@@ -403,7 +440,8 @@ how long something took is a budget, not a gate assertion.
    the PR's.
 
 The nightly *Flake hunt* runs the gate's browser tests three times each
-against `main` and files an issue when one fails.
+against `main`, and files each test that fails on its own `Flaky:` issue, or
+comments on the one open for it.
 
 ## Dependencies
 

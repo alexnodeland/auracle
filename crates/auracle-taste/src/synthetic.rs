@@ -37,12 +37,12 @@ impl SyntheticUser {
 
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Sample a keep/kill decision.
     pub fn keep<R: Rng>(&self, rng: &mut R, x: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(x) - self.tau).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(x) - self.tau))
     }
 
     /// Sample a star rating (cumulative-logit ordinal).
@@ -96,7 +96,7 @@ impl MixtureSyntheticUser {
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise on the
     /// max-utility.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Generate a full duel observation on the given pair.
@@ -158,7 +158,7 @@ impl IdealPointUser {
 
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Generate a full duel observation on the given pair.
@@ -174,10 +174,10 @@ impl IdealPointUser {
     }
 }
 
-/// Cosine similarity between two vectors (θ-recovery metric).
-pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
-    let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
-    let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
-    let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot / (na * nb + 1e-12)
-}
+/// Cosine similarity between two vectors, the θ-recovery metric. It is the
+/// one alignment matches lenses by, so a gate scores recovery by the same
+/// angle the posterior's lenses were matched with.
+pub use crate::model::cosine;
+
+#[cfg(test)]
+mod tests;

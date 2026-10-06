@@ -2683,8 +2683,11 @@ fn a_live_write_clamps_to_what_the_term_can_hold() {
 }
 
 /// A hand-built modulation term the prior would never draw (a shaper over
-/// nothing, a pair with an empty side) compiles to exactly what its
-/// canonical form does: the voice plays the same samples.
+/// nothing, a pair with an empty side, a one-parameter shaper carrying a
+/// second parameter) compiles to exactly what its canonical form does: the
+/// voice plays the same samples. Every shaper and every pair, since this is
+/// what lets a tree from outside the engine be folded on its way in
+/// (`normalize_tree`) without changing how it sounds.
 #[test]
 fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
     let lfo = || ModNode::Lfo {
@@ -2692,16 +2695,16 @@ fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
         wave: Waveform::Square,
         rate: 0.6,
     };
-    let op = |input: ModNode| ModNode::Op {
+    let op = |kind: ModOp, input: ModNode| ModNode::Op {
         uid: Uid::NEW,
-        kind: ModOp::Slew,
+        kind,
         p0: 0.2,
-        p1: 0.2,
+        p1: 0.7,
         input: Box::new(input),
     };
-    let pair = |a: ModNode, b: ModNode| ModNode::Pair {
+    let pair = |kind: PairOp, a: ModNode, b: ModNode| ModNode::Pair {
         uid: Uid::NEW,
-        kind: PairOp::Max,
+        kind,
         a: Box::new(a),
         b: Box::new(b),
     };
@@ -2722,13 +2725,19 @@ fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
         .unwrap();
         hold(&mut v, 0.0, 8_000)
     };
-    for m in [
-        op(ModNode::None),
-        pair(ModNode::None, ModNode::None),
-        pair(lfo(), ModNode::None),
-        pair(ModNode::None, lfo()),
-        op(pair(ModNode::None, lfo())),
-    ] {
+    let mut degenerate = vec![op(ModOp::Slew, pair(PairOp::Max, ModNode::None, lfo()))];
+    for kind in ModOp::ALL {
+        degenerate.push(op(kind, ModNode::None));
+        if kind.param_sites().len() < 2 {
+            degenerate.push(op(kind, lfo()));
+        }
+    }
+    for kind in PairOp::ALL {
+        degenerate.push(pair(kind, ModNode::None, ModNode::None));
+        degenerate.push(pair(kind, lfo(), ModNode::None));
+        degenerate.push(pair(kind, ModNode::None, lfo()));
+    }
+    for m in degenerate {
         let canonical = m.clone().normalized();
         assert_ne!(m, canonical, "not degenerate: {m:?}");
         assert_eq!(render(m.clone()), render(canonical), "{m:?}");

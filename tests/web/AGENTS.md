@@ -34,7 +34,9 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
-  `AURACLE_TAP_LOG=1` prints it too.
+  `AURACLE_TAP_LOG=1` prints it too. It names the machine it failed on, as
+  the annotation `runner` (cores and CPU model), which a flake's issue
+  quotes.
 
 ## The two tiers
 
@@ -53,9 +55,10 @@ The suite is about an hour and a half in one worker, so CI splits it
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a
-  PR labelled `full-ci`, and on no other PR. It does not block merging. A
-  separate nightly flake hunt (`flake-hunt.yml`) runs the fast tier three
-  times over.
+  PR labelled `full-ci`, and on no other PR, the quarantined ones in a job of
+  their own. It does not block merging. A separate nightly flake hunt
+  (`flake-hunt.yml`) runs the fast tier three times over, and files each
+  test that fails on its own `Flaky:` issue (`flakes.mjs`).
 
 CI runs every browser job in Playwright's image
 (`mcr.microsoft.com/playwright:v<version>-noble`), at the `@playwright/test`
@@ -127,9 +130,18 @@ slow tests cover: in `tests/web`, `fixtures.js`, `playwright.config.js` or
 ([`testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)). A test that is slow only because it waits
 on a fixed timer is better made faster than tagged.
 
-**A flaky test** is fixed, or tagged `@quarantine` with a comment naming its
-issue while it is fixed: it leaves the gate for the slow tier, where it still
-runs. No retries anywhere
+**A flaky test** is fixed, or tagged `@quarantine` while it is fixed, with
+its issue named beside the tag:
+
+```js
+test("…", { tag: "@quarantine", annotation: { type: "issue", description: "#N" } }, async ({ page, app }) => {
+```
+
+It leaves the gate for the slow tier, where it still runs, in a job of its
+own: a failure there is said on that issue (`flakes.mjs`) and never turns the
+*Slow suite* red while the issue is open. `make spec-lint` fails a
+quarantined test that names no issue (`node flakes.mjs check`); a closed
+issue is caught only when the test fails, and then the suite goes red. No retries anywhere
 ([`testing.md` § Flakes](../../docs/architecture/testing.md#flakes)).
 
 ## Writing a spec
@@ -296,7 +308,9 @@ ESLint over every `.js` and `.mjs` file here with `eslint.config.mjs`: the
 Playwright plugin's recommended rules and the house rules of this file that a
 syntax rule can see, every one an error. Then the lint's own tests
 (`eslint.test.mjs`: each house rule on code it must flag and code it must let
-through) and the suppressions' check (`suppressions.mjs`, below). It needs
+through), the suppressions' check (`suppressions.mjs`, below), and the
+quarantine check (`flakes.mjs check`: every `@quarantine` test names its
+issue). It needs
 this directory's packages: `npm ci` here, once (`make setup` does it, and
 the `ship` skill does it in a new worktree). Where they are installed, the
 after-edit hook lints a file here when you edit it, in under a second.

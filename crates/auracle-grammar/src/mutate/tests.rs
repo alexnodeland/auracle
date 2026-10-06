@@ -289,3 +289,94 @@ fn a_source_cannot_be_spliced_into_a_wire() {
         "a source has no input to splice into"
     );
 }
+
+/// **A tree from outside is put in normal form once, and a tree already in
+/// it is left alone.** `normalize_tree` clamps a knob past its domain and
+/// folds each modulation term the grammar would fold, at every level of a
+/// chain (a quantizer over nothing on the outer filter, a one-parameter
+/// shaper's stray second parameter on the inner one, a pair with an empty
+/// side on the oscillator), counting each: a fold at each level, so a count
+/// that took a level's folds away instead of adding them is wrong. The tree
+/// it gives is the one written in normal form by hand. Asked again it finds
+/// nothing and changes nothing, not even an identity.
+#[test]
+fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
+    let lfo = || ModNode::Lfo {
+        uid: Uid::NEW,
+        wave: Waveform::Triangle,
+        rate: 0.4,
+    };
+    let vco = |modulation: ModNode| AudioNode::Vco {
+        uid: Uid::NEW,
+        wave: Waveform::Saw,
+        octave: 0,
+        detune: 0.5,
+        mod_depth: 0.3,
+        modulation,
+    };
+    let filter = |modulation: ModNode, input: AudioNode| AudioNode::Filter {
+        uid: Uid::NEW,
+        kind: FilterKind::SvfLp,
+        cutoff: 0.5,
+        resonance: 0.2,
+        mod_depth: 0.4,
+        modulation,
+        input: Box::new(input),
+    };
+    let tree = |outer: ModNode, inner: ModNode, source: ModNode, attack: f64| {
+        let mut t = patch(filter(outer, filter(inner, vco(source))));
+        t.amp.attack = attack;
+        t
+    };
+    let quantizer_over_nothing = ModNode::Op {
+        uid: Uid::NEW,
+        kind: ModOp::Quantize,
+        p0: 0.5,
+        p1: 0.0,
+        input: Box::new(ModNode::None),
+    };
+    let min_with_an_empty_side = ModNode::Pair {
+        uid: Uid::NEW,
+        kind: PairOp::Min,
+        a: Box::new(lfo()),
+        b: Box::new(ModNode::None),
+    };
+    let hold = |p1: f64| ModNode::Op {
+        uid: Uid::NEW,
+        kind: ModOp::Hold,
+        p0: 0.3,
+        p1,
+        input: Box::new(lfo()),
+    };
+    let mut outside = tree(
+        quantizer_over_nothing,
+        hold(0.7),
+        min_with_an_empty_side,
+        5.0,
+    );
+    outside.ensure_uids();
+    assert!(!outside.domain_violations().is_empty(), "fixture");
+
+    assert_eq!(
+        normalize_tree(&mut outside),
+        Normalized {
+            folded: 3,
+            clamped: 1
+        },
+        "three slots and one knob"
+    );
+    let normal = tree(ModNode::None, hold(0.0), lfo(), PARAM_MAX);
+    assert_eq!(outside, normal);
+    assert!(validate_tree(&outside).is_ok());
+
+    let settled = {
+        outside.ensure_uids();
+        serde_json::to_string(&outside).unwrap()
+    };
+    assert_eq!(normalize_tree(&mut outside), Normalized::default());
+    assert_eq!(
+        serde_json::to_string(&outside).unwrap(),
+        settled,
+        "a tree in normal form was rewritten"
+    );
+}

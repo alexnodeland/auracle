@@ -65,7 +65,8 @@ second has to be everything.
      no Browser smoke job there.
 2. **The queue checks batches on a draft PR** (`.mergify.yml`):
    - up to three queued PRs in one batch, which waits at most three minutes
-     for company; serial, one batch checked at a time;
+     for company (ten since 2026-10-06, when three left most batches with
+     one PR: `.mergify.yml` says why); serial, one batch checked at a time;
    - a PR enters on its fast lane's green `CI`;
    - the batch merges on `Full gate`, a check only the queue's run has. It is
      not `CI`, because Mergify takes a queue whose merge conditions match its
