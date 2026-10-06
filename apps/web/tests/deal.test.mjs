@@ -457,3 +457,137 @@ for (const [name, behindQ] of [
     }
   });
 }
+
+// ↻ after ⌘Z (#211, the maintainer's decision): the same pairs either way.
+// A deal is judged against the pick held when the pair it was dealt behind
+// went up, and Q keeps the pick that put it up (P) through the take-back, so
+// an R that is P itself is refused in every order: landed before ⌘Z, landed
+// after it, or asked for only once Q goes up again. It used to be refused in
+// the first order (5,22 after Q, in #211's probe) and go up in the others
+// (1,7).
+
+/** #211's probe with ↻ in place of the second pick: pick, ⌘Z, ↻, ↻. */
+function probeSkip(order, behindQ) {
+  const unheard = new Set();
+  const t = setup({ answers: [P, Q, ...behindQ, S, T, R], heard: (id) => !unheard.has(id) });
+  t.dealer.deal();
+  t.settle(); // P up, Q waiting with its sounds
+  if (order === "not asked") for (const id of Q) unheard.add(id);
+  t.pick(); // Q up
+  if (order === "landed") t.settle();
+  if (order === "one landed") t.land();
+  t.undo();
+  if (order === "still out" || order === "one landed") t.settle();
+  if (order === "not asked") {
+    unheard.clear();
+    t.dealer.dealAhead(); // Q's renders land
+  }
+  t.skip(); // ↻: Q up again, no pick held
+  t.settle();
+  t.skip(); // the pair after Q
+  t.settle();
+  return { shown: t.shown.map((p) => p.join()), asked: t.asked.join() };
+}
+
+for (const [name, behindQ] of [
+  ["dealt at once", [R]],
+  ["the pick's own pair first, refused and dealt again", [P, R]],
+  ["the pick's own pair three times", [P, P, P, R]],
+]) {
+  test(`↻ after ⌘Z shows the same pairs and asks for the same deals however Q's sounds were timed (the deal behind Q: ${name})`, () => {
+    const b = probeSkip("not asked", behindQ);
+    assert.equal(b.shown.at(-1), R.join(), "the pair after Q is the first deal behind it that is not the pick that put Q up");
+    for (const order of ["landed", "one landed", "still out"]) {
+      assert.deepEqual(probeSkip(order, behindQ), b, `the deal behind Q ${order} at ⌘Z`);
+    }
+  });
+}
+
+test("a deal is judged against the pick that put up the pair it was dealt behind, however late it lands", () => {
+  const t = upWith([P, Q]);
+  t.pick(); // Q up, with P's pick held; the deal behind Q out
+  t.held = null; // P's undo window closes before that deal lands
+  t.land(P);
+  assert.equal(t.dealer.next, null, "the pick that put Q up waits as the next pair");
+  assert.equal(t.dealer.out, 1, "it was not dealt again");
+  t.land(R);
+  assert.deepEqual(t.dealer.next, R);
+});
+
+test("a pick's deal and a deal asked for ahead are judged against the same pick", () => {
+  // O up and P waiting; a pick of O puts P up. The deal behind P is asked
+  // for ahead when P's sounds are here, and by the pick of P when they are
+  // not: either way the engine's O is refused, though the pick of P has
+  // committed O's by then.
+  const O = [30, 31];
+  const run = (heardFirst) => {
+    const unheard = new Set();
+    const t = setup({ answers: [O, P, O, R], heard: (id) => !unheard.has(id) });
+    t.dealer.deal();
+    t.settle(); // O up, P waiting
+    if (!heardFirst) for (const id of P) unheard.add(id);
+    t.pick(); // P up, the pick of O held
+    t.pick(); // the pick of P: O's is committed, P's held
+    t.settle();
+    return { shown: t.shown.map((p) => p.join()), asked: t.asked.length };
+  };
+  const ahead = run(true);
+  assert.deepEqual(ahead.shown, [O, P, R].map((p) => p.join()));
+  assert.deepEqual(run(false), ahead);
+});
+
+test("a pair waiting that holds a sound cut while it was out is dealt again however many times, not counted as a refusal", () => {
+  const t = setup({ answers: [P] });
+  t.dealer.deal();
+  t.land(); // P up, the deal behind it out
+  t.cut.add(22);
+  for (let i = 0; i < RETRIES + 2; i++) t.land([22, 9]);
+  assert.equal(t.dealer.out, 1, "it stopped dealing again, as for a refusal");
+  t.land(P); // the pair on the table: a refusal, counted
+  t.land(S);
+  assert.deepEqual(t.dealer.next, S);
+});
+
+// A deal the engine could not run (#211): a waiting table has nothing
+// coming, says so, and ↻ deals again.
+
+test("a waiting table whose deal failed puts nothing up until ↻ deals again", () => {
+  const t = upWith([P]);
+  t.skip(); // ↻: the table waits on a deal
+  assert.equal(t.dealer.failed(), true, "the table waits on nothing else");
+  assert.equal(t.dealer.stuck, true);
+  assert.equal(t.table, null);
+  assert.equal(t.dealer.out, 0);
+  t.dealer.soundsBack();
+  assert.equal(t.dealer.out, 0, "it dealt again by itself");
+  const asked = t.asked.length;
+  assert.equal(t.dealer.retry(), true);
+  assert.equal(t.asked.length, asked + 1);
+  assert.equal(t.asked.at(-1), "table");
+  assert.equal(t.dealer.stuck, false);
+  assert.equal(t.dealer.retry(), false, "↻ pressed twice asked twice");
+  t.land(Q);
+  assert.deepEqual(t.table, Q);
+});
+
+test("a deal dealt ahead that failed leaves the table as it was, and ↻ does not retry it", () => {
+  const t = upWith([P]);
+  assert.equal(t.dealer.out, 0);
+  t.dealer.deal(); // stands in for a deal ahead out
+  assert.equal(t.dealer.failed(), false, "the table has a pair");
+  assert.equal(t.dealer.stuck, false);
+  assert.equal(t.dealer.retry(), false);
+  assert.deepEqual(t.table, P);
+});
+
+test("a failed deal's table takes a pair back from ⌘Z, and is no longer stuck", () => {
+  const t = upWith([P, Q]);
+  t.pick(); // Q up, the deal behind it out
+  t.pick(); // the table waits on that deal
+  t.dealer.failed();
+  assert.equal(t.dealer.stuck, true);
+  t.undo(); // Q back
+  assert.deepEqual(t.table, Q);
+  assert.equal(t.dealer.stuck, false);
+  assert.equal(t.dealer.retry(), false);
+});

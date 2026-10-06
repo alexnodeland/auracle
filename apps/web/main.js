@@ -2341,8 +2341,9 @@ worker.onmessage = (e) => {
       // The bank grew behind the app: re-read the instruments over the full
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
+      // Nor after a deal failed: ANOTHER PAIR is its retry (`dealFailed`).
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing && !dealer.out) dealer.deal();
+      if (!currentDuel && !dealing && !dealer.out && !dealer.stuck) dealer.deal();
       renderFillHint();
       warmPrewarmPump();
       break;
@@ -3773,12 +3774,9 @@ function releaseRequest(request, id, req, message, fatal = false) {
       pendingEvolve = false;
       break;
     case "duel":
-      // The table waits on nothing else: it stops waiting, as it always did.
-      // A deal ahead that died leaves the table as it was.
-      if (dealer.failed()) {
-        dealing = false;
-        setDuelControlsEnabled(true);
-      }
+      // The table waits on nothing else: it has no pair coming, and says so
+      // (`dealFailed`). A deal ahead that died leaves the table as it was.
+      if (dealer.failed()) dealFailed();
       break;
     case "render":
       if (id != null) {
@@ -7181,6 +7179,35 @@ function nothingToDeal() {
   settleFit();
 }
 
+// The table's deal failed in the engine (an `engine_error` naming it) and no
+// other is out, so no pair is coming. The pair's buttons stay off, the cards
+// say so at once, and ANOTHER PAIR (↻, and N) is the one control left live:
+// it deals again (`retryDeal`). It used to turn every button back on over the
+// pair just put away, or over no pair at all, with nothing they could do
+// (#211).
+const DEAL_FAILED = "Couldn’t deal a pair. ANOTHER PAIR tries again.";
+function dealFailed() {
+  duelMeta = null;
+  dealing = false;
+  setDuelControlsEnabled(false);
+  $("skip-duel").disabled = false;
+  sayDealing(DEAL_FAILED);
+  retireForecast();
+  clearPairGuess();
+  renderPlayDuel();
+  // A refit armed by the last pick waited for this deal (`commitAndSettle`).
+  settleFit();
+}
+
+/** ↻ on a table whose deal failed: the cards dim and wait on the deal it
+ *  asks for, as for any deal. */
+function retryDeal() {
+  if (!dealer.retry()) return;
+  dealing = true;
+  setDuelControlsEnabled(false);
+  sayDealing(null);
+}
+
 /** Put a dealt pair on the table: a deal's reply, or the pair dealt ahead.
  *  The one place a pair goes up, so anything owed to a pair being *shown*
  *  belongs here. */
@@ -7488,7 +7515,11 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
-$("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
+$("skip-duel").onclick = () => {
+  if (dealing) return;
+  if (currentDuel) dealAnother();
+  else retryDeal();
+};
 $("evolve-btn").onclick = () => {
   if (breeding || evolvingFrom) return;
   lampOn("refine");

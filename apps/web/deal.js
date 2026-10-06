@@ -57,13 +57,30 @@
 // the deals asked for and the pairs that go up are the same in either order,
 // given the same answers from the engine.
 //
-// ↻ after ⌘Z is the exception: it holds no pick. An R that is P itself is
-// refused in one order (it landed while the pick of P was held, and that
-// refusal is carried over) and goes up after Q in the other (it landed
-// after ⌘Z, and is judged once Q is up, with nothing held). Whether to judge
-// a kept deal against the pick held when it was dealt is open (#211). Nor
-// are the engine's answers always the same: a deal drawn while the pool
-// fills, or on the other side of a cut, is drawn over other sounds.
+// Which pick a deal is judged against. A deal is refused when it is the pair
+// of the pick held in its undo window, which the player has just answered.
+// Which pick was held used to be read when the answer was judged,
+// and that moment moves with render timing: ↻ after ⌘Z holds no pick, so an
+// R that is P itself was refused in one order (it landed while the pick of P
+// was held) and went up after Q in the other (it landed after ⌘Z, or was
+// asked for only once Q went up again). Now every deal is judged against the
+// pick held when the pair it was dealt behind went up (`behind`): the deals
+// behind Q, the one asked for ahead and the one asked for when Q is put
+// away, against the pick that put Q up (P). Q keeps that pick through a
+// take-back (`kept`), and a deal asked for again in place of one refused
+// keeps the pick of the one it replaces. So ↻ after ⌘Z, like a pick, shows
+// the same pairs in every order (#211), and a deal that waits for the fill
+// (worker.js `dealsWaiting`) is judged as it would have been at once.
+//
+// A deal holding a cut sound is dealt again however many times it takes,
+// waiting as the next pair or not, and is not counted as a refusal: the
+// engine itself deals again when it draws a sound cut before the deal was
+// asked for, so a cut made before the deal and one made while it is out end
+// on the same pair (`Engine::deal_duel_scheduled`).
+//
+// A deal the engine could not run (an `engine_error` naming it) leaves a
+// waiting table with nothing coming: it says so, and ↻ deals again
+// (`failed`, `retry`). It used to turn the table back on over no pair.
 
 /** How many answers in a row the dealer refuses before it stops dealing
  *  again: with the table waiting, the answer after these goes up anyway (a
@@ -124,23 +141,36 @@ export function createDealer(io) {
   let retries = 0; // answers refused since the table last changed
   let left = null; // the pair ↻ or a lost side just put away, until the next goes up
   let empty = false; // the table's last answer was empty: nothing to deal
+  let stuck = false; // the table's last deal failed: ↻ deals again
+  // The pick held when the pair on the table went up: what the deals behind
+  // it are judged against (the header says why).
+  let behind = null;
+  const asked = []; // for each deal out, oldest first: the pick it is judged against
 
-  const may = (pair) => usable(pair, { table: io.table(), left, held: io.held(), cut: io.cut, gone: io.gone });
+  const may = (pair, held) => usable(pair, { table: io.table(), left, held, cut: io.cut, gone: io.gone });
 
-  /** A deal for the table, which waits on it. */
-  function deal() {
+  /** A deal for the table, which waits on it; judged against `held`. */
+  function deal(held = behind) {
     out += 1;
+    asked.push(held);
     io.ask(false);
   }
 
   /** The pair after the table's, once the table's own two sounds are here,
-   *  unless one waits or a deal is out. */
-  function dealAhead() {
+   *  unless one waits or a deal is out; judged against `held`. */
+  function dealAhead(held = behind) {
     const table = io.table();
     if (ahead || out || !table) return;
     if (!table.every(io.heard)) return;
     out += 1;
+    asked.push(held);
     io.ask(true);
+  }
+
+  /** A deal's answer, or its failure, is in: the pick it is judged against. */
+  function answered() {
+    out = Math.max(0, out - 1);
+    return asked.length ? asked.shift() : behind;
   }
 
   /** Nothing to deal: the table waits on no deal and puts nothing up. */
@@ -148,16 +178,20 @@ export function createDealer(io) {
     left = null;
     retries = 0;
     empty = true;
+    stuck = false;
     io.nothing();
   }
 
   /** An answer offered as the next pair: it waits, its sounds fetched, when
-   *  it may; otherwise it is dealt again, a few times. */
+   *  it may; otherwise it is dealt again (a few times, or for a cut sound
+   *  as many as it takes), judged against the same pick. */
   function offer(a) {
-    if (!may(a.pair)) {
+    if (!may(a.pair, a.held)) {
+      // A side cut while it was out: dealt again, not counted (the header).
+      if (holdsCut(a.pair, io.cut)) return void dealAhead(a.held);
       // The engine may deal the very pair on the table again (a small pool
       // early in a session does, often): ask again, a few times.
-      if (retries++ < RETRIES) dealAhead();
+      if (retries++ < RETRIES) dealAhead(a.held);
       return;
     }
     ahead = a;
@@ -169,7 +203,7 @@ export function createDealer(io) {
    *  table it waits as the next one, its sounds fetched, or, when a
    *  take-back already made a pair the next, after that one. */
   function dealt(pair, meta) {
-    out = Math.max(0, out - 1);
+    const held = answered();
     if (!io.table()) {
       // Empty: with another deal still out the table waits for that one;
       // with none, there is nothing to deal.
@@ -177,7 +211,7 @@ export function createDealer(io) {
         if (!out) nothing();
         return;
       }
-      if (may(pair)) return void io.place(pair, meta);
+      if (may(pair, held)) return void io.place(pair, meta);
       // Dealt before a cut, or the pair just put away: the next answer is
       // already on its way, or one more is asked for.
       if (out) return;
@@ -186,9 +220,9 @@ export function createDealer(io) {
       // cuts made before it was asked for: only a cut made while a deal is
       // out brings its answer back here, once per cut. It used to go up after
       // the third try like any other refusal.
-      if (holdsCut(pair, io.cut)) return void deal();
+      if (holdsCut(pair, io.cut)) return void deal(held);
       // A pool too small to deal anything else puts it up after a few tries.
-      if (retries++ < RETRIES) return void deal();
+      if (retries++ < RETRIES) return void deal(held);
       return void io.place(pair, meta);
     }
     // No pair: the engine dealt nothing (fewer than two sounds it may deal),
@@ -200,20 +234,21 @@ export function createDealer(io) {
     // pair goes up (`placed`): judged now, it would be against the pair the
     // take-back put back on the table, not the one it was dealt behind.
     if (ahead) {
-      if (!after) after = { pair, meta, fetched: false };
+      if (!after) after = { pair, meta, fetched: false, held };
       return;
     }
-    offer({ pair, meta, fetched: false });
+    offer({ pair, meta, fetched: false, held });
   }
 
   /** Swap the pair dealt ahead onto the table (or, when it may no longer be
-   *  dealt, the pair after it); false when there is none that may. */
+   *  dealt, the pair after it); false when there is none that may. Judged
+   *  as the gesture finds the table: the pair put away is `left`. */
   function take() {
     while (ahead || after) {
       if (!ahead) [ahead, after] = [after, null];
       const a = ahead;
       ahead = null;
-      if (may(a.pair)) {
+      if (may(a.pair, io.held())) {
         io.place(a.pair, a.meta);
         return true;
       }
@@ -223,19 +258,19 @@ export function createDealer(io) {
 
   /** A pair that may no longer be dealt (cut, or replaced) is dropped, and
    *  the pair after it, if a take-back kept one, is offered in its place;
-   *  with none, the next is asked for. */
+   *  with none, the next is asked for, judged against the same pick. */
   function check() {
-    let dropped = false;
-    if (ahead && !may(ahead.pair)) {
+    let dropped = null;
+    if (ahead && !may(ahead.pair, ahead.held)) {
+      dropped = ahead;
       ahead = null;
-      dropped = true;
     }
     if (!ahead && after) {
       const a = after;
       after = null;
       return void offer(a);
     }
-    if (dropped) dealAhead();
+    if (dropped) dealAhead(dropped.held);
   }
 
   return {
@@ -244,10 +279,22 @@ export function createDealer(io) {
     dealt,
     check,
     /** A deal the engine could not run (an `engine_error` naming it): true
-     *  when the table waits on nothing else. */
+     *  when the table waits on nothing else, which then has no pair coming
+     *  until ↻ deals again (`retry`). A deal ahead that failed leaves the
+     *  table as it was: the next render or pair asks again. */
     failed() {
-      out = Math.max(0, out - 1);
-      return !io.table() && out === 0;
+      answered();
+      if (io.table() || out) return false;
+      stuck = true;
+      return true;
+    },
+    /** ↻ on a table whose deal failed: deal again (true), unless a pair or
+     *  a deal has come since. */
+    retry() {
+      if (!stuck || out || io.table()) return false;
+      stuck = false;
+      deal();
+      return true;
     },
     /** The pair on the table was put away (main has cleared it): a pick, ↻,
      *  or a side lost to a cut or the pool. The pair dealt ahead goes up at
@@ -270,7 +317,12 @@ export function createDealer(io) {
     placed(pair) {
       left = null;
       empty = false;
-      retries = kept && samePair(kept.pair, pair) ? kept.retries : 0;
+      stuck = false;
+      const back = kept && samePair(kept.pair, pair) ? kept : null;
+      retries = back ? back.retries : 0;
+      // The pick held as it went up, or, for the pair a take-back made the
+      // next, the one held when it first went up.
+      behind = back ? back.held : io.held();
       kept = null;
       check();
       // Behind a pair the dealer had given up on before a take-back (its
@@ -299,11 +351,14 @@ export function createDealer(io) {
     retract(displaced, meta) {
       left = null;
       empty = false;
-      if (displaced && may(displaced)) {
+      stuck = false;
+      if (displaced && may(displaced, io.held())) {
         after = ahead;
-        kept = { pair: displaced, retries };
-        ahead = { pair: displaced, meta, fetched: true };
+        kept = { pair: displaced, retries, held: behind };
+        ahead = { pair: displaced, meta, fetched: true, held: null };
       }
+      // The pair put back is on the table, with no pick held.
+      behind = io.held();
       dealAhead();
     },
     /** A sound may have come back (a cut taken back, or the pool changed):
@@ -314,6 +369,11 @@ export function createDealer(io) {
     /** The table's last answer was empty, and none has gone up since. */
     get empty() {
       return empty;
+    },
+    /** The table's last deal failed, and none has gone up or been asked for
+     *  since: ↻ deals again. */
+    get stuck() {
+      return stuck;
     },
     /** Deals asked for and not yet answered. */
     get out() {
