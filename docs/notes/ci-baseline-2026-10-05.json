@@ -1,0 +1,953 @@
+{
+ "repo": "alexnodeland/auracle",
+ "since": "2026-09-28T00:00:00Z",
+ "until": "2026-10-06T00:00:00Z",
+ "classifier": "files, by ci.yml's lanes",
+ "rows": {
+  "rust": {
+   "runs": 54,
+   "green": 47,
+   "red": 4,
+   "cancelled": 3,
+   "no_verdict": 0,
+   "reruns": 1,
+   "red_rate": 0.078,
+   "wall": {
+    "n": 51,
+    "median": 9.4,
+    "p90": 18.6,
+    "max": 26.9
+   },
+   "wait_per_run": {
+    "n": 51,
+    "median": 1.0,
+    "p90": 34.6,
+    "max": 88.1
+   },
+   "longest_wait": {
+    "n": 51,
+    "median": 0.6,
+    "p90": 7.4,
+    "max": 14.7
+   },
+   "longest_wait_all": {
+    "n": 51,
+    "median": 0.6,
+    "p90": 7.4,
+    "max": 14.7
+   },
+   "job_wait": {
+    "n": 667,
+    "median": 0.03,
+    "p90": 3.4,
+    "max": 14.73
+   },
+   "runs_per_pr": {
+    "prs": 25,
+    "median": 2.0,
+    "mean": 2.16
+   }
+  },
+  "web": {
+   "runs": 50,
+   "green": 28,
+   "red": 17,
+   "cancelled": 5,
+   "no_verdict": 0,
+   "reruns": 3,
+   "red_rate": 0.378,
+   "wall": {
+    "n": 45,
+    "median": 14.0,
+    "p90": 21.5,
+    "max": 26.7
+   },
+   "wait_per_run": {
+    "n": 45,
+    "median": 0.4,
+    "p90": 26.6,
+    "max": 118.3
+   },
+   "longest_wait": {
+    "n": 45,
+    "median": 0.1,
+    "p90": 6.3,
+    "max": 16.5
+   },
+   "longest_wait_all": {
+    "n": 45,
+    "median": 0.1,
+    "p90": 6.3,
+    "max": 16.5
+   },
+   "job_wait": {
+    "n": 450,
+    "median": 0.03,
+    "p90": 2.95,
+    "max": 16.53
+   },
+   "runs_per_pr": {
+    "prs": 21,
+    "median": 2.0,
+    "mean": 2.38
+   }
+  },
+  "docs": {
+   "runs": 12,
+   "green": 10,
+   "red": 0,
+   "cancelled": 2,
+   "no_verdict": 0,
+   "reruns": 0,
+   "red_rate": 0.0,
+   "wall": {
+    "n": 10,
+    "median": 3.4,
+    "p90": 6.2,
+    "max": 9.6
+   },
+   "wait_per_run": {
+    "n": 10,
+    "median": 0.3,
+    "p90": 1.0,
+    "max": 1.3
+   },
+   "longest_wait": {
+    "n": 10,
+    "median": 0.1,
+    "p90": 0.6,
+    "max": 0.6
+   },
+   "longest_wait_all": {
+    "n": 10,
+    "median": 0.1,
+    "p90": 0.6,
+    "max": 0.6
+   },
+   "job_wait": {
+    "n": 43,
+    "median": 0.03,
+    "p90": 0.19,
+    "max": 0.63
+   },
+   "runs_per_pr": {
+    "prs": 7,
+    "median": 1.0,
+    "mean": 1.71
+   }
+  },
+  "ci": {
+   "runs": 55,
+   "green": 35,
+   "red": 12,
+   "cancelled": 8,
+   "no_verdict": 0,
+   "reruns": 0,
+   "red_rate": 0.255,
+   "wall": {
+    "n": 47,
+    "median": 10.4,
+    "p90": 21.5,
+    "max": 27.1
+   },
+   "wait_per_run": {
+    "n": 47,
+    "median": 0.5,
+    "p90": 53.0,
+    "max": 76.2
+   },
+   "longest_wait": {
+    "n": 47,
+    "median": 0.3,
+    "p90": 7.1,
+    "max": 14.6
+   },
+   "longest_wait_all": {
+    "n": 47,
+    "median": 0.6,
+    "p90": 7.1,
+    "max": 14.6
+   },
+   "job_wait": {
+    "n": 563,
+    "median": 0.03,
+    "p90": 4.42,
+    "max": 14.57
+   },
+   "runs_per_pr": {
+    "prs": 16,
+    "median": 3.0,
+    "mean": 3.44
+   }
+  },
+  "main": {
+   "runs": 69,
+   "green": 55,
+   "red": 9,
+   "cancelled": 5,
+   "no_verdict": 0,
+   "reruns": 2,
+   "red_rate": 0.141,
+   "wall": {
+    "n": 64,
+    "median": 8.5,
+    "p90": 18.5,
+    "max": 24.8
+   },
+   "wait_per_run": {
+    "n": 64,
+    "median": 0.5,
+    "p90": 5.4,
+    "max": 36.6
+   },
+   "longest_wait": {
+    "n": 64,
+    "median": 0.1,
+    "p90": 1.8,
+    "max": 11.0
+   },
+   "longest_wait_all": {
+    "n": 64,
+    "median": 0.1,
+    "p90": 2.5,
+    "max": 11.0
+   },
+   "job_wait": {
+    "n": 736,
+    "median": 0.03,
+    "p90": 0.44,
+    "max": 11.0
+   }
+  }
+ },
+ "red_runs": [
+  {
+   "run": 36860450386,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36860450386",
+   "row": "rust",
+   "pr": 85,
+   "jobs": [
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 36865821857,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36865821857",
+   "row": "rust",
+   "pr": 85,
+   "jobs": [
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 36866432646,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36866432646",
+   "row": "rust",
+   "pr": 87,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 36964673147,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36964673147",
+   "row": "rust",
+   "pr": 96,
+   "jobs": [
+    "Browser (1/5)"
+   ]
+  },
+  {
+   "run": 36833149018,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36833149018",
+   "row": "web",
+   "pr": 80,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 36971723183,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36971723183",
+   "row": "web",
+   "pr": 94,
+   "jobs": [
+    "Browser (1/5)"
+   ]
+  },
+  {
+   "run": 37100137950,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37100137950",
+   "row": "web",
+   "pr": 112,
+   "jobs": [
+    "Site"
+   ]
+  },
+  {
+   "run": 37101114848,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37101114848",
+   "row": "web",
+   "pr": 112,
+   "jobs": [
+    "Browser (4/5)"
+   ]
+  },
+  {
+   "run": 37107363337,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37107363337",
+   "row": "web",
+   "pr": 113,
+   "jobs": [
+    "Browser (1/5)",
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 37120439501,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37120439501",
+   "row": "web",
+   "pr": 115,
+   "jobs": [
+    "Browser (1/5)"
+   ]
+  },
+  {
+   "run": 37122203811,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37122203811",
+   "row": "web",
+   "pr": 115,
+   "jobs": [
+    "Browser (3/5)"
+   ]
+  },
+  {
+   "run": 37123311707,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37123311707",
+   "row": "web",
+   "pr": 115,
+   "jobs": [
+    "Browser (1/5)"
+   ]
+  },
+  {
+   "run": 37140244517,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37140244517",
+   "row": "web",
+   "pr": 116,
+   "jobs": [
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 37286229566,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37286229566",
+   "row": "web",
+   "pr": 122,
+   "jobs": [
+    "Browser (2/8)"
+   ]
+  },
+  {
+   "run": 37326219295,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37326219295",
+   "row": "web",
+   "pr": 152,
+   "jobs": [
+    "Browser (5/8)"
+   ]
+  },
+  {
+   "run": 37331047248,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37331047248",
+   "row": "web",
+   "pr": 152,
+   "jobs": [
+    "Browser (1/8)"
+   ]
+  },
+  {
+   "run": 37337770675,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37337770675",
+   "row": "web",
+   "pr": 152,
+   "jobs": [
+    "Browser (4/8) (cancelled)"
+   ]
+  },
+  {
+   "run": 37361490137,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37361490137",
+   "row": "web",
+   "pr": 171,
+   "jobs": [
+    "Browser (4/8)"
+   ]
+  },
+  {
+   "run": 37364053247,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37364053247",
+   "row": "web",
+   "pr": 171,
+   "jobs": [
+    "Browser (5/8)"
+   ]
+  },
+  {
+   "run": 37381472317,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37381472317",
+   "row": "web",
+   "pr": 172,
+   "jobs": [
+    "Browser (7/8)"
+   ]
+  },
+  {
+   "run": 37383132211,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37383132211",
+   "row": "web",
+   "pr": 172,
+   "jobs": [
+    "Browser (5/8) (cancelled)"
+   ]
+  },
+  {
+   "run": 36486559126,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36486559126",
+   "row": "ci",
+   "pr": 65,
+   "jobs": [
+    "Lint"
+   ]
+  },
+  {
+   "run": 36624922100,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36624922100",
+   "row": "ci",
+   "pr": 66,
+   "jobs": [
+    "Browser (1/5)"
+   ]
+  },
+  {
+   "run": 36636062896,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36636062896",
+   "row": "ci",
+   "pr": 66,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 36658563012,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36658563012",
+   "row": "ci",
+   "pr": 66,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 36659321015,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36659321015",
+   "row": "ci",
+   "pr": 66,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 37016661183,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37016661183",
+   "row": "ci",
+   "pr": 103,
+   "jobs": [
+    "Browser (3/5)"
+   ]
+  },
+  {
+   "run": 37022399387,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37022399387",
+   "row": "ci",
+   "pr": 103,
+   "jobs": [
+    "Browser (2/5)",
+    "Browser (3/5)"
+   ]
+  },
+  {
+   "run": 37165584007,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37165584007",
+   "row": "ci",
+   "pr": 117,
+   "jobs": [
+    "Browser (4/5)"
+   ]
+  },
+  {
+   "run": 37281711211,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37281711211",
+   "row": "ci",
+   "pr": 119,
+   "jobs": [
+    "Browser (3/8)"
+   ]
+  },
+  {
+   "run": 37283097290,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37283097290",
+   "row": "ci",
+   "pr": 119,
+   "jobs": [
+    "Browser (3/8)"
+   ]
+  },
+  {
+   "run": 37326422740,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37326422740",
+   "row": "ci",
+   "pr": 155,
+   "jobs": [
+    "Browser (5/8)"
+   ]
+  },
+  {
+   "run": 37331027765,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37331027765",
+   "row": "ci",
+   "pr": 155,
+   "jobs": [
+    "Browser (1/8)"
+   ]
+  },
+  {
+   "run": 36835098823,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36835098823",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 36837404182,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/36837404182",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (2/5)"
+   ]
+  },
+  {
+   "run": 37054885709,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37054885709",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Engine for the browser"
+   ]
+  },
+  {
+   "run": 37101267482,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37101267482",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (1/5)",
+    "Browser (3/5)"
+   ]
+  },
+  {
+   "run": 37118663263,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37118663263",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 37169563331,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37169563331",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Web (cancelled)"
+   ]
+  },
+  {
+   "run": 37171573189,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37171573189",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (5/5)"
+   ]
+  },
+  {
+   "run": 37286107527,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37286107527",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (5/8)"
+   ]
+  },
+  {
+   "run": 37289289988,
+   "url": "https://github.com/alexnodeland/auracle/actions/runs/37289289988",
+   "row": "main",
+   "pr": null,
+   "jobs": [
+    "Browser (5/8)"
+   ]
+  }
+ ],
+ "failing_jobs": {
+  "Browser (k/5)": 27,
+  "Browser (k/8)": 12,
+  "Browser (k/8) (cancelled)": 2,
+  "Engine for the browser": 1,
+  "Lint": 1,
+  "Site": 1,
+  "Web (cancelled)": 1
+ },
+ "prs": {
+  "merged": 69,
+  "per_day": 8.62,
+  "open_to_merge": {
+   "n": 69,
+   "median": 61.9,
+   "p90": 258.2,
+   "max": 1224.8
+  },
+  "with_red": 19,
+  "open_to_first_red": {
+   "n": 19,
+   "median": 30.6,
+   "p90": 204.8,
+   "max": 832.4
+  },
+  "queue": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null
+  },
+  "queue_na": 69,
+  "queue_entries": 0,
+  "requeued": 0
+ },
+ "main_red": {
+  "stretches": [
+   {
+    "from": "2026-10-01T08:20:46Z",
+    "to": "2026-10-01T10:08:38Z",
+    "red_runs": [
+     36835098823,
+     36837404182
+    ],
+    "green_run": 36846694920,
+    "clipped": false,
+    "minutes": 107.9
+   },
+   {
+    "from": "2026-10-02T19:40:55Z",
+    "to": "2026-10-02T21:39:17Z",
+    "red_runs": [
+     37054885709
+    ],
+    "green_run": 37066746668,
+    "clipped": false,
+    "minutes": 118.4
+   },
+   {
+    "from": "2026-10-03T06:14:55Z",
+    "to": "2026-10-03T11:58:02Z",
+    "red_runs": [
+     37101267482,
+     37118663263
+    ],
+    "green_run": 37120405045,
+    "clipped": false,
+    "minutes": 343.1
+   },
+   {
+    "from": "2026-10-04T02:12:42Z",
+    "to": "2026-10-05T09:53:10Z",
+    "red_runs": [
+     37169563331,
+     37171573189,
+     37286107527,
+     37289289988
+    ],
+    "green_run": 37292306979,
+    "clipped": false,
+    "minutes": 1900.5
+   }
+  ],
+  "minutes": 2469.9
+ },
+ "shards": {
+  "1": {
+   "runs": 1,
+   "shard": {
+    "1": {
+     "median": 3.8,
+     "max": 3.8
+    }
+   },
+   "all": {
+    "n": 1,
+    "median": 3.8,
+    "p90": 3.8,
+    "max": 3.8
+   },
+   "spread": {
+    "n": 1,
+    "median": 0.0,
+    "p90": 0.0,
+    "max": 0.0
+   },
+   "total": {
+    "n": 1,
+    "median": 3.8,
+    "p90": 3.8,
+    "max": 3.8
+   },
+   "wall": {
+    "n": 1,
+    "median": 3.8,
+    "p90": 3.8,
+    "max": 3.8
+   }
+  },
+  "5": {
+   "runs": 87,
+   "shard": {
+    "1": {
+     "median": 5.5,
+     "max": 20.1
+    },
+    "2": {
+     "median": 4.2,
+     "max": 20.9
+    },
+    "3": {
+     "median": 5.4,
+     "max": 12.4
+    },
+    "4": {
+     "median": 5.7,
+     "max": 14.5
+    },
+    "5": {
+     "median": 5.0,
+     "max": 14.3
+    }
+   },
+   "all": {
+    "n": 435,
+    "median": 5.1,
+    "p90": 11.0,
+    "max": 20.9
+   },
+   "spread": {
+    "n": 87,
+    "median": 2.3,
+    "p90": 6.9,
+    "max": 11.5
+   },
+   "total": {
+    "n": 87,
+    "median": 25.7,
+    "p90": 51.1,
+    "max": 80.2
+   },
+   "wall": {
+    "n": 87,
+    "median": 6.7,
+    "p90": 14.3,
+    "max": 20.9
+   }
+  },
+  "8": {
+   "runs": 16,
+   "shard": {
+    "1": {
+     "median": 9.8,
+     "max": 11.5
+    },
+    "2": {
+     "median": 9.5,
+     "max": 12.1
+    },
+    "3": {
+     "median": 9.5,
+     "max": 12.4
+    },
+    "4": {
+     "median": 10.1,
+     "max": 12.4
+    },
+    "5": {
+     "median": 10.3,
+     "max": 12.9
+    },
+    "6": {
+     "median": 10.3,
+     "max": 12.8
+    },
+    "7": {
+     "median": 10.3,
+     "max": 12.9
+    },
+    "8": {
+     "median": 9.6,
+     "max": 11.8
+    }
+   },
+   "all": {
+    "n": 128,
+    "median": 10.1,
+    "p90": 11.7,
+    "max": 12.9
+   },
+   "spread": {
+    "n": 16,
+    "median": 5.6,
+    "p90": 6.8,
+    "max": 8.7
+   },
+   "total": {
+    "n": 16,
+    "median": 78.0,
+    "p90": 82.6,
+    "max": 84.6
+   },
+   "wall": {
+    "n": 16,
+    "median": 15.2,
+    "p90": 18.4,
+    "max": 24.4
+   }
+  }
+ },
+ "jobs": {
+  "Browser (k/1)": {
+   "n": 1,
+   "median": 3.8,
+   "p90": 3.8,
+   "max": 3.8
+  },
+  "Browser (k/5)": {
+   "n": 640,
+   "median": 5.1,
+   "p90": 11.0,
+   "max": 20.9
+  },
+  "Browser (k/8)": {
+   "n": 144,
+   "median": 10.0,
+   "p90": 11.6,
+   "max": 12.9
+  },
+  "Browser report": {
+   "n": 19,
+   "median": 0.3,
+   "p90": 0.3,
+   "max": 0.3
+  },
+  "CI": {
+   "n": 175,
+   "median": 0.1,
+   "p90": 0.1,
+   "max": 0.1
+  },
+  "Deploy to Pages": {
+   "n": 1,
+   "median": 0.3,
+   "p90": 0.3,
+   "max": 0.3
+  },
+  "Engine for the browser": {
+   "n": 159,
+   "median": 0.4,
+   "p90": 1.8,
+   "max": 2.4
+  },
+  "Lint": {
+   "n": 131,
+   "median": 0.4,
+   "p90": 0.5,
+   "max": 0.7
+  },
+  "Site": {
+   "n": 175,
+   "median": 2.8,
+   "p90": 3.2,
+   "max": 7.7
+  },
+  "Test (k/2)": {
+   "n": 246,
+   "median": 4.8,
+   "p90": 7.0,
+   "max": 8.2
+  },
+  "Test (rest of suite)": {
+   "n": 8,
+   "median": 7.6,
+   "p90": 11.2,
+   "max": 11.5
+  },
+  "Test (search floor)": {
+   "n": 8,
+   "median": 7.3,
+   "p90": 7.8,
+   "max": 8.0
+  },
+  "Wasm check": {
+   "n": 113,
+   "median": 0.4,
+   "p90": 0.5,
+   "max": 1.8
+  },
+  "Web": {
+   "n": 163,
+   "median": 1.5,
+   "p90": 4.5,
+   "max": 5.0
+  },
+  "What changed": {
+   "n": 175,
+   "median": 0.2,
+   "p90": 0.2,
+   "max": 0.8
+  }
+ },
+ "workflows": {
+  "Slow suite": {
+   "runs": 196,
+   "green": 158,
+   "red": 38,
+   "wall_green": {
+    "n": 158,
+    "median": 10.9,
+    "p90": 17.4,
+    "max": 27.1
+   }
+  },
+  "Flake hunt": {
+   "runs": 0,
+   "green": 0,
+   "red": 0,
+   "wall_green": {
+    "n": 0,
+    "median": null,
+    "p90": null,
+    "max": null
+   }
+  }
+ },
+ "generated": "2026-10-06T12:36:12Z"
+}
