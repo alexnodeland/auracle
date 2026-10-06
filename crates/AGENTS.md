@@ -286,9 +286,10 @@ merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
 unviable). Taste's and features' PRs merged before this check existed, so
 a follow-up issue took their survivors (#207). Taste's are done: each was
 killed by a test or went with code that couldn't matter, except one
-equivalent mutant, which is excluded. Features' are still to be measured,
-and #207 takes them then. Each crate's PR still to come in #181 kills or
-answers its own. The PR job becomes required once they are done.
+equivalent mutant, which is excluded. Features' are still to be measured;
+the weekly run finds them, and #181 tracks them with the other crates'.
+A crate PR's own Mutants job kills or answers what it changes. The PR job
+becomes required once they are done.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
 part of neither `CI` lane, the PR's fast lane or the queue's full gate, and
