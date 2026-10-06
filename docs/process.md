@@ -57,8 +57,9 @@ in a plan's prose, a session's notes or a conversation.
   (adding the label starts a run, and every push to the PR runs it again).
   Without it the *Slow suite* does not run on a PR at all.
 - **Merging:** `queue` on a PR puts it in the merge queue
-  ([CI and merging](#ci-and-merging)). `dequeued` is Mergify's, on a PR that
-  left the queue without merging.
+  ([CI and merging](#ci-and-merging)). `priority` on a PR that fixes CI or a
+  flaky test puts it at the front of the queue. `dequeued` is Mergify's, on
+  a PR that left the queue without merging.
 - **Milestones:** one per plan ("Plan-008: the shell", "Plan-005: the sound at
   the centre"), and one per standing stream of work ("Testing and CI",
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:

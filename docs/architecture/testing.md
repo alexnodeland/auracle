@@ -152,8 +152,9 @@ only the last one's files are the files the queue tested. So main keeps its
 latest run only (`queue: single`): a run in progress is not cancelled, the
 newest waiting run replaces any older one, and a run whose commit main has
 already moved past runs nothing and says so in its summary, its `CI` green
-with every job skipped. The newest push's run covers it. The *Slow suite*
-on main does the same.
+with every job skipped. The newest push's run covers it. A run that reads
+main's tip before the batch's next merge has landed finds nothing newer, and
+runs in full. The *Slow suite* on main does the same.
 
 **The site deploys from CI.** On main, the Site job keeps the site it built
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
