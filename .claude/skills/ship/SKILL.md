@@ -314,10 +314,12 @@ else. A merge from outside the queue makes the queue start over on the new
 ## 8. Clean up
 
 The PR's branch deletes itself on GitHub when it merges. Remove the worktree
-and the local branch:
+and the local branch. `worktree-rm` refuses a branch whose commits no remote
+branch holds, so once `origin/claude/<topic>` is pruned (`git fetch --prune`)
+a merged branch needs `FORCE=1`:
 
 ```bash
-make -C "$REPO" worktree-rm TOPIC=<topic>                    # git worktree remove "$WT"; git branch -D claude/<topic>
+make -C "$REPO" worktree-rm TOPIC=<topic>                    # removes $WT and deletes the branch it is on
 gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>", or by PR checks if GitHub missed it
 ```
 

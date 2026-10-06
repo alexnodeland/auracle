@@ -413,10 +413,13 @@ names another repository's issue, or an issue closed as not planned or as a
 duplicate; one whose issue closed without a merge; one the search missed
 (added in the minute before the merge, so the run's log says nothing of it);
 and one the run's log says changed as it was read. Remove the worktree and
-the local branch: `make worktree-rm TOPIC=<topic>`, which is
-`git worktree remove .claude/worktrees/<topic>` and
-`git branch -D claude/<topic>` (it refuses a worktree holding work not
-committed).
+the local branch: `make worktree-rm TOPIC=<topic>` removes
+`.claude/worktrees/<topic>` and deletes the branch it is on, read from the
+worktree (`git branch -D`, since a squash merge leaves the branch unmerged
+to git). It refuses a worktree holding work not committed, one on no
+branch, and a branch whose commits no remote branch holds; `FORCE=1`
+deletes that branch anyway, for a merged one whose remote branch was
+pruned.
 
 ## Flakes
 

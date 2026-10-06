@@ -75,8 +75,8 @@ give each branch a worktree of its own inside the checkout, at
 `.claude/worktrees/<topic>`, which git ignores:
 `make worktree TOPIC=tempo-lfo BRANCH=feature/tempo-synced-lfo` makes it from
 `origin/main` and installs `tests/web`'s packages there, and
-`make worktree-rm TOPIC=tempo-lfo BRANCH=feature/tempo-synced-lfo` removes it
-and the branch once it is merged. Keep the main checkout itself on `main`.
+`make worktree-rm TOPIC=tempo-lfo` removes it and the branch it is on once
+that is merged. Keep the main checkout itself on `main`.
 Then:
 
 ```bash
