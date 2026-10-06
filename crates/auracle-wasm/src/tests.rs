@@ -1862,23 +1862,36 @@ fn a_members_face_is_its_stored_auditions_from_the_memo_or_a_render() {
             .face_key(id as u32)
             .ends_with(&engine.engine.pool[engine.engine.find(id).unwrap()].key));
     }
-    // A row without a face (stored before faces): none without a render,
-    // the same face with one.
+    // A row without a face (stored before faces), its audition resident:
+    // the face is the audition's, and is written back onto the row.
     let id = ids[0];
     let i = engine.engine.find(id).unwrap();
     let key = engine.engine.pool[i].key.clone();
     let want = engine.face_of(id as u32, false);
-    let mut row = engine.engine.memo().get(&key).unwrap();
-    row.face = None;
-    engine.engine.memo().put(row, None);
+    let faceless = |e: &WasmEngine| {
+        let mut row = e.engine.memo().get(&key).unwrap();
+        row.face = None;
+        e.engine.memo().put(row, None);
+    };
+    faceless(&engine);
+    assert!(engine.engine.pool[i].render.is_some(), "fixture: resident");
+    assert_eq!(engine.face_of(id as u32, false), want);
+    assert!(
+        engine.engine.memo().get(&key).unwrap().face.is_some(),
+        "the face was not remembered"
+    );
+    // Not resident either: none without a render, the same face with one.
+    faceless(&engine);
     engine.engine.pool[i].render = None;
     let tree = serde_json::to_string(&engine.engine.pool[i].tree).unwrap();
-    if engine.engine.memo().get_audio(&key).is_none() {
-        assert!(
-            engine.face_of(id as u32, false).is_empty(),
-            "no face without a render"
-        );
-    }
+    assert!(
+        engine.engine.memo().get_audio(&key).is_none(),
+        "fixture: the memo holds no audio for this row"
+    );
+    assert!(
+        engine.face_of(id as u32, false).is_empty(),
+        "no face without a render"
+    );
     assert_eq!(engine.face_of(id as u32, true), want);
     assert!(
         engine.engine.pool[i].render.is_none(),
