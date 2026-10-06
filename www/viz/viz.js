@@ -1209,7 +1209,7 @@
     for (const b of boxes) {
       s.appendChild(el('rect', {
         x: b.x, y: b.y, width: b.w, height: b.h, rx: 4,
-        fill: 'var(--panel, rgba(255,255,255,.03))', stroke: b.colour, 'stroke-width': 1.2, opacity: 0.95,
+        fill: 'var(--panel)', stroke: b.colour, 'stroke-width': 1.2, opacity: 0.95,
       }));
       // `style`, not a `fill` attribute: `.v-num` sets `fill` in CSS, and any
       // author rule outranks a presentation attribute — so the attribute form
@@ -1610,7 +1610,7 @@
         const w = Math.max(38, Math.min(84, n.kind.length * 6.4 + 14));
         g.appendChild(el('rect', {
           x: xOf(n) - w / 2, y: yOf(n) - 9, width: w, height: 18, rx: 3,
-          fill: audio ? 'rgba(142,240,177,.10)' : 'rgba(255,180,84,.10)',
+          fill: audio ? 'var(--phos-a-10)' : 'var(--phos-b-10)',
           stroke: colour, 'stroke-width': 1.1,
         }));
         const t = el('text', {

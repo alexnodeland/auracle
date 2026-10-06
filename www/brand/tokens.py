@@ -115,6 +115,9 @@ CONSUMERS = [
         "step": "    ",
     },
     {"file": "www/brand/index.html", "rules": [(":root", "brand")], "indent": "", "step": "  "},
+    # The source of lockup.png and og.png: the brand page's tokens, so the
+    # rasters are drawn in the colors and faces the page specifies.
+    {"file": "www/brand/render.html", "rules": [(":root", "brand")], "indent": "", "step": "  "},
     {"file": "www/404.html", "rules": [(":root", "404")], "indent": "  ", "step": "  "},
     {"file": "www/video/stage/stage.css", "rules": [(":root", "stage")], "indent": "", "step": "  "},
 ]

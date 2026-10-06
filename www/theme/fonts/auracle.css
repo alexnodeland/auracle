@@ -461,7 +461,8 @@ pre > code {
 /* A film is a figure that moves: the same cap and the same caption as a
    screenshot, but it fills the cap, because unlike a frame of the app its type
    was set for the size it plays at (www/video/README.md). The poster carries
-   the dark tile, so nothing flashes white before it loads. */
+   the dark tile, so nothing flashes white before it loads, and its ground is
+   --bezel, which is dark on Paper too: a film is a frame of the rack. */
 .content figure.film video {
     display: block;
     width: 100%;
@@ -469,7 +470,7 @@ pre > code {
     aspect-ratio: 16 / 9;
     border: 1px solid var(--hairline);
     border-radius: 6px;
-    background: var(--bezel, #07080a);
+    background: var(--bezel);
 }
 
 /* The running time sits beside a film's heading, in the readout face. */
