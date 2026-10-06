@@ -16,15 +16,18 @@ const UNDO = UNDO_WINDOW_MS + FADE;
 
 /** A lane on a fake DOM, its clock at 0. `say` puts a toast in it and returns
  *  its entry; `wait` moves the clock a millisecond at a time, so each timer
- *  fires at its own moment and one it sets is run in turn. */
+ *  fires at its own moment and one it sets is run in turn. The fake records
+ *  what reached the screen (`shown`), what faded, and what was taken off it
+ *  or out of the lane (`removed`). */
 function setup(t) {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   const shown = [];
   const faded = [];
+  const removed = [];
   const stacks = new Map();
   const view = {
     show: (el) => shown.push(el.text),
-    remove: () => {},
+    remove: (el) => removed.push(el.text),
     fade: (el) => faded.push(el.text),
     stack: (el, n) => stacks.set(el.text, n),
   };
@@ -33,6 +36,7 @@ function setup(t) {
     lane,
     shown,
     faded,
+    removed,
     stacks,
     say: (text, opts) => lane.add({ text }, opts),
     wait: (ms) => {
@@ -104,11 +108,14 @@ test("replace: a later word on the same thing takes the screen at once, with its
   l.wait(3000);
   l.say("picked B", { replace: "vote" });
   assert.equal(l.onScreen(), "picked B");
+  assert.deepEqual(l.removed, ["picked A"]);
   assert.deepEqual(l.waiting(), ["other"]);
-  // The old toast's timer went with it: it cannot take its successor down.
+  // The old toast's timer went with it: it cannot take its successor down,
+  // nor touch the screen again when it would have run out.
   l.wait(TOAST_MS - 1);
   assert.equal(l.onScreen(), "picked B");
   assert.deepEqual(l.faded, []);
+  assert.deepEqual(l.removed, ["picked A"]);
   assert.deepEqual(l.shown, ["picked A", "picked B"]);
 });
 
@@ -120,6 +127,7 @@ test("replace: a queued word takes the earlier one's place in line, and only the
   l.say("other");
   l.say("loaded", { replace: "warm" });
   assert.deepEqual(l.waiting(), ["loaded", "other"]);
+  assert.deepEqual(l.removed, ["loading"]);
   l.wait(REMARK * 3);
   assert.deepEqual(l.shown, ["live", "loaded", "other"]);
 });
@@ -160,15 +168,29 @@ test("urgent: a toast already fading had its window, and is not brought back", (
   assert.equal(l.onScreen(), "refused");
 });
 
-test("urgent: the same refusal said again takes the earlier one's place", (t) => {
+test("urgent: a refusal said again on the same thing takes the earlier one's place, with its own window", (t) => {
   const l = setup(t);
-  l.say("nothing to undo", { urgent: true, replace: "undo-here" });
-  l.say("nothing to undo", { urgent: true, replace: "undo-here" });
-  assert.equal(l.onScreen(), "nothing to undo");
+  l.say("Nothing to undo here.", { urgent: true, replace: "undo-here" });
+  l.wait(2000);
+  l.say("Nothing to redo here.", { urgent: true, replace: "undo-here" });
+  assert.equal(l.onScreen(), "Nothing to redo here.");
+  assert.deepEqual(l.removed, ["Nothing to undo here."]);
   assert.deepEqual(l.waiting(), []);
+  // The earlier one's timer went with it: the newer one gets its full window.
+  l.wait(TOAST_MS - 1);
+  assert.equal(l.onScreen(), "Nothing to redo here.");
+  assert.deepEqual(l.faded, []);
+  assert.deepEqual(l.removed, ["Nothing to undo here."]);
+  l.wait(1);
+  assert.deepEqual(l.faded, ["Nothing to redo here."]);
+  assert.deepEqual(l.shown, ["Nothing to undo here.", "Nothing to redo here."]);
 });
 
-test("trim: the backlog keeps three waiting, and cuts the oldest plain remark first", (t) => {
+// A waiting toast is not on screen, so a cut one leaves the lane with nothing
+// to take off the screen: these check it is out of the queue and never shown.
+const NEVER = 60_000;
+
+test("trim: the backlog keeps three waiting, and cuts the plain remark nearest the front first", (t) => {
   const l = setup(t);
   l.say("live");
   l.say("undo 1", { undo: () => {} });
@@ -178,9 +200,11 @@ test("trim: the backlog keeps three waiting, and cuts the oldest plain remark fi
   assert.equal(MAX_TOASTS, 3);
   assert.deepEqual(l.waiting(), ["undo 1", "undo 2", "remark 2"]);
   assert.equal(l.stacks.get("live"), 3);
+  l.wait(NEVER);
+  assert.ok(!l.shown.includes("remark 1"));
 });
 
-test("trim: with no plain remark waiting it cuts the oldest undo, never a refusal", (t) => {
+test("trim: with no plain remark waiting it cuts the undo nearest the front, never a refusal", (t) => {
   const l = setup(t);
   l.say("refused 1", { urgent: true });
   l.say("undo 1", { undo: () => {} });
@@ -193,6 +217,9 @@ test("trim: with no plain remark waiting it cuts the oldest undo, never a refusa
   // "refused 1" was interrupted and waits behind the new refusal.
   assert.equal(l.onScreen(), "refused 2");
   assert.ok(l.waiting().includes("refused 1"));
+  l.wait(NEVER);
+  assert.ok(!l.shown.includes("undo 1"));
+  assert.deepEqual(l.shown.filter((x) => x.startsWith("refused")), ["refused 1", "refused 2", "refused 1"]);
 });
 
 test("stale: a plain remark that waited longer than TOAST_STALE_MS is dropped, not said late", (t) => {
@@ -272,6 +299,9 @@ test("trim: a remark about the player's sounds is cut only after the plain remar
   assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 2"]);
   l.say("remark 3");
   assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 3"]);
+  l.wait(NEVER);
+  assert.ok(!l.shown.includes("remark 1") && !l.shown.includes("remark 2"));
+  assert.deepEqual(l.shown.slice(0, 3), ["live", "replaced Tine", "replaced Bell Jar"]);
 });
 
 test("stale: a plain remark still goes stale beside a remark about the player's sounds", (t) => {
