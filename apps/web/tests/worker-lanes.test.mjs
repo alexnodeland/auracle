@@ -214,7 +214,7 @@ function floorJobs() {
     // number aside, a reply like any other.
     (m, msg) => log.push(`reply ${msg.type}`),
     // A request served between the job's renders; one in the background
-    // (`bg`: a dealt pair's sound) is a render of its own.
+    // (`bg`: a dealt pair's sound, a warm-start card) is a render of its own.
     async (m) => {
       log.push(`served ${m.type}`);
       if (m.bg) engine.memo_render(m.what);

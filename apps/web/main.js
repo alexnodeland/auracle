@@ -23208,6 +23208,18 @@ function warmPrewarmPump() {
   });
 }
 
+// "teach it" inserts the nine cards, and an insert is a render: so the engine
+// measures them while the player chooses, one at a time behind every gesture,
+// and the inserts come from its memo (worker.js `warmCard`). The first pick's
+// controls then wait on no render of its own. In the order "teach it" inserts
+// them: the picks first, in the order they were made, then the rest as dealt;
+// sent again on every pick, and with none once the card is closed.
+function warmCardsSend() {
+  const open = warmRows && !$("warmstart").classList.contains("hidden");
+  const dealt = open ? warmRows.map((r) => r.index) : [];
+  send({ type: "warm_cards", order: [...new Set([...[...warmPicked].filter((i) => dealt.includes(i)), ...dealt])] });
+}
+
 function openWarmStart() {
   send({ type: "presets" });
   warmPending = true;
@@ -23254,6 +23266,7 @@ function renderWarmStart(all) {
       b.classList.toggle("picked", warmPicked.has(r.index));
       b.setAttribute("aria-pressed", String(warmPicked.has(r.index)));
       warmPrewarmPump();
+      warmCardsSend();
       $("warm-go").disabled = warmPicked.size !== 3;
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
@@ -23269,6 +23282,7 @@ function renderWarmStart(all) {
   warmHeard.clear();
   warmPrewarm = { done: new Set(), busy: false };
   warmPrewarmPump();
+  warmCardsSend();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
   // Land on the first ▶: hearing comes before choosing.
   grid.querySelector(".wi-play")?.focus();
@@ -23342,6 +23356,7 @@ function closeWarmStart(mark = true) {
   warmPreviewCancel();
   warmPrewarm = null;
   $("warmstart").classList.add("hidden");
+  warmCardsSend(); // none left to measure: "teach it" or SKIP
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
   pointFilmChip();

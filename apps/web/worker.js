@@ -153,9 +153,11 @@ const PLAYABLE_AT = 8;
 // lane's drain, the pump, a long job's breath), and a timer set before
 // another flow's long call fires right after that call, ahead of a message
 // that arrived during it: in Chromium, with two loops yielding around 200 ms
-// of work each, a message waited for both loops' work (#221). So a yield that
-// took longer than a turn yields again, its timer set behind what arrived
-// meanwhile; twice at most, so a throttled timer cannot hold a flow up.
+// of work each, a message waited for both loops' work, and on a loaded laptop
+// "teach it" waited 0.8 s, behind the warm-start card being measured and two
+// more (#221). So a yield that took longer than a turn yields again, its
+// timer set behind what arrived meanwhile; twice at most, so a throttled
+// timer cannot hold a flow up.
 const YIELD_TURN_MS = 20;
 async function yieldToQueue() {
   for (let k = 0; k < 3; k++) {
@@ -2459,6 +2461,53 @@ function evolveStop() {
   schedulePump();
 }
 
+// ---------- the warm start's cards, measured while the player chooses ----------
+//
+// "teach it" inserts the nine cards the warm start dealt (`warm_start`), and
+// an insert is one featurization of the phrase: a render (95% of it) and its
+// measurement, the pool's own work around it 0.04 ms. Left to "teach it", the
+// first pick's controls waited for its render and for the call in progress
+// when the turn arrived (a render of PERFORM's measurement of the sound the
+// app opened with, or a dealt pair's sound between them): 1.2 s on a CI
+// runner (#221). So the cards are measured
+// while the player chooses, into the memo, as the guess's renders are
+// (`memo_render`: φ, no audio, nothing inserted), and the inserts are memo
+// hits: the same φ (a hit is bit-identical to a miss), the same pool and
+// picks. What is left is the call in progress when "teach it" arrives: on a
+// loaded 16-core M3 Max, 0.06 to 0.35 s where it was 0.23 to 0.71 s. The
+// bench's open renders the first pick's sound, after its controls are live.
+//
+// One card per turn, in the `now` lane's background (`bg`): between the
+// pieces of a long job holding the floor, which a `later` job would wait out,
+// and behind every gesture, so a ▶ or "teach it" waits for at most the card
+// being measured (`serveNow`). Ahead of the lane's other background renders,
+// a dealt pair's sounds for a table behind the card. Main sends the cards in
+// the order to measure them (`warm_cards`): the picks first, in the order
+// they were made, then the rest as dealt; again on every pick, and none once
+// the card closes. `warm_start` stops it, and renders what is left.
+let warmCards = []; // preset indices still to measure, next first
+const warmMeasured = new Set(); // preset indices measured since the last "teach it"
+
+/** Main's order for the cards (`warm_cards`), taken on arrival, so a pick
+ *  moves its card ahead of those still waiting at once. Main sends every
+ *  card each time; one measured already is not measured again. */
+function warmCardsOrder(order) {
+  warmCards = Array.isArray(order) ? order.filter((i) => Number.isInteger(i) && i >= 0 && !warmMeasured.has(i)) : [];
+  if (!warmCards.length || lanes[NOW].some((q) => q.type === "warm_card")) return;
+  lanes[NOW].unshift({ type: "warm_card", bg: true });
+  drainNow();
+}
+
+/** The next card measured, and the one after it queued. A card that does
+ *  not vet is passed over: its insert refuses it as it always did. */
+function warmCard() {
+  const i = warmCards.shift();
+  if (i == null) return;
+  warmMeasured.add(i);
+  engine.memo_render(engine.preset_tree_json(i));
+  if (warmCards.length) lanes[NOW].unshift({ type: "warm_card", bg: true });
+}
+
 // ---------- the queue: the player first ----------
 //
 // This is the engine's only thread, and it used to take requests strictly in
@@ -2479,9 +2528,10 @@ function evolveStop() {
 //   so every ordering rule the app already relies on (edits to one bench land
 //   in order; a save sees the votes cast before it; a log line carries the φ of
 //   the edit it follows) holds exactly as it did. A render main asks for in
-//   the background (`bg`: the sounds of a pair just dealt) waits in this lane
-//   behind every gesture, since nothing is ordered against it, and lets
-//   waiting `soon` work start first (`serveNow`).
+//   the background (`bg`: the sounds of a pair just dealt, and the warm
+//   start's cards, `warm_card`) waits in this lane behind every gesture,
+//   since nothing is ordered against it, and lets waiting `soon` work start
+//   first (`serveNow`).
 // - **soon**: long work the player did ask for — a generation, an offer they
 //   pressed, the first measurement of the patch in their hands.
 // - **later**: work nobody is waiting on — refits, re-measurements, spare
@@ -2657,8 +2707,7 @@ const runnable = () =>
 // rendering waits for the render already running, never the ones behind it.
 // And after one ends, before anything goes on: served at a long job's breath,
 // it was followed at once by the job's next piece, so an open made during it
-// waited for both (a dealt pair's sound between PERFORM's measurement's
-// renders).
+// waited for both (a warm-start card between PERFORM's measurement's renders).
 //
 // Background renders also give way to long work the player asked for that is
 // waiting to start (a pressed Offer, the first measurement of the patch in
@@ -2795,6 +2844,13 @@ self.onmessage = (e) => {
         answer(q, { type: q.type, token: q.token ?? null, tree: q.tree, k: q.k, cutoff: q.cutoff, error: "cancelled" });
       }
     }
+    return;
+  }
+  // The warm start's cards in the order to measure them (see `warmCard`),
+  // taken on arrival: a pick reorders the cards still waiting at once. Main
+  // waits on no answer, and a poisoned engine measures nothing.
+  if (m.type === "warm_cards") {
+    if (!poisoned) warmCardsOrder(m.order);
     return;
   }
   // Background work became the player's: Offer claimed a spare still waiting
@@ -3840,6 +3896,12 @@ async function dispatch(m) {
       }
       break;
     }
+    // One of the warm start's cards, measured while the player chooses: this
+    // worker's own background work, never sent by main (see `warmCard`).
+    case "warm_card": {
+      warmCard();
+      break;
+    }
     // The first-run elicitation, in one turn. It used to be nine
     // `load_preset`s and then eighteen `record_duel`s from main, and the pool
     // is full by the time anyone has listened to nine sounds: each insert
@@ -3849,10 +3911,16 @@ async function dispatch(m) {
     // recorded the moment it lands, before the next insert can evict it, and
     // the picks go in first and pinned so they are alive for every pairing.
     case "warm_start": {
+      // The cards measured while the player chose are memo hits here; the
+      // rest are rendered now, and none is measured for the card any more.
+      warmCardsOrder([]);
+      warmMeasured.clear();
       const ids = {};
       for (const i of m.picked) {
-        // The first pick goes onto the bench next: its insert keeps its audio
-        // (see `load_preset`), so the bench open is not a second render.
+        // The first pick goes onto the bench next. Unless it was measured
+        // while the player chose (see `warmCard`), its insert renders it and
+        // keeps its audio (see `load_preset`), so the bench open is not a
+        // second render; measured, the bench open renders its sound once.
         const heard = i === m.picked[0] && typeof engine.load_preset_heard === "function";
         const id = Number(heard ? engine.load_preset_heard(i) : engine.load_preset(i));
         if (id > 0) {

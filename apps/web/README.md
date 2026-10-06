@@ -220,10 +220,14 @@ to a pinned `role="alert"` strip that stays until resolved.
   the job is walked here with `refine_seed` as a *soon* piece. `{type: "promote", req, kind}` moves a queued background
   offer to *soon* when Offer claims it; `{type: "retire", reqs}` demotes
   PERFORM's measurement of a patch it has left and answers its queued offers
-  and drifts empty. `warm_start` posts `warm_first` (the first pick's
-  `{id, index, json, makeup}`) as soon as it is inserted, and a preview's
-  `load_preset` uses `load_preset_heard`, which keeps the render's audio so
-  the `render` that follows is a memo hit. `tree_json` from an edit carries
+  and drifts empty. `{type: "warm_cards", order}` (never answered) has the
+  warm start's cards measured into the memo while the player chooses, one
+  per turn in the background of *now* (`warm_card`), the picks first, so
+  `warm_start`'s inserts are memo hits. `warm_start` posts `warm_first` (the
+  first pick's `{id, index, json, makeup}`) as soon as it is inserted, and a
+  preview's `load_preset` uses `load_preset_heard`, which keeps the render's
+  audio so the `render` that follows is a memo hit (a card measured ahead
+  has no audio kept, and its `render` renders it once). `tree_json` from an edit carries
   the tree's live `knobs` and echoes the edit's `why` (`"taken offer"`).
 
 - **farm.js** is a stateless render worker — a wasm instance and nothing else.

@@ -75,7 +75,8 @@ trees follow from the seed), sends what main sends (`send`
 returns the replies that answer a request; `post`, `reply`, `until`) and
 reads the thread's timeline (`trace`): every call the worker makes into
 `WasmEngine`, in order with the messages it took and posted, noted from
-outside on the glue's class. A request can be posted while a given engine
+outside on the glue's class, with the featurizations each rendered (`misses`,
+the memo's misses during the call: 0 for an insert served from the memo). A request can be posted while a given engine
 call runs (`post`'s `during`), as one of main's arrives mid-render, so a
 lane rule is an order of events on one thread, and a slow machine makes it
 slower, never wrong. A farm is ports the test holds (`fakeCrew`): what
@@ -101,6 +102,7 @@ engine that traps on demand.
 | `tests/worker/background.test.mjs` | A measurement nobody waits on (`bg`) gives way to a cable probe asked for during it and finishes after it, where PERFORM's own keeps the floor; a measurement `retire` demoted is the player's again after `promote`, landing before a drift asked for after it, and without `promote` the drift lands first; an Offer asked for while the guess waits for its crew begins before the guess renders anything |
 | `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
 | `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
+| `tests/worker/warm_start.test.mjs` | The warm start's cards are measured while the player chooses, a pick's card next; *teach it* is handed to the worker when the card being measured ends, inserts its first pick and the other cards measured with no render (the rest rendered once each), and measures no card after; with every card measured ahead, *teach it*'s replies, the saved session and the first fit are the ones a worker that measured nothing makes |
 
 ## CI tiers
 

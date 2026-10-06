@@ -126,7 +126,9 @@ served within a lane (`laneOf` in `worker.js`):
   job's next piece, and a request made during it waited for both. It also lets
   `soon` work waiting to start go first (not a serial generation's
   `breed_step`s), and runs between that job's pieces. A `now` render of the
-  same id supersedes it.
+  same id supersedes it. The warm start's cards, measured while the player
+  chooses, wait here the same way
+  ([The warm start's cards](#the-warm-starts-cards)).
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands, a control's figure, the
   lesson on filters).
@@ -163,10 +165,12 @@ only if nothing else ran meanwhile, and several flows yield at once: the
 lane's drain, the pump, a long job's breath. A timer set before another
 flow's long call fires right after that call, ahead of a message that arrived
 during it, in Chromium as in Node: with two loops yielding around 200 ms of
-work each, a message waited for both loops' work (#221). So a yield that took
-longer than a turn (`YIELD_TURN_MS`, 20 ms) yields again, its timer set
-behind what arrived meanwhile, at most twice, so a throttled timer cannot
-hold a flow up (`apps/web/tests/worker-lanes.test.mjs`).
+work each, a message waited for both loops' work, and *teach it* waited 0.8 s
+behind three warm-start cards (#221). So a yield that took longer than a turn
+(`YIELD_TURN_MS`, 20 ms) yields again, its timer set behind what arrived
+meanwhile, at most twice, so a throttled timer cannot hold a flow up
+(`apps/web/tests/worker-lanes.test.mjs`; with two loops measuring cards,
+`tests/worker/warm_start.test.mjs`).
 
 So a `now` request waits for the one call in progress when it arrives, then
 for the `now` requests queued ahead of it (first come, first served), and
@@ -182,7 +186,10 @@ took:
 - a refit, one MCMC call: 0.75 s;
 - a preset's insert (an open's, which is a `now` request ahead of it, or a
   booth pre-warm's): up to 1.4 s (1.8 s at 6×); the warm start inserts nine
-  in one call, 8 s;
+  in one call, 8 s when none was measured while the player chose, and a
+  memo hit for each card that was;
+- one of the warm start's cards, measured while the player chooses: a
+  preset's featurization, the render the insert would have made;
 - with no farm (`?farm=0`), while the bank fills, one step of the fill, which
   renders until two draws are admitted: 0.2 to 0.9 s unthrottled.
 
@@ -195,12 +202,14 @@ drag that made it (#174, #182), and an unplug's tree in the voices 2.2 to
 at the job's next breath and answered before the next render, one posted
 during a background render served at a breath is answered before the job's
 next render, and a yield another flow's long call ran through lets in what
-arrived during that call first. And end to
-end by `tests/worker/lanes.test.mjs`, which runs `worker.js` itself over the
-built engine and posts the request while a given engine call runs: during
+arrived during that call first. And end to end by
+`tests/worker/lanes.test.mjs`, which runs `worker.js` itself over the built
+engine and posts the request while a given engine call runs: during
 PERFORM's measurement, the guess's renders and a spare offer's steps, the
 request is handed over when that call ends, before any other, and answered
-before the job's next one.
+before the job's next one; `tests/worker/warm_start.test.mjs` does the same
+for *teach it* while two loops serve the lane, one of them measuring the
+warm start's cards.
 
 ### Offers and drifts are jobs
 
@@ -343,9 +352,9 @@ number:
   measurement's "listening…" or "re-checking" and an offer growing are let
   go. Nothing failed, so no toast says so.
 
-Never answered, by design: `log_edit`, `log_event`, `duel_shown` and
-`set_style_name` (main waits on none of them), `farm_lost` and `farm_ports`
-(the farm's plumbing), and the
+Never answered, by design: `log_edit`, `log_event`, `duel_shown`,
+`set_style_name` and `warm_cards` (main waits on none of them), `farm_lost`
+and `farm_ports` (the farm's plumbing), and the
 requests that act on others, whose effect is the other request's own last
 reply: `promote`, `retire`, `explain_cancel`, `refine_stop` and
 `refine_from_stop`.
@@ -360,7 +369,8 @@ the never-answered list (the fixture's `UNANSWERED`) to the worker both
 ways: each request on it posts no reply of its own, and each one the
 worker's source leaves unanswered is on it (a case that hands its request
 to a helper is checked through the helper; the worker's own queued work,
-`face_lookup`, `face_render` and `breed_step`, is never sent by main).
+`face_lookup`, `face_render`, `breed_step` and `warm_card`, is never sent by
+main).
 
 ## The ratings after each pick
 
@@ -1099,6 +1109,52 @@ change owes `make perform-wirings`.
 While the warm start is open, `main.js` pre-warms its nine cards
 (`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
 inserts), one at a time in `later`, once the pool is full.
+
+### The warm start's cards
+
+*Teach it* inserts the nine cards the warm start dealt in one turn
+(`warm_start`), the picks first, and the first pick goes to the voices and to
+PERFORM the moment it is in (`warm_first`). An insert is a featurization of
+the phrase and nothing else of weight: in wasm under Node on a loaded 16-core
+M3 Max, `load_preset_heard` took what `farm_render` (a render with its φ)
+took, 244 against 236 ms (the medians over the 62 presets), and pinning the
+pick and reading its tree and makeup took 0.04 ms; natively the render is 95%
+of a featurization, the rest its measurement. Left to *teach it*, that render
+stood between the press and the pick's controls, and so did the call in
+progress when the turn arrived (in every run traced, PERFORM's measurement of
+the sound the app opened with held the floor: one of its renders, or a dealt
+pair's sound between them): 1.2 s on a CI runner (#221).
+
+So the engine measures the cards while the player chooses. Main sends them
+in the order *teach it* inserts them (`warm_cards`: the picks in the order
+they were made, then the rest as dealt) when they are dealt, again on every
+pick, and with none once the card closes, and is never answered. The worker
+takes it on arrival and measures one card per turn (`warm_card`, its own
+work, `bg` in `now`: between the pieces of the measurement holding the floor,
+which a `later` job would wait out, behind every gesture, and ahead of the
+lane's other background renders, a dealt pair's sounds for a table behind the
+card), with `memo_render` (φ into the memo, no audio, nothing inserted). A
+card measured is not measured again; `warm_start` stops it. Its inserts are
+memo hits, the same φ (a hit is bit-identical to a miss), so the pool, the
+picks and the first fit are the ones *teach it* made without them
+(`tests/worker/warm_start.test.mjs`). What is left between *teach it* and the
+first pick's controls is the call in progress when it arrives: a card's
+render, or one of the measurement's. The first pick's sound is not in the
+memo, so the bench's open renders it, once, after its controls are live.
+
+`budgets.spec.js`'s warm start picks three cards and presses *teach it*
+about half a second after the card is dealt. On that Mac, the app before
+and after run back to back at a load average of 50 to 70 (`warm_first` −
+`warm_start`, the span the budget names "its insert"; the controls were live
+2 to 6 ms after it):
+
+| | Runs | Its insert, median | Range |
+| --- | --- | --- | --- |
+| Before | 8 | 0.40 s | 0.23 to 0.71 s |
+| After | 8 | 0.18 s | 0.06 to 0.35 s |
+
+Traced over 8 more runs after, the first pick was a memo hit in each, and
+*teach it* reached the worker when the call in progress ended.
 
 **The layout** (Plan-008 C1) is the specimen's well and panel: `.pf-left`
 (the head, and the well with the held face, B, Blend, XY and How it works)
