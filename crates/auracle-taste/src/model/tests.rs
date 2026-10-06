@@ -531,7 +531,7 @@ fn misspecified_user_is_learned_partially_and_detectably() {
             6_000,
         );
         let mut correct = 0;
-        let n_test = 400;
+        let n_test = 2_000;
         for _ in 0..n_test {
             let (a, b) = (random_phi(rng), random_phi(rng));
             let truth = if use_curved {
@@ -550,12 +550,17 @@ fn misspecified_user_is_learned_partially_and_detectably() {
     let acc_linear = accuracy(&mut rng, false);
     println!("misspecified acc {acc_curved:.3} vs well-specified {acc_linear:.3}");
 
+    // Held out over 2 000 pairs, so binomial noise (±0.01) is small beside
+    // the spread between seeds. Swept over sixteen seeds (this one and 1 to
+    // 15): curved 0.653 to 0.709 (this one 0.667), linear 0.897 to 0.943,
+    // and the gap between them 0.19 to 0.28. A gap of a few hundredths
+    // would be inside the noise, not a detection, hence 0.1.
     assert!(
         acc_curved > 0.60,
         "a concave user should still be ranked well above chance, got {acc_curved}"
     );
     assert!(
-        acc_curved < acc_linear,
+        acc_linear - acc_curved > 0.1,
         "the harness cannot tell a misspecified user ({acc_curved}) from a \
          well-specified one ({acc_linear}) — it would not catch a real one"
     );
