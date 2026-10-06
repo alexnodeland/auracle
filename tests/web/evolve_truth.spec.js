@@ -209,6 +209,16 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
   // this is the deal a pick or ↻ waits for when none is waiting.
   await boot(page, app, { holdAhead: true });
   await toEvolve(page, app);
+  // The deal ahead is asked once the table's own two sounds are here, and
+  // answered empty at once (NO_AHEAD): waited for, both. A ↻ made while that
+  // answer is still on its way waits for it rather than asking for a deal of
+  // its own (main.js `dealAnother`), and the empty answer then ends the wait
+  // before the 300 ms the reason waits for.
+  await app.engine((timeout) => expect.poll(async () => {
+    const asked = (await app.sent(AHEAD)).length;
+    const answered = (await app.replies("duel", { where: { ahead: true }, injected: true })).length;
+    return asked > 0 && answered >= asked;
+  }, { timeout, message: "the deal ahead asked and answered" }).toBe(true), { ms: 30_000 });
   const n0 = await picks(page);
   const [a0, b0] = await cardIds(page);
   await app.delay(TABLE, 2_500);
