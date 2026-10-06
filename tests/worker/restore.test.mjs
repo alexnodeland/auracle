@@ -3,8 +3,10 @@
 // bank itself one sound at a time: each sound read from the render store when
 // this build has measured it before (the farm's store, key and namespace),
 // rendered and written back otherwise, with its progress posted and the
-// player's requests answered between sounds. Whichever ran, the bank comes
-// back as `import_state` builds it, in its order.
+// player's requests answered between sounds. A farm worker that reports
+// ready after the handshake's window takes the rest of the restore, or of a
+// fill, rather than sitting out the boot. Whichever ran, the bank comes back
+// as `import_state` builds it, in its order.
 //
 // worker.js runs here as it is, over the built engine (harness.mjs). The
 // render store is the harness's stand-in IndexedDB (`idb`), carried from one
@@ -14,7 +16,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { workerFor, startWorker } from "./harness.mjs";
+import { workerFor, fakeCrew, startWorker } from "./harness.mjs";
 
 const SEED = 1;
 const POOL = 12;
@@ -58,6 +60,16 @@ function importState(saved) {
 async function bankOf(w) {
   const [r] = await w.send({ type: "taste_views" });
   return r.views.features.rows;
+}
+
+/** A farm worker's render, as farm.js makes it (`farm_render`). */
+function render(tree, phrase) {
+  const job = glue.farm_render(tree, phrase, false);
+  try {
+    return { ok: job.ok, cached: job.ok ? job.cached : "" };
+  } finally {
+    job.free();
+  }
 }
 
 /** Boot from `saved` and wait for `filled`, as main boots a returning visit. */
@@ -125,5 +137,48 @@ test("a restore with no farm reads what this build measured before from the rend
   assert.equal(trace.some((e) => e.ev === "call" && e.name === "bank_render"), false, "a sound in the store was rendered again");
   assert.equal(recalling(w, after).length, POOL, "the restore did not say each sound as it landed");
   assert.deepEqual(await bankOf(w), importState(saved), "the bank is not import_state's, in its order");
+  await w.close();
+});
+
+test("a farm worker that reports ready after the handshake's window takes the rest of a restore", { timeout: TIMEOUT }, async (t) => {
+  const { saved } = await serialSession();
+  const crew = fakeCrew(2, { ready: false, render });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { boot: false });
+  const after = w.replies.length;
+  const booting = restore(w, saved, { farmPorts: crew.ports });
+  // The handshake's window closes with no worker ready: the crew is kept, and
+  // the restore begins here. The workers report ready once the first sound
+  // has landed.
+  const late = await w.reply("log", { where: (r) => r.kind === "farm_late", after });
+  assert.equal(late.workers, 2);
+  await w.until((r) => r.type === "fill_progress" && /^recalling 1 of/.test(r.label || ""), { after });
+  crew.ready();
+  await booting;
+
+  const jobs = crew.heard.flat().filter((m) => m.type === "job").map((m) => m.i);
+  assert.ok(jobs.length > 0, "the late workers were handed none of the bank");
+  assert.ok(Math.min(...jobs) >= 1, "the late workers were handed a sound already restored here");
+  assert.ok(recalling(w, after).some((r) => r.workers === 2), "the bar never said the renderers had joined");
+  assert.deepEqual(w.repliesOf("farm_done", { after }).length, 1, "boot's crew was not reaped once, at boot's end");
+  assert.deepEqual(await bankOf(w), importState(saved), "the bank is not import_state's, in its order");
+  await w.close();
+});
+
+test("a farm worker that reports ready after the handshake's window takes the rest of a fill, and the pool is the serial one", { timeout: TIMEOUT }, async (t) => {
+  const { pool } = await serialSession();
+  const crew = fakeCrew(2, { ready: false, render });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { boot: false });
+  const after = w.replies.length;
+  const booting = w.boot({ seed: SEED, poolSize: POOL, farmPorts: crew.ports });
+  await w.reply("log", { where: (r) => r.kind === "farm_late", after });
+  // Ready once the fill has begun here.
+  await w.until((r) => r.type === "fill_progress" && r.pool > 0, { after });
+  crew.ready();
+  await booting;
+  assert.ok(crew.heard.some((h) => h.some((m) => m.type === "job")), "the late workers were handed none of the fill");
+  assert.ok(w.repliesOf("fill_progress", { after }).some((r) => r.workers === 2), "the bar never said the renderers had joined");
+  assert.deepEqual(await bankOf(w), pool, "the pool is not the one this seed fills with no farm");
   await w.close();
 });

@@ -214,9 +214,10 @@ const JOB_TIMEOUT_MS = 30000;
 // Attempts per draw index before the index is retired empty. Retiring is the
 // one path that can change pool content versus a clean run, so it is loud.
 const MAX_TRIES = 2;
-// How long to wait for at least one farm worker to report ready before giving
-// up and taking the serial path. Farm boot overlaps the IndexedDB read, so by
-// the time we get here they are usually already in.
+// How long boot waits for at least one farm worker to report ready before it
+// starts on its own. Farm boot overlaps the IndexedDB read, so by the time we
+// get here they are usually already in. A worker that reports ready after it
+// is not forfeited: the restore or fill in progress hands it the rest (#285).
 const FARM_HANDSHAKE_MS = 5000;
 // How long a crew waits for this worker to stamp the render store before it is
 // handed the phrase anyway (`renderStoreReady`). On a first visit the stamp was
@@ -1073,10 +1074,11 @@ async function restoreSession(saved, stages, ns) {
   let pass = null; // this worker's own (`bankPass`), opened when first needed
   try {
     while (next < jobs.length) {
-      // A farm worker ready now takes the rest. The farm stops short only
-      // when every worker is gone, and this worker goes on from the first
-      // entry it did not fold in, so the bank comes back in the order it was
-      // saved in whichever path ran.
+      // A farm worker ready now takes the rest, whether it was ready in the
+      // handshake's window or reported in since (#285). The farm stops short
+      // only when every worker is gone, and this worker goes on from the
+      // first entry it did not fold in, so the bank comes back in the order
+      // it was saved in whichever path ran.
       if (farmUsable()) {
         const from = next;
         let issued = from;
@@ -3166,9 +3168,23 @@ async function dispatch(m) {
             farmed = false;
           }
         }
+        // No worker ready in the handshake's window. One still starting (a
+        // slow machine instantiating the engine in three workers can take
+        // longer than `FARM_HANDSHAKE_MS`) is kept: the restore and the fill
+        // begin here, and ask between entries whether a worker has reported
+        // ready since, which then takes the rest (#285). Boot's end reaps it
+        // with the rest. A crew whose every worker failed is reaped now. The
+        // late case goes to the app's log, as the farm's other designed
+        // degradations do (`logNote`): on a busy machine it is an ordinary
+        // boot, not a fault.
         if (!farmed && farm.length) {
-          console.warn("[auracle] no farm worker reported ready; filling serially");
-          bootCrewDone();
+          if (farm.some((f) => f.alive)) {
+            logNote("[auracle] no farm worker ready yet; starting here, and a worker that reports ready joins",
+              { kind: "farm_late", workers: farm.filter((f) => f.alive).length });
+          } else {
+            console.warn("[auracle] no farm worker could start; filling serially");
+            bootCrewDone();
+          }
         }
 
         // Boot is staged, and every `fill_progress` says which stage it is in.
@@ -3242,7 +3258,7 @@ async function dispatch(m) {
           target: st.pool_target,
           stage: fillStage,
           stages,
-          workers: farmed ? farmCrew() : 0,
+          workers: farmCrew(),
         });
         if (st.pool >= playableAt) announcePlayable();
 
@@ -3254,7 +3270,7 @@ async function dispatch(m) {
             target: st.pool_target,
             stage: fillStage,
             stages,
-            workers: farmed ? farmCrew() : 0,
+            workers: farmCrew(),
           });
           if (st.pool >= playableAt) announcePlayable();
         };
@@ -3263,8 +3279,8 @@ async function dispatch(m) {
         // absorb is one `await`-free step, and the promise below only resolves
         // between messages, so the queue drains throughout — `playable at 8`
         // and the progress meter keep working exactly as they do serially.
-        if (farmed && st.pool < st.pool_target) {
-          await runFarm({
+        const fillOnFarm = () =>
+          runFarm({
             startAt: engine.fill_cursor(),
             // The farm takes a term as JSON text, not as a structured object:
             // it deserializes straight into a `PatchTree`, and a string is the
@@ -3288,18 +3304,27 @@ async function dispatch(m) {
             wantAudio: (i) => i < FARM_AUDIO_AHEAD,
             after: fillProgress,
           });
-          st = status();
-        }
 
         // Fill incrementally so the boot meter can narrate progress — and
         // yield between batches so the app the user is already using stays
         // responsive while the bank fills behind it.
         //
-        // With no farm this is the whole fill, unchanged. With one it is the
-        // remainder, if the farm stopped short (every worker died, or a draw was
-        // retired): the two paths fold the *same* indexed draw stream from the
-        // same cursor, so finishing serially finishes the same bank.
+        // On the farm while a worker is ready: from the start when one was
+        // ready in the handshake's window, and from the next batch when one
+        // reports ready later (#285). Here otherwise: with no farm this is the
+        // whole fill, and with one it is what the farm left (every worker died,
+        // or a draw was retired). The two paths fold the *same* indexed draw
+        // stream from the same cursor, so either finishes the same bank. A farm
+        // run that folds nothing in (the stream's issued draws are still out
+        // from a crew that died) is followed by a batch here, so the loop
+        // always moves.
         while (st.pool < st.pool_target) {
+          if (farmUsable()) {
+            const from = engine.fill_cursor();
+            await fillOnFarm();
+            st = status();
+            if (engine.fill_cursor() !== from) continue;
+          }
           const added = engine.fill_step(2);
           st = status();
           news({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });

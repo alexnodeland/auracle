@@ -422,8 +422,13 @@ export async function workerFor(t, options) {
  *  so the engine renders the work itself. How the renders are shared among
  *  them is the order their answers arrive in, so a test asks what the crew
  *  as a whole heard, never that each worker rendered. `ports` go to the
- *  engine worker. */
-export function fakeCrew(n) {
+ *  engine worker.
+ *
+ *  `ready: false` keeps them quiet until `crew.ready()`, as workers still
+ *  starting are on a slow machine. `render(tree, phrase)` answers a render
+ *  with what it returns (`{ok, cached}`, as farm.js's `farm_render` gives),
+ *  `phrase` the last one the engine worker handed that worker. */
+export function fakeCrew(n, { ready = true, render = null } = {}) {
   const heard = [];
   const ports = [];
   const ends = [];
@@ -433,13 +438,21 @@ export function fakeCrew(n) {
     heard.push(got);
     port1.on("message", (m) => {
       got.push(m);
-      if (m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
-      if (m.type === "job") port1.postMessage({ type: "done", i: m.i, ok: false });
+      if (ready && m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
+      if (m.type !== "job") return;
+      const phrase = got.findLast((x) => x.type === "phrase");
+      const r = render && phrase ? render(m.tree, phrase.json) : { ok: false };
+      port1.postMessage({ type: "done", i: m.i, ok: !!r.ok, ...(r.ok ? { cached: r.cached } : {}) });
     });
     ends.push(port1);
     ports.push(port2);
   }
-  return { ports, heard, close: () => ends.forEach((p) => p.close()) };
+  return {
+    ports,
+    heard,
+    ready: () => ends.forEach((p) => p.postMessage({ type: "ready", build: V })),
+    close: () => ends.forEach((p) => p.close()),
+  };
 }
 
 /** The engine calls between two places in a trace (exclusive), by name. */
