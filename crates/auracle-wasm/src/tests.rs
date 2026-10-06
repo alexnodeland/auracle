@@ -3013,3 +3013,141 @@ fn a_face_is_found_by_its_render_key_or_its_tree() {
     let deep = serde_json::to_string(&too_deep()).unwrap();
     assert!(engine.face_of_tree(&deep, true).is_empty());
 }
+
+/// **The taste views are the posterior's.** Before a fit there is no lens
+/// and no map; after one, calibration, the taste map and the lineage are
+/// the engine's own; the styles are one row per lens, a weight per
+/// coordinate of φ under its name and the three members the lens scores
+/// highest, best first; a lens named is shown by its name, in the styles
+/// and in the bench's readout; and a member's best lens is the one most
+/// responsible for it.
+#[test]
+fn the_taste_views_are_the_posteriors() {
+    let cold = filled(0x5710);
+    assert_eq!(cold.styles(), "null");
+    assert_eq!(
+        cold.best_style_of(pool_ids(&cold)[0]),
+        -1,
+        "no fit, no lens"
+    );
+    assert_eq!(
+        WasmEngine::new(3, 6).taste_map(),
+        "null",
+        "nothing to project"
+    );
+    let mut engine = taught_wasm(0x5711);
+    let value = |s: String| -> serde_json::Value { serde_json::from_str(&s).unwrap() };
+    assert_eq!(
+        value(engine.calibration()),
+        serde_json::to_value(engine.engine.calibration()).unwrap()
+    );
+    assert_eq!(
+        value(engine.lineage()),
+        serde_json::to_value(&engine.engine.lineage).unwrap()
+    );
+    let map = value(engine.taste_map());
+    assert!(map["points"].as_array().is_some_and(|p| !p.is_empty()));
+    assert_eq!(
+        map,
+        serde_json::to_value(engine.engine.taste_map()).unwrap()
+    );
+
+    let p = engine.engine.posterior.clone().unwrap();
+    let styles: Vec<serde_json::Value> = serde_json::from_str(&engine.styles()).unwrap();
+    assert_eq!(styles.len(), p.k_styles());
+    let names = Features::phi_names();
+    for (k, row) in styles.iter().enumerate() {
+        let theta = row["theta"].as_array().unwrap();
+        let means = p.theta_mean(k);
+        assert_eq!(theta.len(), names.len());
+        for ((t, name), mean) in theta.iter().zip(&names).zip(&means) {
+            assert_eq!(t["name"], *name);
+            assert_eq!(t["mean"].as_f64().unwrap(), *mean);
+        }
+        let mut scored: Vec<(u64, f64)> = engine
+            .engine
+            .pool
+            .iter()
+            .map(|c| (c.id, p.utility(&c.phi_std, k).0))
+            .collect();
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let best: Vec<u64> = scored.iter().take(3).map(|s| s.0).collect();
+        assert_eq!(row["exemplars"], serde_json::json!(best), "lens {k}");
+    }
+    // The lenses share the pool between them.
+    let shares: f64 = styles.iter().map(|r| r["share"].as_f64().unwrap()).sum();
+    assert!((shares - 1.0).abs() < 1e-9, "the shares sum to {shares}");
+    for c in &engine.engine.pool {
+        let r = p.responsibilities(&c.phi_std);
+        let most = (0..r.len()).max_by(|&a, &b| r[a].total_cmp(&r[b])).unwrap();
+        assert_eq!(engine.best_style_of(c.id as u32), most as i32);
+    }
+    let id = pool_ids(&engine)[0];
+    assert!(engine.edit_begin(id));
+    let lens = engine
+        .engine
+        .explain_phi(engine.bench_phi.as_ref().unwrap())
+        .unwrap()
+        .style;
+    engine.set_style_name(lens, "Dark Drones");
+    assert_eq!(value(engine.styles())[lens]["name"], "Dark Drones");
+    assert_eq!(value(engine.edit_utility())["lens"], "Dark Drones");
+}
+
+/// **A profile travels.** What `export_profile` writes, `import_profile`
+/// on another engine takes in whole: the same evidence, measured in the
+/// same standardizer. Text that is not a profile is refused and changes
+/// nothing.
+#[test]
+fn a_profile_exported_is_imported_whole() {
+    let engine = taught_wasm(0x9F1);
+    let profile = engine.export_profile();
+    let mut other = WasmEngine::new(5, 6);
+    assert!(!other.import_profile("{"));
+    assert_eq!(other.engine.log.len(), 0);
+    assert!(other.import_profile(&profile));
+    assert_eq!(other.engine.log.len(), engine.engine.log.len());
+    assert_eq!(other.phi_scale(), engine.phi_scale());
+}
+
+/// **The serial driver breeds a generation one parent a call.**
+/// `refine_begin` opens the generation and names its parents, the seeds
+/// the belief named (none before there is a taste); `refine_seed` walks a
+/// parent's job here and absorbs it, answering the child or 0 and the
+/// reason; a parent not in the generation is no job; and the last parent
+/// finishes the generation, the bank back to size.
+#[test]
+fn the_serial_driver_breeds_one_parent_a_call() {
+    let mut cold = filled(0x5E3);
+    assert_eq!(cold.refine_begin(), "[]");
+    assert_eq!(cold.refine_seed(pool_ids(&cold)[0]), 0);
+    assert_eq!(cold.last_refine_reason(), "unknown_seed");
+
+    let mut engine = taught_wasm(0x5E2);
+    let size = pool_ids(&engine).len();
+    let belief: serde_json::Value = serde_json::from_str(&engine.belief()).unwrap();
+    let parents: Vec<u64> = serde_json::from_str(&engine.refine_begin()).unwrap();
+    assert_eq!(serde_json::json!(parents), belief["seeds"]);
+    assert_eq!(engine.refine_seed(0xDEAD), 0);
+    assert_eq!(engine.last_refine_reason(), "unknown_seed");
+    let mut children = 0;
+    for &p in &parents {
+        if engine.refine_seed(p as u32) > 0 {
+            children += 1;
+        } else {
+            let why = engine.last_refine_reason();
+            assert!(
+                ["no_move", "duplicate", "not_admitted"].contains(&why.as_str()),
+                "{why}"
+            );
+        }
+    }
+    assert!(children > 0, "no parent bred a child");
+    assert_eq!(
+        pool_ids(&engine).len(),
+        size,
+        "the generation did not finish"
+    );
+    let retired: Vec<u64> = serde_json::from_str(&engine.refine_retired()).unwrap();
+    assert_eq!(retired.len(), children);
+}

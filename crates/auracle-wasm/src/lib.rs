@@ -2648,15 +2648,17 @@ impl WasmEngine {
     }
 
     /// The aligned style index that best explains candidate `id`
-    /// (−1 before the first fit / unknown id).
+    /// (−1 before the first fit, for an unknown id, or for a member not yet
+    /// standardized).
     pub fn best_style_of(&self, id: u32) -> i32 {
-        let (Some(i), Some(p)) = (self.engine.find(id as u64), &self.engine.posterior) else {
+        let standardized = self
+            .engine
+            .find(id as u64)
+            .map(|i| &self.engine.pool[i].phi_std)
+            .filter(|phi| !phi.is_empty());
+        let (Some(phi), Some(p)) = (standardized, &self.engine.posterior) else {
             return -1;
         };
-        let phi = &self.engine.pool[i].phi_std;
-        if phi.is_empty() {
-            return -1;
-        }
         let r = p.responsibilities(phi);
         r.iter()
             .enumerate()
