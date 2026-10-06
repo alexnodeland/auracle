@@ -82,7 +82,7 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
 | Script | Does |
 | --- | --- |
 | `wf_result.py <run>` | Reads a finished run's output file, or a running run's journal, and writes each branch's PR body and a summary: status, problems, voice drafts, open items by kind, the `ship_pr.sh` command |
-| `ship_pr.sh [--full-ci] [--priority] <worktree> <branch> <title> <body>` | Checks the title and body as `PR checks` will, pushes, opens the PR with `queue` and queues it (`--full-ci`: opened with `full-ci`, queued once its Slow suite is green) |
+| `ship_pr.sh [--full-ci] [--priority] <worktree> <branch> <title> <body>` | Checks the title and body as `PR checks` will, pushes, opens the PR with `queue` and queues it (`--full-ci`: opened with `full-ci`, queued once its Slow suite is green); through the REST API when `gh pr create` fails |
 | `watch_queue.sh <pr>...` | Polls until a PR merges, closes, leaves the queue, goes red, or (`full-ci`) its Slow suite finishes; run as a background task. Its rule is `queue_state.py` |
 | `rows_resolve.py <file>...` | Resolves a diff3 rebase's line-wise conflicts (table rows, a list, words added to one line) and refuses a real overlap |
 | `check_workflows.mjs` | Checks the saved workflows, as above |

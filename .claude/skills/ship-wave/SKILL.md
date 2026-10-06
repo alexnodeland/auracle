@@ -146,7 +146,10 @@ one is reworded in the existing words first.
 It refuses a dirty worktree, a branch that isn't the worktree's or isn't
 `claude/*`, and a title or body `PR checks` would fail (it runs `main`'s
 `scripts/pr_checks.py` on them); then it pushes, opens the PR labelled
-`queue` and comments `@mergifyio queue`. `--priority` is for a fix to CI or
+`queue` and comments `@mergifyio queue`. When `gh pr create` fails (GitHub's
+GraphQL API can fail while its REST API works), it does each of those
+through the REST API, and finds a PR whose create answered nothing by its
+branch. `--priority` is for a fix to CI or
 to a flaky test. `--full-ci` is for a PR the Slow suite covers
 (`wf_result.py` says which, from the report's `needs_full_ci`): it opens the
 PR with `full-ci` and does not queue it; queue it once its Slow suite is
