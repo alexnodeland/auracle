@@ -41,7 +41,12 @@ const KEY = ISSUE ? `#${ISSUE}` : NAME
 const WT = args.worktree
 const PORT = args.port
 const BUILDER = args.agentType || 'web-engineer'
-const RUN = `cd ${WT}/tests/web && AURACLE_TEST_PORT=${PORT} AURACLE_CPU_THROTTLE=4 ../../www/video/tools/one_browser.sh npx playwright test ${FILE.replace(/^tests\/web\//, '')} -g ${JSON.stringify(args.test_title)} --reporter=line`
+// The title as Playwright's -g reads it, a regular expression (its
+// metacharacters escaped), and as the shell passes it, single-quoted (so a $,
+// a backtick or a \ in it reaches Playwright as written).
+const GREP = args.test_title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const shellQuote = s => `'${s.split("'").join(`'\\''`)}'`
+const RUN = `cd ${WT}/tests/web && AURACLE_TEST_PORT=${PORT} AURACLE_CPU_THROTTLE=4 ../../www/video/tools/one_browser.sh npx playwright test ${FILE.replace(/^tests\/web\//, '')} -g ${shellQuote(GREP)} --reporter=line`
 
 // The operator's rules a stage needs; the AGENTS.md files hold the rest.
 const RULES = `Rules for this run (docs/process.md; the operator's):
