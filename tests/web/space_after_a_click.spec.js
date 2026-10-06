@@ -16,8 +16,8 @@
 //   the chip, Space plays (the output sounds) and the chip keeps what it says,
 //   and Space again stops it: the phrase still sounded when its keydown
 //   landed, the app then stopped its source (a phrase that ends by itself is
-//   never stopped), and the output goes quiet. Quiet within 400 ms of the
-//   keydown is a budget (ADR-022).
+//   never stopped) and started none (not a replay), and the output goes
+//   quiet. Quiet within 400 ms of the keydown is a budget (ADR-022).
 // - A chip reached with the keyboard follows ARIA's button pattern: Space and
 //   Enter cycle it, and with Shift they go back. Neither plays. Its name
 //   carries its value ("VCO wave, sin"), and each cycle is said on the rack's
@@ -36,13 +36,21 @@ const { goLevel, bankTab } = require("./shell");
 const { budget } = require("./fixtures");
 
 const INIT = `(() => {
-  // When the app stops a sound it started (\`stop()\` on a buffer source): a
-  // phrase that ends by itself never calls it.
+  // When the app stops a sound it started (\`stop()\` on a source): a phrase
+  // that ends by itself never calls it. And when it starts a phrase
+  // (\`start()\` on a buffer source): a Space that played the phrase again
+  // would stop the old one and start another.
   const stops = (window.__pwStops = []);
   const stop = AudioScheduledSourceNode.prototype.stop;
   AudioScheduledSourceNode.prototype.stop = function (...a) {
     stops.push(performance.now());
     return stop.apply(this, a);
+  };
+  const starts = (window.__pwStarts = []);
+  const start = AudioBufferSourceNode.prototype.start;
+  AudioBufferSourceNode.prototype.start = function (...a) {
+    starts.push(performance.now());
+    return start.apply(this, a);
   };
   const connect = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (dest, ...rest) {
@@ -108,8 +116,9 @@ async function quiet(page) {
  *  stops. The second press is watched in the page, not across round trips
  *  to it (a loaded machine stretches those): the phrase is still sounding
  *  when its keydown lands, the app stops its source after it (`stop()`,
- *  which a phrase that ends by itself never calls), and the output goes
- *  quiet. How long from the keydown to quiet is a budget, 400 ms: the stop
+ *  which a phrase that ends by itself never calls) and starts none (a Space
+ *  that played the phrase again would stop the old one too), and the output
+ *  goes quiet. How long from the keydown to quiet is a budget, 400 ms: the stop
  *  fades in 20 ms, and the analyser's window is 43 ms. `where` names the
  *  moment for the failure message. */
 async function spacePlays(page, where) {
@@ -135,9 +144,14 @@ async function spacePlays(page, where) {
   await expect
     .poll(() => page.evaluate(() => window.__pwStop.quietAt), { timeout: 10_000, message: `the second Space stops it, ${where}` })
     .not.toBeNull();
-  const stop = await page.evaluate(() => ({ ...window.__pwStop, stopped: window.__pwStops.filter((t) => t >= window.__pwStop.at).length }));
+  const stop = await page.evaluate(() => ({
+    ...window.__pwStop,
+    stopped: window.__pwStops.filter((t) => t >= window.__pwStop.at).length,
+    started: window.__pwStarts.filter((t) => t >= window.__pwStop.at).length,
+  }));
   expect(stop.peak, `still sounding when the second Space landed, ${where}`).toBeGreaterThan(-50);
   expect(stop.stopped, `the second Space stopped the phrase, ${where}`).toBeGreaterThan(0);
+  expect(stop.started, `the second Space started no phrase, ${where}`).toBe(0);
   budget(`the second Space → quiet, ${where}`, stop.quietAt - stop.at, 400);
 }
 
