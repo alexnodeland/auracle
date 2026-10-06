@@ -19,7 +19,7 @@ line: the rules are in the `AGENTS.md` files, which other agents read as well.
 | `wasm` | Rebuild `apps/web/pkg`, and know when it is needed |
 | `browser-test` | Run Playwright specs the right way (own port, the browser queue) |
 | `truth-pass` | Find every description of a behaviour you changed and make it true |
-| `changelog` | Write an `[Unreleased]` entry in the house voice |
+| `changelog` | Write a change's entry as `changelog.d/<topic>.md`, in the house voice |
 | `film` | Make or change a film: script, voice, shots, rehearsal, recording, publishing |
 | `ship` | Take one task from its issue to a merged PR: worktree, brief, build, review, PR, CI, merge, clean up ([`docs/process.md`](../docs/process.md)) |
 

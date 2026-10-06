@@ -268,11 +268,14 @@ an alias for notes written before the rename).
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it
-   works, `www/docs/` for what the instrument *does*, `CHANGELOG.md` under
-   `[Unreleased]` for anything user-visible. That section becomes the release
-   notes verbatim when a version is cut (see [Cutting a
-   release](#cutting-a-release)), so write it for someone who has never seen
-   the repo.
+   works, `www/docs/` for what the instrument *does*, and for anything
+   user-visible, a changelog entry as `changelog.d/<topic>.md`, `<topic>`
+   being your branch's ([`changelog.d/README.md`](changelog.d/README.md)
+   says how). It holds what you would have put under `CHANGELOG.md`'s
+   `[Unreleased]`, in a file of its own, so two open PRs never edit the same
+   lines. A release moves it into `CHANGELOG.md`, and it becomes the release
+   notes verbatim (see [Cutting a release](#cutting-a-release)), so write it
+   for someone who has never seen the repo.
    - The reference quotes constants by name so they can be grepped when one
      moves. If you change a default, grep the books for it.
    - `make site && make site-check` before pushing a docs change. CI runs both.
@@ -325,20 +328,32 @@ The steps, in order:
    `[workspace.dependencies]` and in `crates/auracle-wasm/Cargo.toml`. Cargo
    refuses to resolve a path dependency whose version requirement the member no
    longer satisfies, so a half-bump fails loudly at `cargo check` — run it.
-3. **Close the changelog section.** Rename `## [Unreleased]` to `## [X.Y.Z] —
-   YYYY-MM-DD`, write the short paragraph under it that says what this release
-   *is*, and open a fresh empty `## [Unreleased]` above it. This text becomes
-   the release notes verbatim, so write it for someone who has never seen the
-   repo.
+3. **Close the changelog section.** Run
+   `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD` (`--preview`
+   first shows what it will hold). It makes `## [X.Y.Z] - YYYY-MM-DD` newest
+   first, as the rest of the file runs: every entry waiting in `changelog.d/`,
+   the one merged last at the top, then what `## [Unreleased]` held. It
+   deletes those files, leaves `## [Unreleased]` above it with only its note,
+   and prints the order it used. Then write the short paragraph under the new
+   heading that says what this release *is*. This text becomes the release
+   notes verbatim, so write it for someone who has never seen the repo.
 4. **Open a PR for 2 and 3 with the `queue` label, and wait for the queue to
    merge it and for `main` to go green.**
-5. **Tag and push:**
+5. **Tag the release PR's merge commit, and push the tag:**
 
    ```bash
-   git checkout main && git pull
-   git tag -a v0.2.0 -m "Auracle v0.2.0"
-   git push origin v0.2.0
+   git fetch origin
+   git tag -a vX.Y.Z <sha> -m "Auracle vX.Y.Z"
+   git push origin vX.Y.Z
    ```
+
+   `<sha>` is the commit the release PR from step 4 merged as
+   (`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`), not `main`'s
+   tip: a change merged after it ships in the next release. To take one into
+   this release after all, run step 3's command again, with the same version,
+   in a new PR. While `## [X.Y.Z]` is the section under `[Unreleased]` and
+   `vX.Y.Z` isn't tagged, it folds what has merged since into the top of that
+   section. Then tag that PR's merge commit.
 
 6. **Watch the release workflow**, then check the things a green run does not
    prove:
@@ -347,9 +362,11 @@ The steps, in order:
    `/reference/api/`) to confirm the deploy landed and the routes resolve.
 
 The release workflow **fails before building** if the tag and the workspace
-version disagree, or if `CHANGELOG.md` has no section for the tag. Both are
-cheap to hit and expensive to notice later. An asset labelled v0.3.0 whose
-crates all say `0.2.0` is a bug report waiting to happen.
+version disagree, if `CHANGELOG.md` has no section for the tag, or if
+`changelog.d/` still holds an entry (a change the tag ships that its notes
+don't mention). All three are cheap to hit and expensive to notice later. An
+asset labelled v0.3.0 whose crates all say `0.2.0` is a bug report waiting to
+happen.
 
 To rehearse the bundle locally without tagging anything:
 

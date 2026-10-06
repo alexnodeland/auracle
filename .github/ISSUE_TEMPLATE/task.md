@@ -26,7 +26,7 @@ labels: task
 ## Done when
 
 - [ ]
-- [ ] Descriptions true (guide, reference, in-app copy, CHANGELOG)
+- [ ] Descriptions true (guide, reference, in-app copy, a changelog entry in `changelog.d/`)
 - [ ] Merged on a green `CI` check
 
 ## Depends on

@@ -8,6 +8,10 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+Changes not yet released wait in [`changelog.d/`](changelog.d/), one file
+each, until a release moves them here. Any listed in this section were
+written before that folder existed.
+
 ### Fixed: a toast about your sounds isn't dropped for waiting its turn
 
 - **A toast that says what happened to your sounds is no longer dropped for

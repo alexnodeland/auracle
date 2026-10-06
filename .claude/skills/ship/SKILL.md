@@ -106,8 +106,8 @@ git -C "$WT" rebase --onto origin/main <the one ahead's last head>
 ```
 
 Don't push it stacked on the open one: once that one squash-merges, a branch
-still carrying its commits conflicts wherever both changed the same lines
-(`CHANGELOG.md`, nearly always), and the queue can't rebase it. Any other
+still carrying its commits conflicts wherever both changed the same lines,
+and the queue can't rebase it. Any other
 branch goes up now, based on `main`: the queue brings it up to date when it
 reaches the front. Otherwise rebase only to resolve a conflict.
 

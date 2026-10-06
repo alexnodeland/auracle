@@ -120,12 +120,15 @@ text it illustrates.
 
 ## 7. Changelog, then the PR
 
-Add under `[Unreleased]` in `CHANGELOG.md`, with the published lengths
-filled in (`publish.py` prints them):
+Write it as the branch's changelog entry, `changelog.d/<topic>.md` (the
+`changelog` skill), with the published lengths filled in (`publish.py`
+prints them). An entry opens with its `### Kind: title` heading:
 
 ```markdown
-And five films of the instrument itself, recorded in the real app in a
-seeded session, so every name and number on screen is one you would see:
+### Added: five films of the instrument itself
+
+Recorded in the real app in a seeded session, so every name and number on
+screen is one you would see:
 
 - **A tour of Auracle** (m:ss): the four views, the bank, the dock and a
   first visit. The warm start's "▶ new here? take the tour" opens it, and so

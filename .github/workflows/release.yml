@@ -42,6 +42,19 @@ jobs:
             echo "::error::CHANGELOG.md has no '## [$TAG_VER]' section — a release with no notes is not a release"
             exit 1
           fi
+          # `scripts/changelog.py --release` moved every entry waiting in
+          # changelog.d/ into that section. One still there is a change this
+          # tag ships that its notes don't mention: tag the release PR's
+          # merge commit, or fold the entry in first by running `--release`
+          # again with this version (CONTRIBUTING.md § Cutting a release).
+          left=""
+          for f in changelog.d/*.md; do
+            if [ -e "$f" ] && [ "$f" != changelog.d/README.md ]; then left="$left $f"; fi
+          done
+          if [ -n "$left" ]; then
+            echo "::error::changelog.d/ still holds entries that no release notes mention:$left"
+            exit 1
+          fi
 
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version

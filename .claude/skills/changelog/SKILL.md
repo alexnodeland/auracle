@@ -1,21 +1,39 @@
 ---
 name: changelog
 description: >
-  Write Auracle's CHANGELOG.md entries under [Unreleased] in the house voice (www/brand/voice.md):
-  for someone who has never seen the repo, saying what was wrong and what is
-  true now. Use for any user-visible change.
+  Write a change's changelog entry as changelog.d/<topic>.md, in Auracle's
+  house voice (www/brand/voice.md): for someone who has never seen the repo,
+  saying what was wrong and what is true now. Use for any user-visible change.
 ---
 
 # Changelog entries
 
-`CHANGELOG.md`'s `[Unreleased]` section becomes the release notes verbatim, so
-write for a player or a newcomer, not for the diff.
+A change writes its entry as a file of its own, `changelog.d/<topic>.md`, and
+never edits `CHANGELOG.md`: when every PR added to the top of `[Unreleased]`,
+any two open PRs conflicted there, and the merge queue sends back a PR it
+can't rebase. A release moves the files into `CHANGELOG.md`, newest first as
+the rest of the file runs (`scripts/changelog.py --release`), and that section
+becomes the release notes verbatim, so write for a player or a newcomer, not
+for the diff.
+
+## Where
+
+- `<topic>` is the branch's: `claude/<topic>` writes `changelog.d/<topic>.md`.
+- The file holds exactly what would have gone under `[Unreleased]`: one or
+  more `###` sections, each with its bullets. Nothing comes before the first
+  heading, and there is no `#` or `##` heading.
+- Write your own file. Don't add to another change's file, or to the entries
+  already under `[Unreleased]` (they were written before `changelog.d/`, and
+  stay as they are).
+- [`changelog.d/README.md`](../../../changelog.d/README.md) is the short
+  version of this, for a human contributor.
 
 ## Shape
 
 - Sections are `### Added: <theme>`, `### Changed: <theme>`,
-  `### Fixed: <theme>`, grouping related entries under one theme. No em
-  dashes ([`www/brand/voice.md`](../../../www/brand/voice.md)).
+  `### Fixed: <theme>` (the assembler also knows Removed and Renamed),
+  grouping related entries under one theme. No em dashes
+  ([`www/brand/voice.md`](../../../www/brand/voice.md)).
 - Each entry is a bullet that opens with a **bold sentence saying what is true
   now**, then what was wrong before and why it matters, in one or two
   sentences.
@@ -36,16 +54,26 @@ write for a player or a newcomer, not for the diff.
 
 ## Example
 
+`changelog.d/bank-row-cut.md`:
+
 ```markdown
+### Fixed: the bank's cut
+
 - **A bank row's cut appears on approach again.** Its reveal rules were less
   specific than the rule that hides it, so cut could never be seen or pressed
   (`bank_row.spec.js`).
 ```
 
-## Where
+## Check it
 
-Add to an existing theme heading when one fits (for instance the film-found
-fixes); otherwise start a new `###` section near the top of `[Unreleased]`.
+- `python3 scripts/changelog.py --check`: the file's shape, with the file and
+  line of anything wrong, and that `[Unreleased]` in `CHANGELOG.md` still
+  holds only its note above the older entries.
+- `python3 www/checkwords.py`: the voice. The file is new, so any banned word,
+  em dash or British spelling in it fails.
+- `make dev-check` runs both, and CI runs both on every PR.
+- `python3 scripts/changelog.py --preview` prints `[Unreleased]` as the next
+  release would hold it, with every waiting entry in.
 
 ## When not
 
