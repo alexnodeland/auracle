@@ -493,11 +493,22 @@ jobs:
     needs: [changes, engine, site]
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     # The tag is the lockfile's Playwright, read by the engine job.
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
       options: --ipc=host --init
+    # The six tests take about a minute; at the config's 90 s each, all six
+    # hung would take nine. AURACLE_GLOBAL_TIMEOUT_MIN is Playwright's global
+    # timeout (tests/web/playwright.config.js), five minutes under the job's
+    # limit for the setup (the image's pull, which only this limit bounds,
+    # and npm ci, cut at three) and the upload, as on the browser tier's
+    # runners. Playwright then stops the run itself and its traces are kept,
+    # rather than the job being cancelled with none. Unlike those runners,
+    # no shard.mjs interrupts it first, so a test still running at the limit
+    # is reported as not run. The two numbers move together.
+    timeout-minutes: 15
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -513,11 +524,15 @@ jobs:
       - name: Boot the instrument in a browser and exercise its failure flows
         run: cd tests/web && npm run --silent smoke
 
+      # Always, a cancelled or timed-out job's too: test-results/ holds a
+      # failed test's trace and nothing when every test passed (the config
+      # keeps traces on failure only), so a green run uploads nothing. Named
+      # for the attempt, so a re-run's traces never collide with the first's.
       - name: Keep the trace of a failed boot
-        if: failure()
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: smoke-test-results-${{ github.sha }}
+          name: smoke-test-results-${{ github.sha }}-${{ github.run_attempt }}
           path: tests/web/test-results/
           if-no-files-found: ignore
 
