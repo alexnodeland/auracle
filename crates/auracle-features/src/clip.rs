@@ -691,12 +691,10 @@ fn synthesize_reference(sr: f64, frames: usize) -> AuditionClip {
             *slot += PICK_LEVEL * p.vel * libm::exp(-t / PICK_TAU) * white();
         }
     }
+    // Never zero: the first pluck's pick sounds from the figure's first
+    // sample, and `reference` asks for at least one.
     let peak = out.iter().fold(0.0f64, |m, s| m.max(s.abs()));
-    let scale = if peak > 0.0 {
-        REFERENCE_PEAK / peak
-    } else {
-        0.0
-    };
+    let scale = REFERENCE_PEAK / peak;
     let mono: Vec<f32> = out.iter().map(|s| quantize((s * scale) as f32)).collect();
     AuditionClip::assemble(vec![mono], sr, ClipSource::Reference)
 }
