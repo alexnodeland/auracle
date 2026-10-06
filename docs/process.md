@@ -411,7 +411,16 @@ it is queued.
 
 ## Releases and publishing
 
-Cutting a release is in [`CONTRIBUTING.md` § Cutting a release](../CONTRIBUTING.md#cutting-a-release).
+A release is cut by the *Prepare release* workflow
+(`.github/workflows/prepare-release.yml`), run by the operator on `main`: it
+works out the version from the PR titles merged since the last tag, bumps
+it, closes the changelog's section and opens the release PR. The operator
+writes the paragraph that says what the release is, pushes it to the release
+branch (that push starts the PR's `CI` and `PR checks`, which a PR the
+workflow opens with its own token doesn't get), and queues the PR. When it
+merges, the workflow tags its merge commit and starts `release.yml`, which
+publishes the release. The steps are in
+[`CONTRIBUTING.md` § Cutting a release](../CONTRIBUTING.md#cutting-a-release).
 Publishing anything outside this repository (a crate, an npm package, a
 release of quiver or fugue) is confirmed with the maintainer each time, even
 when the change that needs it was approved.

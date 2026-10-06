@@ -350,13 +350,18 @@ PR.
 
 ## Cutting a release
 
-A release is **one gesture: push a `vX.Y.Z` tag on the release PR's merge
-commit.** One workflow watches that tag and nothing else has to be done by
-hand:
+A release is **one run of the *Prepare release* workflow, one paragraph, and
+one queued PR.** Workflows do the rest:
 
+- [`prepare-release.yml`](.github/workflows/prepare-release.yml) works out
+  the version, bumps it, closes the changelog's section and opens the release
+  PR. When that PR merges, it tags the merge commit `vX.Y.Z` and starts
+  `release.yml` on the tag.
 - [`release.yml`](.github/workflows/release.yml) builds the wasm through the
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
-  the GitHub Release with the changelog section as its notes.
+  the GitHub Release: the changelog's section as its notes, and under it every
+  PR merged since the last release, grouped by its title's type, each with its
+  author.
 
 CI's deploy job ([`ci.yml`](.github/workflows/ci.yml)) publishes the live site —
 the landing page, the instrument at `/play/`, and both books — from the build
@@ -373,47 +378,61 @@ own (`.mergify.yml`): the merge queue tests it alone and merges it alone, never
 in a batch. So its merge commit's tree is exactly the tree the queue's full
 gate tested, and that commit is the one to tag.
 
+**The version** comes from the PR titles merged since the last tag
+(`scripts/release.py`): a `feat` moves the minor, a `fix` or `perf` the patch,
+and a `!` after the type the major, except that while the major is 0 it moves
+the minor, the number that says "not compatible" in 0.x (as Cargo reads a
+version requirement). Any other type alone makes a patch. A title with no type
+(most of those from before October 2026) moves nothing. Another version, 1.0
+for one, is asked for with the workflow's `version` input.
+
 The steps, in order:
 
-1. **Land everything first.** The tag goes on the release PR's merge commit,
-   which the queue's full gate tested. The release workflow does not re-run
-   the test suite, it packages what is already there.
-2. **Bump the version** in the workspace `Cargo.toml`: `[workspace.package]
-   version`, *and* the `version = "…"` on each intra-workspace dependency in
-   `[workspace.dependencies]` and in `crates/auracle-wasm/Cargo.toml`. Cargo
-   refuses to resolve a path dependency whose version requirement the member no
-   longer satisfies, so a half-bump fails loudly at `cargo check` — run it.
-3. **Close the changelog section.** Run
-   `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD` (`--preview`
-   first shows what it will hold). It makes `## [X.Y.Z] - YYYY-MM-DD` newest
-   first, as the rest of the file runs: every entry waiting in `changelog.d/`,
-   the one merged last at the top, then what `## [Unreleased]` held. It
-   deletes those files, leaves `## [Unreleased]` above it with only its note,
-   and prints the order it used. Then write the short paragraph under the new
-   heading that says what this release *is*. This text becomes the release
-   notes verbatim, so write it for someone who has never seen the repo.
-4. **Open a PR for 2 and 3 with the `release` and `queue` labels**, titled
-   `release: X.Y.Z` and with its issue lines (`Refs #N` for an issue that
-   tracks the release, or `No issue: the X.Y.Z release`), queue it
-   (`@mergifyio queue`, until the label alone does: `docs/process.md` § CI and
-   merging), and wait for the queue to merge it. The operator creates the
-   `release` label once.
-5. **Tag the release PR's merge commit, and push the tag:**
-
-   ```bash
-   git fetch origin
-   git tag -a vX.Y.Z <sha> -m "Auracle vX.Y.Z"
-   git push origin vX.Y.Z
-   ```
-
-   `<sha>` is the commit the release PR from step 4 merged as
-   (`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`), not `main`'s
-   tip: a change merged after it ships in the next release. To take one into
-   this release after all, run step 3's command again, with the same version,
-   in a new PR, labelled `release` too. While `## [X.Y.Z]` is the section
-   under `[Unreleased]` and `vX.Y.Z` isn't tagged, it folds what has merged
-   since into the top of that section. Then tag that PR's merge commit.
-
+1. **Land everything first.** The release ships what is on `main` when the
+   workflow runs.
+2. **Run *Prepare release*** on `main`, from the Actions tab or with
+   `gh workflow run prepare-release.yml` (`-f version=X.Y.Z` to choose the
+   version; `-f dry_run=true` to see the plan, what the PR would hold and the
+   list under the notes, with nothing pushed). Locally,
+   `python3 scripts/release.py plan --notes` says the same. The workflow:
+   - picks the version as above, and says why in its summary;
+   - bumps it everywhere the workspace writes it: `[workspace.package]
+     version` in `Cargo.toml`, the `version = "…"` on each intra-workspace
+     dependency in `[workspace.dependencies]` and in
+     `crates/auracle-wasm/Cargo.toml`, and each crate's entry in `Cargo.lock`
+     (`python3 scripts/release.py bump X.Y.Z`). Cargo refuses a path
+     dependency whose version requirement the member no longer satisfies, so
+     a half-bump fails loudly, and the workflow checks the lock agrees
+     (`cargo update --workspace --locked`);
+   - closes the changelog's section with
+     `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD` (`--preview`
+     shows what it will hold). It makes `## [X.Y.Z] - YYYY-MM-DD` newest
+     first, as the rest of the file runs: every entry waiting in
+     `changelog.d/`, the one merged last at the top, then what
+     `## [Unreleased]` held. It deletes those files and leaves
+     `## [Unreleased]` above it with only its note;
+   - opens the release PR from `release/X.Y.Z`, titled `release: X.Y.Z`,
+     labelled `release` and `queue`, its body saying what it holds and ending
+     `No issue: the X.Y.Z release`.
+3. **Write the paragraph** under `## [X.Y.Z]` that says what this release
+   *is*, commit it on `release/X.Y.Z`, and push it. This text becomes the
+   release notes verbatim, so write it for someone who has never seen the
+   repo. The push also starts the PR's `CI` and `PR checks`: a PR opened with
+   a workflow's own token starts no workflow (GitHub's rule), and the
+   repository has no app or token of its own to open it with. With nothing to
+   write, close the PR and reopen it, which starts them too.
+4. **Queue it** (`@mergifyio queue`, until the label alone does:
+   `docs/process.md` § CI and merging), and wait for the queue to merge it.
+5. **The tag follows.** When the PR merges, the workflow checks its merge
+   commit (`python3 scripts/release.py verify vX.Y.Z`: the workspace at
+   X.Y.Z everywhere, the section in `CHANGELOG.md`, `changelog.d/` empty),
+   tags it `vX.Y.Z`, and starts `release.yml` on the tag. The merge commit,
+   not `main`'s tip: a change merged after it ships in the next release. An
+   entry that merged while the release PR waited fails that check, and
+   nothing is tagged. Run *Prepare release* again: while `## [X.Y.Z]` is the
+   section under `[Unreleased]` and `vX.Y.Z` isn't tagged, it takes the same
+   version and folds what has merged since into the top of that section,
+   keeping its paragraph, and the tag follows that PR's merge.
 6. **Watch the release workflow**, then check the things a green run does not
    prove:
    download the attached zip, serve it, and confirm the app boots from the
@@ -422,11 +441,33 @@ The steps, in order:
    the deploy landed and the routes resolve.
 
 The release workflow **fails before building** if the tag and the workspace
-version disagree, if `CHANGELOG.md` has no section for the tag, or if
-`changelog.d/` still holds an entry (a change the tag ships that its notes
-don't mention). All three are cheap to hit and expensive to notice later. An
-asset labelled v0.3.0 whose crates all say `0.2.0` is a bug report waiting to
-happen.
+version disagree anywhere it is written, if `CHANGELOG.md` has no section for
+the tag, or if `changelog.d/` still holds an entry (a change the tag ships that
+its notes don't mention). All three are cheap to hit and expensive to notice
+later. An asset labelled v0.3.0 whose crates all say `0.2.0` is a bug report
+waiting to happen.
+
+Opening the PR needs *Allow GitHub Actions to create and approve pull
+requests* on (Settings → Actions → General), which the maintainer turns on
+once. Without it the workflow pushes the branch and fails, and its summary
+gives the `gh pr create` command and the body; a PR opened that way starts
+its checks itself.
+
+**By hand**, should the workflow be unable to: each of its steps is one
+command (`python3 scripts/release.py bump X.Y.Z`, then `changelog.py
+--release`, then a PR as any other, titled `release: X.Y.Z` and labelled
+`release`), and its merge is tagged as in step 5. A tag pushed by hand on the
+release PR's merge commit starts `release.yml` too, for a merge the workflow
+couldn't tag:
+
+```bash
+git fetch origin
+git tag -a vX.Y.Z <sha> -m "Auracle vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+`<sha>` is the commit the release PR merged as
+(`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`).
 
 To rehearse the bundle locally without tagging anything:
 

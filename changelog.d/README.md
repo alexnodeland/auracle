@@ -14,9 +14,10 @@ change, so two open PRs never edit the same lines.
   and on every PR) and `python3 www/checkwords.py` (the voice).
   `python3 scripts/changelog.py --preview` prints `[Unreleased]` with every
   file here folded in.
-- **At a release,** `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD`
-  moves them into `CHANGELOG.md` newest first, as the file runs (the one
-  merged last at the top), and deletes them
+- **At a release,** the *Prepare release* workflow runs
+  `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD`, which moves them
+  into `CHANGELOG.md` newest first, as the file runs (the one merged last at
+  the top), and deletes them
   ([`CONTRIBUTING.md` § Cutting a release](../CONTRIBUTING.md#cutting-a-release)).
 
 This README is not an entry: the assembler and the voice check skip it.
