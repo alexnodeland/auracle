@@ -1492,33 +1492,81 @@ fn default_filter_over(inner: term::AudioNode) -> term::AudioNode {
     }
 }
 
-/// Deeper patches pay more prior mass — parsimony is the grammar itself.
+/// **Every level of nesting costs the same prior mass**, and it is a cost:
+/// parsimony is the grammar itself, not a size penalty (the reference's
+/// *Parsimony is the prior*). Each level wraps the patch in one more filter,
+/// so it multiplies in one more `#leaf` that came out "processor", the
+/// filter's kind and its own sites, and nothing else; below the depth at
+/// which `#leaf` is forced, every level's cost is the same number.
 #[test]
-fn prior_penalizes_depth() {
+fn every_level_of_nesting_costs_the_same_prior_mass() {
+    let prior = PatchGrammarPrior::default();
+    let mut tree = presets::presets()[0].1.clone();
+    tree.root = term::AudioNode::Vco {
+        uid: Uid::NEW,
+        wave: term::Waveform::Saw,
+        octave: 0,
+        detune: 0.5,
+        mod_depth: 0.0,
+        modulation: term::ModNode::None,
+    };
+    let mut scores = vec![log_prior(&prior, &tree)];
+    // The oscillator stays above `max_depth`, where its `#leaf` is drawn.
+    while tree.root.depth() < prior::PRIOR_MAX_DEPTH {
+        tree.root = default_filter_over(tree.root);
+        scores.push(log_prior(&prior, &tree));
+    }
+    let costs: Vec<f64> = scores.windows(2).map(|w| w[0] - w[1]).collect();
+    assert_eq!(costs.len(), prior::PRIOR_MAX_DEPTH - 1);
+    for c in &costs {
+        assert!(
+            c.is_finite() && *c > 1.0,
+            "a level costs {c} nats: {costs:?}"
+        );
+        assert!(
+            (c - costs[0]).abs() < 1e-9,
+            "levels cost differently: {costs:?}"
+        );
+    }
+}
+
+/// **Small patches are what the prior draws most**: with a `#leaf` that
+/// comes out "source" at `source_prob` (0.4), four draws in ten are a lone
+/// source, more than half hold at most two modules, and the median holds
+/// two. A parsimony regression (a leaf probability lowered, processor
+/// weights that favour the binary kinds) moves these first.
+///
+/// The bands come from a sweep: 400 draws on each of seeds 0 to 39 put the
+/// lone-source share between 0.357 and 0.475 (binomial σ ≈ 0.024 around
+/// 0.4), the share of size ≤ 2 between 0.540 and 0.688, and the median at 2
+/// on every seed.
+#[test]
+fn the_prior_draws_small_patches_most_often() {
     let prior = PatchGrammarPrior::default();
     let mut rng = StdRng::seed_from_u64(5);
-    let mut sized: Vec<(usize, f64)> = Vec::new();
-    for _ in 0..300 {
-        let (tree, trace) = draw(&prior, &mut rng);
-        sized.push((tree.root.size(), trace.log_prior));
-    }
-    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
-    let small: Vec<f64> = sized
-        .iter()
-        .filter(|(s, _)| *s <= 2)
-        .map(|(_, lp)| *lp)
+    let n = 400;
+    let mut sizes: Vec<usize> = (0..n)
+        .map(|_| draw(&prior, &mut rng).0.root.size())
         .collect();
-    let large: Vec<f64> = sized
-        .iter()
-        .filter(|(s, _)| *s >= 5)
-        .map(|(_, lp)| *lp)
-        .collect();
-    assert!(!small.is_empty() && !large.is_empty());
+    sizes.sort_unstable();
+    let share =
+        |keep: fn(usize) -> bool| sizes.iter().filter(|&&s| keep(s)).count() as f64 / n as f64;
+    let lone = share(|s| s == 1);
     assert!(
-        mean(&small) > mean(&large),
-        "small patches {} should out-mass large ones {}",
-        mean(&small),
-        mean(&large)
+        (lone - prior.source_prob).abs() < 0.085,
+        "{lone:.3} of draws are a lone source; `#leaf` is drawn at {}",
+        prior.source_prob
+    );
+    let small = share(|s| s <= 2);
+    assert!(
+        (0.5..0.75).contains(&small),
+        "{small:.3} of draws hold at most two modules"
+    );
+    assert_eq!(
+        sizes[n / 2],
+        2,
+        "the median draw holds {} modules",
+        sizes[n / 2]
     );
 }
 
