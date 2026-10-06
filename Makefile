@@ -170,9 +170,10 @@ sound:
 	@python3 www/brand/sound.py
 
 ## web-check: every web module parses (js-check), the pure-logic modules'
-## unit tests pass, and the browser specs pass their lint (spec-lint)
+## unit tests pass, the browser specs pass their lint (spec-lint), and CI's
+## file-issue action picks the issue it should (.github/actions/file-issue)
 web-check: js-check spec-lint
-	node --test apps/web/tests/*.test.mjs
+	node --test apps/web/tests/*.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no

@@ -1,16 +1,36 @@
 name: File an issue
 description: >
   A failure on main nobody is watching, filed as an issue: one open issue per
-  title, commented on by every further failing run until someone closes it.
-  The job needs `permissions: issues: write`.
+  title, commented on by every further failing run until someone closes it;
+  or, given an issue's number, a comment on that issue (a quarantined test's
+  own). The job needs `permissions: issues: write`, and checks out first (the
+  script is file-issue.js, beside this file).
 
 inputs:
   title:
-    description: "The issue's title, which is also how a later run finds it"
-    required: true
+    description: "The issue's title, which is also how a later run finds it; not used with `issue`"
+    required: false
+    default: ""
+  issue:
+    description: "An issue's number to comment on instead, whatever its title; nothing is opened"
+    required: false
+    default: ""
   results:
-    description: "toJSON(needs) of the calling job: the failed jobs are named"
-    required: true
+    description: "toJSON(needs) of the calling job: the failed jobs are named (unless `failed` says what failed)"
+    required: false
+    default: "{}"
+  failed:
+    description: "What failed, in place of the jobs `results` names (markdown, one line)"
+    required: false
+    default: ""
+  detail:
+    description: "Markdown under that line: what the failure said"
+    required: false
+    default: ""
+  labels:
+    description: "Labels for an issue this opens, comma-separated"
+    required: false
+    default: ""
   advice:
     description: "What to do about it, after the run's link"
     required: true
@@ -27,36 +47,15 @@ runs:
     - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
         TITLE: ${{ inputs.title }}
+        ISSUE: ${{ inputs.issue }}
         RESULTS: ${{ inputs.results }}
+        FAILED: ${{ inputs.failed }}
+        DETAIL: ${{ inputs.detail }}
+        LABELS: ${{ inputs.labels }}
         ADVICE: ${{ inputs.advice }}
         RUN: ${{ inputs.run }}
+        SCRIPT: ${{ github.action_path }}/file-issue.js
       with:
         script: |
-          const title = process.env.TITLE;
-          const { owner, repo } = context.repo;
-          const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-          const results = JSON.parse(process.env.RESULTS);
-          const failed = Object.entries(results)
-            .filter(([, v]) => v.result === "failure")
-            .map(([k]) => `\`${k}\``)
-            .join(", ");
-          const why = process.env.RUN || (context.eventName === "schedule" ? "The nightly run" : "The push");
-          const body = [
-            `${why} at ${context.sha.slice(0, 7)} failed: ${failed}.`,
-            "",
-            `Run: ${run}`,
-            "",
-            process.env.ADVICE,
-          ].join("\n");
-
-          const open = await github.paginate(github.rest.issues.listForRepo, {
-            owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
-          });
-          const existing = open.find((i) => i.title === title && !i.pull_request);
-          if (existing) {
-            await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
-            core.info(`commented on #${existing.number}`);
-          } else {
-            const { data } = await github.rest.issues.create({ owner, repo, title, body });
-            core.info(`opened #${data.number}`);
-          }
+          const { fileIssue } = require(process.env.SCRIPT);
+          await fileIssue({ github, context, core });
