@@ -10,70 +10,41 @@
 // first). A tapped view is remembered across a reload, and PATCH's old LEANS
 // switch, left on, comes back as one. Its words say "the model view", never
 // "lens" (www/brand/voice.md).
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab, modelView } = require("./shell");
+const { test, expect, goLevel, bankTab, modelView } = require("./fixtures");
 const { rackAtRest } = require("./patch_page");
 const fs = require("fs");
 const path = require("path");
 
 const PKG = path.join(__dirname, "..", "..", "apps", "web", "pkg", "auracle_wasm_bg.wasm");
 
+/** ⌥ held past the model view's hold (220 ms, apps/web/shell.js
+ *  `MODEL_HOLD_MS`): the gesture that raises it. */
+const ALT_HELD_MS = 400;
+
+// Every time the page wore the model view, however briefly.
 const INIT = `(() => {
-  const Orig = window.Worker;
-  window.__pwCounts = {};
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      window.__pwEngine = w;
-      w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (d && d.type) window.__pwCounts[d.type] = (window.__pwCounts[d.type] || 0) + 1;
-        if (d && d.type === "duel_pred" && d.pre) window.__pwPre = (window.__pwPre || 0) + 1;
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  // Every time the page wore the model view, however briefly.
   window.__pwModelSeen = 0;
   const watch = () => new MutationObserver(() => {
     if (document.body.classList.contains("model-view")) window.__pwModelSeen += 1;
   }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   if (document.body) watch();
   else document.addEventListener("DOMContentLoaded", watch);
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured"]) localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page) {
+/** Seeded, with the tours seen and the warm start not (the fixture's
+ *  `app.boot`, which also runs AURACLE_CPU_THROTTLE's slower page and
+ *  engine), the model view watched. */
+async function boot(page, app) {
   expect(fs.existsSync(PKG), `no built engine at ${PKG}: run \`make wasm\` first`).toBe(true);
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript(INIT);
-  // AURACLE_CPU_THROTTLE=4 runs the page's main thread four times slower
-  // (CDP), as patch_page.js's boot does, so a race a slower runner loses
-  // (a press aimed at a rack still moving) shows up on a fast machine.
-  const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
-  if (rate > 1) {
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
-  }
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  return errors;
+  await app.boot({ warmed: false });
 }
 
 /** The warm start's three picks, which fit the model, and a full pool. */
-async function fitted(page) {
-  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 60_000 });
-  const cards = page.locator(".warm-cell .warm-item");
-  for (const i of [1, 4, 7]) await cards.nth(i).click();
-  await page.locator("#warm-go").click();
-  await page.waitForFunction(() => (window.__pwCounts.fitted || 0) > 0, null, { timeout: 150_000 });
+async function fitted(page, app) {
+  await app.warmStart([1, 4, 7]);
   await bankTab(page, "pool");
-  await expect.poll(() => rowIds(page), { timeout: 120_000 }).toHaveLength(40);
+  await app.poolRows(40);
 }
 
 const rowIds = (page) =>
@@ -82,10 +53,9 @@ const pcts = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item[data-id] .bi-pct")].map((e) => parseInt(e.textContent, 10)));
 const body = (page) => page.locator("body");
 
-test("holding ⌥ shows each row's guess and the pool in the order it rates them; letting go puts the order back", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page);
-  await fitted(page);
+test("holding ⌥ shows each row's guess and the pool in the order it rates them; letting go puts the order back", async ({ page, app }) => {
+  await boot(page, app);
+  await fitted(page, app);
   await page.mouse.move(700, 450);
   // At rest: no guess drawn, and the pool in the order its sounds joined it.
   const rest = await rowIds(page);
@@ -112,12 +82,10 @@ test("holding ⌥ shows each row's guess and the pool in the order it rates them
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
   await expect(page.locator("#bank-list .bank-item[data-id] .bi-pct").first()).toBeHidden();
   expect(await rowIds(page), "letting go puts the order back").toEqual(rest);
-  expect(errors).toEqual([]);
 });
 
-test("⌥ and an arrow move a level and never flash the model view", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("⌥ and an arrow move a level and never flash the model view", async ({ page, app }) => {
+  await boot(page, app);
   await page.locator("#warm-skip").click();
   await expect(page.locator(".rail-stop[data-level=perform]")).toHaveAttribute("aria-current", "location");
   await page.evaluate(() => { window.__pwModelSeen = 0; });
@@ -135,16 +103,14 @@ test("⌥ and an arrow move a level and never flash the model view", async ({ pa
     send("keyup", "ArrowUp", "ArrowUp");
   });
   await expect(page.locator(".rail-stop[data-level=taste]")).toHaveAttribute("aria-current", "location");
-  await page.waitForTimeout(600);
+  await app.quiet();
   expect(await page.evaluate(() => window.__pwModelSeen), "the model view showed during ⌥↑").toBe(0);
   await key("keyup", "Alt", "AltLeft", false);
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
-  expect(errors).toEqual([]);
 });
 
-test("a tap on MODEL keeps the model view until a second tap or Esc; a press held on it shows it only while held", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("a tap on MODEL keeps the model view until a second tap or Esc; a press held on it shows it only while held", async ({ page, app }) => {
+  await boot(page, app);
   await page.locator("#warm-skip").click();
   const btn = page.locator("#model-btn");
   await btn.click();
@@ -154,7 +120,8 @@ test("a tap on MODEL keeps the model view until a second tap or Esc; a press hel
   // A held ⌥ and its release do not end a view that was tapped on.
   await page.mouse.move(700, 450);
   await page.keyboard.down("Alt");
-  await page.waitForTimeout(400);
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- ⌥ held past the model view's hold, a gesture
+  await page.waitForTimeout(ALT_HELD_MS);
   await page.keyboard.up("Alt");
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
   await btn.click();
@@ -180,26 +147,24 @@ test("a tap on MODEL keeps the model view until a second tap or Esc; a press hel
   await expect(btn).toHaveAttribute("aria-pressed", "false");
   await page.mouse.up();
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
-  await page.waitForTimeout(400);
+  await app.quiet();
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
-  expect(errors).toEqual([]);
 });
 
-test("a text field and a modal dialog keep ⌥, and the window going away ends a held model view", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("a text field and a modal dialog keep ⌥, and the window going away ends a held model view", async ({ page, app }) => {
+  await boot(page, app);
   // The warm start is a modal dialog: ⌥ held under it shows nothing.
-  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
   await page.evaluate(() => { window.__pwModelSeen = 0; });
   await page.keyboard.down("Alt");
-  await page.waitForTimeout(600);
+  await app.quiet();
   await page.keyboard.up("Alt");
   expect(await page.evaluate(() => window.__pwModelSeen), "the model view showed under a modal dialog").toBe(0);
   await page.locator("#warm-skip").click();
   // Find a sound is a text field: ⌥ is its own there (it moves by word).
   await page.locator("#bank-find").focus();
   await page.keyboard.down("Alt");
-  await page.waitForTimeout(600);
+  await app.quiet();
   await page.keyboard.up("Alt");
   expect(await page.evaluate(() => window.__pwModelSeen), "the model view showed from a text field").toBe(0);
   // Held, then the window loses focus: the keyup will never come, so it ends.
@@ -210,13 +175,11 @@ test("a text field and a modal dialog keep ⌥, and the window going away ends a
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
   await page.keyboard.up("Alt");
-  expect(errors).toEqual([]);
 });
 
-test("under the model view TASTE shows its side of the toggle, and EVOLVE its guess on the card it favours", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page);
-  await fitted(page);
+test("under the model view TASTE shows its side of the toggle, and EVOLVE its guess on the card it favours", async ({ page, app }) => {
+  await boot(page, app);
+  await fitted(page, app);
   // TASTE: the toggle on its TASTE side while the view is up, and back.
   await goLevel(page, "taste");
   const tog = page.locator("#taste-tog");
@@ -234,26 +197,24 @@ test("under the model view TASTE shows its side of the toggle, and EVOLVE its gu
   // come out of hiding (their visibility: a badge is empty when no style
   // claims its sound, so its text is not what is checked).
   await goLevel(page, "evolve");
-  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
   await expect(page.locator(".duel-guess:visible")).toHaveCount(0);
   await expect(page.locator("#style-a")).toHaveCSS("visibility", "hidden");
   await modelView(page, true);
   const guess = page.locator(".duel-guess:visible");
-  await expect(guess).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(guess).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(guess).toHaveText(/^it guesses this · \d+% · (a hunch|leaning|fairly sure)$/);
-  expect(await page.evaluate(() => window.__pwPre || 0)).toBeGreaterThan(0);
+  expect((await app.replies("duel_pred", { where: { pre: true } })).length).toBeGreaterThan(0);
   await expect(page.locator("#style-a")).toHaveCSS("visibility", "visible");
   // Picked: the line after the pick says it, and the guess before it goes.
   await page.locator("#choose-a").click();
   await expect(page.locator("#duel-pred")).toHaveText(/^it guessed (this|the other) · /, { timeout: 15_000 });
   await modelView(page, false);
   await expect(page.locator(".duel-guess:visible")).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
-test("the model view's words say what it is, never a lens", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("the model view's words say what it is, never a lens", async ({ page, app }) => {
+  await boot(page, app);
   await page.locator("#warm-skip").click();
   await modelView(page, true);
   await expect(page.locator("#model-tag .mt-voice")).not.toHaveText("");
@@ -264,17 +225,15 @@ test("the model view's words say what it is, never a lens", async ({ page }) => 
   ].join("\n"));
   expect(copy).not.toMatch(/\blens\b/i);
   await expect(page.locator("#model-btn")).toHaveAttribute("title", /the model view/i);
-  expect(errors).toEqual([]);
 });
 
-test("in PATCH Esc closes what is nearer before it ends a tapped model view, and a tapped view is remembered across a reload", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("in PATCH Esc closes what is nearer before it ends a tapped model view, and a tapped view is remembered across a reload", async ({ page, app }) => {
+  await boot(page, app);
   await page.locator("#warm-skip").click();
   await goLevel(page, "patch");
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Reese" }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText("Reese", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Reese", { timeout }), { ms: 60_000 });
   const btn = page.locator("#model-btn");
   await btn.click();
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
@@ -306,15 +265,12 @@ test("in PATCH Esc closes what is nearer before it ends a tapped model view, and
   // Tapped on, and the page reloaded: still up, as a tap (MODEL pressed).
   await btn.click();
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
-  await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+  await app.reload();
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
   await expect(btn).toHaveAttribute("aria-pressed", "true");
-  expect(errors).toEqual([]);
 });
 
-test("PATCH's old LEANS switch, left on, comes back as a tapped model view, once", async ({ page }) => {
-  test.setTimeout(180_000);
+test("PATCH's old LEANS switch, left on, comes back as a tapped model view, once", async ({ page, app }) => {
   await page.addInitScript(() => {
     try {
       if (!sessionStorage.getItem("pw-seeded")) {
@@ -323,10 +279,9 @@ test("PATCH's old LEANS switch, left on, comes back as a tapped model view, once
       }
     } catch (_) {}
   });
-  const errors = await boot(page);
+  await boot(page, app);
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
   await expect(page.locator("#model-btn")).toHaveAttribute("aria-pressed", "true");
   const keys = await page.evaluate(() => ({ old: localStorage.getItem("auracle-belief"), now: localStorage.getItem("auracle-model-view") }));
   expect(keys).toEqual({ old: null, now: "1" });
-  expect(errors).toEqual([]);
 });

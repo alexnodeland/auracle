@@ -2,46 +2,16 @@
   "audio_in.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/no-runner-clock": {
-      "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 13
-    },
-    "playwright/prefer-locator": {
-      "count": 1
     }
   },
   "audio_in_takes.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 4
     },
-    "auracle/no-own-pageerror": {
-      "count": 2
-    },
     "auracle/no-read-after-action": {
       "count": 1
     },
-    "auracle/no-runner-clock": {
-      "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 12
-    },
-    "playwright/prefer-locator": {
       "count": 1
     },
     "playwright/prefer-to-have-count": {
@@ -76,15 +46,6 @@
     }
   },
   "booth.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 2
-    },
     "playwright/prefer-web-first-assertions": {
       "count": 1
     }
@@ -92,15 +53,6 @@
   "budgets.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
     }
   },
   "evolve_breeds_beside_you.spec.js": {
@@ -191,37 +143,16 @@
     }
   },
   "faces.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
       "count": 2
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 1
     }
   },
   "failure_flows.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
     },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
-    },
-    "playwright/prefer-locator": {
-      "count": 2
     },
     "playwright/prefer-to-have-count": {
       "count": 2
@@ -230,78 +161,14 @@
       "count": 5
     }
   },
-  "film_chip.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    }
-  },
-  "first_run.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 4
-    }
-  },
   "keys_are_not_notes.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 6
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
-    }
-  },
-  "keys_for_the_platform.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    }
-  },
-  "midi_announced.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
     }
   },
   "model_view.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 5
-    }
-  },
-  "narrow_gate.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/consistent-spacing-between-blocks": {
-      "count": 4
     }
   },
   "patch_audible.spec.js": {
@@ -422,11 +289,6 @@
   },
   "patch_model_view.spec.js": {
     "playwright/prefer-to-have-count": {
-      "count": 1
-    }
-  },
-  "patch_page.js": {
-    "auracle/no-own-pageerror": {
       "count": 1
     }
   },
@@ -590,14 +452,8 @@
     }
   },
   "shell_levels.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
     },
     "playwright/prefer-to-have-count": {
       "count": 1
@@ -606,22 +462,10 @@
   "smoke.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
     }
   },
   "space_after_a_click.spec.js": {
     "auracle/no-aur-in-spec": {
-      "count": 1
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
       "count": 1
     }
   },
@@ -646,24 +490,7 @@
       "count": 2
     }
   },
-  "text_fits.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/consistent-spacing-between-blocks": {
-      "count": 3
-    }
-  },
   "type_scale.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
       "count": 1
     }

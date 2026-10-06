@@ -11,31 +11,20 @@
 //   seconds). The same at 1280.
 // - At 1000 and 1080 px, PATCH's callout is whole in each of its short
 //   states: the step it names and its ▸.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
-
-const SEEN = (warmed) => `(() => {
-  try {
-    const seen = ["auracle-played", "auracle-bench-tour", "auracle-bank-toured"];
-    if (${warmed}) seen.push("auracle-warmed");
-    for (const k of seen) localStorage.setItem(k, "1");
-  } catch (_) {}
-})();`;
+const { test, expect, goLevel } = require("./fixtures");
 
 for (const width of [390, 360]) {
   test.describe(`a ${width} px phone`, () => {
     test.use({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true });
-    test(`the warm start's cards fit the screen at ${width} px`, async ({ page }) => {
-      test.setTimeout(240_000);
-      const errs = [];
-      page.on("pageerror", (e) => errs.push(e.message));
-      await page.addInitScript(SEEN(false));
-      await page.goto("/");
+
+    test(`the warm start's cards fit the screen at ${width} px`, async ({ page, app }) => {
+      // The warm start not yet seen; behind "look around anyway".
+      await app.boot({ warmed: false, wait: false });
       await page.locator("#hg-anyway").click();
       await page.waitForLoadState("load");
-      await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
-      await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 60_000 });
-      await expect(page.locator(".warm-cell .warm-item")).toHaveCount(9, { timeout: 60_000 });
+      await app.booted();
+      await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
+      await app.engine((timeout) => expect(page.locator(".warm-cell .warm-item")).toHaveCount(9, { timeout }), { ms: 60_000 });
       const out = await page.evaluate(() => {
         const vw = document.documentElement.clientWidth;
         const bad = [];
@@ -52,7 +41,6 @@ for (const width of [390, 360]) {
         return bad;
       });
       expect(out, "cards or words past their edge").toEqual([]);
-      expect(errs).toEqual([]);
     });
   });
 }
@@ -75,13 +63,9 @@ const CAPTIONS = [
 for (const [width, height] of [[1000, 800], [1280, 800]]) {
   test.describe(`a ${width} px window`, () => {
     test.use({ viewport: { width, height } });
-    test(`every PERFORM control caption is whole at ${width} px, and the knob row keeps its height`, async ({ page }) => {
-      test.setTimeout(240_000);
-      const errs = [];
-      page.on("pageerror", (e) => errs.push(e.message));
-      await page.addInitScript(SEEN(true));
-      await page.goto("/");
-      await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
+
+    test(`every PERFORM control caption is whole at ${width} px, and the knob row keeps its height`, async ({ page, app }) => {
+      await app.boot();
       await goLevel(page, "perform");
       await expect(page.locator(".pf-knob .pf-k-sub")).toHaveCount(7); // the six and Wander (Blend is a slider in the well)
       await expect(page.locator(".pf-deck")).toBeVisible();
@@ -148,7 +132,6 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
           .filter((e) => e.scrollWidth > e.clientWidth + 1)
           .map((e) => e.textContent));
       expect(ends, "control names and ends cut").toEqual([]);
-      expect(errs).toEqual([]);
     });
   });
 }
@@ -169,13 +152,9 @@ const CALLOUTS = [
 for (const width of [1000, 1080]) {
   test.describe(`PATCH at ${width} px`, () => {
     test.use({ viewport: { width, height: 800 } });
-    test(`PATCH's callout is whole at ${width} px, its step and its ▸`, async ({ page }) => {
-      test.setTimeout(240_000);
-      const errs = [];
-      page.on("pageerror", (e) => errs.push(e.message));
-      await page.addInitScript(SEEN(true));
-      await page.goto("/");
-      await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
+
+    test(`PATCH's callout is whole at ${width} px, its step and its ▸`, async ({ page, app }) => {
+      await app.boot();
       await goLevel(page, "patch");
       // Attached, not visible: with a pair to pick from, the picks are the
       // TEACH chip's to count, and the callout is empty until a later step.
@@ -192,7 +171,6 @@ for (const width of [1000, 1080]) {
         return out;
       }, CALLOUTS);
       expect(cut, "callouts cut").toEqual([]);
-      expect(errs).toEqual([]);
     });
   });
 }

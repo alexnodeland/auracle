@@ -27,8 +27,7 @@
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
-const { test, expect } = require("@playwright/test");
-const { goLevel, openKeys, bankTab, openCatalog } = require("./shell");
+const { test, expect, goLevel, openKeys, bankTab, openCatalog } = require("./fixtures");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -58,19 +57,13 @@ const INIT = `(() => {
   // Whether ⌥ alone reached the page's bubble phase already taken.
   window.__pwAlt = [];
   document.addEventListener("keydown", (e) => { if (e.key === "Alt") window.__pwAlt.push(e.defaultPrevented); });
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page, path = "/") {
-  const errors = [];
-  page.on("pageerror", (err) => errors.push(err.message));
+/** Seeded, with the warm start and the tours seen (the fixture's
+ *  `app.boot`), the output and ⌥ watched. */
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto(path);
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  return errors;
+  await app.boot();
 }
 
 const WHERE = {
@@ -92,8 +85,8 @@ async function expectAt(page, level) {
   await expect(page.locator("#where .where-d")).toHaveText(WHERE[level][1]);
 }
 
-test("the rail and the level keys move between the levels, and the header says where you are", async ({ page }) => {
-  const errors = await boot(page);
+test("the rail and the level keys move between the levels, and the header says where you are", async ({ page, app }) => {
+  await boot(page, app);
   // At rest is PERFORM.
   await expectAt(page, "perform");
   await expect(page).toHaveURL(/#perform$/);
@@ -149,11 +142,10 @@ test("the rail and the level keys move between the levels, and the header says w
   await expect(label).toHaveCSS("opacity", "0");
   await page.locator('.rail-stop[data-level="taste"]').hover();
   await expect(label).toHaveCSS("opacity", "1");
-  expect(errors).toEqual([]);
 });
 
-test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page }) => {
-  const errors = await boot(page);
+test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page, app }) => {
+  await boot(page, app);
   // PATCH's module search: ⌥↑ and ⌥← move by word there, never a level.
   await goLevel(page, "patch");
   await openCatalog(page);
@@ -186,22 +178,20 @@ test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page })
   await page.locator("#help-close").click();
   await page.keyboard.press("Alt+ArrowUp");
   await expectAt(page, "perform");
-  expect(errors).toEqual([]);
 });
 
-test("Space plays the sound in hand at every level, and the header's ▶ says so", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("Space plays the sound in hand at every level, and the header's ▶ says so", async ({ page, app }) => {
+  await boot(page, app);
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-  await expect(page.locator("#live-label")).toHaveText("Glass Pad", { timeout: 60_000 });
-  await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#live-label")).toHaveText("Glass Pad", { timeout }), { ms: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
   const play = page.locator("#inhand-play");
   await expect(play).toBeEnabled();
   for (const level of ["perform", "patch", "evolve", "taste", "learning"]) {
     await goLevel(page, level);
     await page.keyboard.press(" ");
-    await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000, message: `Space sounds at ${level}` }).toBeGreaterThan(-50);
+    await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout, message: `Space sounds at ${level}` }).toBeGreaterThan(-50), { ms: 30_000 });
     await expect(play).toHaveClass(/\bplaying\b/);
     await page.keyboard.press(" ");
     await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 15_000, message: `Space again stops it at ${level}` }).toBeLessThan(-80);
@@ -209,20 +199,15 @@ test("Space plays the sound in hand at every level, and the header's ▶ says so
   }
   // The header's ▶ is Space too.
   await play.click();
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-50);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout }).toBeGreaterThan(-50), { ms: 30_000 });
   await play.click();
   await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 15_000 }).toBeLessThan(-80);
-  expect(errors).toEqual([]);
 });
 
-test("a reload comes back to the level you were at, and a level's link opens it", async ({ page }) => {
-  const errors = await boot(page);
-  // A full load of `path`, never a move within the page.
-  const load = async (path) => {
-    await page.goto("about:blank");
-    await page.goto(path);
-    await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  };
+test("a reload comes back to the level you were at, and a level's link opens it", async ({ page, app }) => {
+  await boot(page, app);
+  // A full load of `path`, never a move within the page (`app.visit`).
+  const load = (path) => app.visit(path);
   await goLevel(page, "taste");
   await expect(page).toHaveURL(/#taste$/);
   // A fresh visit with no hash: the level saved last time.
@@ -237,8 +222,7 @@ test("a reload comes back to the level you were at, and a level's link opens it"
   await expectAt(page, "evolve");
   // A reload keeps the hash's level over a different saved one.
   await page.evaluate(() => localStorage.setItem("auracle-view", "taste"));
-  await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await app.reload();
   await expectAt(page, "evolve");
   // PATCH's old name, saved before the levels, still opens PATCH.
   await page.evaluate(() => localStorage.setItem("auracle-view", "play"));
@@ -249,14 +233,13 @@ test("a reload comes back to the level you were at, and a level's link opens it"
   await page.locator(".brand").click();
   await expectAt(page, "perform");
   expect(await page.evaluate(() => history.length), "the wordmark's move replaces the address").toBe(entries);
-  expect(errors).toEqual([]);
 });
 
-test("stage mode, which is modal, keeps the level keys", async ({ page }) => {
-  const errors = await boot(page);
+test("stage mode, which is modal, keeps the level keys", async ({ page, app }) => {
+  await boot(page, app);
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 60_000 });
   await page.locator("#view-perform").click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("Shift+F");
   await expect(page.locator(".st-stage")).toBeVisible();
@@ -268,11 +251,10 @@ test("stage mode, which is modal, keeps the level keys", async ({ page }) => {
   await expect(page.locator(".st-stage")).toHaveCount(0);
   await page.keyboard.press("Alt+ArrowDown");
   await expectAt(page, "patch");
-  expect(errors).toEqual([]);
 });
 
-test("a note held while ⌥ goes down is let go by its key", async ({ page }) => {
-  const errors = await boot(page);
+test("a note held while ⌥ goes down is let go by its key", async ({ page, app }) => {
+  await boot(page, app);
   // On a Mac, ⌥ held turns the A key's keyup into "å": the note is let go by
   // the physical key, or it would sound for good.
   await page.evaluate(() => {
@@ -286,7 +268,6 @@ test("a note held while ⌥ goes down is let go by its key", async ({ page }) =>
     document.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft", bubbles: true }));
   });
   await expect(page.locator('.pkey[data-note="60"]')).not.toHaveClass(/\bdown\b/);
-  expect(errors).toEqual([]);
 });
 
 // Every control a level shows, as it is drawn (clipped by any scrolling or
@@ -321,23 +302,22 @@ const COVERED = `(() => {
 })()`;
 
 for (const width of [1000, 1080, 1440]) {
-  test(`at ${width} px the levels cover no control at any level`, async ({ page }) => {
+  test(`at ${width} px the levels cover no control at any level`, async ({ page, app }) => {
     await page.setViewportSize({ width, height: 800 });
-    const errors = await boot(page);
+    await boot(page, app);
     await bankTab(page, "presets");
     await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-    await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
     for (const level of ["perform", "patch", "evolve", "taste", "learning"]) {
       await goLevel(page, level);
       await page.mouse.move(10, 400);
       expect(await page.evaluate(COVERED), `controls under the levels at ${level}, ${width} px`).toEqual([]);
     }
-    expect(errors).toEqual([]);
   });
 }
 
-test("KEYS ⋯ reaches every control that left the bar, and the bar keeps VOL, MIDI and REC", async ({ page }) => {
-  const errors = await boot(page);
+test("KEYS ⋯ reaches every control that left the bar, and the bar keeps VOL, MIDI and REC", async ({ page, app }) => {
+  await boot(page, app);
   for (const id of ["vol", "midi-ind", "rec-btn", "keys-btn", "oct-down", "oct-label", "oct-up", "live-label"]) {
     await expect(page.locator(`#${id}`), `#${id} is on the bar`).toBeVisible();
   }
@@ -378,5 +358,4 @@ test("KEYS ⋯ reaches every control that left the bar, and the bar keeps VOL, M
   await expect(page.locator("#keys-btn")).not.toHaveClass(/\blit\b/);
   await page.locator("#where").click();
   await expect(page.locator("#keys-pop")).toBeHidden();
-  expect(errors).toEqual([]);
 });
