@@ -241,12 +241,13 @@ pub fn claim_name(base: &str, taken: &mut HashSet<String>) -> String {
     if taken.insert(base.to_string()) {
         return base.to_string();
     }
-    // Start at 2: the unsuffixed name is conceptually "1".
-    for k in 2..usize::MAX {
-        let candidate = format!("{base} {k}");
-        if taken.insert(candidate.clone()) {
-            return candidate;
-        }
-    }
-    unreachable!("name space exhausted")
+    // Start at 2: the unsuffixed name is conceptually "1". The range has no
+    // end, so some suffix is always free.
+    (2..)
+        .map(|k: u64| format!("{base} {k}"))
+        .find(|candidate| taken.insert(candidate.clone()))
+        .expect("an endless range of suffixes")
 }
+
+#[cfg(test)]
+mod tests;
