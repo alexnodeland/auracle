@@ -265,35 +265,52 @@ fn struct_features_count_the_tree() {
         },
     };
     let f = struct_features(&tree);
-    assert_eq!(f.n_delay, 1.0);
-    assert_eq!(f.n_filter, 1.0);
-    assert_eq!(f.n_mix, 1.0);
-    assert_eq!(f.n_vco, 1.0);
-    assert_eq!(f.n_noise, 1.0);
-    assert_eq!(f.n_env, 1.0);
-    assert_eq!(f.n_lfo, 0.0);
-    assert_eq!(f.size, 5.0);
-    assert_eq!(f.depth, 4.0);
-    // Three slots — the delay, the filter, and the vco, whose slot reaches
-    // pitch — with only the filter's filled. The mix and the noise have
-    // none: two audio inputs and no parameter respectively.
-    assert_eq!(f.mod_density, 1.0 / 3.0);
-    // Families, not per-kind columns: the ladder is the only `n_drive`
-    // candidate here and there is none, so the coordinate reads zero.
-    assert_eq!(f.n_drive(), 0.0);
-    assert_eq!(f.n_mod_fx(), 0.0);
-    // The filter family is the filter alone; the time family the delay.
-    assert_eq!(f.n_filter_family(), 1.0);
-    assert_eq!(f.n_time(), 1.0);
-    assert_eq!(f.to_vec().len(), StructFeatures::NAMES.len());
-    // Shape. Levels are delay(1) · filter(1) · mix(1) · vco+noise(2), so
-    // the tree is two wide at its widest; both sources sit four nodes from
-    // the root, so it is perfectly balanced; the mix's `/1` is a bare
-    // noise source, so nothing is sidechained; and the one filled slot is
-    // on the filter, one step down a four-deep tree.
-    assert_eq!(f.branch_width_max, 2.0);
-    assert_eq!(f.chain_balance, 1.0);
-    assert_eq!(f.frac_sidechained, 0.0);
+    // φ_struct as the model sees it, coordinate by coordinate. Families, not
+    // per-kind columns: the ladder is a filter, the delay is the time family,
+    // and nothing drives. Three slots (the delay, the filter, and the vco,
+    // whose slot reaches pitch) with only the filter's filled, by a bare
+    // envelope one deep; the mix and the noise have none. Levels are
+    // delay · filter · mix · vco+noise, so both sources sit four nodes from
+    // the root (perfectly balanced), and the mix's `/1` is a bare noise
+    // source, so nothing is sidechained. The amp is `amp()`'s.
+    let want = [
+        ("n_vco", 1.0),
+        ("n_supersaw", 0.0),
+        ("n_noise", 1.0),
+        ("n_wavetable", 0.0),
+        ("n_pluck", 0.0),
+        ("n_formant", 0.0),
+        ("n_silence", 0.0),
+        ("n_filter", 1.0),
+        ("n_drive", 0.0),
+        ("n_time", 1.0),
+        ("n_mod_fx", 0.0),
+        ("n_reverb", 0.0),
+        ("n_dynamics", 0.0),
+        ("n_lfo", 0.0),
+        ("n_env", 1.0),
+        ("n_rand", 0.0),
+        ("n_follow", 0.0),
+        ("n_mod_shape", 0.0),
+        ("n_mod_logic", 0.0),
+        ("mod_density", 1.0 / 3.0),
+        ("mod_depth_mean", 1.0),
+        ("amp_attack", 0.05),
+        ("amp_sustain", 0.8),
+        ("amp_release", 0.3),
+        ("chain_balance", 1.0),
+        ("frac_sidechained", 0.0),
+    ];
+    assert_eq!(
+        want.map(|(name, _)| name),
+        StructFeatures::NAMES,
+        "φ_struct's names moved: update this table"
+    );
+    for ((name, want), got) in want.iter().zip(f.to_vec()) {
+        assert!((got - want).abs() < 1e-12, "{name}: {got}, not {want}");
+    }
+    // Not in φ, kept for display: the filled slot is on the filter, one step
+    // down a four-deep tree.
     assert!((f.mod_at_source - 1.0 / 3.0).abs() < 1e-12);
 }
 
