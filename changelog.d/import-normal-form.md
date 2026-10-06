@@ -13,6 +13,5 @@
   #208).
 - **A saved session with such a module loads without it and sounds the
   same.** The restored sound plays sample for sample what it played before,
-  and the note that says what was repaired on load counts it, since a module
-  you could see on the rack is gone
+  so the note that says what was repaired on load leaves it out
   (`a_saved_sound_not_in_normal_form_restores_folded_and_sounds_the_same`).

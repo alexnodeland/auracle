@@ -61,7 +61,8 @@ pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
 pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{
-    apply_struct_op, normalize_tree, validate_tree, ModKind, NodeKind, StructError, StructOp,
+    apply_struct_op, normalize_tree, validate_tree, ModKind, NodeKind, Normalized, StructError,
+    StructOp,
 };
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;

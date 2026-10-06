@@ -735,8 +735,8 @@ pub fn tilt_weights(base: &[f64], tilts: &[f64], eta: f64) -> Vec<f64> {
 struct PendingHeld {
     /// As it was loaded, which is what a held sound is saved as.
     original: BankEntry,
-    /// Already counted as repaired, put in normal form on the way in.
-    repaired: bool,
+    /// Already counted as repaired by the domain clamp.
+    clamped: bool,
     /// As restore handed it on, which is what an absorbed entry carries.
     restored: PatchTree,
 }
@@ -1309,9 +1309,8 @@ pub struct Engine {
     issue_cursor: u64,
     next_id: u64,
     /// What the last session restore had to mend — see
-    /// [`Engine::repair_report`]. Saved terms not in normal form (a knob out
-    /// of range, a modulation term the grammar folds), log cells clamped, and
-    /// observations dropped as uninterpretable.
+    /// [`Engine::repair_report`]. Saved terms whose knobs were out of range,
+    /// log cells clamped, and observations dropped as uninterpretable.
     repaired_terms: usize,
     repaired_cells: usize,
     dropped_observations: usize,
@@ -4297,9 +4296,9 @@ impl Engine {
         // A modulation term the grammar would fold (a quantizer over nothing,
         // from a fragment an older build grafted verbatim) is folded here too,
         // or every later edit would quietly rewrite it. It plays as its folded
-        // form does, so the sound is the same; it counts as repaired, as a
-        // clamped knob does, because a module the player could see on the
-        // rack is gone.
+        // form does, so the sound is the same, and it is not counted: the
+        // repair report says what can change what the player hears or what
+        // their taste was fitted on, and a fold changes neither.
         //
         // A CAPTURE whose saved take could not be read is the same rule: the
         // sound came back whole with that take empty (`Take`'s loader never
@@ -4314,8 +4313,8 @@ impl Engine {
         let mut bank = state.bank;
         for entry in &mut bank {
             let lost = (entry.tree.lost_takes() > 0).then(|| entry.clone());
-            let repaired = normalize_tree(&mut entry.tree) > 0;
-            if repaired {
+            let clamped = normalize_tree(&mut entry.tree).clamped > 0;
+            if clamped {
                 self.repaired_terms += 1;
             }
             if let Some(original) = lost {
@@ -4324,7 +4323,7 @@ impl Engine {
                     .or_default()
                     .push(PendingHeld {
                         original,
-                        repaired,
+                        clamped,
                         restored: entry.tree.clone(),
                     });
             }
@@ -4412,14 +4411,14 @@ impl Engine {
     }
 
     /// How many saved terms, log cells and whole observations the last
-    /// [`Engine::import_state_deferred`] had to repair. A term is repaired
-    /// when it was not in normal form (`auracle_grammar::normalize_tree`: a
-    /// knob outside its range, or a modulation term the grammar folds, which
-    /// plays as its folded form does). All three are zero for a session
-    /// written by a build that has these gates, except that a term counts as
-    /// repaired when a CAPTURE's saved take could not be read (it loads
-    /// empty; see `auracle_grammar::Take`), which a file damaged after it was
-    /// written can cause under any build.
+    /// [`Engine::import_state_deferred`] had to repair. All three are zero for
+    /// a session written by a build that has this gate, except that a term
+    /// counts as repaired when a CAPTURE's saved take could not be read (it
+    /// loads empty; see `auracle_grammar::Take`), which a file damaged after
+    /// it was written can cause under any build. A modulation term folded on
+    /// the way in is not counted (`auracle_grammar::Normalized`): it plays as
+    /// it did, and a session written before the fold reached every way in can
+    /// hold one.
     ///
     /// Reported rather than logged because the frontend is the only thing that
     /// can tell the player their profile was mended, and a silent repair of the
@@ -4461,7 +4460,7 @@ impl Engine {
                 .iter()
                 .position(|p| p.restored == entry.tree)
                 .unwrap_or(0);
-            if !waiting.remove(at).repaired {
+            if !waiting.remove(at).clamped {
                 self.repaired_terms += 1;
             }
             if waiting.is_empty() {
@@ -4495,16 +4494,16 @@ impl Engine {
     pub fn finish_restore(&mut self) -> usize {
         // Whatever had an unreadable take and never landed did not render
         // without it: held, not dropped, and reported apart from the repairs
-        // (one also put in normal form is uncounted there again).
+        // (one also mended by the clamp is uncounted there again).
         let mut held: Vec<(BankEntry, bool)> = self
             .pending_held
             .drain()
             .flat_map(|(_, v)| v)
-            .map(|p| (p.original, p.repaired))
+            .map(|p| (p.original, p.clamped))
             .collect();
         held.sort_by_key(|(e, _)| e.id);
-        for (mut entry, repaired) in held {
-            if repaired {
+        for (mut entry, clamped) in held {
+            if clamped {
                 self.repaired_terms = self.repaired_terms.saturating_sub(1);
             }
             entry.tree.keep_unreadable_takes();

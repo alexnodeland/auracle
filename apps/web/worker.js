@@ -2929,9 +2929,13 @@ async function dispatch(m) {
           });
           // Say so when the restore had to mend something. A profile fitted on
           // values that were not measurements is the one kind of silent repair
-          // this app should never make — and the numbers are zero for every
-          // session written since the domain gate shipped, so the message only
-          // ever appears when it is true.
+          // this app should never make. The numbers count a knob or a log cell
+          // clamped into its range, a pick dropped as unreadable, and a take
+          // that couldn't be read, so they are zero for every session written
+          // since the domain gate shipped whose takes all read, and the message
+          // only ever appears when it is true. A modulation term folded on the
+          // way in is not counted (`Engine::repair_report`): it sounds as it
+          // did.
           try {
             const rep = JSON.parse(engine.repair_report());
             // Which sounds are kept for a recording that couldn't be read, so

@@ -357,7 +357,14 @@ fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
     outside.ensure_uids();
     assert!(!outside.domain_violations().is_empty(), "fixture");
 
-    assert_eq!(normalize_tree(&mut outside), 4, "one knob and three slots");
+    assert_eq!(
+        normalize_tree(&mut outside),
+        Normalized {
+            folded: 3,
+            clamped: 1
+        },
+        "three slots and one knob"
+    );
     let normal = tree(ModNode::None, hold(0.0), lfo(), PARAM_MAX);
     assert_eq!(outside, normal);
     assert!(validate_tree(&outside).is_ok());
@@ -366,7 +373,7 @@ fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
         outside.ensure_uids();
         serde_json::to_string(&outside).unwrap()
     };
-    assert_eq!(normalize_tree(&mut outside), 0);
+    assert_eq!(normalize_tree(&mut outside), Normalized::default());
     assert_eq!(
         serde_json::to_string(&outside).unwrap(),
         settled,

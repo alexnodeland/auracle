@@ -492,7 +492,7 @@ fn presets_and_struct_ops_stay_in_grammar() {
         assert!(!tree.signature().is_empty());
         assert_eq!(
             mutate::normalize_tree(&mut tree.clone()),
-            0,
+            mutate::Normalized::default(),
             "preset {name} is not in normal form"
         );
     }

@@ -1771,11 +1771,23 @@ pub fn validate_tree(tree: &PatchTree) -> Result<(), String> {
     check_ceilings(&mut probe).map_err(|e| e.to_string())
 }
 
+/// What [`normalize_tree`] changed, counted apart because only one of the
+/// two can change what a patch sounds like. Both 0 (the default): the tree
+/// was already in normal form, and it is untouched, identities included.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Normalized {
+    /// Modulation slots folded ([`AudioNode::normalize_mods`]). The sound is
+    /// the same: each plays as its folded form does.
+    pub folded: usize,
+    /// Knob sites pulled back into their domains
+    /// ([`PatchTree::clamp_domains`]). The sound can change.
+    pub clamped: usize,
+}
+
 /// Put a tree in the normal form every tree the engine holds is in: each
 /// modulation term folded ([`AudioNode::normalize_mods`]) and each knob
 /// inside its domain ([`PatchTree::clamp_domains`]). Returns how many
-/// modulation slots and knob sites it changed (0: the tree was already in
-/// normal form, and it is untouched, identities included).
+/// modulation slots it folded and how many knob sites it clamped.
 ///
 /// The fold comes first. The clamp rebuilds a term it mends through the
 /// trace, which has no site for a one-parameter op's `p1`, so a clamp
@@ -1796,13 +1808,16 @@ pub fn validate_tree(tree: &PatchTree) -> Result<(), String> {
 /// nothing and a `Pair` with an empty side as its other side, which is what
 /// the fold writes, and a one-parameter op never reads the `p1` it pins.
 /// What it changes is the term: a module that did nothing leaves the rack,
-/// φ's structural counts lose it, and the prior can score the patch.
+/// φ's structural counts lose it, and the prior can score the patch. That
+/// is why the two are counted apart: a restore tells the player of a knob it
+/// clamped, which can change the sound, and not of a fold, which cannot.
 ///
 /// Repair, not refusal: the ceilings are [`validate_tree`]'s to check,
 /// after this, since a module folded away can be what put a term over one.
-pub fn normalize_tree(tree: &mut PatchTree) -> usize {
+pub fn normalize_tree(tree: &mut PatchTree) -> Normalized {
     let folded = tree.root.normalize_mods();
-    folded + tree.clamp_domains()
+    let clamped = tree.clamp_domains();
+    Normalized { folded, clamped }
 }
 
 fn check_ceilings(tree: &mut PatchTree) -> Result<(), StructError> {

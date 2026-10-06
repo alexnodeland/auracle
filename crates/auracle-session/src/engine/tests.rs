@@ -4670,9 +4670,9 @@ fn a_restore_mends_what_it_can_and_says_what_it_mended() {
 /// same** (#208). A session written by an older build can hold modulation
 /// terms the grammar folds: here a quantizer over nothing on Hornet's
 /// filter and a min with an empty side on its oscillator. The restore puts
-/// the term in normal form and counts the sound repaired, as it would a
-/// clamped knob, and what the restored sound plays is what the saved term
-/// played, sample for sample: the fold changes the rack, not the sound. The
+/// the term in normal form, and what the restored sound plays is what the
+/// saved term played, sample for sample: the fold changes the rack, not the
+/// sound, so it is not reported as a repair, where a clamped knob is. The
 /// farm's restore, the app's path, gives the same.
 #[test]
 fn a_saved_sound_not_in_normal_form_restores_folded_and_sounds_the_same() {
@@ -4729,7 +4729,11 @@ fn a_saved_sound_not_in_normal_form_restores_folded_and_sounds_the_same() {
     assert_eq!(c.tree, normal, "restored as it was saved");
     assert_eq!(c.features.audio, measured, "it measures differently");
     assert!(heard(&c.tree).0 == before, "it sounds different");
-    assert_eq!(back.repair_report(), (1, 0, 0));
+    assert_eq!(
+        back.repair_report(),
+        (0, 0, 0),
+        "a fold reported as a repair"
+    );
 
     let mut farmed = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
     for entry in farmed.import_state_deferred(state) {
@@ -4740,7 +4744,7 @@ fn a_saved_sound_not_in_normal_form_restores_folded_and_sounds_the_same() {
     let f = &farmed.pool[farmed.find(id).unwrap()];
     assert_eq!(f.tree, normal);
     assert_eq!(f.features.phi(), c.features.phi());
-    assert_eq!(farmed.repair_report(), (1, 0, 0));
+    assert_eq!(farmed.repair_report(), (0, 0, 0));
 }
 
 /// **A clip the listeners cannot be measured with leaves them as they
