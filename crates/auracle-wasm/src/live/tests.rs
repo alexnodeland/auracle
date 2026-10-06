@@ -1754,14 +1754,11 @@ fn a_tracked_patch_swaps_with_keys_held_and_they_still_follow() {
     );
 }
 
-/// **A take rendered off the audio thread is the one recording live
-/// makes.** The same input, recorded by a live voice quantum by quantum
-/// and handed to `render_take` as one buffer, gives the same take, bit
-/// for bit; a key with no CAPTURE renders none.
-#[test]
-fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
+/// A CAPTURE of the left input with no take yet, playing it once: what
+/// RECORD records into.
+fn capture_patch() -> String {
     use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
-    let tree = serde_json::to_string(&PatchTree {
+    serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.0,
             decay: 0.2,
@@ -1780,7 +1777,16 @@ fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
             take: auracle_grammar::Take::empty(),
         },
     })
-    .unwrap();
+    .unwrap()
+}
+
+/// **A take rendered off the audio thread is the one recording live
+/// makes.** The same input, recorded by a live voice quantum by quantum
+/// and handed to `render_take` as one buffer, gives the same take, bit
+/// for bit; a key with no CAPTURE renders none.
+#[test]
+fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
+    let tree = capture_patch();
     // Live: a key held at C4, the gate raised, 100 quanta of the tone.
     let mut live = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
     live.set_leveler(false);
@@ -1807,27 +1813,7 @@ fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
 /// not silent. A key with no capture records nothing.
 #[test]
 fn a_capture_records_and_reads_back_its_take() {
-    use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
-    let tree = serde_json::to_string(&PatchTree {
-        amp: AmpEnv {
-            attack: 0.0,
-            decay: 0.2,
-            sustain: auracle_grammar::PARAM_MAX,
-            release: 0.0,
-        },
-        root: AudioNode::Capture {
-            uid: Uid::NEW,
-            play: CaptureMode::Once,
-            input: Box::new(AudioNode::AudioIn {
-                uid: Uid::NEW,
-                input: 0,
-                gain: auracle_grammar::INPUT_GAIN_UNITY,
-                channel: InputChannel::Left,
-            }),
-            take: auracle_grammar::Take::empty(),
-        },
-    })
-    .unwrap();
+    let tree = capture_patch();
     let mut poly = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
     assert!(
         !poly.set_record("node/9", true),
