@@ -90,6 +90,8 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
   CARGO_INCREMENTAL: 0
+  # nextest's ci profile (.config/nextest.toml), as in ci.yml.
+  NEXTEST_PROFILE: ci
   CARGO_NET_RETRY: 10
 
 jobs:

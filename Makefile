@@ -280,8 +280,9 @@ worker-test:
 	$(JS_COV_MKDIR)
 	node --test --test-concurrency=4 $(call NODE_COV,worker) tests/worker/*.test.mjs
 
-## test: optimized — the grammar/features/session tests render real audio
-## sample-by-sample; debug-mode DSP is ~20× slower
+## test: every Rust test, optimized (the grammar/features/session tests render
+## real audio sample by sample; debug-mode DSP is ~20× slower), on nextest,
+## then the doctests. Needs cargo-nextest (`make setup`)
 #
 # `test-fast` is release codegen without release's shipping flags (see the
 # profile in Cargo.toml). Same opt-level, so the suite runs at the same speed it
@@ -295,13 +296,23 @@ worker-test:
 # workspace's compile CPU. `make lint` (clippy --all-targets) still compiles
 # them. Naming targets turns the doctests off, so `test` runs them on their
 # own (there are none today; CI's Doctests job checks that the same way).
+#
+# nextest runs every test in the workspace in one pool, each in a process of
+# its own, where `cargo test` ran the five test binaries one after another
+# and waited on the slowest test of each before starting the next. What a
+# test needs from that pool (the threads it starts, how long before it is
+# slow, and when a hung one is stopped) is in .config/nextest.toml. nextest
+# runs no doctests, hence the second line. NEXTEST_ARGS for nextest's own
+# options (`--no-fail-fast`, a filter).
 TEST_TARGETS := --lib --bins --tests
-test:
-	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS)
+test: nextest-installed
+	$(NEXTEST) $(NEXTEST_ARGS)
 	$(CARGO) test --workspace --profile test-fast --doc
 
-test-verbose:
-	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS) -- --nocapture
+# Every test's output, printed as it finishes (nextest's --no-capture would
+# run them one at a time).
+test-verbose: nextest-installed
+	$(NEXTEST) --success-output immediate --failure-output immediate $(NEXTEST_ARGS)
 
 ## test-crate: one crate's tests, optimized, with the pinned compiler:
 ## `make test-crate CRATE=auracle-session` (FILTER= a test name filter;
