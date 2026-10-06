@@ -289,6 +289,13 @@ fn references_are_shared_and_bounded() {
 /// A panic while the list of references was held (another render's, on
 /// another thread) does not take the reference down with it: the lock is
 /// poisoned, and the next render still gets its clip.
+///
+/// The rule in crates/AGENTS.md § Coverage: a lock's poisoned-recovery
+/// closure is covered by a test that poisons that lock on purpose, here the
+/// static itself. It stays poisoned for the rest of a `cargo test` process,
+/// so every caller (`reference`, and `references_are_shared_and_bounded`'s
+/// read of the list) recovers through `into_inner`, and no test may assert
+/// the lock is unpoisoned.
 #[test]
 fn a_poisoned_reference_list_still_serves_the_reference() {
     let spec = PhraseSpec::default();

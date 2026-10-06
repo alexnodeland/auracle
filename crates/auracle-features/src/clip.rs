@@ -633,7 +633,9 @@ pub fn reference(spec: &PhraseSpec) -> AuditionClip {
 }
 
 /// The references built so far, oldest first: [`reference`] builds each
-/// (rate, length) once and shares it.
+/// (rate, length) once and shares it. Every lock of it recovers a poisoned
+/// list through `into_inner`: a test poisons it on purpose, and it stays
+/// poisoned for the rest of that process (crates/AGENTS.md § Coverage).
 static REFERENCES: Mutex<Vec<AuditionClip>> = Mutex::new(Vec::new());
 
 /// How many references are kept. A handful of (rate, length) pairs is all a

@@ -129,17 +129,25 @@ measured at `c92bb12`:
 So a `#[cfg_attr(coverage_nightly, coverage(off))]` would do nothing here;
 don't add one.
 
-One kind of code no reasonable test reaches is already here: recovery
-from a poisoned lock, `lock().unwrap_or_else(|e| e.into_inner())`
-(`auracle-features/src/clip.rs`, `auracle-session/src/map.rs` and
-`engine.rs`). Its closure runs only after another thread panicked while
-holding the lock. The line itself reads as covered, but the closure counts
-against the crate's functions and lines. The first crate PR that has to
-bring such a line to 100% decides, for every one like it: restructure (one
-shared helper that a single test poisons on purpose, or a lock that cannot
-be poisoned), or the nightly with `coverage(off)`, its reason on the line
-above, and a count of exclusions that only goes down (#181 § 2). That
-decision is recorded here.
+**A poisoned lock's recovery is tested, not excluded.** A
+`lock().unwrap_or_else(|e| e.into_inner())` runs its closure only after
+another thread panicked while holding the lock, and the closure counts
+against the crate's functions and lines. Decided for #181 by the first crate
+PR that brought one to 100% (auracle-features):
+
+- A lock's poisoned-recovery closure is covered by a test that poisons that
+  lock on purpose and checks that the next caller still gets a good value.
+  Where the lock is a static reachable from its module's tests
+  (`auracle-features/src/clip.rs`'s `REFERENCES`, by
+  `a_poisoned_reference_list_still_serves_the_reference`), the test poisons
+  it. Otherwise the crate routes its locks through one helper that a single
+  test poisons. No exclusion.
+- A poisoned static stays poisoned for the rest of a `cargo test` process.
+  Every caller must recover through `into_inner`, and no test may assert the
+  lock is unpoisoned.
+
+The other sites are `auracle-session/src/map.rs` and `engine.rs`, and
+`auracle-wasm/src/shipped.rs`; each crate's coverage PR applies the rule.
 
 ## Diagnostics worth knowing
 
