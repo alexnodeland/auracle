@@ -48,19 +48,19 @@ name: Slow suite
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners; the quarantined tests' one runner
-# starts once the browser runners are done). The account runs at most 20 jobs at
-# once. The merge queue's run of CI, the full gate, holds about 18 at its
-# widest: twelve browser runners, the Site job, the Worker protocol job, the
-# three Coverage runners and one more for a Lint, Web or Doctests job still
-# running, or the Browser report. 18 + 4 = 22, two over, and a merge starts
-# this workflow just as the queue starts on its next batch, beside main's
-# own CI (which reuses the queue's verdict and runs the engine and Site for
-# the deploy, two runners). So the queue's next run can wait a few minutes for runners
-# while this one's first jobs hold them. A PR's fast lane holds at most
-# twelve (four browser runners, the three Coverage runners, Site, Worker
-# protocol and three of Lint, Web and Doctests), only when it changes both
-# Rust and an app module with specs of its own; most hold two to eight
-# (testing.md § CI tiers, Runners).
+# starts once all six browser runners are done). The account runs at most
+# 20 jobs at once. The merge queue's run of CI, the full gate, holds about
+# 18 at its widest: twelve browser runners, the Site job, the Worker
+# protocol job, the three Coverage runners and one more for a Lint, Web or
+# Doctests job still running, or the Browser report. 18 + 4 = 22, two over,
+# and a merge starts this workflow just as the queue starts on its next
+# batch, beside main's own CI (which reuses the queue's verdict and runs the
+# engine and Site for the deploy, two runners). So the queue's next run can
+# wait a few minutes for runners while this one's first jobs hold them. A
+# PR's fast lane holds at most twelve (four browser runners, the three
+# Coverage runners, Site, Worker protocol and three of Lint, Web and
+# Doctests), only when it changes both Rust and an app module with specs of
+# its own; most hold two to eight (testing.md § CI tiers, Runners).
 
 on:
   pull_request:

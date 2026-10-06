@@ -289,8 +289,8 @@ offers. Otherwise the push to `main` is where a slow test catches it.
   own reaches that. A docs PR holds two (Web, then the engine and Site), an
   app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
-  three browser runners; the quarantined tests' runner starts once those
-  three are done), on `main`, latest only.
+  three browser runners; the quarantined tests' runner starts once all six
+  browser runners are done), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy: two.
 - ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
