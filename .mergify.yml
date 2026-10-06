@@ -7,10 +7,11 @@
 # Two steps (ADR-023). A PR's own run of `CI` is the fast lane: Lint, Web,
 # the Rust tests and their coverage, and the browser specs the change
 # reaches (ci.yml's `changes` job says which). Green, with the PR's own
-# `PR checks` green too, the PR enters the queue. The queue tests up to
-# three queued PRs together (a release PR alone) on a draft PR of its own,
-# from a branch under mergify/merge-queue/, on top of `main`; CI sees that
-# prefix and runs the full gate there, the whole browser tier included.
+# `PR checks` and `Mutants in the changed code` green too, the PR enters the
+# queue. The queue tests up to three queued PRs together (a release PR
+# alone) on a draft PR of its own, from a branch under mergify/merge-queue/,
+# on top of `main`; CI sees that prefix and runs the full gate there, the
+# whole browser tier included.
 # Green, the queue squash-merges each PR, one commit each. Red, it splits
 # the batch and tests the parts: a part that passes merges, and a PR that
 # fails on its own leaves the queue with the `dequeued` label and a comment
@@ -74,6 +75,21 @@ defaults:
 # merges under an untyped subject or leaves an issue it finishes open. Only
 # the PR's own: the merge conditions read the draft PR, where it doesn't run.
 # Every PR needs it, in both queues.
+#
+# And `Mutants in the changed code` is green (mutants.yml, #181): every
+# mutant of the Rust the PR changed fails a test of its crate's fast tier. A
+# survivor keeps the PR out of the queue until a test kills it, or until
+# `.cargo/mutants.toml` excludes it as equivalent, with its reason
+# (crates/AGENTS.md § Mutation testing). The job passes at once on a PR that
+# changes no Rust in crates/ (a release and a Dependabot bump among them),
+# and a run its time cap stops passes unless a mutant it judged survived
+# (one stopped before the unmutated tests were done judged none, and says so
+# with a warning), so no PR is kept out by time alone; a crate PR enters
+# when its run ends, up to 40 minutes (the job's limit) after it starts.
+# Only the PR's own, as for `PR checks`: on the draft PR the job passes at
+# once, and the merge conditions don't read it. Every PR needs it, in both
+# queues. It is required here, not in `main`'s ruleset (the maintainer,
+# 2026-10-06).
 queue_rules:
   # A release PR (the version bump and the changelog's new section, labelled
   # `release`: CONTRIBUTING.md § Cutting a release) is tested and merged
@@ -84,6 +100,7 @@ queue_rules:
     queue_conditions:
       - check-success = @github-actions/CI
       - check-success = @github-actions/PR checks
+      - check-success = @github-actions/Mutants in the changed code
       - label = release
     batch_size: 1
 
@@ -91,13 +108,14 @@ queue_rules:
     queue_conditions:
       - check-success = @github-actions/CI
       - check-success = @github-actions/PR checks
+      - check-success = @github-actions/Mutants in the changed code
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
     # streams of work docs/process.md allows in flight, and a Dependabot PR.
     batch_size: 3
     # How long a batch that isn't full waits for another PR to join it,
     # counted from the first PR's entry into the queue; then it is tested as
-    # it is. The default is 30 seconds. A PR enters once its own fast lane is
+    # it is. The default is 30 seconds. A PR enters once its own checks are
     # green, so PRs pushed together reach the queue minutes apart. On
     # 2026-10-06, with three minutes, 10 of 15 batches held one PR, and two
     # pairs missed each other by 48 s and by 4.5 minutes. Ten minutes lets
@@ -138,7 +156,8 @@ priority_rules:
     priority: high
 
 # The `queue` label puts a PR to `main` in the queue; it enters once its
-# queue conditions hold (its fast lane and its `PR checks` are green).
+# queue conditions hold (its fast lane, its `PR checks` and its `Mutants in
+# the changed code` are green).
 # Mergify's auto-merge conditions are the way its docs give for queueing on
 # a label: with the merge queue on, a PR that matches them is queued. They take effect only
 # while Merge Protections is active for the repository in Mergify's

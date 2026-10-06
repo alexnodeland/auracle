@@ -21,7 +21,7 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own (`.claude/worktrees/<topic>`) | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
 | 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
-| 9. Checked | Green `CI` (the fast lane) and `PR checks` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
+| 9. Checked | Green `CI` (the fast lane), `PR checks` and `Mutants in the changed code` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
 | 12. Closed | The issues it finishes closed, the ones it advances and their parents told, the boxes naming them in other issues ticked; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
@@ -180,6 +180,10 @@ or a person, against:
   bound but a budget
   ([ADR-022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md));
   no assertion that can pass vacuously.
+- **Tests that notice:** in Rust, every mutant of the changed code is
+  caught (the builder's `make mutants DIFF=1`, or the PR's *Mutants*
+  summary), or excluded as equivalent in `.cargo/mutants.toml` with its
+  reason ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 - **The area's invariants** (its `AGENTS.md` and ADRs).
 
 Findings come back ranked, and review is **one round**:
@@ -189,7 +193,11 @@ Findings come back ranked, and review is **one round**:
   - a wrong result;
   - a dropped capability;
   - an untrue description;
-  - a spec that can pass vacuously or that a slow runner can fail.
+  - a spec that can pass vacuously or that a slow runner can fail;
+  - a mutant of the changed code that survives: the PR's *Mutants* check
+    keeps the PR out of the queue until it is killed with a test, or
+    excluded as equivalent in `.cargo/mutants.toml` with its reason. Saying
+    why in the PR body is not enough on its own.
 - **Every other finding** becomes an issue, named in the PR body. It is not
   more commits on the branch: a branch that grows in review runs CI again,
   and every run is another roll of the flaky dice.
@@ -302,12 +310,21 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   with `main`: the queue tests on top of `main` itself. To merge anything
   else, the maintainer edits the ruleset.
 - **Every PR also runs *Mutants*,** a workflow of its own, part of neither
-  lane's `CI` and not required. On a PR that changes a crate it tests the
-  changed code: its summary lists the mutants of it that no test noticed,
-  and review treats each as a finding. The builder runs
-  `make mutants DIFF=1` before review, so they are answered before the PR.
-  On the queue's draft PRs it passes at once, since each PR's own run has
-  judged their code.
+  lane's `CI`. Its check, `Mutants in the changed code`, is required by
+  Mergify's queue conditions (not by the ruleset): a PR enters the queue
+  only once it is green. On a PR that changes a crate it tests the changed
+  code, for at most 25 minutes; its summary lists the mutants of it that no
+  test noticed, and it is red when one survived or the run broke (the
+  unmutated tests failed, or cargo-mutants did). A survivor is killed with a
+  test that asserts what the code does, or, when no behavior can show it,
+  excluded narrowly in `.cargo/mutants.toml` with its reason
+  ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing));
+  the push runs the job again. A timeout is reported and passes, and a run
+  the cap stopped passes unless a mutant it judged survived, so no PR is
+  held by time alone. A PR that changes no Rust in `crates/` passes at once.
+  The builder runs `make mutants DIFF=1` before review, so survivors are
+  killed or excluded before the PR. On the queue's draft PRs it passes at
+  once, since each PR's own run has judged their code.
 - **Codecov comments on the PR** when the PR's own run uploads coverage
   (the Rust's, or the web units' or the worker-protocol tests'), each flag
   the run didn't reach carried forward from `main`. It is a view,
@@ -339,12 +356,14 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     repository in Mergify's dashboard, and that is the maintainer's to switch
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
-  - It enters the queue once its fast lane's `CI` and its `PR checks` are
-    green. Both are required of every PR, in either of `.mergify.yml`'s
-    queues.
+  - It enters the queue once its fast lane's `CI`, its `PR checks` and its
+    `Mutants in the changed code` are green. All three are
+    required of every PR, in either of `.mergify.yml`'s queues. A crate
+    PR's *Mutants* run takes up to 40 minutes, so it often enters well
+    after its fast lane is green.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
-    at most three minutes for company. One batch is tested at a time.
+    at most ten minutes for company. One batch is tested at a time.
   - Green, the queue squash-merges each PR of the batch on its own, the head
     that was tested, so nothing pushed after the check merges unchecked. Each
     commit is `<title> (#<n>)` with the PR's commit messages. The queue never pushes to
@@ -375,12 +394,14 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     test it doesn't touch, for a cause outside it, is a flake case
     ([Flakes](#flakes), step 4): the test is quarantined with one commit on
     that PR, and the PR goes back in.
-  - A PR whose own fast lane is red never entered the queue: it enters once a
-    fix makes `CI` green.
-- **Merge at green.** A PR whose `CI` is green and that has no blocking
-  finding is in the queue then. Nothing is added to a green PR. A finding
-  raised after it, or an improvement seen in passing, becomes an issue or the
-  next PR ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
+  - A PR whose own fast lane, `PR checks` or `Mutants in the changed code`
+    is red never entered the queue: it enters once a fix makes them green.
+- **Merge at green.** A PR whose `CI`, `PR checks` and
+  `Mutants in the changed code` are green and that has no blocking finding
+  is in the queue then. Nothing is added to
+  a green PR. A finding raised after it, or an improvement seen in passing,
+  becomes an issue or the next PR
+  ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
 - **A line of PRs.** The next PR in a line may be built on the branch of the
   one ahead. It is pushed only once that one has merged, moved onto `main`
   first: `git rebase --onto origin/main <the one ahead's last head>`. Don't
@@ -397,7 +418,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 - **By hand, only when Mergify is down:** on a PR up to date with `main`
   (rebased if `main` moved), run CI by hand on its branch (Actions → CI → Run
   workflow: a run by hand is the full gate), and once that run and the PR's
-  `CI` are green,
+  `CI`, `PR checks` and `Mutants in the changed code` are green,
   `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`.
   Nothing enforces the full run first: the ruleset requires only `CI` on
   the PR's head, the fast lane, so a merge by hand without it lands code
@@ -413,9 +434,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   run replaces any older one, and a run whose commit `main` has already moved
   past runs nothing, since the newest run covers it. The *Slow suite* runs on
   `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
-  files an issue. *Mutants* runs weekly over a part of the workspace (a
-  fifteen-week cycle aims to cover it all), and a surviving mutant files
-  one too
+  files an issue. *Mutants weekly* runs on Saturdays over a part of the
+  workspace (a fifteen-week cycle aims to cover it all), and a surviving
+  mutant files one too
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 - **CI's health is measured:** `python3 scripts/ci_stats.py` reports the
   last 7 days of CI, by lane and kind of PR, and `--compare` sets each

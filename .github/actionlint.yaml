@@ -4,7 +4,7 @@
 # key (rhysd/actionlint#654), which GitHub accepts since May 2026 ("Control
 # the concurrency of workflows and jobs"). ci.yml and slow-suite.yml use it
 # to say that main keeps only its newest waiting run (`queue: single`, the
-# default, written out); mutants.yml, that main runs every waiting run in
+# default, written out); mutants-weekly.yml, that every waiting run runs in
 # turn (`queue: max`: each is a different part of the workspace). Drop this
 # once a release knows the key.
 paths:
@@ -14,6 +14,6 @@ paths:
   .github/workflows/slow-suite.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'
-  .github/workflows/mutants.yml:
+  .github/workflows/mutants-weekly.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'

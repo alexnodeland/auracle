@@ -247,6 +247,16 @@ class Runs(unittest.TestCase):
         rows = [line for line in text.splitlines() if line.startswith("| [")]
         self.assertTrue(all(line.replace("\\|", "").count("|") == 4 for line in rows))
 
+    def test_markdown_sends_a_survivor_to_a_test_or_an_exclusion(self):
+        # A PR's check turns green only once each survivor is killed or
+        # excluded, so the summary offers no third way, such as saying why.
+        d = self.run_dir("one", [OR], [BASELINE_OK, outcome(OR, "MissedMutant")])
+        md = os.path.join(self.tmp, "summary.md")
+        self.main(d, "--markdown", md)
+        text = self.read(md)
+        self.assertIn("exclude it in `.cargo/mutants.toml`'s `exclude_re` with its reason", text)
+        self.assertNotIn("say why", text)
+
     def test_markdown_appends_to_what_the_summary_already_holds(self):
         d = self.run_dir("one", [LOGLIK], [BASELINE_OK, outcome(LOGLIK, "CaughtMutant")])
         md = os.path.join(self.tmp, "summary.md")
