@@ -79,6 +79,19 @@ fn bounds_are_flags() {
     }
 }
 
+/// A file whose measurement came out not a number is refused, never handed
+/// on: one NaN or infinity anywhere in the audio half is enough.
+#[test]
+fn a_non_finite_measurement_is_refused() {
+    let f = featurize_file(&tone(220.0, 44_100.0, 1.0, 0.3), 44_100.0).unwrap();
+    assert_eq!(measured(f.audio), Ok(f.audio));
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut audio = f.audio;
+        audio.zcr_mean = bad;
+        assert_eq!(measured(audio), Err(FileError::NonFinite), "{bad}");
+    }
+}
+
 /// A file's φ lines up with a render's, index for index: its audio half as
 /// measured, and every structural coordinate at 0, each of them masked.
 #[test]

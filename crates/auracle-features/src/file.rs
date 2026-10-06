@@ -340,12 +340,7 @@ pub fn featurize_file(pcm: &[f32], sample_rate: f64) -> Result<FileFeatures, Fil
         note_onsets: vec![0, attack_end],
         spans: Vec::new(),
     };
-    let audio = audio_features(&render);
-    if audio.to_vec().iter().any(|v| !v.is_finite()) {
-        // Not reachable on a buffer that cleared the loudness gate, but a NaN
-        // here would standardize to NaN and poison every distance.
-        return Err(FileError::NonFinite);
-    }
+    let audio = measured(audio_features(&render))?;
     Ok(FileFeatures {
         audio,
         seconds: n as f64 / rate,
@@ -353,6 +348,18 @@ pub fn featurize_file(pcm: &[f32], sample_rate: f64) -> Result<FileFeatures, Fil
         lufs_before: norm.lufs_before,
         gain_db: norm.gain_db,
     })
+}
+
+/// The audio half of φ as a file measured it, or [`FileError::NonFinite`] if
+/// a coordinate is not a number. Not reachable on a buffer that cleared the
+/// loudness gate, but a NaN here would standardize to NaN and poison every
+/// distance.
+fn measured(audio: AudioFeatures) -> Result<AudioFeatures, FileError> {
+    if audio.to_vec().iter().all(|v| v.is_finite()) {
+        Ok(audio)
+    } else {
+        Err(FileError::NonFinite)
+    }
 }
 
 /// The span of `x` that holds its sound: from the first 10 ms window within
@@ -425,11 +432,10 @@ pub fn resample<T: Copy + Into<f64>>(x: &[T], from: f64, to: f64) -> Vec<f64> {
         let c = p.floor() as isize;
         let mut acc = 0.0;
         for k in (c - half + 1).max(0)..=(c + half).min(len - 1) {
+            // In the table: |p − k| ≤ half, so j + 1 ≤ half·KERNEL_GRID + 1,
+            // its last index.
             let g = (p - k as f64).abs() * KERNEL_GRID as f64;
             let j = g as usize;
-            if j + 1 >= table.len() {
-                continue;
-            }
             let h = table[j] + (g - j as f64) * (table[j + 1] - table[j]);
             acc += x[k as usize].into() * h;
         }
