@@ -90,7 +90,9 @@ expect 0 "session start"         session-start.sh '{}'
 # one, and only those.
 says() { # says <name> <pattern> <yes|no>: what session-start.sh prints in a tree of its own
   runs=$((runs + 1))
-  out="$(CLAUDE_PROJECT_DIR="$tmp/proj" bash "$H/session-start.sh" </dev/null 2>/dev/null)"
+  # The input names the session's directory, as Claude Code's does; the hook
+  # judges the checkout it is in (here none, so CLAUDE_PROJECT_DIR's).
+  out="$(printf '{"cwd": "%s"}' "$tmp/proj" | CLAUDE_PROJECT_DIR="$tmp/proj" bash "$H/session-start.sh" 2>/dev/null)"
   if printf '%s' "$out" | grep -q "$2"; then got=yes; else got=no; fi
   if [ "$got" != "$3" ]; then echo "  FAIL: $1 (said: ${out:-nothing})"; fails=$((fails + 1)); fi
 }
