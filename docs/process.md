@@ -190,12 +190,14 @@ Findings come back ranked, and review is **one round**:
   `www/landing/` changed with no entry in `changelog.d/`. A Dependabot PR's
   title is checked and its links are not: its body is the upstream release
   notes. `python3 scripts/pr_checks.py check --pr <n>` runs it by hand.
-- **On merge,** the same workflow's *Issues on merge* job comments on each
-  `Refs` issue with the PR that advanced it; closes each `Closes` issue
-  GitHub didn't close (it reads the issue again for up to a minute first,
-  since GitHub closes them a moment after the merge), with a comment saying
-  why; and tells the parent of each issue that closed (GitHub's sub-issues)
-  which closed, with which PR, and how many of its sub-issues are closed.
+- **On merge** into `main`, the same workflow's *Issues on merge* job
+  comments on each `Refs` issue with the PR that advanced it; closes each
+  `Closes` issue GitHub didn't close (it reads the issue again for up to a
+  minute first, since GitHub closes them a moment after the merge), with a
+  comment saying why; and tells the parent of each issue that closed
+  (GitHub's sub-issues) which closed, with which PR, and how many of its
+  sub-issues are closed. A merge into another branch (a PR stacked on
+  another) closes nothing, as GitHub's own closing keywords don't.
   One comment per issue per PR: run again, it writes nothing twice. A PR
   from a fork gets a read-only token there, so its issues are updated by
   hand. `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what

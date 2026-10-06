@@ -13,10 +13,10 @@ name: PR checks
 #   Mergify queues a PR only once this is green (.mergify.yml). A Dependabot
 #   PR's title is checked, and its links aren't: its body is the upstream
 #   release notes.
-# - `Issues on merge`, once a PR merges: a comment on each issue it advanced
-#   (`Refs #n`), each issue it finishes (`Closes #n`) closed if GitHub didn't
-#   close it, and each parent of an issue that closed told, with its count of
-#   sub-issues closed. A run again writes nothing twice.
+# - `Issues on merge`, once a PR merges into main: a comment on each issue
+#   it advanced (`Refs #n`), each issue it finishes (`Closes #n`) closed if
+#   GitHub didn't close it, and each parent of an issue that closed told,
+#   with its count of sub-issues closed. A run again writes nothing twice.
 #
 # Neither runs on the merge queue's draft PRs (branches under
 # mergify/merge-queue/: .mergify.yml), whose titles and bodies are Mergify's.
@@ -78,7 +78,13 @@ jobs:
 
   merged:
     name: Issues on merge
-    if: github.event.action == 'closed' && github.event.pull_request.merged && !startsWith(github.head_ref, 'mergify/merge-queue/')
+    # Only a merge into the default branch: GitHub closes the issues a PR
+    # names only then, so a PR into another branch (one stacked on another)
+    # finishes nothing yet, and closing its issues here would be early.
+    if: >-
+      github.event.action == 'closed' && github.event.pull_request.merged
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+      && !startsWith(github.head_ref, 'mergify/merge-queue/')
     runs-on: ubuntu-24.04
     # Up to a minute of waiting for GitHub to close what the PR closes, and a
     # few calls per issue.
