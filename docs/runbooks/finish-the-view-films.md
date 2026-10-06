@@ -166,10 +166,11 @@ themselves (`film_chip.spec.js`).
   well. The maintainer's call. (A draw of
   wasm's 32-bit `usize` used to read the stream differently from a native
   one. `auracle_grammar::rng::gen_index` pins it for the pool and the
-  random-rule duels; taste fits, walks and PERFORM's offers still differ
-  across targets until `fugue-ppl` draws its site as a `u64`. That fix
-  changed what a seed deals in the browser too: a film's seeded session, and
-  every seeded spec, dealt a different pool than before it.)
+  random-rule duels, and `fugue-ppl` 0.2.3 for taste fits, walks and
+  PERFORM's offers. Those fixes changed what a seed deals in the browser
+  too: a film's seeded session, and every seeded spec, dealt a different
+  pool than before them, and since 0.2.3 fits a different taste and breeds
+  and offers different sounds from it. Re-check patch names in a recording.)
 - **Published films with stale details** (`taste`, `math`, `dsp`, and the
   unpublished `sounddesign`): six callouts or cards describe the app before
   Wave 1 (for example the TASTE film's inset shows bare bars where the app now
