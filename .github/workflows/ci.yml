@@ -247,11 +247,12 @@ jobs:
           fi
 
           # What the browser reads: the app, its specs and what runs them,
-          # and the engine. Their prose aside, and the specs' lint (its
-          # config, its suppressions, its own tests), which Web runs and no
-          # browser reads: a change to them alone, or beside spec files,
-          # runs what a spec-only change runs.
-          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' | grep -vE '^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs)$' || true)"
+          # and the engine. Their prose aside, and what Web runs and no
+          # browser reads: the specs' lint (its config, its suppressions, its
+          # own tests), CI's flake routing (flakes.mjs and its tests) and the
+          # timings fold's tests. A change to them alone, or beside spec
+          # files, runs what a spec-only change runs.
+          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' | grep -vE '^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs|flakes(\.test)?\.mjs|shard\.test\.mjs)$' || true)"
 
           # Browser smoke: anything the browser reads changed, other than
           # spec files alone (a spec runs against main's app, and runs

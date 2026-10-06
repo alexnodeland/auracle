@@ -225,9 +225,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   site, the docs or the app changed (Web alone for a script's own tests, and
   nothing more for a changelog entry, which *What changed* checks on every
   run); Browser smoke when the app, the engine or what runs the specs changed
-  (not the specs' lint, which no browser reads); Worker protocol
-  (`make worker-test`) when the app, the engine or `tests/worker/` changed;
-  and the browser specs the change reaches
+  (not the specs' lint or CI's flake routing, which no browser reads);
+  Worker protocol (`make worker-test`) when the app, the engine or
+  `tests/worker/` changed; and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
   four runners. About five minutes for docs; up to about ten when Rust
   changed (Coverage sets the length) or an app module's specs run (`patch.js`
