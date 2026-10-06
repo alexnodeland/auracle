@@ -237,8 +237,8 @@ these properties explicitly.
 
 Two browser specs are automated under `make smoke` (CI's *Browser smoke* job
 runs them after the site build, against the engine the site ships, on a PR
-that changes the app or the engine; the merge queue's browser tier runs them
-with every other spec), in Playwright's Chromium.
+that changes the app, the engine or what runs the specs; the merge queue's
+browser tier runs them with every other spec), in Playwright's Chromium.
 `tests/web/smoke.spec.js` boots the instrument and requires **no console
 errors, a registered worklet, and an engine that reaches `playable`** — the
 whole of its claim, and the only gate that notices a backtick in the worklet

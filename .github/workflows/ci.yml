@@ -11,13 +11,13 @@ name: CI
 #
 # - A PR's own run is the FAST LANE: Lint, the Rust tests (as Coverage) and
 #   the Doctests when Rust changed; Web and Site when the site, the docs or
-#   the app did; Browser smoke when the app or the engine did; and the
-#   browser specs the change reaches (tests/web/changed.mjs), on up to four
-#   runners. A change whose specs can't be told (main.js, worker.js, a
-#   crate) runs the smoke only, and a change to CI itself runs the full
-#   gate. About five minutes without Rust; with it, Coverage sets the
-#   length, about nine (an estimate). A green fast lane puts the PR in the
-#   merge queue. It is not the whole gate.
+#   the app did; Browser smoke when the app, the engine or what runs the
+#   specs did; and the browser specs the change reaches
+#   (tests/web/changed.mjs), on up to four runners. A change whose specs
+#   can't be told (main.js, worker.js, a crate) runs the smoke only, and a
+#   change to CI itself runs the full gate. About five minutes without Rust;
+#   with it, Coverage sets the length, about nine (an estimate). A green
+#   fast lane puts the PR in the merge queue. It is not the whole gate.
 # - The merge queue's run (Mergify's draft PR, from a branch under
 #   mergify/merge-queue/: .mergify.yml) is the FULL GATE, about twelve
 #   minutes: everything, as on main, the browser tier on twelve runners. It

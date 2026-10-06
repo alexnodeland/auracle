@@ -23,8 +23,8 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   suite. Two browsers at once make both late, and a timing assertion then
   fails for the machine, not the app.
 - **`make smoke`** runs the pair CI's *Browser smoke* job runs after the
-  site build on a PR that changes the app or the engine (`smoke.spec.js`,
-  `failure_flows.spec.js`), in seconds.
+  site build on a PR that changes the app, the engine or what runs the specs
+  (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
   `AURACLE_TAP_LOG=1` prints it too.
@@ -40,8 +40,9 @@ The suite is about an hour and a half in one worker, so CI splits it
   twelve runners by `shard.mjs` from main's last timings, about six minutes
   each. A PR's own run, the fast lane, runs only the specs its change reaches
   (`changed.mjs`, below), on up to four runners, and the smoke pair when it
-  changes the app or the engine: for `main.js`, `worker.js` or a crate, the
-  smoke pair and nothing else.
+  changes the app, the engine or what runs the specs (a helper, the config,
+  the lockfile): for `main.js`, `worker.js` or a crate, the smoke pair and
+  nothing else.
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a

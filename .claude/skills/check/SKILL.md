@@ -15,9 +15,10 @@ proves is `docs/architecture/testing.md`.
 CI is the gate for everything else, in two lanes. A PR's own run, the fast
 lane, runs what the change reaches: the Rust jobs when Rust changed, the site,
 the browser specs `make browser-changed` would pick (up to four runners), and
-the smoke pair when the app or the engine changed. The merge queue's run is the
-full gate: everything, the browser tier dealt to twelve runners by time. The
-slow tier runs on a PR only with the `full-ci` label.
+the smoke pair when the app, the engine or what runs the specs changed. The
+merge queue's run is the full gate: everything, the browser tier dealt to
+twelve runners by time. The slow tier runs on a PR only with the `full-ci`
+label.
 Locally, run what your change reaches, never the full browser suite
 (`docs/process.md` § Building).
 
