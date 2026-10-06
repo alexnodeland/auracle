@@ -1874,7 +1874,8 @@ impl Engine {
             }
         }
         // The partial pool is handed over here, so this is where names are
-        // first shown, and first kept.
+        // first shown, and first kept once it holds `NAME_FLOOR` sounds; what
+        // they are read against does not depend on how many it holds.
         self.fix_names();
     }
 
