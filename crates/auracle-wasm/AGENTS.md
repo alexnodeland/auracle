@@ -37,8 +37,12 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
   serialized from a struct (`TreeReply`), never with `json!`
   ([ADR-002](../../docs/decisions/002-trees-serialize-in-declaration-order.md)).
 - **The audio thread allocates nothing per quantum and reads no clock.**
-  `LivePoly` uses a deterministic xorshift. Chaos tests catch panics, but
-  review for these properties explicitly.
+  `LivePoly` uses a deterministic xorshift. `tests/no_alloc.rs` counts the
+  allocations of a steady state of play (every per-quantum path, with notes,
+  knobs and the bend moved between quanta, and a swap's fade out and fade
+  in; not its silent rebuild, which compiles) and requires none; a new
+  per-quantum path joins its phrase. The chaos test catches panics. Review
+  for the clock, and for allocations in the port handler, explicitly.
 - **A panic poisons the engine.** It unwinds out of a `&mut self` binding and
   every later call fails with "recursive use of an object". The worker must
   report it, not retry
@@ -64,3 +68,21 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 
 `cargo test -p auracle-wasm --profile test-fast` (native), `make wasm-check`
 (the wasm32 build), then `make wasm` and the browser specs.
+
+Each module's tests sit beside it, in a file of their own: `live.rs`'s in
+`live/tests.rs`, and so on; `lib.rs`'s (`WasmEngine` and the farm's exports)
+are in `src/tests.rs` (`../AGENTS.md` § Coverage says why). The integration
+tests: `tests/boot_agrees.rs` (the cross-target seed contract),
+`tests/shipped_wirings.rs` (the shipped wirings are current) and
+`tests/no_alloc.rs` (a quantum of play allocates nothing; a counting
+allocator, so one test in its binary).
+
+A binding test asserts what the binding adds: the reply's shape and field
+names, refusals and their words, `u32` ids, key order, buffers, handles.
+It compares the reply with the engine's own answer once; the engine's fact
+has its test in `auracle-session`, so a binding test builds no twin engine
+to prove it again. The exception is a twin that compares the wire path
+with the in-engine path, which only the bindings have both of: a stepped
+offer against the one call (`a_stepped_offer_gives_the_reply_the_one_call_gives`),
+a listening seed's ⚡ on the farm against ⚡ in the engine
+(`a_listening_seed_evolves_on_the_farm_with_its_clip_and_take`).

@@ -1842,8 +1842,9 @@ async function guessRun(m) {
 // farm, in parallel, and folded back here **in job order** with
 // `refine_absorb` — the order the serial path absorbs in, which is what makes
 // the pool the same whichever worker finished first (ADR-007; natively
-// `farm_walks_breed_the_serial_generation`). A result that lands early is
-// held until its turn.
+// `a_generation_absorbed_in_any_completion_order_is_the_serial_one`, and
+// across the farm's wire `farm_walks_are_the_engines_walks_absorbed_in_job_order`).
+// A result that lands early is held until its turn.
 //
 // It does not hold the floor. It used to: a generation was ten walks run
 // here, one per turn, and for its two to three minutes PERFORM's measurement

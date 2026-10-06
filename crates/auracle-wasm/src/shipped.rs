@@ -150,32 +150,33 @@ pub fn session(e: &WasmEngine) -> &auracle_session::Engine {
 }
 
 /// Run `job` over `items` on up to `threads` threads, results in item order.
+///
+/// Each result is set once, into a slot of its own: there is no lock, so
+/// nothing to poison. A job that panics panics the scope, and so the caller.
+/// One thread is a scope of one: the same path at every width, so a
+/// machine's core count changes the time, never which code ran.
 #[cfg(not(target_arch = "wasm32"))]
-fn par_map<T: Sync, U: Send>(items: &[T], threads: usize, job: impl Fn(&T) -> U + Sync) -> Vec<U> {
+fn par_map<T: Sync, U: Send + Sync>(
+    items: &[T],
+    threads: usize,
+    job: impl Fn(&T) -> U + Sync,
+) -> Vec<U> {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::OnceLock;
     let threads = threads.clamp(1, items.len().max(1));
-    if threads == 1 {
-        return items.iter().map(job).collect();
-    }
     let next = AtomicUsize::new(0);
-    let out: Vec<Mutex<Option<U>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    let out: Vec<OnceLock<U>> = items.iter().map(|_| OnceLock::new()).collect();
     std::thread::scope(|s| {
         for _ in 0..threads {
             s.spawn(|| loop {
                 let i = next.fetch_add(1, Ordering::Relaxed);
                 let Some(item) = items.get(i) else { break };
-                let u = job(item);
-                *out[i].lock().unwrap_or_else(|p| p.into_inner()) = Some(u);
+                let _ = out[i].set(job(item));
             });
         }
     });
     out.into_iter()
-        .map(|m| {
-            m.into_inner()
-                .unwrap_or_else(|p| p.into_inner())
-                .expect("every item ran")
-        })
+        .map(|slot| slot.into_inner().expect("every item ran"))
         .collect()
 }
 
@@ -200,12 +201,12 @@ pub fn boot(threads: usize) -> WasmEngine {
         if draws.is_empty() {
             break;
         }
+        // A draw marked `dup` is rendered too: the mark is a courtesy that
+        // spares the farm a render, and `absorb_prior` refuses a duplicate
+        // itself, so the pool is the same (and the shipped seed's fill
+        // deals none).
         let done = par_map(&draws, threads, |d| {
-            if d.dup {
-                None
-            } else {
-                PreFeaturized::render(d.tree.clone(), &spec, false).ok()
-            }
+            PreFeaturized::render(d.tree.clone(), &spec, false).ok()
         });
         for (d, pre) in draws.iter().zip(done) {
             e.engine.absorb_prior(d.index, pre);
@@ -343,12 +344,11 @@ fn first_difference(
 /// within [`TOLERANCE`], everything else exactly. Native only.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn boot_probe_difference(pinned: &str) -> String {
-    let (Ok(was), Ok(now)) = (
-        serde_json::from_str::<serde_json::Value>(pinned),
-        serde_json::from_str::<serde_json::Value>(&boot_probe()),
-    ) else {
+    let Ok(was) = serde_json::from_str::<serde_json::Value>(pinned) else {
         return "the pinned probe is not JSON".into();
     };
+    // The text the page's wasm hands the spec, read back as the spec reads it.
+    let now: serde_json::Value = serde_json::from_str(&boot_probe()).unwrap_or_default();
     first_difference(&was, &now, "probe").unwrap_or_default()
 }
 
@@ -363,26 +363,4 @@ pub fn warm(e: &WasmEngine, trees: &[PatchTree], threads: usize) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_source_ignores_uids_and_sees_everything_else() {
-        let bank = auracle_grammar::preset_bank();
-        let p = &bank[0];
-        let mut again = p.tree.clone();
-        again.ensure_uids();
-        assert_eq!(
-            preset_source(p.name, &p.tree),
-            preset_source(p.name, &again)
-        );
-        assert_ne!(
-            preset_source(p.name, &p.tree),
-            preset_source("renamed", &p.tree)
-        );
-        assert_ne!(
-            preset_source(p.name, &p.tree),
-            preset_source(p.name, &bank[1].tree)
-        );
-    }
-}
+mod tests;
