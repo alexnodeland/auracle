@@ -382,6 +382,11 @@ jobs:
   # run measures it), inside the browser tier's path. It runs beside Test,
   # which runs the same tests uninstrumented; folding Test into it is the
   # follow-up once a run here has measured it.
+  #
+  # The three jobs agree on paths because every runner checks the repository
+  # out at the same place: the archive's binaries, the profiles and the
+  # report all name /home/runner/work/auracle/auracle, so no job passes
+  # --workspace-remap. A job that checked out elsewhere would need it.
   coverage-build:
     name: Coverage build
     needs: changes
@@ -708,10 +713,11 @@ jobs:
   # minutes: with Playwright's own split by count, five runners took from 9
   # to 19. Twelve, not eight: simulated with the runners' observed spread of
   # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
-  # (#177 § 3.1). The count is fixed and raised by hand. With the Slow suite
-  # off the PR path, a PR's CI at twelve fits the account's 20 jobs beside
-  # the Slow suite's four; right after a merge, main's own run takes runners
-  # too, and a PR can wait for it (slow-suite.yml says how much).
+  # (#177 § 3.1). The count is fixed and raised by hand. A PR's CI at its
+  # widest holds 19 runners (these twelve, Site, Test's two, Coverage's
+  # three and one more), so beside the Slow suite's four on main (23 against
+  # the account's 20) a PR can wait for up to three; right after a merge,
+  # main's own run takes runners too (slow-suite.yml says how much).
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
   # the engine works). A failure that only appears here is still a finding
