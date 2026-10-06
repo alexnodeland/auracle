@@ -1295,6 +1295,28 @@ fn a_two_session_k2_fit_returns_finite_summaries() {
     assert!((r.iter().sum::<f64>() - 1.0).abs() < 1e-9);
 }
 
+/// A fit keeps at most [`KEEP`] draws, whatever its budget, uniformly
+/// weighted: exactly `KEEP` from a budget that is a multiple of it (the
+/// shipped 10 000 keeps 500), and every draw of a budget under it. The
+/// thinning is what bounds the memory a posterior holds for the rest of the
+/// session. A budget just under twice `KEEP` used to be thinned by one, and
+/// kept nearly twice as many.
+#[test]
+fn a_fit_keeps_at_most_keep_draws() {
+    let mut rng = StdRng::seed_from_u64(0xEE9);
+    let model = TasteModel::new(TasteConfig::linear(2));
+    for (budget, kept) in [
+        (KEEP / 5, KEEP / 5),
+        (KEEP, KEEP),
+        (2 * KEEP - 1, KEEP),
+        (3 * KEEP, KEEP),
+    ] {
+        let p = model.fit(&mut rng, &FitSet::default(), budget, 10);
+        assert_eq!(p.samples.len(), kept, "a budget of {budget}");
+        assert_eq!(p.weights, vec![1.0 / kept as f64; kept]);
+    }
+}
+
 /// **The M6 mixture gate.** A user whose true taste is bimodal — utility
 /// = max over two orthogonal-ish component tastes — is a function no
 /// single linear θ can represent. The K = 2 marginalized mixture must

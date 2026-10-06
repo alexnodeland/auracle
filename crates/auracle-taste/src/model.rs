@@ -63,7 +63,8 @@ use crate::observe::{Feedback, FitSet};
 /// SD of the maximum of K iid standard normals, K = 1..=5. See the module doc.
 pub const MAX_NORMAL_SD: [f64; 5] = [1.000, 0.826, 0.748, 0.701, 0.669];
 
-/// Posterior draws retained from a fit, after thinning.
+/// Posterior draws retained from a fit, after thinning: at most this many,
+/// and exactly this many from a budget that is a multiple of it.
 ///
 /// The chain is thinned because single-site draws are heavily autocorrelated —
 /// 500 spread over the whole chain carry far more information than 500
@@ -690,8 +691,10 @@ impl TasteModel {
         // The stride is known before the chain runs, because the driver pushes
         // exactly `n_samples` draws — so asking it to retain only every
         // `stride`-th is the same subsequence `step_by` produced, without ever
-        // holding the other 95% live. See `KEEP`.
-        let stride = (n_samples / KEEP).max(1);
+        // holding the other 95% live. See `KEEP`. Rounded up, so at most
+        // `KEEP` are retained at any budget: rounded down, a budget just
+        // under twice `KEEP` kept every draw, nearly twice as many.
+        let stride = n_samples.div_ceil(KEEP).max(1);
         let samples: Vec<TasteSample> =
             adaptive_mcmc_chain_thinned(rng, model_fn, n_samples, n_warmup, stride)
                 .into_iter()
