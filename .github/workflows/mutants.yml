@@ -450,6 +450,6 @@ jobs:
           advice: |
             This run covered ${{ needs.plan.outputs.part }}.
 
-            Each mutant below is a change to the engine's code that no test of its crate failed on: code the tests run without checking what it does. Kill each with a test that asserts what the code does, at the lowest level that can show it, or say in a PR why no behavior can show the change (crates/AGENTS.md § Mutation testing). A failed shard means the run itself broke; its log says why.
+            Each mutant below is a change to the engine's code that no test of its crate failed on: code the tests run without checking what it does. Kill each with a test that asserts what the code does, at the lowest level that can show it, or, when no behavior can show the change, exclude it in .cargo/mutants.toml's exclude_re with its reason (crates/AGENTS.md § Mutation testing). A failed shard means the run itself broke; its log says why.
 
             ${{ needs.survivors.outputs.issue }}
