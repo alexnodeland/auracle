@@ -3,18 +3,26 @@ export const meta = {
   description: 'Diagnose one flaky auracle browser test from the run that caught it, fix the test or the app at the cause, prove it under load and by mutation, review, and finalize the branch; the operator pushes',
   whenToUse: 'One flaky test (a Flaky: issue, or a red run a dequeued PR did not cause) with its worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Runs when the maintainer asks for it by name (it spends many tokens); the ship-wave skill has the steps around it.',
   phases: [
-    { title: 'Diagnose', detail: "the run's failed log and trace, the spec and the app path, reproduced at throttle 4 and under load; the cause named" },
-    { title: 'Fix', detail: 'the test, or the app when it is at fault; the quarantine tag comes out' },
-    { title: 'Prove', detail: '--repeat-each=5 at throttle 4 and under load, and a mutation the test must fail on' },
-    { title: 'Review', detail: 'the reviewer agent, read-only, then the fixes and a re-check of the blocking ones' },
-    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body' },
+    { title: 'Diagnose', detail: "the run's failed log and trace, the spec and the app path, reproduced at throttle 4 and under load; the cause named (opus)" },
+    { title: 'Fix', detail: 'the test, or the app when it is at fault; the quarantine tag comes out (opus)' },
+    { title: 'Prove', detail: '--repeat-each=5 at throttle 4 and under load, and a mutation the test must fail on (sonnet)' },
+    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (sonnet)' },
+    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
 
 // args: { spec: 'patch_facts' | 'tests/web/patch_facts.spec.js', test_title: '…', run_id: <the run that caught it>,
 //         issue?: <its Flaky: issue>, branch: 'claude/<topic>', port,
 //         worktree: '$REPO/.claude/worktrees/<topic>' (the main checkout's .claude/worktrees/),
-//         agentType?: 'web-engineer' (default), session?: 'https://claude.ai/code/session_…' }
+//         agentType?: 'web-engineer' (default), session?: 'https://claude.ai/code/session_…',
+//         models?: { diagnose, fix, prove, review, verify, finalize: 'opus' | 'sonnet' } }
+// Models, by how hard a stage is. Defaults: diagnose, fix (the first fix, the fix of a failed proof and
+// the fix of the review's findings) and review opus (finding a cause, writing the change, judging it);
+// prove, verify and finalize sonnet (running the repeats and the mutation the diagnosis planned; a
+// re-check of findings already fixed; a rebase, quick gates and the PR checks). `models` sets a stage's
+// model, e.g. { diagnose: 'sonnet' } for a flake whose cause is plain from the log. Every agent also gets
+// the advisor line: it calls the advisor, when there is one, before it commits to an approach, when
+// stuck, and before it reports done.
 // Returns { workflow, session, items: [{ key, issue, branch, worktree, status, problems, diagnosis, proof,
 // final, review, verify, labels }] }, one item, in ship-issues' shape (scripts/ops/wf_result.py reads both).
 
@@ -34,6 +42,18 @@ need(typeof args.worktree === 'string' && args.worktree.startsWith('/'), 'worktr
 need(Number.isInteger(args.port), 'port is a number (8771 and up)')
 const SESSION = typeof args.session === 'string' && args.session ? args.session : null
 need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'session is a https://claude.ai/code/session_… link')
+
+// The model of each stage, by how hard it is (see args above).
+const MODELS = ['opus', 'sonnet']
+const STAGE_MODELS = { diagnose: 'opus', fix: 'opus', prove: 'sonnet', review: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const MODEL_ARGS = args.models === undefined ? {} : args.models
+need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
+for (const [stage, m] of Object.entries(MODEL_ARGS)) {
+  need(Object.keys(STAGE_MODELS).includes(stage), `models.${stage} is not a stage (${Object.keys(STAGE_MODELS).join(', ')})`)
+  need(MODELS.includes(m), `models.${stage} is 'opus' or 'sonnet'`)
+}
+const modelOf = stage => MODEL_ARGS[stage] || STAGE_MODELS[stage]
+const ADVISOR = 'If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done.'
 
 const ISSUE = Number.isInteger(args.issue) ? args.issue : null
 const FILE = args.spec.includes('/') ? args.spec : `tests/web/${args.spec.replace(/\.spec\.js$/, '')}.spec.js`
@@ -220,8 +240,10 @@ Worktree: ${WT} (branch ${args.branch}, from origin/main). Browser port: ${PORT}
 
 Change nothing committed: instrumentation is reverted and the tree clean before you report.
 
-${RULES}`,
-  { label: `diagnose ${KEY}`, phase: 'Diagnose', agentType: BUILDER, effort: 'high', schema: DIAGNOSIS },
+${RULES}
+
+${ADVISOR}`,
+  { label: `diagnose ${KEY}`, phase: 'Diagnose', agentType: BUILDER, model: modelOf('diagnose'), effort: 'high', schema: DIAGNOSIS },
 )
 if (!diagnosis) {
   log(`${KEY}: the diagnosis did not return`)
@@ -242,8 +264,10 @@ ${RULES}
 
 Gates: make web-check (it runs the spec lint), make dev-check, and make wasm-check plus the crate's tests if Rust changed.
 
-Report with the structured output; the pr_title and pr_body are drafts the operator will use.${report ? `\n\nYour report so far:\n${json(report)}` : ''}`,
-    { label: `fix ${KEY}${round > 1 ? ` r${round}` : ''}`, phase: 'Fix', agentType: BUILDER, schema: REPORT },
+Report with the structured output; the pr_title and pr_body are drafts the operator will use.${report ? `\n\nYour report so far:\n${json(report)}` : ''}
+
+${ADVISOR}`,
+    { label: `fix ${KEY}${round > 1 ? ` r${round}` : ''}`, phase: 'Fix', agentType: BUILDER, model: modelOf('fix'), schema: REPORT },
   )
 }
 
@@ -257,8 +281,10 @@ function prove(report, round) {
 
 The cause it fixes: ${diagnosis.cause}
 
-${RULES}`,
-    { label: `prove ${KEY}${round > 1 ? ` r${round}` : ''}`, phase: 'Prove', agentType: BUILDER, schema: PROOF },
+${RULES}
+
+${ADVISOR}`,
+    { label: `prove ${KEY}${round > 1 ? ` r${round}` : ''}`, phase: 'Prove', agentType: BUILDER, model: modelOf('prove'), schema: PROOF },
   )
 }
 
@@ -290,8 +316,10 @@ ${json(proof)}
 
 Hunt for: a fix that hides the cause instead of removing it (slack, a longer timeout, a retry, a looser assertion: ADR-022); a test that now passes vacuously or no longer asserts the behavior it is named for; an app change with no test that fails without it; a wait on a time left in the test; the @quarantine tag or its annotation left in; a description of the test (its title, testing.md's spec table) made untrue; a wrong cause. Rank them: blocking (a wrong result, a vacuous or slow-runner-flaky test, an untrue description, a hidden cause); should_fix (any other finding in what the branch touches, fixed in this branch); maintainers_call; nits. Mark a finding other_area when its fix belongs elsewhere.
 
-Read-only: change nothing in any checkout. Browser runs, if needed, through one_browser.sh on port ${PORT + 100}.`,
-  { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'xhigh', schema: REVIEW },
+Read-only: change nothing in any checkout. Browser runs, if needed, through one_browser.sh on port ${PORT + 100}.
+
+${ADVISOR}`,
+  { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', model: modelOf('review'), effort: 'xhigh', schema: REVIEW },
 )
 
 // The review's blocking findings no re-check has yet confirmed fixed, and a
@@ -325,8 +353,10 @@ ${RULES}
 Your report so far:
 ${json(report)}
 
-Return the full report, updated, with the pr_body saying what the review found and what was fixed or declined and why.`,
-    { label: `fix ${KEY} review`, phase: 'Review', agentType: BUILDER, schema: REPORT },
+Return the full report, updated, with the pr_body saying what the review found and what was fixed or declined and why.
+
+${ADVISOR}`,
+    { label: `fix ${KEY} review`, phase: 'Review', agentType: BUILDER, model: modelOf('fix'), schema: REPORT },
   )
   if (fixed) report = fixed
   else lost = `the fix of the review's findings did not return: its ${review.blocking.length} blocking, ${review.should_fix.length} should-fix and ${review.nits.length} nit finding(s) are not done on the branch`
@@ -334,8 +364,10 @@ Return the full report, updated, with the pr_body saying what the review found a
     verify = await agent(
       `Re-check only these blocking findings on branch ${args.branch} (worktree ${WT}, head ${report.head}): the fix of ${THE_TEST}. For each, confirm the fix resolves it at its cause, running the test where it helps (through one_browser.sh on port ${PORT + 100}). Read-only.
 
-${fmt(review.blocking)}`,
-      { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'high', schema: VERIFY },
+${fmt(review.blocking)}
+
+${ADVISOR}`,
+      { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', model: modelOf('verify'), effort: 'high', schema: VERIFY },
     )
     if (verify && verify.all_resolved) open = []
     else if (verify && verify.remaining.length) open = verify.remaining
@@ -356,8 +388,10 @@ ${json(proof)}
 
 ${RULES}
 
-Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.`,
-  { label: `finalize ${KEY}`, phase: 'Finalize', agentType: BUILDER, schema: FINAL },
+Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.
+
+${ADVISOR}`,
+  { label: `finalize ${KEY}`, phase: 'Finalize', agentType: BUILDER, model: modelOf('finalize'), schema: FINAL },
 )
 
 const last = final || report

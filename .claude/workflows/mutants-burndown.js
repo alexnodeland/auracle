@@ -3,15 +3,23 @@ export const meta = {
   description: "Run cargo-mutants over one auracle crate, kill each surviving mutant with a behavior assertion (or show it equivalent and exclude it narrowly, with its reason), measure again, review and finalize the branch; the operator pushes",
   whenToUse: "One crate's survivors (the issue Mutants weekly files, 'Mutants that survive', or a crate whose survivors keep PRs out of the queue), with a worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
   phases: [
-    { title: 'Measure', detail: 'make mutants CRATE=<crate>, before and after, and the coverage floor' },
-    { title: 'Kill', detail: 'one agent per file with survivors, one after another in the one worktree' },
-    { title: 'Review', detail: 'the reviewer agent, read-only, then the fixes and a re-check of the blocking ones' },
-    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body' },
+    { title: 'Measure', detail: 'make mutants CRATE=<crate>, before and after, and the coverage floor (sonnet)' },
+    { title: 'Kill', detail: 'one agent per file with survivors, one after another in the one worktree (opus)' },
+    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (sonnet)' },
+    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
 
 // args: { crate: 'auracle-taste', branch: 'claude/<topic>', worktree: '$REPO/.claude/worktrees/<topic>',
-//         issue?: <n>, session?: 'https://claude.ai/code/session_…' }
+//         issue?: <n>, session?: 'https://claude.ai/code/session_…',
+//         models?: { measure, kill, review, fix, verify, finalize: 'opus' | 'sonnet' } }
+// Models, by how hard a stage is. Defaults: kill, review and fix opus (finding the behavior a mutant
+// breaks and writing the test that asserts it; judging the tests; fixing what the review found);
+// measure (the run before and the run after, each only counting), verify and finalize sonnet (a
+// re-check of findings already fixed; a rebase, quick gates and the PR checks). `models` sets a
+// stage's model, e.g. { kill: 'sonnet' } for a crate whose survivors are all plain. Every agent but
+// the first measure also gets the advisor line: it calls the advisor, when there is one, before it
+// commits to an approach, when stuck, and before it reports done.
 // Returns { workflow, session, before, after, groups: [{ file, killed, equivalent, left }], items: [{ key, issue,
 // branch, worktree, status, problems, final, review, verify }] }: the item in ship-issues' shape.
 //
@@ -35,6 +43,18 @@ need(typeof args.worktree === 'string' && args.worktree.startsWith('/'), 'worktr
 need(args.issue === undefined || args.issue === null || Number.isInteger(args.issue), 'issue, when given, is a number')
 const SESSION = typeof args.session === 'string' && args.session ? args.session : null
 need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'session is a https://claude.ai/code/session_… link')
+
+// The model of each stage, by how hard it is (see args above).
+const MODELS = ['opus', 'sonnet']
+const STAGE_MODELS = { measure: 'sonnet', kill: 'opus', review: 'opus', fix: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const MODEL_ARGS = args.models === undefined ? {} : args.models
+need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
+for (const [stage, m] of Object.entries(MODEL_ARGS)) {
+  need(Object.keys(STAGE_MODELS).includes(stage), `models.${stage} is not a stage (${Object.keys(STAGE_MODELS).join(', ')})`)
+  need(MODELS.includes(m), `models.${stage} is 'opus' or 'sonnet'`)
+}
+const modelOf = stage => MODEL_ARGS[stage] || STAGE_MODELS[stage]
+const ADVISOR = 'If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done.'
 
 const CRATE = args.crate
 const WT = args.worktree
@@ -169,7 +189,7 @@ Run ${RUN} (hours; cargo-mutants must be the Makefile's MUTANTS_VERSION: make se
 Change nothing in the worktree but what the run writes (mutants.out is not committed).
 
 ${RULES}`,
-  { label: `measure ${KEY}`, phase: 'Measure', agentType: 'engine-engineer', schema: MEASURE },
+  { label: `measure ${KEY}`, phase: 'Measure', agentType: 'engine-engineer', model: modelOf('measure'), schema: MEASURE },
 )
 if (!before) {
   return { workflow: 'mutants-burndown', session: SESSION, before: null, after: null, groups: [], items: [{ key: KEY, issue: ISSUE, branch: args.branch, worktree: WT, status: 'failed', problems: ['the first mutation run did not return'] }] }
@@ -188,8 +208,10 @@ ${g.survivors.map(m => `- ${g.file}:${m.line} ${m.function}: ${m.change}`).join(
 
 For each: find the behavior the change breaks and write the test that asserts it, in the module's tests (<module>/tests.rs); or argue it equivalent and exclude it narrowly in .cargo/mutants.toml with its reason. Confirm with a focused run: cd ${WT} && nice -n 19 make mutants CRATE=${CRATE} MUTANTS_ARGS='--file ${g.file}'. Then make test-crate CRATE=${CRATE} and make lint. One commit for the file.
 
-${RULES}`,
-    { label: `kill ${KEY} ${g.file}`, phase: 'Kill', agentType: 'engine-engineer', schema: KILL },
+${RULES}
+
+${ADVISOR}`,
+    { label: `kill ${KEY} ${g.file}`, phase: 'Kill', agentType: 'engine-engineer', model: modelOf('kill'), schema: KILL },
   )
   if (k) {
     kills.push(k)
@@ -213,8 +235,10 @@ ${json(kills)}
 
 ${RULES}
 
-Report with the structured output: after (the counts), the gates, every commit on the branch, a survivor still left as an open item (in_area when a test could still kill it; decision when it needs the maintainer), and the pr_title and pr_body drafts.`,
-  { label: `measure ${KEY} after`, phase: 'Measure', agentType: 'engine-engineer', schema: REPORT },
+Report with the structured output: after (the counts), the gates, every commit on the branch, a survivor still left as an open item (in_area when a test could still kill it; decision when it needs the maintainer), and the pr_title and pr_body drafts.
+
+${ADVISOR}`,
+  { label: `measure ${KEY} after`, phase: 'Measure', agentType: 'engine-engineer', model: modelOf('measure'), schema: REPORT },
 )
 if (!report) {
   return { workflow: 'mutants-burndown', session: SESSION, before: before.counts, after: null, groups: kills, items: [{ key: KEY, issue: ISSUE, branch: args.branch, worktree: WT, status: 'failed', problems: ['the second mutation run did not return; the branch holds the kills so far'] }] }
@@ -230,8 +254,10 @@ ${json(kills)}
 
 Hunt for: a test that kills its mutant without asserting a behavior (a test of an implementation detail, written only to fail on the mutant: docs/notes/test-audit-2026-10/rubric.md); a test at the wrong level, or not beside its module; a statistical bound from one seed; an exclusion that is not truly equivalent (find the behavior it hides), that matches more than its mutant (a whole function's mutants, a file, a line number), or has no reason; coverage below a floor; the crate's fast tier made slow. Rank them: blocking (a vacuous or implementation test, an exclusion hiding a behavior, a floor missed); should_fix (any other finding here, fixed in this branch); maintainers_call; nits.
 
-Read-only: change nothing in any checkout.`,
-  { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'xhigh', schema: REVIEW },
+Read-only: change nothing in any checkout.
+
+${ADVISOR}`,
+  { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', model: modelOf('review'), effort: 'xhigh', schema: REVIEW },
 )
 
 // The review's blocking findings no re-check has yet confirmed fixed, and a
@@ -261,8 +287,10 @@ ${RULES}
 Your report so far:
 ${json(report)}
 
-Return the full report, updated (the counts in after still true), with the pr_body saying what the review found and what was fixed or declined and why.`,
-    { label: `fix ${KEY}`, phase: 'Review', agentType: 'engine-engineer', schema: REPORT },
+Return the full report, updated (the counts in after still true), with the pr_body saying what the review found and what was fixed or declined and why.
+
+${ADVISOR}`,
+    { label: `fix ${KEY}`, phase: 'Review', agentType: 'engine-engineer', model: modelOf('fix'), schema: REPORT },
   )
   if (fixed) report = fixed
   else lost = `the fix of the review's findings did not return: its ${review.blocking.length} blocking, ${review.should_fix.length} should-fix and ${review.nits.length} nit finding(s) are not done on the branch`
@@ -270,8 +298,10 @@ Return the full report, updated (the counts in after still true), with the pr_bo
     verify = await agent(
       `Re-check only these blocking findings on branch ${args.branch} (worktree ${WT}, head ${report.head}): ${CRATE}'s mutant burndown. For each, confirm the fix resolves it, running the focused mutation run or the test where it helps. Read-only.
 
-${fmt(review.blocking)}`,
-      { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'high', schema: VERIFY },
+${fmt(review.blocking)}
+
+${ADVISOR}`,
+      { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', model: modelOf('verify'), effort: 'high', schema: VERIFY },
     )
     if (verify && verify.all_resolved) open = []
     else if (verify && verify.remaining.length) open = verify.remaining
@@ -291,8 +321,10 @@ ${RULES}
 Your report so far:
 ${json(report)}
 
-Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.`,
-  { label: `finalize ${KEY}`, phase: 'Finalize', agentType: 'engine-engineer', schema: FINAL },
+Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.
+
+${ADVISOR}`,
+  { label: `finalize ${KEY}`, phase: 'Finalize', agentType: 'engine-engineer', model: modelOf('finalize'), schema: FINAL },
 )
 
 const last = final || report

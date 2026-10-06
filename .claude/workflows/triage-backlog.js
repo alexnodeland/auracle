@@ -3,13 +3,20 @@ export const meta = {
   description: "Read auracle's open issues one agent each, read-only, and plan waves: what can run together without sharing files, the bundles that share them, the chains that must go in order, and the maintainer's questions as one batch",
   whenToUse: 'Before a wave, to choose what to build next and in what groups. Read-only. Runs when the maintainer asks for a triage or a wave (one agent per issue spends many tokens); the ship-wave skill has the steps around it.',
   phases: [
-    { title: 'List', detail: 'the open issues, when args names none' },
-    { title: 'Read', detail: 'one agent per issue: what remains, its files, what it needs' },
-    { title: 'Plan', detail: 'waves, bundles, chains and the questions for the maintainer' },
+    { title: 'List', detail: 'the open issues, when args names none (sonnet)' },
+    { title: 'Read', detail: 'one agent per issue: what remains, its files, what it needs (sonnet)' },
+    { title: 'Plan', detail: 'waves, bundles, chains and the questions for the maintainer (opus)' },
   ],
 }
 
-// args: { issues?: [n, ...] (default: every open issue), session?: 'https://claude.ai/code/session_…' }
+// args: { issues?: [n, ...] (default: every open issue), session?: 'https://claude.ai/code/session_…',
+//         models?: { list, read, plan: 'opus' | 'sonnet' } }
+// Models, by how hard a stage is. Defaults: list and read sonnet (listing issues; reading one issue
+// and the code it names, to size it), plan opus (grouping many issues so that no two branches share a
+// file, which is a judgment over the whole backlog). `models` sets a stage's model, e.g.
+// { read: 'opus' } when the issues are subtle. Every agent but the lister also gets the advisor line:
+// it calls the advisor, when there is one, before it commits to an approach, when stuck, and before it
+// reports done.
 // Returns { workflow, triaged: [...], missing: [n], overlaps: [{ a, b, files }], plan }. The plan's
 // items are in ship-issues' item shape, less the worktree and the port, which the operator assigns.
 
@@ -21,6 +28,18 @@ function need(ok, what) {
 need(args === undefined || args === null || (typeof args === 'object' && !Array.isArray(args)), 'args is an object, {issues?, session?}, passed as JSON (not as a string); none reads every open issue')
 const given = args && Array.isArray(args.issues) ? args.issues : null
 need(!given || given.every(n => Number.isInteger(n)), 'issues lists issue numbers')
+
+// The model of each stage, by how hard it is (see args above).
+const MODELS = ['opus', 'sonnet']
+const STAGE_MODELS = { list: 'sonnet', read: 'sonnet', plan: 'opus' }
+const MODEL_ARGS = args && args.models !== undefined ? args.models : {}
+need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
+for (const [stage, m] of Object.entries(MODEL_ARGS)) {
+  need(Object.keys(STAGE_MODELS).includes(stage), `models.${stage} is not a stage (${Object.keys(STAGE_MODELS).join(', ')})`)
+  need(MODELS.includes(m), `models.${stage} is 'opus' or 'sonnet'`)
+}
+const modelOf = stage => MODEL_ARGS[stage] || STAGE_MODELS[stage]
+const ADVISOR = 'If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done.'
 
 const AGENTS = ['web-engineer', 'engine-engineer', 'docs-writer', 'film-producer', 'general-purpose']
 const READ_ONLY = `Read-only: change nothing in any checkout, comment on nothing, label nothing. Read code at origin/main (git -C <the main checkout> fetch -q origin; git show origin/main:<path>; git log origin/main --oneline --grep '#<n>'), not a working tree, which may be stale or another branch's.`
@@ -112,7 +131,7 @@ if (!numbers) {
   phase('List')
   const listed = await agent(
     `List every open issue of ${REPO}: gh -R ${REPO} issue list --state open --limit 500 --json number,title,labels. Return each with its labels' names. ${READ_ONLY}`,
-    { label: 'list open issues', phase: 'List', effort: 'low', schema: LIST },
+    { label: 'list open issues', phase: 'List', model: modelOf('list'), effort: 'low', schema: LIST },
   )
   numbers = listed ? listed.issues.map(i => i.number) : []
 }
@@ -130,8 +149,10 @@ Read it with its comments (gh -R ${REPO} issue view ${n} --comments), the plan, 
 
 List the files the change would edit as exactly as you can, and among them the shared ones another branch's edit would conflict with. Name anything only the maintainer can decide as one exact question. Be honest about size.
 
-${READ_ONLY}`,
-  { label: `triage #${n}`, phase: 'Read', effort: 'medium', schema: ISSUE },
+${READ_ONLY}
+
+${ADVISOR}`,
+  { label: `triage #${n}`, phase: 'Read', model: modelOf('read'), effort: 'medium', schema: ISSUE },
 )))
 const triaged = read.filter(Boolean)
 const missing = numbers.filter(n => !triaged.some(t => t.issue === n))
@@ -167,8 +188,10 @@ The rules (docs/process.md):
 - Issues that must merge in order are a chain; only the first can be in a wave.
 - Closable issues are listed apart, with what closed them.
 
-Give each item a topic for its branch (claude/<topic>), the agent type, the builder's notes and decisions, and what to avoid (files another item of the same wave edits). Read-only: change nothing, comment on nothing.`,
-  { label: 'plan waves', phase: 'Plan', effort: 'high', schema: PLAN },
+Give each item a topic for its branch (claude/<topic>), the agent type, the builder's notes and decisions, and what to avoid (files another item of the same wave edits). Read-only: change nothing, comment on nothing.
+
+${ADVISOR}`,
+  { label: 'plan waves', phase: 'Plan', model: modelOf('plan'), effort: 'high', schema: PLAN },
 )
 if (plan) log(`${plan.waves.length} wave(s), ${plan.chains.length} chain(s), ${plan.questions.length} question(s) for the maintainer`)
 return { workflow: 'triage-backlog', triaged: triaged.sort((a, b) => a.issue - b.issue), missing, overlaps, plan }

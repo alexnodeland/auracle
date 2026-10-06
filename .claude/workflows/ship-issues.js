@@ -3,11 +3,11 @@ export const meta = {
   description: 'Build, review, fix, re-check and finalize auracle issues, each on its own claude/ branch and worktree; returns the head, title, body and open items the operator needs to push and queue the PR',
   whenToUse: 'Prefer ONE issue per run (or a small bundle of issues that share files), so each completion notifies on its own: a run returns only when its slowest item is done. Each item needs its worktree created from origin/main first (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Runs when the maintainer asks for a wave or for this workflow by name (it spends many tokens); the ship-wave skill has the steps around it.',
   phases: [
-    { title: 'Build', detail: 'the area agent builds and commits in the worktree' },
-    { title: 'Review', detail: 'the reviewer agent, read-only, on the branch' },
-    { title: 'Fix', detail: 'every blocking and should-fix finding, the nits and the in-area open items, fixed on the branch' },
-    { title: 'Verify', detail: 'the reviewer re-checks the blocking findings' },
-    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body' },
+    { title: 'Build', detail: 'the area agent builds and commits in the worktree (opus by default; an item sets sonnet when it is well specified and mechanical)' },
+    { title: 'Review', detail: 'the reviewer agent, read-only, on the branch (opus)' },
+    { title: 'Fix', detail: 'every blocking and should-fix finding, the nits and the in-area open items, fixed on the branch (the build stage\'s model)' },
+    { title: 'Verify', detail: 'the reviewer re-checks the blocking findings (sonnet)' },
+    { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
 
@@ -15,9 +15,18 @@ export const meta = {
 //   items: [{ issue, closes?: [n], refs?: [n], branch: 'claude/<topic>', port,
 //             worktree: '$REPO/.claude/worktrees/<topic>' (the main checkout's .claude/worktrees/),
 //             agentType?: 'web-engineer' | 'engine-engineer' | 'docs-writer' | 'film-producer',
+//             model?: 'opus' | 'sonnet' (for this item's build and fix stages; default opus: sonnet for a
+//                      well-specified, mechanical item, opus for anything that needs design or diagnosis),
 //             notes?: 'what remains', decisions?: 'already made', avoid?: 'files not to touch' }],
+//   models?: { build, review, fix, verify, finalize: 'opus' | 'sonnet' },   // a stage's model for every item
 //   session?: 'https://claude.ai/code/session_…'   // this operator session's link
 // }
+// Models, by how hard a stage is. Defaults: build, review and fix opus (writing and judging code);
+// verify and finalize sonnet (a re-check of findings already fixed; a rebase, quick gates and the PR
+// checks). An item's `model` sets build and fix (a fix round too) for that item and wins over
+// `models.build` and `models.fix`; `models` sets a stage for every item; finalize and the rest follow
+// `models` only. Every agent also gets the advisor line: it calls the advisor, when there is one,
+// before it commits to an approach, when stuck, and before it reports done.
 // With a session, every commit's last line is `Claude-Session: <session>` and
 // the PR body's last line is the link; without one, neither has it.
 //
@@ -44,6 +53,19 @@ for (const it of args.items) {
 }
 const SESSION = typeof args.session === 'string' && args.session ? args.session : null
 need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'session is a https://claude.ai/code/session_… link')
+
+// The model of each stage, by how hard it is (see args above).
+const MODELS = ['opus', 'sonnet']
+const STAGE_MODELS = { build: 'opus', review: 'opus', fix: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const MODEL_ARGS = args.models === undefined ? {} : args.models
+need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
+for (const [stage, m] of Object.entries(MODEL_ARGS)) {
+  need(Object.keys(STAGE_MODELS).includes(stage), `models.${stage} is not a stage (${Object.keys(STAGE_MODELS).join(', ')})`)
+  need(MODELS.includes(m), `models.${stage} is 'opus' or 'sonnet'`)
+}
+for (const it of args.items) need(it.model === undefined || MODELS.includes(it.model), `#${it.issue}: model is 'opus' or 'sonnet'`)
+const modelOf = (stage, item) => (item.model && (stage === 'build' || stage === 'fix') ? item.model : MODEL_ARGS[stage] || STAGE_MODELS[stage])
+const ADVISOR = 'If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done.'
 
 // The operator's rules a stage needs. The rest (descriptions stay true, drop
 // nothing, tests at the lowest level, the gates) is in the AGENTS.md files
@@ -198,8 +220,10 @@ ${RULES}
 
 Gates before you report: the check skill's set for what you changed (make web-check for JS; make dev-check always; make fmt-check lint and the crate's tests for Rust, and make mutants DIFF=1; make wasm-check when the wasm crate or what it calls changed), and the specs you added or touched.
 
-Report with the structured output. needs_full_ci: docs/process.md § CI and merging lists what the Slow suite covers. open_items carry a kind; in-area work is done, not listed. The pr_title and pr_body are drafts the operator will use.`,
-    { label: `build #${item.issue}`, phase: 'Build', agentType: item.agentType, schema: REPORT },
+Report with the structured output. needs_full_ci: docs/process.md § CI and merging lists what the Slow suite covers. open_items carry a kind; in-area work is done, not listed. The pr_title and pr_body are drafts the operator will use.
+
+${ADVISOR}`,
+    { label: `build #${item.issue}`, phase: 'Build', agentType: item.agentType, model: modelOf('build', item), schema: REPORT },
   )
 }
 
@@ -220,8 +244,10 @@ Hunt for, running things where you can:
 
 Rank them: blocking (a wrong result, a dropped capability, an untrue description, a vacuous or slow-runner-flaky test); should_fix (every other finding in what the branch touches: the builder fixes it in this branch); maintainers_call (only a choice the maintainer must make); nits. Mark a finding other_area when its fix belongs elsewhere.
 
-Read-only: change nothing in any checkout; scratch files in a directory of your own (mktemp -d). Browser runs, if needed, through one_browser.sh on port ${item.port + 100}.`,
-    { label: `review #${item.issue}`, phase: 'Review', agentType: 'reviewer', effort: 'xhigh', schema: REVIEW },
+Read-only: change nothing in any checkout; scratch files in a directory of your own (mktemp -d). Browser runs, if needed, through one_browser.sh on port ${item.port + 100}.
+
+${ADVISOR}`,
+    { label: `review #${item.issue}`, phase: 'Review', agentType: 'reviewer', model: modelOf('review', item), effort: 'xhigh', schema: REVIEW },
   )
 }
 
@@ -252,8 +278,10 @@ ${json(report)}
 
 ${RULES}
 
-Gates again, for what you changed. Return the full report, updated: the new head, every commit on the branch, no in_area open item left, and the pr_body saying what the review found and what was fixed or declined and why.`,
-    { label: `fix #${item.issue}${round > 1 ? ` r${round}` : ''}`, phase: 'Fix', agentType: item.agentType, schema: REPORT },
+Gates again, for what you changed. Return the full report, updated: the new head, every commit on the branch, no in_area open item left, and the pr_body saying what the review found and what was fixed or declined and why.
+
+${ADVISOR}`,
+    { label: `fix #${item.issue}${round > 1 ? ` r${round}` : ''}`, phase: 'Fix', agentType: item.agentType, model: modelOf('fix', item), schema: REPORT },
   )
 }
 
@@ -261,8 +289,10 @@ function verify(report, item, blocking, round) {
   return agent(
     `Re-check only these blocking findings on branch ${item.branch} (worktree ${item.worktree}, head ${report.head}) for issue #${item.issue} of ${REPO}. For each, confirm the fix resolves it at its cause: run the relevant test, and where a test was added, confirm it fails without the fix. Review that delta, not the whole branch. Read-only: change nothing in any checkout.
 
-${fmt(blocking)}`,
-    { label: `verify #${item.issue}${round > 1 ? ` r${round}` : ''}`, phase: 'Verify', agentType: 'reviewer', effort: 'high', schema: VERIFY },
+${fmt(blocking)}
+
+${ADVISOR}`,
+    { label: `verify #${item.issue}${round > 1 ? ` r${round}` : ''}`, phase: 'Verify', agentType: 'reviewer', model: modelOf('verify', item), effort: 'high', schema: VERIFY },
   )
 }
 
@@ -277,8 +307,10 @@ function finalize(report, item, known) {
 
 ${RULES}
 
-Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.`,
-    { label: `finalize #${item.issue}`, phase: 'Finalize', agentType: item.agentType, schema: FINAL },
+Return the report again, updated: the new head, every commit, base, conflicts, pr_checks, and a pr_title and pr_body that pass. pr_body: ${BODY_DOC}.
+
+${ADVISOR}`,
+    { label: `finalize #${item.issue}`, phase: 'Finalize', agentType: item.agentType, model: modelOf('finalize', item), schema: FINAL },
   )
 }
 
