@@ -262,13 +262,37 @@ test("drop: a toast taken back goes at once, and the count beside the screen fol
   assert.equal(l.onScreen(), "next");
 });
 
+test("trim: a remark about the player's sounds is cut only after the plain remarks", (t) => {
+  const l = setup(t);
+  l.say("live");
+  l.say("replaced Tine", { bank: true });
+  l.say("remark 1");
+  l.say("replaced Bell Jar", { bank: true });
+  l.say("remark 2");
+  assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 2"]);
+  l.say("remark 3");
+  assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 3"]);
+});
+
+test("stale: a plain remark still goes stale beside a remark about the player's sounds", (t) => {
+  const l = setup(t);
+  l.say("remark");
+  l.say("undo", { undo: () => {} });
+  l.say("narration");
+  l.say("replaced Tine", { bank: true });
+  // Both reach the head of the queue after REMARK + UNDO.
+  assert.ok(REMARK + UNDO > TOAST_STALE_MS);
+  l.wait(REMARK + UNDO);
+  assert.deepEqual(l.shown, ["remark", "undo", "replaced Tine"]);
+});
+
 // #129. Measured on a fast machine (bank_kept.spec.js): the warm start's
 // result was on screen, then "Saved …", "Kept … as new. It replaced …" and
 // "Opened the preset as …. It replaced …" were said 1.7, 2.3 and 3.0 s after
 // it, each a plain remark. The last reached the head of the queue 10.5 s
 // after it was said, and was dropped as stale: the player was never told
 // which sound the preset replaced.
-test("a remark about the player's sounds waits its turn behind other remarks, however long", { todo: "#129: the lane drops it as stale" }, (t) => {
+test("a remark about the player's sounds waits its turn behind other remarks, however long", (t) => {
   const l = setup(t);
   l.say("Your three taught it 18 picks.", { replace: "warm" });
   l.wait(1700);

@@ -2231,7 +2231,7 @@ worker.onmessage = (e) => {
       renderSubject(); // the rack stops saying "opening…"
       if (currentView === "taste") drawTaste(); // …and the map's dot stops waiting
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
-      note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
+      note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
       send({ type: "taste_views" });
       break;
     }
@@ -2247,7 +2247,7 @@ worker.onmessage = (e) => {
         const placed = adoptLayout(m.id, layout);
         quietBench.add(m.id); // the import's own toast names it
         openOnBench(m.id);
-        note(`Opened the patch file as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
+        note(`Opened the patch file as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`, { bank: true });
         scheduleSave();
       } else if (m.duplicate > 0) {
         // The bank already holds this exact patch. That is not a failure —
@@ -2507,7 +2507,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       scheduleSave();
-      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`);
+      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`, { bank: true });
       break;
     }
     case "refined": {
@@ -2566,7 +2566,7 @@ worker.onmessage = (e) => {
         // it cannot start from. The sentence says which, and how many; it
         // used to say "no move was accepted" for all of them.
         const reasons = Array.isArray(m.reasons) ? m.reasons : [];
-        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }));
+        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }), { bank: evicted.length > 0 });
       } else if (m.born && kept.length === 0) {
         // Bred and admitted, then ranked below the rest at the finish.
         note(`Generation ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} ${bred.length === 1 ? "was" : "were"} bred, but none rated above the sounds they would replace, so the pool is as it was.`);
@@ -2581,10 +2581,10 @@ worker.onmessage = (e) => {
           wasStopped
             ? `Generation ${m.status.generation} stopped: ${plural(n, "new sound")} kept, at the top of the pool${below}.${made}`
             : `Generation ${m.status.generation}: ${plural(n, "new sound")} in the pool${below}.${made}`,
-          bankTourOffer(),
+          { ...bankTourOffer(), bank: true },
         );
       } else {
-        note(`Generation ${m.status.generation} bred.`);
+        note(`Generation ${m.status.generation} bred.`, { bank: true });
       }
       break;
     }
@@ -2670,7 +2670,7 @@ worker.onmessage = (e) => {
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
-          note(evolved.text(row ? row.name : "a new sound"), { replace: "evolve-from" });
+          note(evolved.text(row ? row.name : "a new sound"), { replace: "evolve-from", bank: true });
         } else if (!quietBench.delete(m.subject) && asked && !asked.auto &&
                    performance.now() - asked.at > OPEN_SAID_MS) {
           // No toast for an open: the header, the dock and the live row
@@ -3131,7 +3131,7 @@ worker.onmessage = (e) => {
         // edits it took in ("… TAKE IT OUT") are stale news about a patch that
         // is now committed, and this receipt used to queue behind them.
         retireEditReceipts();
-        note(`Kept ${nameOf(m.id)} as new${taught}.${madeRoom(evicted)}`, { replace: "commit" });
+        note(`Kept ${nameOf(m.id)} as new${taught}.${madeRoom(evicted)}`, { replace: "commit", bank: true });
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
@@ -3225,7 +3225,7 @@ worker.onmessage = (e) => {
         if (editedSince) {
           note(
             `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
-            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
+            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from", bank: true },
           );
         } else {
           // Said when it is true. The child exists now, but the bench swaps
@@ -3290,15 +3290,15 @@ worker.onmessage = (e) => {
         if (rowOf(m.id)) {
           note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`);
         } else {
-          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
+          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
         }
       } else if (m.pinned) {
-        note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`);
+        note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
       } else {
         // Releasing is destructive in slow motion: the patch goes back into
         // the pool and the next generation may breed it away. Silence made it
         // the one half of the toggle that reported nothing.
-        note(`Released ${nameOf(m.id)}. A generation can replace it again (${pinBudget[0]} of ${pinBudget[1]} saved).`);
+        note(`Released ${nameOf(m.id)}. A generation can replace it again (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
       }
       renderPinBudget();
       renderBank();
@@ -3357,7 +3357,7 @@ worker.onmessage = (e) => {
           // The player opened something else while this was loading: it is in
           // the bank now, and the patch in their hands stays there.
           if (early) unvoiceEarly();
-          note(`${nameOf(m.id)} is in the pool now. You had moved on, so it wasn’t opened.${madeRoom(evicted)}`);
+          note(`${nameOf(m.id)} is in the pool now. You had moved on, so it wasn’t opened.${madeRoom(evicted)}`, { bank: true });
         } else {
           // Voiced from memory at the click: now it has an id.
           if (early) {
@@ -3366,7 +3366,7 @@ worker.onmessage = (e) => {
           }
           quietBench.add(m.id); // "Opened the preset as …" names it
           openOnBench(m.id);
-          note(`Opened the preset as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+          note(`Opened the preset as ${nameOf(m.id)}.${madeRoom(evicted)}`, { bank: true });
         }
         scheduleSave();
       } else {
@@ -4007,7 +4007,9 @@ function firstNotePlayed() {
 // trim and the stale drop — is toasts.js (`createToastLane`), with its rules
 // (read them before adding a toast) and tests/toasts.test.mjs. What stays
 // here is the DOM: the toast's element (`note`), and where the lane sits
-// (rules 1 and 2, `positionToastLane` below).
+// (rules 1 and 2, `positionToastLane` below). A toast that says a sound
+// joined or left the pool, or was saved or released, is given `bank: true`
+// (rule 6): it is never dropped for having waited.
 const toastLane = createToastLane({
   view: {
     show(el) {
@@ -8354,7 +8356,7 @@ function cutRow(r) {
   });
   // By name, never "#9": ids are hidden everywhere else. And it says what the
   // cut does, which is now true: the patch is not dealt again.
-  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo });
+  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true });
 }
 
 function wireRename(nameEl, r) {
@@ -23322,7 +23324,7 @@ function previewPreset(row, btn) {
 
 function warmPreviewLoaded(index, id, evicted) {
   if (id) presetIds.set(index, id);
-  if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`);
+  if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`, { bank: true });
   if (bankFilter === "presets") renderBank(); // it can now say "in pool"
   const req = warmPreview;
   if (!req || req.index !== index) return; // superseded, taken back, or the card closed
@@ -23439,6 +23441,7 @@ function warmStartDone(m) {
     : rowOf(m.first)?.name || (warmRows || presetRows || []).find((r) => r.index === firstIdx)?.name;
   note(`Your three taught it ${m.n} picks, so it starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
     replace: "warm",
+    bank: true,
   });
 }
 

@@ -8,6 +8,18 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: a toast about your sounds is never lost in the queue
+
+- **A toast that says what happened to your sounds always reaches the
+  screen.** Toasts show one at a time, and one that had waited more than 9 s
+  for its turn was dropped as out of date. On a fast machine, opening a preset
+  just after saving a sound and keeping another as new put *Opened the preset
+  as First Bass. It replaced the lowest-rated sound it could: Tine.* behind
+  those two toasts, and it was dropped, so you were never told which sound
+  the preset replaced. A toast that says a sound joined or left the pool, or
+  was saved or released, now waits its turn however long that takes
+  (`toasts.test.mjs`, `bank_kept.spec.js`, #129).
+
 ### Fixed: a sound opened in PATCH isn't kept waiting behind a cable probe
 
 - After you arrive in PATCH, or a sound opens, PATCH waits 1.2 s before it

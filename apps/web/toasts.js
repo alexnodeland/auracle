@@ -42,6 +42,17 @@
 // A toast given `replace: key` takes the place of any earlier toast with the
 // same key, on screen or queued: on screen it takes the floor at once with
 // its own full window, queued it takes the earlier one's place in line.
+//
+// Rule 6, from #129: A CHANGE TO THE PLAYER'S SOUNDS IS NOT NARRATION. The
+// stale drop is right for a remark a newer state has overtaken, and wrong for
+// one that says a sound joined or left the pool, or was saved or released:
+// that stays true however long it waits, and for a sound that was replaced
+// the toast is the only place the player hears it (it has no row left). On a
+// fast machine "Opened the preset as … It replaced … Tine" was said behind
+// three plain remarks, reached the head of the queue 10.5 s later, and was
+// dropped. A toast given `bank: true` is never dropped for its age: it waits
+// its turn, and the backlog's trim spends the plain remarks before it, as it
+// does before an undo.
 
 /** How many toasts may wait behind the one on screen. */
 export const MAX_TOASTS = 3;
@@ -52,7 +63,8 @@ export const TOAST_MS = 4200;
 /** A queued remark about a patch state that has moved on is worse than
  *  silence. An undo is exempt: being still actionable is its whole point.
  *  So is a refusal — an unheard "that did not happen" is the one omission
- *  that leaves the player believing something false. */
+ *  that leaves the player believing something false. And so is a change to
+ *  the player's sounds (`bank`, rule 6), which does not go out of date. */
 export const TOAST_STALE_MS = 9000;
 
 /** The lane. `view` is the DOM side, each call given a toast's element:
@@ -72,7 +84,7 @@ export function createToastLane({
   let live = null;
 
   /** Put a toast in the lane; `opts` as `note()`'s (`undo`, `urgent`,
-   *  `replace`). Returns its entry, for `dismiss`. */
+   *  `replace`, `bank`). Returns its entry, for `dismiss`. */
   function add(el, opts = {}) {
     const entry = { el, opts, born: now(), timer: null, out: false };
     if (opts.urgent) {
@@ -171,11 +183,12 @@ export function createToastLane({
   }
 
   /** Keep the backlog shallow, and spend the cut on remarks rather than on
-   *  anything still carrying an action — or on a refusal, which is the one
-   *  thing in the lane that cannot be said later instead. */
+   *  anything still carrying an action, or a change to the player's sounds
+   *  (rule 6) — or on a refusal, which is the one thing in the lane that
+   *  cannot be said later instead. */
   function trim() {
     while (queue.length > MAX_TOASTS) {
-      let i = queue.findIndex((t) => !t.opts.undo && !t.opts.urgent);
+      let i = queue.findIndex((t) => !t.opts.undo && !t.opts.urgent && !t.opts.bank);
       if (i < 0) i = queue.findIndex((t) => !t.opts.urgent);
       // Last resort takes from the back, never the front: the head is where the
       // refusal that just pre-empted is sitting.
@@ -186,7 +199,7 @@ export function createToastLane({
 
   function pump() {
     if (live) return;
-    while (queue.length && !queue[0].opts.undo && !queue[0].opts.urgent &&
+    while (queue.length && !queue[0].opts.undo && !queue[0].opts.urgent && !queue[0].opts.bank &&
            now() - queue[0].born > TOAST_STALE_MS) {
       queue.shift();
     }

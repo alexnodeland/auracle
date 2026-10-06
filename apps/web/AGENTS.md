@@ -49,7 +49,10 @@ the long-form notes are this directory's `README.md`.
 - **Toasts follow the lane's rules** (the comments in `toasts.js`). A later
   word on the same thing replaces the earlier one (`replace: key`), a refusal
   says why and jumps the queue (`urgent`), and an undo retires the receipt of
-  what it undid. A confirmation must not queue behind stale news.
+  what it undid. A confirmation must not queue behind stale news. A toast
+  that reports a change to the player's sounds (a sound joined or left the
+  pool, or was saved or released) is given `bank: true`, and is never
+  dropped for having waited.
 - **One language across the views**
   ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
   words, colours (green sound, amber the model, red danger, silk you), undo,
