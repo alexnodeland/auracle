@@ -30,7 +30,9 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   (every mark and motion an engine fact, never an estimate drawn as one).
 - **Spec robustness** under the no-retry policy (`docs/process.md` § Flakes):
   waits on states, never times; no exact count of something a slow runner may
-  do twice; nothing that can pass vacuously (an empty box that is "visible",
+  do twice; no speed bound but a budget (`app.budget`, ADR-022: the gesture's
+  own task, the tap's order or the app's marks for what the app promises);
+  nothing that can pass vacuously (an empty box that is "visible",
   a request read before it can have been sent); engine waits bounded by
   `offerBudget`; injected replies the engine's own can't overwrite.
 - **Process**: commits explain why and carry no hand-written attribution; a

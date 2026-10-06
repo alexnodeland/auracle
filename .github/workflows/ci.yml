@@ -778,7 +778,9 @@ jobs:
 
   # The runners' reports as one: an HTML report of every test, with the traces
   # of what failed, uploaded when a runner failed (the run's summary links
-  # it), and on main the times folded into the timings the next run deals by.
+  # it), the speed budgets recorded over their limit listed in the summary
+  # (ADR-022), and on main the times folded into the timings the next run
+  # deals by.
   # Not part of the `CI` check: it reports on the answer, it is not one.
   report:
     name: Browser report

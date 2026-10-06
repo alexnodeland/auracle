@@ -129,8 +129,10 @@ or a person, against:
   [ADR-012](decisions/012-motion-shows-what-the-engine-does.md) (every mark
   and motion an engine fact).
 - **Spec robustness** under the no-retry policy: waits on states, never on
-  times; no exact count of something a slow runner may do twice; no
-  assertion that can pass vacuously.
+  times; no exact count of something a slow runner may do twice; no speed
+  bound but a budget
+  ([ADR-022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md));
+  no assertion that can pass vacuously.
 - **The area's invariants** (its `AGENTS.md` and ADRs).
 
 Findings come back ranked, and review is **one round**:
