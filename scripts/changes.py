@@ -135,15 +135,23 @@ def beyond(c: dict[str, bool]) -> list[str]:
     return [f"{name} ({cmd})" for cls, name, cmd in BEYOND if c[cls]]
 
 
+# Which config files git reads, kept when the GIT_* variables are dropped
+# (as coverage_gate.py's own_env keeps them): they name no repository. A
+# caller that says "no global config" is heard: this file's tests say it for
+# their throwaway repositories, so a user's core.fsmonitor starts no daemon in
+# each, to outlive it and hold up a later git there.
+CONFIG_VARS = ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_SYSTEM")
+
+
 def git(cwd: str | None, *args: str) -> str:
     """`git args` in `cwd`, on that directory's repository whatever GIT_*
     says: a git hook (pre-commit runs `make dev-check`) sets GIT_DIR and
-    GIT_INDEX_FILE, which would point git at another one. Without the
-    file-system monitor: where a user's config turns it on, git starts a
-    daemon for each new repository (this file's tests make throwaway ones),
-    and a call left waiting on one hung `make -j8 dev-check` for ten
-    minutes."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    GIT_INDEX_FILE, which would point git at another one. Which config files
+    to read (CONFIG_VARS) is kept. Without the file-system monitor, as
+    wasm_pkg.py's git: on a loaded machine its daemon fell behind and git
+    called an edited file unchanged, and a file left out here is a part of
+    `make check` left out."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") or k in CONFIG_VARS}
     cmd = ["git", "-c", "core.fsmonitor=false", *args]
     return subprocess.run(cmd, cwd=cwd, env=env, check=True, capture_output=True, text=True).stdout
 

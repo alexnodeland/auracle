@@ -6,8 +6,8 @@ as changed.
     python3 scripts/test_changes.py      (run by `make dev-check`)
 
 The cases are the rows of docs/architecture/testing.md § CI tiers, *The two
-lanes*. The last class reads a throwaway git repository. Python 3 standard
-library only.
+lanes*. The last two classes read throwaway git repositories, with no
+system or global config. Python 3 standard library only.
 """
 
 import os
@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -25,6 +26,22 @@ import changes as C  # noqa: E402
 def reached(*files):
     """The classes `files` reach, as a set of names."""
     return {k for k, v in C.classify(list(files)).items() if v}
+
+
+_NO_USER_CONFIG = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+
+
+def setUpModule():
+    """The script's git reads no system or global config in the throwaway
+    repositories (as scripts/test_coverage_gate.py's): a global
+    core.fsmonitor would start a daemon in each, which outlives the test and
+    can hold up a later git there, and a global hooks path would run the
+    user's hooks on the tests' commits."""
+    _NO_USER_CONFIG.start()
+
+
+def tearDownModule():
+    _NO_USER_CONFIG.stop()
 
 
 ALL_BUT_SMOKE = {"full", "rust", "site", "web", "worker", "reach"}
@@ -190,6 +207,25 @@ class ChangedFiles(unittest.TestCase):
 
     def test_nothing_changed_is_no_file(self):
         self.assertEqual(C.changed_files("main", self.repo)[1], [])
+
+
+class GitEnv(unittest.TestCase):
+    """What the script's git is given of the caller's environment: never a
+    variable that names a repository, always which config files to read."""
+
+    def test_which_config_to_read_reaches_git_and_no_repository_does(self):
+        repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, repo)
+        cfg = os.path.join(repo, "global.gitconfig")
+        with open(cfg, "w") as f:
+            f.write("[user]\n\tname = global-sentinel\n")
+        C.git(repo, "init", "-q", "-b", "main")
+        hook = {"GIT_CONFIG_GLOBAL": cfg, "GIT_DIR": "/nonexistent/.git", "GIT_INDEX_FILE": "/nonexistent/index"}
+        with mock.patch.dict(os.environ, hook):
+            name = C.git(repo, "config", "user.name").strip()
+            top = C.git(repo, "rev-parse", "--show-toplevel").strip()
+        self.assertEqual(name, "global-sentinel")
+        self.assertEqual(os.path.realpath(top), os.path.realpath(repo))
 
 
 if __name__ == "__main__":
