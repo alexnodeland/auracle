@@ -491,7 +491,10 @@ from it ([Rules](#rules)).
   that failed all three runs is filed the same way: the hunt's seed differs
   from the gate's. What no one test accounts for (the engine's build, a
   runner cut short or lost, an error outside any test, or more than five
-  tests failing in one night) files *Flake hunt failing on main* instead.
+  tests failing in one night) files *Flake hunt failing on main*, beside
+  the flakes the other runners found. A runner lost leaves no report, so
+  the report job lists the tests the hunt was dealt and counts any that no
+  runner reported.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   speed bound asserted where a budget belongs ([Rules](#rules)).

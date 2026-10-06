@@ -41,6 +41,11 @@ concurrency:
   group: flake-hunt
   cancel-in-progress: false
 
+env:
+  # The tests the hunt runs, the gate's: its runners are dealt them, and its
+  # report lists them to find any no runner reported.
+  HUNT_TESTS: '--grep-invert "@slow|@quarantine"'
+
 jobs:
   # The engine, the fast tier's timings and the image's tag (the Playwright
   # version tests/web/package-lock.json locks), once for the run, as in
@@ -114,7 +119,7 @@ jobs:
           name: hunt
           shard: ${{ matrix.shard }}
           index: ${{ strategy.job-index }}
-          args: --grep-invert "@slow|@quarantine" --repeat-each=3
+          args: ${{ env.HUNT_TESTS }} --repeat-each=3
 
   # The speed budgets, judged (AURACLE_PERF=1): every spec file that records
   # one (`budget(` in it), each test once, its @slow ones too, seeded as on
@@ -201,9 +206,11 @@ jobs:
 
   # Which tests failed, and on which of their three runs, in one report; the
   # issue each goes to (tests/web/flakes.mjs: the one its annotation names,
-  # else the open `Flaky:` issue titled for it, else a new one); and, on
-  # main, the times of the runs that passed folded into the fast tier's
-  # timings and saved for the gate's next deal.
+  # else the open `Flaky:` issue titled for it, else a new one); the tests
+  # the hunt was dealt that no runner reported (a runner lost, or a step
+  # before its run failed, writes no report, and its tests would otherwise
+  # leave no trace); and, on main, the times of the runs that passed folded
+  # into the fast tier's timings and saved for the gate's next deal.
   report:
     name: Flake hunt report
     needs: hunt
@@ -225,7 +232,9 @@ jobs:
           timings: ${{ github.ref == 'refs/heads/main' && 'fast' || '' }}
       # The open issues, for a flake's issue opened by hand under its title.
       # Without them, a test with no open issue of the hunt's own gets a new
-      # one.
+      # one. And the tests the hunt was dealt, listed as its runners list
+      # them (no browser): one in no runner's report never ran. A listing
+      # that fails is said, and files the run.
       - name: Which issue each failed test goes to
         id: who
         env:
@@ -234,7 +243,8 @@ jobs:
         run: |
           cd tests/web
           gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json || echo '[]' > open-issues.json
-          node flakes.mjs hunt merged.json --open open-issues.json --outcome "$OUTCOME"
+          npx playwright test --list --reporter=json --pass-with-no-tests ${{ env.HUNT_TESTS }} > listed.json || rm -f listed.json
+          node flakes.mjs hunt merged.json --open open-issues.json --listed listed.json --outcome "$OUTCOME"
 
   # Each test that failed, on its own issue: a comment on the one open for it,
   # or a new `Flaky:` issue (labelled flake). Two at a time.
@@ -274,9 +284,10 @@ jobs:
             and the issue labelled quarantined (docs/process.md § Flakes).
 
   # What no one test accounts for: the engine's build, a runner cut short or
-  # lost, an error outside any test, or more tests failing at once than a
-  # few flakes would (flakes.mjs MANY), which is one thing wrong with main or
-  # the machines.
+  # lost (a test cut short, or tests the hunt was dealt that no runner
+  # reported), an error outside any test, or more tests failing at once than
+  # a few flakes would (flakes.mjs MANY), which is one thing wrong with main
+  # or the machines. Filed beside the flakes the other runners found.
   file:
     name: File what no test accounts for
     needs: [engine, hunt, report]

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { MANY, flakyTitle, hunt, issueOf, quarantined, testsIn, titledFor, unnamed } from "./flakes.mjs";
+import { MANY, flakyTitle, hunt, issueOf, lost, quarantined, testsIn, titledFor, unnamed } from "./flakes.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RED = "\u001b[31m";
@@ -32,6 +32,16 @@ const report = (specs, { suites = [], errors = [] } = {}) => ({
   suites: [{ title: "taste_learning.spec.js", file: "taste_learning.spec.js", specs, suites }],
   errors,
 });
+/** A listing (`playwright test --list --reporter=json`): each test once,
+ *  with no results, by file. */
+const listing = (files) => ({
+  suites: Object.entries(files).map(([file, titles]) => ({
+    title: file, file,
+    specs: titles.map((title, i) => ({ title, file, line: i + 1, tags: [], tests: [{ annotations: [], expectedStatus: "passed", results: [] }] })),
+  })),
+  errors: [],
+});
+const skipped = { status: "skipped", duration: 0, annotations: [] };
 
 const SHADE = "pointing at a weight shades the small map by each sound's z on that feature, as the engine posted it";
 
@@ -146,6 +156,24 @@ test("a hunt that failed in a way no test accounts for says so", () => {
   assert.equal(hunt(report([], { errors: [{ message: "worker crashed" }] })).unexplained, true);
 });
 
+test("a test the hunt was dealt that no runner reported never ran: a runner was lost, and that is said beside the flakes the others found", () => {
+  // One runner of twelve wrote no report, and bank_lineage's tests were its.
+  const r = report([
+    spec("x", 1, [passed(), failed("boom"), passed()]),
+    spec("y", 2, [passed(), passed(), passed()]),
+    spec("skips itself", 3, [skipped, skipped, skipped]),
+  ]);
+  const dealt = listing({ "taste_learning.spec.js": ["x", "y", "skips itself"], "bank_lineage.spec.js": ["a", "b"] });
+  assert.deepEqual(lost(r, dealt).map((t) => t.key), ["bank_lineage.spec.js › a", "bank_lineage.spec.js › b"]);
+  const h = hunt(r, [], dealt);
+  assert.equal(h.unexplained, true);
+  assert.deepEqual(h.flaky.map((f) => f.title), ["Flaky: taste_learning 'x'"]);
+  // Every runner reported (a test its runner skipped is in its report): the
+  // one flake accounts for the run.
+  const all = hunt(r, [], listing({ "taste_learning.spec.js": ["x", "y", "skips itself"] }));
+  assert.deepEqual([all.unexplained, all.lost], [false, []]);
+});
+
 test("more tests failing in one hunt than a few are one thing wrong, not that many flakes: no issue for each", () => {
   const some = Array.from({ length: MANY }, (_, i) => spec(`t${i}`, i + 1, [failed("x")]));
   assert.equal(hunt(report(some)).flaky.length, MANY);
@@ -178,17 +206,25 @@ test("the check names each quarantined test that names no issue, and why", () =>
   ]);
 });
 
-// The step the Slow suite's quarantine job runs: its outputs are what the
-// comments are made from, and `unowned` is what turns the suite red.
-function quarantinedStep(r, outcome) {
+// The steps the workflows run: their outputs are what the comments and
+// issues are made from, and `unowned` and `unexplained` are what turn a run
+// red or file an issue of its own. `files`: a JSON file for each option
+// (`--listed`), or `undefined` for one asked for and not there.
+function step(cmd, r, outcome, files = {}) {
   const dir = mkdtempSync(join(tmpdir(), "flakes-"));
   const out = join(dir, "out");
   writeFileSync(out, "");
-  const args = [join(HERE, "flakes.mjs"), "quarantined", join(dir, "report.json"), "--outcome", outcome];
+  const args = [join(HERE, "flakes.mjs"), cmd, join(dir, "report.json"), "--outcome", outcome];
   if (r) writeFileSync(join(dir, "report.json"), JSON.stringify(r));
+  for (const [flag, content] of Object.entries(files)) {
+    const path = join(dir, `${flag}.json`);
+    if (content !== undefined) writeFileSync(path, JSON.stringify(content));
+    args.push(`--${flag}`, path);
+  }
   execFileSync(process.execPath, args, { env: { ...process.env, GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: "" }, stdio: "pipe" });
   return Object.fromEntries(readFileSync(out, "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), JSON.parse(l.slice(l.indexOf("=") + 1))]));
 }
+const quarantinedStep = (r, outcome, files) => step("quarantined", r, outcome, files);
 
 test("the quarantine job's step: a quarantined failure becomes a comment on its issue, and nothing that would turn the suite red", () => {
   const out = quarantinedStep(report([spec(SHADE, 503, [failed("boom")], { tags: ["quarantine"], annotations: [issue(173)] })]), "failure");
@@ -200,4 +236,19 @@ test("the quarantine job's step: a failed run with no failed test in its report,
   assert.equal(quarantinedStep(report([spec(SHADE, 503, [passed()], { tags: ["quarantine"], annotations: [issue(173)] })]), "failure").unowned, 1);
   assert.equal(quarantinedStep(null, "failure").unowned, 1);
   assert.deepEqual(quarantinedStep(null, "success"), { issues: [], unowned: 0 });
+});
+
+test("the hunt's step: a flake and a runner lost in the same failed run file the flake and the run both", () => {
+  const r = report([spec("x", 1, [passed(), failed("boom"), passed()])]);
+  const dealt = listing({ "taste_learning.spec.js": ["x"], "bank_lineage.spec.js": ["a"] });
+  const out = step("hunt", r, "failure", { listed: dealt });
+  assert.deepEqual(out.flaky.map((f) => f.title), ["Flaky: taste_learning 'x'"]);
+  assert.equal(out.unexplained, true);
+  // Every runner reported: the flake is the whole story.
+  assert.equal(step("hunt", r, "failure", { listed: listing({ "taste_learning.spec.js": ["x"] }) }).unexplained, false);
+  // The listing could not be made: a lost runner would not show, so that is said.
+  assert.equal(step("hunt", r, "failure", { listed: undefined }).unexplained, true);
+  // No runner wrote a report: every test it was dealt is lost.
+  assert.deepEqual(step("hunt", null, "failure", { listed: dealt }), { flaky: [], unexplained: true });
+  assert.deepEqual(step("hunt", null, "success"), { flaky: [], unexplained: false });
 });

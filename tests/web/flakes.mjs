@@ -20,16 +20,20 @@
 //       no issue owns (a test naming none, a test cut short, an error outside
 //       any test, or a run that failed with no failed test in its report):
 //       those are not a known flake, and the job turns the suite red on them
-//   node flakes.mjs hunt report.json [--open issues.json] [--outcome failure]
+//   node flakes.mjs hunt report.json [--open issues.json] [--listed list.json] [--outcome failure]
 //       the nightly Flake hunt (flake-hunt.yml): each test that failed, with
 //       the `Flaky:` issue it goes to (the one its annotation names, else an
 //       open one titled for it, `gh issue list --json number,title`, else a
 //       title to open one under), as `flaky=<json>`; and `unexplained=true`
 //       when the run failed in a way no test accounts for: an error outside
-//       any test, a test cut short, a failed run with no failed test, or
-//       more than MANY tests failing in one night, which is one thing wrong
-//       with main or the machines rather than that many flakes (those are
-//       listed in the run's summary, and no issue is filed for each)
+//       any test, a test cut short, a test the hunt was dealt that no runner
+//       reported (`--listed`, the hunt's tests as `playwright test --list
+//       --reporter=json` gives them: a runner lost, or a step before its run
+//       failed, writes no report; a listing that could not be made counts
+//       too), a failed run with no failed test, or more than MANY tests
+//       failing in one night, which is one thing wrong with main or the
+//       machines rather than that many flakes (those are listed in the run's
+//       summary, and no issue is filed for each)
 //
 // The report is Playwright's JSON, a run's blobs merged (`npx playwright
 // merge-reports --reporter json`). A test's repeats (`--repeat-each`) are one
@@ -160,18 +164,30 @@ export function quarantined(report) {
   return { issues, unowned, failed: tests.filter((t) => t.failed > 0).length };
 }
 
+/** The tests a listing holds (`playwright test --list`, the tests a run
+ *  was dealt) that a run's report does not: a runner that wrote no report
+ *  (lost, or a step before its run failed) leaves its tests out of the
+ *  merged one. A test its runner skipped is still in the report. */
+export function lost(report, listing) {
+  const ran = new Set(testsIn(report).map((t) => t.key));
+  return testsIn(listing).filter((t) => !ran.has(t.key));
+}
+
 /** The nightly hunt: each failed test with the issue it goes to (`issue`,
  *  or "" for a new one under `title`), and whether the run failed in a way
- *  no test accounts for. `open`: the open issues, [{ number, title }]. */
-export function hunt(report, open = []) {
+ *  no test accounts for. `open`: the open issues, [{ number, title }].
+ *  `listing`: the tests the hunt was dealt, or null to leave that
+ *  unchecked. */
+export function hunt(report, open = [], listing = null) {
   const tests = testsIn(report);
   const flaky = tests.filter((t) => t.failed > 0).map((t) => {
     const titled = open.filter((i) => titledFor(i.title, t)).sort((a, b) => a.number - b.number)[0];
     return { issue: t.issue ?? (titled ? titled.number : ""), title: flakyTitle(t), failed: failedSaid(t), detail: detailOf([t]) };
   });
   const many = flaky.length > MANY;
-  const unexplained = many || (report.errors || []).length > 0 || tests.some((t) => t.interrupted > 0);
-  return { flaky: many ? [] : flaky, unexplained, failed: flaky };
+  const never = listing ? lost(report, listing) : [];
+  const unexplained = many || never.length > 0 || (report.errors || []).length > 0 || tests.some((t) => t.interrupted > 0);
+  return { flaky: many ? [] : flaky, unexplained, failed: flaky, lost: never };
 }
 
 /** The tests tagged @quarantine that do not name their issue. */
@@ -241,20 +257,30 @@ function cmdQuarantined(opts) {
   return 0;
 }
 
+/** How many lost tests the summary names, before "and N more". */
+const LOST_SAID = 20;
+
 function cmdHunt(opts) {
   const report = readReport(opts._[0]);
   const open = opts.open && existsSync(opts.open) ? JSON.parse(readFileSync(opts.open, "utf8")) : [];
-  if (!report) {
-    output("flaky", []);
-    output("unexplained", String(opts.outcome === "failure"));
-    return 0;
-  }
-  const h = hunt(report, open);
-  const unexplained = h.unexplained || (opts.outcome === "failure" && !h.failed.length);
+  // Asked for and not there: the listing could not be made, so a runner
+  // lost would not show.
+  const unlisted = opts.listed != null && !existsSync(opts.listed);
+  const listing = opts.listed && !unlisted ? JSON.parse(readFileSync(opts.listed, "utf8")) : null;
+  // No runner wrote a report: every test the hunt was dealt is lost.
+  const h = hunt(report || { suites: [], errors: [] }, open, listing);
+  const unexplained = h.unexplained || unlisted || (opts.outcome === "failure" && !h.failed.length);
   output("flaky", h.flaky);
   output("unexplained", String(unexplained));
+  if (!report) summary("### No runner wrote a report\n");
   if (h.flaky.length) summary(`### Failed in the hunt\n\n${h.flaky.map((f) => `- ${f.failed}: ${f.issue ? `#${f.issue}` : `a new issue, ${f.title}`}`).join("\n")}\n`);
   else if (h.failed.length) summary(`### Failed in the hunt: ${h.failed.length} tests, more than ${MANY}\n\nOne thing wrong with main or the machines, not that many flakes: no issue is filed for each.\n\n${h.failed.map((f) => `- ${f.failed}`).join("\n")}\n`);
+  if (h.lost.length) {
+    const named = h.lost.slice(0, LOST_SAID).map((t) => `- \`${t.file}:${t.line}\` '${t.title}'`);
+    if (h.lost.length > LOST_SAID) named.push(`- and ${h.lost.length - LOST_SAID} more`);
+    summary(`### Never ran: ${h.lost.length} of the ${testsIn(listing).length} tests the hunt was dealt\n\nNo runner's report holds them: a runner was lost, or a step before its run failed.\n\n${named.join("\n")}\n`);
+  }
+  if (unlisted) summary("### The hunt's tests could not be listed\n\nSo a runner lost would not show here.\n");
   return 0;
 }
 
