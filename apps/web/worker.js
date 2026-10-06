@@ -1294,8 +1294,11 @@ self.addEventListener("unhandledrejection", (ev) => {
 // resident audition, the store), and what none of them has (a row stored
 // before faces existed, a preset not yet heard) is rendered one per turn in
 // the faces lane, below `later` (`face_render`), each answered as it lands,
-// or as failed. `face_cancel` drops what is still waiting for a slot that
-// left the view, and says so. Every request is answered.
+// or as failed. One render serves every slot that asked for its key while it
+// waited (a preset's row and that preset's pool row, or the bench, share a
+// render key): each asker is on the job (`asks`) and each is answered.
+// `face_cancel` drops what is still waiting for a slot that left the view,
+// and says so. Every request is answered.
 const FACE_DB = "auracle-faces";
 const FACE_STORE = "faces";
 const FACE_META = "meta";
@@ -1304,7 +1307,7 @@ let faceNs = null;
 let faceDb = null;
 let faceDbOpening = null;
 const faceMem = new Map(); // "<ns>/<key>" -> Uint8Array
-const faceRendering = new Set(); // keys with a `face_render` queued
+const faceRendering = new Map(); // key -> its `face_render` job, while it waits
 
 const idb = (req) =>
   new Promise((resolve, reject) => {
@@ -1422,10 +1425,15 @@ async function faces(m) {
 }
 
 const faceTag = (q) => (q.id != null ? { id: q.id } : { ref: q.ref });
+const sameAsker = (a, b) => (a.id != null ? a.id === b.id : b.id == null && a.ref === b.ref);
 
 // What `faces` could not answer from memory (`later`): the memo, a resident
 // audition, the store; what none of them has is rendered in the faces lane,
-// below everything else, or said to be missing.
+// below everything else, or said to be missing. A face whose render is
+// already waiting is not queued twice: its asker joins that job (`asks`), and
+// one the player is looking at (`seen`) takes the job to the front. Before,
+// a second asker was left unanswered, and a looked-at one took the job's
+// place in the answer from whoever asked first.
 async function faceLookup(m) {
   const items = [];
   const failed = [];
@@ -1444,17 +1452,24 @@ async function faceLookup(m) {
       faceMem.set(q.key, b);
       items.push({ ...faceTag(q), key: q.key, face: b });
     } else if (m.render) {
-      if (!faceRendering.has(q.key)) {
-        faceRendering.add(q.key);
-        const job = { type: "face_render", ...q };
-        if (q.seen) lanes[FACES].unshift(job);
-        else lanes[FACES].push(job);
+      const asker = { ...faceTag(q), ...(q.seen ? { seen: true } : {}) };
+      const job = faceRendering.get(q.key);
+      if (!job) {
+        const fresh = { type: "face_render", ...q, asks: [asker] };
+        faceRendering.set(q.key, fresh);
+        if (q.seen) lanes[FACES].unshift(fresh);
+        else lanes[FACES].push(fresh);
         schedulePump();
-      } else if (q.seen) {
-        // Already waiting for a slot, and now looked at: to the front.
-        const i = lanes[FACES].findIndex((j) => j.type === "face_render" && j.key === q.key);
-        if (i > 0) lanes[FACES].unshift({ ...lanes[FACES].splice(i, 1)[0], seen: true, ref: q.ref });
-        else if (i === 0) lanes[FACES][0].seen = true;
+      } else {
+        const had = job.asks.find((a) => sameAsker(a, asker));
+        if (!had) job.asks.push(asker);
+        else if (q.seen) had.seen = true;
+        if (q.seen && !job.seen) {
+          // Already waiting, and now looked at: to the front, every asker kept.
+          job.seen = true;
+          const i = lanes[FACES].indexOf(job);
+          if (i > 0) lanes[FACES].unshift(...lanes[FACES].splice(i, 1));
+        }
       }
     } else if (!m.quiet) {
       failed.push({ ...faceTag(q), missing: true });
@@ -1464,17 +1479,22 @@ async function faceLookup(m) {
 }
 
 // A face asked for and no longer in view (a preset row scrolled past): its
-// render, or its lookup, if still waiting, is dropped, and said to be.
+// asker leaves the render, or the lookup, still waiting, and is said to. A
+// render is dropped once nobody is left on it: another slot waiting on the
+// same key (the bench, the preset's pool row) still gets its face.
 function faceCancel(m) {
   const gone = new Set([...(m.ids || []).map((id) => `i${id}`), ...(m.refs || [])]);
   const named = (q) => gone.has(q.id != null ? `i${q.id}` : q.ref);
   const cancelled = [];
   for (let i = lanes[FACES].length - 1; i >= 0; i--) {
     const q = lanes[FACES][i];
-    if (q.type !== "face_render" || !named(q)) continue;
+    if (q.type !== "face_render" || !q.asks.some(named)) continue;
+    for (const a of q.asks) if (named(a)) cancelled.push(faceTag(a));
+    q.asks = q.asks.filter((a) => !named(a));
+    q.seen = q.asks.some((a) => a.seen);
+    if (q.asks.length) continue;
     lanes[FACES].splice(i, 1);
     faceRendering.delete(q.key);
-    cancelled.push(faceTag(q));
   }
   for (const job of lanes[LATER].filter((q) => q.type === "face_lookup")) {
     const keep = job.asks.filter((q) => !named(q));
@@ -1484,21 +1504,22 @@ function faceCancel(m) {
   post({ type: "faces", items: [], pending: [], failed: [], cancelled });
 }
 
-// One render for a face nothing else had (the faces lane).
+// One render for a face nothing else had (the faces lane), answered to
+// everyone on it.
 function faceRender(q) {
   faceRendering.delete(q.key);
+  const tags = (q.asks || [q]).map(faceTag);
   let b = faceMem.get(q.key) || null;
   if (!b) {
     try {
       b = faceNow(q, true);
     } catch (err) {
-      news({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
+      news({ type: "faces", items: [], pending: [], failed: tags });
       throw err; // fatal: the engine is down, and says so once
     }
     if (b) faceKeep(q.key, b);
   }
-  const tag = q.id != null ? { id: q.id } : { ref: q.ref };
-  news(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
+  news(b ? { type: "faces", items: tags.map((t) => ({ ...t, key: q.key, face: b })), pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: tags });
 }
 
 // After a render reaches main: its face, if main has not been sent it, looked
