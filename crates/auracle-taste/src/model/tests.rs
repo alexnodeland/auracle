@@ -1200,27 +1200,128 @@ fn per_style_summaries_are_importance_weighted() {
     );
     // No candidates: no claim.
     assert_eq!(p.style_share(&[]), vec![0.0, 0.0]);
+    // A candidate's utility is summarized by the same weights: along (1, 0)
+    // lens 0 scores 0 at 3/4 and 2 at 1/4, so 0.5 ± √0.75 (unweighted:
+    // 1 ± 1); the mixture scores the best lens, 1 and 2, so 1.25 ± √0.1875.
+    assert_eq!(p.utility(&[1.0, 0.0], 0), (0.5, 0.75f64.sqrt()));
+    assert_eq!(p.utility_mix(&[1.0, 0.0]), (1.25, 0.1875f64.sqrt()));
 
     // Alignment's second pass relabels every draw against the posterior's
     // mean lenses, and that mean is weighted too. Here the draw weighted 0.8
     // decides it: aligned to (1, 0, 0) and (0, 1, 0), lens 0's mean is
-    // (0.8, 0.21, −0.72); against an unweighted mean the second pass labels
-    // the draws differently and it would be (0.32, 0.45, −0.32).
+    // (0.63, −0.19, 0.21); against an unweighted mean the second pass labels
+    // the draws differently and it would be (0.79, 0, −0.86).
     let p = TastePosterior {
         cfg: TasteConfig::mixture(3, 2),
         samples: vec![
-            draw(vec![vec![0.2, 0.8, -0.2], vec![0.8, 0.5, -0.7]]),
-            draw(vec![vec![0.8, -1.0, -0.7], vec![0.3, -0.9, -0.2]]),
-            draw(vec![vec![-0.7, -0.1, 0.7], vec![0.8, -0.9, -0.9]]),
+            draw(vec![vec![0.8, 0.1, -1.0], vec![0.6, -0.1, 0.2]]),
+            draw(vec![vec![0.4, 0.3, 0.0], vec![0.8, -0.2, -0.2]]),
+            draw(vec![vec![0.7, -0.6, -0.4], vec![0.7, -0.9, 0.7]]),
         ],
         weights: vec![0.8, 0.1, 0.1],
     };
     let mean = p
         .aligned_to(&[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]])
         .theta_mean(0);
-    for (m, want) in mean.iter().zip([0.8, 0.21, -0.72]) {
+    for (m, want) in mean.iter().zip([0.63, -0.19, 0.21]) {
         assert!((m - want).abs() < 1e-12, "aligned lens 0 is {mean:?}");
     }
+}
+
+/// A posterior whose draws all agree (what resampling deals once one draw
+/// holds all the weight) reports no spread: the SD of every θ coordinate
+/// and of every utility is 0, up to rounding, and never NaN. The spread is
+/// taken about the weighted mean. The one-pass form, E[x²] − E[x]², is the
+/// same algebra but cancels here to a rounding error, as often negative (a
+/// NaN after the square root) as positive (about 1e-8 of the value).
+#[test]
+fn a_posterior_whose_draws_agree_has_no_spread() {
+    let mut rng = StdRng::seed_from_u64(0xA62E);
+    let samples: Vec<TasteSample> = (0..50).map(|_| two_lens_draw(&mut rng)).collect();
+    let mut weights = vec![0.0; samples.len()];
+    weights[17] = 1.0;
+    let the_one = samples[17].clone();
+    let agreed = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights,
+    }
+    .resampled();
+    assert!(agreed.samples.iter().all(|s| *s == the_one));
+    let none = |sd: f64| sd < 1e-12;
+    for k in 0..2 {
+        let sds = agreed.theta_std(k);
+        assert!(sds.iter().all(|&sd| none(sd)), "lens {k}: θ SDs {sds:?}");
+    }
+    for _ in 0..20 {
+        let phi = random_phi(&mut rng);
+        let sds = [
+            agreed.utility(&phi, 0).1,
+            agreed.utility(&phi, 1).1,
+            agreed.utility_mix(&phi).1,
+        ];
+        assert!(sds.iter().all(|&sd| none(sd)), "utility SDs {sds:?}");
+    }
+}
+
+/// Resampling deals each draw as many copies as its weight is worth among
+/// `n`, to within one (it is systematic: `⌊n·w⌋` or `⌈n·w⌉`), never a copy
+/// of a draw with no weight, in draw order, and weighs the copies uniformly.
+/// Swept over random weights, dense and sparse, over sizes from 1 to 40.
+/// From weights with nothing left to keep (all zero, which only a posterior
+/// built by hand holds) it still deals `n` draws, and reads none past the
+/// last.
+#[test]
+fn resampling_copies_each_draw_by_its_weight() {
+    let mut rng = StdRng::seed_from_u64(0x5E5A);
+    let tagged = |n: usize| -> Vec<TasteSample> {
+        (0..n)
+            .map(|i| TasteSample {
+                theta: vec![vec![0.0]],
+                tau: vec![i as f64],
+                cuts: Vec::new(),
+            })
+            .collect()
+    };
+    let posterior = |samples: Vec<TasteSample>, weights: Vec<f64>| TastePosterior {
+        cfg: TasteConfig::linear(1),
+        samples,
+        weights,
+    };
+    for _ in 0..300 {
+        let n = rng.gen_range(1..=40u32) as usize;
+        let sparse = rng.gen_bool(0.5);
+        let raw: Vec<f64> = (0..n)
+            .map(|_| {
+                if sparse && rng.gen_bool(0.6) {
+                    0.0
+                } else {
+                    rng.gen::<f64>()
+                }
+            })
+            .collect();
+        let total: f64 = raw.iter().sum();
+        if total == 0.0 {
+            continue;
+        }
+        let w: Vec<f64> = raw.iter().map(|r| r / total).collect();
+        let re = posterior(tagged(n), w.clone()).resampled();
+        assert_eq!(re.weights, vec![1.0 / n as f64; n]);
+        let from: Vec<usize> = re.samples.iter().map(|s| s.tau[0] as usize).collect();
+        assert_eq!(from.len(), n);
+        assert!(from.windows(2).all(|p| p[0] <= p[1]), "{from:?}");
+        for (i, wi) in w.iter().enumerate() {
+            let copies = from.iter().filter(|&&f| f == i).count() as f64;
+            let worth = n as f64 * wi;
+            assert!(
+                (copies - worth).abs() < 1.0 + 1e-9 && (*wi > 0.0 || copies == 0.0),
+                "draw {i} of weight {wi} got {copies} of {n} copies: {from:?}"
+            );
+        }
+    }
+    let spent = posterior(tagged(5), vec![0.0; 5]).resampled();
+    assert_eq!(spent.samples.len(), 5);
+    assert_eq!(spent.weights, vec![0.2; 5]);
 }
 
 /// Between full refits the posterior is updated by importance
