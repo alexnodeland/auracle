@@ -248,7 +248,9 @@ survive.
 - `make mutants`: the whole workspace, about 8,300 mutants: a day or two on a
   16-core Mac, estimated. CI's weekly run takes it a part at a time.
 - Two mutants at a time (`MUTANTS_JOBS`), each in a copy of the tree whose
-  first build is from clean, at `nice -n 10`. It holds a machine for long:
+  first build is from clean, at `nice -n 10`. A copy holds only what git
+  tracks or does not ignore (`gitignore = true`), so no worktree in
+  `.claude/worktrees/` goes with it. It holds a machine for long:
   on a shared one, `nice -n 19 make mutants …`.
 - What it found is in `mutants.out/`: `missed.txt` lists the survivors,
   `timeout.txt` the timeouts, `log/` holds each mutant's change, build and

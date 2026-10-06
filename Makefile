@@ -452,7 +452,8 @@ coverage-floors:
 # failed; others: the run broke) and `scripts/mutants_report.py` says what
 # it found. CI runs `make -s mutants-command`'s command itself, under its
 # own time limit, to read that code. MUTANTS_JOBS mutants at a time, each
-# in its own copy of the tree (its first build is from clean); MUTANTS_ARGS
+# in its own copy of the tree (its first build is from clean; what git tracks
+# or does not ignore, so no worktree in .claude/worktrees/); MUTANTS_ARGS
 # for any other option (CI's `--in-place`, `--shard k/N`). At nice 10, as
 # perform-wirings is: it holds every core for as long as it runs.
 MUTANTS_VERSION := 27.1.0

@@ -104,8 +104,9 @@ in a plan's prose, a session's notes or a conversation.
   repo's checks and hooks never read from one checkout into another: the
   checks read their own directories, the one that walks the tree (the agent
   docs') leaves out `.claude/worktrees/` and any directory holding a `.git`
-  (a worktree's is a file), and the hooks judge a path from the root of the
-  checkout it is in. `rg` and `git grep` skip the worktrees too, since git
+  (a worktree's is a file), `make mutants` copies into each job's tree only
+  what git tracks or does not ignore (`.cargo/mutants.toml`), and the hooks
+  judge a path from the root of the checkout it is in. `rg` and `git grep` skip the worktrees too, since git
   ignores them; a `grep -r` or `find` from the main checkout's root does not.
   `git clean -fdx` in the main checkout leaves a worktree alone, but `-ffdx`
   deletes it, work and all.
