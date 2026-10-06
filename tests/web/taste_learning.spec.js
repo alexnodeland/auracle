@@ -553,11 +553,14 @@ function dimming(page, ids) {
 // SOUND draws every mark whole; TASTE draws each at 0.22 + 0.78 × liking,
 // from the rating the engine posted. Checked on two sounds chosen once, the
 // one liked least and the one liked most, by the alpha `dimming` reads off
-// the map for each, within DIM_TOLERANCE of the alpha drawn. On four seeded
-// maps it read within 0.01 of it for every sound but the one in hand. A
-// TASTE drawn whole reads 1, a SOUND dimmed as TASTE is reads 1, and one
-// dimming for every sound cannot be within the tolerance of both (they are
-// drawn about 0.4 apart).
+// the map for each, within DIM_TOLERANCE of the alpha drawn. It read within
+// 0.01 of it for every sound but the one in hand on four maps: the pools
+// dealt with the page's Math.random seeded 20261001 (this test's `random`),
+// 7, 424242 and 99. With no `?seed`, main draws the session's seed from that
+// Math.random, so each `random` deals one pool every run. A TASTE drawn
+// whole reads 1, a SOUND dimmed as TASTE is reads 1, and one dimming for
+// every sound cannot be within the tolerance of both (they are drawn about
+// 0.4 apart).
 //
 // The SOUND it compares with is read in the same task as TASTE (#237): a
 // SOUND read once at the start and compared with later ones was of a dot
