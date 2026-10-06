@@ -3127,9 +3127,11 @@ fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
 ///
 /// Each bound is set from a sweep, not from this seed. `Random`'s are the
 /// uniform rule's own tails (400 000 simulated deals of 12 pairs from 24):
-/// each fails on fewer than 0.4% of seeds. `Bald`'s are 32 seeds of this
-/// very fixture (`0xD4E + k·0x9E37`): 15 to 20 distinct candidates, a share
-/// of at most 4 of 12, and 12 distinct pairs on 31 seeds, 11 on one.
+/// each fails on fewer than 0.4% of seeds. `Bald`'s are 256 seeds of this
+/// very fixture (`0xD4E + k·0x9E37`, k < 256): 13 to 20 distinct candidates
+/// (13 on two seeds, 0x25C069 and 0x3533C8), no candidate in more than 4 of
+/// 12 duels (4 on eight seeds), and 12 distinct pairs on 254 seeds, 11 on
+/// two.
 #[test]
 fn duels_spread_over_candidates_not_just_pairs() {
     const N: usize = 12;
@@ -3176,8 +3178,8 @@ fn duels_spread_over_candidates_not_just_pairs() {
         );
         // Pair distinctness is asserted per rule, at the level the rule
         // actually promises. `Bald` carries an exposure penalty whose job
-        // is repeat avoidance, so it must deliver all-distinct pairs.
-        // `Random` promises uniformity, and uniformity *collides*: 12
+        // is repeat avoidance, so it may repeat a pair at most once (its
+        // bound below says why not never). `Random` promises uniformity, and uniformity *collides*: 12
         // draws from C(24,2)=276 pairs repeat one with probability ~21%
         // (expected collisions 66/276 ≈ 0.24), so demanding zero repeats
         // of it asserts seed luck, not behaviour — that assertion held
@@ -3194,9 +3196,9 @@ fn duels_spread_over_candidates_not_just_pairs() {
         // which is a claim about the sampler rather than about the seed.
         //
         // `Bald`'s penalty is soft: it makes a repeat costly, not
-        // impossible, and one seed in the sweep of 32 repeats a pair once.
-        // Asking for every pair distinct failed on that 3% of seeds; one
-        // repeat is the bound the sweep supports.
+        // impossible, and two seeds in the sweep of 256 repeat a pair once.
+        // Asking for every pair distinct failed on those; none of the 256
+        // repeats two, which at that rate is about one seed in 10 000.
         let min_pairs = match acquisition {
             Acquisition::Bald => N - 1,
             _ => N - 2,
@@ -3205,20 +3207,19 @@ fn duels_spread_over_candidates_not_just_pairs() {
             n_pairs >= min_pairs,
             "{acquisition:?}: {n_pairs} distinct pairs out of {N}"
         );
-        // Distinct-candidate coverage splits the same way and for the
-        // same reason. Twelve duels are 24 slots drawn from a pool of 24,
-        // so a *uniform* rule is expected to reach
-        // `24·(1 − (23/24)^24) ≈ 15.5` distinct candidates with a
-        // standard deviation near 1.6 — 13 is an ordinary draw from that,
-        // and asserting 14 of `Random` asserts seed luck. It held until
-        // wave 2C's recursive mod sort moved rng consumption, which is
-        // exactly the brittleness this comment already describes for
-        // pairs. `Bald` is the rule that *promises* spread, through its
-        // exposure penalty, so it keeps the stronger bound.
-        let min_distinct = match acquisition {
-            Acquisition::Bald => 14,
-            _ => 12,
-        };
+        // Distinct-candidate coverage is held to 12 under both rules, each
+        // for its own reason. Twelve duels are 24 slots drawn from a pool of
+        // 24, so a *uniform* rule is expected to reach
+        // `24·(1 − (23/24)^24) ≈ 15.5` distinct candidates with a standard
+        // deviation near 1.6: 13 is an ordinary draw from that, and
+        // asserting 14 of `Random` asserted seed luck (it held until wave
+        // 2C's recursive mod sort moved rng consumption, the brittleness
+        // this comment describes for pairs). `Bald` *promises* spread,
+        // through its exposure penalty, and averages 16.5 over the sweep,
+        // but its tail is a tail too: 14 failed on two seeds of 256 (13
+        // each). 12 sits one below the sweep's least; by the sweep's own
+        // spread (sd 1.3) fewer than 12 is about one seed in 10 000.
+        let min_distinct = 12;
         assert!(
             distinct >= min_distinct,
             "{acquisition:?}: only {distinct} distinct candidates over {N} duels"
@@ -3227,7 +3228,7 @@ fn duels_spread_over_candidates_not_just_pairs() {
         // more of 12 duels (a share over 0.35) on 4.6% of seeds, so that
         // bound asserted `Random`'s seed luck; 7 or more (over 0.5) happens
         // on 0.03%. `Bald` promises spread and keeps 0.35: the sweep's worst
-        // is 4 of 12.
+        // is 4 of 12, on eight seeds of 256, and none reaches 5.
         let max_share_cap = match acquisition {
             Acquisition::Bald => 0.35,
             _ => 0.5,
