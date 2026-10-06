@@ -273,6 +273,8 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 + (ga - gb).abs()
                 + (if ca == cb { 0.0 } else { 1.0 })
         }
+        // Two unplugged sockets agree: nothing to compare.
+        (Silence { .. }, Silence { .. }) => 0.0,
         (Noise { color: ca, .. }, Noise { color: cb, .. }) => {
             if ca == cb {
                 0.0
