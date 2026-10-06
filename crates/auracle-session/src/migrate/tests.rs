@@ -576,3 +576,103 @@ fn v1_palette_session_still_loads() {
         }
     }
 }
+
+/// **A migration converts only what it can read.** A standardizer of another
+/// width than schema 1's inverts nothing, so the log is left alone; a vote
+/// already raw is left as it is; and a legacy vote whose vectors are not
+/// schema 1's width stays marked as one that cannot be read, rather than
+/// claiming today's names.
+#[test]
+fn a_migration_converts_only_what_it_can_read() {
+    let d = SCHEMA1_NAMES.len();
+    let legacy = |width: usize| {
+        let mut o = Observation::new(
+            Feedback::KeepKill {
+                x: vec![0.3; width],
+                kept: true,
+            },
+            0,
+            &[],
+        );
+        o.schema_version = 0;
+        o
+    };
+    let n = names();
+    let mut log = ObservationLog::default();
+    log.observations.push(legacy(d));
+    log.observations.push(legacy(d + 1));
+    log.observations.push(Observation::new(
+        Feedback::KeepKill {
+            x: row(&n, &[]),
+            kept: false,
+        },
+        0,
+        &n,
+    ));
+    let sz = |width: usize| auracle_taste::Standardizer {
+        mean: vec![0.1; width],
+        std: vec![0.5; width],
+    };
+    let untouched = serde_json::to_string(&log).unwrap();
+    assert_eq!(migrate_log(&mut log, &sz(d + 2), &n, 22_050.0), 0);
+    assert_eq!(serde_json::to_string(&log).unwrap(), untouched);
+
+    assert_eq!(migrate_log(&mut log, &sz(d), &n, 22_050.0), 1);
+    let [read, unread, raw] = &log.observations[..] else {
+        panic!("a vote was lost");
+    };
+    assert!(read.is_raw() && read.feature_names == n);
+    assert!(!unread.is_raw() && unread.feature_names.is_empty());
+    assert!(raw.is_raw());
+    assert!(
+        needs_migration(&log),
+        "the unreadable vote stopped saying so"
+    );
+}
+
+/// Raw votes logged without names (the synthetic and headless paths) take
+/// today's names; named ones keep theirs. A coordinate renamed since a vote
+/// was written is read under its new name, once.
+#[test]
+fn unnamed_votes_take_todays_names_and_renamed_ones_their_new_name() {
+    let n = names();
+    let mut log = ObservationLog::default();
+    let keep = |names: &[String]| {
+        Observation::new(
+            Feedback::KeepKill {
+                x: vec![0.0; names.len().max(1)],
+                kept: true,
+            },
+            0,
+            names,
+        )
+    };
+    let old: Vec<String> = vec!["n_delay".into(), "n_vco".into()];
+    log.observations.push(keep(&[]));
+    log.observations.push(keep(&old));
+    stamp_names(&mut log, &n);
+    assert_eq!(log.observations[0].feature_names, n);
+    assert_eq!(log.observations[1].feature_names, old);
+    assert_eq!(apply_renames(&mut log), 1);
+    assert_eq!(log.observations[1].feature_names, ["n_time", "n_vco"]);
+    assert_eq!(apply_renames(&mut log), 0, "a rename applied twice");
+}
+
+/// A log row with no names is not repaired: which coordinate a position
+/// holds is a guess there, and a wrong guess would clamp a count.
+#[test]
+fn an_unnamed_row_is_not_repaired_by_position() {
+    let n = names();
+    let mut log = ObservationLog::default();
+    log.observations.push(Observation::new(
+        Feedback::KeepKill {
+            x: row(&n, &[("amp_sustain", 1e30)]),
+            kept: true,
+        },
+        0,
+        &[],
+    ));
+    assert_eq!(repair_log(&mut log), (0, 0));
+    let i = n.iter().position(|m| m == "amp_sustain").unwrap();
+    assert_eq!(log.observations[0].feedback.phis()[0][i], 1e30);
+}
