@@ -289,35 +289,65 @@ fn pad_json() -> String {
 /// A tempo change changes speed, not position. Two minutes in at 120
 /// BPM, a nudge to 121 used to throw every synced sequencer four 16ths
 /// forward (position was elapsed samples × the current rate); integrated
-/// beats move on by exactly one block's worth.
+/// beats move on by exactly one block's worth. The nudges land mid-step. At
+/// 121 and 126, where the division holds, each moves the sequencer forward
+/// by one block's travel at most. At 140 the snapped division itself
+/// changes, and the sequencer keeps the step it is on and takes the new
+/// division's phase within it (`drive_sync`): never off its step.
 #[test]
 fn a_tempo_change_does_not_jump_the_sequencers() {
+    quiver::rng::seed(7);
     let (_, tree) = auracle_grammar::presets()
         .into_iter()
         .find(|(n, _)| *n == "Loom")
         .expect("Loom exists");
     let json = serde_json::to_string(&tree).unwrap();
-    let mut p = LivePoly::new(&json, 48_000.0, 2).expect("compiles");
+    let sr = 48_000.0;
+    let mut p = LivePoly::new(&json, sr, 2).expect("compiles");
     p.set_arp(false, 0, 4.0, 120.0, 0.5, 1, 0.0);
     p.set_sync(true);
+    // Key sync, then the key let go: the voices park (two minutes of them
+    // cost what the test is not about), and the transport runs on.
     p.note_on(60, 0.8);
+    p.process(128);
+    p.note_off(60);
     let slot = p.sync_lanes[0].sync_slot;
     let pos = |p: &LivePoly| p.param_slots[slot].values[0].get();
-    for _ in 0..(120 * 48_000 / 128) {
+    // Two minutes and a third of a beat: mid-step.
+    for _ in 0..(120 * 48_000 + 8_000) / 128 {
         p.process(128);
     }
-    // Each nudge is one block of travel at most, and never backwards —
-    // including 140, where the snapped division itself changes.
-    for bpm in [121.0, 126.0, 140.0] {
+    assert!(p.voices.iter().all(|v| !v.running), "the voices parked");
+    let before = pos(&p);
+    assert!(
+        (0.2..0.8).contains(&before.fract()),
+        "fixture: mid-step ({before:.3})"
+    );
+    for bpm in [121.0, 126.0] {
         let before = pos(&p);
+        let block = 128.0 * bpm / 60.0 / sr * p.sync_lanes[0].div;
         p.set_arp(false, 0, 4.0, bpm, 0.5, 1, 0.0);
         p.process(128);
-        let after = pos(&p);
+        let moved = pos(&p) - before;
         assert!(
-            (0.0..0.2).contains(&(after - before)),
-            "{bpm} BPM moved the sequencer {before:.2} -> {after:.2}"
+            moved > 0.0 && moved <= block + 1e-9,
+            "{bpm} BPM moved the sequencer {moved:.4} steps, a block is {block:.4}"
         );
     }
+    let div = p.sync_lanes[0].div;
+    let before = pos(&p);
+    p.set_arp(false, 0, 4.0, 140.0, 0.5, 1, 0.0);
+    p.process(128);
+    let after = pos(&p);
+    assert_ne!(
+        p.sync_lanes[0].div, div,
+        "fixture: 140 BPM snaps another division"
+    );
+    assert_eq!(
+        after.floor(),
+        before.floor(),
+        "140 BPM moved the sequencer off its step: {before:.3} -> {after:.3}"
+    );
 }
 
 /// The arp keeps time: over a minute at 120 BPM in 16ths it fires 480
