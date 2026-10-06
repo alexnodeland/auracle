@@ -310,8 +310,11 @@ pub enum ModKind {
 }
 
 impl ModKind {
-    /// Every modulation choice, in declaration order.
-    pub const ALL: [ModKind; 16] = [
+    /// Every modulation choice, in declaration order: the table a sweep over
+    /// "every modulation a hand can set" reads, so it cannot skip the newest
+    /// one (it skipped `Steps`, the last declared, until a const below tied
+    /// the two).
+    pub const ALL: [ModKind; 17] = [
         ModKind::None,
         ModKind::Lfo,
         ModKind::Env,
@@ -328,6 +331,7 @@ impl ModKind {
         ModKind::Or,
         ModKind::Xor,
         ModKind::Switch,
+        ModKind::Steps,
     ];
 
     /// The unary CV processor this kind wraps the slot in, if any.
@@ -354,6 +358,42 @@ impl ModKind {
         })
     }
 }
+
+// `ModKind::ALL` lists every kind once, in declaration order, checked when the
+// crate compiles, as `NodeKind::ALL` is above; `mod_kind_all_names_every_kind`
+// catches a kind declared after the last entry.
+const _: () = {
+    const fn named(k: ModKind) {
+        match k {
+            ModKind::None
+            | ModKind::Lfo
+            | ModKind::Env
+            | ModKind::Rand
+            | ModKind::Follow
+            | ModKind::Euclid
+            | ModKind::Quantize
+            | ModKind::Slew
+            | ModKind::Rectify
+            | ModKind::Hold
+            | ModKind::Min
+            | ModKind::Max
+            | ModKind::And
+            | ModKind::Or
+            | ModKind::Xor
+            | ModKind::Switch
+            | ModKind::Steps => {}
+        }
+    }
+    let mut i = 0;
+    while i < ModKind::ALL.len() {
+        named(ModKind::ALL[i]);
+        assert!(
+            ModKind::ALL[i] as usize == i,
+            "ModKind::ALL must list every kind once, in declaration order"
+        );
+        i += 1;
+    }
+};
 
 /// Default knob values for a hand-placed [`ModOp`], as `(p0, p1)`.
 ///

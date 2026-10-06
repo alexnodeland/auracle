@@ -12,27 +12,50 @@ use crate::{mutate, term, Take};
 /// to keep.
 #[test]
 fn node_kind_all_names_every_kind() {
-    use mutate::NodeKind;
-    let refusal = serde_json::from_str::<NodeKind>("\"no such kind\"")
+    let all: Vec<String> = NodeKind::ALL.iter().map(wire_name).collect();
+    assert_eq!(
+        all,
+        declared::<NodeKind>(),
+        "NodeKind::ALL is not every kind, once, in order"
+    );
+}
+
+/// The same for `ModKind::ALL`, which the edit gate and the finite-prior gate
+/// sweep: it left out `Steps`, the last kind declared, so neither gate ever
+/// set a step sequence by hand.
+#[test]
+fn mod_kind_all_names_every_kind() {
+    let all: Vec<String> = ModKind::ALL.iter().map(wire_name).collect();
+    assert_eq!(
+        all,
+        declared::<ModKind>(),
+        "ModKind::ALL is not every kind, once, in order"
+    );
+}
+
+/// A kind's name on the wire.
+fn wire_name<T: serde::Serialize>(k: &T) -> String {
+    serde_json::to_string(k)
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+}
+
+/// Every name serde accepts for `T`, in declaration order, read off the
+/// refusal of a name it does not.
+fn declared<T: serde::de::DeserializeOwned + std::fmt::Debug>() -> Vec<String> {
+    let refusal = serde_json::from_str::<T>("\"no such kind\"")
         .expect_err("an unknown name is refused")
         .to_string();
     let (_, listed) = refusal
         .split_once("expected one of")
         .unwrap_or_else(|| panic!("serde's refusal changed its wording: {refusal}"));
-    let declared: Vec<&str> = listed.split('`').skip(1).step_by(2).collect();
-    let all: Vec<String> = NodeKind::ALL
-        .iter()
-        .map(|k| {
-            serde_json::to_string(k)
-                .unwrap()
-                .trim_matches('"')
-                .to_string()
-        })
-        .collect();
-    assert_eq!(
-        all, declared,
-        "NodeKind::ALL is not every kind, once, in order"
-    );
+    listed
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(String::from)
+        .collect()
 }
 
 /// `NodeKind::Silence` is spelled `silence` on the wire, which is also
