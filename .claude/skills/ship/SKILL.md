@@ -124,8 +124,18 @@ have the builder commit the approved rows.
 ```bash
 git -C "$WT" push -q -u origin claude/<topic>
 gh -R alexnodeland/auracle pr create --base main --head claude/<topic> \
-  --title "<what is true now>" --body-file <scratch>/pr-<topic>.md --label queue
+  --title "<type>(<scope>): <what is true now>" --body-file <scratch>/pr-<topic>.md --label queue
 gh -R alexnodeland/auracle pr comment <n> --body "@mergifyio queue"
+```
+
+Check the title and the body first, as `PR checks` will (it reads the
+branch's body file, with no PR yet):
+
+```bash
+PR_TITLE="<the title>" PR_BODY="$(cat <scratch>/pr-<topic>.md)" \
+  python3 "$WT/scripts/pr_checks.py" title
+PR_TITLE="<the title>" PR_BODY="$(cat <scratch>/pr-<topic>.md)" \
+  python3 "$WT/scripts/pr_checks.py" links
 ```
 
 The `@mergifyio queue` comment is the act of enqueueing, for now: the
@@ -133,19 +143,26 @@ The `@mergifyio queue` comment is the act of enqueueing, for now: the
 only once the maintainer switches on Merge Protections in Mergify's
 dashboard. Put the label on anyway; once Merge Protections is on, the label
 alone queues the PR and the comment is only for putting one back. The PR
-enters Mergify's merge queue once its own `CI`, the fast lane, is green; the
-queue runs the full gate on its batch and merges it (`process.md` § CI and
-merging). The title becomes the squash commit's subject, `<title> (#<n>)`,
-and its body is the PR's commit messages (the repository's squash setting),
-so each commit's why reaches `main`.
+enters Mergify's merge queue once its own `CI`, the fast lane, and its
+`PR checks` are green; the queue runs the full gate on its batch and merges
+it (`process.md` § CI and merging). The title becomes the squash commit's
+subject, `<title> (#<n>)`, so it starts with a type as a commit does
+(`fix(web): …`, `tests: …`, `ci: …`); the commit's body is the PR's commit
+messages (the repository's squash setting), so each commit's why reaches
+`main`.
 
 A PR that fixes CI or quarantines a flaky test also gets the `priority`
 label (`gh -R alexnodeland/auracle pr edit <n> --add-label priority`): it
 goes into the queue's next batch ahead of the rest.
 
 The body: what changed, why, how (what a reviewer should look at), checks
-(gates, specs and counts, the review and its findings), `Closes #<n>`, and,
-when an agent session made it, the session's link line last.
+(gates, specs and counts, the review and its findings), the issues one per
+line (`Closes #<n>` for each it finishes, one keyword per issue, since
+`Closes #a, #b` closes #a only; `Refs #<n>` for each it advances; or a
+`No issue:` line saying why), and, when an agent session made it, the
+session's link line last. Once it merges, `PR checks` comments on each
+`Refs` issue, closes any `Closes` issue GitHub missed, and tells each closed
+issue's parent how many of its sub-issues are closed.
 
 A PR that changes what the slow tests cover also gets the `full-ci` label
 (`gh -R alexnodeland/auracle pr edit <n> --add-label full-ci`): the *Slow
@@ -160,19 +177,31 @@ generations or PERFORM's offers. It does not block the merge.
 
 ## 6. The merge, waited on by state
 
-The PR's own `CI` is the fast lane (a few minutes). Green, the PR is in the
-queue, which tests it in a batch of up to three (a release PR alone) on a
-draft PR (the full gate, about twelve minutes, from a `mergify/merge-queue/`
-branch) and merges each PR of a green batch. Wait until it merges, its own `CI` goes red, or it
+The PR's own `CI` is the fast lane (a few minutes). Green, with its
+`PR checks` green too, the PR is in the queue, which tests it in a batch of
+up to three (a release PR alone) on a draft PR (the full gate, about twelve
+minutes, from a `mergify/merge-queue/` branch) and merges each PR of a green
+batch. Wait until it merges, its own `CI` or `PR checks` goes red, or it
 leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
+    def red($check): [.statusCheckRollup[] | select(.name == $check)]
+      | sort_by(.detailsUrl | capture("/runs/(?<run>[0-9]+)/job/(?<job>[0-9]+)") | [(.run | tonumber), (.job | tonumber)])
+      | last | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
     if .state != "OPEN" then .state
     elif any(.labels[]; .name == "dequeued") then "dequeued"
-    elif any(.statusCheckRollup[]; .name == "CI" and (.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")) then "CI red"
+    elif red("CI") then "CI red"
+    elif red("PR checks") then "PR checks red"
     else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
 ```
+
+Each check is read by its latest run. The rollup keeps every run of a check
+on the PR's head commit, and an edit to the title or body runs `PR checks`
+again on the same commit, so the red run the edit put right stays in the
+list. The latest is the one with the highest run id (then job id), both in
+its link; a start time doesn't order them, since a skipped job's can come
+after its end.
 
 Run the wait in the background; never sleep a fixed time and assume.
 
@@ -185,6 +214,14 @@ Run the wait in the background; never sleep a fixed time and assume.
   `gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> --json databaseId,conclusion,headSha`,
   then `gh -R alexnodeland/auracle run view <run> --log-failed`, and the
   run summary's merged browser report. Then step 7.
+- **`PR checks red`:** the title or the issue lines; the PR never entered
+  the queue. `gh -R alexnodeland/auracle pr checks <n>` links the run, and
+  its failed step says what to write. Put the title or the body right with
+  `gh -R alexnodeland/auracle pr edit <n> --title "…"` or `--body-file`:
+  the edit runs it again, and no push is needed. Start the wait again once
+  `gh -R alexnodeland/auracle pr checks <n>` shows the new run of
+  `PR checks` pending; started sooner, it finds only the red run and stops
+  at once. Green, the PR enters the queue by itself.
 - **`dequeued`:** it left the queue without merging. Red in the queue (the
   full gate failed on its batch, and the split narrowed the failure to this
   PR), a conflict, or a run that was cancelled.
@@ -277,7 +314,19 @@ and the local branch:
 ```bash
 git -C "$REPO" worktree remove "$WT"
 git -C "$REPO" branch -D claude/<topic>
-gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>"; close it by hand if not
+gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>", or by PR checks if GitHub missed it
+```
+
+The merge's *Issues on merge* job (`pr-checks.yml`) commented on each
+`Refs` issue, closed any `Closes` issue GitHub missed, and told each closed
+issue's parent. Its run's log says what it did to each; a red run is a read
+or a write that failed. Read it, and once the cause has passed (GitHub's
+API answering again), run the job again: each line it writes is marked, so
+it posts only what the red run left out. What it can't do, do by hand:
+
+```bash
+gh -R alexnodeland/auracle run list --workflow pr-checks.yml --branch claude/<topic> --json databaseId,conclusion,event,displayTitle
+gh -R alexnodeland/auracle run rerun <run> --failed
 ```
 
 Update the plan's progress table (the task's issue and PR) when the PR did not.

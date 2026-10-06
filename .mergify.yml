@@ -6,14 +6,15 @@
 #
 # Two steps (ADR-023). A PR's own run of `CI` is the fast lane: Lint, Web,
 # the Rust tests and their coverage, and the browser specs the change
-# reaches (ci.yml's `changes` job says which). Green, the PR enters the
-# queue. The queue tests up to three queued PRs together (a release PR
-# alone) on a draft PR of its own, from a branch under mergify/merge-queue/,
-# on top of `main`; CI sees that prefix and runs the full gate there, the
-# whole browser tier included. Green, the queue squash-merges each PR, one
-# commit each. Red, it splits the batch and tests the parts: a part that
-# passes merges, and a PR that fails on its own leaves the queue with the
-# `dequeued` label and a comment saying why. Nothing is retried.
+# reaches (ci.yml's `changes` job says which). Green, with the PR's own
+# `PR checks` green too, the PR enters the queue. The queue tests up to
+# three queued PRs together (a release PR alone) on a draft PR of its own,
+# from a branch under mergify/merge-queue/, on top of `main`; CI sees that
+# prefix and runs the full gate there, the whole browser tier included.
+# Green, the queue squash-merges each PR, one commit each. Red, it splits
+# the batch and tests the parts: a part that passes merges, and a PR that
+# fails on its own leaves the queue with the `dequeued` label and a comment
+# saying why. Nothing is retried.
 #
 # Mergify reads this file from `main` only: a change here acts once merged.
 # The keys are the current ones (docs.mergify.com, October 2026) and validate
@@ -67,6 +68,20 @@ defaults:
 # Mergify requires the ruleset's `CI` before queueing too, and again on the
 # draft PR before merging. A PR goes into the first queue whose conditions
 # it meets, and a batch holds PRs of one queue only.
+#
+# And `PR checks` is green (pr-checks.yml): the title is a conventional
+# subject, and the body names its issues the way GitHub reads them, so no PR
+# merges under an untyped subject or leaves an issue it finishes open. Only
+# the PR's own: the merge conditions read the draft PR, where it doesn't run.
+# A PR opened before the workflow was on main has no run of it until its
+# title, body or commits change, so the PRs open when it landed are let in
+# without one: the `number <=` line in both rules below, the highest PR
+# number open when the change that brought the workflow was pushed (raised
+# to it just before the push). Any PR opened later has a number above it.
+# One opened after that push and before the workflow landed gets its run
+# from any edit: `gh pr edit <n> --body-file <its body, links put right>`,
+# or a push. Once every PR at or under the line has merged or closed, the
+# `or` and its line can go from both rules.
 queue_rules:
   # A release PR (the version bump and the changelog's new section, labelled
   # `release`: CONTRIBUTING.md § Cutting a release) is tested and merged
@@ -76,12 +91,18 @@ queue_rules:
   - name: release
     queue_conditions:
       - check-success = @github-actions/CI
+      - or:
+          - check-success = @github-actions/PR checks
+          - number <= 236
       - label = release
     batch_size: 1
 
   - name: default
     queue_conditions:
       - check-success = @github-actions/CI
+      - or:
+          - check-success = @github-actions/PR checks
+          - number <= 236
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
     # streams of work docs/process.md allows in flight, and a Dependabot PR.
@@ -111,8 +132,8 @@ merge_queue:
 # batch being tested (`allow_checks_interruption` stays false). A release
 # goes first, so it isn't left waiting behind batches. Then a PR that fixes
 # CI or a flaky test: the operator adds the `priority` label. A label rather
-# than the title's type, since PR titles here say the outcome and carry no
-# type.
+# than the title's type: a `ci:` or `tests:` title says what a PR changes,
+# not that the queue waits on it.
 priority_rules:
   - name: A release goes first
     conditions:
@@ -124,9 +145,9 @@ priority_rules:
     priority: high
 
 # The `queue` label puts a PR to `main` in the queue; it enters once its
-# queue conditions hold (its fast lane is green). Mergify's auto-merge
-# conditions are the way its docs give for queueing on a label: with the
-# merge queue on, a PR that matches them is queued. They take effect only
+# queue conditions hold (its fast lane and its `PR checks` are green).
+# Mergify's auto-merge conditions are the way its docs give for queueing on
+# a label: with the merge queue on, a PR that matches them is queued. They take effect only
 # while Merge Protections is active for the repository in Mergify's
 # dashboard, which is the maintainer's to switch on; until then the label
 # does nothing, and `@mergifyio queue` is how a PR is queued. A
