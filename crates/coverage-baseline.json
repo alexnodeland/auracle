@@ -1,6 +1,6 @@
 {
   "auracle-features": {"lines": 100.00, "functions": 100.00},
-  "auracle-grammar": {"lines": 99.76, "functions": 100.00},
+  "auracle-grammar": {"lines": 100.00, "functions": 100.00},
   "auracle-session": {"lines": 88.63, "functions": 88.86},
   "auracle-taste": {"lines": 100.00, "functions": 100.00},
   "auracle-wasm": {"lines": 90.96, "functions": 85.90}
