@@ -28,10 +28,10 @@ fn an_index_reads_the_stream_the_same_way_everywhere() {
     assert_eq!(drawn, [3, 3, 2, 0, 2, 4, 5, 0, 5, 3, 2, 3]);
 }
 
-/// **No draw depends on the target's width**, in the grammar or in the
-/// session crate's non-test code: every integer `gen_range` goes through
-/// [`gen_index`] or names its type on a bound (`0u64..n`, `0i32..5`), and
-/// the only unsuffixed ranges left are float literals.
+/// **No draw depends on the target's width**, in the grammar or in any
+/// other engine crate's non-test code: every integer `gen_range` goes
+/// through [`gen_index`] or names its type on a bound (`0u64..n`,
+/// `0i32..5`), and the only unsuffixed ranges left are float literals.
 ///
 /// An unsuffixed integer range takes its type from where the result goes,
 /// and `InputChannel::ALL[rng.gen_range(0..3)]` makes it a `usize`, which
@@ -42,23 +42,42 @@ fn an_index_reads_the_stream_the_same_way_everywhere() {
 /// comments and string contents removed, a call spanning lines read as
 /// one: a draw added for a new categorical fails here, on the machine it
 /// was written on, rather than as a pool the browser deals differently.
+///
+/// Every `.rs` file under each crate's `src`, at any depth (a module in its
+/// own directory, as `auracle-session/src/guess/` is, is read too). Test
+/// code, an inline `#[cfg(test)] mod` or a file of tests ([`is_test_file`]),
+/// is read in the grammar only, where seeded tests deal patches; this
+/// module and its tests, which state the rule and test against the plain
+/// draw, are not.
 #[test]
 fn no_draw_depends_on_the_targets_width() {
     let root = env!("CARGO_MANIFEST_DIR");
-    // (directory, whether its `#[cfg(test)] mod` blocks are read too)
+    // (directory, whether its test code is read too)
     let dirs = [
         (format!("{root}/src"), true),
+        (format!("{root}/../auracle-features/src"), false),
+        (format!("{root}/../auracle-taste/src"), false),
         (format!("{root}/../auracle-session/src"), false),
+        (format!("{root}/../auracle-wasm/src"), false),
+    ];
+    let rule = [
+        format!("{root}/src/rng.rs"),
+        format!("{root}/src/rng/tests.rs"),
     ];
     let mut offenders = Vec::new();
     let mut calls = 0;
+    let mut nested = 0;
     for (dir, with_tests) in &dirs {
-        for entry in std::fs::read_dir(dir).expect("a src directory") {
-            let path = entry.expect("a src entry").path();
-            // This module states the rule and tests against the plain draw.
-            if path.extension().is_none_or(|e| e != "rs") || path.ends_with("rng.rs") {
+        let mut files = Vec::new();
+        rust_files(std::path::Path::new(dir), &mut files);
+        assert!(!files.is_empty(), "no source under {dir}");
+        for path in files {
+            if rule.iter().any(|r| std::path::Path::new(r) == path)
+                || (!with_tests && is_test_file(&path))
+            {
                 continue;
             }
+            nested += usize::from(path.parent() != Some(std::path::Path::new(dir)));
             let text = std::fs::read_to_string(&path).expect("a source file");
             let mut code = code_only(&text);
             if !with_tests {
@@ -77,10 +96,39 @@ fn no_draw_depends_on_the_targets_width() {
         "found no gen_range at all, so this proved nothing"
     );
     assert!(
+        nested > 0,
+        "read no module below the top of a src directory"
+    );
+    assert!(
         offenders.is_empty(),
         "a draw whose width depends on the target (use gen_index, or suffix a bound):\n{}",
         offenders.join("\n")
     );
+}
+
+/// Every `.rs` file under `dir`, at any depth, in name order.
+fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .expect("a source directory")
+        .map(|e| e.expect("a directory entry").path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            rust_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+}
+
+/// A file that holds only tests: `tests.rs`, or a name ending `_tests.rs`
+/// (the files a `#[cfg(test)] mod tests;` points at, and the names the
+/// coverage report leaves out).
+fn is_test_file(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n == "tests.rs" || n.ends_with("_tests.rs"))
 }
 
 /// The scan itself: what it flags and what it lets through.
@@ -106,6 +154,10 @@ fn the_width_scan_reads_what_it_claims() {
     assert_eq!(flagged(tests), [4]);
     let code = without_test_modules(&code_only(tests));
     assert!(gen_range_args(&code).is_empty());
+    // A file of tests is test code too; a module file beside it is not.
+    let file = |p: &str| is_test_file(std::path::Path::new(p));
+    assert!(file("src/guess/tests.rs") && file("src/genome/domain_tests.rs"));
+    assert!(!file("src/guess.rs") && !file("src/contests.rs"));
 }
 
 /// `src` with comments blanked and string and char literals emptied,
