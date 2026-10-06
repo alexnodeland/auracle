@@ -570,29 +570,71 @@ fn misspecified_user_is_learned_partially_and_detectably() {
 /// normals under the prior, whose SD *falls* with K — so at fixed σ_θ,
 /// growing the mixture would quietly shrink `Var(u_a − u_b)` and make the
 /// model less able to express a strong preference than before.
+///
+/// Checked on the program itself: draws from the model's own prior, at
+/// every K the table covers, score a candidate with ‖φ‖² = d (a
+/// standardized candidate's expected norm) at a utility SD of 1, as K = 1
+/// does. Each `u_k` is exactly normal for a fixed φ, so `d` is kept small
+/// to keep the draws cheap; it changes nothing about the claim. 5 000 draws
+/// put the SD within about 1% (over sixteen seeds and every K, at most 3%
+/// off); the 5% bound is some five of those, and the table's own digits are
+/// checked exactly by `max_normal_sd_is_the_sd_of_the_max_of_k_normals`.
 #[test]
 fn sigma_theta_compensates_the_k_schedule() {
-    let s1 = TasteConfig::linear(D).sigma_theta();
-    let mut prev = s1;
-    for k in 2..=5 {
-        let s = TasteConfig::mixture(D, k).sigma_theta();
-        assert!(s > prev, "sigma did not widen from K={} to K={k}", k - 1);
-        prev = s;
-    }
-    assert!(
-        (s1 - 1.0 / (D as f64).sqrt()).abs() < 1e-12,
-        "K=1 unchanged"
-    );
-    // Var(u_a − u_b) restored to its K=1 value, to within the table.
-    for k in 1..=5 {
-        let s = TasteConfig::mixture(D, k).sigma_theta();
-        let sd_u = s * (D as f64).sqrt() * MAX_NORMAL_SD[k - 1];
-        assert!((sd_u - 1.0).abs() < 1e-9, "K={k} utility SD {sd_u}");
+    const DP: usize = 4;
+    let mut rng = StdRng::seed_from_u64(0x51);
+    let phi = vec![1.0; DP];
+    for k in 1..=MAX_NORMAL_SD.len() {
+        let model = TasteModel::new(TasteConfig::mixture(DP, k));
+        let us: Vec<f64> = (0..5_000)
+            .map(|_| {
+                model
+                    .prior_sample(&mut rng, &FitSet::default())
+                    .utility_mix(&phi)
+            })
+            .collect();
+        let sd = sample_sd(&us);
+        assert!((sd - 1.0).abs() < 0.05, "K={k}: prior utility SD {sd}");
     }
     // An explicit override still wins.
     let mut cfg = TasteConfig::mixture(D, 5);
     cfg.theta_prior_std = Some(0.3);
     assert_eq!(cfg.sigma_theta(), 0.3);
+}
+
+/// `MAX_NORMAL_SD[K − 1]` is what it says: the SD of the largest of K iid
+/// standard normals, to the table's three decimals. Its density is
+/// `K φ(x) Φ(x)^(K−1)`, integrated here on a fine grid.
+#[test]
+fn max_normal_sd_is_the_sd_of_the_max_of_k_normals() {
+    let (lo, h, n) = (-10.0, 1e-3, 20_001);
+    let x = |i: usize| lo + h * i as f64;
+    let pdf = |x: f64| (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt();
+    // Φ by the trapezoid rule, from Φ(−10) ≈ 0.
+    let mut cdf = vec![0.0; n];
+    for i in 1..n {
+        cdf[i] = cdf[i - 1] + 0.5 * h * (pdf(x(i - 1)) + pdf(x(i)));
+    }
+    for (k, &table) in (1..).zip(MAX_NORMAL_SD.iter()) {
+        let (mut m1, mut m2) = (0.0, 0.0);
+        for (i, c) in cdf.iter().enumerate() {
+            let f = k as f64 * pdf(x(i)) * c.powi(k - 1) * h;
+            m1 += x(i) * f;
+            m2 += x(i) * x(i) * f;
+        }
+        let sd = (m2 - m1 * m1).sqrt();
+        assert!(
+            (sd - table).abs() < 5e-4,
+            "K={k}: the SD is {sd:.5}, the table says {table}"
+        );
+    }
+}
+
+/// Population standard deviation.
+fn sample_sd(v: &[f64]) -> f64 {
+    let n = v.len() as f64;
+    let m = v.iter().sum::<f64>() / n;
+    (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / n).sqrt()
 }
 
 /// Between full refits the posterior is updated by importance
