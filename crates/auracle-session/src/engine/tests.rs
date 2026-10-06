@@ -1700,9 +1700,9 @@ fn refine_names_a_seed_outside_the_prior_support() {
 
 /// The engine's per-session history is bounded: the implicit-event stream
 /// keeps at most `EVENTS_CAP` rows and raw φ on the newest `EVENT_PHI_KEEP`
-/// of them, and the duel-exposure tallies forget an id the moment it is
-/// evicted. All three used to grow for the life of the session and ride
-/// along in every autosave.
+/// of them, which is what every autosave carries, and the duel-exposure
+/// tallies forget an id the moment it is evicted. All three used to grow
+/// for the life of the session.
 #[test]
 fn history_stays_bounded() {
     let mut rng = StdRng::seed_from_u64(0xB0B);
@@ -1717,37 +1717,58 @@ fn history_stays_bounded() {
     for i in 0..(EVENTS_CAP + 300) {
         engine.log_event_detail("play", i as u64, 1.0, "", phi.clone(), phi.clone());
     }
-    assert_eq!(engine.events.len(), EVENTS_CAP);
-    let with_phi = engine
-        .events
-        .iter()
-        .filter(|e| !e.phi_before.is_empty())
-        .count();
-    assert_eq!(with_phi, EVENT_PHI_KEEP);
-    assert!(
-        engine.events.last().unwrap().phi_after == phi,
-        "the newest event must keep its φ"
-    );
+    let saved = engine.export_state().events;
+    assert_eq!(saved.len(), EVENTS_CAP);
     // The dropped rows are the oldest: the survivor ids start at 300.
-    assert_eq!(engine.events[0].id, 300);
+    assert_eq!(saved[0].id, 300);
+    let (bare, carried) = saved.split_at(EVENTS_CAP - EVENT_PHI_KEEP);
+    assert!(
+        bare.iter()
+            .all(|e| e.phi_before.is_empty() && e.phi_after.is_empty()),
+        "an older event still carries its φ"
+    );
+    assert!(
+        carried
+            .iter()
+            .all(|e| e.phi_before == phi && e.phi_after == phi),
+        "one of the newest events lost its φ"
+    );
 
-    // Exposure tallies: deal a duel, evict one of its sides, and the
-    // tallies no longer mention it.
-    let (a, _) = engine.next_duel(&mut rng).expect("a duel");
-    let gone = engine.pool[a].id;
-    // With no posterior every member ranks equal, and `insert_candidate`
-    // evicts the *first* of the tied worst — pool index 0. Put the dealt
-    // side there, so the one hand edit (which always lands) evicts it.
-    engine.pool.swap(0, a);
-    let mut t = engine.pool[1].tree.clone();
+    // Exposure tallies: show the pair of the member the evictor takes first
+    // and another, then replace that member with a hand edit.
+    for (a, b) in [(0, 1), (2, 3), (4, 5), (1, 4)] {
+        engine.record_duel(a, b, true);
+    }
+    engine.fit_posterior(&mut rng);
+    let low = engine.pool[engine.ranked().last().unwrap().0].id;
+    let other = engine
+        .pool
+        .iter()
+        .map(|c| c.id)
+        .find(|&id| id != low)
+        .unwrap();
+    let exclude: Vec<u64> = engine
+        .pool
+        .iter()
+        .map(|c| c.id)
+        .filter(|&id| id != low && id != other)
+        .collect();
+    engine.deal_duel_except(&mut rng, &exclude).expect("a duel");
+    assert!(engine.duel_shown(low, other), "the pair was not dealt");
+    assert_eq!(engine.shown_pairs_len(), 1);
+    let mut t = engine.pool[engine.find(other).unwrap()].tree.clone();
     t.amp.attack = 0.017;
     engine.commit_edit(None, t, EditOutcome::Untold);
     assert!(
-        engine.find(gone).is_none(),
-        "the fixture never evicted the dealt side"
+        engine.find(low).is_none(),
+        "the edit did not replace the lowest member"
     );
-    assert!(engine.shown_pairs_len() <= 1);
-    assert!(!engine.shown_candidate_ids().contains(&gone));
+    assert_eq!(
+        engine.shown_pairs_len(),
+        0,
+        "a pair with a side gone is kept"
+    );
+    assert_eq!(engine.shown_candidate_ids(), vec![other]);
 }
 
 /// A reload opens a new τ session only once the current one has earned it.
