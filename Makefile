@@ -64,7 +64,8 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
         film-sounds film-voice film film-rehearse film-record film-publish \
-        film-record-all film-preview dev-check tokens sound help install-hooks
+        film-record-all film-preview dev-check tokens sound help install-hooks \
+        worktree worktree-rm
 
 all: check
 
@@ -93,8 +94,47 @@ install-hooks:
 	git config core.hooksPath .githooks
 	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
 
+## worktree: a new branch's worktree, at .claude/worktrees/TOPIC in the main
+## checkout (git ignores it), from any checkout: TOPIC's branch (claude/TOPIC,
+## or BRANCH=) from a fresh origin/main, with tests/web's packages installed;
+## it prints the path (docs/process.md § Building)
+## worktree-rm: once merged, remove TOPIC's worktree and the branch it is on
+## (read from the worktree; BRANCH= only checks it); it refuses a worktree
+## holding work not committed, one on no branch, and a branch whose commits
+## no remote branch holds (FORCE=1 deletes them anyway: a merged branch whose
+## remote branch was pruned)
+# The main checkout is the one holding the repository (.git), whichever
+# checkout make runs in: run from a worktree, the new one still goes beside it,
+# not inside it.
+MAIN_CHECKOUT = $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir)")
+WT_BRANCH = $(or $(BRANCH),claude/$(TOPIC))
+worktree:
+	@test -n "$(TOPIC)" || { printf '  name it: make worktree TOPIC=<topic> [BRANCH=<branch>]\n'; exit 1; }
+	git -C "$(MAIN_CHECKOUT)" fetch -q origin
+	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
+	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
+	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
+
+# The branch to delete is the one the worktree is on, never one named from
+# TOPIC: a worktree's branch need not be claude/TOPIC, and a claude/TOPIC
+# elsewhere may hold other work. `branch -D`, since a squash merge leaves the
+# branch unmerged to git; so first, unless FORCE=1, its commits must be on a
+# remote branch (pushed, or in origin/main).
+worktree-rm:
+	@test -n "$(TOPIC)" || { printf '  name it: make worktree-rm TOPIC=<topic> [BRANCH=<branch>] [FORCE=1]\n'; exit 1; }
+	@wt="$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)"; \
+	test -f "$$wt/.git" || { printf '  no worktree at %s\n' "$$wt"; exit 1; }; \
+	b="$$(git -C "$$wt" symbolic-ref -q --short HEAD)" || { \
+		printf '  nothing removed: %s is on no branch (a detached HEAD); look at its commits, then git worktree remove it\n' "$$wt"; exit 1; }; \
+	if [ -n "$(BRANCH)" ] && [ "$(BRANCH)" != "$$b" ]; then \
+		printf '  nothing removed: %s is on %s, not %s\n' "$$wt" "$$b" "$(BRANCH)"; exit 1; fi; \
+	if [ -z "$(FORCE)" ] && [ -z "$$(git -C "$$wt" for-each-ref --contains "$$b" --count=1 refs/remotes)" ]; then \
+		printf '  nothing removed: %s has commits no remote branch holds; push them, or, for a merged branch whose remote branch was pruned, FORCE=1 deletes them\n' "$$b"; exit 1; fi; \
+	git -C "$(MAIN_CHECKOUT)" worktree remove "$$wt" && git -C "$(MAIN_CHECKOUT)" branch -D "$$b"
+
 ## dev-check: the tooling around the code stays sound: the agent docs'
-## links, anchors and frontmatter, the constants the books quote by name, the
+## links, anchors and frontmatter (this checkout's, never a worktree's inside
+## it, and the check's own tests), the constants the books quote by name, the
 ## design tokens (every generated block current, no color written outside
 ## www/brand/tokens.json, no token redefined after its block, each file's
 ## count of literal sizes and durations at www/brand/sizes-baseline.json, and
@@ -124,6 +164,7 @@ dev-check: $(DEV_CHECKS)
 
 dev-docs:
 	@python3 .claude/checks/check_docs.py
+	@python3 .claude/checks/test_check_docs.py
 dev-names:
 	@python3 www/checknames.py
 dev-tokens:
@@ -450,7 +491,8 @@ coverage-floors:
 # failed; others: the run broke) and `scripts/mutants_report.py` says what
 # it found. CI runs `make -s mutants-command`'s command itself, under its
 # own time limit, to read that code. MUTANTS_JOBS mutants at a time, each
-# in its own copy of the tree (its first build is from clean); MUTANTS_ARGS
+# in its own copy of the tree (its first build is from clean; what git tracks
+# or does not ignore, so no worktree in .claude/worktrees/); MUTANTS_ARGS
 # for any other option (CI's `--in-place`, `--shard k/N`). At nice 10, as
 # perform-wirings is: it holds every core for as long as it runs.
 MUTANTS_VERSION := 27.1.0

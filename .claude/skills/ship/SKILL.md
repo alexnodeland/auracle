@@ -24,7 +24,7 @@ in zsh, this environment's shell):
 
 ```bash
 REPO=/absolute/path/to/auracle          # the main checkout
-WT="$REPO/../auracle-wt-<topic>"        # this task's worktree
+WT="$REPO/.claude/worktrees/<topic>"    # this task's worktree
 ```
 
 ## 1. The issue
@@ -50,20 +50,23 @@ edit the body to fill the template's sections.
 ## 2. A worktree and a branch
 
 ```bash
-git -C "$REPO" fetch -q origin
-git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
-(cd "$WT/tests/web" && npm ci --no-audit --no-fund)
+make -C "$REPO" worktree TOPIC=<topic>
+git -C "$REPO" merge -q --ff-only origin/main
 make -C "$WT" pkg-reuse || nice -n 10 make -C "$WT" wasm
 ```
 
-The third line installs `tests/web`'s packages in the new worktree
-(`node_modules` is per checkout): without them `make web-check` stops at the
-specs' lint, and the after-edit hook does not lint a spec. The last gives it
-an engine: the main checkout's release build, copied in about a second, when
-it was built from the same Rust (`make pkg-reuse` compares the two, and says
-why not when it can't); otherwise a build of its own (about a minute, more
-with every crate to compile). A builder that changes Rust builds again with
-`make wasm`.
+The first line fetches, makes `claude/<topic>` from `origin/main` at `$WT`,
+inside the main checkout where git ignores it, and installs `tests/web`'s
+packages there (`node_modules` is per checkout): without them
+`make web-check` stops at the specs' lint, and the after-edit hook does not
+lint a spec. The second keeps the main checkout on `main` and current: an
+agent in `$WT` also loads its root `AGENTS.md`, from an ancestor directory,
+and runs its hooks and settings; it follows its worktree's own `AGENTS.md`
+where the two differ. The last gives the worktree an engine: the main
+checkout's release build, copied in about a second, when it was built from
+the same Rust (`make pkg-reuse` compares the two, and says why not when it
+can't); otherwise a build of its own (about a minute, more with every crate
+to compile). A builder that changes Rust builds again with `make wasm`.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
@@ -340,11 +343,12 @@ else. A merge from outside the queue makes the queue start over on the new
 ## 8. Clean up
 
 The PR's branch deletes itself on GitHub when it merges. Remove the worktree
-and the local branch:
+and the local branch. `worktree-rm` refuses a branch whose commits no remote
+branch holds, so once `origin/claude/<topic>` is pruned (`git fetch --prune`)
+a merged branch needs `FORCE=1`:
 
 ```bash
-git -C "$REPO" worktree remove "$WT"
-git -C "$REPO" branch -D claude/<topic>
+make -C "$REPO" worktree-rm TOPIC=<topic>                    # removes $WT and deletes the branch it is on
 gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>", or by PR checks if GitHub missed it
 ```
 
