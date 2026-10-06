@@ -142,6 +142,7 @@ test("TAUGHT counts a pick at once, ⌘Z takes it back, and the lane names the l
   // Until the third pick's window closes and it commits (the engine's own
   // count has all three), PICKS must never dip while a pick moves from
   // "waiting" to "in the log": every value it took since the third pick.
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   await app.engine((timeout) => expect.poll(async () => ((await app.last("status")) || { status: {} }).status.observations, { timeout }).toBe(n0 + 3), { ms: 30_000 });
   const counted = await page.evaluate(() => window.__pwCounted.map(Number));
   expect([...new Set([...counted, await picks(page)])]).toEqual([n0 + 3]);

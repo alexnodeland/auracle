@@ -304,6 +304,11 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit under test and its parents: the specs' lint compares
+          # tests/web/eslint-suppressions.json with HEAD^1's, the branch a
+          # PR's merge commit goes onto (main's previous commit on a push).
+          fetch-depth: 2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
@@ -315,7 +320,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt | xargs python3 -m pip install --quiet
-      - run: make web-check
+      # The specs' lint (in web-check) and its hook's test (in dev-check) run
+      # tests/web's locked ESLint. npm is cut at three minutes, as in
+      # .github/actions/playwright.
+      - run: |
+          cd tests/web
+          timeout -k 10 180 npm ci --no-audit --no-fund || {
+            s=$?
+            if [ "$s" = 124 ] || [ "$s" = 137 ]; then
+              echo "::error::npm ci took over three minutes: the npm registry (registry.npmjs.org) is slow or unreachable from this runner, not the change. Re-run the job."
+            fi
+            exit "$s"
+          }
+      - run: make web-check BASE=HEAD^1
       - run: make -j4 -O dev-check
 
   # The fast tier of the Rust tests, split across two runners.

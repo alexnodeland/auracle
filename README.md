@@ -173,7 +173,7 @@ is. See [Your data](https://auracle.alexnodeland.com/docs/your-data.html).
 ## Development
 
 ```bash
-make check   # the CI gate: fmt-check, clippy (-D warnings), app syntax, dev-check, wasm32, and the tests
+make check   # the CI gate: fmt-check, clippy (-D warnings), app syntax, the specs' lint, dev-check, wasm32, and the tests
 make test    # cargo test --workspace --profile test-fast (the DSP tests need optimized code)
 make fmt     # rustfmt
 make lint    # clippy

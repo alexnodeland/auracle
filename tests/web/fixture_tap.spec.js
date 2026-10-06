@@ -69,7 +69,9 @@ test("a failed request is answered as the worker answers one it could not run", 
       ["perform_offer", 11, true],
     ]);
   await app.quiet();
+  // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("perform_wire"), "a failed request reached the engine").toBe(0);
+  // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("perform_offer"), "a failed request reached the engine").toBe(0);
 });
 

@@ -135,6 +135,7 @@ test("nothing is guessed before the warm start", async ({ page, app }) => {
   await expect(page.locator("#guess-read")).toBeHidden();
   await expect(page.locator("#nb-groups .nb-item.guessed")).toHaveCount(0);
   // …and nothing was rendered for it: no render crew was raised to be told no.
+  // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("farm_want")).toBe(0);
 });
 

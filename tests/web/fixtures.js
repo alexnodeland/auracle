@@ -722,6 +722,7 @@ class App {
   /** Nothing happens for QUIET_MS: the one fixed wait, for a check that
    *  something does not occur (a stray toast, a second request). */
   quiet(ms = QUIET_MS) {
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- the one fixed wait (tests/web/AGENTS.md)
     return this.page.waitForTimeout(ms);
   }
 

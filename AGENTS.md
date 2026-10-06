@@ -98,7 +98,7 @@ contributor guide; this file does not repeat it.
 | When | Run |
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
-| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, dev-check, wasm32 check, all Rust tests) |
+| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests) |
 | After changing Rust the app calls | `make wasm` |
 | Only JS changed | `make web-check` |
 | One crate's tests | `make test-crate CRATE=auracle-<crate>` (`FILTER=` a test name) |

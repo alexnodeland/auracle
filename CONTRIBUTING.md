@@ -73,7 +73,7 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 `fix/arp-gate-length`, `docs/…`), then:
 
 ```bash
-make check          # fmt + clippy -D warnings + node --check + dev-check + wasm32 check + tests (CI gate)
+make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)
 make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
@@ -121,8 +121,9 @@ Every change must pass `make check`:
 
 1. `cargo fmt --all --check`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `node --check` on every `apps/web` script, and the pure modules' unit tests
-   (`make web-check`)
+3. `node --check` on every `apps/web` script, the pure modules' unit tests,
+   and ESLint over the browser specs (`make web-check`; the lint needs
+   `npm ci` in `tests/web`, which `make setup` runs)
 4. The tooling's own checks (`make dev-check`): the agent docs' links and
    frontmatter, every constant the books quote by name still existing in the
    code (`www/checknames.py`), the color tokens (`www/brand/tokens.py`), the

@@ -37,6 +37,22 @@ if command -v rustfmt >/dev/null; then
   printf 'fn  main(){let x=1;}\n' > "$tmp/ok.rs"; expect 0 "formats Rust" post-edit-check.sh "$(edit "$tmp/ok.rs")"
   grep -q '    let x = 1;' "$tmp/ok.rs" || { echo "  FAIL: rustfmt did not format"; fails=$((fails + 1)); }
 fi
+# The specs' lint, where tests/web's packages are installed (npm ci there; CI's
+# Web job installs them), on specs in a copy of tests/web's lint set-up
+# outside the tree, where no Playwright run can pick them up: a violation the
+# copy's suppressions hold passes, a new one fails, a clean spec passes.
+web="$root/tests/web"
+nm="$web/node_modules"
+if [ -x "$nm/.bin/eslint" ] && [ -d "$nm/eslint-plugin-playwright" ] && [ -d "$nm/@eslint-community/eslint-plugin-eslint-comments" ]; then
+  lint="$tmp/tests/web"
+  mkdir -p "$lint" && cp "$web/eslint.config.mjs" "$lint/" && ln -s "$web/node_modules" "$lint/node_modules"
+  waits='const { test, expect } = require("./fixtures");\n\ntest("waits", async ({ page }) => {\n  await page.waitForTimeout(100);\n  await expect(page.locator("#a")).toBeVisible();\n});\n'
+  printf '{"held.spec.js":{"playwright/no-wait-for-timeout":{"count":1}}}\n' > "$lint/eslint-suppressions.json"
+  printf "$waits" > "$lint/held.spec.js"; expect 0 "a violation the suppressions hold" post-edit-check.sh "$(edit "$lint/held.spec.js")"
+  printf "$waits" > "$lint/new.spec.js";  expect 2 "a new spec's fixed wait" post-edit-check.sh "$(edit "$lint/new.spec.js")"
+  printf 'const { test, expect } = require("./fixtures");\n\ntest("shows", async ({ page }) => {\n  await expect(page.locator("#a")).toBeVisible();\n});\n' > "$lint/ok.spec.js"
+  expect 0 "a clean new spec" post-edit-check.sh "$(edit "$lint/ok.spec.js")"
+fi
 expect 0 "session start"         session-start.sh '{}'
 echo "  hooks: $runs cases, $fails failure(s)"
 [ "$fails" = 0 ]

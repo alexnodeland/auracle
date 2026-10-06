@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse (Edit|Write|MultiEdit): format Rust and syntax-check scripts at
-# once, so a broken file is reported at the edit and not at `make check`.
+# PostToolUse (Edit|Write|MultiEdit): format Rust, syntax-check scripts and
+# lint the browser specs at once, so a broken file is reported at the edit
+# and not at `make check`.
 # Exit 2 sends stderr back to Claude; exit 0 is silent.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -30,6 +31,22 @@ case "$file" in
       */apps/web/*.js) out=$(node --check --input-type=module < "$file" 2>&1) ;;
       *) out=$(node --check "$file" 2>&1) ;;
     esac || fail "node --check failed for $file:" "$out"
+    # A file in tests/web is linted as make web-check lints it: from
+    # tests/web, where its eslint.config.mjs and the suppressions are, in a
+    # few tenths of a second for one file. Skipped where tests/web's packages
+    # are not installed (npm ci there); make web-check says so.
+    case "$file" in
+      */tests/web/*.js|*/tests/web/*.mjs)
+        web="${file%/tests/web/*}/tests/web"
+        nm="$web/node_modules"
+        if [ -f "$web/eslint.config.mjs" ] && [ -x "$nm/.bin/eslint" ] && [ -d "$nm/eslint-plugin-playwright" ] \
+          && [ -d "$nm/@eslint-community/eslint-plugin-eslint-comments" ]; then
+          out=$(cd "$web" && node_modules/.bin/eslint --no-warn-ignored "${file#"$web"/}" 2>&1) || fail \
+            "ESLint failed for $file:" "$out" \
+            "Fix it rather than suppress it (tests/web/AGENTS.md § The lint). A count that fell is recorded with: cd tests/web && npx eslint --prune-suppressions"
+        fi
+        ;;
+    esac
     ;;
   *.py)
     out=$(python3 -m py_compile "$file" 2>&1) || fail "Python syntax error in $file:" "$out"

@@ -704,6 +704,7 @@ test("a generation's children land in New with their seed and what changed, and 
   }
   if (during.some((s) => s.child > 0)) expect(during.some((s) => s.may.length > 0), "a child was taken in and nothing was marked as may be replaced").toBe(true);
   await page.mouse.move(5, 5);
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   const refined = await app.last("refined");
   const after = await app.facts();
   const kept = refined.born.filter((id) => !refined.retired.includes(id));
