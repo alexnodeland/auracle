@@ -12,13 +12,13 @@
   were: with no pair on the table they had nothing to play, show or open
   (`evolve_truth.spec.js`, `deal.test.mjs`, #195).
 
-### Fixed: a pick taken back doesn't change the pairs after it
+### Fixed: a pick taken back keeps the pair dealt behind the next
 
-- **A pick you take back no longer changes which pairs come after it.**
-  ⌘Z puts the pair back, and the pair that went up in its place waits as
-  the next. The pair dealt behind that one was thrown away whenever its
-  sounds had arrived in time for it to be dealt, and a new pair came
+- **Taking a pick back no longer throws away a pair already dealt.** ⌘Z
+  puts the pair back, and the pair that went up in its place waits as the
+  next. The pair behind that one is dealt once that one's sounds have
+  arrived; when that was before ⌘Z, ⌘Z threw it away and a new pair came
   instead, so in a seeded session the pair two picks on depended on how
-  fast the sounds rendered. Now it is kept, and a seeded session shows the
-  same pairs in the same order (`evolve_ahead.spec.js`, `deal.test.mjs`,
-  #211).
+  fast the sounds rendered. Now it is kept, and offered as the next pair
+  once the one before it goes up again (`evolve_ahead.spec.js`,
+  `deal.test.mjs`, #211).

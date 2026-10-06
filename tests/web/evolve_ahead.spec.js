@@ -277,7 +277,9 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
 // same seed and the same gestures showed a different pair after Q. Now R is
 // kept as the pair after next, so the pair after Q is R in all three: the
 // first pair dealt after the first pick that may go up (deal.test.mjs holds
-// the same of every deal asked for, in both orders).
+// the same of every deal asked for, in both orders). The second gesture is a
+// pick, which holds P again; ↻ there holds none, and an R that is P itself
+// is then judged differently in different orders (deal.js says how).
 const PROBE_SEED = 20260928;
 const nothing = async () => {};
 /** Each order: what is held from boot (`hold`), what "P up and Q waiting"
@@ -312,7 +314,7 @@ const ORDERS = [
   },
 ];
 for (const order of ORDERS) {
-  test(`a taken-back pick keeps the deal behind the pair it put back, so the pair after it is the same however its renders were timed (the deal behind it ${order.name})`, async ({ page, app }) => {
+  test(`a taken-back pick keeps the deal behind the pair it put back, so picking again shows the same pair after it however its renders were timed (the deal behind it ${order.name})`, async ({ page, app }) => {
     await order.hold(app);
     await app.boot({ seed: PROBE_SEED, random: PROBE_SEED });
     await app.filled();

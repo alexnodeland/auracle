@@ -415,11 +415,12 @@ test("a pair kept after the next is offered when the next is dropped by a cut", 
   assert.equal(t.dealer.out, 0, "a deal was asked for with R there to take Q's place");
 });
 
-/** #211's probe on the dealer: pick, ⌘Z, pick, pick, with the deals behind
- *  Q all landed before ⌘Z, one landed and the next still out, the first
- *  still out, or none asked for before ⌘Z (Q's sounds arriving only after
- *  it). `behindQ` is what the engine deals after Q. Returns every pair put
- *  up and every deal asked for, in order (each draws the engine's next). */
+/** #211's probe on the dealer: pick, ⌘Z, pick again, pick, with the deals
+ *  behind Q all landed before ⌘Z, one landed and the next still out, the
+ *  first still out, or none asked for before ⌘Z (Q's sounds arriving only
+ *  after it). `behindQ` is what the engine deals after Q. Returns every pair
+ *  put up and every deal asked for, in order (each draws the engine's
+ *  next). */
 function probe(order, behindQ) {
   const unheard = new Set();
   const t = setup({ answers: [P, Q, ...behindQ, S, T, R], heard: (id) => !unheard.has(id) });
@@ -448,7 +449,7 @@ for (const [name, behindQ] of [
   ["the pick's own pair three times", [P, P, P, R]],
   ["the pick's own pair four times, refused until the dealer gives up", [P, P, P, P, R]],
 ]) {
-  test(`a seeded session shows the same pairs and asks for the same deals however Q's sounds were timed (the deal behind Q: ${name})`, () => {
+  test(`picking again after ⌘Z shows the same pairs and asks for the same deals however Q's sounds were timed (the deal behind Q: ${name})`, () => {
     const b = probe("not asked", behindQ);
     assert.equal(b.shown.at(-1), R.join(), "the pair after Q is the first deal behind it that may go up");
     for (const order of ["landed", "one landed", "still out"]) {

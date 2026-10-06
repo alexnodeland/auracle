@@ -53,8 +53,17 @@
 // different pair after Q (#211, ADR-001). Now R is kept as the pair after
 // next (`retract`, `dealt`), and offered as the next pair when Q goes up
 // (`placed`), refused or kept on the same terms as a deal landing then, with
-// the refusals counted behind Q carried over: the deals asked for, and the
-// pairs that go up, are the same in either order.
+// the refusals counted behind Q carried over. When the player picks P again,
+// the deals asked for and the pairs that go up are the same in either order,
+// given the same answers from the engine.
+//
+// ↻ after ⌘Z is the exception: it holds no pick. An R that is P itself is
+// refused in one order (it landed while the pick of P was held, and that
+// refusal is carried over) and goes up after Q in the other (it landed
+// after ⌘Z, and is judged once Q is up, with nothing held). Whether to judge
+// a kept deal against the pick held when it was dealt is open (#211). Nor
+// are the engine's answers always the same: a deal drawn while the pool
+// fills, or on the other side of a cut, is drawn over other sounds.
 
 /** How many answers in a row the dealer refuses before it stops dealing
  *  again: with the table waiting, the answer after these goes up anyway (a

@@ -917,9 +917,9 @@ written before that folder existed.
   dealt behind it. A pick used to put the table away and wait for the deal,
   and during a generation that wait was a whole seed's walk, up to about
   20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
-  a pick back puts its pair back, and the pairs dealt after it still come
-  next, in order; a patch cut meanwhile is never dealt: its pair is dropped
-  and dealt again.
+  a pick back puts its pair back, and the pair shown in its place, or the
+  deal on its way, waits as the next; a patch cut meanwhile is never dealt:
+  its pair is dropped and dealt again.
   Pairs go up in the order they were dealt: a pick made while the next deal
   is still out (a generation holds it) waits for that deal instead of asking
   for a second, so a seeded session shows the same pairs in the same order

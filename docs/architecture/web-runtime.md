@@ -1118,26 +1118,35 @@ for behind it, if one was, is kept as the pair after next: as it is if it
 has landed, and when it lands (`dealt`) if it is still out. When the pair
 before it goes up again (`placed`), it is offered as the next pair and
 judged then, against that table, as a deal landing then would be, with the
-refusals already counted behind that pair carried over. Whether that deal
-had been asked for by ⌘Z depends on how soon the pair's sounds arrived (the
-pair after the table's is dealt only once they are here); it used to be
-thrown away when it had been, and the pair after was then the next deal in
-the engine's stream, so a seeded session's pairs after a take-back depended
-on render timing (#211). Now the deals asked for, and the pairs that go up,
-are the same either way. When none was asked for, the pair after is dealt
-when the pair before it goes up. When `usable` refuses the displaced pair
-(as when it is the pick's own pair, put up again by a pool too small to deal
-another), nothing changes: a deal behind it that has landed stays the next
-pair, and one still out becomes it. If nothing went up, the deal the table
-was waiting on lands with the pair back on the table and becomes the next
-pair. A retraction asks for a deal only when no pair waits and none is
-out. With the table waiting, an answer that may not go up is dealt again,
-and after three tries goes up anyway, so a pool too small to deal anything
-else cannot leave the cards dimmed. An answer holding a cut sound is the
-exception: it is always dealt again (`holdsCut`). That ends, because each
-deal excludes the cuts made before it was asked for, so only a cut made
-while a deal is out brings one back. `placePair` is the one place a pair
-goes up: anything owed to a pair being shown belongs there.
+refusals already counted behind that pair carried over. When none was asked
+for, the pair after is dealt when the pair before it goes up. When `usable`
+refuses the displaced pair (as when it is the pick's own pair, put up again
+by a pool too small to deal another), nothing changes: a deal behind it that
+has landed stays the next pair, and one still out becomes it. If nothing
+went up, the deal the table was waiting on lands with the pair back on the
+table and becomes the next pair. A retraction asks for a deal only when no
+pair waits and none is out. With the table waiting, an answer that may not
+go up is dealt again, and after three tries goes up anyway, so a pool too
+small to deal anything else cannot leave the cards dimmed. An answer
+holding a cut sound is the exception: it is always dealt again
+(`holdsCut`). That ends, because each deal excludes the cuts made before it
+was asked for, so only a cut made while a deal is out brings one back.
+`placePair` is the one place a pair goes up: anything owed to a pair being
+shown belongs there.
+
+Whether the deal behind the displaced pair had been asked for by ⌘Z depends
+on how soon that pair's sounds arrived (the pair after the table's is dealt
+only once they are here). It used to be thrown away when it had been, and
+the pair after was then the next deal in the engine's stream, so a seeded
+session's pairs after a take-back depended on render timing (#211). Now,
+when the player picks again, the deals asked for and the pairs that go up
+are the same either way, given the same answers from the engine. ↻ after
+⌘Z is the exception, since it holds no pick: a deal behind the displaced
+pair that is the pick's own pair is refused in one order (it landed while
+the pick was held, and the refusal is carried over) and goes up in the
+other (it landed after ⌘Z, and is judged with nothing held). Nor are the
+engine's answers always the same: a deal drawn while the pool fills, or on
+the other side of a cut, is drawn over other sounds.
 
 An empty answer (the engine deals `null` when fewer than two sounds in the
 pool are standardized and not cut, `deal_duel_except`) is nothing to put up.
@@ -1145,11 +1154,11 @@ With the table waiting and no other deal out, the dealer calls `nothing`:
 `main.js`'s `nothingToDeal` keeps the pair's buttons disabled (the picks,
 ▶, ↻ and the cards' corners, ⇄ circuit and ↓ patch: `DUEL_CONTROLS`, off
 whenever the table has no pair) and the cards dimmed, and says *Nothing to
-pair. Fewer than two sounds are left to deal.* in their reason slot at once. The dealer asks again
-(`soundsBack`) when a sound may have come back: a cut taken back, or new
-views (the pool changed), and the `filled` handler's deal for an empty table
-does the same. With a pair on the table, an empty answer leaves nothing
-waiting.
+pair. Fewer than two sounds are left to deal.* in their reason slot at
+once. The dealer asks again (`soundsBack`) when a sound may have come back:
+a cut taken back, or new views (the pool changed), and the `filled`
+handler's deal for an empty table does the same. With a pair on the table,
+an empty answer leaves nothing waiting.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
