@@ -380,8 +380,10 @@ struct ParamSlot {
     addr: String,
     map: ParamMap,
     /// Index-parallel to `voices`, then the open voice's when there is one.
-    /// Written for every voice only through [`ParamSlot::set_all`]; the one
-    /// write to a single voice is a note's touch ([`LivePoly::apply_touch`]).
+    /// Written for every voice only through [`ParamSlot::set_all`]; one
+    /// voice is written only as a note starts on it, back to the knob
+    /// ([`LivePoly::restore_knobs`]) and then by its touch
+    /// ([`LivePoly::apply_touch`]).
     values: Vec<Arc<AtomicF64>>,
     /// The knob's own value, in its own units: what every voice holds but
     /// for a note's touch offset, and what a voice is put back to when it
