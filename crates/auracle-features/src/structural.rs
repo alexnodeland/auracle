@@ -1180,3 +1180,6 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
         walk(i, f, t, d + 1);
     }
 }
+
+#[cfg(test)]
+mod tests;

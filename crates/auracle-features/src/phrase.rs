@@ -168,3 +168,6 @@ impl PhraseSpec {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

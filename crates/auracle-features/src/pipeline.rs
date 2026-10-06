@@ -165,3 +165,6 @@ pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate,
     }
     Ok(VettedCandidate { render, features })
 }
+
+#[cfg(test)]
+mod tests;
