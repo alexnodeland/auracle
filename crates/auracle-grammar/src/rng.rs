@@ -15,9 +15,9 @@
 //! on each target from the second draw of the fill stream on (the root
 //! filter's kind: `SvfLp` natively, `Ladder` in wasm, for the shipped seed;
 //! `crates/auracle-wasm/tests/boot_agrees.rs` pins what it now deals). Every
-//! other draw the prior makes is already width-independent (an `f64`, a
-//! `bool`, a `gen_range` over a literal range, which is an `i32`), so the
-//! index is the one thing to pin.
+//! other draw the prior makes is already width-independent (an `f64` or a
+//! `bool`; a weighted pick, an oscillator's octave among them, is one `f64`),
+//! so the index is the one thing to pin.
 //!
 //! `fugue-ppl` had the same draw: its Metropolis step picked the site it moves
 //! with `sites[rng.gen_range(0..sites.len())]` (`inference/mh.rs`, 0.2.2), so

@@ -25,7 +25,8 @@
 //! and `Mix`/`RingMod` (both inputs are audio, and the one knob is the blend).
 //! Having two audio children is *not* an exception: the four 2B dynamics
 //! productions take two subterms and carry a slot as well.
-//! | discrete params | `<p>#wave` / `#oct` / `#color` / `#fkind` / `#table` / `#dmode` | uniform categoricals |
+//! | oscillator octave | `<p>#oct` | `Categorical(`[`OCTAVE_WEIGHTS`]`)` over −2 … +2 |
+//! | discrete params | `<p>#wave` / `#color` / `#fkind` / `#table` / `#dmode` | uniform categoricals |
 //! | continuous params | `<p>#det`, `#cut`, `#res`, … | `Uniform(0, 1)` |
 //!
 //! The amplitude envelope lives at `amp#attack` … `amp#release`.
@@ -196,6 +197,26 @@ pub const PRIOR_MAX_DEPTH: usize = 5;
 /// mass has `ModNode::depth() == PRIOR_MAX_MOD_DEPTH + 1`, which is
 /// [`crate::mutate::MAX_MOD_DEPTH`].
 pub const PRIOR_MAX_MOD_DEPTH: usize = 2;
+
+/// The weights of an oscillator's `#oct` site over octaves −2 … +2, in the
+/// trace's order (index `octave + 2`). Every source with an octave (VCO,
+/// supersaw, wavetable, pluck, formant) draws it from these, in both
+/// samplers: [`octave_cat`] in the program, [`draw_octave`] on a plain RNG.
+///
+/// Register comes almost entirely from the lowest oscillator's octave. Drawn
+/// uniformly, it put 30.5 % of a fresh bank mostly below 200 Hz at C4, and
+/// 16.5 % with under a fifth of its energy in 200 Hz–5 kHz, the band a
+/// laptop's speakers reproduce: sounds a player cannot hear on the machine
+/// most of them play on (#62, measured by `auracle-wasm`'s `pool_loudness`
+/// example). Octave 0 is now the common draw, one up the next, and the
+/// lowest the rarest.
+///
+/// **±2 keep a weight above zero, and must.** At 0, a preset or a saved
+/// patch with an oscillator at either edge (the shipped presets hold both)
+/// would score `log p = −∞`, and refinement refuses to start from a seed the
+/// prior gives no mass. The table sums to 1; [`weighted_cat`] and
+/// [`weighted_choice`] divide by its total anyway, as for every other table.
+pub const OCTAVE_WEIGHTS: [f64; 5] = [0.05, 0.15, 0.40, 0.25, 0.15];
 
 /// The typed PCFG over patch terms.
 ///
@@ -533,6 +554,12 @@ fn weighted_cat(weights: &[f64]) -> Categorical {
     Categorical::new(weights.iter().map(|w| w / total).collect()).expect("valid categorical")
 }
 
+/// An `#oct` site's distribution in the program: [`OCTAVE_WEIGHTS`], over
+/// the index `octave + 2`. [`draw_octave`] is the same draw on a plain RNG.
+fn octave_cat() -> Categorical {
+    weighted_cat(&OCTAVE_WEIGHTS)
+}
+
 /// Sample a run of `Uniform(0,1)` parameter sites at `key`, in order.
 ///
 /// Exactly the hand-nested `bind` chain the older two- and three-parameter
@@ -565,7 +592,7 @@ impl PatchGrammarPrior {
                 sample(addr!(k.clone(), "wave"), uniform_cat(Waveform::ALL.len())).bind(move |w| {
                     let k2 = k.clone();
                     let cfg2 = cfg.clone();
-                    sample(addr!(k2.clone(), "oct"), uniform_cat(5)).bind(move |o| {
+                    sample(addr!(k2.clone(), "oct"), octave_cat()).bind(move |o| {
                         let k3 = k2.clone();
                         let cfg3 = cfg2.clone();
                         u01_seq(k3.clone(), &["det", "mdepth"]).bind(move |p| {
@@ -585,7 +612,7 @@ impl PatchGrammarPrior {
             1 => {
                 let k = key.clone();
                 let cfg = cfg.clone();
-                sample(addr!(k.clone(), "oct"), uniform_cat(5)).bind(move |o| {
+                sample(addr!(k.clone(), "oct"), octave_cat()).bind(move |o| {
                     let k2 = k.clone();
                     let cfg2 = cfg.clone();
                     u01_seq(k2.clone(), &["det", "smix", "mdepth"]).bind(move |p| {
@@ -619,7 +646,7 @@ impl PatchGrammarPrior {
                 .bind(move |tb| {
                     let k2 = k.clone();
                     let cfg2 = cfg.clone();
-                    sample(addr!(k2.clone(), "oct"), uniform_cat(5)).bind(move |o| {
+                    sample(addr!(k2.clone(), "oct"), octave_cat()).bind(move |o| {
                         let k3 = k2.clone();
                         let cfg3 = cfg2.clone();
                         u01_seq(k3.clone(), &["morph", "mdepth"]).bind(move |p| {
@@ -640,7 +667,7 @@ impl PatchGrammarPrior {
             4 => {
                 let k = key.clone();
                 let cfg = cfg.clone();
-                sample(addr!(k.clone(), "oct"), uniform_cat(5)).bind(move |o| {
+                sample(addr!(k.clone(), "oct"), octave_cat()).bind(move |o| {
                     let k2 = k.clone();
                     let cfg2 = cfg.clone();
                     u01_seq(k2.clone(), &["damp", "bright", "mdepth"]).bind(move |p| {
@@ -658,7 +685,7 @@ impl PatchGrammarPrior {
             }
             5 => {
                 let k = key.clone();
-                sample(addr!(k.clone(), "oct"), uniform_cat(5)).bind(move |o| {
+                sample(addr!(k.clone(), "oct"), octave_cat()).bind(move |o| {
                     let k2 = k.clone();
                     let cfg2 = cfg.clone();
                     u01_seq(k2.clone(), &["vowel", "fshift", "mdepth"]).bind(move |p| {
@@ -1371,14 +1398,14 @@ impl PatchGrammarPrior {
                 0 => AudioNode::Vco {
                     uid: Uid::NEW,
                     wave: Waveform::from_index(gen_index(rng, Waveform::ALL.len())),
-                    octave: rng.gen_range(0i32..5) as i8 - 2,
+                    octave: draw_octave(rng),
                     detune: rng.gen(),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 1 => AudioNode::Supersaw {
                     uid: Uid::NEW,
-                    octave: rng.gen_range(0i32..5) as i8 - 2,
+                    octave: draw_octave(rng),
                     detune: rng.gen(),
                     mix: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1391,14 +1418,14 @@ impl PatchGrammarPrior {
                 3 => AudioNode::Wavetable {
                     uid: Uid::NEW,
                     table: TableShape::from_index(gen_index(rng, TableShape::ALL.len())),
-                    octave: rng.gen_range(0i32..5) as i8 - 2,
+                    octave: draw_octave(rng),
                     morph: rng.gen(),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 4 => AudioNode::Pluck {
                     uid: Uid::NEW,
-                    octave: rng.gen_range(0i32..5) as i8 - 2,
+                    octave: draw_octave(rng),
                     damping: rng.gen(),
                     brightness: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1408,7 +1435,7 @@ impl PatchGrammarPrior {
                     uid: Uid::NEW,
                     vowel: rng.gen(),
                     shift: rng.gen(),
-                    octave: rng.gen_range(0i32..5) as i8 - 2,
+                    octave: draw_octave(rng),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
@@ -1695,6 +1722,14 @@ fn weighted_choice<R: Rng>(rng: &mut R, weights: &[f64]) -> usize {
         .iter()
         .rposition(|&w| w > 0.0)
         .unwrap_or(weights.len() - 1)
+}
+
+/// An oscillator's octave on a plain RNG: [`OCTAVE_WEIGHTS`], as
+/// [`octave_cat`] draws it in the program. One `f64` from the stream, as
+/// fugue's categorical reads it too, so the draw is the same on wasm32 and
+/// natively (`crate::rng`).
+fn draw_octave<R: Rng>(rng: &mut R) -> i8 {
+    weighted_choice(rng, &OCTAVE_WEIGHTS) as i8 - 2
 }
 
 impl GenomePrior for PatchGrammarPrior {
