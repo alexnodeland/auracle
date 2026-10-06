@@ -902,9 +902,95 @@ fn floor_table(draws: &[&Row], ok: &[&Row], boots: usize) {
     println!();
 }
 
+/// Spearman's rank correlation of two readings over `rows`.
+fn spearman(rows: &[&Row], a: Read, b: Read) -> f64 {
+    let ranks = |read: Read| {
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
+        idx.sort_by(|&i, &j| read(rows[i].m()).total_cmp(&read(rows[j].m())));
+        let mut r = vec![0.0; rows.len()];
+        for (rank, &i) in idx.iter().enumerate() {
+            r[i] = rank as f64;
+        }
+        r
+    };
+    let (x, y) = (ranks(a), ranks(b));
+    let (mx, my) = (mean_of(&x), mean_of(&y));
+    let cov: f64 = x.iter().zip(&y).map(|(p, q)| (p - mx) * (q - my)).sum();
+    cov / (std_of(&x) * std_of(&y) * x.len() as f64)
+}
+
+/// How the readings and the proposed floor's rules relate.
+fn overlap_table(ok: &[&Row]) {
+    println!("== 5. how the readings relate ==");
+    let pairs: [(&str, Read, Read); 5] = [
+        ("noise ~ flatness", |m| m.noise, |m| m.flatness),
+        ("noise ~ period", |m| m.noise, |m| m.period),
+        ("rough ~ noise", |m| m.rough, |m| m.noise),
+        ("hi ~ centroid", |m| m.hi, |m| m.centroid_hz),
+        ("spk ~ bass_fraction", |m| m.spk, |m| m.phi[11]),
+    ];
+    for (name, a, b) in pairs {
+        println!("spearman {name:<20} {:+.2}", spearman(ok, a, b));
+    }
+    let count = |f: &dyn Fn(&Meas) -> bool| ok.iter().filter(|r| f(r.m())).count();
+    println!(
+        "noise > 0.5: {} draws, {} of them at flatness ≤ 0.1",
+        count(&|m| m.noise > 0.5),
+        count(&|m| m.noise > 0.5 && m.flatness <= 0.1)
+    );
+    let (n, r, h) = (
+        |m: &Meas| m.noise <= 0.5,
+        |m: &Meas| m.rough <= 2.5,
+        |m: &Meas| m.hi <= 0.2,
+    );
+    println!(
+        "the floor fails {}: on noise alone {}, roughness alone {}, the high band alone {}",
+        count(&|m| !floor(m)),
+        count(&|m| !n(m) && r(m) && h(m)),
+        count(&|m| n(m) && !r(m) && h(m)),
+        count(&|m| n(m) && r(m) && !h(m))
+    );
+    // What roughness takes on its own: the kinds its removals hold most.
+    let rough_alone: Vec<&&Row> = ok
+        .iter()
+        .filter(|row| n(row.m()) && !r(row.m()) && h(row.m()))
+        .collect();
+    let mut held: Vec<(&str, usize)> = KINDS
+        .iter()
+        .map(|(k, count)| {
+            let with = rough_alone.iter().filter(|row| count(&row.structure) > 0.0);
+            (*k, with.count())
+        })
+        .collect();
+    held.sort_by_key(|k| std::cmp::Reverse(k.1));
+    let top: Vec<String> = held
+        .iter()
+        .take(4)
+        .map(|(k, c)| format!("{k} {c}"))
+        .collect();
+    println!(
+        "of the {} roughness alone removes, the most hold: {}",
+        rough_alone.len(),
+        top.join(", ")
+    );
+    let with_noise: Vec<&&Row> = ok.iter().filter(|r| r.structure.n_noise > 0.0).collect();
+    println!(
+        "draws with a noise source: {}, of which {} clear the floor",
+        with_noise.len(),
+        with_noise.iter().filter(|r| floor(r.m())).count()
+    );
+    let w: Vec<f64> = ok.iter().map(|r| r.w62).collect();
+    println!(
+        "#62's weights: effective n {:.0} of {}",
+        w.iter().sum::<f64>().powi(2) / w.iter().map(|x| x * x).sum::<f64>(),
+        ok.len()
+    );
+    println!();
+}
+
 /// Register by the lowest oscillator octave, #62's table.
 fn register_table(ok: &[&Row]) {
-    println!("== 5. register by lowest oscillator octave (#62's table) ==");
+    println!("== 6. register by lowest oscillator octave (#62's table) ==");
     for o in [Some(-2), Some(-1), Some(0), Some(1), Some(2), None] {
         let set: Vec<&&Row> = ok.iter().filter(|r| r.lowest_octave == o).collect();
         let under =
@@ -921,7 +1007,7 @@ fn register_table(ok: &[&Row]) {
 }
 
 fn preset_table(presets: &[&Row]) {
-    println!("== 6. presets ==");
+    println!("== 7. presets ==");
     println!(
         "{:<17} {:>5} {:>6} {:>6} {:>5} {:>5} {:>6} {:>6}  fails",
         "preset", "flat", "noise", "rough", "hi", "spk", "mute", "att ms"
@@ -1092,6 +1178,7 @@ fn main() {
     vet_table(&draws);
     candidate_table(&ok, &presets);
     floor_table(&draws, &ok, boots);
+    overlap_table(&ok);
     register_table(&ok);
     preset_table(&presets);
     if let Some(dir) = listen_dir {
