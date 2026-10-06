@@ -13,7 +13,10 @@
 // - Within one sound the rack still moves: a module inserted before the amp
 //   slides the amp from where it was to its new place, and NEW PATCH, which
 //   keeps the amp and empties its socket, fades the modules it took out and
-//   slides the amp to the empty socket's side.
+//   slides the amp to the empty socket's side. The two ways back to the
+//   sound move alike: ⌘Z past NEW PATCH, and BACK TO ‹name›, which opens the
+//   sound on the bench again (the one the new patch was started from, whose
+//   amp it kept), each slide the amp back as the empty socket fades out.
 //
 // The frames are the page's own: an observer on the rack (installed before
 // boot) samples it as each build lands, in the task that drew it and set its
@@ -122,13 +125,23 @@ function expectFadedUpInPlace(motion, name) {
   const last = motion[motion.length - 1];
   // Nothing of the sound before stays on the rack to fade out.
   expect(motion.map((f) => f.exit), `${name}: copies of the sound before on the rack`).toEqual(motion.map(() => 0));
-  // The amp fades up (transparent as the build lands) where it stays: its
-  // scale from 0.96 moves its centre by a unit or so, a slide by the width of
-  // the modules it passes.
+  // The amp fades up (transparent as the build lands) where it stays, the
+  // last frame being the rack at rest: its scale from 0.96 moves its centre
+  // by a unit or so, a slide by the width of the modules it passes.
   expect(first.ampOpacity, `${name}: the amp's opacity as it lands`).toBeLessThan(1);
   expect(Math.max(...motion.map((f) => away(f, last.amp))), `${name}: the amp's farthest from where it rests`).toBeLessThan(SCALE_IN);
   // So the cable into it is the curve it is at rest, on every frame.
   expect(motion.map((f) => f.curve), `${name}: the cable into the amp is a curve`).toEqual(motion.map(() => true));
+}
+
+/** A slide of the amp, as asserted on the first and last frames of its
+ *  motion: it starts where it was (`from`) and ends at rest where it now is
+ *  (`to`, read at rest), far enough away to have passed a module. A fade-up
+ *  in place would start at `to`. */
+function expectSlid(motion, from, to, name) {
+  expect(away({ amp: to }, from), `${name}: the amp's move`).toBeGreaterThan(50);
+  expect(Math.round(away(motion[0], from)), `${name}: the amp as it lands`).toBe(0);
+  expect(Math.round(away(motion[motion.length - 1], to)), `${name}: the amp as its motion ends`).toBe(0);
 }
 
 test("a sound opened over an unrelated one fades up in place: nothing of the last one fades out, and its amp does not slide across", async ({ page, app }) => {
@@ -149,10 +162,11 @@ test("a sound opened over an unrelated one fades up in place: nothing of the las
   expectFadedUpInPlace(motionOf(await takeFrames(page), rackOf("Reese", 6)), "First Bass → Reese");
 });
 
-test("within one sound the rack still moves: an insert slides the amp to its new place, and NEW PATCH fades out what it took and slides the amp along", async ({ page, app }) => {
+test("within one sound the rack still moves: an insert slides the amp to its new place, NEW PATCH slides it along as what it took fades out, and ⌘Z or BACK TO slides it back", async ({ page, app }) => {
   await page.addInitScript(recordRack);
   await app.boot();
   await openPreset(app, "Reese");
+  const plates = page.locator("#rack-svg .rack-plates g[data-key]");
 
   // A distortion inserted after the filter, before the amp (patch_keys'
   // recipe): the amp moves one column along. Where it was is read once the
@@ -168,22 +182,42 @@ test("within one sound the rack still moves: an insert slides the amp to its new
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
   await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
   await rackAtRest(page);
-  const inserted = motionOf(await takeFrames(page), rackOf("Reese (edited)", 7));
   const placed = await ampAt(page);
-  expect(away({ amp: placed }, before), "the amp's move").toBeGreaterThan(50);
-  // It starts where it was and ends where it now is.
-  expect(Math.round(away(inserted[0], before)), "the amp as the insert lands").toBe(0);
-  expect(Math.round(away(inserted[inserted.length - 1], placed)), "the amp as the insert's motion ends").toBe(0);
+  expectSlid(motionOf(await takeFrames(page), rackOf("Reese (edited)", 7)), before, placed, "the insert");
 
   // NEW PATCH keeps the amp and empties its socket: Reese's modules fade out
   // as the amp slides to the empty socket's side.
-  await page.locator("#patch-new-btn").click();
-  await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
-  await rackAtRest(page);
-  const emptied = motionOf(await takeFrames(page), rackOf("New patch", 2));
+  const newPatch = async () => {
+    await page.locator("#patch-new-btn").click();
+    await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
+    await rackAtRest(page);
+    return motionOf(await takeFrames(page), rackOf("New patch", 2));
+  };
+  const emptied = await newPatch();
   const empty = await ampAt(page);
-  expect(away({ amp: empty }, placed), "the amp's move").toBeGreaterThan(50);
   expect(emptied[0].exit, "Reese's modules fading out as NEW PATCH lands").toBeGreaterThan(0);
-  expect(Math.round(away(emptied[0], placed)), "the amp as NEW PATCH lands").toBe(0);
-  expect(Math.round(away(emptied[emptied.length - 1], empty)), "the amp as NEW PATCH's motion ends").toBe(0);
+  expectSlid(emptied, placed, empty, "NEW PATCH");
+
+  // ⌘Z past NEW PATCH puts the edited Reese back: the amp slides back to
+  // where the insert put it as the empty socket fades out.
+  await page.locator("#rack-svg").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("ControlOrMeta+z");
+  await app.engine((timeout) => expect(plates).toHaveCount(7, { timeout }), { ms: 30_000 });
+  await rackAtRest(page);
+  const undone = motionOf(await takeFrames(page), rackOf("Reese (edited)", 7));
+  expect(undone[0].exit, "the empty socket fading out as ⌘Z lands").toBeGreaterThan(0);
+  expectSlid(undone, empty, await ampAt(page), "⌘Z past NEW PATCH");
+
+  // BACK TO Reese opens the sound on the bench again (the pool's Reese, the
+  // insert never kept: six plates). It is the sound the new patch was
+  // started from, and the amp on screen is the one the new patch kept from
+  // it, so the amp slides back as it did for ⌘Z.
+  await newPatch();
+  const emptyAgain = await ampAt(page);
+  await page.locator("#patch-back").click();
+  await app.engine((timeout) => expect(plates).toHaveCount(6, { timeout }), { ms: 60_000 });
+  await rackAtRest(page);
+  const back = motionOf(await takeFrames(page), rackOf("Reese", 6));
+  expect(back[0].exit, "the empty socket fading out as BACK TO lands").toBeGreaterThan(0);
+  expectSlid(back, emptyAgain, await ampAt(page), "BACK TO Reese");
 });

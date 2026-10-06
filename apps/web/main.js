@@ -2613,11 +2613,17 @@ worker.onmessage = (e) => {
         }
         // Any other way a different sound reached the bench (a file, an
         // undo of an open): a recording for the one it replaced stops.
-        if (m.subject !== wb.subjectId) takes.benchMoved(m.subject);
+        if (m.subject !== wb.subjectId) {
+          takes.benchMoved(m.subject);
+          // Another sound: the rack drawn next is another patch's unless a
+          // module carried its identity across (`captureRackMotion`). The
+          // sound on the bench opened again (BACK TO ‹name› from a new patch
+          // started from it, or its row clicked) is that sound with its edits
+          // taken back at once, as ⌘Z all the way would take them, and its
+          // rack moves as an undo's does.
+          benchOpens += 1;
+        }
         wb.subjectId = m.subject;
-        // An open: the rack drawn next is another patch's unless a module
-        // carried its identity across (`captureRackMotion`).
-        benchOpens += 1;
         benchPending = null;
         // Whatever was done to the last patch while this one was on its way
         // was aimed at a rack that is gone now (see `pumpLane`).
@@ -11034,8 +11040,8 @@ function renderRack(rebuild = false) {
   if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn) {
     repaintRackInPlace(wb.rack);
     paintRackFacts();
-    // The same rack, uids and all: if an open brought it, the plates on
-    // screen are that open's now.
+    // The same rack, uids and all: if another sound's open brought it, the
+    // plates on screen are that sound's now.
     if (rackFrame) rackFrame.opens = benchOpens;
     return;
   }
@@ -12183,8 +12189,9 @@ function buildRack(svg, rack, opts) {
       flow,
       mids: new Set(mGroups.map((it) => it.mid)),
       wids: new Set(mWires.map((it) => it.wid)),
-      // Which open this rack is a patch of (`benchOpens`): a rebuild after
-      // another open may be drawing another patch (`captureRackMotion`).
+      // Which sound's open this rack is a patch of (`benchOpens`): a rebuild
+      // after another sound is opened may be drawing another patch
+      // (`captureRackMotion`).
       opens: benchOpens,
     };
   }
@@ -12215,9 +12222,9 @@ function buildRack(svg, rack, opts) {
 //   arrivals   fade and scale up from 0.96;
 //   departures leave a ghost that fades, shrinks and drops 6px, so a deletion
 //              is *seen* leaving rather than simply never having been there.
-// Another patch entirely (a sound opened that carries none of the last one's
-// modules) has no survivors, not even the amp: it arrives whole, and the one
-// before is simply gone.
+// Another patch entirely (another sound opened, carrying none of the last
+// one's modules) has no survivors, not even the amp: it arrives whole, and
+// the one before is simply gone.
 // The rack's motion is a move: `--d-move` (`motionMs`).
 const STILL_MQ = window.matchMedia("(prefers-reduced-motion: reduce)");
 /** Live, not a snapshot: the OS switch can be thrown while the app is open,
@@ -12255,7 +12262,7 @@ function bezierEase(x1, y1, x2, y2) {
 const EASE_MOTION = bezierEase(0.2, 0, 0.6, 1);
 
 let rackFrame = null;  // the last interactive build, as the motion system sees it
-let benchOpens = 0;    // sounds opened on the bench so far (a `bench` reply with a subject)
+let benchOpens = 0;    // other sounds opened on the bench so far (a `bench` reply whose subject is not the one on it)
 // OUT and the face at OUT (Plan-008 C2a), in rack units: the jack this far past
 // the amp's right edge, the face this far past the jack, this tall (its picture
 // stands on a floor at 62% of it, with room for the reflection under), and the
@@ -12307,16 +12314,18 @@ function captureRackMotion() {
   // is cloning the departing plates, and there is no point paying for ghosts
   // nobody has asked to see.
   if (prefersStill()) return null;
-  // This patch moved, or another patch? Within one open (an edit, an undo,
-  // NEW PATCH) it is this patch, and a module in both racks is the same
-  // module. After an open it is the same patch only where the engine carried
-  // a module's identity across (`uid`, through `inherit_uids`: a ⚡ child, the
-  // sound opened again). The amp has no uid, so `midOf` names it by its key in
-  // every rack, and after an open that match is a coincidence: counted, it
-  // slid the amp across from an unrelated sound and kept the sound's ghosts
-  // (#165). Two unrelated racks cross-fading through each other is a double
-  // exposure, not a motion, so nothing of the departing one is kept: it is
-  // simply gone, and the new one, amp and all, fades up where it lands.
+  // This patch moved, or another patch? Within one sound (an edit, an undo,
+  // NEW PATCH, and the sound opened again, as BACK TO ‹name› does: the
+  // `bench` reply does not count it in `benchOpens`) it is this patch, and a
+  // module in both racks is the same module. After another sound is opened
+  // it is the same patch only where the engine carried a module's identity
+  // across (`uid`: a ⚡ child keeps its seed's through `inherit_uids`). The
+  // amp has no uid, so `midOf` names it by its key in every rack, and across
+  // two sounds that match is a coincidence: counted, it slid the amp across
+  // from an unrelated sound and kept the sound's ghosts (#165). Two unrelated
+  // racks cross-fading through each other is a double exposure, not a
+  // motion, so nothing of the departing one is kept: it is simply gone, and
+  // the new one, amp and all, fades up where it lands.
   if (rackFrame.opens !== benchOpens &&
       !wb.rack.modules.some((m) => m.uid && rackFrame.mids.has(midOf(m)))) {
     return { prev: new Map(), ghosts: [], wids: new Set() };

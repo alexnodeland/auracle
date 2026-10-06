@@ -7,5 +7,6 @@
   had it, the cable into it routed around Reese's modules on the way. Now
   nothing of the last sound stays on screen and the amp fades up in its own
   place. Changes to one sound still move: insert a module and the amp slides
-  along to make room, and NEW PATCH, which keeps the amp, fades out what it
-  took as the amp slides over (`patch_motion.spec.js`, #165).
+  along to make room; NEW PATCH, which keeps the amp, fades out what it took
+  as the amp slides over; and BACK TO, like ⌘Z, slides it back
+  (`patch_motion.spec.js`, #165).
