@@ -147,7 +147,12 @@ jobs:
                 exit 0
               fi ;;
             2|3) ;;
-            124|137) echo "Stopped at the ${CAP}-minute cap; the mutants not reached are not judged." >> "$GITHUB_STEP_SUMMARY" ;;
+            124|137)
+              if [ ! -f mutants.out/outcomes.json ]; then
+                echo "Stopped at the ${CAP}-minute cap before the unmutated build and tests were done: nothing was judged." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              echo "Stopped at the ${CAP}-minute cap; the mutants not reached are not judged." >> "$GITHUB_STEP_SUMMARY" ;;
             4) echo "::error::The unmutated tests failed, so no mutant was judged: the Test job says why." ;;
             *) echo "::error::cargo-mutants exited $CODE (5 or 6: the diff; 1: its arguments; the log says)."; exit 1 ;;
           esac
