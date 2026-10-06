@@ -179,8 +179,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 
 - **A PR's own run is the fast lane.** Its `CI` check holds Lint, Coverage
   (the Rust tests) and the Doctests when Rust changed; Web and Site when the
-  site, the docs or the app changed; Browser smoke when the app, the engine or
-  what runs the specs changed; and the browser specs the change reaches
+  site, the docs or the app changed (Web alone for a script's own tests, and
+  nothing more for a changelog entry, which *What changed* checks on every
+  run); Browser smoke when the app, the engine or what runs the specs changed
+  (not the specs' lint, which no browser reads); and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
   four runners. About five minutes for docs; up to about ten when Rust
   changed (Coverage sets the length) or an app module's specs run (`patch.js`

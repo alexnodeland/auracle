@@ -11,15 +11,15 @@ name: CI
 #
 # - A PR's own run is the FAST LANE: Lint, the Rust tests (as Coverage) and
 #   the Doctests when Rust changed; Web and Site when the site, the docs or
-#   the app did; Browser smoke when the app, the engine or what runs the
-#   specs did; and the browser specs the change reaches
-#   (tests/web/changed.mjs), on up to four runners. A change whose specs
-#   can't be told (main.js, worker.js, a crate) runs the smoke only, and a
-#   change to CI itself runs the full gate. About five minutes for docs; up
-#   to about ten when Rust changed (Coverage sets the length, about nine, an
-#   estimate) or an app module's specs run (patch.js reaches about 23
-#   test-minutes, on four runners). A green fast lane puts the PR in the
-#   merge queue. It is not the whole gate.
+#   the app did (Web alone for a script's own tests); Browser smoke when the
+#   app, the engine or what runs the specs did; and the browser specs the
+#   change reaches (tests/web/changed.mjs), on up to four runners. A change
+#   whose specs can't be told (main.js, worker.js, a crate) runs the smoke
+#   only, and a change to CI itself runs the full gate. About five minutes
+#   for docs; up to about ten when Rust changed (Coverage sets the length,
+#   about nine, an estimate) or an app module's specs run (patch.js reaches
+#   about 23 test-minutes, on four runners). A green fast lane puts the PR in
+#   the merge queue. It is not the whole gate.
 # - The merge queue's run (Mergify's draft PR, from a branch under
 #   mergify/merge-queue/: .mergify.yml) is the FULL GATE, about twelve
 #   minutes: everything, as on main, the browser tier on twelve runners. It
@@ -100,6 +100,7 @@ jobs:
       lane: ${{ steps.filter.outputs.lane }}
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
+      web: ${{ steps.filter.outputs.web }}
       smoke: ${{ steps.filter.outputs.smoke }}
       browser: ${{ steps.filter.outputs.browser }}
       specs: ${{ steps.filter.outputs.specs }}
@@ -132,6 +133,7 @@ jobs:
             {
               echo "rust=true"
               echo "site=true"
+              echo "web=true"
               echo "browser=true"
               echo "smoke=false"
               echo "specs="
@@ -167,6 +169,7 @@ jobs:
                 {
                   echo "rust=false"
                   echo "site=false"
+                  echo "web=false"
                   echo "browser=false"
                   echo "smoke=false"
                   echo "specs="
@@ -224,9 +227,24 @@ jobs:
             site=false
           fi
 
+          # Web (make web-check, make dev-check) checks all of the above, and
+          # the scripts' own tests too (scripts/*.py: the changelog's
+          # assembler, the coverage gate, each with its tests), which reach
+          # no other job. A changelog entry (changelog.d/) reaches none: the
+          # entries' check and the voice run in this job, on every PR, and
+          # the site doesn't read them.
+          if [ "$site" = true ] || echo "$files" | grep -qE '^scripts/[^/]+\.py$'; then
+            web=true
+          else
+            web=false
+          fi
+
           # What the browser reads: the app, its specs and what runs them,
-          # and the engine. Their prose aside.
-          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' || true)"
+          # and the engine. Their prose aside, and the specs' lint (its
+          # config, its suppressions, its own tests), which Web runs and no
+          # browser reads: a change to them alone, or beside spec files,
+          # runs what a spec-only change runs.
+          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' | grep -vE '^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs)$' || true)"
 
           # Browser smoke: anything the browser reads changed, other than
           # spec files alone (a spec runs against main's app, and runs
@@ -269,12 +287,13 @@ jobs:
           {
             echo "rust=$rust"
             echo "site=$site"
+            echo "web=$web"
             echo "smoke=$smoke"
             echo "browser=$browser"
             echo "specs=$specs"
             echo "browser_matrix=$matrix"
           } >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s smoke=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$smoke" "$browser" "${specs:-none}" "$matrix"
+          printf '\n  rust=%s site=%s web=%s smoke=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$web" "$smoke" "$browser" "${specs:-none}" "$matrix"
 
       # A push to main is a squash merge by the merge queue. The last merge
       # of a batch has exactly the files the queue's run tested (a
@@ -440,7 +459,7 @@ jobs:
   web:
     name: Web
     needs: changes
-    if: needs.changes.outputs.site == 'true' && needs.changes.outputs.reuse_web != 'true'
+    if: needs.changes.outputs.web == 'true' && needs.changes.outputs.reuse_web != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:

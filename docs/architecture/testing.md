@@ -57,11 +57,14 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | --- | --- |
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
 | Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
+| The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
 | `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; no other spec |
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, and that module's specs on up to four runners |
-| A test helper (`fixtures.js`, `shell.js`), the config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
+| A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke |
 | The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site |
+| Another script (`scripts/*.py`: the changelog's assembler and its tests) | Web, whose `dev-check` runs the scripts' tests |
+| A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
@@ -112,8 +115,9 @@ run's into one HTML report, every test with the traces of what failed,
 uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). The summary also lists every
 speed budget a test recorded over its limit (`shard.mjs budgets`), which the
-gate records and never fails on. On main it also folds the
-run's times into the timings the next run deals by. A runner that would
+gate records and never fails on. In the merge queue's run and on main it
+also folds the run's times into the timings the next run deals by (*The
+timings come from the queue's run*, below). A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
