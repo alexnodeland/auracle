@@ -83,7 +83,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
 | [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
-| 005 | reserved | The sonic floor: where the measurement lives, what it costs, and the first deals (named by RFC-004; not yet written) |
+| [005](proposals/005-the-sonic-floor.md) | draft | The sonic floor: where the measurement lives, what it costs, and the first deals |
 | [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
 | [007](proposals/007-the-sound-of-the-films.md) | accepted | The sound of the films: one key, one room, the instrument on top |
 | [008](proposals/008-audio-in.md) | accepted | Audio in: your own signal in the patch, measured and bred like any other |
