@@ -244,16 +244,37 @@ fn every_input_slot_scores_alike_and_a_draw_reads_the_first() {
 
 /// The three site distributions the grammar writes itself (`#input`, `#op`,
 /// `#src`) clone, as fugue clones a boxed distribution, into ones that draw
-/// the same indices from the same stream and score every index the same.
+/// the same indices from the same stream and score every index the same:
+/// over weights far from the defaults, so a clone rebuilt from them would
+/// not pass.
 #[test]
 fn the_grammars_own_distributions_clone_into_the_same_distribution() {
-    let prior = PatchGrammarPrior::default();
-    let sites: [(&str, Box<dyn fugue::Distribution<usize>>); 3] = [
-        ("#input", Box::new(PlayerInput)),
-        ("#op", Box::new(OpKind::new(&prior.op_weights))),
-        ("#src", Box::new(SourceKind::new(&prior.source_weights))),
+    let defaults = PatchGrammarPrior::default();
+    let op_weights: [f64; N_OPS] = std::array::from_fn(|i| ((i + 1) * (i + 1)) as f64);
+    let mut source_weights = [1.0; N_SOURCES];
+    source_weights[0] = 9.0;
+    source_weights[SRC_AUDIO_IN] = 0.5;
+    type Site = Box<dyn fugue::Distribution<usize>>;
+    let sites: [(&str, Site, Site); 3] = [
+        ("#input", Box::new(PlayerInput), Box::new(PlayerInput)),
+        (
+            "#op",
+            Box::new(OpKind::new(&op_weights)),
+            Box::new(OpKind::new(&defaults.op_weights)),
+        ),
+        (
+            "#src",
+            Box::new(SourceKind::new(&source_weights)),
+            Box::new(SourceKind::new(&defaults.source_weights)),
+        ),
     ];
-    for (site, d) in &sites {
+    for (site, d, default) in &sites {
+        if *site != "#input" {
+            assert!(
+                (0..N_OP_KINDS).any(|i| d.log_prob(&i) != default.log_prob(&i)),
+                "{site}'s weights are the defaults"
+            );
+        }
         let copy = d.clone_box();
         for i in 0..=N_OP_KINDS {
             assert_eq!(copy.log_prob(&i), d.log_prob(&i), "{site} at {i}");
