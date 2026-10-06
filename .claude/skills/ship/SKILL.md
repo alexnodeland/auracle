@@ -13,7 +13,11 @@ description: >
 [`docs/process.md`](../../../docs/process.md) is the rule; this is the
 procedure. You are the operator: agents build and commit; you review, push,
 open the PR in the merge queue, and clean up once the queue has merged it.
-Keep at most two streams in flight, never two on the same files.
+Keep at most two streams in flight, never two on the same files. Several
+tasks at once, when the maintainer asks for a wave, go through the saved
+workflows and the [`ship-wave`](../ship-wave/SKILL.md) skill; its scripts
+(`scripts/ops/`: `ship_pr.sh`, `watch_queue.sh`, `rows_resolve.py`) serve one
+task as well.
 
 Every command names the repository explicitly (`gh -R alexnodeland/auracle`,
 `git -C <path>`), so it works from any session directory. Each Bash call is a
@@ -92,15 +96,18 @@ When the builder reports, run the quick gates in `$WT`, then hand the branch to
 the `reviewer` agent: the diff (`git -C "$WT" log origin/main..HEAD`), the
 brief, and what to hunt for.
 
-One round. Send only the **blocking** findings back to the builder (the same
-agent, so it keeps its context), and have only those fixes looked at again:
+One round. Send the findings back to the builder (the same agent, so it
+keeps its context), and have only the **blocking** fixes looked at again:
 - a wrong result;
 - a dropped capability;
 - an untrue description;
 - a spec that can pass vacuously or that a slow runner can fail.
 
-File every other finding as an issue and name it in the PR body. A finding
-you decline goes in the PR body with the reason.
+Every other finding in what the branch touches is fixed in the same round
+too, and so is in-area work the builder listed as open. Only a choice for
+the maintainer, or work in another area, leaves the PR: file it as an issue
+and name it in the PR body (`process.md` § Review). A finding you decline
+goes in the PR body with the reason.
 
 **A branch built on another open PR** is held until that one merges, then
 moved onto `main` before step 5:

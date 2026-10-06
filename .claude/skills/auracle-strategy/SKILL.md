@@ -31,7 +31,7 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 | Why is it built this way (engineering)? | `docs/decisions/` |
 | Why is it built this way (product, for players)? | `www/reference/src/design/decisions.md` |
 | Something broke in a known way | `docs/runbooks/` |
-| How does a change get from an issue to `main`? Who pushes, reviews, merges? | `docs/process.md`, or the `ship` skill |
+| How does a change get from an issue to `main`? Who pushes, reviews, merges? | `docs/process.md`, or the `ship` skill (`ship-wave` for several at once) |
 | What is left to do? | GitHub issues: by milestone (`gh issue list --milestone "<plan>"`), and the backlog (`gh issue list --search "no:milestone"`) |
 | What does the app say it does? | `www/docs/src/views/*.md`, the films, the in-app copy |
 
@@ -56,8 +56,10 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 ## Skills and agents
 
 Skills: `check`, `wasm`, `browser-test`, `truth-pass`, `changelog`, `film`,
-`ship`. Agents: `engine-engineer`, `web-engineer`, `film-producer`,
-`docs-writer`, `truth-auditor`, `reviewer`. The root `AGENTS.md` (*Tooling*)
+`ship`, `ship-wave`. Agents: `engine-engineer`, `web-engineer`, `film-producer`,
+`docs-writer`, `truth-auditor`, `reviewer`. Workflows (`.claude/workflows/`,
+run when the maintainer asks): `triage-backlog`, `ship-issues`, `fix-flake`,
+`review-pr`, `mutants-burndown`. The root `AGENTS.md` (*Tooling*)
 and `.claude/README.md` say when to use each. Record a new engineering decision with `/new-adr` (principled-docs)
 and a change worth arguing about first with `/new-proposal`; outstanding work
 goes in a GitHub issue (`docs/process.md` § Issues).
