@@ -268,6 +268,10 @@ const NOTHING_TO_PAIR = "Nothing to pair. Fewer than two sounds are left to deal
 test("a deal that comes back empty leaves the table off and says there is nothing to pair", async ({ page, app }) => {
   await app.stall(AHEAD);
   await boot(page, app);
+  // The pool whole first: `filled` deals for a table with no pair, so landing
+  // after the table emptied it would ask for a deal of its own, and the pair
+  // at the end could be that deal's rather than the take-back's.
+  await app.filled();
   await toEvolve(page, app);
   const asked = await app.stalled();
   await app.amend({ type: "duel" }, { pair: null, meta: null });
@@ -297,6 +301,7 @@ test("a deal that comes back empty leaves the table off and says there is nothin
   await row.hover();
   await row.locator(".bi-kill").click();
   await expect(row).toHaveCount(0);
+  expect(await app.sentCount("duel"), "a deal was asked for before the cut was taken back").toBe(deals);
   const mark = await app.now();
   await page.keyboard.press("Control+z");
   await app.reply("duel", { where: { pair: true }, after: mark, timeout: 30_000 });
