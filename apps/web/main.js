@@ -8756,9 +8756,13 @@ $("bank-list").addEventListener("keydown", (e) => {
     // letters through even when a control has focus, so binding it here would
     // have both saved the patch and played a D, and silently cost a player one
     // key of their keyboard whenever the bank had focus.
+    //
+    // Once a press, as the global handler's `m` is: a held key repeats, and
+    // each repeat saved or released the sound again, each with its toast
+    // about the player's sounds, which the lane shows every one of (#183).
     e.preventDefault();
     e.stopPropagation();
-    saveCursorRow();
+    if (!e.repeat) saveCursorRow();
   } else if (/^[1-5]$/.test(e.key)) {
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere

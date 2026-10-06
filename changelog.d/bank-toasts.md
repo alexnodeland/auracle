@@ -14,3 +14,11 @@
   first and, unless its time was up, the toast comes back after it with its
   button, and however many of these toasts wait, none is cut
   (`toasts.test.mjs`, #183).
+
+### Fixed: holding m in the bank saves a sound once
+
+- **Holding m in the bank saves or releases the sound once.** A held key
+  repeats, and in the bank every repeat saved or released the sound again,
+  each time with a toast saying so, which now all wait their turn. The bank
+  now answers a press once, as m does everywhere else
+  (`bank_row.spec.js`, #183).
