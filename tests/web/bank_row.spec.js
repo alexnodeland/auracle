@@ -138,13 +138,14 @@ test("a sound opened from outside the bank has its row brought into the bank's v
 // A preset row's IN POOL and its ▶ (#130): once a preset is in the pool its
 // row says so at its end, and its ▶ shows on approach, with the focus in the
 // row, and while it plays. Both read whole in every one of those states, at
-// the narrowest window the app allows and a wide one: neither cut, and IN
-// POOL's words clear of the ▶'s strip (its fade too). The name keeps its x,
-// the x of every other preset row's name. (IN POOL used to be cut by the ▶
-// wherever the ▶ showed without the pointer on the row: with the focus on it,
-// or while it played.) Each state is measured as it is drawn, the way
-// text_fits measures a caption's: the pointer, the keyboard cursor and the
-// focus for real, the ▶'s playing mark set on it in the page.
+// the narrowest window the app allows and a wide one: IN POOL's words inside
+// the row and clear of the ▶'s strip (its fade too), and the ▶ inside the
+// row. The name keeps its x, the x of every other preset row's name. (IN
+// POOL used to be cut by the ▶ wherever the ▶ showed without the pointer on
+// the row: with the focus on it, or while it played.) Each state is measured
+// as it is drawn, the way text_fits measures a caption's: the pointer, the
+// keyboard cursor and the focus for real, the ▶'s playing mark set on it in
+// the page.
 
 /** A preset row as drawn: IN POOL's words and the ▶'s strip, as boxes. */
 const presetRowDrawn = (row) =>
@@ -160,7 +161,6 @@ const presetRowDrawn = (row) =>
       row: box(r.getBoundingClientRect()),
       tagShown: getComputedStyle(tag).visibility === "visible",
       words: box(words.getBoundingClientRect()),
-      tagCut: tag.scrollWidth > tag.clientWidth + 0.5,
       actsShown: cs.visibility === "visible" && cs.opacity === "1",
       acts: box(acts.getBoundingClientRect()),
       hear: box(r.querySelector(".bi-hear").getBoundingClientRect()),
@@ -172,7 +172,6 @@ const presetRowDrawn = (row) =>
 /** What the spec asks of a row as drawn, each as a yes or no. */
 const inPoolFacts = (d) => ({
   tagShown: d.tagShown,
-  tagWhole: !d.tagCut,
   tagInRow: d.words.l >= d.row.l && d.words.r <= d.row.r,
   actsShown: d.actsShown,
   tagClearOfActs: d.words.r <= d.acts.l + 0.5,
@@ -180,7 +179,7 @@ const inPoolFacts = (d) => ({
   namesAtOneX: d.othersX.length === 1,
   nameKeepsX: d.nameX === d.othersX[0],
 });
-const AT_REST = { tagShown: true, tagWhole: true, tagInRow: true, actsShown: false, namesAtOneX: true, nameKeepsX: true };
+const AT_REST = { tagShown: true, tagInRow: true, actsShown: false, namesAtOneX: true, nameKeepsX: true };
 const WITH_PLAY = { ...AT_REST, actsShown: true, tagClearOfActs: true, hearInRow: true };
 
 for (const [width, height] of [[1000, 800], [1440, 900]]) {
