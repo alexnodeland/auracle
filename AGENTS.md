@@ -110,6 +110,14 @@ contributor guide; this file does not repeat it.
    `www/brand/voice.md`'s word table governs waits for the maintainer's
    approval. The whole flow is [`docs/process.md`](docs/process.md); the
    `ship` skill walks one task through it, and `ship-wave` several.
+10. **Every interaction answers at once, on the slowest machine we support**
+    (an Intel MacBook Air in Firefox: 2 renderers, a CPU 4 to 5 times slower
+    than an M-series one). Direct manipulation is heard at the next quantum
+    and frame; any other input shows what it asked for within 100 ms. A wait
+    on a render, a measurement or a fit is a bug: answer from a precompute,
+    cache, shipped data or prediction, and refine in the background. A
+    background result never moves what is under the hand. Budgets are
+    `app.budget`s ([ADR-025](docs/decisions/025-every-interaction-answers-at-once.md)).
 
 ## Commands
 
