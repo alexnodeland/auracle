@@ -1988,11 +1988,12 @@ const patchView = createPatch({
   paintFace: (slot) => setFaceSlot(slot, "out", wb.rack && wb.subjectId != null ? (benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId }) : null),
   benchState: () => ({ dirty: !!wb.dirty, pending: !!editPending || !laneFree() }),
   closeCatalog: () => closeCatalog(),
+  // Whatever main's Esc chain would close first (`escFloats`, `escSteps`:
+  // the same lists, so the two cannot drift), a module in hand, a cable
+  // being dragged, or a rack control the press backs out of.
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogOpen() || plateSel != null ||
-    !$("ctx-menu").classList.contains("hidden") ||
-    !$("ovf-menu").classList.contains("hidden") ||
-    panelOpen("scope-panel") || panelOpen("image-panel") ||
+    !!(armed || wire) ||
+    escFloats().some(([isOpen]) => isOpen()) || escSteps().some(([isOpen]) => isOpen()) ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
 });
 
@@ -5547,6 +5548,62 @@ function attachPianoPointers(piano) {
 // and a note looked up by the character then never let go.
 const downComputerKeys = new Map(); // event.code -> midi
 const physicalKey = (e) => e.code || e.key.toLowerCase();
+
+/** What floats over the levels, each `[isOpen, close]`: Esc closes every one
+ *  that is open in one press, before anything in `escSteps`, a new patch
+ *  (patch.js, through `escBusy`), PERFORM's well modes or the model view.
+ *  `escBusy` reads this list and the chain closes from it, so the two
+ *  cannot disagree about what is waiting for Esc. The order is the order
+ *  they close in: where two hand the focus back, the later one keeps it. */
+function escFloats() {
+  const shown = (id) => !$(id).classList.contains("hidden");
+  return [
+    // A waiting handoff, or a cable half made.
+    [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
+    // A bank row's ★, folded out where it is drawn.
+    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [() => compareId != null, closeCompare],
+    [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
+    [() => shown("ovf-menu"), () => {
+      $("ovf-menu").classList.add("hidden");
+      $("ovf-btn").setAttribute("aria-expanded", "false");
+      $("ovf-btn").focus();
+    }],
+    // The scope and picture panels, never by listeners of their own: those
+    // heard Esc after this chain had put PATCH's selected module down for
+    // the same press. The focus goes back to ⋯, which they hang off (the
+    // item that opened each is in the menu, hidden now).
+    [() => panelOpen("scope-panel") || panelOpen("image-panel"), () => {
+      closeScopePanel();
+      closeImagePanel();
+      $("ovf-btn").focus();
+    }],
+    [() => shown("bank-tour"), () => { endBankTour(); $("bank-tour-btn").focus(); }],
+    [keysPopOpen, () => {
+      const inside = $("keys-pop").contains(document.activeElement);
+      setKeysPop(false);
+      if (inside) $("keys-btn").focus();
+    }],
+    [() => shown("ctx-menu"), closeMenu],
+  ];
+}
+
+/** After the floats, one thing a press, each `[isOpen, close]`, the first
+ *  open one closing: PATCH's menus and folds, then its chain (the
+ *  specimen's): a selected module, then the catalog; a new patch after all
+ *  of them (patch.js, through `escBusy`). */
+function escSteps() {
+  const patchHere = () => currentView === "patch" && !armed;
+  return [
+    [layoutMenuOpen, () => setLayoutMenu(false)],
+    [shelfOpen, () => setShelf(false)],
+    [() => teachOpen && currentView === "patch", () => setTeach(false)],
+    [evolveMenuOpen, () => setEvolveMenu(false)],
+    [() => patchHere() && plateSel != null, () => selectPlate(null)],
+    [() => patchHere() && catalogOpen(), () => closeCatalog()],
+  ];
+}
+
 document.addEventListener("keydown", (e) => {
   // ⌘Z: first the newest teaching act still inside its undo window, in any
   // view; then, in PATCH only, the edit undo.
@@ -5586,66 +5643,20 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it — one thing a
-    // press: a menu or a waiting handoff closed is that press spent, and
-    // PATCH's chain (selection, then the catalog) waits for the next one.
-    const handoff = !!pendingTarget || !!connectPick;
-    // A bank row's ★, folded out where it is drawn: folding it is the press
-    // spent too, so PERFORM's XY or a tapped model view waits for the next.
-    const stars = ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating");
-    cancelPending();
-    endConnectPick();
+    // press: whatever floats closed is that press spent, and the steps after
+    // it (PATCH's selection, then the catalog) wait for the next one. Both
+    // lists are `escFloats` and `escSteps`, which `escBusy` reads too.
+    const open = escFloats().filter(([isOpen]) => isOpen());
+    for (const [, close] of open) close();
+    // A ★ left marked for a row not drawn (another tab, a row cut) is
+    // nothing to see, so it spent nothing above; it is let go all the same.
     foldStars();
-    let spent = handoff || stars;
-    if (compareId != null) { closeCompare(); spent = true; }
-    if (!$("lineage-pop").classList.contains("hidden")) {
-      setLineageOpen(false);
-      $("lineage-btn").focus();
-      spent = true;
-    }
-    if (!$("ovf-menu").classList.contains("hidden")) {
-      $("ovf-menu").classList.add("hidden");
-      $("ovf-btn").setAttribute("aria-expanded", "false");
-      $("ovf-btn").focus();
-      spent = true;
-    }
-    // The scope and picture panels float too, so they are closed here, in
-    // the chain, and not by listeners of their own: those heard Esc after
-    // this chain had already put PATCH's selected module down for the same
-    // press. The focus goes back to ⋯, which they hang off (the item that
-    // opened each is in the menu, hidden now).
-    if (panelOpen("scope-panel") || panelOpen("image-panel")) {
-      closeScopePanel();
-      closeImagePanel();
-      $("ovf-btn").focus();
-      spent = true;
-    }
-    if (!$("bank-tour").classList.contains("hidden")) {
-      endBankTour();
-      $("bank-tour-btn").focus();
-      spent = true;
-    }
-    if (keysPopOpen()) {
-      const inside = $("keys-pop").contains(document.activeElement);
-      setKeysPop(false);
-      if (inside) $("keys-btn").focus();
-      spent = true;
-    }
-    if (!$("ctx-menu").classList.contains("hidden")) spent = true;
     // What this press closed is said with `preventDefault`, so the model
     // view (shell.js, which takes Esc last) stays up for it and goes on the
     // press that has nothing nearer left to close.
-    if (spent) { e.preventDefault(); closeMenu(); return; }
-    let closed = true;
-    if (layoutMenuOpen()) setLayoutMenu(false);
-    else if (shelfOpen()) setShelf(false);
-    else if (teachOpen && currentView === "patch") setTeach(false);
-    else if (evolveMenuOpen()) setEvolveMenu(false);
-    // PATCH's chain (the specimen's): a selected module, then the catalog;
-    // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed && plateSel != null) selectPlate(null);
-    else if (currentView === "patch" && !armed) closed = closeCatalog();
-    else closed = false;
-    if (closed) e.preventDefault();
+    if (open.length) { e.preventDefault(); closeMenu(); return; }
+    const step = escSteps().find(([isOpen]) => isOpen());
+    if (step) { step[1](); e.preventDefault(); }
     closeMenu();
     return;
   }

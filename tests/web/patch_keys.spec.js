@@ -11,7 +11,7 @@
 // - F2 opens the structure menu, and Delete on a two-input module asks which
 //   input survives.
 // - Esc walks out one thing at a time: the module, then the catalog, then a
-//   new patch; a panel open over the new patch goes before it.
+//   new patch; a panel or KEYS ⋯ open over the new patch goes before it.
 // - With a module in hand the arrows choose a socket and Enter places it.
 // - The keys yield to a text field (the catalog's search), and the note keys
 //   still play on a module.
@@ -21,7 +21,7 @@
 //   catalog wait for the next press.
 // - The selection follows the module, not its address: an insert before it
 //   moves its key, and it stays selected.
-const { test, expect, openCatalog } = require("./fixtures");
+const { test, expect, openCatalog, openKeys } = require("./fixtures");
 const { openPreset } = require("./patch_page");
 
 const active = (page) => page.evaluate(() => {
@@ -137,20 +137,33 @@ test("Esc walks out one thing at a time: the module, the catalog, then a new pat
   await page.keyboard.press("Escape");
   await expect(page.locator("#nodebank")).toBeHidden();
   await expect(page.locator("#rack-subject")).toHaveText("New patch");
-  // The scope panel open over it is nearer: that press closes the panel and
-  // asks for no sound (the way back is `edit_begin`, sent in the same task),
-  // and the new patch waits for the next. The focus on the panel's ×: Esc in
-  // a drop-down never ends a new patch.
-  await page.locator("#ovf-btn").click();
-  await page.locator("#scope-btn").click();
-  await expect(page.locator("#scope-panel")).toBeVisible();
-  await page.keyboard.press("Shift+Tab");
-  await expect(page.locator("#scope-close")).toBeFocused();
-  const opens = await app.sentCount("edit_begin");
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#scope-panel")).toBeHidden();
-  expect(await app.sentCount("edit_begin"), "the press that closed the panel ended the new patch too").toBe(opens);
-  await expect(page.locator("#rack-subject")).toHaveText("New patch");
+  // What floats over it is nearer: the scope panel, then KEYS ⋯. That press
+  // closes it and asks for no sound (the way back is `edit_begin`, sent in
+  // the same task), and the new patch waits for the next. The focus is off
+  // any field (on the panel's ×; nowhere after the click on KEYS ⋯, as after
+  // any button's, ADR-016): Esc in a field or a drop-down never ends a new
+  // patch.
+  const floats = [
+    ["the scope panel", "#scope-panel", async () => {
+      await page.locator("#ovf-btn").click();
+      await page.locator("#scope-btn").click();
+      await expect(page.locator("#scope-panel")).toBeVisible();
+      await page.keyboard.press("Shift+Tab");
+      await expect(page.locator("#scope-close")).toBeFocused();
+    }],
+    ["KEYS ⋯", "#keys-pop", async () => {
+      await openKeys(page);
+      await expect.poll(() => page.evaluate(() => !document.activeElement?.closest("input, textarea, select, [contenteditable]")), { message: "the focus is off any field" }).toBe(true);
+    }],
+  ];
+  for (const [what, shown, open] of floats) {
+    await open();
+    const opens = await app.sentCount("edit_begin");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(shown)).toBeHidden();
+    expect(await app.sentCount("edit_begin"), `the press that closed ${what} ended the new patch too`).toBe(opens);
+    await expect(page.locator("#rack-subject")).toHaveText("New patch");
+  }
   await page.keyboard.press("Escape");
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Reese", { timeout }), { ms: 30_000 });
 });
