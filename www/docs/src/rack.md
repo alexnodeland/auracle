@@ -34,7 +34,14 @@ everywhere in the instrument.
   jacks, outside the module, by the cables that arrive (*a*, *b*; *carrier*,
   *mod*).
 - **Audio cables** are green, curve from one module's output to the next
-  one's input, and run left to right through the signal chain.
+  one's input, and run left to right through the signal chain. Place a
+  module [by hand](#layout) anywhere but clear to the right of the module
+  that feeds it, and the cable between them runs backwards, drawn that way
+  on purpose: out of the output, down below both modules, back under them
+  and up into the input, in straight lines with rounded corners. A curve
+  bowed wide enough to go back would balloon with the distance; this run
+  reads the same at any length, and says at a glance that the cable goes
+  backwards.
   Each carries light by its level: once an edit settles, the engine renders
   the phrase once more and measures every audio cable, and the brighter the
   cable, the louder the signal on it. A mark on its middle lights one bar per

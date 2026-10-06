@@ -10707,8 +10707,11 @@ function chainRoute(x1, y1, x2, y2) {
 }
 
 /** The `d` for one cable, given where the plates are *now*. `null` when either
- *  end is missing, which is a wire the caller should skip rather than draw. */
-function wirePathD(w, pos, modByKey) {
+ *  end is missing, which is a wire the caller should skip rather than draw.
+ *  `rest` decides which way the cable runs: where the plates are now, unless
+ *  the caller is the rack's motion drawing a cable fading in
+ *  (`startRackMotion`), which passes where they come to rest. */
+function wirePathD(w, pos, modByKey, rest = pos) {
   const from = pos.get(w.from);
   const to = pos.get(w.to);
   if (!from || !to) return null;
@@ -10749,7 +10752,32 @@ function wirePathD(w, pos, modByKey) {
   // tightest gap either flow layout can produce is the 28px gutter, so this
   // branch is unreachable from chain or compact and cannot change how an
   // existing patch draws.
-  if (x2 < x1 + 8) {
+  //
+  // Which of the two runs a cable takes is decided from `rest`, which is
+  // where its plates are this frame (`pos`) for every cable but one fading
+  // in: the rack's motion (`startRackMotion`) hands that one where its
+  // plates come to rest. Within one sound a slide can take a module past the
+  // one newly plugged into it: an insert slides the amp out from under the
+  // module fading in where it was, and ⌘Z or BACK TO after NEW PATCH slides
+  // it back past its source, which fades in where it rests. Decided from the
+  // frame, the new cable took this run while the amp was behind its source
+  // and jumped to the curve as it came out, about half way through the slide
+  // (#228). Decided at rest, it is the curve on every frame. While its ends
+  // are crossed that curve's control points sit 18 out from each jack, so it
+  // is a short hook out of each and a run straight back between them, over
+  // whatever lies between, drawn while the cable is still faint. A cable
+  // already on the rack has no fade to hide that run in, so it keeps
+  // deciding from the frame: switching a layout by hand to chain or compact
+  // (or reset positions) slides a module put behind its source out from
+  // behind it along this run, then curves. No slide in chain or compact, or
+  // between them, reaches this branch: a cable that stays on the rack has
+  // the gap between its jacks go on one ease from a gutter or more to a
+  // gutter or more, and one fading in is decided at rest. A plate
+  // dragged by hand is redrawn from where the hand has it (`movePlateTo`),
+  // so a module put behind its source routes as it is dragged.
+  const rf = rest.get(w.from) || from;
+  const rt = rest.get(w.to) || to;
+  if (rt.x < rf.x + rf.w + 8) {
     const yb = Math.max(from.y + from.h, to.y + to.h) + 26;
     return orth([[x1, y1], [x1 + 26, y1], [x1 + 26, yb], [x2 - 26, yb], [x2 - 26, y2], [x2, y2]]);
   }
@@ -10766,6 +10794,25 @@ function wirePathD(w, pos, modByKey) {
   const dx = Math.min(Math.max(span * 0.5, 18), 120);
   const sag = Math.abs(y2 - y1) < 2 ? Math.min(span * 0.08, 14) : 0;
   return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+}
+
+/** Put a modulation cable's words (`t`) beside its middle as its ink is
+ *  drawn now: half its length along it, 8 right and 4 down. The build places
+ *  them, and whatever moves the cable without a build moves them with it:
+ *  each frame of the rack's motion (`startRackMotion`) and a plate dragged
+ *  by hand (`movePlateTo`). Without that they stayed where the build put
+ *  them, where the cable rests, while the cable slid in from up to 195 units
+ *  away, and stayed behind a dragged plate until it was let go. False when
+ *  the ink has no point to give. */
+function placeCableWords(t, ink) {
+  let p = null;
+  try {
+    p = ink.getPointAtLength(ink.getTotalLength() * 0.5);
+  } catch (_) { p = null; }
+  if (!p) return false;
+  t.setAttribute("x", (p.x + 8).toFixed(1));
+  t.setAttribute("y", (p.y + 4).toFixed(1));
+  return true;
 }
 
 /** A modulation cable's words: the host's mod depth and the modulator's rate,
@@ -11422,13 +11469,8 @@ function buildRack(svg, rack, opts) {
       if (it.w.kind !== "mod" || modByKey.get(it.w.to)?.is_mod) continue;
       const text = modCableText(it.w, modByKey, rack.wires);
       if (!text) continue;
-      let p = null;
-      try {
-        const len = it.inkEl.getTotalLength();
-        p = it.inkEl.getPointAtLength(len * 0.5);
-      } catch (_) { p = null; }
-      if (!p) continue;
-      const t = svgEl("text", { x: (p.x + 8).toFixed(1), y: (p.y + 4).toFixed(1) }, "mod-cable-label");
+      const t = svgEl("text", {}, "mod-cable-label");
+      if (!placeCableWords(t, it.inkEl)) continue;
       t.textContent = text;
       wireLayer.appendChild(t);
       it.labelEl = t;
@@ -12385,6 +12427,7 @@ function startRackMotion(before) {
   // plate and cable enters, and nothing leaves.
   const ghosts = before.ghosts;
   const arriving = rackFrame.wires.filter((it) => !before.wids.has(it.wid));
+  const fadingIn = new Set(arriving);
   if (!moves.length && !enters.length && !arriving.length && !ghosts.length) return false;
 
   const moveMs = motionMs("--d-move");
@@ -12451,6 +12494,12 @@ function startRackMotion(before) {
     // did not move, interpolated ones for everything that did. The cables are
     // then re-routed from it, which is the difference between "the patch is
     // deforming" and "the plates are sliding out from under their wiring".
+    // A cable fading in takes the run it rests in (`rackFrame.pos`), so it
+    // does not change shape as it appears; a cable already on the rack takes
+    // its run from this frame (`wirePathD`, at its backwards branch). What
+    // sits on a cable goes where it is drawn on this frame: a modulation
+    // cable's words (`placeCableWords`) and an audio cable's level mark
+    // (patch.js `platesMoving`).
     const at = new Map(rackFrame.pos);
     for (const it of moves) {
       it.cx = it.ox + (it.x - it.ox) * e;
@@ -12461,12 +12510,22 @@ function startRackMotion(before) {
       at.set(it.key, { ...rackFrame.pos.get(it.key), x: it.cx, y: it.cy });
     }
     for (const it of rackFrame.wires) {
-      const d = wirePathD(it.w, at, rackFrame.mods);
+      const d = fadingIn.has(it)
+        ? wirePathD(it.w, at, rackFrame.mods, rackFrame.pos)
+        : wirePathD(it.w, at, rackFrame.mods);
       if (d == null) continue;
       it.caseEl.setAttribute("d", d);
       it.inkEl.setAttribute("d", d);
+      if (it.labelEl) placeCableWords(it.labelEl, it.inkEl);
     }
-    if (u < 1) { rackTween = requestAnimationFrame(step); return; }
+    if (u < 1) {
+      // As the build lands (the first call, below) the marks are not drawn
+      // yet: `patchView.rackBuilt`, after it, draws them on the cables as
+      // this frame has them, and the frames after carry them.
+      patchView.platesMoving();
+      rackTween = requestAnimationFrame(step);
+      return;
+    }
     rackTween = null;
     // Hand the plates back to their `transform` attribute, which has held the
     // final position all along — the last frame already agrees with it, so
@@ -12530,6 +12589,7 @@ function movePlateTo(it, x, y) {
     if (d == null) continue;
     w.caseEl.setAttribute("d", d);
     w.inkEl.setAttribute("d", d);
+    if (w.labelEl) placeCableWords(w.labelEl, w.inkEl);
   }
   patchView.platesMoved();
 }

@@ -154,7 +154,10 @@ it* instead; when it would not pass the safety check, *without it, it fails
 the safety check*. The amp and an empty socket have no outline.
 
 **The cables.** Each green cable curves from one module's output to the next
-one's input, carries light by the level the engine measured on it, and a mark
+one's input. Into a module you've placed [by hand](../rack.md#layout) anywhere
+but clear to the right of the module feeding it, the cable runs backwards,
+below both in straight lines, on purpose: it says at a glance that it goes
+back. Each carries light by the level the engine measured on it, and a mark
 on its middle lights a bar for each third of the meter's range; point at it
 for the number. A module with two inputs names them beside the cables that
 arrive (*a*, *b*, or *carrier* and *mod*). A modulation cable is dashed amber,

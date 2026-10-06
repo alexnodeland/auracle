@@ -533,9 +533,10 @@ sheet on touch, whose sliders write through `sendEdit` and the one ordered
 lane, holding `knobDragging` while a finger is down so no knob is rebuilt
 under it. It reaches main.js only through the host it is handed, and main
 calls it back at a handful of points: `onWorker` (its three replies),
-`benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
-`committed`, and `shown`/`hidden`. A new patch opens the catalog and leaving
-it closes it (`host.openCatalog`/`closeCatalog`); the sheet's figure is the
+`benchLanded`, `rackBuilt`, `platesMoving` (each frame of the rack's motion)
+and `platesMoved`, `rejected`, `refit`, `committed`, and `shown`/`hidden`. A
+new patch opens the catalog and leaving it closes it
+(`host.openCatalog`/`closeCatalog`); the sheet's figure is the
 bench's face (`host.paintFace`, captioned from `host.benchState`), and AUDIO
 IN's and CAPTURE's lane buttons are in the sheet as buttons that press the
 lane's own on the rack, so there is one of each.
@@ -565,9 +566,24 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   `value`), the names and head settings print larger, as compact draws them
   (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
-  are level S-curves (`wirePathD`); a two-input module's input labels sit
-  outside the plate (`addJack`'s `outside`), and plain `in`/`out` are not
-  printed (they stay the jacks' accessible names).
+  are level S-curves (`wirePathD`); a cable into a module placed behind its
+  source by hand takes a right-angle run below both instead. The rack's
+  motion (`startRackMotion`) redraws every cable on each frame. A cable
+  fading in with the change takes the run it will rest in, so it stays a
+  curve while a slide takes its end past its source (the amp out from
+  under an insert, or back on ⌘Z; #228). A cable already on the rack takes
+  its run from that frame's positions, so it keeps the right-angle run
+  while its module is still behind its source (switching a layout by hand
+  to chain). What sits on a cable moves with it on each frame: a modulation
+  cable's words (`placeCableWords`) and an audio cable's level mark (patch.js
+  `platesMoving`, one attribute per mark, the marks kept by their cables'
+  records). The marks are drawn again as the motion ends (`platesMoved`),
+  which places the guess too: the guess is placed as the build lands and
+  again then, not between. A plate dragged by hand carries the words and
+  the marks (and the guess) as it goes (`movePlateTo`). A two-input
+  module's input labels sit outside the plate (`addJack`'s
+  `outside`), and plain `in`/`out` are not printed (they stay the jacks'
+  accessible names).
 
 - **The head** is `renderSubject`: the cap's family (a preset's category, only
   while unedited), the name, and the subtitle the rack counts (patch.js
