@@ -163,6 +163,120 @@ fn motion_bands_floor_on_short_spans() {
     assert_eq!(m, [MOTION_FLOOR; 3]);
 }
 
+/// Wherever there is nothing to measure, every band reads the floor: a held
+/// span shorter than one frame, a held note that never sounds, and a rate so
+/// low that the analysable span holds fewer than sixteen track frames.
+#[test]
+fn motion_bands_floor_when_there_is_nothing_to_measure() {
+    let x = sine(440.0, SR as usize, 0.5);
+    assert_eq!(motion_bands(&x, SR, 0, MOTION_FRAME), [MOTION_FLOOR; 3]);
+    let silent = vec![0.0; (1.8 * SR) as usize];
+    assert_eq!(
+        motion_bands(&silent, SR, 0, silent.len()),
+        [MOTION_FLOOR; 3]
+    );
+    // At 6 kHz, a second of a tremolo clears the 0.75 s minimum (frames of
+    // 2048 samples are a third of a second there), but leaves only ten
+    // 256-sample hops to analyse.
+    let low = 6_000.0;
+    let tremolo: Vec<f64> = (0..low as usize)
+        .map(|i| {
+            let t = i as f64 / low;
+            0.3 * (1.0 + 0.1 * (TAU * 4.0 * t).sin()) * (TAU * 440.0 * t).sin()
+        })
+        .collect();
+    assert_eq!(
+        motion_bands(&tremolo, low, 0, tremolo.len()),
+        [MOTION_FLOOR; 3]
+    );
+}
+
+/// **A render too short to measure reads "no evidence", never NaN.** No
+/// samples, one, and fewer than one spectral frame: every coordinate is
+/// finite, the spectral ones and the zero-crossing rate read 0, and the
+/// segment ones their documented empty values.
+#[test]
+fn a_render_too_short_to_measure_reads_no_evidence() {
+    for n in [0, 1, FRAME - 1] {
+        let f = audio_features(&phrase(sine(440.0, n, 0.5)));
+        assert!(
+            f.to_vec().iter().all(|v| v.is_finite()),
+            "{n} samples: {f:?}"
+        );
+        for (name, v) in [
+            ("centroid_mean", f.centroid_mean),
+            ("centroid_std", f.centroid_std),
+            ("rolloff_mean", f.rolloff_mean),
+            ("flatness_mean", f.flatness_mean),
+            ("flux_mean", f.flux_mean),
+            ("rms_mean", f.rms_mean),
+            ("rms_std", f.rms_std),
+            ("bass_fraction", f.bass_fraction),
+            ("held_centroid_std", f.held_centroid_std),
+            ("high_ratio", f.high_ratio),
+            ("chord_flatness_delta", f.chord_flatness_delta),
+        ] {
+            assert_eq!(v, 0.0, "{n} samples: {name}");
+        }
+        assert_eq!(
+            [f.motion_slow, f.motion_mid, f.motion_fast],
+            [MOTION_FLOOR; 3]
+        );
+    }
+    for n in [0, 1] {
+        assert_eq!(audio_features(&phrase(sine(440.0, n, 0.5))).zcr_mean, 0.0);
+    }
+}
+
+/// **The roles are found by property.** The high note is the *highest* note
+/// at least half an octave above the held one, wherever it sits and however
+/// many there are; a chord too short to hold one spectral frame is no
+/// evidence about stacking, so its coordinate reads 0.
+#[test]
+fn segment_roles_are_found_by_property() {
+    use crate::render::NoteSpan;
+    let held = (0.5 * SR) as usize;
+    let note = (0.3 * SR) as usize;
+    let span = |voct: f64, chord: usize, on_start: usize, len: usize| NoteSpan {
+        voct,
+        chord,
+        on_start,
+        on_end: on_start + len,
+    };
+    // Held C4 at 0.5, then C6 at 0.2, then C5 at 0.05: the highest is the
+    // second, not the last, and not the loudest.
+    let mut x = sine(262.0, held, 0.5);
+    x.extend(sine(1047.0, note, 0.2));
+    x.extend(sine(523.0, note, 0.05));
+    let r = RenderedPhrase {
+        spans: vec![
+            span(0.0, 0, 0, held),
+            span(2.0, 0, held + note, note),
+            span(1.0, 0, held, note),
+        ],
+        ..phrase(x.clone())
+    };
+    let level =
+        |a: usize, b: usize| (x[a..b].iter().map(|s| s * s).sum::<f64>() / (b - a) as f64).sqrt();
+    let want = ((level(held + note, held + 2 * note) + 1e-4) / (level(0, held) + 1e-4)).ln();
+    let f = audio_features(&r);
+    assert!(
+        (f.high_ratio - want).abs() < 1e-12,
+        "{} vs {want}",
+        f.high_ratio
+    );
+
+    // A dyad shorter than one frame: no frame of it to compare with the held
+    // note's, so no evidence.
+    let mut y = sine(262.0, held, 0.5);
+    y.extend(sine(330.0, FRAME / 2, 0.5));
+    let r = RenderedPhrase {
+        spans: vec![span(0.0, 0, 0, held), span(0.0, 1, held, FRAME / 2)],
+        ..phrase(y)
+    };
+    assert_eq!(audio_features(&r).chord_flatness_delta, 0.0);
+}
+
 /// A slow swell is an attack, not motion: a 0.9 s ramp into a steady tone
 /// reads still, as does a steady tone that starts after a silent gap.
 /// (Measured from the fixed 0.25 s skip alone, the swell read 4.3 octaves
