@@ -75,7 +75,7 @@ export const VIEWS = {
   bank: { specs: ["bank_"], sample: ["bank_row"] },
   shell: {
     specs: [
-      "shell_levels", "model_view", "guide_pill", "first_run", "film_chip", "text_fits", "type_scale",
+      "shell_levels", "model_view", "guide_pill", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "budgets", "smoke", "failure_flows",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],

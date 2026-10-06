@@ -17,10 +17,12 @@
 //
 // It adds the engine's own timeline. Every call the worker makes into
 // `WasmEngine` is noted in order with the messages it took and posted
-// (`trace`), and a request can be posted while a given call runs (`post`'s
-// `during`), as one of main's arrives in the middle of a render. The calls
-// are wrapped from outside, on the class the glue exports, as the browser
-// fixture's `slowEngine` wraps them; worker.js is not touched.
+// (`trace`), with the featurizations it rendered (`misses`: the memo's misses
+// during the call; 0 for one served from the memo), and a request can be
+// posted while a given call runs (`post`'s `during`), as one of main's
+// arrives in the middle of a render. The calls are wrapped from outside, on
+// the class the glue exports, as the browser fixture's `slowEngine` wraps
+// them; worker.js is not touched.
 import { Worker, isMainThread, parentPort, workerData, MessageChannel } from "node:worker_threads";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -103,13 +105,29 @@ async function host() {
 
   const glue = await import(`${GLUE}?v=${V}`);
   const proto = glue.WasmEngine.prototype;
+  // The memo's misses so far, read past the wrapper (not a call of the
+  // worker's); null where the engine cannot answer (freed, or trapped).
+  const memoStats = proto.memo_stats;
+  const misses = (engine) => {
+    try {
+      return JSON.parse(memoStats.call(engine)).misses;
+    } catch (_) {
+      return null;
+    }
+  };
   for (const name of Object.getOwnPropertyNames(proto)) {
     const d = Object.getOwnPropertyDescriptor(proto, name);
     if (name === "constructor" || typeof d.value !== "function") continue;
     const fn = d.value;
     proto[name] = function (...args) {
-      called(name);
-      return fn.apply(this, args);
+      const e = called(name);
+      const before = misses(this);
+      try {
+        return fn.apply(this, args);
+      } finally {
+        const after = misses(this);
+        e.misses = before == null || after == null ? null : after - before;
+      }
     };
   }
 
@@ -117,7 +135,8 @@ async function host() {
   // thread's event loop, as a message main posts mid-call does.
   const loop = new MessageChannel();
   function called(name) {
-    trace.push({ ev: "call", name });
+    const e = { ev: "call", name };
+    trace.push(e);
     for (let i = 0; i < armed.length; i++) {
       const a = armed[i];
       if (a.call !== name || --a.left > 0) continue;
@@ -125,6 +144,7 @@ async function host() {
       trace.push({ ev: "posted", tag: a.tag, type: a.msg.type });
       loop.port1.postMessage(a.msg);
     }
+    return e;
   }
 
   const deliver = (data) => {
