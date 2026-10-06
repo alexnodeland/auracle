@@ -6,13 +6,14 @@
 // phrase, `cacheOpen`) cannot be imported, since each boots on load, so their
 // functions are lifted out and run as written, over a stand-in IndexedDB that
 // keeps one database in memory, answers every request on a later task, as a
-// browser does, and logs who did what.
+// browser does, and logs who did what (fake-idb.mjs).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as renderStore from "../render-store.js";
+import { fakeIndexedDB } from "./fake-idb.mjs";
 
-const { renderStoreOpen, RENDER_DB, RENDER_ROWS, RENDER_META, RENDER_MAX_ROWS } = renderStore;
+const { renderStoreOpen, RENDER_ROWS, RENDER_META, RENDER_MAX_ROWS } = renderStore;
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
 const workerSrc = read("../worker.js");
@@ -35,91 +36,6 @@ const NS = "e3:q0.4.0:this-build";
 const PHRASE = '{"phrase":"stand-in"}';
 const later = (fn) => setImmediate(fn);
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-
-// IndexedDB, as far as the store uses it. `as(who)` is one thread's
-// `indexedDB`; `log` is every open, upgrade, transaction (by its mode) and
-// close, in order, each with who made it. `hold(who)` keeps that thread's opens
-// unanswered until the function it returns is called.
-function fakeIndexedDB() {
-  const log = [];
-  const dbs = new Map(); // name -> { version, stores: Map<name, Map> }
-  const held = new Map(); // who -> a promise their opens wait on
-  const hold = (who) => {
-    let release;
-    held.set(who, new Promise((resolve) => (release = resolve)));
-    return () => {
-      held.delete(who);
-      release();
-    };
-  };
-  function connection(who, db) {
-    return {
-      objectStoreNames: { contains: (s) => db.stores.has(s) },
-      createObjectStore(s) {
-        db.stores.set(s, new Map());
-      },
-      transaction(s, mode) {
-        const rows = db.stores.get(s);
-        if (!rows) throw new Error(`NotFoundError: no object store ${s}`);
-        log.push({ who, op: mode, store: s });
-        const ask = (fn) => {
-          const req = {};
-          later(() => {
-            req.result = fn();
-            req.onsuccess?.();
-          });
-          return req;
-        };
-        const write = (fn) => {
-          if (mode !== "readwrite") throw new Error("ReadOnlyError");
-          return ask(fn);
-        };
-        return {
-          objectStore: () => ({
-            get: (k) => ask(() => rows.get(k)),
-            count: () => ask(() => rows.size),
-            clear: () => write(() => rows.clear()),
-            put: (v, k) => write(() => void rows.set(k, v)),
-          }),
-        };
-      },
-      close() {
-        log.push({ who, op: "close" });
-      },
-    };
-  }
-  const as = (who) => ({
-    open(name, version) {
-      const req = {};
-      log.push({ who, op: "open" });
-      const answer = () =>
-        later(() => {
-          let db = dbs.get(name);
-          if (!db) dbs.set(name, (db = { version: 0, stores: new Map() }));
-          req.result = connection(who, db);
-          if (version > db.version) {
-            db.version = version;
-            log.push({ who, op: "upgrade" });
-            req.onupgradeneeded?.();
-          }
-          req.onsuccess?.();
-        });
-      const gate = held.get(who);
-      if (gate) gate.then(answer);
-      else answer();
-      return req;
-    },
-  });
-  // A store as an earlier visit left it.
-  const seed = ({ ns, rows = 0 }) => {
-    const meta = new Map(ns == null ? [] : [["ns", ns]]);
-    const kept = new Map(Array.from({ length: rows }, (_, i) => [`${ns}/${i}`, "{}"]));
-    dbs.set(RENDER_DB, { version: 1, stores: new Map([[RENDER_ROWS, kept], [RENDER_META, meta]]) });
-  };
-  const store = () => dbs.get(RENDER_DB);
-  const writes = (who) => log.filter((e) => e.op === "readwrite" && (who == null || e.who === who));
-  return { log, as, hold, seed, store, writes };
-}
 
 test("a first visit's open creates the store and stamps it with the namespace", async () => {
   const idb = fakeIndexedDB();
