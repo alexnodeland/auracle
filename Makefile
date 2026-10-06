@@ -494,17 +494,30 @@ browser-fast:
 ## changed specs, the specs of a changed helper or app module, for main.js
 ## the specs of the views its changed sections draw, and for worker.js, the
 ## page or the engine each view's sample (tests/web/changed.mjs --views).
-## REPEAT=n runs each of them n times (the ship skill's REPEAT=3 before a push)
+## REPEAT=n runs the spec files the branch adds or edits n times each, first,
+## and the rest once (the ship skill's REPEAT=3 before a push)
 BASE ?= origin/main
 REPEAT ?= 1
+# Two runs when REPEAT is more than 1: the repeat is the burn-in of what the
+# branch wrote (#177 §1.1), not of every spec a main.js change reaches,
+# which can be most of the tier. The repeated run goes first, and a failure
+# stops there, so its test-results/ is the one left to read.
 browser-changed:
-	@case "$(REPEAT)" in ''|*[!0-9]*|0) printf '  REPEAT is how many times each spec runs (1, 3 …), not "%s"\n' "$(REPEAT)"; exit 2;; esac
+	@case "$(REPEAT)" in ''|*[!0-9]*|0) printf '  REPEAT is how many times each spec the branch adds or edits runs (1, 3 …), not "%s"\n' "$(REPEAT)"; exit 2;; esac
 	$(RELEASE_ENGINE)
 	@specs="$$(cd tests/web && node changed.mjs --views $(BASE))" || exit $$?; \
 	if [ -z "$$specs" ]; then printf '  no spec to run for this change\n'; exit 0; fi; \
-	printf '  spec files: %s, each run %s time(s)\n' "$$(printf '%s\n' $$specs | wc -l | tr -d ' ')" "$(REPEAT)"; \
-	printf '    %s\n' $$specs; \
-	$(PLAYWRIGHT) $$(printf '/%s ' $$specs) --repeat-each=$(REPEAT) --reporter=line
+	again=""; \
+	if [ "$(REPEAT)" != 1 ]; then again="$$(cd tests/web && node changed.mjs --touched $(BASE))" || exit $$?; fi; \
+	once=""; for s in $$specs; do case " $$(echo $$again) " in *" $$s "*) ;; *) once="$$once $$s";; esac; done; \
+	printf '  spec files: %s\n' "$$(printf '%s\n' $$specs | wc -l | tr -d ' ')"; \
+	if [ -n "$$again" ]; then printf '  %s times each, the ones this branch adds or edits:\n' "$(REPEAT)"; printf '    %s\n' $$again; fi; \
+	if [ -n "$$once" ] && [ "$(REPEAT)" != 1 ]; then \
+	  if [ -n "$$again" ]; then printf '  once each, the ones it reaches:\n'; else printf '  once each (the branch adds or edits no spec, so nothing repeats):\n'; fi; \
+	fi; \
+	if [ -n "$$once" ]; then printf '    %s\n' $$once; fi; \
+	( if [ -n "$$again" ]; then $(PLAYWRIGHT) $$(printf '/%s ' $$again) --repeat-each=$(REPEAT) --reporter=line; fi ) && \
+	( if [ -n "$$once" ]; then $(PLAYWRIGHT) $$(printf '/%s ' $$once) --reporter=line; fi )
 
 ## browser-slow: browser specs tagged @slow or @quarantine, CI's slow tier (~35 min serially)
 browser-slow:

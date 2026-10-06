@@ -137,8 +137,8 @@ second has to be everything.
   reaches locally (`make browser-changed`), and a `main.js` change gets only
   the smoke in CI before the queue. Locally, a view-to-spec map narrows that
   gap: `make browser-changed` runs the specs of the views a `main.js` change
-  draws, and each view's sample for the engine, three times each before the
-  push (#177).
+  draws, and each view's sample for the engine; before the push, with the
+  spec files the branch adds or edits three times each (#177).
 - **`main` reuses the queue's verdict on every batch's last merge.** The
   batch's earlier merges are never tested alone, as with any batch; their run
   runs nothing once `main` has moved past them. The browser tier's timings

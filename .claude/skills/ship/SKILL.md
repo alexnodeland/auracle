@@ -127,10 +127,10 @@ have the builder commit the approved rows.
 
 ## 5. The PR, in the merge queue
 
-First the specs the branch reaches, three times each, through the browser
-queue on its port, on the release engine (`make pkg-reuse` or `make wasm`
-first when the builder's last build was `make wasm-dev`, which this
-refuses):
+First the specs the branch reaches, through the browser queue on its port,
+on the release engine (`make pkg-reuse` or `make wasm` first when the
+builder's last build was `make wasm-dev`, which this refuses): the spec
+files it adds or edits three times each, then the rest once.
 
 ```bash
 AURACLE_TEST_PORT=<port> make -C "$WT" browser-changed REPEAT=3
@@ -138,12 +138,17 @@ AURACLE_TEST_PORT=<port> make -C "$WT" browser-changed REPEAT=3
 
 It runs what CI's fast lane would run, and for `main.js`, `worker.js`, the
 page or the engine, the specs of the views the change reaches, which the
-fast lane doesn't (`tests/web/AGENTS.md`). It prints the spec files first.
-By CI's timings a run of the engine's sample is about nine minutes and of
-PATCH's specs about thirty, so three runs of a `main.js` change in PATCH
-take most of two hours: run it in the background and wait on it. A failure
-goes back to the builder as a blocking finding (step 4), never to a
-re-run. Green, push:
+fast lane doesn't (`tests/web/AGENTS.md`). It prints the spec files first,
+in two lists. The repeat is the burn-in of the specs the branch wrote (no
+burn-in runs in CI); the specs a change only reaches run once, since a
+`main.js` change across several views reaches most of the tier. By CI's
+timings the engine's sample is about nine minutes and PATCH's specs about
+thirty, and a change to most of `main.js`'s views about the whole fast
+tier, seventy-five: run it in the background and wait on it. A failure in a
+spec the branch adds, edits or reaches goes back to the builder as a
+blocking finding (step 4), never to a re-run, unless it is unrelated
+(`process.md` § Flakes, step 4: then one commit quarantines it with its
+`flake` issue). Green, push:
 
 ```bash
 git -C "$WT" push -q -u origin claude/<topic>

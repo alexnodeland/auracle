@@ -37,7 +37,7 @@ this table.
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
-| Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs each three times; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
+| Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
@@ -145,9 +145,11 @@ the fast tier and the PR checks alone.
   headings, and each view's sample for a section no view names; for
   `worker.js` and the engine, each view's sample (a spec or three per view,
   end to end) and `boot_agrees.spec.js`; for the page, the samples. Before
-  the push it runs them three times each (`REPEAT=3`, the `ship` skill), on
-  the release engine (`make wasm`, or `make pkg-reuse` in a worktree that
-  changed no Rust; a `make wasm-dev` build is refused).
+  the push it runs the spec files the branch adds or edits three times
+  each, and the rest once (`REPEAT=3`, the `ship` skill), on the release
+  engine (`make wasm`, or `make pkg-reuse` in a worktree that changed no
+  Rust; a `make wasm-dev` build, or one a build left unfinished, is
+  refused).
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
   opens for a batch of up to three PRs (a release PR alone), from a branch
   under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that
@@ -475,10 +477,11 @@ a test slower, never wrong
 how long something took is a budget, recorded on the gate and judged apart
 from it ([Rules](#rules)).
 
-- **Before a push** the specs a branch reaches run three times each on the
-  builder's machine (`make browser-changed REPEAT=3`, the `ship` skill), so
-  a spec that fails often shows there, before CI runs it once. The nightly
-  hunt finds the rarer ones.
+- **Before a push** the spec files a branch adds or edits run three times
+  each on the builder's machine, and the rest of the specs it reaches once
+  (`make browser-changed REPEAT=3`, the `ship` skill), so a new spec that
+  fails often shows there, before CI runs it once. The nightly hunt finds
+  the rarer ones, and the flakes in specs the branch didn't write.
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
   the machine. The specs on the fixture that name no seed of their own boot

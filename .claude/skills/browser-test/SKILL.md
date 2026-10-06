@@ -40,10 +40,11 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   app module; for `main.js` the specs of the views its changed sections draw,
   and for `worker.js`, the page or the engine each view's sample;
   `BASE=` to diff against something other than `origin/main`), or name them
-  (`npx playwright test patch_ perform_layout.spec.js`). `REPEAT=3` runs each
-  three times, as the `ship` skill does before a push; `--repeat-each=3` by
-  name. The full tier is CI's job: about seventy-five minutes in one worker,
-  twelve runners wide in the merge queue's run.
+  (`npx playwright test patch_ perform_layout.spec.js`). `REPEAT=3` runs the
+  spec files the branch adds or edits three times each and the rest once,
+  as the `ship` skill does before a push; `--repeat-each=3` by name. The
+  full tier is CI's job: about seventy-five minutes in one worker, twelve
+  runners wide in the merge queue's run.
 
 ## In CI
 
@@ -51,8 +52,8 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   required `CI` check. The merge queue's run, the full gate, runs all of it,
   dealt to twelve runners by main's last timings (`tests/web/shard.mjs`). A
   PR's own run, the fast lane, runs only the specs its change reaches
-  (`tests/web/changed.mjs`, as `make browser-changed`), on up to four
-  runners, and the smoke pair when the app, the engine or what runs the
+  (`tests/web/changed.mjs`, as `make browser-changed` picks them before it
+  follows the views), on up to four runners, and the smoke pair when the app, the engine or what runs the
   specs (a helper, the config, the lockfile) changed; for
   `main.js`, `worker.js` or a crate, the smoke pair alone.
 - The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on

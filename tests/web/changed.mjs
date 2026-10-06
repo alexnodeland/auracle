@@ -8,6 +8,9 @@
 //   node changed.mjs --views [base]   a workstation's: the same, and the views a
 //                                     change to main.js, worker.js, the page or
 //                                     the engine reaches (`make browser-changed`)
+//   node changed.mjs --touched [base] the spec files the change adds or edits
+//                                     itself: `make browser-changed REPEAT=n`
+//                                     runs these n times, and the rest once
 //
 // A changed spec runs; a changed helper runs every spec that requires it; a
 // changed app module runs the specs named for what it draws (MODULES below).
@@ -174,13 +177,15 @@ const named = (spec, prefixes) => prefixes.some((p) => spec.startsWith(p));
 /** The selection, from the files that changed. `specs` and `helpers` are
  *  tests/web's; `requires(spec, helper)` says whether a spec reaches a
  *  helper; `sections[file]` lists the sections a change to a sectioned file
- *  touched (`sectionsTouched`'s; a bare title will do). Returns the specs,
- *  the files that reach every level (which CI's selection names no spec
- *  for), and, with `views`, what each of those reached: the views its
- *  sections name, and whether every view's sample runs (`every`, with the
- *  sections no rule names). */
+ *  touched (`sectionsTouched`'s; a bare title will do). Returns the specs;
+ *  of them, the ones the change adds or edits itself (`touched`: a helper's
+ *  or a module's specs, or a view's, are not); the files that reach every
+ *  level (which CI's selection names no spec for); and, with `views`, what
+ *  each of those reached: the views its sections name, and whether every
+ *  view's sample runs (`every`, with the sections no rule names). */
 export function select({ files, specs, helpers, requires, views = false, sections = {} }) {
   const out = new Set();
+  const touched = new Set();
   const wide = [];
   const reached = [];
   const add = (prefixes) => {
@@ -190,7 +195,10 @@ export function select({ files, specs, helpers, requires, views = false, section
   for (const f of files) {
     const rel = relative("tests/web", f);
     if (f.startsWith("tests/web/") && f.endsWith(".spec.js")) {
-      if (specs.includes(rel)) out.add(rel);
+      if (specs.includes(rel)) {
+        out.add(rel);
+        touched.add(rel);
+      }
     } else if (f.startsWith("tests/web/") && helpers.includes(rel)) {
       for (const s of specs) if (requires(s, rel)) out.add(s);
     } else if (MODULES[f]) {
@@ -221,7 +229,7 @@ export function select({ files, specs, helpers, requires, views = false, section
       reached.push({ file: f, views: [], every: true, unnamed: [] });
     }
   }
-  return { specs: [...out].sort(), wide, reached };
+  return { specs: [...out].sort(), touched: [...touched].sort(), wide, reached };
 }
 
 // git, without a GIT_* variable from whoever called it (a hook's GIT_DIR or
@@ -235,7 +243,8 @@ function git(args) {
 
 function main(argv) {
   const views = argv.includes("--views");
-  const base = argv.filter((a) => a !== "--views")[0] || "origin/main";
+  const onlyTouched = argv.includes("--touched");
+  const base = argv.filter((a) => !a.startsWith("--"))[0] || "origin/main";
   let files;
   let mergeBase;
   try {
@@ -274,6 +283,10 @@ function main(argv) {
   }
 
   const got = select({ files, specs, helpers, requires, views, sections });
+  if (onlyTouched) {
+    for (const s of got.touched) console.log(s);
+    return;
+  }
   if (views) {
     for (const r of got.reached) {
       const named_ = r.views.length ? `${r.views.join(", ")} (by its sections)` : "";

@@ -92,8 +92,9 @@ in a plan's prose, a session's notes or a conversation.
   it added or touched, and for `main.js` or the engine, the views it
   reaches), through the browser queue on its own port. Not the full suite:
   the merge queue's run of CI runs it twelve wide. Before the push, the
-  operator runs the same three times each (`make browser-changed REPEAT=3`,
-  the `ship` skill).
+  operator runs the same, the spec files the branch adds or edits three
+  times each and the rest once (`make browser-changed REPEAT=3`, the `ship`
+  skill).
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.

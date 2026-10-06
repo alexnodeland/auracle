@@ -90,10 +90,16 @@ views (`changed.mjs --views`):
 It prints what each such file reached, and the spec files, before it runs.
 CI's fast lane runs none of these for such a change, only the smoke pair,
 so this local run is the one that sees them before the queue. `REPEAT=3`
-runs each spec three times in one queued run: the `ship` skill's last step
-before a push. A new spec belongs to a view in `changed.mjs`'s `VIEWS` (or
-to `NO_VIEW`, with the reason), or the selection's tests in `make
-web-check` fail (`changed.test.mjs`).
+runs the spec files the branch adds or edits three times each, then the
+rest once: the `ship` skill's last step before a push, and the burn-in of
+the specs the branch wrote (CI runs none). The rest run once because a
+`main.js` change across several views reaches most of the tier.
+
+A new spec belongs to a view in `changed.mjs`'s `VIEWS` (or to `NO_VIEW`,
+with the reason), or the selection's tests in `make web-check` fail
+(`changed.test.mjs`). So does a rule in `SECTIONS` that names a heading
+`main.js` no longer has, or one a broader rule above it always takes:
+every alternative must win some heading.
 
 When CI fails, the run's summary links one HTML report of every runner, with
 the failed tests' traces: download it and run `npx playwright show-report

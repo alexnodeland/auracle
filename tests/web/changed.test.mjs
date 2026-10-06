@@ -32,6 +32,14 @@ test("a changed spec runs, and a deleted one does not", () => {
   assert.deepEqual(pick(["tests/web/gone.spec.js"]).specs, []);
 });
 
+test("the specs a change adds or edits itself are told apart from those it reaches: REPEAT repeats only them", () => {
+  const files = ["tests/web/bank_row.spec.js", "tests/web/gone.spec.js", "tests/web/patch_page.js", "apps/web/taste.js", "apps/web/main.js", "crates/auracle-session/src/perform.rs"];
+  const got = pick(files, { views: true, sections: { "apps/web/main.js": ["PERFORM"] } });
+  assert.deepEqual(got.touched, ["bank_row.spec.js"]);
+  for (const s of ["patch_truth.spec.js", "taste_marks.spec.js", "perform_layout.spec.js", "boot_agrees.spec.js"]) assert.ok(got.specs.includes(s), s);
+  assert.deepEqual(pick(["apps/web/main.js"], { views: true, sections: { "apps/web/main.js": ["PERFORM"] } }).touched, []);
+});
+
 test("a changed helper runs the specs that require it, and an app module the specs named for it", () => {
   const helper = pick(["tests/web/patch_page.js"]).specs;
   assert.ok(helper.length > 0 && helper.every((s) => s.startsWith("patch_")), helper.join(" "));
