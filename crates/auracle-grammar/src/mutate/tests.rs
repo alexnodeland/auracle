@@ -116,3 +116,30 @@ fn set_take_installs_and_refuses() {
         );
     }
 }
+
+/// A two-input chain to edit: a mix of a filtered saw and a sine.
+fn mixed() -> PatchTree {
+    patch(AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: Box::new(graft(default_fragment(NodeKind::Filter), saw_vco(0)).unwrap()),
+        b: Box::new(sine_vco()),
+    })
+}
+
+/// Deleting one input of a two-input module takes that whole branch and
+/// leaves the other in the module's place (pulling the key out of a ducker
+/// leaves the pad), whichever of the two is named; a third is refused, not
+/// read as the second.
+#[test]
+fn a_delete_under_a_binary_takes_the_branch() {
+    let tree = mixed();
+    let (a, b) = match &tree.root {
+        AudioNode::Mix { a, b, .. } => ((**a).clone(), (**b).clone()),
+        n => panic!("{n:?}"),
+    };
+    let del = |key: &str| mutate::apply_struct_op(&tree, &StructOp::Delete { key: key.into() });
+    assert_eq!(del("node/0").unwrap().root, b);
+    assert_eq!(del("node/1").unwrap().root, a);
+    assert!(matches!(del("node/2"), Err(StructError::NoSuchNode(_))));
+}

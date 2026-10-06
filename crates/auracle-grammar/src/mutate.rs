@@ -1124,7 +1124,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 let parent = node_at_mut(&mut out.root, parent_path)
                     .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
                 if let Some((a, b)) = binary_children_mut(parent) {
-                    let keep = take(if last == 0 { b } else { a });
+                    let keep = match last {
+                        0 => take(b),
+                        1 => take(a),
+                        // A binary module has two inputs: there is no `/2`.
+                        _ => return Err(StructError::NoSuchNode(key.clone())),
+                    };
                     *parent = keep;
                     return finish(out);
                 }
