@@ -11,10 +11,16 @@
 //! `auracle_session::farm`, which this crate cannot depend on). Five boots are
 //! 2,000 prior draws. Each draw is rendered, vetted, normalized and measured
 //! as `featurize` does it, every step timed, then read by every candidate
-//! floor feature. The 62 presets are measured the same way. `--listen DIR`
-//! writes the renders a listen would start from ([`listen`]) as raw mono
-//! 32-bit floats at 44.1 kHz; `ffmpeg -f f32le -ar 44100 -ac 1 -i X.f32 X.wav`
-//! makes one playable.
+//! floor feature. The 62 presets are measured the same way, and the new
+//! roughness and noise readings are first run on signals whose answer is
+//! known ([`calibration_table`]). The films' cast is read from
+//! `www/brand/sound.json`. `--listen DIR` writes the renders a listen would
+//! start from ([`listen`]) as raw mono 32-bit floats at 44.1 kHz;
+//! `ffmpeg -f f32le -ar 44100 -ac 1 -i X.f32 X.wav` makes one playable.
+//!
+//! The readings are deterministic. The timings are not: the render's time
+//! moves with the machine's load, and every share with it, so read the new
+//! passes' cost in milliseconds.
 //!
 //! Nothing here changes φ, the vet or the fill: it reads them. The candidate
 //! measures that are not in φ are defined here and nowhere else.
@@ -78,25 +84,27 @@ const PLAYABLE_AT: usize = 8;
 const MAX_DRAWS: u64 = 400;
 /// #62's proposed weights for octaves −2…+2.
 const OCTAVE_WEIGHTS_62: [f64; 5] = [0.05, 0.15, 0.40, 0.25, 0.15];
-/// The films' cast (`www/brand/sound.json`, `cast.shortlist.roles`).
-const CAST: [&str; 16] = [
-    "Cathedral",
-    "Long Room",
-    "Rotor",
-    "Morph Pad",
-    "Tidal",
-    "Slow Weather",
-    "Wobble Board",
-    "Falling Sign",
-    "Solo Flight",
-    "Telegraph",
-    "Choirboy",
-    "Fifth Wheel",
-    "Held Under",
-    "Heartbeat",
-    "Ceiling",
-    "Dub Echo",
-];
+/// The brand's sound file, whose `cast.shortlist.roles` names the films'
+/// cast. Read rather than retyped, so a changed shortlist changes the preset
+/// table's `[cast]` marks and counts with it.
+const SOUND_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../www/brand/sound.json"
+));
+
+/// The films' cast: every preset in `cast.shortlist.roles`, whatever its role.
+fn cast() -> Vec<String> {
+    let sound: serde_json::Value = serde_json::from_str(SOUND_JSON).expect("sound.json parses");
+    let roles = sound["cast"]["shortlist"]["roles"]
+        .as_object()
+        .expect("sound.json has cast.shortlist.roles");
+    roles
+        .values()
+        .flat_map(|names| names.as_array().expect("a role lists presets"))
+        .map(|name| name.as_str().expect("a preset name").to_string())
+        .collect()
+}
+
 /// `search_health`'s synthetic listener (its `ground_truth`): the weights,
 /// in σ of φ, with which `make climb` and `make search-check` grade a pool.
 const CLIMB_USER: [(&str, f64); 6] = [
@@ -789,6 +797,17 @@ fn floor_table(draws: &[&Row], ok: &[&Row], boots: usize) {
     };
     let base_u: Vec<f64> = ok.iter().map(|r| utility(r)).collect();
     let (base_mean_u, base_best, base_spread) = (mean_of(&base_u), best_of_48(&base_u), spread(ok));
+    // Filtered at the deal: each boot's vetted draws in runs of 8 (what the
+    // pool holds at `playable`), the same runs for every floor.
+    let runs: Vec<Vec<&Row>> = (0..boots)
+        .flat_map(|b| {
+            let vetted: Vec<&Row> = ok.iter().copied().filter(|r| r.boot == Some(b)).collect();
+            vetted
+                .chunks_exact(PLAYABLE_AT)
+                .map(<[&Row]>::to_vec)
+                .collect::<Vec<_>>()
+        })
+        .collect();
 
     println!(
         "== 4. candidate floors: who clears, what the fill pays, what the first deals become =="
@@ -821,17 +840,11 @@ fn floor_table(draws: &[&Row], ok: &[&Row], boots: usize) {
             to8.push(landed.get(PLAYABLE_AT - 1).copied().unwrap_or(f64::NAN));
             to40.push(landed.get(POOL - 1).copied().unwrap_or(f64::NAN));
         }
-        // Filtered at the deal: of each run of 8 vetted draws (what the pool
-        // holds at `playable`), how often two or more clear it.
-        let mut runs = 0;
-        let mut two = 0;
-        for b in 0..boots {
-            let vetted: Vec<&&Row> = ok.iter().filter(|r| r.boot == Some(b)).collect();
-            for run in vetted.chunks_exact(PLAYABLE_AT) {
-                runs += 1;
-                two += (run.iter().filter(|r| pass(r)).count() >= 2) as usize;
-            }
-        }
+        // Filtered at the deal: how many runs hold two or more that clear.
+        let two = runs
+            .iter()
+            .filter(|run| run.iter().filter(|r| pass(r)).count() >= 2)
+            .count();
         let clear: Vec<&Row> = ok.iter().copied().filter(|r| pass(r)).collect();
         let us: Vec<f64> = clear.iter().map(|r| utility(r)).collect();
         println!(
@@ -841,7 +854,7 @@ fn floor_table(draws: &[&Row], ok: &[&Row], boots: usize) {
             mean_of(&to8),
             mean_of(&to40),
             draws.len() as f64 / clear.len().max(1) as f64,
-            100.0 * two as f64 / runs.max(1) as f64,
+            100.0 * two as f64 / runs.len().max(1) as f64,
             spread(&clear) / base_spread,
             mean_of(&us) - base_mean_u,
             best_of_48(&us) - base_best
@@ -894,9 +907,11 @@ fn floor_table(draws: &[&Row], ok: &[&Row], boots: usize) {
     }
     println!(
         "(to 8, to 40: draws consumed, mean over {boots} boots; renders/: draws per patch that \
-         lands; P(≥2|8): runs of 8 vetted draws with two that clear; spread: mean pairwise \
-         distance in standardized φ; Δu, Δbest48: search_health's listener, the mean and the \
-         best of 48; each against all vetted draws, on one scale, where u has sd {:.2})",
+         lands; P(≥2|8): the share of the {} runs of 8 vetted draws with two that clear; \
+         spread: mean pairwise distance in standardized φ; Δu, Δbest48: search_health's \
+         listener, the mean and the best of 48; each against all vetted draws, on one scale, \
+         where u has sd {:.2})",
+        runs.len(),
         std_of(&base_u)
     );
     println!();
@@ -988,9 +1003,11 @@ fn overlap_table(ok: &[&Row]) {
     println!();
 }
 
-/// Register by the lowest oscillator octave, #62's table.
+/// Register by the lowest oscillator octave: #62's table, on this example's
+/// `spk` rather than #62's "mostly below 200 Hz", so its pattern compares
+/// and its numbers do not.
 fn register_table(ok: &[&Row]) {
-    println!("== 6. register by lowest oscillator octave (#62's table) ==");
+    println!("== 6. register by lowest oscillator octave (#62's pattern, on spk) ==");
     for o in [Some(-2), Some(-1), Some(0), Some(1), Some(2), None] {
         let set: Vec<&&Row> = ok.iter().filter(|r| r.lowest_octave == o).collect();
         let under =
@@ -1006,8 +1023,9 @@ fn register_table(ok: &[&Row]) {
     println!();
 }
 
-fn preset_table(presets: &[&Row]) {
+fn preset_table(presets: &[&Row], cast: &[String]) {
     println!("== 7. presets ==");
+    let is_cast = |name: &str| cast.iter().any(|c| c == name);
     println!(
         "{:<17} {:>5} {:>6} {:>6} {:>5} {:>5} {:>6} {:>6}  fails",
         "preset", "flat", "noise", "rough", "hi", "spk", "mute", "att ms"
@@ -1015,13 +1033,9 @@ fn preset_table(presets: &[&Row]) {
     for r in presets {
         let m = r.m();
         let fails: Vec<&str> = FLOORS.iter().filter(|f| !(f.2)(m)).map(|f| f.0).collect();
-        let cast = if CAST.contains(&r.name.as_str()) {
-            "  [cast]"
-        } else {
-            ""
-        };
+        let mark = if is_cast(&r.name) { "  [cast]" } else { "" };
         println!(
-            "{:<17} {:>5.2} {:>6.2} {:>6.2} {:>5.2} {:>5.2} {:>6.1} {:>6.0}  {}{cast}",
+            "{:<17} {:>5.2} {:>6.2} {:>6.2} {:>5.2} {:>5.2} {:>6.1} {:>6.0}  {}{mark}",
             r.name,
             m.flatness,
             m.noise,
@@ -1039,22 +1053,125 @@ fn preset_table(presets: &[&Row]) {
             .filter(|r| !clears(r.m()))
             .map(|r| r.name.as_str())
             .collect();
-        let cast = failing.iter().filter(|n| CAST.contains(n)).count();
+        let failing_cast = failing.iter().filter(|n| is_cast(n)).count();
         println!(
-            "{name:<9} fails {:>2} of {} presets ({cast} of the 16 cast)",
+            "{name:<9} fails {:>2} of {} presets ({failing_cast} of the {} cast)",
             failing.len(),
-            presets.len()
+            presets.len(),
+            cast.len()
         );
     }
     println!();
 }
 
+/// The new pass on signals whose answer is known, each a held C4 as long as
+/// the phrase holds it, read by [`peaks`] as a patch's held note is: a sine;
+/// eight harmonics at 1/k; the same with vibrato of a given depth and rate;
+/// two sines 30 Hz apart near 1 kHz; white noise; and white noise through
+/// four one-pole low-passes at 500 Hz, which φ's flatness reads as tonal.
+fn calibration_table(spec: &PhraseSpec) {
+    use rand::Rng;
+    use std::f64::consts::TAU;
+    let sr = spec.sample_rate;
+    let held = &spec.notes[0];
+    let n = (held.on_s * sr) as usize;
+    let span = NoteSpan {
+        voct: held.voct,
+        chord: 0,
+        on_start: 0,
+        on_end: n,
+    };
+    let c4 = 261.625_565_300_598_6;
+    // `partials` harmonics at 1/k, the pitch swinging ±`cents` at `rate` Hz.
+    let tone = |partials: usize, cents: f64, rate: f64| -> Vec<f64> {
+        let mut phase = 0.0;
+        (0..n)
+            .map(|i| {
+                let swing = cents / 1200.0 * (TAU * rate * i as f64 / sr).sin();
+                phase += TAU * c4 * swing.exp2() / sr;
+                (1..=partials)
+                    .map(|k| (k as f64 * phase).sin() / k as f64)
+                    .sum()
+            })
+            .collect()
+    };
+    let two_sines: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / sr;
+            (TAU * 1000.0 * t).sin() + (TAU * 1030.0 * t).sin()
+        })
+        .collect();
+    let mut rng = StdRng::seed_from_u64(0x5011_C0DE);
+    let white: Vec<f64> = (0..n).map(|_| rng.gen_range(-1.0..1.0)).collect();
+    let a = 1.0 - (-TAU * 500.0 / sr).exp();
+    let mut low = white.clone();
+    for _ in 0..4 {
+        let mut y = 0.0;
+        for v in low.iter_mut() {
+            y += a * (*v - y);
+            *v = y;
+        }
+    }
+    let signals: [(&str, Vec<f64>); 9] = [
+        ("sine", tone(1, 0.0, 0.0)),
+        ("8 harmonics", tone(8, 0.0, 0.0)),
+        ("8 harmonics, ±25 cents at 5 Hz", tone(8, 25.0, 5.0)),
+        ("8 harmonics, ±50 cents at 5 Hz", tone(8, 50.0, 5.0)),
+        ("8 harmonics, ±50 cents at 6 Hz", tone(8, 50.0, 6.0)),
+        ("8 harmonics, ±100 cents at 5 Hz", tone(8, 100.0, 5.0)),
+        ("sines at 1000 and 1030 Hz", two_sines),
+        ("white noise", white),
+        ("white noise, low-passed", low),
+    ];
+    let kit = Kit::new();
+    println!(
+        "== 0. the new pass on known signals (a held C4 of {:.1} s) ==",
+        held.on_s
+    );
+    println!("{:<34} {:>6} {:>6}", "signal", "rough", "noise");
+    for (name, x) in &signals {
+        let (rough, tonal, total) = peaks(x, sr, &span, &kit);
+        let noise = if total > 0.0 {
+            1.0 - tonal / total
+        } else {
+            1.0
+        };
+        println!("{name:<34} {rough:>6.2} {noise:>6.2}");
+    }
+    println!();
+}
+
+/// The `n` rows of `set` nearest `cut` on each side of it by `read`,
+/// labelled `<label>-clears-<reading>` and `<label>-fails-<reading>`.
+fn edge<'a>(
+    mut set: Vec<&'a Row>,
+    read: Read,
+    cut: f64,
+    n: usize,
+    label: &str,
+) -> Vec<(String, &'a Row)> {
+    set.sort_by(|a, b| read(a.m()).total_cmp(&read(b.m())));
+    let split = set.partition_point(|r| read(r.m()) <= cut);
+    let mut out = Vec::new();
+    for (side, part) in [
+        ("clears", &set[split.saturating_sub(n)..split]),
+        ("fails", &set[split..(split + n).min(set.len())]),
+    ] {
+        for r in part {
+            out.push((format!("{label}-{side}-{:.3}", read(r.m())), *r));
+        }
+    }
+    out
+}
+
 /// What a listen starts from, for [`floor`]: for each of its three rules, the
 /// four draws nearest its threshold on each side among those the other two
-/// clear (`edge-<rule>-clears-…`, `edge-<rule>-fails-…`), then the first
-/// eight draws that clear the whole floor and the first eight that do not
-/// (`floor-clears-…`, `floor-fails-…`). Each file is the normalized render,
-/// the buffer an audition plays.
+/// clear (`edge-<rule>-clears-…`, `edge-<rule>-fails-…`); the same at
+/// roughness's line among draws whose pitch spreads over 25 cents, since
+/// vibrato alone reads rough ([`calibration_table`]) (`wobble-rough-…`); then
+/// the first eight draws that clear the whole floor and the first eight that
+/// do not (`floor-clears-…`, `floor-fails-…`). Each file is the normalized
+/// render, the buffer an audition plays.
 fn listen(dir: &str, ok: &[&Row], prior: &PatchGrammarPrior, spec: &PhraseSpec) {
     let rules: [(&str, Read, f64); 3] = [
         ("noise", |m| m.noise, 0.5),
@@ -1069,18 +1186,18 @@ fn listen(dir: &str, ok: &[&Row], prior: &PatchGrammarPrior, spec: &PhraseSpec) 
                 .enumerate()
                 .all(|(j, (_, r, c))| j == k || r(m) <= *c)
         };
-        let mut set: Vec<&Row> = ok.iter().copied().filter(|r| others(r.m())).collect();
-        set.sort_by(|a, b| read(a.m()).total_cmp(&read(b.m())));
-        let split = set.partition_point(|r| read(r.m()) <= *cut);
-        for (side, part) in [
-            ("clears", &set[split.saturating_sub(4)..split]),
-            ("fails", &set[split..(split + 4).min(set.len())]),
-        ] {
-            for r in part {
-                picks.push((format!("edge-{name}-{side}-{:.3}", read(r.m())), r));
-            }
-        }
+        let set: Vec<&Row> = ok.iter().copied().filter(|r| others(r.m())).collect();
+        picks.extend(edge(set, *read, *cut, 4, &format!("edge-{name}")));
     }
+    let wobbling: Vec<&Row> = ok
+        .iter()
+        .copied()
+        .filter(|r| {
+            let m = r.m();
+            m.noise <= 0.5 && m.hi <= 0.2 && m.wobble > 25.0
+        })
+        .collect();
+    picks.extend(edge(wobbling, |m| m.rough, 2.5, 4, "wobble-rough"));
     for (label, clears) in [("floor-clears", true), ("floor-fails", false)] {
         for r in ok.iter().filter(|r| floor(r.m()) == clears).take(8) {
             picks.push((label.to_string(), r));
@@ -1101,15 +1218,39 @@ fn listen(dir: &str, ok: &[&Row], prior: &PatchGrammarPrior, spec: &PhraseSpec) 
     println!("wrote {} renders to {dir}", picks.len());
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let listen_dir = args
-        .iter()
-        .position(|a| a == "--listen")
-        .map(|i| args[i + 1].clone());
-    let nums: Vec<usize> = args.iter().filter_map(|a| a.parse().ok()).collect();
+const USAGE: &str = "usage: sonic_floor [boots] [threads] [--listen DIR]";
+
+/// `[boots] [threads] [--listen DIR]`, or a usage error.
+fn parse_args(args: &[String]) -> Result<(usize, usize, Option<String>), String> {
+    let mut nums = Vec::new();
+    let mut listen_dir = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--listen" {
+            let dir = it.next().ok_or("--listen needs a directory")?;
+            listen_dir = Some(dir.clone());
+        } else {
+            let n: usize = a.parse().map_err(|_| format!("not a count: {a}"))?;
+            nums.push(n);
+        }
+    }
+    if nums.len() > 2 {
+        return Err("at most two counts: boots, then threads".to_string());
+    }
     let boots = nums.first().copied().unwrap_or(5);
     let threads = nums.get(1).copied().unwrap_or(4);
+    if boots == 0 || threads == 0 {
+        return Err("boots and threads must be at least 1".to_string());
+    }
+    Ok((boots, threads, listen_dir))
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (boots, threads, listen_dir) = parse_args(&args).unwrap_or_else(|e| {
+        eprintln!("{e}\n{USAGE}");
+        std::process::exit(2);
+    });
 
     let prior = PatchGrammarPrior::default();
     let spec = PhraseSpec::default();
@@ -1174,13 +1315,14 @@ fn main() {
         .iter()
         .filter(|r| r.boot.is_none() && r.m.is_some())
         .collect();
+    calibration_table(&spec);
     cost_table(&ok);
     vet_table(&draws);
     candidate_table(&ok, &presets);
     floor_table(&draws, &ok, boots);
     overlap_table(&ok);
     register_table(&ok);
-    preset_table(&presets);
+    preset_table(&presets, &cast());
     if let Some(dir) = listen_dir {
         listen(&dir, &ok, &prior, &spec);
     }
