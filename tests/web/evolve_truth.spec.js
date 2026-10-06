@@ -141,11 +141,31 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
   const restores = await app.sentCount("edit_set_tree");
   await page.keyboard.press("Control+z");
   await expect(page.locator("#toasts .toast-msg")).toHaveText("Nothing to undo here. PATCH edits undo in PATCH.", { timeout: 1_500 });
-  // Pressed again, it still sends no edit undo. That it is said once, the
-  // second taking the first's place rather than a turn behind it, is the
-  // lane's `replace` on a refusal (apps/web/tests/toasts.test.mjs); the lane
-  // keeps a waiting toast out of the page, so a count here could not see it.
-  await page.keyboard.press("Control+z");
+  // Pressed again, it is said once: the second refusal takes the first's
+  // place, so what waits behind it does not grow. main.js gives the refusal
+  // `replace: "undo-here"`; without it the first refusal goes back in line
+  // behind the second, one more waiting (the lane's rule is
+  // apps/web/tests/toasts.test.mjs's). A waiting toast is not in the page, so
+  // the count is the one the player sees, the toast's +N. Both presses and
+  // their reads are one task, so no other toast can arrive between them.
+  const said = await page.evaluate(async () => {
+    const { MAX_TOASTS } = await import("/toasts.js");
+    const press = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }));
+    const read = () => [...document.querySelectorAll("#toasts .toast")].map((t) => ({
+      msg: t.querySelector(".toast-msg").textContent,
+      waiting: Number(t.querySelector(".toast-stack").textContent.slice(1)),
+    }));
+    press();
+    const first = read();
+    press();
+    return { max: MAX_TOASTS, first, second: read() };
+  });
+  const REFUSAL = "Nothing to undo here. PATCH edits undo in PATCH.";
+  expect(said.first.map((t) => t.msg), JSON.stringify(said)).toEqual([REFUSAL]);
+  expect(said.second.map((t) => t.msg), JSON.stringify(said)).toEqual([REFUSAL]);
+  // A full backlog is trimmed to MAX_TOASTS, which would hide a second copy.
+  expect(said.first[0].waiting, JSON.stringify(said)).toBeLessThan(said.max);
+  expect(said.second[0].waiting, `the second ⌘Z's refusal queued the first again: ${JSON.stringify(said)}`).toBe(said.first[0].waiting);
   await app.quiet();
   expect(await app.sentCount("edit_set_tree"), "⌘Z in EVOLVE sent an edit undo").toBe(restores);
 
