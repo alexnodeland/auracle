@@ -1174,6 +1174,11 @@ impl LivePoly {
     /// knob ([`Self::set_param`]) writes every voice and so resets held
     /// notes' offsets until their next note-on.
     /// Returns false for unreadable JSON (touch is then off).
+    ///
+    /// Allocates (it parses the list): the port handler's, never
+    /// `process()`. ARRANGE's depth slider sends it on every step of a
+    /// drag, so a drag while notes sound allocates on the render thread
+    /// (`tests/no_alloc.rs` leaves it out of its count, and says so).
     pub fn set_touch(&mut self, sites_json: &str, depth: f64) -> bool {
         let Ok(sites) = serde_json::from_str::<Vec<(String, f64, f64)>>(sites_json) else {
             self.touch.clear();

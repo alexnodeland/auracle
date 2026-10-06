@@ -18,9 +18,14 @@
 //! quanta, its fade out and its fade in. Every path is played once first,
 //! so what is counted is the steady state, not a first use. What allocates
 //! by design is left out: a swap's silent rebuild (it compiles the new
-//! voices), the meter while it is on, RECORD, and the settings a player
-//! changes between phrases rather than during one (`set_sync`, `set_arp`,
-//! `set_touch`).
+//! voices), the meter while it is on, RECORD, the settings a player changes
+//! between phrases rather than during one (`set_sync`, `set_arp`), and
+//! `set_touch`, which parses the list of knobs velocity plays. That last is
+//! not only between phrases: besides a new patch or a change to *Velocity
+//! plays*, ARRANGE's *depth* slider sends it on every step of a drag, so a
+//! depth drag while notes sound allocates in the port handler, on the
+//! render thread. A message of its own for the depth, without the list (as
+//! `set_touch_base` is for the base), would take that out.
 //!
 //! One test in this file, so no other test's thread allocates beside it.
 
