@@ -180,3 +180,26 @@ fn standardizer_standardizes() {
     // Constant column: std floored, no NaN.
     assert!(transformed.iter().all(|r| r[1].abs() < 1e-9));
 }
+
+/// `inverse` undoes `transform`, on every column a fit produces, the
+/// constant one (σ floored to 1) included. A legacy log's z-scores and the
+/// standardizer they were written under *are* the raw values, and the
+/// session layer's migration reads them back this way.
+#[test]
+fn inverse_recovers_the_raw_values() {
+    let mut rng = StdRng::seed_from_u64(56);
+    let rows: Vec<Vec<f64>> = (0..60)
+        .map(|_| vec![rng.gen::<f64>() * 100.0, 5.0, rng.gen::<f64>() - 3.0])
+        .collect();
+    let sz = Standardizer::fit(&rows);
+    for r in &rows {
+        let back = sz.inverse(&sz.transform(r));
+        assert_eq!(back.len(), r.len());
+        for (b, x) in back.iter().zip(r) {
+            assert!(
+                (b - x).abs() <= 1e-12 * x.abs().max(1.0),
+                "{x} came back as {b}"
+            );
+        }
+    }
+}

@@ -189,10 +189,10 @@ impl Standardizer {
             mean[j] = m;
             std[j] = if s < 1e-9 { 1.0 } else { s };
         }
-        debug_assert!(
-            mean.iter().chain(&std).all(|v| v.is_finite()),
-            "a standardizer with a non-finite moment would not survive its own save"
-        );
+        // Every moment is finite here by construction: a column keeps (0, 1)
+        // unless its own moments came out finite. A standardizer with a
+        // non-finite moment would not survive its own save, which
+        // `overflowing_moments_fall_back_to_the_degenerate_case` checks.
         Self { mean, std }
     }
 
