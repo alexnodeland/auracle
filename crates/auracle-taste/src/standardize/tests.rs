@@ -47,6 +47,37 @@ fn one_escaped_row_cannot_kill_a_column() {
     }
 }
 
+/// Under ten usable rows nothing is clipped, not even an escaped value:
+/// with a handful of values the extremes *are* the spread, and pulling them
+/// in would throw away the only information about it. So a nine-row column
+/// with one `1e30` keeps its plain moments, bit for bit, where the same
+/// column one row longer is clipped back to its honest scale.
+#[test]
+fn under_ten_rows_nothing_is_clipped() {
+    let plain = |v: &[f64]| {
+        let n = v.len() as f64;
+        let m = v.iter().sum::<f64>() / n;
+        (
+            m,
+            (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / n).sqrt(),
+        )
+    };
+    let escaped = |n: usize| -> Vec<f64> {
+        let mut v: Vec<f64> = (0..n - 1).map(|i| i as f64 / (n - 2) as f64).collect();
+        v.push(1e30);
+        v
+    };
+    let nine = escaped(9);
+    let sz = Standardizer::fit(&col(&nine));
+    assert_eq!(
+        (sz.mean[0], sz.std[0]),
+        plain(&nine),
+        "nine rows were clipped"
+    );
+    let ten = Standardizer::fit(&col(&escaped(10)));
+    assert!(ten.std[0] < 1.0, "ten rows were not: σ {}", ten.std[0]);
+}
+
 /// **Clean data must come out bit-identical to the unrobustified fit.**
 ///
 /// The load-bearing property of the whole design, and the one the first
