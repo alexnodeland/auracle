@@ -598,7 +598,11 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   ⋯ handoff (`cancelPending`). A pointer's ✕ lets the focus go
   (`closeCatalog(false)`); the keyboard's returns it to ADD MODULE. The lean
   (`.sd-model`, `.sp-model`) shows under `body.model-view` only; the
-  keyboard's card stands beside the catalog.
+  keyboard's card stands beside the catalog. How many sounds it says carry a
+  module's coordinate ("In 12 of 40 sounds", and below `NB_SUPPORT_MIN`
+  the dash) is `poolSupport` (`support.js`) over the ranked rows'
+  s-expressions, cut sounds aside: a sound counts once for a coordinate,
+  however many of its modules it has.
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for

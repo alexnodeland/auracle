@@ -43,6 +43,21 @@ test("each sound counts exactly the modules the rack reads in it", () => {
   }
 });
 
+test("a coordinate counts each sound once, however many of its modules the sound has", () => {
+  const drive = { fold: "n_drive", distortion: "n_drive", bitcrush: "n_drive", ringmod: "n_drive", vco: "n_vco" };
+  const both = fixture.patches.find((x) => x.kinds.includes("fold") && x.kinds.includes("distortion"));
+  const audio = fixture.patches.find((x) => x.kinds.includes("audio_in"));
+  const { counts, byPhi, total } = poolSupport([row(1, both.sexpr), row(2, audio.sexpr)], catalog(drive));
+  assert.equal(counts.fold, 1);
+  assert.equal(counts.distortion, 1);
+  assert.equal(byPhi.n_drive, 1, "a wavefolder over a distortion is one sound carrying n_drive, not two");
+  assert.equal(byPhi.n_vco, 1);
+  assert.equal(total, 2);
+  // Two of one module in one sound is still one sound.
+  const twice = "(voice a=0.10 d=0.30 s=0.70 r=0.30 (fold t=0.50 nomod (fold t=0.40 nomod (vco saw +0 0.50 nomod))))";
+  assert.equal(poolSupport([row(3, twice)], catalog(drive)).counts.fold, 1);
+});
+
 test("a coordinate no sound carries is counted as none, and a module with no coordinate has a count and no coordinate", () => {
   const { byPhi } = poolSupport([], catalog({ filter: "n_filter", eq: "n_filter" }));
   assert.deepEqual(byPhi, { n_filter: 0 });

@@ -34,10 +34,12 @@ export function sexprHeads(sexpr) {
  *  of `modules` (`{kind, phi}`), and each coordinate they share.
  *
  *  - `counts[kind]`: the sounds with at least one of that module.
- *  - `byPhi[phi]`: the sum of the counts of the modules counted in that
+ *  - `byPhi[phi]`: the sounds with at least one module counted in that
  *    coordinate. Several modules share one (`n_drive` is the wavefolder,
- *    distortion, bitcrush and ring mod). A module with no `phi` has a count
- *    and no coordinate.
+ *    distortion, bitcrush and ring mod), and the coefficient's evidence is
+ *    every sound using any of them, each sound once: a sound with a
+ *    wavefolder and a distortion is one sound, not two. A module with no
+ *    `phi` has a count and no coordinate.
  *  - `total`: the sounds, cut ones aside, whether or not their row carried an
  *    s-expression. */
 export function poolSupport(rows, modules, cut = new Set()) {
@@ -51,11 +53,13 @@ export function poolSupport(rows, modules, cut = new Set()) {
   for (const r of kept) {
     if (!r.sexpr) continue;
     const heads = sexprHeads(r.sexpr);
+    const phis = new Set();
     for (const m of modules) {
       if (!heads.has(sexprHead(m.kind))) continue;
       counts[m.kind] += 1;
-      if (m.phi) byPhi[m.phi] += 1;
+      if (m.phi) phis.add(m.phi);
     }
+    for (const phi of phis) byPhi[phi] += 1;
   }
   return { counts, byPhi, total: kept.length };
 }

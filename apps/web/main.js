@@ -17854,9 +17854,9 @@ function nameSetting(kg, knob) {
 // Cut patches are gone from every other count in the app (see bankSource),
 // and they are not what the model is reasoning over either. The coefficient
 // is fitted per FAMILY (`n_drive` covers fold, distortion, bitcrush and ring
-// mod), so the evidence behind it is every patch using any of them: gating a
-// family's θ on one member's prevalence measured a different quantity from
-// the one it was guarding.
+// mod), so the evidence behind it is every patch using any of them, each
+// patch once: gating a family's θ on one member's prevalence measured a
+// different quantity from the one it was guarding.
 function nbSupport() {
   return poolSupport((views && views.ranked) || [], MODULES, cutIds);
 }
