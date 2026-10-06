@@ -10798,8 +10798,10 @@ function chainRoute(x1, y1, x2, y2) {
 }
 
 /** The `d` for one cable, given where the plates are *now*. `null` when either
- *  end is missing, which is a wire the caller should skip rather than draw. */
-function wirePathD(w, pos, modByKey) {
+ *  end is missing, which is a wire the caller should skip rather than draw.
+ *  `rest` is where the plates come to rest, when a motion has them somewhere
+ *  else this frame (`startRackMotion`): it decides which way the cable runs. */
+function wirePathD(w, pos, modByKey, rest = pos) {
   const from = pos.get(w.from);
   const to = pos.get(w.to);
   if (!from || !to) return null;
@@ -10840,7 +10842,23 @@ function wirePathD(w, pos, modByKey) {
   // tightest gap either flow layout can produce is the 28px gutter, so this
   // branch is unreachable from chain or compact and cannot change how an
   // existing patch draws.
-  if (x2 < x1 + 8) {
+  //
+  // Which of the two runs a cable takes is decided where its plates come to
+  // rest (`rest`), not where the rack's motion has them this frame. Within
+  // one sound a slide can take the amp past the module plugged into it: an
+  // insert slides it out from under the module fading in where it was, and
+  // ⌘Z or BACK TO after NEW PATCH slides it back from the empty socket's side
+  // past its source. Decided from the frame, the cable took this run while
+  // the amp was behind its source and jumped to the curve as it came out,
+  // about half way through the slide (#228). Decided at rest, it is the curve
+  // it settles into on every frame, doubled back over the plates while they
+  // overlap, and no slide in chain or compact reaches this branch. A plate
+  // dragged by hand is at rest wherever the hand has it (`movePlateTo` moves
+  // it in `rackFrame.pos` and draws from that), so a module put behind its
+  // source routes as it is dragged.
+  const rf = rest.get(w.from) || from;
+  const rt = rest.get(w.to) || to;
+  if (rt.x < rf.x + rf.w + 8) {
     const yb = Math.max(from.y + from.h, to.y + to.h) + 26;
     return orth([[x1, y1], [x1 + 26, y1], [x1 + 26, yb], [x2 - 26, yb], [x2 - 26, y2], [x2, y2]]);
   }
@@ -12542,6 +12560,8 @@ function startRackMotion(before) {
     // did not move, interpolated ones for everything that did. The cables are
     // then re-routed from it, which is the difference between "the patch is
     // deforming" and "the plates are sliding out from under their wiring".
+    // Each cable keeps the kind of run it has at rest (`rackFrame.pos`): only
+    // its ends move.
     const at = new Map(rackFrame.pos);
     for (const it of moves) {
       it.cx = it.ox + (it.x - it.ox) * e;
@@ -12552,7 +12572,7 @@ function startRackMotion(before) {
       at.set(it.key, { ...rackFrame.pos.get(it.key), x: it.cx, y: it.cy });
     }
     for (const it of rackFrame.wires) {
-      const d = wirePathD(it.w, at, rackFrame.mods);
+      const d = wirePathD(it.w, at, rackFrame.mods, rackFrame.pos);
       if (d == null) continue;
       it.caseEl.setAttribute("d", d);
       it.inkEl.setAttribute("d", d);

@@ -565,9 +565,15 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   `value`), the names and head settings print larger, as compact draws them
   (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
-  are level S-curves (`wirePathD`); a two-input module's input labels sit
-  outside the plate (`addJack`'s `outside`), and plain `in`/`out` are not
-  printed (they stay the jacks' accessible names).
+  are level S-curves (`wirePathD`); a cable into a module placed behind its
+  source by hand takes a right-angle run below both instead. Which of the two
+  a cable is, is decided where its plates come to rest: the rack's motion
+  (`startRackMotion`) hands `wirePathD` the layout at rest beside each
+  frame's, so a cable stays a curve while a slide takes its end past its
+  source (the amp out from under an insert, or back on ⌘Z; #228). A
+  two-input module's input labels sit outside the plate (`addJack`'s
+  `outside`), and plain `in`/`out` are not printed (they stay the jacks'
+  accessible names).
 
 - **The head** is `renderSubject`: the cap's family (a preset's category, only
   while unedited), the name, and the subtitle the rack counts (patch.js

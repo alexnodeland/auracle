@@ -17,6 +17,13 @@
 //   sound move alike: ⌘Z past NEW PATCH, and BACK TO ‹name›, which opens the
 //   sound on the bench again (the one the new patch was started from, whose
 //   amp it kept), each slide the amp back as the empty socket fades out.
+// - Through each of those slides the cable into the amp is the curve it
+//   rests in, on every frame. The insert, ⌘Z and BACK TO each slide the amp
+//   past the module it is plugged into (on the insert, the distortion fading
+//   in where the amp was; on the way back, the distortion or the filter
+//   fading in where it rests), and for the frames the amp was behind that
+//   module the cable used to take the right-angle run of a module placed
+//   behind its source, then jump to the curve as the amp came out (#228).
 //
 // The frames are the page's own: an observer on the rack (installed before
 // boot) samples it as each build lands, in the task that drew it and set its
@@ -137,11 +144,13 @@ function expectFadedUpInPlace(motion, name) {
 /** A slide of the amp, as asserted on the first and last frames of its
  *  motion: it starts where it was (`from`) and ends at rest where it now is
  *  (`to`, read at rest), far enough away to have passed a module. A fade-up
- *  in place would start at `to`. */
+ *  in place would start at `to`. On every frame between, the cable into the
+ *  amp is the curve it rests in, wherever the amp is on its way. */
 function expectSlid(motion, from, to, name) {
   expect(away({ amp: to }, from), `${name}: the amp's move`).toBeGreaterThan(50);
   expect(Math.round(away(motion[0], from)), `${name}: the amp as it lands`).toBe(0);
   expect(Math.round(away(motion[motion.length - 1], to)), `${name}: the amp as its motion ends`).toBe(0);
+  expect(motion.map((f) => f.curve), `${name}: the cable into the amp is a curve`).toEqual(motion.map(() => true));
 }
 
 test("a sound opened over an unrelated one fades up in place: nothing of the last one fades out, and its amp does not slide across", async ({ page, app }) => {
@@ -162,7 +171,7 @@ test("a sound opened over an unrelated one fades up in place: nothing of the las
   expectFadedUpInPlace(motionOf(await takeFrames(page), rackOf("Reese", 6)), "First Bass → Reese");
 });
 
-test("within one sound the rack still moves: an insert slides the amp to its new place, NEW PATCH slides it along as what it took fades out, and ⌘Z or BACK TO slides it back", async ({ page, app }) => {
+test("within one sound the rack still moves, the cable into the amp a curve all the way: an insert slides the amp to its new place, NEW PATCH slides it along as what it took fades out, and ⌘Z or BACK TO slides it back", async ({ page, app }) => {
   await page.addInitScript(recordRack);
   await app.boot();
   await openPreset(app, "Reese");
