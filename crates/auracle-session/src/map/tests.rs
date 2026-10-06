@@ -354,3 +354,202 @@ fn a_panic_that_poisons_the_maps_memory_costs_nothing() {
     assert_eq!(state.map_axes, drawn, "the save lost the axes");
     assert_eq!(*restore(&engine, state).drawn_axes(), drawn);
 }
+
+/// **No rows have no axes, and a line has one.** The center of no rows is
+/// empty and so are its axes, which is settled (there is nothing to
+/// converge to). Rows on a single line leave the second axis nothing to
+/// carry: it is reported settled with no variance, not as an axis.
+#[test]
+fn no_rows_have_no_axes_and_a_line_has_one() {
+    let mut none: Vec<Vec<f64>> = Vec::new();
+    assert!(mean_center(&mut none).is_empty());
+    assert_eq!(
+        leading_axis(&[vec![], vec![]], None),
+        (Vec::new(), 0.0, true)
+    );
+
+    let mut line: Vec<Vec<f64>> = (0..20)
+        .map(|i| {
+            let a = i as f64 - 9.5;
+            vec![a, a, 0.0]
+        })
+        .collect();
+    mean_center(&mut line);
+    let (ax1, var1, ok1) = leading_axis(&line, None);
+    let (_, var2, ok2) = leading_axis(&line, Some(&ax1));
+    assert!(ok1 && ok2);
+    assert!(var1 > 1.0, "the line's own axis carries its spread");
+    assert!(var2 < 1e-12, "a second axis carried {var2}");
+}
+
+/// The frame a sound of your own is placed on: rows spread along the first
+/// two coordinates, axes along them, and the variance each carries.
+fn frame(total_var: f64, variance: [f64; 2]) -> MapFrame {
+    MapFrame {
+        rows: Vec::new(),
+        meta: Vec::new(),
+        centered: Vec::new(),
+        mean: vec![0.0; 4],
+        axes: [vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]],
+        variance,
+        total_var,
+        converged: [true, true],
+    }
+}
+
+/// **A sound of your own measured on part of φ is placed by projection, or
+/// fitted.** `Imputed` (the shipped placement) projects its offset on the
+/// coordinates it has. `Fit` takes probabilistic PCA's posterior mean, which
+/// pulls each axis toward the center by the noise the axes leave over
+/// against that axis's variance; and where nothing it measured loads on the
+/// axes (the system is all but singular) it places the sound at the center
+/// rather than dividing by nearly nothing.
+#[test]
+fn a_partial_measurement_is_projected_or_fitted() {
+    let toward = |observed: Vec<usize>, target: Vec<f64>| crate::own::Toward {
+        observed,
+        target,
+        gamma: crate::own::OWN_GAMMA,
+    };
+    let t = toward(vec![0, 1, 3], vec![2.0, -1.0, 5.0]);
+    let f = frame(6.0, [4.0, 1.0]);
+    let imputed = place(&t, &f, Placement::Imputed);
+    assert_eq!((imputed.x, imputed.y, imputed.observed), (2.0, -1.0, 3));
+    // Noise per left-over coordinate: (6 − 4 − 1) / (4 − 2) = 0.5.
+    let fit = place(&t, &f, Placement::Fit);
+    assert!((fit.x - 2.0 / (1.0 + 0.5 / 4.0)).abs() < 1e-12);
+    assert!((fit.y + 1.0 / (1.0 + 0.5 / 1.0)).abs() < 1e-12);
+
+    let off_axis = toward(vec![2, 3], vec![3.0, 3.0]);
+    let wide = frame(2.0e3, [1.0e3, 1.0e3]);
+    let p = place(&off_axis, &wide, Placement::Fit);
+    assert_eq!((p.x, p.y, p.observed), (0.0, 0.0, 2));
+}
+
+/// **A map of fewer than three sounds is empty, and says nothing
+/// converged** rather than reporting a solve that never ran.
+#[test]
+fn a_map_of_fewer_than_three_sounds_is_empty_and_unsolved() {
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 2,
+            ..fast()
+        },
+    );
+    engine.fill_pool(&mut StdRng::seed_from_u64(0x3A2));
+    let map = engine.taste_map();
+    assert!(map.points.is_empty());
+    assert_eq!(map.converged, [false, false]);
+    assert!(engine.drawn_axes().is_none(), "an empty map was remembered");
+}
+
+/// **A map saved under another φ is drawn afresh.** Axes remembered at
+/// another width cannot place today's φ, so until the map is drawn again
+/// the liking direction has nothing to read and says nothing; the redraw
+/// cannot face them, takes the sign convention, and is remembered.
+#[test]
+fn a_map_saved_under_another_phi_is_drawn_afresh() {
+    let engine = taught(0xA0F);
+    let mut state = engine.export_state();
+    state.map_axes = Some([vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]);
+    let mut back = restore(&engine, state);
+    back.fit_posterior(&mut StdRng::seed_from_u64(0xA10));
+    assert_eq!(back.belief().direction, None, "read today's φ on old axes");
+    let map = back.taste_map();
+    let drawn = back
+        .drawn_axes()
+        .clone()
+        .expect("the redraw was remembered");
+    for (k, ax) in drawn.iter().enumerate() {
+        assert_eq!(ax.len(), phi_names().len());
+        let pivot = (0..ax.len())
+            .max_by(|&i, &j| ax[i].abs().total_cmp(&ax[j].abs()))
+            .unwrap();
+        assert!(ax[pivot] > 0.0, "axis {k} does not take the convention");
+    }
+    assert!(map
+        .points
+        .iter()
+        .all(|p| p.x.is_finite() && p.y.is_finite()));
+    assert!(back.belief().direction.is_some());
+}
+
+/// **Each point on the map says where its sound came from**, by the
+/// spelling the page colors it by: a literal table, since the page reads
+/// these words. A member never standardized has no place on the map (that
+/// state built by hand: the engine standardizes what it admits).
+#[test]
+fn map_points_say_where_each_sound_came_from() {
+    const WIRE: [(Origin, &str); 4] = [
+        (Origin::Prior, "prior"),
+        (Origin::Refined, "refined"),
+        (Origin::Edited, "edited"),
+        (Origin::Preset, "preset"),
+    ];
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 6,
+            ..fast()
+        },
+    );
+    engine.fill_pool(&mut StdRng::seed_from_u64(0x0F1));
+    for (k, (origin, _)) in WIRE.iter().enumerate() {
+        engine.pool[k].origin = *origin;
+    }
+    engine.pool[5].phi_std.clear();
+    let map = engine.taste_map();
+    assert_eq!(map.points.len(), 5, "an unstandardized member was drawn");
+    for (k, (_, word)) in WIRE.iter().enumerate() {
+        let p = map.points.iter().find(|p| p.id == Some(engine.pool[k].id));
+        assert_eq!(p.expect("a member left off the map").origin, *word);
+    }
+}
+
+/// **The map's history is the newest votes, at most `MAX_HISTORY` of
+/// them**, each a ghost on the pool's scale; a vote logged before raw φ
+/// (already on a scale) is drawn as stored.
+#[test]
+fn the_maps_history_is_the_newest_votes_up_to_its_cap() {
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 4,
+            ..fast()
+        },
+    );
+    engine.fill_pool(&mut StdRng::seed_from_u64(0x415));
+    let mut legacy = auracle_taste::Observation::new(
+        auracle_taste::Feedback::KeepKill {
+            x: vec![0.25; phi_names().len()],
+            kept: true,
+        },
+        0,
+        &phi_names(),
+    );
+    legacy.schema_version = 0;
+    engine.log.push(legacy);
+    let map = engine.taste_map();
+    let ghosts: Vec<&MapPoint> = map.points.iter().filter(|p| p.id.is_none()).collect();
+    assert_eq!(ghosts.len(), 1);
+    // Drawn from the stored vector, not standardized again: its offset from
+    // a pool point is the stored vector's offset, on the drawn axes.
+    let first = &map.points[0];
+    let c = &engine.pool[engine.find(first.id.unwrap()).unwrap()];
+    let stored: Vec<f64> = vec![0.25; phi_names().len()];
+    let offset: Vec<f64> = stored.iter().zip(&c.phi_std).map(|(a, b)| a - b).collect();
+    let (dx, dy) = engine.map_coordinates(&offset).unwrap();
+    assert!((ghosts[0].x - first.x - dx).abs() < 1e-9);
+    assert!((ghosts[0].y - first.y - dy).abs() < 1e-9);
+
+    for _ in 0..(MAX_HISTORY / 2 + 3) {
+        engine.record_duel(0, 1, true);
+    }
+    let map = engine.taste_map();
+    assert_eq!(
+        map.points.len(),
+        4 + MAX_HISTORY,
+        "the history was not capped"
+    );
+}
