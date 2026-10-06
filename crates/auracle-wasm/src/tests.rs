@@ -937,63 +937,93 @@ fn presets_come_back_from_the_shipped_wirings() {
     assert!(d.windows(2).all(|w| w[0] <= w[1]));
 }
 
-/// **The farm's wire changes no child.** One twin breeds a generation
-/// serially (`refine`); the other hands its jobs out as JSON
-/// (`refine_jobs`), walks each through the stateless `farm_walk` export —
-/// which must answer exactly what `run_walk` answers on the engine's own
-/// context and job — and absorbs the JSON results in order. The two must
-/// end with the same bank and the same lineage.
+/// **The farm's wire changes no child.** The serial generation
+/// (`Engine::refine`) is its jobs, `run_walk` on each with the engine's
+/// memo, and `refine_absorb` in job order. The farm hands the same jobs out
+/// as JSON (`refine_jobs`), a farm worker walks each through the stateless
+/// `farm_walk` export, and the engine absorbs what comes back. So the farm
+/// breeds the serial generation exactly when `farm_walk` of a job, as sent,
+/// answers what `run_walk` answers on the engine's own context and job, and
+/// the binding absorbs that answer in turn and only in turn. (That the order
+/// the walks finish in cannot move the bank is the session's
+/// `a_generation_absorbed_in_any_completion_order_is_the_serial_one`.)
 #[test]
 fn farm_walks_breed_the_serial_generation() {
-    let (mut serial, mut farmed) = twins(0xFA2);
-    serial.refine();
-
-    let reply: serde_json::Value = serde_json::from_str(&farmed.refine_jobs()).unwrap();
+    let mut engine = taught_wasm(0xFA2);
+    let size = pool_ids(&engine).len();
+    let reply: serde_json::Value = serde_json::from_str(&engine.refine_jobs()).unwrap();
+    assert!(
+        reply.get("reason").is_none(),
+        "the taste's own generation carries no reason: {reply}"
+    );
     // Re-serialized through `Value`, so its keys come out sorted: the
     // context is parsed by name, and its floats survive exactly
     // (`float_roundtrip`), which is what the worker's JSON relies on.
     let context = serde_json::to_string(&reply["context"]).unwrap();
-    let own = farmed.engine.walk_context().expect("taught");
+    let own = engine.engine.walk_context().expect("taught");
     let jobs = reply["jobs"].as_array().unwrap();
     assert_eq!(jobs.len(), 3);
-    let mut children = 0;
-    for job in jobs {
-        let job_text = serde_json::to_string(job).unwrap();
-        let wired = farm_walk(&context, &job_text);
-        assert!(
-            !wired.is_empty(),
-            "farm_walk refused a job refine_jobs made"
-        );
-        let native: WalkJob = serde_json::from_value(job.clone()).unwrap();
-        let direct = run_walk(&own, &native, &RenderMemo::default());
-        assert_eq!(
-            wired,
-            serde_json::to_string(&direct).unwrap(),
-            "job {}: farm_walk differs from run_walk",
-            native.index
-        );
-        children += (farmed.refine_absorb(&wired) > 0) as usize;
-    }
+    let results: Vec<String> = jobs
+        .iter()
+        .map(|job| {
+            let wired = farm_walk(&context, &serde_json::to_string(job).unwrap());
+            let native: WalkJob = serde_json::from_value(job.clone()).unwrap();
+            // On the memo `farm_walk` just filled: a hit is a miss, bit for
+            // bit, so this renders nothing and walks the same walk.
+            let direct = WALK_MEMO.with(|memo| run_walk(&own, &native, memo));
+            assert_eq!(
+                wired,
+                serde_json::to_string(&direct).unwrap(),
+                "job {}: farm_walk differs from run_walk",
+                native.index
+            );
+            wired
+        })
+        .collect();
+    // In job order only: a result offered out of its turn is refused as
+    // stale and changes nothing; one that does not parse changes nothing.
+    assert_eq!(engine.refine_absorb(&results[1]), 0);
+    assert_eq!(engine.last_refine_reason(), "stale");
+    assert_eq!(engine.refine_absorb("{"), 0);
+    let children = results
+        .iter()
+        .filter(|r| engine.refine_absorb(r) > 0)
+        .count();
     assert!(
         children > 0,
-        "no walk bred a child, so no child was compared"
+        "no walk bred a child, so no child was absorbed"
     );
-    assert_eq!(farmed.ranked(), serial.ranked(), "the bank differs");
+    // The last absorb finished the generation: what the children displaced
+    // is retired and gone, the bank is back to size, and a stop has nothing
+    // left to do.
+    let retired: Vec<u32> = serde_json::from_str(&engine.refine_retired()).unwrap();
+    let ids = pool_ids(&engine);
+    assert_eq!(ids.len(), size);
+    assert_eq!(retired.len(), children, "one retired per child");
+    assert!(retired.iter().all(|id| !ids.contains(id)), "{retired:?}");
     assert_eq!(
-        serde_json::to_string(&farmed.engine.lineage).unwrap(),
-        serde_json::to_string(&serial.engine.lineage).unwrap()
-    );
-    assert_eq!(farmed.refine_retired(), serial.refine_retired());
-    assert_eq!(
-        farmed.refine_finish(),
+        engine.refine_finish(),
         "[]",
         "the last absorb already finished"
     );
+    assert_eq!(
+        engine.refine_retiring(),
+        "[]",
+        "a bank at size retires nothing"
+    );
+    assert_eq!(
+        engine.refine_absorb(&results[0]),
+        0,
+        "a finished generation's result"
+    );
+    assert_eq!(engine.last_refine_reason(), "stale");
     assert_eq!(
         farm_walk("{", "{}"),
         "",
         "a broken job is refused, not walked"
     );
+    let job = serde_json::to_string(&jobs[0]).unwrap();
+    assert_eq!(farm_walk("{", &job), "", "a broken context is refused");
 }
 
 /// **The belief the worker posts after a pick.** On a taught engine with
@@ -1060,54 +1090,127 @@ fn belief_is_the_ranked_numbers_and_the_next_seeds() {
     assert_eq!(list(&belief["may_replace"]), lowest);
 }
 
-/// ⚡ as one farm job lands the same child as ⚡ in the engine, and so
-/// does the job drawn first and walked here afterwards (`refine_from_walk`,
-/// the worker's path when no crew comes up). An unknown seed says so
-/// instead of producing a job, and a walk with no job drawn is refused.
+/// Whether `child` (a binding's reply) is the ⚡ child `want` (the walk's
+/// result) lands: its tree when there is one, else 0 and the walk's reason.
+fn lands(engine: &WasmEngine, child: u32, want: &WalkResult) {
+    match &want.child {
+        Some(tree) => {
+            assert!(
+                child > 0,
+                "the walk's child did not land ({})",
+                engine.last_refine_reason()
+            );
+            let got: PatchTree = serde_json::from_str(&engine.tree_json_of(child)).unwrap();
+            assert_eq!(&got, tree, "another child landed");
+        }
+        None => {
+            assert_eq!(child, 0);
+            let reason = want.reason.expect("no child, so a reason");
+            assert_eq!(engine.last_refine_reason(), reason.as_str());
+        }
+    }
+}
+
+/// The walk a ⚡ reply (`refine_from_job`'s) holds, run natively on
+/// `memo`: the context and job as the wire carries them, and what
+/// `run_walk` makes of them. A memo hit is a miss, bit for bit, so the walk
+/// is the same on any memo; the tests pass the one the path under test has
+/// just filled (or is about to), so nothing is rendered twice.
+fn walk_of(reply: &str, memo: &RenderMemo) -> (String, String, WalkResult) {
+    let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+    let (context, job) = (
+        serde_json::to_string(&v["context"]).unwrap(),
+        serde_json::to_string(&v["job"]).unwrap(),
+    );
+    let ctx: WalkContext = serde_json::from_str(&context).expect("a context");
+    let parsed: WalkJob = serde_json::from_str(&job).expect("a job");
+    (context, job, run_walk(&ctx, &parsed, memo))
+}
+
+/// **⚡ on the farm is ⚡ in the engine.** ⚡ is one job (`refine_from_job`)
+/// whose walk is absorbed: on the farm the job crosses the wire as JSON,
+/// `farm_walk` walks it and `refine_from_absorb` takes the result; with no
+/// crew the engine walks the very job it drew (`refine_from_walk`). Both
+/// land the child `run_walk` finds on that job. With no generation open the
+/// child is a generation of its own and the bank is back to size at once;
+/// during one it joins it, and the stop retires what `refine_retiring`
+/// named, sparing the ⚡ seed. A job dropped (`refine_from_cancel`), an
+/// unknown seed and an untaught engine each say so.
 #[test]
 fn evolve_from_this_on_the_farm_is_evolve_from_this() {
-    let (mut serial, mut farmed) = twins(0x1F7);
-    let mut walked = taught_wasm(0x1F7);
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&serial.ranked()).unwrap();
-    let mut landed = 0;
-    for row in ranked.iter().take(4) {
-        let id = row["id"].as_u64().unwrap() as u32;
-        let here = serial.refine_from(id, "[]");
-        let reply: serde_json::Value =
-            serde_json::from_str(&farmed.refine_from_job(id, "[]")).unwrap();
-        let result = farm_walk(
-            &serde_json::to_string(&reply["context"]).unwrap(),
-            &serde_json::to_string(&reply["job"]).unwrap(),
-        );
-        let there = farmed.refine_from_absorb(id, &result);
-        assert_eq!(here, there, "seed {id}: the farm's ⚡ landed elsewhere");
-        assert_eq!(serial.last_refine_reason(), farmed.last_refine_reason());
-        let drawn: serde_json::Value =
-            serde_json::from_str(&walked.refine_from_job(id, "[]")).unwrap();
-        // The draw, not the whole job: a tree's node identities come from
-        // a process-wide mint and differ between twins.
-        assert_eq!(
-            drawn["job"]["rng_seed"], reply["job"]["rng_seed"],
-            "seed {id}: another job was drawn"
-        );
-        let later = walked.refine_from_walk(id);
-        assert_eq!(
-            here, later,
-            "seed {id}: the job walked here landed elsewhere"
-        );
-        assert_eq!(serial.last_refine_reason(), walked.last_refine_reason());
-        landed += (here > 0) as usize;
-    }
-    assert!(landed > 0, "no ⚡ landed, so no child was compared");
-    assert_eq!(farmed.ranked(), serial.ranked());
-    assert_eq!(walked.ranked(), serial.ranked());
-    assert_eq!(serial.status(), farmed.status());
-    assert_eq!(walked.refine_from_walk(0xDEAD), 0);
-    assert_eq!(walked.last_refine_reason(), "unknown_seed");
-    assert!(!walked.refine_from_cancel(0xDEAD));
+    let mut engine = taught_wasm(0x1F7);
+    let size = pool_ids(&engine).len();
+    // The farm's path, from the best member.
+    let id = pool_ids(&engine)[0];
+    let reply = engine.refine_from_job(id, "[]");
+    let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+    let result = farm_walk(
+        &serde_json::to_string(&v["context"]).unwrap(),
+        &serde_json::to_string(&v["job"]).unwrap(),
+    );
+    let (_, _, want) = WALK_MEMO.with(|memo| walk_of(&reply, memo));
+    assert_eq!(result, serde_json::to_string(&want).unwrap());
+    let child = engine.refine_from_absorb(id, &result);
+    lands(&engine, child, &want);
+    assert_eq!(pool_ids(&engine).len(), size, "retired at once");
+    // The engine's own path: the job drawn first, then walked here.
+    let id = pool_ids(&engine)[1];
+    let reply = engine.refine_from_job(id, "[]");
+    let (_, _, also) = walk_of(&reply, engine.engine.memo());
+    let other = engine.refine_from_walk(id);
+    lands(&engine, other, &also);
+    assert!(
+        child > 0 || other > 0,
+        "no ⚡ landed, so no child was compared"
+    );
+
+    // During a generation: the child joins it, nothing is retired until
+    // the stop, and the stop spares the ⚡ seed, the lowest member.
+    assert!(engine.refine_jobs().contains("\"jobs\""));
+    let seed = *pool_ids(&engine).last().unwrap();
+    let reply = engine.refine_from_job(seed, "[]");
+    let (_, _, want) = walk_of(&reply, engine.engine.memo());
+    assert!(
+        want.child.is_some(),
+        "fixture: the lowest member's ⚡ moves"
+    );
+    // `farm_walk`'s answer, as the farm's path above shows it to be.
+    let result = serde_json::to_string(&want).unwrap();
+    let child = engine.refine_from_absorb(seed, &result);
+    lands(&engine, child, &want);
     assert_eq!(
-        farmed.refine_from_job(0xDEAD, "[]"),
+        pool_ids(&engine).len(),
+        size + 1,
+        "nothing retired before the stop"
+    );
+    let would = engine.refine_retiring();
+    let named: Vec<u32> = serde_json::from_str(&would).unwrap();
+    assert_eq!(named.len(), 1);
+    assert!(!named.contains(&seed), "the ⚡ seed is spared");
+    assert_eq!(
+        engine.refine_finish(),
+        would,
+        "the stop retires what was named"
+    );
+    assert_eq!(engine.refine_retired(), would);
+
+    // A dropped job is gone; a broken result changes nothing.
+    let id = pool_ids(&engine)[0];
+    assert!(engine.refine_from_job(id, "[]").contains("\"job\""));
+    assert!(engine.refine_from_cancel(id));
+    assert!(!engine.refine_from_cancel(id), "dropped once");
+    assert_eq!(engine.refine_from_walk(id), 0);
+    assert_eq!(engine.last_refine_reason(), "unknown_seed");
+    assert_eq!(engine.refine_from_absorb(id, "{"), 0);
+    assert_eq!(
+        engine.refine_from_job(0xDEAD, "[]"),
         r#"{"reason":"unknown_seed"}"#
+    );
+    let mut cold = WasmEngine::new(0x1F7, 4);
+    while cold.fill_step(4) > 0 {}
+    assert_eq!(
+        cold.refine_from_job(pool_ids(&cold)[0], "[]"),
+        r#"{"reason":"no_taste"}"#
     );
 }
 

@@ -156,9 +156,10 @@ phrase: about 2.2 MB of JSON) goes to each worker once per generation, as one
 string, and `farm_walk` keeps its parse keyed by that exact text. Results are
 absorbed **in job order**, one per turn, whatever order they finished in, so
 the pool is the serial path’s at every width; natively
-`farm_walks_breed_the_serial_generation`. A walk a worker cannot run, or a
-crew that never comes up, is walked in the engine worker from the engine’s own
-copy of the same job.
+`a_generation_absorbed_in_any_completion_order_is_the_serial_one`, and across
+the farm’s wire `farm_walks_breed_the_serial_generation`. A walk a worker
+cannot run, or a crew that never comes up, is walked in the engine worker from
+the engine’s own copy of the same job.
 
 ⚡ evolve from this is one job over the same path. It draws its job from the
 `refine` stream **before** it waits for a crew, so a generation asked for
