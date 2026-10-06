@@ -99,9 +99,9 @@ to ask:
 - the report: head SHA, gates and spec counts, the before → after table,
   meaning changes to specs, voice drafts, anything left open.
 
-**Choose the model.** Opus is the agents' default. Pick Opus or Sonnet 5.5 for
-this task by how hard it looks, and set it as the Agent tool's `model`. Sonnet
-suits a task whose issue says exactly what to change and whose gates prove it:
+**Choose the model.** Opus is the agents' default. Pick Opus or Sonnet for this
+task by how hard it looks, and set it as the Agent tool's `model` (`opus` or
+`sonnet`, the aliases for the current models). Sonnet suits a task whose issue says exactly what to change and whose gates prove it:
 a rename, a docs table, a mechanical move. Opus suits design, a bug whose cause
 is not known yet, and anything a reviewer will have to think hard about. When
 in doubt, Opus. [`.claude/README.md`](../../README.md#choosing-the-model) has
@@ -113,8 +113,8 @@ Hand it to the area's agent (`web-engineer`, `engine-engineer`,
 ## 4. Review before the PR
 
 When the builder reports, run the quick gates in `$WT`, then hand the branch to
-the `reviewer` agent (Opus, its default; a re-check of fixed findings can run
-on Sonnet): the diff (`git -C "$WT" log origin/main..HEAD`), the brief, and
+the `reviewer` agent (Opus, its default, for the review and for the re-check of
+the fixes): the diff (`git -C "$WT" log origin/main..HEAD`), the brief, and
 what to hunt for.
 
 One round. Send the findings back to the builder (the same agent, so it

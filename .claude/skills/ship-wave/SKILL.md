@@ -49,11 +49,14 @@ each commit then ends with `Claude-Session: <it>` and each PR body with the
 link. Without it, neither does.
 
 `models` is `{<stage>: 'opus' | 'sonnet'}`. Each workflow runs its stages on the
-model its script sets by how hard the stage is. Opus builds, fixes, diagnoses,
-kills mutants, reviews and plans. Sonnet lists issues, reads one issue, counts
-mutants, re-checks a finding already fixed and finalizes (`review-pr`'s
-descriptions, voice and process lenses run on Sonnet too). A script's args
-comment names its stages.
+model its script sets by how hard the stage is and what a wrong answer costs.
+Opus builds, fixes, diagnoses, proves a flake's fix, kills mutants, plans,
+reviews (`review-pr`'s correctness, descriptions and tests lenses, and every
+refuter), and re-checks a blocking finding (`verify`), the last gate on it.
+Sonnet finalizes, lists issues, reads one issue, runs `mutants-burndown`'s
+first measure (the run after, `remeasure`, is Opus), and runs `review-pr`'s
+voice and process lenses. A script's args comment names its stages, and the
+[README](../../README.md#choosing-the-model) has them in a table.
 
 **One run per item.** A run returns when its slowest item is done, so give
 `ship-issues` one issue per run, or a small bundle of issues that share

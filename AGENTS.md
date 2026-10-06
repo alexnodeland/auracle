@@ -153,9 +153,12 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   the PR in the merge queue, which merges it once the full gate is green on
   its batch ([`docs/process.md`](docs/process.md)).
 - **Models are chosen per task.** Opus is each agent definition's default
-  (`model: opus`). The operator picks Opus or Sonnet 5.5 for a task by how hard
-  it looks: the Agent tool's `model` by hand, a workflow's `model` and `models`
-  in a wave. Agents call the advisor tool when there is one and it helps
+  (`model: opus`). The operator picks Opus or Sonnet for a task by how hard it
+  looks and what a wrong answer costs: the Agent tool's `model` by hand, a
+  workflow's `model` and `models` in a wave. The values are the aliases `opus`
+  and `sonnet`, which name the current models (Opus and Sonnet 5.5 as this is
+  written). Agents call the advisor tool when there is one: before committing
+  to an approach, when stuck, and before reporting done
   ([`.claude/README.md`](.claude/README.md#choosing-the-model)).
 - **Hooks:** at session start, a report of a missing or stale
   `apps/web/pkg` (the session's own checkout's) and of the browser queue; no

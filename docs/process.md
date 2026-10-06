@@ -123,13 +123,15 @@ in a plan's prose, a session's notes or a conversation.
   deletes it, work and all.
 - **Builders commit only.** An agent never pushes, opens a PR or merges. Its
   commits are small, one area each, each leaving the app working.
-- **The model is chosen per task.** The operator picks Opus or Sonnet 5.5 for
-  each agent it starts, by how hard the task looks: Opus for design, diagnosis
-  and judgment, Sonnet for work with a clear recipe and an easy check, and Opus
-  when in doubt ([`.claude/README.md`](../.claude/README.md#choosing-the-model)
-  has examples). The agent definitions default to Opus. An agent calls the
-  advisor tool, when the session has one, before it commits to an approach,
-  when it is stuck, and before it reports done.
+- **The model is chosen per task.** The operator picks Opus or Sonnet for each
+  agent it starts, by how hard the task looks and what a wrong answer costs:
+  Opus for design, diagnosis and judgment, Sonnet for work with a clear recipe
+  and an easy check, and Opus when in doubt
+  ([`.claude/README.md`](../.claude/README.md#choosing-the-model) has examples
+  and the aliases, `opus` and `sonnet`, which name the current models). The
+  agent definitions default to Opus. An agent calls the advisor tool, when the
+  session has one, before it commits to an approach, when it is stuck, and
+  before it reports done.
 - **Commit messages** explain why (root `AGENTS.md` rule 8). They carry
   `Refs #N` when an issue exists. No hand-written attribution trailers: no
   `Co-Authored-By`, no "generated with" line, no model name or version. When
@@ -503,12 +505,17 @@ wave or for it by name.
 | `mutants-burndown` | One crate's surviving mutants, killed file by file with tests of behavior or shown equivalent ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)), measured again, reviewed and finalized |
 
 Every agent in a workflow runs on a model the script chooses by how hard its
-stage is: Opus to build, fix, diagnose, kill mutants, review and plan; Sonnet to
-list, to read one issue, to count mutants, to re-check a fixed finding and to
-finalize. The operator changes a stage with `models: {stage: 'opus' | 'sonnet'}`
-in the run's args, and `ship-issues` takes an item's own `model` for its build
-and fix stages. `make dev-check` fails on an `agent()` call with no `model`, and
-on an override that does not reach its stage.
+stage is and what a wrong answer costs. Opus: `ship-issues`' build, review, fix
+and verify; `fix-flake`'s diagnose, fix, prove, review and verify;
+`mutants-burndown`'s kill, the run after (`remeasure`), review, fix and verify;
+`review-pr`'s correctness, descriptions and tests lenses and its refuters;
+`triage-backlog`'s plan. Sonnet: the finalize of the three that build,
+`mutants-burndown`'s first measure, `review-pr`'s voice and process lenses, and
+`triage-backlog`'s list and its read of each issue. The operator changes a
+stage with `models: {stage: 'opus' | 'sonnet'}` in the run's args, and
+`ship-issues` takes an item's own `model` for its build and fix stages.
+`make dev-check` fails on an `agent()` call with no `model`, and on an override
+that does not reach its stage.
 
 The operator's loop:
 

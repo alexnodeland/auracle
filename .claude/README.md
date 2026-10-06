@@ -69,30 +69,46 @@ to agents too.
 ### Choosing the model
 
 Each agent definition names Opus as its default (`model: opus` in its
-frontmatter). The operator chooses the model for each task, Opus or Sonnet 5.5,
-by how hard the task looks: how much design, diagnosis or judgment it takes,
-and what a wrong answer costs. By hand, that is the Agent tool's `model`. In a
+frontmatter). The operator chooses the model for each task, Opus or Sonnet, by
+how hard the task looks: how much design, diagnosis or judgment it takes, and
+what a wrong answer costs. By hand, that is the Agent tool's `model`. In a
 workflow, every `agent()` call passes a `model`, which the script sets from the
 stage. The operator changes a stage with `models: {stage: 'opus' | 'sonnet'}`
 in the run's args, and in `ship-issues` an item's own `model` sets its build and
 fix stages.
 
+`opus` and `sonnet` are the aliases the Agent tool and a workflow's `model`
+take. They name the current models: Opus and Sonnet 5.5 as this is written.
+
 | Model | For | For example |
 | --- | --- | --- |
-| Opus | Work that takes design, diagnosis or judgment | Building a feature or fixing a bug; finding a flake's cause; a test that kills a mutant by asserting a behavior; reviewing a branch; planning a wave |
-| Sonnet 5.5 | Work with a clear recipe and an easy check | Listing issues; reading one issue; counting a crate's mutants; re-checking a finding already fixed; a rebase, the quick gates and the PR checks; an item whose issue says exactly what to change and a gate proves it |
+| Opus | Work that takes design, diagnosis or judgment, or whose wrong answer is not recovered later | Building a feature or fixing a bug; finding a flake's cause, and proving its fix (a failure on the assertion or a timeout elsewhere); a test that kills a mutant by asserting a behavior; reviewing a branch, and its descriptions against every page that describes it; re-checking a blocking finding, the last gate on it; planning a wave |
+| Sonnet | Work with a clear recipe and an easy check, or one that a script checks again | Listing issues; reading one issue; the first count of a crate's mutants; a rebase, the quick gates and the PR checks; a review lens for voice or for CI and process; an item whose issue says exactly what to change and a gate proves it |
 
 When in doubt, use Opus. A wrong answer from the cheaper model costs a review
 round, and that costs more than the tokens saved.
 
+Each workflow's defaults, by stage:
+
+| Workflow | Opus | Sonnet |
+| --- | --- | --- |
+| `ship-issues` | build, review, fix, verify | finalize |
+| `fix-flake` | diagnose, fix, prove, review, verify | finalize |
+| `mutants-burndown` | kill, remeasure (the run after), review, fix, verify | measure (the run before), finalize |
+| `review-pr` | the correctness, descriptions and tests lenses, every refuter | the voice and process lenses |
+| `triage-backlog` | plan | list, read |
+
 The advisor is a tool, when the session has one, that gives your work so far to
 a stronger model for a second opinion. Every agent definition says to call it
 before committing to an approach, when stuck or going in circles, and before
-reporting done. So does every workflow prompt for substantive work; a pure
-listing skips it. `make dev-check` holds both: it fails on an `agent()` call
-with no `model`, on a definition without `model: opus` or without the advisor
-line, and on a workflow whose `models` override does not reach its stage
-(`scripts/ops/workflows.test.mjs`).
+reporting done. So does every workflow prompt for substantive work. Two skip it,
+because they only list or count: `triage-backlog`'s list of open issues, and
+`mutants-burndown`'s first measure. `make dev-check` holds all of this
+(`scripts/ops/check_workflows.mjs` and `scripts/ops/workflows.test.mjs`): a
+model on every `agent()` call, `opus` or `sonnet`; each stage's default; a
+`models` override or an item's `model` reaching its stage and no other; the
+advisor line in every prompt but those two; and `model: opus` and the advisor
+line in every agent definition.
 
 ## Workflows (`.claude/workflows/`)
 
@@ -121,9 +137,9 @@ there, and every `agent()` call passes `model: 'opus'` or `model: 'sonnet'`
 ([Choosing the model](#choosing-the-model)). What the workflows promise the
 operator is tested on scripted agents in `scripts/ops/workflows.test.mjs`: an
 item of `ship-issues`, `fix-flake` or `mutants-burndown` is `ready` only when
-every agent it needed came back, and `review-pr` loses no finding. An agent label is `<stage> <key>`
-(`build #233`, `fix #233 r2`), which `wf_result.py` reads a running
-workflow's journal by.
+every agent it needed came back, and `review-pr` loses no finding. An agent
+label is `<stage> <key>` (`build #233`, `fix #233 r2`), which `wf_result.py`
+reads a running workflow's journal by.
 
 ## The operator's scripts (`scripts/ops/`)
 
