@@ -66,13 +66,19 @@ fn bounds_are_flags() {
     // Each flag's code is what the wasm reply carries and the app words, so
     // it is pinned here as a literal, and its serialized name and its
     // Display say the same.
-    for (e, code) in [
+    let codes = [
         (FileError::BadRate, "bad_rate"),
         (FileError::TooLong, "too_long"),
         (FileError::TooShort, "too_short"),
         (FileError::NonFinite, "non_finite"),
         (FileError::Silent, "silent"),
-    ] {
+    ];
+    assert_eq!(
+        codes.map(|(e, _)| e),
+        FileError::ALL,
+        "a flag with no code pinned"
+    );
+    for (e, code) in codes {
         assert_eq!(e.code(), code);
         assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{code}\""));
         assert_eq!(e.to_string(), code);

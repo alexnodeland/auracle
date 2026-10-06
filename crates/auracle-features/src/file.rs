@@ -228,6 +228,16 @@ pub enum FileError {
 }
 
 impl FileError {
+    /// Every flag, in declaration order, so a sweep over them cannot miss
+    /// the newest.
+    pub const ALL: [FileError; 5] = [
+        FileError::BadRate,
+        FileError::TooLong,
+        FileError::TooShort,
+        FileError::NonFinite,
+        FileError::Silent,
+    ];
+
     /// The flag's code, as the wasm reply carries it.
     pub fn code(self) -> &'static str {
         match self {
