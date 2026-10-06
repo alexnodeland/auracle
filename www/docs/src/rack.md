@@ -292,7 +292,8 @@ it weighs.
 From **⋯**, *Download this patch* writes a patch file, and *Download as a
 picture…* draws the rack as a PNG or SVG, at a size and background you choose.
 The picture carries the patch inside it: open an Auracle PNG or SVG with
-*Open a patch file…*, or drop it on the window, and you get the patch back.
+*Open a patch file…*, or drop it on the window, and you get the same sound
+back.
 
 ## What to try next
 
