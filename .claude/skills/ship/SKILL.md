@@ -285,3 +285,12 @@ Update the plan's progress table (the task's issue and PR) when the PR did not.
 ## Status
 
 Report done, running and next, by PR and issue number. No date estimates.
+
+CI's health is read, not felt: `python3 scripts/ci_stats.py` gives the last
+7 days (CI's wall time by lane and kind of PR, the required jobs' runner
+waits, red runs and the job that failed, runs per PR, the time from entering
+Mergify's queue to the merge, main's red stretches and the browser shards),
+and `--compare docs/notes/ci-baseline-2026-10-05.json` sets each headline
+against the week before #177's wave 0. The nightly *CI health* workflow
+(`ci-health.yml`) writes the same to its summary; the budgets are in
+`docs/architecture/testing.md` § Budgets.

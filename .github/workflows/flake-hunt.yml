@@ -16,6 +16,10 @@ name: Flake hunt
 # Beside it, the speed budgets (ADR-022): the gate records each as an
 # annotation and never fails on one; here they are judged, once a night, on
 # main, and the ones over their limit file an issue of their own.
+#
+# CI's own health (scripts/ci_stats.py) is a workflow of its own,
+# ci-health.yml, after this one each night: a stop at the API's rate limit
+# there is a red CI health run, not a red hunt.
 
 on:
   schedule:
