@@ -4,12 +4,12 @@
   EVOLVE hands you a pair once eight sounds have arrived and fills the rest
   of the pool while you pick. Each pair used to be dealt from however many
   sounds had arrived by then, so the same random seed (`?seed=`) dealt other
-  pairs on a faster machine. Now the first pair is dealt from the first eight
-  sounds, the next from the first 16, then 24 and 32, in the order the pool
-  fills, and every pair after that from the whole pool. A pair whose sounds
-  haven’t all arrived waits for them, so if you pick very fast in the first
-  seconds, the next pair can take a moment (`evolve_seeded_deals.spec.js`,
-  `tests/worker/deal.test.mjs`, #211).
+  pairs on a faster machine. Now each deal reaches eight sounds further, in
+  the order the pool fills: the first deal is from the first eight sounds,
+  the next from the first 16, then 24 and 32, and every deal after that from
+  the whole pool. A deal whose sounds haven’t all arrived waits for them, so
+  if you pick very fast in the first seconds, the next pair can take a moment
+  (`evolve_seeded_deals.spec.js`, `tests/worker/deal.test.mjs`, #211).
 - **A cut changes no pair but one holding the sound you cut.** Cutting a
   sound used to change every pair dealt after it, even pairs of other
   sounds. Now only a pair holding the cut sound is dealt again, and it comes
