@@ -1134,10 +1134,10 @@ export function createTaste(host) {
     const f = host.views()?.features;
     const zi = barHover && f && Array.isArray(f.names) ? f.names.indexOf(barHover) : -1;
     const zOf = zi >= 0 ? new Map(f.rows.map((row) => [row.id, row.z[zi]])) : null;
-    const zmax = zOf ? Math.max(1e-6, ...[...pos.keys()].map((id) => Math.abs(zOf.get(id) ?? 0))) : 1;
+    const shades = zOf ? geom.poolShades(pos.keys(), zOf) : null;
     for (const [id, q] of pos) {
-      if (zOf) {
-        const sh = geom.shadeOf(zOf.get(id) ?? 0, zmax);
+      if (shades) {
+        const sh = shades.get(id);
         ctx.beginPath();
         ctx.arc(q.x, q.y, sh.r, 0, Math.PI * 2);
         ctx.fillStyle = inkAlpha(INK.green, sh.alpha);

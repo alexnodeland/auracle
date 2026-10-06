@@ -27,6 +27,7 @@ import {
   forecastScore,
   miniLayout,
   shadeOf,
+  poolShades,
   HISTORY_MAX,
   newHistory,
   readHistory,
@@ -355,6 +356,63 @@ test("the small map and its shading", () => {
   assert.ok(hi.alpha > mid.alpha && mid.alpha > lo.alpha, "more of the feature, brighter");
   assert.ok(hi.r > mid.r && mid.r === lo.r, "and larger, above the middle");
   assert.equal(hi.alpha, 1);
+});
+
+const near = (a, b) => Math.abs(a - b) < 1e-12;
+
+test("a dot's shade runs with its z, from the floor at −zmax to whole at +zmax", () => {
+  // The ends and the middle: alpha 0.15 to 1, and 0.575 at z = 0; the
+  // radius 1.6 px up to the middle, then up to 4.2 px.
+  assert.equal(shadeOf(-2, 2).alpha, 0.15);
+  assert.ok(near(shadeOf(0, 2).alpha, 0.575));
+  assert.equal(shadeOf(2, 2).alpha, 1);
+  assert.equal(shadeOf(-2, 2).r, 1.6);
+  assert.equal(shadeOf(0, 2).r, 1.6);
+  assert.ok(near(shadeOf(2, 2).r, 4.2));
+  // Straight between them: halfway up is halfway between the middle and whole.
+  assert.ok(near(shadeOf(1, 2).alpha, (shadeOf(0, 2).alpha + shadeOf(2, 2).alpha) / 2));
+  // Never darker for more of the feature, nor smaller.
+  const run = [-3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3].map((z) => shadeOf(z, 2));
+  for (let i = 1; i < run.length; i++) {
+    assert.ok(run[i].alpha >= run[i - 1].alpha, `alpha at step ${i}`);
+    assert.ok(run[i].r >= run[i - 1].r, `radius at step ${i}`);
+  }
+  assert.ok(run.at(-1).alpha - run[0].alpha > 0.8, "the whole range, end to end");
+  // Past ±zmax it holds at the end.
+  assert.deepEqual(shadeOf(3, 2), shadeOf(2, 2));
+  assert.deepEqual(shadeOf(-3, 2), shadeOf(-2, 2));
+  // Against zmax: the same share of it is the same shade.
+  assert.deepEqual(shadeOf(1, 2), shadeOf(2, 4));
+  // No z is the middle; a zmax of 0 divides nothing by zero.
+  assert.deepEqual(shadeOf(null, 2), shadeOf(0, 2));
+  assert.deepEqual(shadeOf(undefined, 2), shadeOf(0, 2));
+  assert.deepEqual(shadeOf(0, 0), shadeOf(0, 2));
+});
+
+test("the small map shades each sound drawn against the largest |z| among them", () => {
+  // The largest |z| here is 3: that sound is whole, the rest against it.
+  const zOf = new Map([[1, 3], [2, -1.5], [3, 0], [4, null]]);
+  const sh = poolShades(new Map([[1, {}], [2, {}], [3, {}], [4, {}], [5, {}]]).keys(), zOf);
+  assert.deepEqual([...sh.keys()], [1, 2, 3, 4, 5], "every sound drawn, and only those");
+  assert.equal(sh.get(1).alpha, 1);
+  assert.deepEqual(sh.get(2), shadeOf(-1.5, 3));
+  assert.equal(sh.get(2).v, -0.5);
+  assert.deepEqual(sh.get(3), shadeOf(0, 3));
+  assert.deepEqual(sh.get(4), sh.get(3), "a z posted empty is the middle");
+  assert.deepEqual(sh.get(5), sh.get(3), "a sound with no z posted is the middle");
+  // By size, not sign: a pool whose farthest z is below the middle puts that
+  // sound at the floor, and the highest short of whole.
+  const low = poolShades([1, 2], new Map([[1, -4], [2, 2]]));
+  assert.equal(low.get(1).alpha, 0.15);
+  assert.equal(low.get(2).v, 0.5);
+  // Only the sounds drawn set the scale: a z for a sound not on the map doesn't.
+  const drawn = poolShades([1], new Map([[1, 1], [9, 10]]));
+  assert.equal(drawn.get(1).alpha, 1);
+  assert.equal(drawn.has(9), false);
+  // A feature flat across the pool: every sound at the middle.
+  const flat = poolShades([1, 2], new Map([[1, 0], [2, 0]]));
+  assert.deepEqual(flat.get(1), shadeOf(0, 1));
+  assert.deepEqual(flat.get(2), shadeOf(0, 1));
 });
 
 test("the track keeps the sounds clear of it", () => {

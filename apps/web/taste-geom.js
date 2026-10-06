@@ -222,6 +222,18 @@ export function shadeOf(z, zmax) {
   return { v, alpha: 0.15 + 0.85 * (v * 0.5 + 0.5), r: 1.6 + 2.6 * Math.max(0, v) };
 }
 
+/** Every sound's mark on the small map while a weight is pointed at: each of
+ *  `ids` (the sounds drawn) by its z on that feature (`zOf`, a Map from id to
+ *  z as `WasmEngine::pool_features` posted it; a sound with none is drawn at
+ *  the middle), against the largest |z| among the sounds drawn, through
+ *  `shadeOf`. Returns a Map from id to its shade. */
+export function poolShades(ids, zOf) {
+  const list = [...ids];
+  const zAt = (id) => zOf.get(id) ?? 0;
+  const zmax = Math.max(1e-6, ...list.map((id) => Math.abs(zAt(id))));
+  return new Map(list.map((id) => [id, shadeOf(zAt(id), zmax)]));
+}
+
 /** How far each axis is pulled toward its ranks: about halfway, as the
  *  prototype does, so the crowded middle opens while every sound keeps its
  *  order along both axes (a monotone stretch, not a new map). */
