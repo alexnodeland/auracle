@@ -1927,7 +1927,7 @@ fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
         integrated_lufs(&x, 44_100.0).expect("vetted, so not silent")
     };
     let ids: Vec<u64> = engine.engine.pool.iter().map(|c| c.id).collect();
-    let (mut short, mut whole) = (0, 0);
+    let (mut short, mut whole, mut untouched) = (0, 0, 0);
     for id in ids {
         let i = engine.engine.find(id).expect("pool member");
         let f = engine.engine.pool[i].features.clone();
@@ -1951,6 +1951,7 @@ fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
             // At target, and too quiet for any point between the samples
             // to reach full scale: nothing to do, so nothing done.
             assert_eq!(played, stored.samples, "id {id} was touched");
+            untouched += 1;
         }
         // The stored buffer is still exactly what the featurizer made.
         let replay = auracle_features::render_playback(
@@ -1966,6 +1967,7 @@ fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
     }
     assert!(short >= 2, "the fixture lost its short patches ({short})");
     assert!(whole >= 1, "no shortfall came back to the target");
+    assert!(untouched >= 1, "the fixture lost its patches at the target");
 }
 
 /// Audio may ride along, and when it does it must be the render φ was
