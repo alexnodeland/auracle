@@ -148,29 +148,11 @@ async function host() {
 
 // ---------- the client ----------
 
-// The replies that answer a request, in order, by type; a reply answers a
-// request when it echoes what the request carries (`req`, `token`, `id`,
-// `index`) or echoes none of it. `a|b` is either. Until replies name their
-// request (see `answers`).
-const ANSWERS = {
-  edit_begin: ["bench|bench_missing"],
-  fit: ["fitted"],
-  load_preset: ["preset_loaded"],
-  perform_drift: ["perform_drifted"],
-  perform_offer: ["perform_offered"],
-  perform_record: ["perform_recorded", "status"],
-  perform_wire: ["perform_wired"],
-  record_duel: ["status"],
-  record_keep: ["status"],
-  record_stars: ["status"],
-  set_audition_clip: ["audition_clip"],
-  warm_start: ["warm_done"],
-};
-const ECHO = ["req", "token", "id", "index"];
-
-const echoes = (msg, r) => ECHO.every((k) => !(k in msg) || !(k in r) || r[k] === msg[k]);
-// Every request is answered, if only with the error that it could not run.
-const failed = (msg, r) => (r.type === "engine_error" || r.type === "not_ready") && r.request === msg.type && echoes(msg, r);
+// Every request goes out numbered (`rid`), as main.js `send` numbers it, and
+// every reply the worker sends in answer names it (`re`: the number, or a
+// list when one reply answers several), with `more: true` on all but the
+// last (docs/architecture/web-runtime.md, "The worker's replies").
+const answers = (rid) => (r) => r.re === rid || (Array.isArray(r.re) && r.re.includes(rid));
 
 function matches(r, where) {
   if (!where) return true;
@@ -182,6 +164,7 @@ class EngineWorker {
   constructor(thread, { errors, crew }) {
     this.thread = thread;
     this.crew = crew;
+    this.rid = 0;
     /** Every reply the worker posted, in order; each carries its place, `_n`. */
     this.replies = [];
     /** What the worker said on `console.error` and `console.warn`. */
@@ -233,7 +216,9 @@ class EngineWorker {
     this.traces.clear();
   }
 
-  /** Send `msg` to the worker. With `during: { call, nth }` it is posted when
+  /** Send `msg` to the worker, numbered as main numbers it: `msg.rid` is set
+   *  on the object, so `answers(msg)` finds its replies later. With
+   *  `during: { call, nth }` it is posted when
    *  the `nth` call (1 by default) of the engine's `call` from now begins,
    *  and arrives once that call is over. It lands before `breathe`'s 1 ms
    *  timer only when the armed call runs in a timer turn (`pump`, or a job
@@ -242,6 +227,7 @@ class EngineWorker {
    *  Returns the count of replies so far, a mark for `after`. */
   post(msg, { during, transfer } = {}) {
     const at = this.replies.length;
+    msg.rid = ++this.rid;
     if (during) {
       const { call, nth = 1, tag = msg.type } = typeof during === "string" ? { call: during } : during;
       this.thread.postMessage({ __harness: { op: "during", call, nth, msg, tag } });
@@ -251,30 +237,27 @@ class EngineWorker {
     return at;
   }
 
-  /** Send `msg` and wait for the replies that answer it (`ANSWERS`, or
-   *  `answers`): an array, in order, ending early with an `engine_error` or
-   *  `not_ready` for it. */
-  async send(msg, { answers, during, transfer, timeout } = {}) {
-    const after = this.post(msg, { during, transfer });
-    return this.answers(msg, { after, answers, timeout });
+  /** Send `msg` and wait for every reply that answers it: an array, in
+   *  order, up to the one without `more` (an `engine_error` if it could not
+   *  run). Only for a request the worker answers: a few never are, by design
+   *  (`retire`, `promote`, `farm_ports` …), and those are `post`ed. */
+  async send(msg, { during, transfer, timeout } = {}) {
+    this.post(msg, { during, transfer });
+    return this.answers(msg, { timeout });
   }
 
-  async answers(msg, { after = 0, answers, timeout } = {}) {
-    // TODO(request-ids): once main's `send` stamps `rid` and every reply
-    // names its request (`re`, and `more` while more follow), post `rid`
-    // here, take the replies with `r.re === rid` up to the first without
-    // `more`, and drop `ANSWERS` and `echoes`.
-    const want = answers || ANSWERS[msg.type] || [msg.type];
+  /** The replies to a request already sent (`msg`, as `post` numbered it),
+   *  up to its last, once they have all landed. */
+  async answers(msg, { timeout } = {}) {
+    if (msg.rid == null) throw new Error(`${msg.type} was not sent through this worker's post`);
+    const to = answers(msg.rid);
     const got = [];
-    let from = after;
-    for (const type of want) {
-      const types = type.split("|");
-      const r = await this.until((x) => failed(msg, x) || (types.includes(x.type) && echoes(msg, x)), { after: from, timeout });
+    for (;;) {
+      const after = got.length ? got[got.length - 1]._n + 1 : 0;
+      const r = await this.until(to, { after, timeout });
       got.push(r);
-      if (failed(msg, r)) break;
-      from = r._n + 1;
+      if (!r.more) return got;
     }
-    return got;
   }
 
   /** The first reply from `after` on for which `pred` holds, once it lands. */

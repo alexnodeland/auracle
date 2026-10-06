@@ -36,7 +36,8 @@ function served(trace, type, reply) {
 /** A taste, so the model has a guess: the warm start's picks, then a fit.
  *  The ids of its first pick (opened on the bench) and of another sound. */
 async function taught(w) {
-  const [warm] = await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] });
+  // `warm_first`, then `warm_done`: the last is the one wanted.
+  const warm = (await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] })).at(-1);
   const [fitted] = await w.send({ type: "fit" });
   return { first: warm.first, other: fitted.views.ranked.map((r) => r.id).find((id) => id !== warm.first) };
 }
@@ -45,9 +46,10 @@ test("a request made during PERFORM's measurement is answered before its next re
   const w = await workerFor(t, { seed: SEED });
   const tree = await treeOf(w, 1);
   // A bank row's ▶, asked for during the measurement's third render.
-  w.post({ type: "render", id: 2 }, { during: { call: "memo_render", nth: 3 } });
+  const play = { type: "render", id: 2 };
+  w.post(play, { during: { call: "memo_render", nth: 3 } });
   const [wired] = await w.send({ type: "perform_wire", req: 1, tree, overrides: [] });
-  const render = await w.reply("render", { where: { id: 2 } });
+  const [render] = await w.answers(play);
   assert.ok(render.buffer.length > 0, "the render was answered with its sound");
   assert.ok(wired.data, "the measurement landed whole");
 
@@ -68,10 +70,12 @@ test("a request made during the guess's renders is answered before its next rend
   await w.send({ type: "edit_begin", id: first });
   // The guess asks main for a crew, is answered with none (`?farm=0`), and
   // renders the likeliest eight on the worker's thread.
-  w.post({ type: "render", id: other }, { during: { call: "memo_render", nth: 1 } });
-  const at = w.post({ type: "guess", token: 1 });
-  const guess = await w.reply("guess", { where: { token: 1 }, after: at });
-  const render = await w.reply("render", { where: { id: other }, after: at });
+  const play = { type: "render", id: other };
+  w.post(play, { during: { call: "memo_render", nth: 1 } });
+  const ask = { type: "guess", token: 1 };
+  const at = w.post(ask);
+  const [guess] = await w.answers(ask);
+  const [render] = await w.answers(play);
   assert.ok(render.buffer.length > 0, "the render was answered with its sound");
   assert.equal(w.repliesOf("farm_want", { after: at }).length, 1, "the guess asked for a crew");
   assert.ok(guess.data && guess.data.guesses, "the guess ranked");
@@ -99,20 +103,21 @@ test("a pick made while a spare offer grows is answered before the spare's next 
   // the patch (`retire`) during its sixth.
   const PICK = 3;
   const SPARE = 2;
-  w.post({ type: "perform_record", req: PICK, tree, overrides: [], offer: JSON.stringify(grown.offer.tree), took: false }, { during: { call: "perform_job_step", nth: 3 } });
+  const pick = { type: "perform_record", req: PICK, tree, overrides: [], offer: JSON.stringify(grown.offer.tree), took: false };
+  w.post(pick, { during: { call: "perform_job_step", nth: 3 } });
   w.post({ type: "retire", reqs: [SPARE] }, { during: { call: "perform_job_step", nth: 6 } });
   const [spare] = await w.send({ type: "perform_offer", req: SPARE, tree, overrides: [], locks: [], steps: 400, bg: true });
   assert.equal(spare.error, "retired", "the spare was dropped, not finished");
-  const [recorded, status] = await w.answers({ type: "perform_record", req: PICK });
+  const [recorded, status] = await w.answers(pick);
   assert.equal(recorded.recorded, true, "the pick was recorded");
   assert.ok(status.ratings, "and the ratings it left came with it");
 
   const trace = await w.trace();
-  const pick = served(trace, "perform_record", status);
-  assert.deepEqual(callsBetween(trace, pick.posted, pick.arrived), [], "the pick waited for more than the step in progress");
-  assert.ok(!callsBetween(trace, pick.arrived, pick.answered).includes("perform_job_step"), "the spare stepped before the pick was answered");
+  const picked = served(trace, "perform_record", status);
+  assert.deepEqual(callsBetween(trace, picked.posted, picked.arrived), [], "the pick waited for more than the step in progress");
+  assert.ok(!callsBetween(trace, picked.arrived, picked.answered).includes("perform_job_step"), "the spare stepped before the pick was answered");
   // The spare was still growing after the pick, or this proved nothing.
-  assert.ok(callsBetween(trace, pick.answered, outOf(trace, spare)).includes("perform_job_step"), "the spare was over before the pick");
+  assert.ok(callsBetween(trace, picked.answered, outOf(trace, spare)).includes("perform_job_step"), "the spare was over before the pick");
   // Retired at its next breath: no step after the page left.
   const left = served(trace, "retire", spare);
   assert.deepEqual(callsBetween(trace, left.posted, left.arrived), [], "the retire waited for more than the step in progress");

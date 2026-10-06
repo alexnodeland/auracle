@@ -28,9 +28,10 @@ test("a measurement nobody waits on gives way to a cable probe and finishes afte
 
   // A measurement PERFORM has left (`bg`, as `retire` leaves one), and
   // PATCH's probe asked for during its second render.
-  w.post({ type: "cable_levels", token: 1 }, { during: { call: "memo_render", nth: 2 } });
+  const ask = { type: "cable_levels", token: 1 };
+  w.post(ask, { during: { call: "memo_render", nth: 2 } });
   const [left] = await w.send({ type: "perform_wire", req: 1, tree: await treeOf(w, 2), overrides: [], bg: true });
-  const probe = await w.reply("cable_levels", { where: { token: 1 } });
+  const [probe] = await w.answers(ask);
   assert.ok(probe.levels.cables.length > 0, "the probe measured the cables");
   assert.ok(left.data, "the measurement still landed, whole");
   assert.ok(probe._n < left._n, "the probe waited for the whole measurement");
@@ -40,9 +41,10 @@ test("a measurement nobody waits on gives way to a cable probe and finishes afte
 
   // PERFORM's own measurement of the sound it plays keeps the floor: the
   // probe waits for it.
-  const at = w.post({ type: "cable_levels", token: 2 }, { during: { call: "memo_render", nth: 2 } });
+  const again = { type: "cable_levels", token: 2 };
+  w.post(again, { during: { call: "memo_render", nth: 2 } });
   const [own] = await w.send({ type: "perform_wire", req: 2, tree: await treeOf(w, 5), overrides: [] });
-  const waited = await w.reply("cable_levels", { where: { token: 2 }, after: at });
+  const [waited] = await w.answers(again);
   assert.ok(own.data);
   assert.ok(own._n < waited._n, "PERFORM's own measurement gave way to the probe");
   trace = await w.trace();
@@ -58,9 +60,10 @@ test("a measurement PERFORM left when it went out of sight is the player's again
   const tree = await treeOf(w, 1);
   w.post({ type: "retire", reqs: [1] }, { during: { call: "memo_render", nth: 2 } });
   w.post({ type: "promote", kind: "perform_wire", req: 1 }, { during: { call: "memo_render", nth: 3 } });
-  w.post({ type: "perform_drift", req: 2, tree, overrides: [], locks: [], steps: 12, sigma: 0.05 }, { during: { call: "memo_render", nth: 4 } });
+  const wander = { type: "perform_drift", req: 2, tree, overrides: [], locks: [], steps: 12, sigma: 0.05 };
+  w.post(wander, { during: { call: "memo_render", nth: 4 } });
   const [wired] = await w.send({ type: "perform_wire", req: 1, tree, overrides: [] });
-  const [drifted] = await w.answers({ type: "perform_drift", req: 2 });
+  const [drifted] = await w.answers(wander);
   assert.ok(wired.data && drifted.drift, "both landed");
   assert.ok(wired._n < drifted._n, "the drift, asked for after it in the background, landed first");
   let trace = await w.trace();
@@ -70,10 +73,11 @@ test("a measurement PERFORM left when it went out of sight is the player's again
   // Left out of sight (no `promote`), it gives way to the drift: the case
   // coming back is for.
   const other = await treeOf(w, 5);
-  const at = w.post({ type: "retire", reqs: [3] }, { during: { call: "memo_render", nth: 2 } });
-  w.post({ type: "perform_drift", req: 4, tree: other, overrides: [], locks: [], steps: 12, sigma: 0.05 }, { during: { call: "memo_render", nth: 3 } });
+  w.post({ type: "retire", reqs: [3] }, { during: { call: "memo_render", nth: 2 } });
+  const drifting = { type: "perform_drift", req: 4, tree: other, overrides: [], locks: [], steps: 12, sigma: 0.05 };
+  w.post(drifting, { during: { call: "memo_render", nth: 3 } });
   const [demoted] = await w.send({ type: "perform_wire", req: 3, tree: other, overrides: [] });
-  const [first] = await w.answers({ type: "perform_drift", req: 4 }, { after: at });
+  const [first] = await w.answers(drifting);
   assert.ok(demoted.data && first.drift);
   assert.ok(first._n < demoted._n, "a measurement nobody waits on kept the drift waiting");
   trace = await w.trace();
@@ -83,18 +87,21 @@ test("a measurement PERFORM left when it went out of sight is the player's again
 
 test("an Offer asked for while the guess waits for its crew starts at once", { timeout: TIMEOUT }, async (t) => {
   const w = await workerFor(t, { seed: SEED });
-  const [warm] = await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] });
+  // The warm start answers `warm_first`, then `warm_done`; an open
+  // `bench_opening`, then `bench`: the last is the one wanted.
+  const warm = (await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] })).at(-1);
   await w.send({ type: "fit" });
-  const [bench] = await w.send({ type: "edit_begin", id: warm.first });
+  const bench = (await w.send({ type: "edit_begin", id: warm.first })).at(-1);
   // The guess raises a crew (`farm_want`), and main's answer is kept back
   // until the Offer is answered: the guess waits for its crew all that time.
   w.holdFarm();
-  const at = w.post({ type: "guess", token: 1 });
+  const ask = { type: "guess", token: 1 };
+  const at = w.post(ask);
   await w.reply("farm_want", { after: at });
   const [offered] = await w.send({ type: "perform_offer", req: 1, tree: bench.treeJson, overrides: [], locks: [], steps: 1 });
   assert.ok(offered.offer, "the Offer was answered");
   assert.equal(w.releaseFarm(), 1);
-  const guess = await w.reply("guess", { where: { token: 1 }, after: at });
+  const [guess] = await w.answers(ask);
   assert.ok(guess.data && guess.data.guesses, "the guess ranked once its crew was answered");
   assert.ok(offered._n < guess._n, "the guess was answered before the Offer");
   // The Offer began while the guess waited for its crew, before the guess

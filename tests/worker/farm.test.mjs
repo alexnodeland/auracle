@@ -33,11 +33,10 @@ test("a capture hands every farm worker standing the new phrase", { timeout: TIM
   const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
   // A crew stands after a walk: the model's guess raises one (it needs a
   // taste and a patch on the bench), and keeps it a minute after.
-  const [warm] = await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] });
+  const warm = (await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] })).at(-1);
   await w.send({ type: "fit" });
   await w.send({ type: "edit_begin", id: warm.first });
-  const at = w.post({ type: "guess", token: 1 });
-  await w.reply("guess", { where: { token: 1 }, after: at });
+  await w.send({ type: "guess", token: 1 });
   assert.ok(crew.heard.every((h) => h.some((m) => m.type === "job")), "the crew rendered for the guess");
   assert.ok(crew.heard.every((h) => !h.some(withClip)), "a phrase with a clip before any capture");
 
@@ -58,7 +57,7 @@ test("a restore that installs a captured clip hands boot's crew the clip's phras
   const msg = capture();
   const [taken] = await first.send(msg, { transfer: [msg.samples.buffer] });
   assert.equal(taken.ok, true);
-  const [{ json: saved }] = await first.send({ type: "save" }, { answers: ["saved"] });
+  const [{ json: saved }] = await first.send({ type: "save" });
   await first.close();
 
   // Boot from it with a crew of two, as main boots with a farm.
