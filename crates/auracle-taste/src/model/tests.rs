@@ -1268,9 +1268,10 @@ fn a_posterior_whose_draws_agree_has_no_spread() {
 /// `n`, to within one (it is systematic: `⌊n·w⌋` or `⌈n·w⌉`), never a copy
 /// of a draw with no weight, in draw order, and weighs the copies uniformly.
 /// Swept over random weights, dense and sparse, over sizes from 1 to 40.
-/// From weights with nothing left to keep (all zero, which only a posterior
-/// built by hand holds) it still deals `n` draws, and reads none past the
-/// last.
+/// A grid point exactly on the boundary between two draws goes to the
+/// earlier one, as the doc says. From weights with nothing left to keep
+/// (all zero, which only a posterior built by hand holds) it still deals
+/// `n` draws, and reads none past the last.
 #[test]
 fn resampling_copies_each_draw_by_its_weight() {
     let mut rng = StdRng::seed_from_u64(0x5E5A);
@@ -1318,6 +1319,19 @@ fn resampling_copies_each_draw_by_its_weight() {
                 "draw {i} of weight {wi} got {copies} of {n} copies: {from:?}"
             );
         }
+    }
+    // On a boundary, with weights in binary fractions so every sum is
+    // exact: at [¼, ¾] the grid point ¼ completes draw 0's weight, and at
+    // [⅛, ¼, ¼, ⅜] the points ⅛, ⅜ and ⅝ complete draws 0, 1 and 2. Each
+    // goes to the draw it completes. Given to the next draw instead, they
+    // would deal [1, 1] and [1, 2, 3, 3], which the sweep's rules also pass.
+    for (w, want) in [
+        (vec![0.25, 0.75], vec![0, 1]),
+        (vec![0.125, 0.25, 0.25, 0.375], vec![0, 1, 2, 3]),
+    ] {
+        let re = posterior(tagged(w.len()), w).resampled();
+        let from: Vec<usize> = re.samples.iter().map(|s| s.tau[0] as usize).collect();
+        assert_eq!(from, want);
     }
     let spent = posterior(tagged(5), vec![0.0; 5]).resampled();
     assert_eq!(spent.samples.len(), 5);

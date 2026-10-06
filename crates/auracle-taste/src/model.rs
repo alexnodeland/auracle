@@ -815,7 +815,10 @@ impl TastePosterior {
     ///
     /// Deterministic (systematic, offset ½N) rather than multinomial, because
     /// every other stochastic step in this engine is seeded and reproducible
-    /// and this one has no reason not to be.
+    /// and this one has no reason not to be. Copy `i` is the weights'
+    /// quantile at u = (i + ½)/N: the first draw whose cumulative weight
+    /// reaches u. So a u exactly on the boundary between two draws goes to
+    /// the earlier one, whose weight it completes.
     pub fn resampled(&self) -> TastePosterior {
         // With no draws the loop below never runs, and this is the empty
         // posterior it was given.
