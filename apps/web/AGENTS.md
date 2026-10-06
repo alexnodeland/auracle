@@ -144,10 +144,14 @@ the long-form notes are this directory's `README.md`.
 
 `window.__aur` exposes the audio context, the live voice, the bench and
 `note`. A browser test reaches the worker by wrapping `Worker` before
-`main.js` runs; nothing in the app exists for the tests' sake.
+`main.js` runs, and a worker test runs `worker.js` itself in a Node thread
+(`tests/worker/harness.mjs`); nothing in the app exists for the tests' sake.
 
 ## Tests
 
 `make web-check` (syntax, the pure-module unit tests in `tests/` and the
-browser specs' lint), then the browser specs in
-[`tests/web`](../../tests/web/AGENTS.md).
+browser specs' lint), then `make worker-test` for the engine worker
+(`worker.js` as it is, in Node over the built engine with no page: what it
+answers and in what order; `tests/worker/`), then the browser specs in
+[`tests/web`](../../tests/web/AGENTS.md). Which level a test belongs at is
+[`testing.md` § The levels](../../docs/architecture/testing.md#the-levels).

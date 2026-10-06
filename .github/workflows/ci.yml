@@ -12,10 +12,12 @@ name: CI
 # - A PR's own run is the FAST LANE: Lint, the Rust tests (as Coverage) and
 #   the Doctests when Rust changed; Web and Site when the site, the docs or
 #   the app did (Web alone for a script's own tests); Browser smoke when the
-#   app, the engine or what runs the specs did; and the browser specs the
-#   change reaches (tests/web/changed.mjs), on up to four runners. A change
-#   whose specs can't be told (main.js, worker.js, a crate) runs the smoke
-#   only, and a change to CI itself runs the full gate. About five minutes
+#   app, the engine or what runs the specs did; Worker protocol when the
+#   app, the engine or tests/worker did; and the browser specs the change
+#   reaches (tests/web/changed.mjs), on up to four runners. A change whose
+#   specs can't be told (main.js, worker.js, a crate) runs the smoke only,
+#   with Worker protocol beside it, and a change to CI itself runs the full
+#   gate. About five minutes
 #   for docs; up to about ten when Rust changed (Coverage sets the length,
 #   about nine, an estimate) or an app module's specs run (patch.js reaches
 #   about 23 test-minutes, on four runners). A green fast lane puts the PR in
@@ -102,11 +104,13 @@ jobs:
       site: ${{ steps.filter.outputs.site }}
       web: ${{ steps.filter.outputs.web }}
       smoke: ${{ steps.filter.outputs.smoke }}
+      worker: ${{ steps.filter.outputs.worker }}
       browser: ${{ steps.filter.outputs.browser }}
       specs: ${{ steps.filter.outputs.specs }}
       browser_matrix: ${{ steps.filter.outputs.browser_matrix }}
       reuse_lint: ${{ steps.reuse.outputs.lint }}
       reuse_web: ${{ steps.reuse.outputs.web }}
+      reuse_worker: ${{ steps.reuse.outputs.worker }}
       reuse_doctests: ${{ steps.reuse.outputs.doctests }}
       reuse_coverage: ${{ steps.reuse.outputs.coverage }}
       reuse_browser: ${{ steps.reuse.outputs.browser }}
@@ -136,6 +140,7 @@ jobs:
               echo "web=true"
               echo "browser=true"
               echo "smoke=false"
+              echo "worker=true"
               echo "specs="
               echo "browser_matrix=$twelve"
             } >> "$GITHUB_OUTPUT"
@@ -172,6 +177,7 @@ jobs:
                   echo "web=false"
                   echo "browser=false"
                   echo "smoke=false"
+                  echo "worker=false"
                   echo "specs="
                   echo "browser_matrix=$twelve"
                   echo "superseded=true"
@@ -254,6 +260,16 @@ jobs:
             smoke=true
           fi
 
+          # Worker protocol: worker.js (in apps/web), the engine it runs
+          # over, or the tests themselves, their prose aside. changed.mjs
+          # picks no spec for worker.js, so this is the fast lane's check of it.
+          wreach="$(echo "$files" | grep -E '^(apps/web/|tests/worker/)' | grep -vE '\.md$' || true)"
+          if [ "$rust" = true ] || [ -n "$wreach" ]; then
+            worker=true
+          else
+            worker=false
+          fi
+
           # The specs the change reaches, as `make browser-changed` picks
           # them (tests/web/changed.mjs): a changed spec, the specs that
           # require a changed helper, the specs named for a changed app
@@ -289,11 +305,12 @@ jobs:
             echo "site=$site"
             echo "web=$web"
             echo "smoke=$smoke"
+            echo "worker=$worker"
             echo "browser=$browser"
             echo "specs=$specs"
             echo "browser_matrix=$matrix"
           } >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s web=%s smoke=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$web" "$smoke" "$browser" "${specs:-none}" "$matrix"
+          printf '\n  rust=%s site=%s web=%s smoke=%s worker=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$web" "$smoke" "$worker" "$browser" "${specs:-none}" "$matrix"
 
       # A push to main is a squash merge by the merge queue. The last merge
       # of a batch has exactly the files the queue's run tested (a
@@ -358,10 +375,13 @@ jobs:
             echo "rust-toolchain.toml or Cargo.lock changed since ${since:0:12} (or the diff failed): Lint and Coverage run, to save their caches"
             fresh=" lint coverage "
           fi
+          # Web and Worker protocol hold whatever compiler Lint ran on: Web
+          # compiles nothing, and Worker protocol's engine is built from
+          # these files, rust-toolchain.toml included.
           reused=""
-          for job in lint web doctests coverage; do
+          for job in lint web doctests coverage worker; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
-            if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
+            if [ "$job" != web ] && [ "$job" != worker ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
             case "$fresh" in *" $job "*) continue ;; esac
             if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; reused="$reused, $job"; fi
           done
@@ -845,9 +865,38 @@ jobs:
           path: tests/web/test-results/
           if-no-files-found: ignore
 
-  # The engine for the fast browser tier, built once per run (see the
-  # action's comment): restored from the cache when no crate changed, which is
-  # most PRs that touch the app, and ~1.5 min of wasm build otherwise.
+  # The worker-protocol tests (tests/worker, `make worker-test`):
+  # apps/web/worker.js run as it is in a Node worker thread over this run's
+  # engine, with no page, for what it answers and in what order. About a
+  # minute, once the engine is built. In the fast lane, on a change to
+  # apps/web or tests/worker (their prose aside) or the engine: changed.mjs
+  # picks no spec for worker.js (the smoke only), so this is the fast lane's
+  # real check of it.
+  # In the full gate, always; on main, not again when the queue's run passed
+  # it on these files (the changes job). Its files run side by side and a
+  # test fails at 150 s, so the slowest file (three tests) is reported within
+  # eight minutes, before the job's limit.
+  worker:
+    name: Worker protocol
+    needs: [changes, engine]
+    if: needs.changes.outputs.worker == 'true' && needs.changes.outputs.reuse_worker != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-engine
+          path: apps/web/pkg
+      - run: make worker-test
+
+  # The engine for the fast browser tier and Worker protocol, built once per
+  # run (see the action's comment): restored from the cache when no crate
+  # changed, which is most PRs that touch the app, and ~1.5 min of wasm build
+  # otherwise.
   #
   # It also reads main's browser timings once for the whole run (see the
   # action): every browser runner deals its tests from that one file. And it
@@ -857,7 +906,7 @@ jobs:
   engine:
     name: Engine for the browser
     needs: changes
-    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true'
+    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true' || needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -883,9 +932,10 @@ jobs:
   # to 19. Twelve, not eight: simulated with the runners' observed spread of
   # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
   # (#177 § 3.1). The count is fixed and raised by hand. The queue's run at
-  # its widest holds about 17 runners (these twelve, Site, Coverage's three,
-  # and one more); a PR's fast lane holds at most four browser runners, ten
-  # in all (testing.md § CI tiers, Runners, does the sums).
+  # its widest holds about 18 runners (these twelve, Site, Worker protocol,
+  # Coverage's three, and one more); a PR's fast lane holds at most four
+  # browser runners, twelve in all (testing.md § CI tiers, Runners, does
+  # the sums).
   #
   # A slow runner may make a test slower, never wrong (ADR-022). A failure
   # that only appears here is still a finding about the app when it is about
@@ -976,7 +1026,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, engine, browser]
+    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, worker, engine, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1021,7 +1071,7 @@ jobs:
             if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
           fi
           jq -n --arg tree "$tree" --arg base "$base" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
-            '{tree: $tree, base: $base, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
+            '{tree: $tree, base: $base, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, worker: $r.worker.result, browser: $browser}}' \
             > verified.json
           cat verified.json
           echo "tree=$tree" >> "$GITHUB_OUTPUT"

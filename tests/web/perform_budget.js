@@ -18,8 +18,10 @@
 // than it was.
 //
 // What must not wait for an offer is not bounded by this budget, which is only
-// for waiting on the engine's growth: a pick and a Keep keep bounds of their
-// own from a measured step (perform_offer_latency.spec.js), and NEXT handing
+// for waiting on the engine's growth: a Keep keeps a bound of its own from a
+// measured step (perform_offer_latency.spec.js), a pick made while a spare
+// grows is answered before the spare's next step (an order, held in
+// tests/worker/lanes.test.mjs), and NEXT handing
 // over a spare is asserted by order (B holds it by the end of the press's own
 // task), its milliseconds a speed budget (fixtures.js `budget`, ADR-022).
 //

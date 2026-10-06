@@ -5,8 +5,9 @@
 // `guess`); these specs read it as the worker posts it and hold the page to
 // it: the top guess drawn at its socket with its reason and forecast, taken
 // through the edit lane, skipped, an undone take counted as a skip, nothing
-// before the warm start, the crew and the floor, and keep as new keeping the
-// skips made after it.
+// before the warm start, the crew, and keep as new keeping the skips made
+// after it. With no crew the guess ranks the floor's eight: the worker's
+// rule, held in tests/worker/lanes.test.mjs.
 const { test, expect, bankTab, openCatalog } = require("./fixtures");
 const { openPreset, rankedGuess, guessAfter, drawnGuess } = require("./patch_page.js");
 const { SLOW_ENGINE } = require("./perform_budget.js");
@@ -176,18 +177,6 @@ test("a new patch's skips are its own: the sound it was started from does not in
   await page.locator("#patch-back").click();
   const back = await guessAfter(app, (await app.reply("bench", { where: { subject: reese }, after: tBack }))._at);
   expect(back.data.skipped, "Reese took the new patch's skip").toBe(0);
-});
-
-test("with no render crew, the guess renders the likeliest eight on the engine's thread", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot({ warmed: false, query: "?farm=0" });
-  await app.warmStart();
-  const t0 = await app.now();
-  await openPreset(app, "Sub & Sparkle");
-  const r = await rankedGuess(app, { after: t0 });
-  expect(r.data.total).toBeGreaterThan(8);
-  expect(r.data.planned).toBe(8);
-  expect(r.data.rendered).toBeLessThanOrEqual(8);
-  await app.engine((timeout) => expect(page.locator("#rack-svg .guess-plate")).toHaveAttribute("data-kind", r.data.guesses[0].kind, { timeout }), { ms: 15_000 });
 });
 
 // While boot's own crew is still filling the pool no walk crew can be raised,

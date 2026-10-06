@@ -182,7 +182,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   site, the docs or the app changed (Web alone for a script's own tests, and
   nothing more for a changelog entry, which *What changed* checks on every
   run); Browser smoke when the app, the engine or what runs the specs changed
-  (not the specs' lint, which no browser reads); and the browser specs the change reaches
+  (not the specs' lint, which no browser reads); Worker protocol
+  (`make worker-test`) when the app, the engine or `tests/worker/` changed;
+  and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
   four runners. About five minutes for docs; up to about ten when Rust
   changed (Coverage sets the length) or an app module's specs run (`patch.js`
@@ -190,14 +192,14 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
     `style.css`, a crate) runs the smoke and no other spec. So does a helper
     that more than twenty spec files require, or a change to more than
-    twenty spec files.
+    twenty spec files. For `worker.js`, Worker protocol is the check.
   - A change to CI itself (`.github/workflows/`, `.github/actions/`) runs the
     full gate in its own lane.
   - **A green PR is fit to queue, not proven.** The fast lane is quick word on
     what the PR changed. The full gate is the merge queue's run.
 - **The merge queue's run is the full gate.** Everything, as on `main`:
-  Lint, Web, Site, Coverage, the Doctests and the browser tier on twelve
-  runners, about twelve minutes, on the tree the batch makes on top of
+  Lint, Web, Site, Coverage, the Doctests, Worker protocol and the browser
+  tier on twelve runners, about twelve minutes, on the tree the batch makes on top of
   `main`. It is CI on a draft PR the queue opens from a branch under
   `mergify/merge-queue/`.
 - **The required check is `CI`,** in both lanes. `main`'s ruleset requires

@@ -208,6 +208,11 @@ UI changes are verified live in a browser (Playwright) with **numeric audio
 assertions** (an `AnalyserNode` RMS, boundary-sample checks around patch swaps)
 plus a **zero-console-error** requirement.
 
+The engine worker's half of the messages has a level of its own: the
+**worker-protocol tests** (`make worker-test`, `tests/worker/`) run `worker.js`
+as it is, in Node over the built engine with no page, and hold what it answers
+and in what order (its lanes, a long job giving way, what reaches the farm).
+
 Debug hooks: `window.__aur` and `window.__aurLog`. (`window.__ric` is kept as
 an alias for notes written before the rename.)
 

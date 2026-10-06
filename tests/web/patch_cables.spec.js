@@ -7,10 +7,11 @@
 // asked once an edit settles, not per knob step.
 //
 // The worker is reached through the fixture's tap (fixtures.js); a probe is
-// made slow at the engine with `app.busy`.
+// made slow at the engine with `app.busy`. That a probe goes before a
+// measurement nobody is waiting on, which then finishes, is the worker's
+// own rule, held in tests/worker/background.test.mjs.
 const { test, expect, goLevel, openCatalog } = require("./fixtures");
 const { openPreset } = require("./patch_page.js");
-const { FLOOR_MS } = require("./perform_budget.js");
 
 const FLOOR = -54;
 const gain = (db) => Math.max(0, Math.min(1, (db - FLOOR) / -FLOOR));
@@ -291,76 +292,4 @@ test("a probe answered after an open has landed waits out the open's quiet windo
   const landed = (await app.log({ after: arrived })).filter((e) => e.type === "bench" && e.subject === id).pop().at;
   await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: ["cable_levels", "guess"] }, { after: landed })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
   await keptQuiet(app, arrived);
-});
-
-// PERFORM's measurement of a sound it has left, or of one out of sight, is
-// still worth finishing (it is cached for coming back), but nobody is waiting
-// on it. The app opens at PERFORM (Plan-008), so one is running whenever the
-// player goes straight to PATCH or opens another sound, and held on the
-// engine's floor it kept PATCH's cables unlit for all of its thirty-odd
-// renders: past a minute on a CI runner. Here such a measurement (`bg`, as
-// `retire` leaves PERFORM's) is put in front of the rack's probe, sent just
-// before it, for the tree the knob turn made, which nothing has measured: the
-// probe is answered and the cables lit while it still runs, and it still
-// finishes after.
-test("a knob turned in PATCH lights its cables again while a measurement nobody is waiting on runs", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
-  await openPreset(app, "Reese");
-  const settled = async () => {
-    const d = await drawn(page);
-    return d.marks.length > 0 && d.marks.every((m) => !m.unknown);
-  };
-  await app.engine((timeout) => expect.poll(settled, { timeout }).toBe(true), { ms: 60_000 });
-  // PERFORM's own measurement of the sound the app opened with, demoted when
-  // PATCH came into view, finishes first: the one sent below then waits for
-  // nothing of PERFORM's, and the wait for it to finish is its renders alone.
-  await app.engine((timeout) => expect
-    .poll(async () => (await app.count("perform_wired")) >= (await app.sentCount("perform_wire")), { timeout })
-    .toBe(true), { ms: FLOOR_MS });
-  await page.evaluate(() => {
-    const w = window.__tap.engine;
-    const post = w.postMessage.bind(w);
-    const t = (window.__bgT = { sent: null, probed: null, measured: null });
-    w.addEventListener("message", (e) => {
-      const d = e.data;
-      if (!d || t.sent == null) return;
-      if (d.type === "perform_wired" && d.req === 9_100_001) t.measured = performance.now();
-      if (d.type === "cable_levels" && t.probed == null) t.probed = performance.now();
-    });
-    w.postMessage = (m, tr) => {
-      if (m && m.type === "cable_levels" && t.sent == null) {
-        t.sent = performance.now();
-        post({ type: "perform_wire", req: 9_100_001, tree: window.__tap.last.bench.treeJson, overrides: [], bg: true });
-      }
-      return post(m, tr);
-    };
-  });
-  // A knob turned: the marks go hollow, and the probe that lights them again
-  // is the one the measurement goes out ahead of. The hollow moment is
-  // watched for from before the turn, not looked for after it: the probe can
-  // light the marks again between two looks, and a missed moment is not a
-  // knob that changed nothing.
-  await page.evaluate(() => {
-    window.__pwHollow = false;
-    const svg = document.getElementById("rack-svg");
-    const look = () => {
-      const marks = [...svg.querySelectorAll(".cable-mark")];
-      if (marks.length > 0 && marks.every((m) => m.classList.contains("unknown"))) window.__pwHollow = true;
-    };
-    new MutationObserver(look).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
-  });
-  const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
-  const box = await knob.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => window.__pwHollow), { timeout: 15_000, message: "the turned knob's cables went unmeasured" }).toBe(true);
-  await app.engine((timeout) => expect.poll(settled, { timeout }).toBe(true), { ms: 60_000 });
-  const t = await page.evaluate(() => window.__bgT);
-  expect(t.sent, "the measurement went out ahead of the probe").not.toBeNull();
-  expect(t.probed).not.toBeNull();
-  expect(t.measured == null || t.probed < t.measured, "the probe waited for the whole measurement").toBe(true);
-  // Every request gets a reply: the measurement finishes, from where it gave way.
-  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__bgT.measured), { timeout }).not.toBeNull(), { ms: FLOOR_MS });
 });
