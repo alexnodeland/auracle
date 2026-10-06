@@ -176,11 +176,20 @@ pub fn liking_direction(points: &[[f64; 3]]) -> Option<LikingDirection> {
 }
 
 impl Engine {
+    /// The map's axes as last drawn, locked: the one way every reader and
+    /// writer of `Engine::map_axes` takes it. The value is only ever read or
+    /// written whole, so a panic while another holder had it (which poisons
+    /// the lock) cannot leave it half written, and it is taken as it stands
+    /// rather than the panic spreading to every later map and save.
+    pub(crate) fn drawn_axes(&self) -> std::sync::MutexGuard<'_, Option<[Vec<f64>; 2]>> {
+        self.map_axes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// A standardized φ on the last map's two axes, uncentred (so up to the
     /// map's translation, which a direction does not see). `None` before a
     /// map has been drawn.
     pub(crate) fn map_coordinates(&self, phi: &[f64]) -> Option<(f64, f64)> {
-        let drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+        let drawn = self.drawn_axes();
         let [a1, a2] = drawn.as_ref()?;
         if a1.len() != phi.len() {
             return None;
@@ -543,7 +552,7 @@ impl Engine {
         let (mut ax1, var1, ok1) = leading_axis(&centered, None);
         let (mut ax2, var2, ok2) = leading_axis(&centered, Some(&ax1));
         {
-            let mut drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+            let mut drawn = self.drawn_axes();
             if let Some([d1, d2]) = drawn.as_ref() {
                 orient(&mut ax1, d1);
                 orient(&mut ax2, d2);

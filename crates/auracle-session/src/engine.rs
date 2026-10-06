@@ -4166,11 +4166,7 @@ impl Engine {
             events: self.events.clone(),
             forecasts: self.forecasts.clone(),
             style_shares: self.style_shares.clone(),
-            map_axes: self
-                .map_axes
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone(),
+            map_axes: self.drawn_axes().clone(),
             audition_clip: self
                 .cfg
                 .phrase
@@ -4228,7 +4224,7 @@ impl Engine {
         self.events = state.events;
         self.forecasts = state.forecasts;
         self.style_shares = state.style_shares;
-        *self.map_axes.get_mut().unwrap_or_else(|e| e.into_inner()) = state.map_axes;
+        *self.drawn_axes() = state.map_axes;
         self.own = state.own_sound;
         // The implicit stream stores raw φ on both sides of a hand edit, so it
         // is the fourth carrier of the corruption after the pool, the log and

@@ -248,7 +248,7 @@ fn taste_map_is_sane() {
     );
     // The first map drawn has no earlier one to keep the orientation of,
     // so its axes are the convention's.
-    let drawn = engine.map_axes.lock().unwrap().clone();
+    let drawn = engine.drawn_axes().clone();
     for (which, ax) in drawn.expect("a drawn map is remembered").iter().enumerate() {
         let pivot = (0..ax.len())
             .max_by(|&i, &j| ax[i].abs().total_cmp(&ax[j].abs()))
@@ -285,7 +285,7 @@ fn taste_map_keeps_its_orientation_across_redraws_and_reloads() {
         .any(|p| p.x.abs() > 1e-6 && p.y.abs() > 1e-6));
     // As though an earlier refit had left the map drawn the other way.
     {
-        let mut drawn = engine.map_axes.lock().unwrap();
+        let mut drawn = engine.drawn_axes();
         for axis in drawn
             .as_mut()
             .expect("the map remembers its axes")
@@ -313,4 +313,44 @@ fn taste_map_keeps_its_orientation_across_redraws_and_reloads() {
             "the reload mirrored the map"
         );
     }
+}
+
+/// **A panic that poisons the map's memory costs nothing.** The axes a map
+/// was drawn on sit behind a lock, and a panic while it is held (here on
+/// purpose) poisons it. They are only ever written whole, so every reader
+/// takes them as they stand: the next map is the same map, facing the same
+/// way, and a save still carries the axes, which a reload restores.
+#[test]
+fn a_panic_that_poisons_the_maps_memory_costs_nothing() {
+    let mut rng = StdRng::seed_from_u64(0x9015);
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 8,
+            ..fast()
+        },
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut rng);
+    let first = engine.taste_map();
+    let drawn = engine.drawn_axes().clone();
+    assert!(drawn.is_some(), "the map was not remembered");
+    let held = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _axes = engine.drawn_axes();
+        panic!("a panic while the map's memory is held");
+    }));
+    assert!(held.is_err());
+    assert!(
+        engine.map_axes.is_poisoned(),
+        "the fixture poisoned nothing"
+    );
+
+    let again = engine.taste_map();
+    assert_eq!(again.points.len(), first.points.len());
+    for (p, q) in first.points.iter().zip(&again.points) {
+        assert!((p.x - q.x).abs() < 1e-12 && (p.y - q.y).abs() < 1e-12);
+    }
+    let state = engine.export_state();
+    assert_eq!(state.map_axes, drawn, "the save lost the axes");
+    assert_eq!(*restore(&engine, state).drawn_axes(), drawn);
 }
