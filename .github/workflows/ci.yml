@@ -283,8 +283,8 @@ jobs:
   # exactly the PR this check exists for. It also runs `make dev-check`, whose
   # film tools' tests need numpy and scipy (installed below), with no Rust
   # toolchain. dev-check's parts run side by side on the runner's four cores
-  # (`-j4`, each part's output kept together by `-O`); the longest, the tokens
-  # check's own tests, sets its time, about a minute.
+  # (`-j4`, each part's output kept together by `-O`); the tokens check's own
+  # tests run their cases one process per core, about 9 s on a runner's four.
   web:
     name: Web
     needs: changes
