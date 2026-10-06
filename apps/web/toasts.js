@@ -50,9 +50,11 @@
 // the toast is the only place the player hears it (it has no row left). On a
 // fast machine "Opened the preset as … It replaced … Tine" was said behind
 // three plain remarks, reached the head of the queue 10.5 s later, and was
-// dropped. A toast given `bank: true` is never dropped for its age: it waits
-// its turn, and the backlog's trim spends the plain remarks before it, as it
-// does before an undo.
+// dropped. A toast given `bank: true` is never dropped for its age, and the
+// backlog's trim spends the plain remarks before it, as it does before an
+// undo. The other rules still apply to it: a later toast with its `replace`
+// key takes its place (rule 5), and with no plain remark waiting the trim
+// can cut it.
 
 /** How many toasts may wait behind the one on screen. */
 export const MAX_TOASTS = 3;

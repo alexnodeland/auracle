@@ -50,8 +50,8 @@ $$P(\text{keep}) = \sigma\big(u(x) - \tau_s\big), \qquad \tau_s \sim \mathcal{N}
 $\tau_s$ is a **per-session latent**, one per session in the log.
 
 The app emits one side of it: a bank row’s **cut** calls
-`record_keep(id, false)` once its 7 s undo window closes (`UNDO_WINDOW_MS`, in
-`main.js`’s `cutRow`).
+`record_keep(id, false)` once its 7 s undo window closes (`UNDO_WINDOW_MS`,
+defined in `toasts.js` and used in `main.js`’s `cutRow`).
 Nothing emits a keep; the triage surfaces that would are unbuilt.
 
 “Feeling picky today” is therefore *modeled* rather than treated as noise. A

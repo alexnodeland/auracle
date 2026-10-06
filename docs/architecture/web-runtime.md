@@ -1101,11 +1101,12 @@ the same `replace` key takes the earlier one's place; a refusal (`urgent`)
 jumps the queue (and honours `replace` too); an undo keeps its full window,
 and when the window closes its button is removed. A plain remark that has
 waited more than 9 s (`TOAST_STALE_MS`) is dropped when its turn comes, and
-with more than three waiting the oldest plain remark is cut. An undo, a
-refusal and a toast that reports a change to the player's sounds (`bank:
-true`: a sound joined or left the pool, or was saved or released) are never
-dropped for their age; the cut takes them only when no plain remark waits,
-and a refusal last of all (#129). The queue is `apps/web/toasts.js`
+with more than three waiting the plain remark nearest the front of the queue
+is cut (a queue position, not an age: `replace` and `urgent` reorder it). An
+undo, a refusal and a toast that reports a change to the player's sounds
+(`bank: true`: a sound joined or left the pool, or was saved or released) are
+never dropped for their age; the cut takes them only when no plain remark
+waits, and a refusal last of all (#129). The queue is `apps/web/toasts.js`
 (`createToastLane`, unit-tested in `apps/web/tests/toasts.test.mjs`); read
 its rules before adding a toast.
 

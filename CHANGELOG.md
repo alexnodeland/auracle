@@ -17,8 +17,9 @@ changelog that edits its own past is not a record.
   *Opened the preset as First Bass. It replaced the lowest-rated sound it
   could: Tine.* behind those two toasts, and it was dropped, so you were
   never told which sound the preset replaced. A toast that says a sound
-  joined or left the pool, or was saved or released, now waits its turn
-  however long that takes (`toasts.test.mjs`, `bank_kept.spec.js`, #129).
+  joined or left the pool, or was saved or released, is no longer dropped
+  as out of date, however long it waits (`toasts.test.mjs`,
+  `bank_kept.spec.js`, #129).
 
 ### Fixed: a sound opened in PATCH isn't kept waiting behind a cable probe
 
