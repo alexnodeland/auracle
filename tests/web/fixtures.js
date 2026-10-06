@@ -480,9 +480,11 @@ class App {
     await this.booted();
   }
 
-  /** A full load of the instrument at `path`, seeded as `boot` seeds it
-   *  (`?seed=`; `seed` as there, SEED unless the spec names its own, none
-   *  for null), and the boot waited for unless `wait` is false. `path` may
+  /** A full load of the instrument at `path`, its `?seed=` the call's own
+   *  `seed` (SEED, as `boot`'s default, unless the call names one; none for
+   *  null), and the boot waited for unless `wait` is false. It does not know
+   *  what `boot` was given: after a boot the films' way (`random` and no
+   *  `seed`), it loads with SEED unless the call says `seed: null`. `path` may
    *  carry a level's hash ("/#learning"), which `boot`'s `query` cannot. The
    *  load goes by about:blank, so a change of hash alone is a new visit,
    *  never a move within the page. On a page `boot` opened: its init scripts

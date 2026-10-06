@@ -1480,8 +1480,8 @@ that pick commits (`settleFit`), so it keeps its window too.
   the sides of the keep-as-new comparison, each there against position
   bias. Nothing on screen names the random seed or says how a session
   began, and a seeded pair is still dealt at random by the engine, so the
-  copy holds either way. A browser spec on
-  the shared fixture that names no seed of its own seeds both
+  copy holds either way. A browser spec that boots through the shared
+  fixture's `app.boot` and names no seed of its own seeds both
   (`tests/web/fixtures.js` `SEED`: `?seed=` and the page's Math.random, as
   the films seed it), so it starts from the same pool, warm start and sides
   on every run; the nightly flake hunt boots those unseeded. A spec that
