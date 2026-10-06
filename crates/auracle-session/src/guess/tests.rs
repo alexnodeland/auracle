@@ -752,12 +752,9 @@ fn a_patch_with_no_room_is_refused_as_full() {
     ));
 }
 
-/// **A ranking reads only what is rendered.** A planned candidate known not
-/// to vet counts as rendered and is left out; one the memo does not hold yet
-/// is neither ranked nor counted. Here on a taste with two lenses, where a
-/// reason is read under the lens most responsible for the guess.
-#[test]
-fn a_ranking_reads_only_what_is_rendered() {
+/// [`warm`], then picks enough for a second lens (`OBS_PER_STYLE`), and a
+/// fit with two.
+fn two_lenses() -> Engine {
     let mut e = warm(4, false);
     let mut rng = StdRng::seed_from_u64(0x2A4);
     while e.log.len() < crate::OBS_PER_STYLE {
@@ -766,6 +763,16 @@ fn a_ranking_reads_only_what_is_rendered() {
     }
     e.fit_posterior(&mut rng);
     assert_eq!(e.posterior.as_ref().unwrap().k_styles(), 2);
+    e
+}
+
+/// **A ranking reads only what is rendered.** A planned candidate known not
+/// to vet counts as rendered and is left out; one the memo does not hold yet
+/// is neither ranked nor counted. Here on a taste with two lenses, where a
+/// reason is read under the lens most responsible for the guess.
+#[test]
+fn a_ranking_reads_only_what_is_rendered() {
+    let e = two_lenses();
     let tree = preset("Hornet");
     let none = HashSet::new();
     featurize_memo(&tree, &e.cfg.phrase, e.memo(), false).unwrap();
@@ -870,5 +877,42 @@ fn a_guess_never_takes_a_module_away_from_a_patch_not_in_normal_form() {
     assert_eq!(
         e.guess_plan(&bench, None, &[], &none, 0).map(|p| p.total),
         Err(GuessRefusal::Full)
+    );
+}
+
+/// **A reason is read under the lens most responsible for the guess.** On
+/// a taste with two lenses, every guess's reason names the lens whose
+/// responsibility for the guessed sound is highest (the first of equals),
+/// the lens LEARNING shows the sound under. On this taste the two lenses
+/// part for some guess, so the choice of lens is tested, not assumed.
+#[test]
+fn a_reason_is_read_under_the_lens_most_responsible_for_the_guess() {
+    let e = two_lenses();
+    let (post, sz) = (e.posterior.as_deref().unwrap(), e.standardizer().unwrap());
+    let tree = preset("Hornet");
+    let failed = render_all(&e, &tree, None, &[], 0);
+    let r = e.guess_rank(&tree, None, &[], &failed, 0).unwrap();
+    let (mut read, mut parted) = (0, 0);
+    for g in &r.guesses {
+        let Some(why) = &g.why else {
+            continue;
+        };
+        let t = apply_struct_op(&tree, &g.op).unwrap();
+        let hit = e.memo().get(&render_key(&t, &e.cfg.phrase)).unwrap();
+        let resp = post.responsibilities(&sz.transform(&hit.features.phi()));
+        let most = (0..resp.len()).fold(0, |m, k| if resp[k] > resp[m] { k } else { m });
+        let least = (0..resp.len()).fold(0, |m, k| if resp[k] < resp[m] { k } else { m });
+        assert_eq!(
+            why.style, most,
+            "{} at {}: another lens's reason",
+            g.kind, g.socket
+        );
+        read += 1;
+        parted += usize::from(most != least);
+    }
+    assert!(read > 0, "no guess had a reason: nothing was compared");
+    assert!(
+        parted > 0,
+        "the lenses never parted: the choice was not tested"
     );
 }
