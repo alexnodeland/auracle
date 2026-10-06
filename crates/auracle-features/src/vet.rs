@@ -146,3 +146,6 @@ pub fn vet(samples: &[f64], cfg: &VetConfig) -> Result<VetReport, VetFailure> {
     }
     Ok(report)
 }
+
+#[cfg(test)]
+mod tests;
