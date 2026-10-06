@@ -11,14 +11,16 @@
 //!
 //! This counts every allocation the test's thread makes while the
 //! instruments play: each quantum's input written and `process_ptr` called,
-//! as the worklet does, with notes pressed and let go, knobs and the bend
-//! moved between quanta (the port handler's messages during play), and a
-//! patch swap's audible quanta, its fade out and its fade in. Every path is
-//! played once first, so what is counted is the steady state, not a first
-//! use. What allocates by design is left out: a swap's silent rebuild (it
-//! compiles the new voices), the meter while it is on, RECORD, and the
-//! settings a player changes between phrases rather than during one
-//! (`set_sync`, `set_arp`).
+//! as the worklet does, with notes pressed and let go (each press putting
+//! its voice's knobs back and, with velocity playing a knob, offsetting
+//! it), knobs, the knob under velocity and the bend moved between quanta
+//! (the port handler's messages during play), and a patch swap's audible
+//! quanta, its fade out and its fade in. Every path is played once first,
+//! so what is counted is the steady state, not a first use. What allocates
+//! by design is left out: a swap's silent rebuild (it compiles the new
+//! voices), the meter while it is on, RECORD, and the settings a player
+//! changes between phrases rather than during one (`set_sync`, `set_arp`,
+//! `set_touch`).
 //!
 //! One test in this file, so no other test's thread allocates beside it.
 
@@ -100,12 +102,16 @@ fn quantum(poly: &mut LivePoly, t: &mut usize) -> f32 {
 }
 
 /// A phrase of play: `quanta` quanta with a note pressed and let go, a
-/// knob turned and the bend moved between them.
+/// knob turned (and, as PERFORM sends it, the base of the knob velocity
+/// plays) and the bend moved between them.
 fn phrase(poly: &mut LivePoly, knob: &str, quanta: usize, t: &mut usize) {
     for q in 0..quanta {
         match q % 40 {
             0 => poly.note_on(64, 0.7),
-            10 => assert!(poly.set_param(knob, (q % 7) as f64 / 7.0), "{knob}"),
+            10 => {
+                assert!(poly.set_param(knob, (q % 7) as f64 / 7.0), "{knob}");
+                poly.set_touch_base(0, (q % 7) as f64 / 7.0);
+            }
             20 => poly.set_bend((q % 5) as f64 - 2.0),
             30 => poly.note_off(64),
             _ => {}
@@ -140,9 +146,10 @@ fn saw() -> AudioNode {
 
 /// Played with everything on that plays per quantum: a chord under a
 /// synced, swung, two-octave up-down arpeggio, tempo-synced sequencers and
-/// glide (Loom); a unison stack under glide; a patch that listens, held
-/// open, its input written every quantum, with a key over it; then a swap
-/// of the stack under a held note.
+/// glide (Loom), velocity playing a knob the arpeggio's presses offset; a
+/// unison stack under glide, velocity playing its cutoff; a patch that
+/// listens, held open, its input written every quantum, with a key over it;
+/// then a swap of the stack under a held note.
 #[test]
 fn a_quantum_allocates_nothing() {
     quiver::rng::seed(7);
@@ -158,7 +165,17 @@ fn a_quantum_allocates_nothing() {
         .map(|k| k.addr.clone())
         .find(|a| a.ends_with("#srate"))
         .expect("Loom has a sequencer");
+    // Another of its knobs for velocity to play: the arpeggio presses in
+    // `process()`, so its touch is written there.
+    let touched = auracle_grammar::describe(&loom)
+        .modules
+        .iter()
+        .flat_map(|m| m.knobs.iter())
+        .map(|k| k.addr.clone())
+        .find(|a| *a != rate)
+        .expect("Loom has another knob");
     let mut seq = LivePoly::new(&serde_json::to_string(&loom).unwrap(), SR, 4).expect("compiles");
+    assert!(seq.set_touch(&format!(r#"[["{touched}", 0.3, 0.5]]"#), 0.8));
     seq.set_sync(true);
     seq.set_glide(0.4);
     seq.set_arp(true, 2, 4.0, 126.0, 0.5, 2, 0.3);
@@ -178,6 +195,7 @@ fn a_quantum_allocates_nothing() {
     let mut stack = LivePoly::new(&filtered, SR, 4).expect("compiles");
     stack.set_glide(0.3);
     stack.set_unison(true, 0.8, 0.6);
+    assert!(stack.set_touch(r#"[["node#cut", 0.3, 0.6]]"#, 0.8));
     stack.note_on(57, 1.0);
 
     let listens = json(AudioNode::Filter {

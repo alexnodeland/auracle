@@ -431,17 +431,12 @@ fn sync_drives_every_voice_from_one_transport() {
     );
 }
 
-/// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
-/// at different velocities leave their own voices' wired knob at
-/// different values, in the direction asked, and a mezzo note leaves it
-/// exactly where the knob is, wherever the knob has moved to. Touch off is
-/// off, however it was turned off.
-#[test]
-fn velocity_touch_offsets_its_own_voice_only() {
+/// A saw into a ladder lowpass, its cutoff at 0.5 and its resonance at 0.3:
+/// the patch the touch tests wire velocity to.
+fn ladder_json() -> String {
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
-    quiver::rng::seed(7);
-    let json = serde_json::to_string(&PatchTree {
+    serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.01,
             decay: 0.3,
@@ -465,17 +460,38 @@ fn velocity_touch_offsets_its_own_voice_only() {
             modulation: ModNode::None,
         },
     })
-    .unwrap();
-    let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
-    assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
-    let cut = |poly: &LivePoly, note: u8| {
-        let v = poly
-            .voices
-            .iter()
-            .find(|v| v.note == Some(note))
-            .expect("voice");
-        v.voice.params.get("node#cut").unwrap().value.get()
-    };
+    .unwrap()
+}
+
+/// What the voice sounding `note` holds at the knob `addr`, in the knob's
+/// own units.
+fn knob_on(poly: &LivePoly, note: u8, addr: &str) -> f64 {
+    let v = poly
+        .voices
+        .iter()
+        .find(|v| v.note == Some(note))
+        .expect("voice");
+    v.voice.params[addr].value.get()
+}
+
+/// Where the knob `addr` sits at the normalized value `x`, in its own units.
+fn knob_at(poly: &LivePoly, addr: &str, x: f64) -> f64 {
+    poly.voices[0].voice.params[addr].map.apply(x)
+}
+
+/// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
+/// at different velocities leave their own voices' wired knob at
+/// different values, in the direction asked, and a mezzo note leaves it
+/// exactly where the knob is, wherever the knob has moved to. Touch off is
+/// off, however it was turned off: the next note plays the knob, on a voice
+/// a note with touch on had offset (#223).
+#[test]
+fn velocity_touch_offsets_its_own_voice_only() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&ladder_json(), 44_100.0, 4).unwrap();
+    let wired = r#"[["node#cut", 0.3, 0.5]]"#;
+    assert!(poly.set_touch(wired, 1.0));
+    let cut = |poly: &LivePoly, note: u8| knob_on(poly, note, "node#cut");
     poly.note_on(60, 1.0);
     poly.note_on(64, 0.2);
     poly.note_on(67, TOUCH_MEZZO);
@@ -484,13 +500,7 @@ fn velocity_touch_offsets_its_own_voice_only() {
         loud > mezzo && mezzo > soft,
         "loud {loud} mezzo {mezzo} soft {soft}"
     );
-    let home = poly.voices[0]
-        .voice
-        .params
-        .get("node#cut")
-        .unwrap()
-        .map
-        .apply(0.5);
+    let home = knob_at(&poly, "node#cut", 0.5);
     // Relative: velocity crosses an f32 on the way in (0.6 is not exact
     // there), and the cutoff map is exponential, so the leftover is a few
     // parts per million of the value rather than zero.
@@ -499,16 +509,32 @@ fn velocity_touch_offsets_its_own_voice_only() {
         "mezzo moved the knob"
     );
     // Off is off: no offset on the next note, whether turned off by an
-    // empty list, by a depth that is not a number, or by input that does
-    // not read (rather than half-applying it). Each on an instrument of its
-    // own, so the note's voice is one touch never offset.
-    let wired = r#"[["node#cut", 0.3, 0.5]]"#;
-    for (off, depth) in [("[]", 1.0), (wired, f64::NAN), ("not json", 1.0)] {
-        let mut fresh = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        assert!(fresh.set_touch(wired, 1.0));
-        assert_eq!(fresh.set_touch(off, depth), off != "not json");
-        fresh.note_on(72, 1.0);
-        assert!((cut(&fresh, 72) - home).abs() < 1e-9, "{off} at {depth}");
+    // empty list, by a depth of zero or one that is not a number, or by
+    // input that does not read (rather than half-applying it). Each time on
+    // this one instrument, after a loud chord has left every voice bright,
+    // so whichever voice the note takes, touch offset it (#223: the note
+    // played that offset).
+    for (off, depth) in [
+        ("[]", 1.0),
+        (wired, 0.0),
+        (wired, f64::NAN),
+        ("not json", 1.0),
+    ] {
+        assert!(poly.set_touch(wired, 1.0));
+        poly.all_off();
+        for n in [72, 74, 76, 77] {
+            poly.note_on(n, 1.0);
+        }
+        assert!(
+            poly.voices
+                .iter()
+                .all(|v| v.voice.params["node#cut"].value.get() > home),
+            "the chord left a voice where the knob is"
+        );
+        poly.all_off();
+        assert_eq!(poly.set_touch(off, depth), off != "not json");
+        poly.note_on(79, 1.0);
+        assert!((cut(&poly, 79) - home).abs() < 1e-9, "{off} at {depth}");
     }
     // The knob moves under touch (`set_touch_base`): a mezzo note plays
     // its new value. A base that is not a number, or a site past the list,
@@ -519,10 +545,113 @@ fn velocity_touch_offsets_its_own_voice_only() {
     poly.set_touch_base(1, 0.1);
     poly.all_off();
     poly.note_on(60, TOUCH_MEZZO);
-    let moved = poly.voices[0].voice.params["node#cut"].map.apply(0.7);
+    let moved = knob_at(&poly, "node#cut", 0.7);
     assert!(
         (cut(&poly, 60) - moved).abs() < 1e-5 * moved.abs(),
         "the mezzo note is not on the moved knob"
+    );
+}
+
+/// **Touch off under a held note.** A note held while velocity stops
+/// playing a knob keeps the sound it was struck with until it is let go,
+/// and every note struck after the change plays the knob: on the voice a
+/// loud note left bright, and on the held note's own voice once it is let
+/// go and taken again. Turning touch off moves nothing under a finger
+/// (#223).
+#[test]
+fn a_note_held_through_touch_off_keeps_its_touch_until_let_go() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&ladder_json(), 44_100.0, 2).unwrap();
+    let cut = |poly: &LivePoly, note: u8| knob_on(poly, note, "node#cut");
+    let voice = |poly: &LivePoly, note: u8| poly.voices.iter().position(|v| v.note == Some(note));
+    let home = knob_at(&poly, "node#cut", 0.5);
+    assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
+    poly.note_on(60, 0.2);
+    poly.note_on(64, 1.0);
+    poly.note_off(64);
+    let dark = cut(&poly, 60);
+    assert!(dark < home, "the held note is not dark");
+    let held = voice(&poly, 60).expect("the held note's voice");
+    assert!(poly.set_touch("[]", 1.0));
+    for _ in 0..8 {
+        let _ = poly.process(128);
+    }
+    assert_eq!(cut(&poly, 60), dark, "turning touch off moved a held note");
+    // The voice the loud note rang out on.
+    poly.note_on(67, 1.0);
+    assert_ne!(voice(&poly, 67), Some(held));
+    assert!(
+        (cut(&poly, 67) - home).abs() < 1e-9,
+        "the next note played the loud note's touch"
+    );
+    assert_eq!(cut(&poly, 60), dark, "a press moved the held note");
+    poly.note_off(60);
+    assert_eq!(
+        poly.voices[held].voice.params["node#cut"].value.get(),
+        dark,
+        "letting go moved its tail"
+    );
+    // The held note's own voice, taken again.
+    poly.note_on(72, 0.2);
+    assert_eq!(voice(&poly, 72), Some(held));
+    assert!(
+        (cut(&poly, 72) - home).abs() < 1e-9,
+        "the voice kept the held note's touch"
+    );
+}
+
+/// **Touch moved to another control.** Switching what velocity plays from
+/// one knob to another puts the first back on the next note while the
+/// second takes the touch; switched back, the second plays where it has
+/// been turned to since, not where touch left it (#223: a knob touch let
+/// go of stayed where the last note on its voice had put it).
+#[test]
+fn switching_what_touch_plays_puts_the_first_knob_back() {
+    quiver::rng::seed(7);
+    // One voice: every note is on the voice touch offset.
+    let mut poly = LivePoly::new(&ladder_json(), 44_100.0, 1).unwrap();
+    let (cut, res) = ("node#cut", "node#res");
+    let home_cut = knob_at(&poly, cut, 0.5);
+    let home_res = knob_at(&poly, res, 0.3);
+    let to_cut = r#"[["node#cut", 0.3, 0.5]]"#;
+    assert!(poly.set_touch(to_cut, 1.0));
+    poly.note_on(60, 0.2);
+    assert!(
+        knob_on(&poly, 60, cut) < home_cut,
+        "touch did not reach cut"
+    );
+    poly.note_off(60);
+    assert!(poly.set_touch(r#"[["node#res", 0.3, 0.3]]"#, 1.0));
+    poly.note_on(62, 0.2);
+    assert!(
+        (knob_on(&poly, 62, cut) - home_cut).abs() < 1e-9,
+        "cut kept the touch it was switched away from"
+    );
+    assert!(
+        knob_on(&poly, 62, res) < home_res,
+        "touch did not reach res"
+    );
+    poly.note_off(62);
+    // Res turned, then touch back on cut: the next note plays res where
+    // it was turned to.
+    assert!(poly.set_param(res, 0.6));
+    for _ in 0..200 {
+        if poly.smoothers.is_empty() {
+            break;
+        }
+        let _ = poly.process(128);
+    }
+    assert!(poly.smoothers.is_empty(), "the turn never landed");
+    assert!(poly.set_touch(to_cut, 1.0));
+    poly.note_on(64, 0.2);
+    let turned = knob_at(&poly, res, 0.6);
+    assert!(
+        (knob_on(&poly, 64, res) - turned).abs() < 1e-9,
+        "res is not where it was turned"
+    );
+    assert!(
+        knob_on(&poly, 64, cut) < home_cut,
+        "touch did not reach cut"
     );
 }
 
@@ -1170,6 +1299,52 @@ fn live_stress_survives_chaos() {
             "iteration {i}: bad sample"
         );
         let _ = poly.poll_event();
+    }
+    // On whatever patch the chaos ended on, touch on every live knob and a
+    // note on each voice at a velocity of its own, so every voice carries an
+    // offset of its own; then touch off. Every note struck after it starts
+    // from the knobs: with one on each voice again, every voice (and the
+    // open voice, which touch never reaches) holds the same value at every
+    // knob (#223: each kept the offset its last note had).
+    poly.set_arp(false, 0, 2.0, 120.0, 0.5, 1, 0.0);
+    poly.set_unison(false, 0.0, 0.0);
+    poly.all_off();
+    for _ in 0..400 {
+        if matches!(poly.stage, Stage::Run) {
+            break;
+        }
+        let _ = poly.process(128);
+    }
+    assert!(
+        matches!(poly.stage, Stage::Run),
+        "the last swap never landed"
+    );
+    let n = poly.voices.len();
+    let every: Vec<(&str, f64, f64)> = poly
+        .param_slots
+        .iter()
+        .map(|p| (p.addr.as_str(), 0.4, 0.5))
+        .collect();
+    assert!(poly.set_touch(&serde_json::to_string(&every).unwrap(), 1.0));
+    for (k, note) in (0..n).zip(40u8..) {
+        poly.note_on(note, k as f64 / n as f64);
+    }
+    poly.all_off();
+    assert!(poly.set_touch("[]", 1.0));
+    for (k, note) in (0..n).zip(60u8..) {
+        poly.note_on(note, k as f64 / n as f64);
+    }
+    assert!(
+        poly.voices.iter().all(|v| v.note.is_some()),
+        "a voice unstruck"
+    );
+    for p in &poly.param_slots {
+        let knob = p.values[0].get();
+        assert!(
+            p.values.iter().all(|v| v.get() == knob),
+            "{} differs between voices",
+            p.addr
+        );
     }
 }
 

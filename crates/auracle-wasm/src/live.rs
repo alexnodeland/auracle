@@ -380,7 +380,21 @@ struct ParamSlot {
     addr: String,
     map: ParamMap,
     /// Index-parallel to `voices`, then the open voice's when there is one.
+    /// Written for every voice only through [`ParamSlot::set_all`]; the one
+    /// write to a single voice is a note's touch ([`LivePoly::apply_touch`]).
     values: Vec<Arc<AtomicF64>>,
+    /// The knob's own value, in its own units: what every voice holds but
+    /// for a note's touch offset, and what a voice is put back to when it
+    /// starts a note ([`LivePoly::restore_knobs`]).
+    knob: f64,
+}
+
+impl ParamSlot {
+    /// Write `v` to every voice, and make it the knob's value.
+    fn set_all(&mut self, v: f64) {
+        self.knob = v;
+        self.values.iter().for_each(|a| a.set(v));
+    }
 }
 
 /// A `steps` module's tempo-sync wiring: its transport handle, its rate
@@ -472,6 +486,8 @@ fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
                 .chain(open)
                 .filter_map(|v| v.voice.params.get(addr).map(|h| Arc::clone(&h.value)))
                 .collect(),
+            // Freshly compiled, every voice holds the tree's value.
+            knob: first.voice.params[addr].value.get(),
         })
         .collect()
 }
@@ -1012,14 +1028,11 @@ impl LivePoly {
             } else {
                 lane.free
             };
-            let p = &self.param_slots[lane.rate_slot];
+            let p = &mut self.param_slots[lane.rate_slot];
             let v = p.map.apply(x);
-            p.values.iter().for_each(|a| a.set(v));
+            p.set_all(v);
             if !self.sync_on {
-                let s = &self.param_slots[lane.sync_slot];
-                s.values
-                    .iter()
-                    .for_each(|a| a.set(auracle_grammar::steps::SYNC_FREE));
+                self.param_slots[lane.sync_slot].set_all(auracle_grammar::steps::SYNC_FREE);
             }
         }
     }
@@ -1092,8 +1105,7 @@ impl LivePoly {
                 lane.div = div;
             }
             let pos = (beats * div + lane.offset).max(0.0);
-            let s = &self.param_slots[lane.sync_slot];
-            s.values.iter().for_each(|a| a.set(pos));
+            self.param_slots[lane.sync_slot].set_all(pos);
         }
     }
 
@@ -1152,9 +1164,13 @@ impl LivePoly {
     /// `depth` in 0..1 scales the whole thing; 0 or `[]` turns touch off.
     ///
     /// The offset is written on the pressed voice only, at note-on, so a chord
-    /// can hold a soft dark note beside a loud bright one. Stated limit: a
-    /// parameter ramp on the same knob ([`Self::set_param`]) writes every
-    /// voice and so resets held notes' offsets until their next note-on.
+    /// can hold a soft dark note beside a loud bright one. A change here
+    /// reaches the notes struck after it: a held note keeps the offset it was
+    /// struck with until it is let go, and every later note starts from the
+    /// knobs ([`Self::restore_knobs`]), so a knob velocity no longer plays
+    /// sounds where it is turned. Stated limit: a parameter ramp on the same
+    /// knob ([`Self::set_param`]) writes every voice and so resets held
+    /// notes' offsets until their next note-on.
     /// Returns false for unreadable JSON (touch is then off).
     pub fn set_touch(&mut self, sites_json: &str, depth: f64) -> bool {
         let Ok(sites) = serde_json::from_str::<Vec<(String, f64, f64)>>(sites_json) else {
@@ -1180,6 +1196,21 @@ impl LivePoly {
         if let Some(t) = self.touch.get_mut(index) {
             if base.is_finite() {
                 t.base = base;
+            }
+        }
+    }
+
+    /// Put every knob of voice `i` back to the knob's own value as a note
+    /// starts on it, so nothing an earlier note's touch wrote there outlives
+    /// that note: a knob velocity no longer plays (touch off, or moved to
+    /// another control) sounds where it is turned, and [`Self::apply_touch`]
+    /// then offsets this note's own. One atomic store per knob and no
+    /// allocation: it runs on every press, the arpeggiator's in `process()`
+    /// among them.
+    fn restore_knobs(&self, i: usize) {
+        for p in &self.param_slots {
+            if let Some(a) = p.values.get(i) {
+                a.set(p.knob);
             }
         }
     }
@@ -1301,6 +1332,7 @@ impl LivePoly {
                 v.pan_r = th.sin() as f32;
             }
             for i in 0..n {
+                self.restore_knobs(i);
                 self.apply_touch(i, vel);
             }
             return;
@@ -1391,6 +1423,7 @@ impl LivePoly {
         v.vel = Self::vel_gain(vel);
         v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
         v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+        self.restore_knobs(i);
         self.apply_touch(i, vel);
     }
 
@@ -1720,9 +1753,9 @@ impl LivePoly {
             if self.sync_on {
                 self.smoothers.retain(|s| s.slot != slot);
                 let x = snap_rate(lane.free, self.bpm);
-                let p = &self.param_slots[slot];
+                let p = &mut self.param_slots[slot];
                 let v = p.map.apply(x);
-                p.values.iter().for_each(|a| a.set(v));
+                p.set_all(v);
                 return true;
             }
         }
@@ -1814,9 +1847,7 @@ impl LivePoly {
             }
             // One atomic store per voice; the handles were resolved at the
             // swap, so nothing is hashed here.
-            for value in &self.param_slots[s.slot].values {
-                value.set(s.current);
-            }
+            self.param_slots[s.slot].set_all(s.current);
         }
         self.smoothers.retain(|s| s.current != s.target);
     }
