@@ -30,6 +30,10 @@ module’s spec card in PATCH's catalog says them in these words:
 | *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough sounds use it, and the model has looked, but it can’t yet tell which way you lean |
 | *In 12 of 40 sounds. In analog sustain (60% of your pool), you lean toward it (θ +0.62 ± 0.20).* | Here is the lean, and how far to trust it |
 
+The count is of sounds, each once, that use the module or another of its
+family: a filter, an EQ, and a vocoder are one family to the model, so a
+filter’s card counts the sounds with any of the three.
+
 A dash is not zero. “The model isn’t sure yet” and “the model has had no
 chance to form a view” are different statements, and one gray bar can’t say
 both.
@@ -64,9 +68,10 @@ drawn as the app draws them.
 </figcaption>
 </figure>
 
-The catalog's bars follow the same logic, which is why they draw a dash
-below five sounds that use the module. A lean learned from three examples
-would otherwise look the same as one learned from three hundred.
+The catalog’s bars follow the same logic, which is why they draw a dash
+below five sounds that use the module or another of its family. A lean
+learned from three examples would otherwise look the same as one learned from
+three hundred.
 
 ## On the map, size is doubt
 

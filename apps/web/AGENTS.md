@@ -31,6 +31,7 @@ the long-form notes are this directory's `README.md`.
 | `vessel.js` | main thread | The one renderer for a face at every size (`drawVessel`: slices, glow, the floor's reflection), on a canvas; unit-tested in `tests/` |
 | `toasts.js` | main thread | The toast lane's queue (`createToastLane`): one toast on screen and the rest waiting, `replace`, `urgent`, the backlog's trim and the stale drop, with the DOM, the clock and the timers handed in; unit-tested in `tests/` |
 | `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome, TASTE's and LEARNING's copy; unit-tested in `tests/` |
+| `support.js` | main thread | How many sounds in the pool carry each module and each φ coordinate (`poolSupport`: the catalog's "In 12 of 40 sounds" under the model view), read off the ranked rows' s-expressions by the token the grammar opens each module's term with (`sexprHead`); unit-tested in `tests/` against the grammar's table (`tests/fixtures/sexpr-heads.json`, written by auracle-grammar's `term::tests::the_sexpr_heads_fixture_is_current`) |
 | `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 
 ## Rules
