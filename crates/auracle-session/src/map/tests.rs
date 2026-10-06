@@ -201,7 +201,11 @@ fn the_direction_liking_rises_is_the_fit_on_the_map() {
 }
 
 /// The taste map projects every pool member plus history ghosts, with
-/// finite coordinates and sane explained-variance fractions.
+/// finite coordinates and sane explained-variance fractions, and the axes
+/// it draws on real pool data carry the sign convention (each axis's
+/// largest component positive): the property
+/// `axes_come_back_with_their_largest_component_positive` proves on data
+/// built to violate it, here on the projection the app draws.
 #[test]
 fn taste_map_is_sane() {
     let mut rng = StdRng::seed_from_u64(0x3A9);
@@ -242,33 +246,18 @@ fn taste_map_is_sane() {
         [true, true],
         "a taste-map axis hit its iteration cap without converging"
     );
-}
-
-/// The map's axes carry the sign convention on real pool data.
-///
-/// The property itself is unit-tested in [`crate::map`] against data built
-/// to violate it; this is the end-to-end check that the projection the app
-/// actually draws obeys it too.
-#[test]
-fn taste_map_axes_are_sign_pinned() {
-    let mut rng = StdRng::seed_from_u64(0x5E1);
-    let user = ground_truth();
-    let cfg = SessionConfig {
-        pool_size: 20,
-        ..fast()
-    };
-    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-    engine.begin_session();
-    engine.fill_pool(&mut rng);
-    for _ in 0..10 {
-        let (a, b) = engine.next_duel(&mut rng).unwrap();
-        let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-        engine.record_duel(a, b, chose_a);
+    // The first map drawn has no earlier one to keep the orientation of,
+    // so its axes are the convention's.
+    let drawn = engine.map_axes.lock().unwrap().clone();
+    for (which, ax) in drawn.expect("a drawn map is remembered").iter().enumerate() {
+        let pivot = (0..ax.len())
+            .max_by(|&i, &j| ax[i].abs().total_cmp(&ax[j].abs()))
+            .unwrap();
+        assert!(
+            ax[pivot] > 0.0,
+            "axis {which}'s largest component is negative"
+        );
     }
-    engine.fit_posterior(&mut rng);
-    let map = engine.taste_map();
-    assert_eq!(map.converged, [true, true]);
-    assert!(map.points.iter().any(|p| p.x.abs() > 1e-6));
 }
 
 /// The map keeps the orientation it was last drawn in, across a redraw
