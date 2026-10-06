@@ -9,11 +9,24 @@
     "space": 4,
     "time": 1
   },
+  "www/brand/render.html": {
+    "font": 5,
+    "space": 4
+  },
   "www/landing/style.css": {
     "font": 34,
     "radius": 7,
     "space": 26,
     "time": 18
+  },
+  "www/theme/css/variables.css": {
+    "space": 1
+  },
+  "www/theme/fonts/auracle.css": {
+    "font": 26,
+    "radius": 4,
+    "space": 29,
+    "time": 2
   },
   "www/video/films/dsp/film.js": {
     "font": 9,
@@ -77,5 +90,11 @@
   },
   "www/video/stage/walk.js": {
     "font": 1
+  },
+  "www/viz/viz.css": {
+    "font": 7,
+    "radius": 1,
+    "space": 16,
+    "time": 2
   }
 }

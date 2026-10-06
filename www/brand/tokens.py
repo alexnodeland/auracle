@@ -33,6 +33,10 @@ with no build step.
   pass, and comments are not read;
 - a script reads a token (`tok("--x")`, `ink("--x")`, `inkA("--x", a)`) its
   surface does not define, or a stylesheet uses a token another surface owns;
+- a file on ON_EVERY (the live figures) reads a token one of its surfaces
+  does not define, or an alias of one (`--fg`, `--code-bg`, `--mono-font`)
+  one of its surfaces' stylesheets does not define, in the rule that holds
+  for that surface (`:root`, or its theme's rule);
 - a `<meta name="theme-color">` is not the rack, or a hex quoted in `<code>`
   is not a token's value (prose may name a colour, but only a true one);
 - a SCANNED stylesheet defines, outside its block, a custom property any
@@ -41,8 +45,9 @@ with no build step.
 - a SCANNED file's count of literal sizes and durations moves from
   SIZES_BASELINE (see "The sizes ratchet" below).
 
-The files in NOT_YET below still hold colours of their own and are not
-scanned yet; `--check` lists them every time it runs.
+A file that must hold colours of its own until a decision is made goes on
+NOT_YET below, with why; it is not scanned, and `--check` lists it every
+time it runs. The list is empty: every styled page is scanned.
 
 The sizes ratchet. Every SCANNED file is counted, outside its generated block,
 for four kinds of literal (units in any case: `PX` is `px`):
@@ -115,6 +120,9 @@ CONSUMERS = [
         "step": "    ",
     },
     {"file": "www/brand/index.html", "rules": [(":root", "brand")], "indent": "", "step": "  "},
+    # The source of lockup.png and og.png: the brand page's tokens, so the
+    # rasters are drawn in the colors and faces the page specifies.
+    {"file": "www/brand/render.html", "rules": [(":root", "brand")], "indent": "", "step": "  "},
     {"file": "www/404.html", "rules": [(":root", "404")], "indent": "  ", "step": "  "},
     {"file": "www/video/stage/stage.css", "rules": [(":root", "stage")], "indent": "", "step": "  "},
 ]
@@ -132,6 +140,12 @@ SCANNED = [
     ("www/theme/css/*.css", DOCS),
     ("www/theme/highlight.css", DOCS),
     ("www/theme/index.hbs", DOCS),
+    # The docs' layer over mdBook, by name: fonts/ also holds KaTeX's
+    # stylesheet and the staged copies of the figure runtime.
+    ("www/theme/fonts/auracle.css", DOCS),
+    # The live figures, loaded by both books and the landing page (ON_EVERY).
+    ("www/viz/*.js", DOCS + ("landing",)),
+    ("www/viz/*.css", DOCS + ("landing",)),
     ("www/brand/*.html", ("brand",)),
     ("www/404.html", ("404",)),
     ("www/video/stage/*.css", ("stage",)),
@@ -141,31 +155,29 @@ SCANNED = [
     ("www/video/films/*/index.html", ("stage",)),
 ]
 
+# Scanned files whose rules hold on every one of their surfaces at once,
+# rather than one theme's rules beside the other's. A name they read with
+# `var()`, in a stylesheet or in a script's string, must be defined on each:
+# a token in the surface's block, and any other name (an alias such as
+# `--fg: var(--silk)`) in the surface's own stylesheet, in `:root` or the
+# surface's own rule (`html.light` for Paper). On a page without it, a
+# `var()` with no fallback leaves its property unset: an SVG `fill` takes the
+# one it inherits, black at the root, and a background goes clear. A `var()`
+# with a fallback is held to the same rule, so every page names the same
+# things and the fallback is never what a reader sees.
+ON_EVERY = ["www/viz/*"]
+
 # Never scanned, because they are not styled pages. Keep this short.
 EXEMPT = [
     ("www/brand/*.svg", "the marks are assets: a favicon cannot read a custom property"),
     ("docs/notes/**", "dated records"),
 ]
 
-# NOT YET: pages and stylesheets that still hold colours of their own, each
-# waiting on a decision rather than a substitution. They are not scanned, and
-# `--check` names them every time it runs so they are not forgotten.
-NOT_YET = [
-    # The live figures, loaded by both books and the landing page. The grammar
-    # figure fills its audio and model tiles with the dark theme's phosphors
-    # as rgba literals (viz.js, near line 1614), so on the docs' Paper theme
-    # they glow in the rack's hues under Paper's strokes; and the var()
-    # fallbacks are literals. Needs a token per figure role, on both palettes.
-    ("www/viz/viz.js", "tile glows in the dark theme's phosphors, wrong on Paper; literal fallbacks"),
-    ("www/viz/viz.css", "var() fallbacks and a print colour"),
-    # The docs' layer over mdBook: a film's ground is `var(--bezel, #07080a)`,
-    # and Paper defines no --bezel, so on Paper the literal is what shows (on
-    # purpose: films stay dark). Needs a token that says so on both palettes.
-    ("www/theme/fonts/auracle.css", "a literal fallback for --bezel, which Paper lacks"),
-    # The raster source of lockup.png and og.png: a hand copy of seven tokens and
-    # a grey workbench. Belongs with the marks work (Plan-004 task 3).
-    ("www/brand/render.html", "a hand copy of seven tokens; rasterises the lockup and the social card"),
-]
+# NOT YET: a page or stylesheet that holds colours of its own while it waits
+# on a decision rather than a substitution, as (file, why). It is not
+# scanned, and `--check` names it every time it runs so it is not forgotten.
+# Empty: every styled page is scanned.
+NOT_YET: list[tuple[str, str]] = []
 
 # CSS's named colours. A name in a declaration's value, an SVG colour
 # attribute or a script's colour property is a colour written outside the
@@ -204,6 +216,9 @@ FUNC_RE = re.compile(r"\b(?:rgba?|hsla?)\(\s*[\d.]")
 TRIPLET_RE = re.compile(r"""(["'`])\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\1""")
 READ_RE = re.compile(r"""\b(?:tok|ink|inkA)\(\s*["'](--[\w-]+)["']""")
 VAR_RE = re.compile(r"var\(\s*(--[\w-]+)")
+DEFINES_RE = re.compile(r"(?<![\w-])(--[\w-]+)\s*:")
+# A rule with no rule inside it: (what precedes its brace, its declarations).
+RULE_RE = re.compile(r"([^{}]*)\{([^{}]*)\}")
 THEME_RE = re.compile(r"""<meta\s+name=["']theme-color["']\s+content=["']([^"']+)["']""")
 CODE_HEX_RE = re.compile(r"<code>\s*(#[0-9a-fA-F]{3,8})\s*</code>")
 # Where a named colour would be a colour: a declaration's value, an SVG or
@@ -703,6 +718,34 @@ def named_colours(body: str, kind: str) -> tuple[int, ...]:
     return tuple(sorted(set(hits)))
 
 
+def hand_defined() -> dict[str, tuple[set[str], list[str]]]:
+    """For each surface: the custom properties its consumers' stylesheets
+    define outside their blocks, in a rule that holds for it (`:root`, or
+    the surface's own selector), and where those are, as "file (selector)".
+    A surface with two consumers keeps only what both define."""
+    out: dict[str, tuple[set[str], list[str]]] = {}
+    for c in CONSUMERS:
+        text = read(c["file"])
+        m = BLOCK_RE.search(text)
+        if m:
+            text = text[: m.start()] + blank(m.group(0)) + text[m.end() :]
+        if c["file"].endswith(".css"):
+            body = strip_css(text)
+        else:
+            body = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", strip_html(text), re.S))
+        for sel, s in c["rules"]:
+            if s is None:
+                continue
+            names = set()
+            for r in RULE_RE.finditer(body):
+                # What precedes the brace may end a previous statement (`@import …;`).
+                if {x.strip() for x in r.group(1).split(";")[-1].split(",")} & {sel, ":root"}:
+                    names |= set(DEFINES_RE.findall(r.group(2)))
+            have, where = out.get(s, (None, []))
+            out[s] = (names if have is None else have & names, where + [f"{c['file']} ({sel})"])
+    return out
+
+
 def scan(src: dict) -> list[str]:
     errs = []
     blocks = {c["file"]: c for c in CONSUMERS}
@@ -713,6 +756,7 @@ def scan(src: dict) -> list[str]:
     families = {f"font-{n}" for n in src["fonts"]}
     rack = src["palettes"]["rack"]["groups"][0]["tokens"]["rack"]["value"].lower()
     values = {rgba_of(v) for s in src["surfaces"] for v in names_of(src, s).values()}
+    hand = None  # each surface's hand-defined names, read when a figure asks
     for rel, surfaces in scanned_files():
         text = read(rel)
         if rel in blocks:
@@ -774,6 +818,30 @@ def scan(src: dict) -> list[str]:
                 n = m.group(1)[2:]
                 if n in owned and n not in mine and m.group(1) not in defined:
                     errs.append(f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: var(--{n}) belongs to {', '.join(sorted(owned[n]))}")
+        if any(fnmatch.fnmatch(rel, e) for e in ON_EVERY):
+            own = set(DEFINES_RE.findall(body)) if kind != "js" else set()
+            for m in VAR_RE.finditer(body):
+                n = m.group(1)[2:]
+                line = body.count("\n", 0, m.start()) + 1
+                if n in owned:
+                    lacks = [s for s in surfaces if n not in names_of(src, s) and n not in size_names(src, s) and n not in families]
+                    # A stylesheet's token no surface of its own defines is reported above.
+                    if lacks and (kind == "js" or n in mine):
+                        errs.append(
+                            f"{rel}:{line}: var(--{n}) is not defined on {', '.join(lacks)}, "
+                            f"which load{'s' if len(lacks) == 1 else ''} this file; give it a token there in {SOURCE}"
+                        )
+                elif n not in families and m.group(1) not in own:
+                    # Not a token: an alias each page defines by hand, beside its tokens.
+                    if hand is None:
+                        hand = hand_defined()
+                    lacks = [s for s in surfaces if m.group(1) not in hand.get(s, (set(), []))[0]]
+                    if lacks:
+                        where = ", ".join(w for s in lacks for w in hand.get(s, (set(), ["no stylesheet"]))[1])
+                        errs.append(
+                            f"{rel}:{line}: var(--{n}) is not defined on {', '.join(lacks)}, "
+                            f"which load{'s' if len(lacks) == 1 else ''} this file; define it in {where}"
+                        )
     return errs
 
 
@@ -1107,7 +1175,8 @@ def main(argv: list[str]) -> int:
     if check:
         n = len(scanned_files())
         print(f"  tokens: {len(CONSUMERS)} generated blocks current, {n} files carry no stray colour")
-        print(f"  tokens: not yet checked: {', '.join(f for f, _ in NOT_YET)} (tokens.py NOT_YET)")
+        if NOT_YET:
+            print(f"  tokens: not yet checked: {', '.join(f for f, _ in NOT_YET)} (tokens.py NOT_YET)")
         total = sum(sum(r.values()) for r in now.values())
         print(f"  tokens: sizes not yet moved onto the scale ({total} literals, {SIZES_BASELINE}): {', '.join(f'{rel} ({sum(r.values())})' for rel, r in now.items())}")
     return 0

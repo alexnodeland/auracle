@@ -19,7 +19,7 @@
 
 .viz-stage {
   position: relative;
-  background: var(--code-bg, rgba(255, 255, 255, 0.02));
+  background: var(--code-bg);
   border: 1px solid var(--hairline);
   border-radius: 4px;
   padding: 14px 16px 12px;
@@ -116,7 +116,7 @@
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
   font-size: 11px;
   color: var(--fg, var(--silk));
-  background: var(--panel-hi, rgba(255, 255, 255, 0.05));
+  background: var(--panel-hi);
   border: 1px solid var(--hairline);
   border-radius: 3px;
   padding: 5px 11px;
@@ -208,7 +208,8 @@
 
 @media print {
   /* The controls do nothing on paper, and the readout carries what the figure
-     was showing when it was printed. */
+     was showing when it was printed. The stage's edge is the stroke tier's
+     grey, which holds on white under either theme. */
   .viz-controls { display: none; }
-  .viz-stage { border-color: #999; }
+  .viz-stage { border-color: var(--silk-mute); }
 }

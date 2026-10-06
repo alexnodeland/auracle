@@ -27,7 +27,9 @@
   a 1x banner is visibly soft on a retina screen. #og is exactly 1200x630, the
   size Open Graph wants, which is already 2x for how it is displayed.
 
-  Fonts are read from apps/web/fonts, the one place the faces live.
+  Fonts are read from apps/web/fonts, the one place the faces live. The colors
+  and families are the brand page's tokens, generated into the block below
+  from www/brand/tokens.json by `make tokens`.
 -->
 <style>
 @font-face {
@@ -43,16 +45,123 @@
   font-display: block;
 }
 
+/* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
 :root {
-  --rack: #0c0d10;
-  --silk: #d9d4c8; --silk-dim: #9a958a; --silk-mute: #6f6c63;
-  --phos-a: #8ef0b1; --phos-a-deep: #3d6a4d; --phos-b: #ffb454;
-  --font-silk: "Jost", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  /* grounds */
+  --rack: #0c0d10;     /* the void behind the rack */
+  --panel: #171a1f;    /* graphite faceplate */
+  --panel-hi: #1d2127; /* raised surface */
+  --bezel: #07080a;    /* screen bezels */
+  --hairline: #292e36;
+
+  /* machined graphite: the two faces of every raised control and the ink of
+     the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;     /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;     /*   …and the bottom */
+  --btn-hi: #2a2f37;       /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;       /*   …and the bottom */
+  --btn-hover-hi: #333944; /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
+  --shadow-ink: #0a0b0d;   /* the hard shadow line under a raised control */
+  --knob-body: #22262d;    /* PERFORM's knob caps */
+
+  /* shared shades: one value, used on more than one surface */
+  --rack-lo: #0a0b0e;   /* below the rack: the landing page's foot, the docs' sidebar */
+  --panel-lo: #12151a;  /* the foot of a raised panel; the docs' quotes and search results */
+  --pop-lo: #14161a;    /* the foot of a floating surface and of the menu bar; the docs' pop-ups */
+  --recess-hi: #14171b; /* the top of a recessed panel (bank, node bank); a screw's shadow; an empty tile */
+  --lifted: #1a1e24;    /* a lifted strip: a held tray item's top, a table's header row */
+  --amber-off: #1a1410; /* an unlit amber cell: pips, lock dots */
+  --steel: #3a3f47;     /* bare steel: a screw head's highlight; the docs' scrollbar */
+
+  /* silk: warm silkscreen ink */
+  --silk: #d9d4c8;      /* 13.1:1 on rack */
+  --silk-dim: #9a958a;  /*  5.9:1: all dimmed TEXT */
+  --silk-mute: #6f6c63; /*  non-text only: hairlines, disabled glyphs */
+
+  /* green phosphor: sound. `-dim` is the text tier, `-deep` the stroke tier */
+  --phos-a: #8ef0b1;      /* 14.1:1 */
+  --phos-a-dim: #63a97c;  /*  5.2:1: knob values, readouts */
+  --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+  /* amber phosphor: the model's mind */
+  --phos-b: #ffb454;      /* 11.0:1 */
+  --phos-b-dim: #b8823c;  /*  5.4:1: lineage log, notes */
+  --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+  /* danger */
+  --led-red: #ff5747;
+
+  /* light and shadow: never ink */
+  --black: #000000; /* shadow lines, the edge under a raised control, masks */
+  --white: #ffffff; /* highlights only, at an opacity; as ink it reads cold against silk */
+
+  /* brand: shades only this surface uses */
+  --paper-stock: #e8e6e0;      /* the stock the mark is shown on, to prove the tile does not invert (not the docs' Paper) */
+  --paper-stock-edge: #c9c6bd; /*   …its edge */
+  --paper-ink: #1b1a18;        /*   …the logotype printed on it */
+  --paper-ink-dim: #6b6862;    /*   …a caption printed on it */
+
+  /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
+     (`--phos-a-045` is 4.5%) */
+  --white-07: rgba(255, 255, 255, 0.07);
+  --rack-86: rgba(12, 13, 16, 0.86);
+  --led-red-30: rgba(255, 87, 71, 0.3);
+  --led-red-35: rgba(255, 87, 71, 0.35);
+
+  /* families */
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+
+  /* type: one ratio (1.2) and six roles. The steps run up from the value size,
+     12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit under the
+     scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
+     has sizes of its own, and a lone glyph is sized to its button */
+  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
+  --t-value: 12px;   /* mono values, readouts, small print */
+  --t-body: 14px;    /* prose, names, hints */
+  --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
+  --t-title: 21px;   /* a title: a sound's name, a card's heading, the wordmark */
+  --t-display: 52px; /* a level's one headline */
+  --t-canvas: 12px;  /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
+
+  /* space: a 4 px grid to 16, then wider. Under the first step (1 to 3 px) is
+     an optical nudge, not a space, and is written as it is */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* radius: three. A circle is 50% and a pill 999px, shapes rather than steps;
+     1 to 3 px is a hairline's rounding */
+  --r1: 4px;  /* a row, a chip, a small control */
+  --r2: 8px;  /* a button, a pad, a card */
+  --r3: 14px; /* the well, a sheet */
+
+  /* motion: three durations and two easings. Under prefers-reduced-motion
+     every duration is 0 ms. A loop's period is not one of these */
+  --d-press: 90ms;                /* a press: a control going down, a row lighting */
+  --d-state: 180ms;               /* a state changing: a color, a hover, a reveal */
+  --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
+  --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
+  --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+  /* brand: sizes only this surface uses */
+  --t-micro: 11px; /* mono captions, at the floor */
+  --s8: 72px;      /* between sections */
 }
+@media (prefers-reduced-motion: reduce) {
+  :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
+}
+/* tokens:end */
+
 *, *::before, *::after { box-sizing: border-box; }
-/* Mid grey so the edges of both artboards are obvious while shooting. */
-body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-smoothing: antialiased; }
+/* Bare steel, so the edges of both artboards are obvious while shooting. */
+body { margin: 0; background: var(--steel); font-family: var(--font-silk); -webkit-font-smoothing: antialiased; }
 
 /* The lockup rule, identical to the one in index.html. */
 .lk { display: inline-flex; align-items: center; gap: .62em; font-weight: 500; line-height: 1; white-space: nowrap; color: var(--silk); }
@@ -102,10 +211,10 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
 
 <svg style="position:absolute;width:0;height:0" aria-hidden="true"><defs>
   <symbol id="mark" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="7" fill="#0c0d10"/>
-    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
-    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
-    <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+    <rect width="32" height="32" rx="7" style="fill: var(--rack)"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke-width="2.2" style="stroke: var(--phos-a-deep)"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke-width="2.6" style="stroke: var(--phos-a)"/>
+    <circle cx="16" cy="16" r="3" style="fill: var(--phos-b)"/>
   </symbol>
 </defs></svg>
 
@@ -116,9 +225,9 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
 
 <div id="og">
   <svg class="halo" viewBox="0 0 32 32" aria-hidden="true">
-    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="1.1" opacity=".45"/>
-    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="1.3" opacity=".3"/>
-    <circle cx="16" cy="16" r="3" fill="#ffb454" opacity=".09"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke-width="1.1" opacity=".45" style="stroke: var(--phos-a-deep)"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke-width="1.3" opacity=".3" style="stroke: var(--phos-a)"/>
+    <circle cx="16" cy="16" r="3" opacity=".09" style="fill: var(--phos-b)"/>
   </svg>
   <div class="head">
     <span class="lk"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
