@@ -1634,7 +1634,7 @@ fn a_consumer_draws_only_from_its_own_stream() {
 #[test]
 fn the_structural_edit_vocabulary_keeps_its_spellings() {
     use auracle_grammar::{ModKind, NodeKind};
-    for (kind, want) in [
+    let nodes = [
         (NodeKind::Vco, "vco"),
         (NodeKind::Supersaw, "supersaw"),
         (NodeKind::Noise, "noise"),
@@ -1667,10 +1667,21 @@ fn the_structural_edit_vocabulary_keeps_its_spellings() {
         (NodeKind::Silence, "silence"),
         // The player's input, which `describe` reports as `audio_in`.
         (NodeKind::AudioIn, "audio_in"),
-    ] {
+        (NodeKind::Track, "track"),
+        (NodeKind::Capture, "capture"),
+    ];
+    // Every kind a hand can place has its spelling pinned here: a kind added
+    // to the grammar fails this test until it is.
+    for kind in NodeKind::ALL {
+        assert!(
+            nodes.iter().any(|(k, _)| *k == kind),
+            "{kind:?} has no pinned spelling"
+        );
+    }
+    for (kind, want) in nodes {
         assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
     }
-    for (kind, want) in [
+    let mods = [
         (ModKind::None, "none"),
         (ModKind::Lfo, "lfo"),
         (ModKind::Env, "env"),
@@ -1694,32 +1705,19 @@ fn the_structural_edit_vocabulary_keeps_its_spellings() {
         // A leaf, and a `RackModule::kind` too: `describe` reports
         // `steps` for the module this places.
         (ModKind::Steps, "steps"),
-    ] {
+    ];
+    for kind in ModKind::ALL {
+        assert!(
+            mods.iter().any(|(k, _)| *k == kind),
+            "{kind:?} has no pinned spelling"
+        );
+    }
+    for (kind, want) in mods {
         assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
     }
     // Every buildable kind is also a kind the rack description names, so
     // the palette button and the module it produces agree.
-    for kind in [
-        NodeKind::Wavetable,
-        NodeKind::Pluck,
-        NodeKind::Distortion,
-        NodeKind::Bitcrush,
-        NodeKind::Phaser,
-        NodeKind::RingMod,
-        NodeKind::Formant,
-        NodeKind::Flanger,
-        NodeKind::Tremolo,
-        NodeKind::Vibrato,
-        NodeKind::Eq,
-        NodeKind::Granular,
-        NodeKind::Shift,
-        NodeKind::Comp,
-        NodeKind::Duck,
-        NodeKind::Gate,
-        NodeKind::Vocoder,
-        NodeKind::Silence,
-        NodeKind::AudioIn,
-    ] {
+    for kind in NodeKind::ALL {
         let tree = auracle_grammar::apply_struct_op(
             &auracle_grammar::presets()[0].1,
             &auracle_grammar::StructOp::Replace {
