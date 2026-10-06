@@ -140,7 +140,9 @@ Under [the model view](#model-view) in PATCH, each module's edge is tinted by
 which way your taste leans on its kind: amber toward, red away, stronger where
 the model is surer. It was a toggle in the layout's ▾; holding <kbd>⌥</kbd>
 (or tapping **MODEL**, which stays up across a reload, as the toggle did) is
-its home now.
+its home now. In PERFORM, each control carries its lean: an amber arc toward
+the end your taste leans to, dashed while it is a guess
+([which way your taste leans](./views/perform.md#which-way-your-taste-leans)).
 
 ### Levels
 
@@ -182,8 +184,9 @@ sound you’re playing (its face, its name and ▶, which is <kbd>Space</kbd>),
 What holding <kbd>⌥</kbd> (or **MODEL** in the menu bar) shows: what the model
 believes, over whatever level is up. The bank’s guesses and the pool in the
 order the model rates it, TASTE’s halos, EVOLVE’s guess for the pair
-before you pick, and in PATCH the belief line, the [leans](#leans), a
-[worth](#worth) chip per kind and the guess's runners-up. A tap on **MODEL**
+before you pick, in PATCH the belief line, the [leans](#leans), a
+[worth](#worth) chip per kind and the guess's runners-up, and in PERFORM each
+control's lean. A tap on **MODEL**
 keeps it up, across a reload too. See [reading what it learned](./reading-the-model.md#the-model-view).
 
 ### Module, catalog

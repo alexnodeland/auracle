@@ -13,7 +13,9 @@ sound**: a patch that changes on its own without changing what it is made of.
 The first is a least-squares problem on the patch’s own Jacobian. The second is
 the [locked walk](./locks.md) with every structural site locked. Both live in
 `auracle_session::perform`, and reach the browser as `perform_wire`,
-`perform_apply`, `perform_drift`, and `perform_offer` on `WasmEngine`.
+`perform_apply`, `perform_drift`, and `perform_offer` on `WasmEngine`. Under
+the model view the instrument also draws which way your taste leans along
+each control ([below](#which-way-your-taste-leans)), `perform_lean`.
 
 ## Symbols on this page
 
@@ -889,6 +891,44 @@ phrase predicted. Without the match a crossfade would mostly compare levels,
 and the louder side reliably wins. The match is made on the standard phrase at each patch’s own
 settings; a named control turned on A afterward changes A’s level without
 re-normalizing it.
+
+## Which way your taste leans
+
+Under the model view (hold ⌥, or MODEL), each control carries its **lean**:
+how the model’s rating of the sound in hand changes as the sound moves along
+the control’s direction. With $z_0 = z(x)$ the sound’s standardized $\varphi$
+and $\hat e$ the control’s unit direction, extended to all $d$ coordinates
+with zeros on the structural block (turning a control moves the sound, never
+the patch’s module counts), the lean of one posterior draw is the derivative
+of its utility along $\hat e$:
+
+$$\ell = \frac{\partial}{\partial t}\, u\!\left(z_0 + t\,\hat e\right)\Big|_{t=0} = \theta_{k^\star}^\top \hat e, \qquad k^\star = \arg\max_k\, \theta_k^\top z_0 .$$
+
+The utility is a [maximum of experts](../taste/utility.md), piecewise linear,
+so its slope at a sound is the slope of the style that claims that sound,
+and $k^\star$ is chosen **per draw**: a draw in which another style rates the
+sound highest answers with that style’s $\theta$. It is not the mean $\theta$
+of one style projected on $\hat e$, which would describe a style that may not
+be the one rating this sound. Far enough along $\hat e$ another style can take
+the sound over, so a lean says what happens near the sound, not along the
+whole control. Which style a draw names does not depend on how the styles are
+labeled, so no [alignment](../taste/posterior.md#label-alignment) is needed.
+
+The instrument is sent the importance-weighted mean and standard deviation of
+$\ell$ over the draws (`TastePosterior::slope`, through `Engine::lean`; in
+utility per unit of $z$ moved toward the control’s high word), and draws it on
+the control’s dial: an arc from 12 o’clock toward the end it leans to, its
+$\pm 1$ SD interval behind it, every control of the panel on one scale. A lean
+whose interval crosses zero ($\lvert \text{mean} \rvert < \text{SD}$) is
+drawn as a guess, the rule LEARNING’s weights and PATCH’s worth chips use.
+Before the first fit there is no posterior and `perform_lean` answers `null`:
+nothing is drawn.
+
+The lean is taken at the tree PERFORM measures, with no overrides: the render
+its measurement made first, so it costs a few dot products per draw and no
+render. A control turned since is not part of it, and it is asked again when
+the view comes up, the sound or the panel changes, and the posterior moves (a
+refit, or a pick’s reweighting), never per frame.
 
 ## What is not done
 

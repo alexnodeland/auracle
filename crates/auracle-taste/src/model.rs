@@ -1164,7 +1164,7 @@ impl TastePosterior {
     /// rates this sound highest answers with that lens's slope. That makes
     /// it the slope near this sound, not along the whole of a direction: a
     /// move far enough can hand the sound to another lens. Which lens a draw
-    /// names does not depend on how its lenses are labelled, so this needs
+    /// names does not depend on how its lenses are labeled, so this needs
     /// no alignment. Weighted by the importance weights, as every summary
     /// here is.
     ///

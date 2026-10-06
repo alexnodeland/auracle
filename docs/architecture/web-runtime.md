@@ -110,7 +110,26 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   It is asked when the view comes up, on each `placePair`, and again on
   `fitted`, so a refit between deal and pick cannot leave an old number; a pick
   clears it. The cards' style badges show only under the view.
-- **PERFORM**: nothing per control; no engine call yet says a control's lean.
+- **PERFORM**: `perform.modelViewChanged(on)`. Each control carries its
+  lean, which way your taste leans along it at the sound in hand: the
+  worker's `perform_lean` (`Engine::lean`, in `now`), asked of the tree
+  PERFORM measures with no overrides (a memo hit) for the panel's set, and
+  answered `{lean: [{index, name, mean, std}]}`, the posterior slope of the
+  utility along each control's direction through the lens that claims the
+  sound, or `lean: null` before the first fit. `paintLean` draws it on the
+  dial (`.pf-k-lean`, an arc from 12 o'clock toward the end it leans to with
+  its ±σ interval, on one scale for the panel: taste-geom's `leanMarks`) and
+  the model's words over the caption (`.pf-k-leanw`, `words.leanWord`: *it
+  leans bright*), and a lean whose interval crosses zero as the guess
+  `pullMark` makes it (dashed, faint, its words ending in "?"). CSS shows it
+  only under the view. It is asked when the view comes up over PERFORM,
+  when PERFORM comes into sight with the view up, when the sound or the
+  panel changes, and when main reports the posterior moved
+  (`perform.posteriorChanged`: on `fitted`, and on a `status` carrying
+  `ratings`); once per sound, posterior and panel (`leanAsked`), never per
+  frame. A lean of the same sound stays drawn until a newer one lands; one
+  asked under another posterior or panel is not shown when the view comes
+  up.
 
 ## The worker's lanes
 
@@ -118,7 +137,8 @@ Requests are served in three lanes, most urgent first and first come, first
 served within a lane (`laneOf` in `worker.js`):
 
 - **now**: the player's gestures and everything that must stay in order with
-  them (edits, votes, opens, auditions, saves, logs). A render main asks for
+  them (edits, votes, opens, auditions, saves, logs, and the model view's
+  questions: EVOLVE's guess before a pick, PERFORM's lean). A render main asks for
   in the background (`render` with `bg`: the sounds of a pair just dealt)
   waits here behind every gesture, and before one starts, and again after it
   ends, the worker lets in anything that arrived during the last call
@@ -211,7 +231,7 @@ arrived during that call first. And end to end by
 engine and posts the request while a given engine call runs: during
 PERFORM's measurement, the guess's renders and a spare offer's steps, the
 request is handed over when that call ends, before any other, and answered
-before the job's next one; `tests/worker/warm_start.test.mjs` does the same
+before the job's next one (PERFORM's lean by its one call); `tests/worker/warm_start.test.mjs` does the same
 for *teach it* while two loops serve the lane, one of them measuring the
 warm start's cards.
 

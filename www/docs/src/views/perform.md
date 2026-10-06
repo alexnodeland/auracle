@@ -72,7 +72,9 @@ On the right, what you turn:
   crash still comes into B).
 - **Your controls**, three to a row: to start, **BRIGHT**, **SNAP**,
   **MOTION**, **BODY**, **GRIT**, and **SPACE** (a longer panel takes four to
-  a row). The line under each says what it turns, or what state it’s in. A
+  a row). The line under each says what it turns, or what state it’s in;
+  under the model view (hold <kbd>⌥</kbd>), which way your taste leans along
+  it (see [which way your taste leans](#which-way-your-taste-leans)). A
   small *vel* on one says your velocity plays it (see [what velocity
   plays](#what-velocity-plays)).
 - **UNDER THE HOOD.** The patch’s own knobs the controls and Wander are
@@ -408,6 +410,43 @@ fewer. It can’t go where there is nowhere to go: a sound with no noise can’t
 get smoother, and one with no tail can’t get closer.
 ```
 
+### Which way your taste leans
+
+Hold <kbd>⌥</kbd> (Alt off Apple platforms), or press and hold **MODEL** in
+the menu bar, and each control shows which way your taste leans along it,
+from the sound in your hands. An amber arc runs from 12 o’clock toward the end
+it leans to, just outside the ring, and the line under the control says it in
+the model’s words:
+
+```text
+it leans bright
+it leans bloom?
+```
+
+The longer the arc, the more the model’s rating of a sound changes as it moves
+that way: the whole panel is drawn on one scale. Behind it, a thin arc shows
+how far that could be off. When that thin arc crosses 12 o’clock, the model
+can’t yet tell which way you lean, so the lean is drawn as a guess: dashed and
+faint, its words ending in **?**, as LEARNING marks one. Before the model has
+fitted anything there is no lean, and nothing is drawn.
+
+A lean is about your taste, not the knobs. An amber, dashed search control
+has one too: its knobs can’t move the sound that way, but your taste may
+still lean there. Let go of <kbd>⌥</kbd> and the lines under the controls are
+back. The lean is asked for as the view comes up, and again when the model
+learns from a pick or fits again.
+
+```admonish info collapsible=true title="How it works: a lean"
+Each control is a fixed direction in the measurements the model hears. Its
+lean is the slope of the model’s rating along that direction at the sound in
+your hands, as a mean over the model’s draws and one standard deviation. Your
+taste is a set of styles, and a sound is rated by the style that likes it
+most, so in each draw the slope is that style’s. Far enough along a control,
+another style may take the sound over, so a lean is true near here, not along
+the whole control. It is taken at the sound as it stands, without your turns:
+turning a control doesn’t redraw it.
+```
+
 ## How it works
 
 To see what one control does to this sound, [ask it](#ask-what-it-does).
@@ -675,6 +714,7 @@ learn, endless encoders, and soft takeover.
 
 - Turn WANDER into *ideas*, and let the offers come to you.
 - Turn an amber control past its notch, and hear what B grows.
+- Hold <kbd>⌥</kbd>, and see which way your taste leans along each control.
 - Open the sound in [PATCH](./play.md), and watch the amber pointers move as
   you play.
 - [Performance: named controls and the drift walk](../../reference/search/perform.html)
