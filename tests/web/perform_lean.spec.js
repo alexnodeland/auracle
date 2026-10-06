@@ -8,8 +8,9 @@
 // zero is a guess: its arc dashed, its words ending in "?". Before the first
 // fit the engine has no lean, and nothing is drawn. It is asked when the view
 // comes up over PERFORM and again when the posterior moves (a pick's
-// reweighting, a taste file opened) or the sound is measured through
-// another audition clip, never per frame, and nothing of it shows at rest.
+// reweighting, a taste file opened) or the sound in hand changes (a drift's
+// glide landing, PATCH's knob write followed, another audition clip for a
+// sound that listens), never per frame, and nothing of it shows at rest.
 //
 // What each lean is (the claiming lens, the weights) is the engine's, pinned
 // in auracle-taste and auracle-session; which end a lean names and how a
@@ -199,4 +200,51 @@ test("a new audition clip asks again for the lean of a sound in hand that listen
   expect(again.ask.tree, "the sound in hand, asked again").toBe(first.ask.tree);
   expect(again.reply.lean.map((l) => l.index)).toEqual(SIX);
   await expect(page.locator(".pf-knob.leaning")).toHaveCount(6);
+});
+
+test("the sound in hand changing under the view asks its lean again: a drift's glide landing, and PATCH's knob write followed", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
+  await app.warmStart();
+  await app.openOnPerform("Glass Pad", { reach: false });
+  await modelView(page, true);
+  await app.reply("perform_leaned", { where: (r) => Array.isArray(r.lean) });
+
+  // Wander into drift, its walk answered by the spec: the tree it lands on
+  // is the sound in hand once the glide is over.
+  await app.stall({ type: "perform_drift" });
+  const wander = page.locator('.pf-knob[data-i="7"]');
+  await wander.focus();
+  for (let i = 0; i < 9; i++) await page.keyboard.press("ArrowUp"); // 0.45: drift
+  await expect(wander.locator(".pf-k-sub")).toHaveText(/^drift/);
+  const walk = await app.stalled();
+  const tree = JSON.parse(walk.tree);
+  tree.amp.release = (tree.amp.release + 0.37) % 1;
+  const landed = JSON.stringify(tree);
+  const t0 = await app.now();
+  await app.inject({ type: "perform_drifted", req: walk.req, re: walk.rid, drift: { tree, knobs: [], taste: true } });
+  // Asked once the glide is over (seconds long), of the tree it landed on.
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "perform_lean" }, { after: t0 })).length, { timeout }).toBe(1), { ms: 30_000 });
+  const [afterGlide] = await app.sent({ type: "perform_lean" }, { after: t0 });
+  expect(afterGlide.tree, "the tree the drift landed on").toBe(landed);
+  // Still again, so no other walk starts.
+  await wander.focus();
+  await page.keyboard.press("Home");
+  await expect(wander.locator(".pf-k-sub")).toHaveText("still");
+
+  // A knob turned in PATCH whose write lands after PERFORM is back in sight:
+  // PERFORM follows the tree as edited, and asks its lean.
+  await app.level("patch");
+  const rackKnob = page.locator("#rack-svg g[data-addr]:has(> .knob-hit)").first();
+  await app.engine((timeout) => expect(rackKnob).toBeAttached({ timeout }), { ms: 30_000 });
+  await app.hold({ type: "bench" });
+  await rackKnob.focus();
+  await page.keyboard.press("ArrowUp");
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).filter((h) => h.type === "bench").length, { timeout }).toBe(1), { ms: 30_000 });
+  await app.level("perform");
+  const t1 = await app.now();
+  await app.release();
+  const { ask } = await leanAfter(app, t1);
+  const [bench] = await app.replies("bench", { after: t1 });
+  expect(ask.tree, "the tree as edited in PATCH").toBe(bench.treeJson);
+  expect(ask.tree).not.toBe(landed);
 });

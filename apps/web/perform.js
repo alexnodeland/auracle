@@ -782,8 +782,9 @@ export function createPerform(host) {
   // Ask the engine for the lean, when the model view is up over PERFORM and
   // the one in hand is not for this sound, posterior and panel: when the
   // view comes up (`modelViewChanged`), PERFORM comes into sight (`show`),
-  // the sound or the panel changes (`patchChanged`, a Keep, `setPanel`, a
-  // new clip for a sound that listens: `clipChanged`) and the posterior moves
+  // the sound or the panel changes (`patchChanged`, a Keep, a glide landing,
+  // PATCH's knob writes followed, `setPanel`, a new clip for a sound that
+  // listens: `clipChanged`) and the posterior moves
   // (`posteriorChanged`: a refit, a pick's reweighting, a taste file
   // opened). A lean of this sound already drawn stays until the new one
   // lands.
@@ -1153,6 +1154,9 @@ export function createPerform(host) {
     if (structureDiffers(state.cur.json, json)) return;
     state.cur.json = json;
     if (state.home && state.home.json && !structureDiffers(state.home.json, json)) state.home.json = json;
+    // The sound in hand is the tree as edited: its lean, under the view (a
+    // write landing after PERFORM came into sight; otherwise `show` asks).
+    askLean();
   }
 
   // Why PERFORM is playing `addr` away from the patch, or null when it is
@@ -2915,6 +2919,9 @@ export function createPerform(host) {
       renderWander();
       if (outsideTrust()) recheck();
       else renderStatus();
+      // The sound in hand is where the glide landed (a drift's tree, which
+      // its walk rendered): its lean, under the view.
+      askLean();
       return;
     }
     requestAnimationFrame(stepGlide);
