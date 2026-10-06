@@ -129,9 +129,12 @@ fn compiled_patches_sound_and_stay_bounded() {
 }
 
 /// The canonical trace encoding is the exact inverse of the generative
-/// program: choices match site-for-site, and replay-scoring the encoding
-/// recovers the same PCFG log-prior. This pins `to_trace` to the grammar —
-/// they cannot drift apart.
+/// program: choices match site-for-site, `from_trace` decodes the encoding
+/// back to the tree, and replay-scoring it recovers the same PCFG
+/// log-prior. This pins `to_trace` to the grammar — they cannot drift
+/// apart. (The plain sampler's draws round-trip in
+/// `every_mod_kind_is_drawn_and_round_trips`, and compile in
+/// `every_advertised_live_site_has_a_live_handle`.)
 #[test]
 fn to_trace_inverts_generative_run() {
     let prior = PatchGrammarPrior::default();
@@ -146,6 +149,7 @@ fn to_trace_inverts_generative_run() {
                 "encoding mismatch at {addr}"
             );
         }
+        assert_eq!(PatchTree::from_trace(&enc).expect("decodes"), tree);
         let (replayed, scored) = run(
             ScoreGivenTrace {
                 base: enc,
@@ -226,25 +230,6 @@ fn every_mod_kind_is_drawn_and_round_trips() {
         steps_trees >= 3,
         "only {steps_trees} trees held a steps leaf"
     );
-}
-
-/// `from_trace(to_trace(t)) == t` for prior draws and for the plain-RNG
-/// sampler (the two samplers must agree on representable trees).
-#[test]
-fn trace_roundtrip() {
-    let prior = PatchGrammarPrior::default();
-    let mut rng = StdRng::seed_from_u64(4);
-    for _ in 0..50 {
-        let (tree, _) = draw(&prior, &mut rng);
-        let back = PatchTree::from_trace(&tree.to_trace()).expect("roundtrip");
-        assert_eq!(back, tree);
-    }
-    for _ in 0..50 {
-        let tree = prior.sample_with_rng(&mut rng);
-        let back = PatchTree::from_trace(&tree.to_trace()).expect("roundtrip");
-        assert_eq!(back, tree);
-        assert!(compile(&tree, SR).is_ok());
-    }
 }
 
 /// The two categorical sites that reach the running voices without a
