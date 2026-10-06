@@ -622,7 +622,10 @@ fn aligned_to_keeps_lens_identities_across_fits() {
         weights: Vec::new(),
     };
     assert_eq!(one.aligned().samples, one.samples);
-    assert_eq!(one.aligned_to(&[b.clone()]).samples, one.samples);
+    assert_eq!(
+        one.aligned_to(std::slice::from_ref(&b)).samples,
+        one.samples
+    );
 }
 
 /// M3 gate 2: all three modalities condition one posterior; recovery
