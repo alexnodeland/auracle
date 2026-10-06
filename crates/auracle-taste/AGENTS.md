@@ -44,5 +44,5 @@ and mixture gates, the fused prior's) carry their bounds with the seed sweep
 that set them; a bound moves only with a new sweep, never to fit one seed.
 The crate is at 100 % of lines and functions
 ([Coverage](../AGENTS.md#coverage)), and its tests catch every mutant of
-it but six, each answered in #207
-([Mutation testing](../AGENTS.md#mutation-testing)).
+it but one that no posterior can show, excluded in `.cargo/mutants.toml`
+with why ([Mutation testing](../AGENTS.md#mutation-testing)).

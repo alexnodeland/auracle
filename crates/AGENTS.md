@@ -230,8 +230,9 @@ limit); neither is a survivor.
 `test-fast` profile and nextest; a mutant is tested by its own crate's tests
 only, so a survivor is code its crate's tests don't check; the fast tier,
 the slow tests never (the Makefile passes `SEARCH_FLOOR` and `SLOW_TESTS`);
-no examples, which are neither mutated nor built; and the hand-written
-`Debug` impls left out. Judging each crate by its own tests is stricter
+no examples, which are neither mutated nor built; and what is left out:
+the hand-written `Debug` impls, and each equivalent mutant (below) that
+stays. Judging each crate by its own tests is stricter
 than coverage, which is measured over the whole workspace's run: a branch
 of grammar's that only a session test reaches is covered, and its mutants
 survive.
@@ -274,19 +275,20 @@ every test of `auracle-taste` still passed. It is one of three things:
    `.cargo/mutants.toml`'s `exclude_re`, by file, function and change (not
    by line, which moves), with the reason above it. That is rare, and
    review sees each one.
-3. **Code that doesn't matter.** Remove it.
+3. **Code that doesn't matter.** Remove it. If it guards a case no input
+   reaches, let a type or a `const` assertion rule the case out, as
+   `standardize.rs` does for `winsor_k`'s bound.
 
 **Review treats a survivor in changed code as a finding**, as it does an
 uncovered changed line: killed, or answered with why it can't be. The
 crates didn't start clean: on `main` at `cf61f48`, with taste's PR (#198)
 merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
 unviable). Taste's and features' PRs merged before this check existed, so
-a follow-up issue took their survivors (#207). Taste's are done: each is
-killed by a test, or answered there with why it can't be (six: five that
-no well-formed input tells from the code, and one that, at an exact tie,
-picks the other of two correct resamples). Features' are still to be measured, and
-each crate's PR still to come in #181 kills or answers its own. The PR
-job becomes required once they are done.
+a follow-up issue took their survivors (#207). Taste's are done: each was
+killed by a test or went with code that couldn't matter, but one, an
+equivalent mutant, which is excluded. Features' are still to be measured,
+and #207 takes them then. Each crate's PR still to come in #181 kills or
+answers its own. The PR job becomes required once they are done.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
 part of neither `CI` lane, the PR's fast lane or the queue's full gate, and
