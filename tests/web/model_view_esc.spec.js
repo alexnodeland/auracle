@@ -4,8 +4,9 @@
 // leaves it when a closer said it used it: `preventDefault`). PATCH's chain
 // is model_view.spec.js's; here, the closers outside it that once let the
 // same press end the view too: PERFORM's well modes (XY, How it works), the
-// ? card, the scope panel, the picture panel and TASTE's selected point.
-const { test, expect, modelView } = require("./fixtures");
+// ? card, the scope panel, the picture panel and TASTE's selected point; and
+// with two open (KEYS ⋯ over PERFORM's XY), a press closes the nearer only.
+const { test, expect, modelView, openKeys } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
   await app.boot();
@@ -18,10 +19,15 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
     await expect(body, `Esc on ${what} left the model view up`).toHaveClass(/\bmodel-view\b/);
   };
 
-  // PERFORM's well: XY, then How it works, each put away by Esc in the well.
+  // PERFORM's well: XY, then How it works, each put away by Esc while PERFORM
+  // shows (a press on HOW IT WORKS leaves the focus nowhere).
   await app.level("perform");
   const well = page.locator(".pf-well");
   await page.locator(".pf-xy-btn").click();
+  await expect(well).toHaveAttribute("data-mode", "xy");
+  // KEYS ⋯ open over it is nearer: that press closes it and only it.
+  await openKeys(page);
+  await escCloses(() => expect(page.locator("#keys-pop")).toBeHidden(), "KEYS ⋯");
   await expect(well).toHaveAttribute("data-mode", "xy");
   await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "PERFORM's XY");
   await page.locator(".pf-why-btn").click();

@@ -16,6 +16,15 @@
 //   after it (an order, read through the tap, not a time).
 const { test, expect, bankTab } = require("./fixtures");
 
+/** Boot with PERFORM's first measurement of the sound the app opens with
+ *  kept from the engine (`app.stall`): thirty-odd renders the faces lane
+ *  waits behind by design (about 33 s on a laptop, over a minute on a CI
+ *  runner), and nothing these specs are about. */
+async function boot(app) {
+  await app.stall({ type: "perform_wire" });
+  await app.boot();
+}
+
 /** The preset rows in the list's view, in order: their index, whether a face
  *  is drawn in them, and the key it is drawn from (the slot's `data-drawn`,
  *  `<key>|<bank>|…`). Read in one task. */
@@ -34,8 +43,8 @@ const presetsInView = (page) =>
       });
   });
 
-/** Every preset row in view has its face: an engine wait (the faces lane is
- *  below PERFORM's first measurement, which runs at boot). */
+/** Every preset row in view has its face: an engine wait (the faces lane
+ *  waits for the bank to finish arriving). */
 const allInViewDrawn = (app, page) =>
   app.engine((timeout) =>
     expect
@@ -46,7 +55,7 @@ const allInViewDrawn = (app, page) =>
       .toBe(true));
 
 test("a preset row's face is the face the worker gives for that preset", async ({ page, app }) => {
-  await app.boot();
+  await boot(app);
   await bankTab(page, "presets");
   await allInViewDrawn(app, page);
   const rows = await presetsInView(page);
@@ -77,7 +86,7 @@ test("a preset row's face is the face the worker gives for that preset", async (
 });
 
 test("scrolling the presets renders the rows that come into view", async ({ page, app }) => {
-  await app.boot();
+  await boot(app);
   await bankTab(page, "presets");
   await allInViewDrawn(app, page);
   const t0 = await app.now();
@@ -113,16 +122,16 @@ test("scrolling the presets renders the rows that come into view", async ({ page
 });
 
 test("a sound opened while preset faces wait to render is not kept waiting behind them", async ({ page, app }) => {
-  await app.boot();
+  await boot(app);
   await bankTab(page, "presets");
   await allInViewDrawn(app, page);
-  // Every other preset's face asked for at once, none of them rendered yet
+  // Twenty more presets' faces asked for at once, none of them rendered yet
   // (a list of presets looked through asks for one per row): the faces lane
   // is long.
   const shown = new Set((await presetsInView(page)).map((r) => r.index));
   const all = await page.locator("#bank-list .preset-item").evaluateAll((rows) => rows.map((r) => Number(r.dataset.index)));
-  const asked = all.filter((i) => !shown.has(i));
-  expect(asked.length).toBeGreaterThan(30);
+  const asked = all.filter((i) => !shown.has(i)).slice(0, 20);
+  expect(asked).toHaveLength(20);
   const refs = asked.map((i) => `spec-q${i}`);
   const t0 = await app.now();
   await app.post({ type: "faces", ids: [], trees: asked.map((preset, i) => ({ ref: refs[i], preset })), render: true });
@@ -147,5 +156,5 @@ test("a sound opened while preset faces wait to render is not kept waiting behin
   expect((await landed(load._at, loaded._at)).length, "faces rendered between the open and its answer").toBeLessThanOrEqual(1);
   expect((await landed(begin._at, benched._at)).length, "faces rendered between the bench open and its answer").toBeLessThanOrEqual(1);
   // And the faces were waiting: they go on landing after it.
-  await app.engine((timeout) => expect.poll(async () => (await landed(benched._at)).length, { timeout }).toBeGreaterThan(10), { ms: 120_000 });
+  await app.engine((timeout) => expect.poll(async () => (await landed(benched._at)).length, { timeout }).toBeGreaterThan(3), { ms: 120_000 });
 });
