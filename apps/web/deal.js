@@ -32,6 +32,15 @@
 // ran P, R, Q, with the cards dimmed through a deal and two renders nobody
 // needed, and when an answer landed changed what a seeded session showed
 // (ADR-001). Now the pairs go up in the order the engine dealt them.
+//
+// An empty answer. The engine deals nothing when fewer than two sounds in
+// the pool may be dealt: every other one is cut (each deal excludes the cuts).
+// A table waiting on that answer has nothing to put up. It used to put up
+// nothing as if it were a pair: the cards' buttons came back live over the
+// pair just put away, with no reason and nothing they could do (#195). Now
+// the table stays off and says why (`nothing`), and deals again by itself
+// when a sound may have come back (`soundsBack`): a cut taken back, or the
+// pool changed.
 
 /** How many answers in a row the dealer refuses before it stops dealing
  *  again: with the table waiting, the answer after these goes up anyway (a
@@ -81,12 +90,15 @@ export function usable(pair, { table = null, left = null, held = null, cut, gone
  *  - `ask(ahead)`: post a deal (`ahead` for the pair after the table's);
  *  - `place(pair, meta)`: put the pair on the table (main's `placePair`, the
  *    one place a pair goes up, which calls `placed` back);
- *  - `fetch(pair)`: fetch the pair's sounds in the background. */
+ *  - `fetch(pair)`: fetch the pair's sounds in the background;
+ *  - `nothing()`: the table's deal came back empty, so the table has no pair
+ *    to put up and stays off until a sound comes back. */
 export function createDealer(io) {
   let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
   let out = 0; // deals asked for and not yet answered
   let retries = 0; // answers refused since the table last changed
   let left = null; // the pair ↻ or a lost side just put away, until the next goes up
+  let empty = false; // the table's last answer was empty: nothing to deal
 
   const may = (pair) => usable(pair, { table: io.table(), left, held: io.held(), cut: io.cut, gone: io.gone });
 
@@ -106,13 +118,27 @@ export function createDealer(io) {
     io.ask(true);
   }
 
+  /** Nothing to deal: the table waits on no deal and puts nothing up. */
+  function nothing() {
+    left = null;
+    retries = 0;
+    empty = true;
+    io.nothing();
+  }
+
   /** A deal's answer. With the table waiting it goes up; with a pair on the
    *  table it waits as the next one, its sounds fetched, unless one already
    *  waits. */
   function dealt(pair, meta) {
     out = Math.max(0, out - 1);
     if (!io.table()) {
-      if (!pair || may(pair)) return void io.place(pair, meta);
+      // Empty: with another deal still out the table waits for that one;
+      // with none, there is nothing to deal.
+      if (!pair) {
+        if (!out) nothing();
+        return;
+      }
+      if (may(pair)) return void io.place(pair, meta);
       // Dealt before a cut, or the pair just put away: the next answer is
       // already on its way, or one more is asked for.
       if (out) return;
@@ -190,6 +216,7 @@ export function createDealer(io) {
     placed() {
       left = null;
       retries = 0;
+      empty = false;
       check();
       dealAhead();
     },
@@ -213,8 +240,18 @@ export function createDealer(io) {
      *  none is out. */
     retract(displaced, meta) {
       left = null;
+      empty = false;
       if (displaced && may(displaced)) ahead = { pair: displaced, meta };
       dealAhead();
+    },
+    /** A sound may have come back (a cut taken back, or the pool changed):
+     *  a table with nothing to deal asks again, unless a deal is out. */
+    soundsBack() {
+      if (empty && !out && !io.table()) deal();
+    },
+    /** The table's last answer was empty, and none has gone up since. */
+    get empty() {
+      return empty;
     },
     /** Deals asked for and not yet answered. */
     get out() {

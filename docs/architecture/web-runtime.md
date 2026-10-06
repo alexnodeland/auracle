@@ -1130,6 +1130,17 @@ deal excludes the cuts made before it was asked for, so only a cut made
 while a deal is out brings one back. `placePair` is the one place a pair
 goes up: anything owed to a pair being shown belongs there.
 
+An empty answer (the engine deals `null` when fewer than two sounds in the
+pool are standardized and not cut, `deal_duel_except`) is nothing to put up.
+With the table waiting and no other deal out, the dealer calls `nothing`:
+`main.js`'s `nothingToDeal` keeps the picks, ▶ and ↻ disabled and the cards
+dimmed, and says *Nothing to deal. The pool has fewer than two sounds you
+haven’t cut.* in their reason slot at once. The dealer asks again
+(`soundsBack`) when a sound may have come back: a cut taken back, or new
+views (the pool changed), and the `filled` handler's deal for an empty table
+does the same. With a pair on the table, an empty answer leaves nothing
+waiting.
+
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
 unseen (the engine re-dealt the pair on the table, a side was cut or

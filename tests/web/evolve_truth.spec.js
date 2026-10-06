@@ -9,8 +9,10 @@
 // - "● it just learned" appears only once `fitted` has answered, and stays
 //   until the next pick. It used to appear when the refit was *sent*.
 // - "another pair" (↻) with no pair dealt ahead puts the pair away like a
-//   pick does: inert buttons, and after 300 ms a reason on the cards. It used
-//   to leave the old pair up with buttons that looked live and did nothing.
+//   pick does: inert buttons, ▶ among them, and after 300 ms a reason on the
+//   cards. It used to leave the old pair up with buttons that looked live and
+//   did nothing. A deal that comes back empty (no pair left to deal) leaves
+//   them off, and the cards say why at once (#195).
 // - A cut patch is never dealt again, and its toast names it without an id.
 //   Which answers a cut keeps from going up, wherever they land (a deal
 //   asked for while the cut was taken back, which rightly did not exclude
@@ -56,6 +58,9 @@ const NO_AHEAD = [{ type: "duel", ahead: true }, { type: "duel", pair: null, met
 // "duel" is the table's deal, the next pair's is `ahead`.
 const TABLE = { type: "duel", ahead: false };
 const AHEAD = { type: "duel", ahead: true };
+// The pair's buttons, on EVOLVE's cards and PATCH's strip: off while the
+// table has no pair to show.
+const DUEL_CONTROLS = ["#choose-a", "#choose-b", "#skip-duel", "#play-a", "#play-b", "#pd-pick-a", "#pd-pick-b", "#pd-skip"];
 
 async function boot(page, app, { holdAhead = false, query = "" } = {}) {
   await page.addInitScript(WATCH);
@@ -224,10 +229,8 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
   const [a0, b0] = await cardIds(page);
   await app.delay(TABLE, 2_500);
   await page.locator("#skip-duel").click();
-  // Inert at once, like after a pick.
-  for (const id of ["#choose-a", "#choose-b", "#skip-duel", "#pd-pick-a", "#pd-pick-b", "#pd-skip"]) {
-    await expect(page.locator(id)).toBeDisabled();
-  }
+  // Inert at once, like after a pick: the picks, ▶ and ↻.
+  for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
   await expect(page.locator("#duel-a")).toHaveClass(/\bdealing\b/);
   // After 300 ms the dimmed cards say why.
   await expect(page.locator("#duel-a .deal-why")).toBeVisible({ timeout: 1_500 });
@@ -243,6 +246,57 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bdealing\b/);
   const [a1, b1] = await cardIds(page);
   expect([a1, b1]).not.toEqual([a0, b0]);
+});
+
+// A table whose deal comes back empty (#195). The engine deals nothing when
+// fewer than two sounds in the pool may be dealt (every other one is cut).
+// Here the deal ahead is stalled, ↻ waits on it, and the spec answers it
+// empty, as that engine would; from then on every deal the engine answers is
+// rewritten empty (`app.amend`), until a sound comes back. The table used to
+// come back live over the pair just put away, with no pair and no reason.
+// What the dealer does with an empty answer is deal.test.mjs's; this is the
+// wiring: the cards, their buttons, the words, and the deal asked for again
+// when a cut is taken back.
+const NOTHING_TO_DEAL = "Nothing to deal. The pool has fewer than two sounds you haven’t cut.";
+
+test("a deal that comes back empty leaves the table off and says there is nothing to deal", async ({ page, app }) => {
+  await app.stall(AHEAD);
+  await boot(page, app);
+  await toEvolve(page, app);
+  const asked = await app.stalled();
+  await app.amend({ type: "duel" }, { pair: null, meta: null });
+  await page.locator("#skip-duel").click();
+  await expect(page.locator("#choose-a")).toBeDisabled();
+  const deals = await app.sentCount("duel");
+  await app.inject({ type: "duel", pair: null, meta: null, ahead: true, re: asked.rid });
+
+  const why = page.locator("#duel-a .deal-why");
+  await expect(why).toHaveText(NOTHING_TO_DEAL);
+  await expect(why).toBeVisible();
+  await expect(page.locator("#duel-b .deal-why")).toHaveText(NOTHING_TO_DEAL);
+  for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
+  await expect(page.locator("#duel-a")).toHaveClass(/\bdealing\b/);
+  // It stays so: no button comes back live, and no deal is asked for.
+  await app.quiet();
+  for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
+  await expect(why).toHaveText(NOTHING_TO_DEAL);
+  expect(await app.sentCount("duel"), "a deal was asked for with nothing come back").toBe(deals);
+
+  // A sound comes back (a cut taken back), and the engine can deal again:
+  // the table asks, and the pair it deals goes up live.
+  await app.unamend();
+  const id = await page.locator("#bank-list .bank-item[data-id]").first().getAttribute("data-id");
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  await row.scrollIntoViewIfNeeded();
+  await row.hover();
+  await row.locator(".bi-kill").click();
+  await expect(row).toHaveCount(0);
+  const mark = await app.now();
+  await page.keyboard.press("Control+z");
+  await app.reply("duel", { where: { pair: true }, after: mark, timeout: 30_000 });
+  await expect(page.locator("#choose-a")).toBeEnabled();
+  await expect(why).toBeHidden();
+  await expect(page.locator("#duel-a")).not.toHaveClass(/\bdealing\b/);
 });
 
 test("a cut patch is not dealt again, and its toast names it without an id", async ({ page, app }) => {

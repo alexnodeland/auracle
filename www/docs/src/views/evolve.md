@@ -102,6 +102,12 @@ and PERFORM’s offers and first measurements. When no pair is waiting (right
 after a cut, say), the cards dim until the next is dealt. A deal that takes
 longer says why on the cards, for example *dealing: the engine is breeding
 (seed 4/10)*.
+
+When fewer than two sounds in the pool are left uncut, there is no pair to
+deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B** and
+**ANOTHER PAIR** off, and say *Nothing to deal. The pool has fewer than two sounds you
+haven’t cut.* They deal again by themselves when a cut is taken back or the
+pool changes.
 ```
 
 ```admonish info collapsible=true title="How it works: between refits"

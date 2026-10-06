@@ -4356,6 +4356,8 @@ function applyViews(next) {
     dealAnother();
   }
   dealer.check();
+  // A table with nothing to deal asks again: the pool may hold two now.
+  dealer.soundsBack();
   // New ratings move the seeds and what may be replaced, if they are marked.
   if (mayGoShown) markMayGo(true);
   // The engine owns the budget and ships it with every views post, which is
@@ -6940,7 +6942,7 @@ function sayDealing(text) {
 }
 
 function setDuelControlsEnabled(on) {
-  for (const id of ["choose-a", "choose-b", "skip-duel", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
+  for (const id of ["choose-a", "choose-b", "skip-duel", "play-a", "play-b", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
     const el = $(id);
     if (el) el.disabled = !on;
   }
@@ -6950,6 +6952,26 @@ function setDuelControlsEnabled(on) {
   clearTimeout(dealSayTimer);
   if (on) sayDealing(null);
   else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
+}
+
+// The table's deal came back empty: the engine deals nothing when fewer than
+// two sounds in the pool may be dealt, every other one cut (each deal
+// excludes the cuts, `deal_duel_except`). The cards stay off and say so at
+// once, since nothing is on its way, and deal again by themselves when a
+// sound may have come back (deal.js `soundsBack`: a cut taken back, or the
+// pool changed). It used to put up nothing as if it were a pair, and the
+// buttons came back live over the pair just put away (#195).
+const NOTHING_TO_DEAL = "Nothing to deal. The pool has fewer than two sounds you haven’t cut.";
+function nothingToDeal() {
+  duelMeta = null;
+  dealing = false;
+  setDuelControlsEnabled(false);
+  sayDealing(NOTHING_TO_DEAL);
+  retireForecast();
+  clearPairGuess();
+  renderPlayDuel();
+  // A refit armed by the last pick waited for this deal (`commitAndSettle`).
+  settleFit();
 }
 
 /** Put a dealt pair on the table: a deal's reply, or the pair dealt ahead.
@@ -7011,6 +7033,7 @@ const dealer = createDealer({
   fetch: (pair) => {
     for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
   },
+  nothing: () => nothingToDeal(),
 });
 
 /** Put the pair on the table away and deal another: a pick does this, and so
@@ -8284,6 +8307,8 @@ function cutRow(r) {
     cutIds.delete(r.id);
     renderBank();
     scheduleSave();
+    // A table with nothing to deal asks again: this sound may be dealt.
+    dealer.soundsBack();
   };
   // ⌘Z reaches it too, like a pick's: the newest teaching act first.
   back = holdTakeBack(() => {

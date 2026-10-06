@@ -30,6 +30,7 @@ function setup({ answers = [], heard = () => true } = {}) {
     asked: [], // "table" | "ahead", in the order asked
     shown: [], // every pair put up, in order
     fetched: [],
+    nothing: 0, // how many times the table was told there is nothing to deal
     inFlight: [], // answers asked for and not yet landed, oldest first
     stream: [...answers],
   };
@@ -49,6 +50,9 @@ function setup({ answers = [], heard = () => true } = {}) {
       dealer.placed(pair);
     },
     fetch: (pair) => t.fetched.push(pair),
+    nothing: () => {
+      t.nothing += 1;
+    },
   });
   t.dealer = dealer;
   /** The oldest deal out lands (or `pair`, in its place). */
@@ -299,4 +303,66 @@ test("a sound cut while the waiting table's fourth deal is out is not put up by 
   assert.equal(t.table, null, "the fourth answer, holding the cut sound, went up");
   t.land(S);
   assert.deepEqual(t.table, S);
+});
+
+// An empty answer (#195): the engine deals nothing when fewer than two
+// sounds in the pool may be dealt. A waiting table used to put that up as if
+// it were a pair, and main brought the buttons back live with nothing on
+// the cards.
+
+test("a waiting table whose deal comes back empty puts nothing up, and asks for no other deal", () => {
+  const t = upWith([P, Q]);
+  t.pick(); // Q up; the deal behind it out
+  t.skip(); // ↻: the table waits on that deal
+  t.land(null);
+  assert.equal(t.table, null);
+  assert.equal(t.nothing, 1, "the table was not told there is nothing to deal");
+  assert.equal(t.dealer.empty, true);
+  assert.deepEqual(t.shown, [P, Q], "something was put up");
+  assert.equal(t.dealer.out, 0, "another deal was asked for");
+});
+
+test("an empty answer with another deal out leaves the table waiting for that one", () => {
+  const t = upWith([P]);
+  t.skip();
+  t.dealer.deal(); // a second deal out
+  t.land(null);
+  assert.equal(t.nothing, 0, "said too soon: a deal is still out");
+  t.land(Q);
+  assert.deepEqual(t.table, Q);
+  assert.equal(t.dealer.empty, false);
+});
+
+test("a table with nothing to deal asks again when a sound may have come back, and the pair it gets goes up", () => {
+  const t = upWith([P]);
+  t.skip();
+  t.land(null);
+  assert.equal(t.dealer.empty, true);
+  t.dealer.soundsBack(); // the pool changed, but still nothing to deal
+  assert.equal(t.dealer.out, 1);
+  t.land(null);
+  assert.equal(t.nothing, 2);
+  t.stream.push(R);
+  t.dealer.soundsBack(); // a cut taken back
+  t.dealer.soundsBack(); // and the pool changed: one deal is out already
+  assert.equal(t.dealer.out, 1, "a second deal was asked for while one was out");
+  t.land();
+  assert.deepEqual(t.table, R);
+  assert.equal(t.dealer.empty, false);
+  t.dealer.soundsBack();
+  assert.equal(t.asked.filter((a) => a === "table").length, 4, "a table with a pair asked for a deal of its own");
+});
+
+test("a pick taken back on a table with nothing to deal puts its pair back", () => {
+  const t = upWith([P, Q]);
+  t.pick(); // Q up, the deal behind it out
+  t.pick(); // the table waits on it
+  t.land(null);
+  assert.equal(t.dealer.empty, true);
+  t.undo();
+  assert.deepEqual(t.table, Q);
+  assert.equal(t.dealer.empty, false);
+  t.dealer.soundsBack();
+  assert.equal(t.dealer.out, 1, "only the pair after it is dealt");
+  assert.equal(t.asked.at(-1), "ahead");
 });
