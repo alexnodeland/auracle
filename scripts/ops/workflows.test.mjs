@@ -15,15 +15,16 @@
 //   for the hard stages, sonnet for the easy ones), an operator's override
 //   (`models`, and a ship-issues item's `model`) reaches that stage and no
 //   other, a bad one throws before any agent is spent, and every prompt for
-//   substantive work tells its agent to use the advisor.
+//   substantive work tells its agent to use the advisor. The agent
+//   definitions default to opus and say the same of the advisor.
 //
 //     node --test scripts/ops/workflows.test.mjs
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { compileWorkflow, dryRun, sample, DIR, SAMPLES } from './check_workflows.mjs'
+import { compileWorkflow, dryRun, sample, DIR, ROOT, SAMPLES } from './check_workflows.mjs'
 
 const load = name => compileWorkflow(readFileSync(join(DIR, `${name}.js`), 'utf8'))
 
@@ -302,5 +303,17 @@ test('ship-issues: an item sets the model of its build and fix stages, and no ot
     const r = await run({ items: [{ ...item, model: bad }] })
     assert.match(String(r.error && r.error.message), /#300: model is 'opus' or 'sonnet'/, String(bad))
     assert.equal(r.calls, 0)
+  }
+})
+
+test('the agent definitions default to opus and say to use the advisor', () => {
+  const dir = join(ROOT, '.claude', 'agents')
+  const files = readdirSync(dir).filter(f => f.endsWith('.md'))
+  assert.ok(files.length >= 6)
+  for (const f of files) {
+    const text = readFileSync(join(dir, f), 'utf8')
+    const [, front, body] = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text)
+    assert.match(front, /^model: opus$/m, `${f}: model: opus in its frontmatter`)
+    assert.equal((body.match(/If an advisor tool is available, call it/g) || []).length, 1, `${f}: the advisor line, once, in its body`)
   }
 })

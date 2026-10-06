@@ -25,6 +25,10 @@ feature you were given:
    port), or against the code when the claim is structural. Record values,
    times and screenshots.
 
+Use the advisor. If an advisor tool is available, call it before you commit
+to an approach, when you are stuck or going in circles, and before you report
+done.
+
 Report a table: claim, where it is made, verdict (true / false / partly /
 unverified), evidence, and for each false one whether the app or the text
 should change and why. Order by how badly a player would be misled.
