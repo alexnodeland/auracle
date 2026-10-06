@@ -7033,7 +7033,8 @@ function requestAhead() {
 }
 
 /** A deal's answer. With the table waiting it goes up; with a pair on the
- *  table it waits as the next one, its sounds fetched. */
+ *  table it waits as the next one, its sounds fetched, unless one already
+ *  waits. */
 function onDealt(pair, meta) {
   if (!currentDuel) {
     if (!pair || aheadUsable(pair)) return void placePair(pair, meta);
@@ -7050,6 +7051,9 @@ function onDealt(pair, meta) {
     if (aheadRetries++ < 3) return void requestDeal();
     return void placePair(pair, meta);
   }
+  // A pair already waits: the one a taken-back pick had put up, back as the
+  // next (`retractVote`). This answer, the deal asked for behind that pair,
+  // is thrown away unseen.
   if (!pair || ahead) return;
   if (!aheadUsable(pair)) {
     // The engine may deal the very pair on the table again (a small pool
@@ -7175,10 +7179,20 @@ function retractVote() {
     renderPlayDuel();
     return true;
   }
-  // The pair that replaced it waits as the next one, sounds and all: the
-  // player has seen it, so it comes before any pair dealt behind it. A deal
-  // still out when the pick is taken back lands with the pair on the table,
-  // so it becomes the next pair (`onDealt`) rather than covering this one.
+  // The pick's pair goes back on the table, and which pair is next depends
+  // on what went up in its place.
+  //
+  // A pair went up (the one dealt ahead, or a deal that landed inside the
+  // window): it waits as the next one, sounds and all, when it may
+  // (`aheadUsable`). The player has seen it, so it comes before any pair
+  // dealt behind it, and the deal asked for behind it, if one was, is thrown
+  // away unseen: one that has landed is overwritten here, and one still out
+  // lands with a pair waiting and is dropped (`onDealt`). The pair after it
+  // is dealt when it goes up (`placePair`).
+  //
+  // Nothing went up (the table was waiting on a deal): that deal lands with
+  // this pair on the table, so it becomes the next pair (`onDealt`) rather
+  // than covering this one.
   const displaced = currentDuel;
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
