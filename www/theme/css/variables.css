@@ -149,6 +149,8 @@ html.coal {
     --bezel-62: rgba(7, 8, 10, 0.62);
     --black-50: rgba(0, 0, 0, 0.5);
     --white-08: rgba(255, 255, 255, 0.08);
+    --phos-a-10: rgba(142, 240, 177, 0.1);
+    --phos-b-10: rgba(255, 180, 84, 0.1);
 }
 html.light {
     /* grounds. Warm stock rather than white: the whole palette is warm, and
@@ -156,6 +158,7 @@ html.light {
     --paper: #f7f4ed;
     --panel: #efebe1;
     --panel-hi: #e7e2d6;
+    --bezel: #07080a; /* screen bezels: dark on Paper too, on purpose, as a film is */
     --hairline: #d8d2c4;
 
     /* silk */
@@ -193,6 +196,8 @@ html.light {
     --silk-12: rgba(34, 36, 42, 0.12);
     --silk-35: rgba(34, 36, 42, 0.35);
     --white-70: rgba(255, 255, 255, 0.7);
+    --phos-a-10: rgba(28, 107, 65, 0.1);
+    --phos-b-10: rgba(138, 85, 16, 0.1);
 }
 @media (prefers-reduced-motion: reduce) {
     :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -286,6 +291,9 @@ html.coal {
     --cast: 0 3px 8px var(--black-50);
     --code-bg: var(--code-ground);
     --kbd-bg: var(--panel-hi);
+    /* The ground behind a screenshot until it loads: the rack's bezel here,
+       the page's panel on Paper. A film's ground is --bezel on both. */
+    --figure-bg: var(--bezel);
 }
 
 /* ─── PAPER — the light theme ──────────────────────────────────────────── */
@@ -342,4 +350,5 @@ html.light {
     --cast: 0 2px 6px var(--silk-12);
     --code-bg: var(--code-ground);
     --kbd-bg: var(--popup);
+    --figure-bg: var(--panel);
 }

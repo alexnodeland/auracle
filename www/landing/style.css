@@ -118,6 +118,7 @@
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
      (`--phos-a-045` is 4.5%) */
+  --white-02: rgba(255, 255, 255, 0.02);
   --white-03: rgba(255, 255, 255, 0.03);
   --white-06: rgba(255, 255, 255, 0.06);
   --white-07: rgba(255, 255, 255, 0.07);
@@ -130,6 +131,7 @@
   --phos-a-045: rgba(142, 240, 177, 0.045);
   --phos-a-05: rgba(142, 240, 177, 0.05);
   --phos-a-09: rgba(142, 240, 177, 0.09);
+  --phos-a-10: rgba(142, 240, 177, 0.1);
   --phos-a-25: rgba(142, 240, 177, 0.25);
   --phos-a-30: rgba(142, 240, 177, 0.3);
   --phos-a-32: rgba(142, 240, 177, 0.32);
@@ -203,10 +205,12 @@
 :root {
   /* The names the shared figure runtime asks for. www/viz is loaded by both
      books and this page and reads the surrounding page's tokens, but the books
-     spell two of them differently; without these aliases every figure here fell
-     back to the system mono and to an unresolvable foreground. */
+     name three of their own: the foreground, the mono face and a figure's
+     ground. Without these a figure here falls back to the system mono, an
+     unresolvable foreground and no ground at all. */
   --fg: var(--silk);
   --mono-font: var(--font-mono);
+  --code-bg: var(--white-02);
 
   /* The type and spacing are in the block above: the shared scale, and this
      page's own display tier, prose size and wide steps (the landing surface's

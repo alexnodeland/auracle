@@ -435,7 +435,7 @@ pre > code {
     height: auto;
     border: 1px solid var(--hairline);
     border-radius: 4px;
-    background: var(--bezel, var(--panel));
+    background: var(--figure-bg);
 }
 
 /* Every figure carries one. A screenshot with no caption asks the reader to
