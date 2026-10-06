@@ -1566,6 +1566,20 @@ fn tracked_patch() -> String {
     .unwrap()
 }
 
+/// `json` (a patch a TRACK plays) on four voices, monitored (its open
+/// voice leading), leveler off and well under the master ceiling, so five
+/// voices read as five, with the input written for long enough that the
+/// tracker has settled.
+fn tracked_open(json: &str) -> LivePoly {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(json, 44_100.0, 4).expect("compiles");
+    poly.set_leveler(false);
+    poly.set_makeup(0.06);
+    poly.set_open(true);
+    loudest_with_input(&mut poly, 0, 120);
+    poly
+}
+
 /// **A tracked patch has one tracked voice, and the keys do not stack
 /// on it.** Monitored, the open voice leads: it tracks the input and
 /// sounds while the input does, with no key down. The keys' voices
@@ -1576,12 +1590,7 @@ fn tracked_patch() -> String {
 /// and the level stood at five voices'.)
 #[test]
 fn a_tracked_patch_has_one_tracked_voice_and_the_keys_do_not_stack() {
-    let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-    poly.set_leveler(false);
-    // Well under the master ceiling, so five voices read as five.
-    poly.set_makeup(0.06);
-    poly.set_open(true);
-    loudest_with_input(&mut poly, 0, 120);
+    let mut poly = tracked_open(&tracked_patch());
     let alone = loudest_with_input(&mut poly, 120, 40);
     assert!(
         alone > 0.02,
@@ -1698,11 +1707,7 @@ fn assert_plays_the_input(x: &[f32], when: &str) {
 /// a key's voice is never given a pitch or a gate.
 #[test]
 fn a_chord_under_track_plays_the_inputs_pitch() {
-    let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-    poly.set_leveler(false);
-    poly.set_makeup(0.06);
-    poly.set_open(true);
-    loudest_with_input(&mut poly, 0, 120);
+    let mut poly = tracked_open(&tracked_patch());
     for n in CHORD {
         poly.note_on(n, 1.0);
     }
@@ -1715,35 +1720,34 @@ fn a_chord_under_track_plays_the_inputs_pitch() {
 /// **A tracked, monitored patch swaps with keys held.** The new patch's
 /// open voice leads again, the held keys are re-pressed as followers of
 /// it, and they still play the input's pitch, not their own; let go,
-/// they stop, and the lead alone sounds.
+/// they stop, and the lead alone sounds, as loud as the new patch's lead
+/// alone on an instrument of its own.
 #[test]
 fn a_tracked_patch_swaps_with_keys_held_and_they_still_follow() {
-    let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-    poly.set_leveler(false);
-    poly.set_makeup(0.06);
-    poly.set_open(true);
-    loudest_with_input(&mut poly, 0, 120);
+    // The same patch with a saw for the sine: a structural swap.
+    let swapped = tracked_patch().replace("\"Sine\"", "\"Saw\"");
+    assert_ne!(swapped, tracked_patch());
+    let alone = loudest_with_input(&mut tracked_open(&swapped), 120, 40);
+    let mut poly = tracked_open(&tracked_patch());
     for n in CHORD {
         poly.note_on(n, 1.0);
     }
     loudest_with_input(&mut poly, 120, 40);
-    // The same patch with a saw for the sine: a structural swap.
-    let swapped = tracked_patch().replace("\"Sine\"", "\"Saw\"");
-    assert_ne!(swapped, tracked_patch());
     assert!(poly.set_patch(&swapped));
     loudest_with_input(&mut poly, 160, 120);
     assert!(poly.open_sounding(), "the swap closed the lead");
     assert_followers_fed(&poly, "after the swap");
     let x = left_with_input(&mut poly, 280, 64);
     assert_plays_the_input(&x, "after the swap");
-    let alone_after = {
-        for n in CHORD {
-            poly.note_off(n);
-        }
-        loudest_with_input(&mut poly, 344, 200);
-        loudest_with_input(&mut poly, 544, 40)
-    };
-    assert!(alone_after > 0.0, "the lead fell silent with the keys");
+    for n in CHORD {
+        poly.note_off(n);
+    }
+    loudest_with_input(&mut poly, 344, 200);
+    let alone_after = loudest_with_input(&mut poly, 544, 40);
+    assert!(
+        (alone_after - alone).abs() < 0.1 * alone,
+        "the lead alone after the keys: {alone_after} against {alone}"
+    );
     assert!(
         poly.voices.iter().all(|v| !v.running),
         "a released key's voice is still running after the swap"
