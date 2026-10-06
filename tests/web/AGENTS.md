@@ -15,6 +15,13 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   npx playwright test [spec.js ...] --reporter=line
 ```
 
+- **The release engine.** The specs run on what `make wasm` builds, as CI
+  and the films do. In a worktree that changed no Rust, `make pkg-reuse`
+  takes the main checkout's build instead (in about a second), when it was
+  built from the same Rust. A quick build (`make wasm-dev`, for trying an
+  engine edit by hand) is refused, and so is one a build left unfinished:
+  the config stops before a browser starts, and the `make browser-*`
+  targets say so first.
 - **`AURACLE_TEST_PORT`** starts a server of the suite's own on that port
   (the `make browser-*` targets use it too, when it is set).
   Without it the config reuses whatever answers on `:8642`, which from a
@@ -68,12 +75,34 @@ make browser-slow   # --grep "@slow|@quarantine"
 On a workstation, run the specs your change reaches and let CI run the rest:
 the merge queue's run is the gate, and it runs them twelve wide. `make
 browser-changed` runs the specs changed against `origin/main`, the specs of
-a changed helper, and the specs named for a changed app module
-(`changed.mjs`, which a PR's fast lane in CI uses too); for `main.js` and the
-engine, which reach every level, name them by file or prefix
-(`npx playwright test patch_ perform_layout.spec.js`). CI's fast lane runs
-none of them for such a change, only the smoke pair, so this local run is
-the one that sees them before the queue.
+a changed helper, and the specs named for a changed app module, as a PR's
+fast lane in CI picks them (`changed.mjs`). Locally it also follows the
+views (`changed.mjs --views`):
+
+- **`main.js`:** the specs of each view its changed lines are drawn in
+  (PERFORM, PATCH, EVOLVE, TASTE, the bank, the shell), told by the section
+  heading above them (`changed.mjs`'s `SECTIONS`). A section no rule names
+  (the state, the worker protocol, boot) reaches every view, and adds each
+  view's sample.
+- **`worker.js` and the engine** (a crate, `Cargo.*`, the toolchain): each
+  view's sample (a spec or three per view that goes through it end to end)
+  and `boot_agrees.spec.js`.
+- **The page's markup and styles, the config, the packages:** each view's
+  sample.
+
+It prints what each such file reached, and the spec files, before it runs.
+CI's fast lane runs none of these for such a change, only the smoke pair,
+so this local run is the one that sees them before the queue. `REPEAT=3`
+runs the spec files the branch adds or edits three times each, then the
+rest once: the `ship` skill's last step before a push, and the burn-in of
+the specs the branch wrote (CI runs none). The rest run once because a
+`main.js` change across several views reaches most of the tier.
+
+A new spec belongs to a view in `changed.mjs`'s `VIEWS` (or to `NO_VIEW`,
+with the reason), or the selection's tests in `make web-check` fail
+(`changed.test.mjs`). So does a rule in `SECTIONS` that names a heading
+`main.js` no longer has, or one a broader rule above it always takes:
+every alternative must win some heading.
 
 When CI fails, the run's summary links one HTML report of every runner, with
 the failed tests' traces: download it and run `npx playwright show-report
@@ -351,5 +380,6 @@ misread the fixture's own names, and their fixes would break the test:
   Locator.last()`.
 
 Never run `eslint --fix` over the specs wholesale: a fix rewrites code no
-one has read. The `.mjs` files (`shard.mjs`, `changed.mjs`, the lint's own)
-are Node tools: parsed, and held to the comment rules, and nothing else.
+one has read. The `.mjs` files (`shard.mjs`, `changed.mjs` and its tests,
+the lint's own) are Node tools: parsed, and held to the comment rules, and
+nothing else.

@@ -49,7 +49,8 @@ each crate's own `AGENTS.md` has its rules.
   `// voice: name` on the line it starts on; a literal that runs over several
   lines can't be marked, so keep such a value on one line.
 - **A Rust change the app uses needs `make wasm`** before any browser test or
-  film rehearsal means anything.
+  film rehearsal means anything. `make wasm-dev` brings it to the browser in
+  seconds for trying it by hand; the specs and the films refuse that build.
 - **Every line you add or change is covered** by a fast-tier test that checks
   what it does, and no crate falls below its coverage floor
   ([Coverage](#coverage)). `make coverage` says so before CI does.

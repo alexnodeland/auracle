@@ -8,6 +8,30 @@
 // the test asserts that, rather than booting a page that has no engine to
 // fail on.
 const { defineConfig } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
+
+// The specs run on the release engine, as CI and the films do. A quick build
+// (`make wasm-dev`: no LTO, no wasm-opt) is for trying an engine edit by
+// hand, and its times are not the app's; an unfinished one is a build that
+// failed, was stopped or is still running, whose engine may be new and
+// unoptimized. The suite refuses both here, before a browser starts,
+// however it was started (the make targets say the same first:
+// scripts/wasm_pkg.py).
+const PROFILE = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/pkg/build.json"), "utf8")).profile || "release";
+  } catch {
+    return "release"; // no stamp: no engine either, which the specs say themselves
+  }
+})();
+const WHAT = {
+  dev: "a dev build (`make wasm-dev`)",
+  unfinished: "an unfinished build (a `make wasm` or `make wasm-dev` that failed or was stopped, or is running)",
+};
+if (PROFILE !== "release") {
+  throw new Error(`apps/web/pkg is ${WHAT[PROFILE] || `a ${PROFILE} build`}, and the browser specs run on the release build: run \`make wasm\` first`);
+}
 
 // AURACLE_TEST_PORT runs the suite on a server of its own, never reusing one
 // already listening: from a worktree, :8642 is often the main checkout's

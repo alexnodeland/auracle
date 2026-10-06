@@ -19,7 +19,7 @@ this table.
 | Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
-| Web units | `make web-check` (`COVERAGE=1` also writes what the unit tests ran of `apps/web` as an lcov, for Codecov: [Coverage](#coverage)) | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
+| Web units | `make web-check` (`COVERAGE=1` also writes what the unit tests ran of `apps/web` as an lcov, for Codecov: [Coverage](#coverage)) | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`); plus the tests of the specs a change selects (`tests/web/changed.test.mjs`: CI's selection names no spec for `main.js`, `worker.js` or the engine; `make browser-changed`'s follows the views, and tells the specs a branch edits, which `REPEAT` repeats, from those it reaches; every spec has a view, and every rule for `main.js`'s headings wins one) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
 | Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`); every test tagged `@quarantine` names its issue (`flakes.mjs check`, [Flakes](#flakes)) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
 | Worker protocol | `make worker-test` (after `make wasm`; `COVERAGE=1` as for the web units) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
@@ -37,6 +37,7 @@ this table.
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
+| Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
@@ -130,16 +131,28 @@ beside them. A PR may merge on the fast tier, the PR checks and its
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
-  are the ones `make browser-changed` picks (`tests/web/changed.mjs`): a
-  changed spec, the specs that require a changed helper, the specs named for
-  a changed app module, one runner per file up to four, dealt by time. A
-  change that reaches every level (`main.js`, `worker.js`, the engine) picks
-  none, and gets the smoke only (with Worker protocol, which is the fast
-  lane's real check of `worker.js`); so does a change that reaches more than
-  twenty spec files (a helper nearly every spec requires, or that many specs
-  changed at once). A green fast lane, with the PR checks and the *Mutants*
-  job green beside it, puts the PR in the queue. It is not the gate: a
-  `main.js` change has run two specs when it enters the queue.
+  are the ones `tests/web/changed.mjs` picks: a changed spec, the specs that
+  require a changed helper, the specs named for a changed app module, one
+  runner per file up to four, dealt by time. A change that reaches every
+  level (`main.js`, `worker.js`, the engine) picks none, and gets the smoke
+  only (with Worker protocol, which is the fast lane's real check of
+  `worker.js`); so does a change that reaches more than twenty spec files (a
+  helper nearly every spec requires, or that many specs changed at once). A
+  green fast lane, with the PR checks and the *Mutants* job green beside it,
+  puts the PR in the queue. It is not the gate: a `main.js` change has run
+  two specs in CI when it enters the queue.
+- **On the builder's machine, before that,** `make browser-changed` runs
+  the same selection and follows the views too (`changed.mjs --views`):
+  for `main.js`, the specs of each view (PERFORM, PATCH, EVOLVE, TASTE, the
+  bank, the shell) its changed lines are drawn in, told by their section
+  headings, and each view's sample for a section no view names; for
+  `worker.js` and the engine, each view's sample (a spec or three per view,
+  end to end) and `boot_agrees.spec.js`; for the page, the samples. Before
+  the push it runs the spec files the branch adds or edits three times
+  each, and the rest once (`REPEAT=3`, the `ship` skill), on the release
+  engine (`make wasm`, or `make pkg-reuse` in a worktree that changed no
+  Rust; a `make wasm-dev` build, or one a build left unfinished, is
+  refused).
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
   opens for a batch of up to three PRs (a release PR alone), from a branch
   under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that
@@ -562,6 +575,11 @@ a test slower, never wrong
 how long something took is a budget, recorded on the gate and judged apart
 from it ([Rules](#rules)).
 
+- **Before a push** the spec files a branch adds or edits run three times
+  each on the builder's machine, and the rest of the specs it reaches once
+  (`make browser-changed REPEAT=3`, the `ship` skill), so a new spec that
+  fails often shows there, before CI runs it once. The nightly hunt finds
+  the rarer ones, and the flakes in specs the branch didn't write.
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
   the machine. The specs on the fixture that name no seed of their own boot
