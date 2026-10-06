@@ -3279,6 +3279,10 @@ fn the_default_rule_deals_every_pair_at_random_and_says_so() {
         deal(&mut engine, &mut rng);
     }
     engine.fit_posterior(&mut rng);
+    assert!(
+        engine.posterior.is_some(),
+        "no fit: the deals below test no posterior"
+    );
     let every = engine.cfg.duel_check_every;
     assert!(every > 0, "no check slot to cross");
     let before = engine.calibration().check_n;
@@ -4291,9 +4295,10 @@ fn explain_phi_reads_a_raw_phi_as_explain_reads_a_member() {
 }
 
 /// **A member never standardized has no forecast and no explanation.** The
-/// engine standardizes every member it admits once it has a scale, so this
-/// state is built by hand here: the guards that keep an empty φ from scoring
-/// exactly zero (the bug class `insert_candidate` describes) answer `None`.
+/// engine never builds this state (it standardizes every member it admits
+/// once it has a scale), so it is built by hand here, and the test guards an
+/// API contract: the guards that keep an empty φ from scoring exactly zero
+/// (the bug class `insert_candidate` describes) answer `None`.
 #[test]
 fn a_member_never_standardized_is_neither_forecast_nor_explained() {
     let mut engine = taught(0x5D0);
@@ -4653,8 +4658,10 @@ fn a_saved_clip_of_the_wrong_shape_restores_as_the_reference() {
 
 /// **A held sound comes back only with a take it can play.** A take of
 /// silence leaves it silent, which the vet refuses: it stays held, with the
-/// reason. A held sound with no unreadable take left to replace (built by
-/// hand: a restore only holds a sound for one) is refused as such.
+/// reason. A held sound with no unreadable take left to replace is refused
+/// as such: the engine never builds that state (a restore holds a sound only
+/// for an unreadable take), so it is built by hand, and that half guards an
+/// API contract.
 #[test]
 fn a_held_sound_comes_back_only_with_a_take_it_can_play() {
     let (engine, id, take) = capture_only_engine();

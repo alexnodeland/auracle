@@ -1050,9 +1050,6 @@ fn binary_entropy(p: f64) -> f64 {
     -p * p.ln() - (1.0 - p) * (1.0 - p).ln()
 }
 
-/// Dueling Thompson sampling, kept for the acquisition A/B (see
-/// [`Acquisition`]). Draw two posterior samples and duel each one's champion;
-/// if they agree, duel the champion against the runner-up.
 /// Two distinct candidates drawn uniformly from `cands` (at least two): the
 /// random rule's pair, and the pair a choosing rule deals when its posterior
 /// has no draws to choose with.
@@ -1065,6 +1062,10 @@ fn uniform_pair<R: Rng>(rng: &mut R, cands: &[usize]) -> (usize, usize) {
     (cands[i], cands[j])
 }
 
+/// Dueling Thompson sampling, kept for the acquisition A/B (see
+/// [`Acquisition`]). Draw two posterior samples and duel each one's champion;
+/// if they agree, duel the champion against the runner-up. With no draws, a
+/// uniform pair ([`uniform_pair`]).
 fn thompson_pair<R: Rng>(
     posterior: &TastePosterior,
     pool: &[Candidate],
