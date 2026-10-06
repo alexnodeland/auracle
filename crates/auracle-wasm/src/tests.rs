@@ -1072,68 +1072,29 @@ fn farm_walks_breed_the_serial_generation() {
     assert_eq!(farm_walk("{", &job), "", "a broken context is refused");
 }
 
-/// **The belief the worker posts after a pick.** On a taught engine with
-/// picks no refit has seen, `belief`'s rows are `ranked`'s ids, order and
-/// numbers, under the reweighted posterior (the picks move them); its
-/// seeds are the parents the twin's `refine_jobs` then hands out; and
-/// what may be replaced is the lowest member per walk.
+/// **The belief the worker posts after a pick** is the engine's as it
+/// stands, under the reweighted posterior: `belief`'s reply is
+/// `Engine::belief`, field for field, under the names the worker reads, and
+/// a pick moves it. That its rows are `ranked()`'s numbers and its seeds and
+/// may-replace a generation's is the session's
+/// `the_belief_after_a_pick_is_the_reweighted_posterior` and
+/// `next_seeds_and_may_replace_are_what_a_generation_does`.
 #[test]
-fn belief_is_the_ranked_numbers_and_the_next_seeds() {
-    let (mut engine, mut twin) = twins(0xB31F);
+fn the_belief_a_pick_posts_is_the_engines() {
+    let mut engine = taught_wasm(0xB31F);
     let fitted = engine.belief();
-    let ids = |json: &str| -> Vec<u64> {
-        serde_json::from_str::<Vec<serde_json::Value>>(json)
-            .unwrap()
-            .iter()
-            .map(|r| r["id"].as_u64().unwrap())
-            .collect()
-    };
-    for e in [&mut engine, &mut twin] {
-        for _ in 0..3 {
-            let order = ids(&e.ranked());
-            let (best, worst) = (order[0] as u32, order[order.len() - 1] as u32);
-            assert!(e.record_duel(worst, best, true));
-        }
-    }
+    let order = pool_ids(&engine);
+    assert!(engine.record_duel(order[order.len() - 1], order[0], true));
     let text = engine.belief();
-    assert_ne!(text, fitted, "the picks did not move the belief");
-    let belief: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
-    let rows = belief["ranked"].as_array().unwrap();
-    assert_eq!(rows.len(), ranked.len());
-    for (row, r) in rows.iter().zip(&ranked) {
-        for field in ["id", "mean", "std"] {
-            assert_eq!(row[field], r[field], "{field} differs from ranked()");
-        }
-        assert!(row["style"].as_u64().is_some());
+    assert_ne!(text, fitted, "the pick did not move the belief");
+    let reply: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(reply, serde_json::to_value(engine.engine.belief()).unwrap());
+    for key in ["ranked", "seeds", "may_replace", "direction"] {
+        assert!(reply.get(key).is_some(), "no `{key}`: {reply}");
     }
-    let list = |v: &serde_json::Value| -> Vec<u64> {
-        v.as_array()
-            .unwrap()
-            .iter()
-            .map(|x| x.as_u64().unwrap())
-            .collect()
-    };
-    let jobs: serde_json::Value = serde_json::from_str(&twin.refine_jobs()).unwrap();
-    let parents: Vec<u64> = jobs["jobs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|j| j["parent_id"].as_u64().unwrap())
-        .collect();
-    assert_eq!(
-        list(&belief["seeds"]),
-        parents,
-        "not the parents refine_jobs takes"
-    );
-    assert_eq!(parents.len(), 3);
-    let lowest: Vec<u64> = ranked
-        .iter()
-        .rev()
-        .take(3)
-        .map(|r| r["id"].as_u64().unwrap())
-        .collect();
-    assert_eq!(list(&belief["may_replace"]), lowest);
+    for key in ["id", "mean", "std", "style"] {
+        assert!(reply["ranked"][0].get(key).is_some(), "no `ranked[].{key}`");
+    }
 }
 
 /// Whether `child` (a binding's reply) is the ⚡ child `want` (the walk's
