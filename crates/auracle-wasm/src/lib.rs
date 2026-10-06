@@ -985,7 +985,13 @@ fn faded_head(a: &Audition, seconds: f64) -> Vec<f32> {
 /// skipped, and overrides that do not read are none. `None` only if the tree
 /// itself does not parse.
 fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
-    let mut tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
+    let tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
+    Some(with_overrides(tree, overrides_json))
+}
+
+/// `tree` with the knob `overrides_json` written into it, as
+/// [`performed_tree`] does.
+fn with_overrides(mut tree: PatchTree, overrides_json: &str) -> PatchTree {
     let overrides: Vec<(String, f64)> = serde_json::from_str(overrides_json).unwrap_or_default();
     for (addr, v) in overrides {
         let v = v.clamp(0.0, auracle_session::perform::KNOB_MAX);
@@ -997,7 +1003,7 @@ fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
             tree = t;
         }
     }
-    Some(tree)
+    tree
 }
 
 /// Did a featurize fail because the render was silent? The one vet failure
@@ -1474,14 +1480,9 @@ impl WasmEngine {
         // (`Engine::render_of`) would push a sound the player is about to
         // hear out of the small audition cache, for a picture.
         let c = &self.engine.pool[i];
-        match auracle_features::render_playback(
-            &c.tree,
-            &self.engine.cfg.phrase,
-            c.features.gain_db,
-        ) {
-            Ok(a) => self.remember_face(&key, &a).bytes().to_vec(),
-            Err(_) => Vec::new(),
-        }
+        auracle_features::render_playback(&c.tree, &self.engine.cfg.phrase, c.features.gain_db)
+            .map(|a| self.remember_face(&key, &a).bytes().to_vec())
+            .unwrap_or_default()
     }
 
     /// The face of the memo row `key` (a render key), or empty: what the
@@ -2163,12 +2164,13 @@ impl WasmEngine {
         took_offer: bool,
         as_of: u32,
     ) -> bool {
-        let (Some(home), Ok(offer)) = (
-            performed_tree(tree_json, overrides_json),
+        let (Ok(held), Ok(offer)) = (
+            serde_json::from_str::<PatchTree>(tree_json),
             serde_json::from_str::<PatchTree>(offer_json),
         ) else {
             return false;
         };
+        let home = with_overrides(held.clone(), overrides_json);
         let as_of = if as_of == u32::MAX {
             u64::MAX
         } else {
@@ -2182,9 +2184,7 @@ impl WasmEngine {
             as_of,
         );
         if recorded {
-            if let Ok(held) = serde_json::from_str::<PatchTree>(tree_json) {
-                self.engine.mark_judged(&held, as_of);
-            }
+            self.engine.mark_judged(&held, as_of);
         }
         recorded
     }
