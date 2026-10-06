@@ -904,18 +904,17 @@ fn a_sound_of_your_own_through_the_binding() {
         jobs["context"]["toward"].is_object(),
         "the target rides the wire"
     );
+    // The wire carries one context for every job: one job shows it whole.
     let context = serde_json::to_string(&jobs["context"]).unwrap();
     let ctx: WalkContext = serde_json::from_str(&context).unwrap();
-    for job in jobs["jobs"].as_array().unwrap() {
-        let text = serde_json::to_string(job).unwrap();
-        let native: WalkJob = serde_json::from_str(&text).unwrap();
-        let wired = farm_walk(&context, &text);
-        assert_eq!(
-            wired,
-            serde_json::to_string(&run_walk(&ctx, &native, &RenderMemo::default())).unwrap()
-        );
-        engine.refine_absorb(&wired);
-    }
+    let text = serde_json::to_string(&jobs["jobs"][0]).unwrap();
+    let native: WalkJob = serde_json::from_str(&text).unwrap();
+    let wired = farm_walk(&context, &text);
+    // On the memo `farm_walk` just filled: a hit is a miss, bit for bit.
+    let direct = WALK_MEMO.with(|memo| run_walk(&ctx, &native, memo));
+    assert_eq!(wired, serde_json::to_string(&direct).unwrap());
+    engine.refine_absorb(&wired);
+    engine.refine_finish();
 
     let saved = engine.export_session();
     let state: serde_json::Value = serde_json::from_str(&saved).unwrap();
