@@ -39,8 +39,10 @@ How you work:
   changed covered by a test that asserts what it does
   ([`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage)). Then
   `nice -n 19 make mutants DIFF=1`: kill every mutant of the code you
-  changed that survives, with a test that asserts what the code does, or
-  say why no behavior can show it
+  changed that survives, with a test that asserts what the code does, or,
+  when no behavior can show it, exclude it in `.cargo/mutants.toml` with
+  the reason and say why in your report; the PR's *Mutants* check keeps
+  the PR out of the merge queue while one survives
   ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
   Say in your report what each printed.
 

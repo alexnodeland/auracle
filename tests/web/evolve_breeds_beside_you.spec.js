@@ -105,7 +105,7 @@ function latencies(log, req, reply, since = 0) {
 const bankIds = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((el) => Number(el.dataset.id)));
 
-test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair within 1 s", { tag: "@slow" }, async ({ page, app }) => {
+test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair while it breeds", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
   await taught(page, app);
   await app.engine((timeout) => page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout }), { ms: 60_000 });
@@ -143,7 +143,8 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // Nothing has left the bank yet: replacement waits for the end.
   expect(before.filter((id) => !mid.includes(id)), "a patch left the bank before the generation ended").toEqual([]);
 
-  // Picks while it breeds: each next pair is dealt within a second.
+  // Picks while it breeds: each next pair is dealt while it still breeds
+  // (the order is the assertion), each deal's time a budget (ADR-022).
   const pickFrom = await app.now();
   for (let i = 0; i < 3; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled();
@@ -160,7 +161,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   console.log(`deal latency during the generation (ms): ${JSON.stringify(deals)}; still breeding after the picks: ${midway}`);
   expect(midway, "the generation ended before the picks could test it").toBe(true);
   expect(deals.length).toBeGreaterThanOrEqual(3);
-  for (const ms of deals) expect(ms, "a pick's next pair waited on the generation").toBeLessThan(1_000);
+  deals.forEach((ms, i) => app.budget(`pick ${i + 1}'s next pair while it breeds`, ms, 1_000));
 
   await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 480_000 });
   const t1 = await app.now();
@@ -288,7 +289,7 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   expect(await app.count("refine_child")).toBe(kids);
 });
 
-test("during a generation PERFORM is answered: a new patch is measured and a pressed Offer starts within 1 s", { tag: "@slow" }, async ({ page, app }) => {
+test("during a generation PERFORM is answered: a new patch is measured and a pressed Offer starts while it breeds", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
   await taught(page, app);
   await page.locator("#evolve-btn").click();
@@ -308,22 +309,26 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   console.log(`PERFORM wired ${Math.round((wiredAt - opened) / 100) / 10} s after the open; generation still running: ${breedingStill}`);
   expect(breedingStill, "the measurement waited for the whole generation").toBe(true);
 
-  // Offer at once, before a spare can grow: the engine starts it within 1 s.
+  // Offer at once, before a spare can grow: the engine starts it while the
+  // generation still runs (asserted once it ends), its time a budget.
   const pressed = await app.now();
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await app.engine((timeout) => expect.poll(async () => latencies(await app.log({ after: pressed }), "perform_offer", "busy").length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
   const started = latencies(await app.log({ after: pressed }), "perform_offer", "busy");
   console.log(`Offer started ${JSON.stringify(started)} ms after it was sent`);
-  expect(started[0], "the pressed Offer waited on the generation").toBeLessThan(1_000);
+  app.budget("a pressed Offer while it breeds → started", started[0], 1_000);
+  const busyAt = (await app.log({ after: pressed })).find((e) => e.type === "busy").at;
   await app.engine((timeout) => page.waitForSelector(".pf-offer.ready", { timeout }), { ms: 120_000 });
   const offeredAt = await app.now();
   console.log(`Offer landed ${Math.round((offeredAt - pressed) / 100) / 10} s after the press`);
 
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 480_000 });
+  // A child landed after the Offer started: it did not wait for the generation.
+  expect((await app.log({ after: busyAt })).filter((e) => e.type === "refine_child").length, "the pressed Offer waited on the generation").toBeGreaterThan(0);
 });
 
-test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and a ▶ while it walks, and its stop drops it", { tag: "@slow" }, async ({ page, app }) => {
+test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered while it walks, and its stop drops it", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
   await taught(page, app);
   // A ▶ on a row the page has never asked to hear, from the n-th on, so it
@@ -365,9 +370,12 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
   const stillWalking = await page.locator("#job-text").textContent();
   const deals = latencies(await app.log({ after: since }), "duel", "duel");
   console.log(`during ⚡ (still "${stillWalking}"): deal ${JSON.stringify(deals)} ms; ▶ ${played} ms`);
-  expect(stillWalking).toContain("⚡ evolving");
-  // The engine answers at once: a deal is a round trip with no render in it.
-  expect(deals[0], "the deal waited on ⚡").toBeLessThan(1_000);
+  // The deal and the ▶ were both answered while ⚡ still walked: neither
+  // waited for it (ADR-022: the order is the assertion).
+  expect(stillWalking, "the deal and the ▶ waited for ⚡").toContain("⚡ evolving");
+  // How fast: a deal is a round trip with no render in it. A budget, so a
+  // slow runner records it (1007 ms on one, #271) and never fails on it.
+  app.budget("a deal while ⚡ walks", deals[0], 1_000);
 
   // Let it land.
   const first = await app.reply("evolved_from", { timeout: 300_000 });

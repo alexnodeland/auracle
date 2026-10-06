@@ -16,7 +16,7 @@ disk with little used; the writable allowance is what ran out.
 | cargo-mutants' copies of the tree (`make mutants`, in the system's temp directory) | about 1.3 GB of `target/test-fast` each, two at a time (`MUTANTS_JOBS`) | Yes, once the run has ended; cargo-mutants removes them itself unless it was stopped |
 | `~/Library/Caches/Mozilla.sccache` (with `AURACLE_SCCACHE=1`) | up to 10 GB | Yes; a new worktree's first build then compiles its dependencies again |
 | `www/video/out/<film>/music`, `voice` | 100–200 MB | Yes; they regenerate, slowly |
-| `.claude/worktrees/*` | 0.2–1.2 GB each | Only after confirming the work is merged |
+| `.claude/worktrees/*` | 0.2–3 GB each, most of it the worktree's own `target/` | Only after confirming the work is merged, with `make worktree-rm TOPIC=<topic>` (a plain `rm -rf` leaves git's record of it until `git worktree prune`) |
 
 ## What to do
 

@@ -26,13 +26,14 @@ this table.
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
 | PR checks | `python3 scripts/pr_checks.py check --pr <n>` (reads the PR with `gh`); before a PR is opened, `PR_TITLE="…" PR_BODY="$(cat <body file>)" python3 scripts/pr_checks.py title` (and `links`); its tests, `python3 scripts/test_pr_checks.py`, are in `make dev-check` | A PR's title is a conventional subject; its body names each issue it finishes with a closing keyword of its own (`Closes #a, #b` fails: GitHub would close #a only), each it advances with `Refs`, or says why on a `No issue:` line; every issue named exists and is an issue, and none named with `Closes` is closed; a warning when `apps/web/`, `www/docs/src/` or `www/landing/` changed with no `changelog.d/` entry. `merged --pr <n> --dry-run` says what the merge job would do. The tests cover the parse, the title, the warning and the merge job on a fake API, with no network: the boxes it ticks among them (one issue; two, one still open; in a code block, a comment or a quote; a `<!--` in code, mid-line or never closed; ticked already; naming a PR; naming an issue closed as not planned; a run again, and one after a red run; a line changed between the read and the write; a read or a write that failed; another run's write putting a box back) | A PR's title or body before it is opened or edited; `scripts/pr_checks.py` |
+| Release | `python3 scripts/test_release.py` (in `make dev-check`); `python3 scripts/release.py plan --notes` gives the plan and the list, and changes nothing (it reads the PRs' authors with `gh`); the workflow's `dry_run` shows what its PR would hold | The version the PR titles since the last tag call for (a `feat` the minor, a `fix` or `perf` the patch, a `!` the major, or the minor while the major is 0), and a release prepared and not tagged folded into; the bump in every place the workspace writes its version and nowhere else, on a copy of the real workspace too; what a tag owes (`verify`, which release.yml and the workflow's tag job run: the workspace at the tag's version, its `CHANGELOG.md` section, `changelog.d/` empty); the list of what merged, by type, under a release's notes, and its link to the whole diff; the release PR's title and body passing `PR checks`, and its body and commit message claiming no bump for a fold; a malformed `CHANGELOG.md` or crate manifest refused in one line. On scratch repositories and a fake API, with no network | `scripts/release.py`, `.github/workflows/prepare-release.yml` or `release.yml` |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` (needs `cargo-nextest`: `make setup`) | The workspace, optimized, on nextest, every test in its own process ([The local loop](#the-local-loop)), and then the doctests (the examples are not built: `make lint` compiles them); includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
-| Mutants | `make mutants DIFF=1` (the code changed since `origin/main`, `BASE=` for another), `make mutants CRATE=<crate>` (needs cargo-mutants at the `Makefile`'s `MUTANTS_VERSION`: `make setup`) | A test notices when the code is wrong: every mutant cargo-mutants makes of the code (a function returning a default, a `<` made `<=`) fails a test of its crate's fast tier. Each survivor is named by file, line, function and change in `mutants.out/missed.txt` ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)) | Any Rust change, before review; a survivor there is a finding |
+| Mutants | `make mutants DIFF=1` (the code changed since `origin/main`, `BASE=` for another), `make mutants CRATE=<crate>` (needs cargo-mutants at the `Makefile`'s `MUTANTS_VERSION`: `make setup`) | A test notices when the code is wrong: every mutant cargo-mutants makes of the code (a function returning a default, a `<` made `<=`) fails a test of its crate's fast tier. Each survivor is named by file, line, function and change in `mutants.out/missed.txt` ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)) | Any Rust change, before review; a survivor there keeps the PR out of the merge queue (its *Mutants* check is required: [CI tiers](#ci-tiers)) |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check`; `make -j check` runs its parts side by side ([The local loop](#the-local-loop)) | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
@@ -179,8 +180,9 @@ each comparison was taken back to back, with the load average beside it.
 
 ## CI tiers
 
-CI runs in two tiers, and the PR checks run beside them. A PR may merge on
-the fast tier and the PR checks alone.
+CI runs in two tiers, and the PR checks and the PR's *Mutants* job run
+beside them. A PR may merge on the fast tier, the PR checks and its
+*Mutants* job alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
@@ -189,7 +191,7 @@ the fast tier and the PR checks alone.
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
-| Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
+| Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane. A PR's paths are classified by `scripts/changes.py`, which `make check-changed` runs on a workstation too, so the two agree on what a change reaches:
@@ -217,9 +219,9 @@ the fast tier and the PR checks alone.
   only (with Worker protocol, which is the fast lane's real check of
   `worker.js`); so does a change that reaches more than twenty spec files (a
   helper nearly every spec requires, or that many specs changed at once). A
-  green fast lane, with the PR checks green beside it, puts the PR in the
-  queue. It is not the gate: a `main.js` change has run two specs in CI when
-  it enters the queue.
+  green fast lane, with the PR checks and the *Mutants* job green beside it,
+  puts the PR in the queue. It is not the gate: a `main.js` change has run
+  two specs in CI when it enters the queue.
 - **On the builder's machine, before that,** `make browser-changed` runs
   the same selection and follows the views too (`changed.mjs --views`):
   for `main.js`, the specs of each view (PERFORM, PATCH, EVOLVE, TASTE, the
@@ -343,7 +345,8 @@ passed, so the timings stay current when main's pushes skip the tier
 time it had.
 
 **The workflows themselves.** Each workflow's token is read-only unless a
-job needs more (filing an issue, deploying Pages). Every job runs on
+job needs more (filing an issue, deploying Pages, a release's branch, PR,
+tag and GitHub Release). Every job runs on
 `ubuntu-24.04`, not `ubuntu-latest`, so a new runner image arrives in a PR of
 its own, and every Rust job builds with the compiler `rust-toolchain.toml`
 pins (`rustup toolchain install`), as `make` does locally, so a new Rust
@@ -390,11 +393,11 @@ offers. Otherwise the push to `main` is where a slow test catches it.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy, and beside them the upload of the queue
   run's coverage to Codecov ([Coverage](#coverage)): three.
-- ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
-  forty minutes (the job's limit; the run inside stops at 25), well after a
-  crate PR's fast lane is done, and for about a minute on a PR that changes
-  no Rust. Its weekly run holds two on Saturdays, for about eleven hours
-  from 09:17 UTC.
+- ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to forty
+  minutes (the job's limit; the run inside stops at 25), well after a crate
+  PR's fast lane is done, and for about a minute on a PR that changes no
+  Rust. A PR enters the queue only once it ends. *Mutants weekly* holds two
+  on Saturdays, for about eleven hours from 09:17 UTC.
 
 So the queue's run and the *Slow suite* together are 22, two over: a merge
 starts the *Slow suite* just as the queue starts its next batch, and that
@@ -522,12 +525,23 @@ change to the code, is built and its crate's fast tier run on it, and a
 mutant no test fails on survives. What it runs, how to read a survivor and
 what review does with one are the crates' rules, in
 [`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing).
-The *Mutants* workflow (`mutants.yml`) is a workflow of its own, part of
-neither `CI` lane, and not required. On the queue's draft PRs (branches
-under `mergify/merge-queue/`) its job passes at once, about a runner-minute
-a batch, since each PR's own run has judged its code; it still runs there,
-so that once it is required its check reports instead of sitting as
-skipped.
+Two workflows run it, each part of neither `CI` lane: *Mutants*
+(`mutants.yml`) on every PR, and *Mutants weekly* (`mutants-weekly.yml`)
+over the workspace, weekly and by hand. The PR's check,
+`Mutants in the changed code`, is required by Mergify's queue conditions
+(`.mergify.yml`, #181), beside `CI` and `PR checks`: a PR enters the merge
+queue only once it is green. Not by `main`'s ruleset, and not by the
+queue's merge conditions: on the queue's draft PRs (branches under
+`mergify/merge-queue/`) the job passes at once, about a runner-minute a
+batch, since each PR's own run has judged its code. It still runs there, so
+its check shows green rather than skipped.
+
+They are two workflows so that only a PR's run posts that check. As one,
+a run by hand from a PR's branch put the PR job's check on the PR's head
+commit too, skipped by the job's condition (it put one on #265's). If
+Mergify reads a check by its latest run, as its open-source engine did, a
+skipped one that ended after the PR's own run would keep the PR out of the
+queue.
 
 **On every PR**, one runner tests the mutants in the changed code
 (`make mutants DIFF=1`'s command against the merge base, in place, one at a
@@ -537,14 +551,28 @@ command itself rather than `make mutants`, whose exit code is make's 2 for
 any failure, so it reads cargo-mutants' own: a survivor, a timeout, the
 unmutated tests failing, a diff that doesn't match the tree, or the run
 breaking. A PR that changes no Rust in `crates/` passes at once; the
-workflow has no `paths:` filter, which would leave the check waiting, never
-run, on such a PR once it is required. The run's summary has the table and
-every survivor and timeout, linked; the job is red when a mutant survived.
-A run the cap stops before the unmutated tests are done judges nothing and
-passes, with a warning on the PR's checks.
+workflow has no `paths:` filter, which would leave the required check
+waiting, never run, on such a PR. The run's summary has the table and
+every survivor and timeout, linked.
 
-**Weekly** (Saturdays, 09:17 UTC) **and by hand**, one part of the
-workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
+**What a red job means for a PR.** The job is red when a mutant of the
+changed code survived, or when the run broke (the unmutated tests failed,
+or cargo-mutants did), and red keeps the PR out of the merge queue. A
+survivor is killed on the branch with a test that asserts what the code
+does, or, when no behavior can show it (an equivalent mutant), excluded
+narrowly in `.cargo/mutants.toml`'s `exclude_re`, by file,
+function and change, with its reason
+([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing));
+the push runs the job again. A timeout is reported and passes. A run the
+cap stops before the unmutated tests are done judges nothing and passes,
+with a warning on the PR's checks; one it stops later passes unless a
+mutant it judged survived. So no PR is held by time alone, and a PR that
+touches no Rust passes at once. A crate PR's job ends up to 40 minutes
+after it starts, often after its fast lane, and the PR enters the queue
+then.
+
+**Weekly** (Saturdays, 09:17 UTC) **and by hand**, *Mutants weekly* runs
+one part of the workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
 job: taste 1, grammar 4, features 16, session 26, wasm 11), and each week
 runs the next four, two runners at a time, each stopped at five and a half
 hours. Fifty-eight shards make fifteen parts, so a fifteen-week cycle aims
@@ -564,8 +592,9 @@ it names instead of a part, and `parallel` sets how many at once (two by
 default, at most twelve). Each shard uploads its own outcomes as it ends, so
 its survivors can be killed while the others still run. Twelve runners leave
 the queue's full gate eight, so a batch waits for runners while a wide
-burn-down runs. Run from a branch, it files nothing; the burn-down's PRs
-carry the survivors (#181).
+burn-down runs. Run from a branch, it files nothing, and it puts no
+`Mutants in the changed code` on the branch's PR; the burn-down's PRs carry
+the survivors (#181), each judged by its own run.
 
 **How long.** Measured on Oct 6 on a 16-core Mac shared with other work,
 two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a
@@ -696,7 +725,7 @@ from it ([Rules](#rules)).
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
 | `evolve_truth.spec.js` | ⌘Z outside PATCH changes nothing unseen; the sixth pick is undoable; "it just learned" follows `fitted`; with no pair waiting, a skip or a slow deal is inert (the picks, ▶, ↻ and the cards' corners) and says why; a deal that comes back empty leaves them off and the cards saying *Nothing to pair*, and a cut taken back deals again; a cut patch is not dealt (every deal asked for after the cut excludes it and no pair put up after it holds it; the answers a cut keeps from going up wherever they land, a deal asked for while the cut was taken back or the fourth try of a waiting table, are `apps/web/tests/deal.test.mjs`'s); opens are quiet unless slow (the app's own `patch-opened` mark says how long each waited), and a slow one is said in a sentence; tab click then → picks; keys a list uses are not notes; with no farm (`?farm=0`) a deal during a generation names the seed it waits on |
 | `evolve_ahead.spec.js` | A pick or ↻ puts the pair dealt ahead up at once, sounds and all (in the click's own task, with no deal for the table asked for and no render for its ▶; the milliseconds a budget); a taken-back pick restores its pair and keeps the pair that replaced it as the next, or, when the table was still waiting on a deal, that deal; #211's probe (seed 20260928, the pool filled; pick, ⌘Z, pick, pick) shows the first pair dealt behind Q after Q whether that deal landed before ⌘Z, was still out at ⌘Z (its answer held) or was not asked for before ⌘Z (Q's render replies held), as `apps/web/tests/deal.test.mjs` holds of every request and pair in each order; a patch cut while its pair waits ahead is never put up; pairs go up in the order they were dealt when a pick lands while the next deal is out |
-| `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation deals within 1 s; GENERATIONS and the next-step chip count a generation once a child has landed, not on a pick's status; PERFORM measures and a pressed Offer starts during a generation; stop ends with what's bred, retiring only at the finish; ⚡ leaves the engine free and its stop drops it; ⚡ and EVOLVE POOL take turns, each disabled with its reason while the other runs; the E and the job slot agree |
+| `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation is dealt its next pair while the generation runs (each deal's time a 1 s budget); GENERATIONS and the next-step chip count a generation once a child has landed, not on a pick's status; PERFORM measures and a pressed Offer starts during a generation; stop ends with what's bred, retiring only at the finish; ⚡ leaves the engine free and its stop drops it; ⚡ and EVOLVE POOL take turns, each disabled with its reason while the other runs; the E and the job slot agree |
 | `evolve_from_new.spec.js` | A ⚡ child joins the bank's New group (*new · generation N*, tagged NEW) as a generation's children do, the next-step chip counts it, and its toast names the sound; a ⚡ that bred nothing never says "its parent" |
 | `bank_kept.spec.js` | A sound kept as new that rates lowest of everything a preset could replace (from the engine's own ratings, its original saved) stays when a preset opens on a full pool; the one replaced in its place is what the toast names; pointing at EVOLVE POOL never marks it *may be replaced*. Fails against an engine without the protection (`Candidate::unjudged`) |
 | `bank_lineage.spec.js` | Pointing at EVOLVE POOL marks the seeds and what may be replaced from the engine's `ratings`, and during a generation its own seeds (posted with its progress) and `retiring` as *will be replaced*; no mark (the unheard dot, NEW, seed, may be replaced) moves or narrows a row's name, measured; the unheard dot survives a reload and clears when heard; Compare shows a child beside its seed, the diff and both ratings, and plays both while both exist; a refused child buds beside its seed and is gone, and EVOLVE POOL names each walk's outcome; a generation's children land in New with their seed and what changed, each budding from its seed's row (none with motion reduced), and Replaced and the end's toast name only what its end replaced (the generation's `refine` stalled and its replies injected, so every branch runs); Compare lists every change and scrolls, and opens with c from the bank; while ⚡ walks, its seed and the sound its child would replace are marked, and that is what it replaces; a ⚡ child that replaced nothing leaves Replaced as it was; the name's place and each mark word's fit are measured at 1440 and 1080 px; GENERATIONS counts a generation from its first child with no pick since it opened; a sound saved mid-run loses *will be replaced* and the one that will go instead gains it |

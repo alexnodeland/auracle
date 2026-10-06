@@ -91,11 +91,17 @@ contributor guide; this file does not repeat it.
    written for someone who has never seen the repo.
 9. **Work flows through issues and reviewed PRs.** Outstanding work is a
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
-   own worktree. An agent commits there and never pushes, opens a PR or
-   merges; the operator pushes it and opens the PR in the merge queue (a
+   own worktree, at `.claude/worktrees/<topic>` inside the main checkout,
+   which git ignores (`make worktree TOPIC=<topic>`). An agent there also
+   loads the main checkout's root `AGENTS.md`, from an ancestor directory;
+   where the two differ, its worktree's own is the one to follow. An agent
+   commits in its worktree and never pushes, opens a PR or merges; the
+   operator pushes it and opens the PR in the merge queue (a
    human contributor pushes their own branch). Every branch an agent builds
    is reviewed before its PR, and a PR merges through Mergify's queue: its
-   own `CI` is a fast lane that, with `PR checks`, puts it in the queue, and
+   own `CI` is a fast lane that, with `PR checks` and
+   `Mutants in the changed code` (no surviving mutant in the Rust it
+   changed), puts it in the queue, and
    the queue merges it once the full gate is green on its batch, on top of
    `main` (`main` requires `CI` of everyone;
    [ADR-021](docs/decisions/021-merges-go-through-mergifys-queue.md),
@@ -110,6 +116,7 @@ contributor guide; this file does not repeat it.
 | When | Run |
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
+| A branch's worktree | `make worktree TOPIC=<topic>` (at `.claude/worktrees/<topic>`); once merged, `make worktree-rm TOPIC=<topic>` |
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests on nextest); `make -j check` runs the parts side by side |
 | Between edits | `make check-changed`: the parts of `make check` the change reaches, by CI's own classifier (`scripts/changes.py`), and what else CI runs for it |
 | After changing Rust the app calls | `make wasm` (`make wasm-dev` to try it by hand in seconds; the specs and films refuse that build) |
@@ -125,7 +132,7 @@ contributor guide; this file does not repeat it.
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
 | A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
-| A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane) and `PR checks` are green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
+| A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane), `PR checks` and `Mutants in the changed code` are green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
 
 The `check` skill picks the right subset for what changed.
 
@@ -144,8 +151,9 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   its batch ([`docs/process.md`](docs/process.md)).
 - **Agents run on Opus** (`model: opus` in each definition).
 - **Hooks:** at session start, a report of a missing or stale
-  `apps/web/pkg` and of the browser queue; no hand edits under the five
-  generated paths (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
+  `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
+  hand edits under the five generated paths of a file's own checkout, a
+  worktree included (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
   `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
   `cargo test` without `--release`, `--profile` or `--doc`, or

@@ -56,8 +56,9 @@ __pycache__/
 # (finished runs' jobs, closed PRs' files and comments).
 /.cache/
 
-# Claude Code: agents' worktrees and per-person settings stay local. The
-# shared setup (settings.json, hooks, skills, agents) is committed.
+# Claude Code: every branch's worktree (docs/process.md § Building) and
+# per-person settings stay local. The shared setup (settings.json, hooks,
+# skills, agents) is committed.
 .claude/worktrees/
 .claude/settings.local.json
 

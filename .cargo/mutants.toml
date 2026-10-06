@@ -5,11 +5,23 @@
 # survivor: code the tests run without checking what it does
 # (crates/AGENTS.md § Mutation testing). `make mutants` runs it, with the
 # fast tier's filter (the Makefile's SEARCH_FLOOR and SLOW_TESTS), which is
-# named there and nowhere else; the Mutants workflow (mutants.yml) runs the
-# same command (`make -s mutants-command`).
+# named there and nowhere else; the Mutants workflows (mutants.yml on a PR,
+# mutants-weekly.yml over the workspace) run the same command
+# (`make -s mutants-command`).
 #
 # A key here is the same as its command-line option; a list here is added to
 # the command line's.
+
+# Each job's copy of the tree (`make mutants` runs MUTANTS_JOBS of them; CI
+# runs `--in-place` and copies nothing) holds what git tracks or does not
+# ignore. Without this, cargo-mutants copies every file but target/, and a
+# branch's worktree lives inside the main checkout, at .claude/worktrees/<topic>
+# (docs/process.md § Building), at 0.5 to 3 GB each, most of it its own
+# target/: every job would copy every worktree. Nothing a test reads is
+# ignored: the files outside crates/ that tests read (apps/web/words.js,
+# apps/web/perform-wirings.json, Cargo.lock) are tracked, and no crate has a
+# build script.
+gitignore = true
 
 # nextest, as every Rust test job runs: it runs each test in its own process,
 # so a mutant is judged by the first test that fails on it, and it takes the
