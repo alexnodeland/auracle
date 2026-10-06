@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -504,27 +505,50 @@ class TheReleasePr(unittest.TestCase):
         return R.decide("v0.2.0", "0.2.0", None, titles("feat: a (#3)", "fix: c (#4)", "PATCH: b (#2)"))
 
     def test_its_title_and_body_pass_pr_checks(self):
-        plan = self.plan()
-        self.assertEqual(P.check_title(f"release: {plan.version}"), [])
-        links = P.parse(R.body(plan, 3, "https://github.com/o/r/actions/runs/1"))
-        self.assertEqual((links.closes, links.refs, links.problems), ([], [], []))
-        self.assertEqual(links.no_issue, "the 0.3.0 release")
+        for folded in (False, True):
+            plan = self.plan(folded)
+            self.assertEqual(P.check_title(f"release: {plan.version}"), [])
+            links = P.parse(R.body(plan, 3, "https://github.com/o/r/actions/runs/1"))
+            self.assertEqual((links.closes, links.refs, links.problems), ([], [], []))
+            self.assertEqual(links.no_issue, f"the {plan.version} release")
 
     def test_it_says_the_version_and_why_and_what_the_operator_does(self):
         text = R.body(self.plan(), 1)
         self.assertIn("**The version:** 0.3.0, from v0.2.0: 1 feat.", text)
         self.assertIn("with the one entry that waited", text)
+        self.assertIn("and what `[Unreleased]` held", text)
+        self.assertIn("**The bump:** the workspace's version in `Cargo.toml`", text)
+        self.assertIn("1. Write the paragraph under `## [0.3.0]`", text)
+        self.assertIn("With nothing to write, close the PR", text)
+        self.assertIn("read what it holds before that push", text)
         self.assertIn("Titles merged since v0.2.0, by type: feat 1, fix 1, without a type 1.", text)
         self.assertIn("push it to this branch. That push starts `CI` and `PR checks`", text)
         self.assertIn("close the PR and reopen it", text)
         self.assertIn("`@mergifyio queue`", text)
         self.assertIn("tags its merge commit `v0.3.0`", text)
 
-    def test_a_fold_says_so(self):
+    def test_a_fold_says_so_and_claims_no_bump_or_new_paragraph(self):
         text = R.body(self.plan(folded=True), 2)
         self.assertIn("**The version:** 0.2.1, prepared before and not tagged", text)
         self.assertIn("the titles since v0.2.0 alone would make 0.3.0", text)
-        self.assertIn("the 2 entries", text)
+        self.assertIn("the 2 entries that waited in `changelog.d/` (now deleted), folded into the top of `## [0.2.1]`", text)
+        self.assertIn("Its heading and paragraph are as they were.", text)
+        self.assertIn("**The bump:** none. The workspace is at 0.2.1 already", text)
+        self.assertIn("1. Check the paragraph under `## [0.2.1]` still says what this release is", text)
+        self.assertIn("With nothing to change, close the PR and reopen it", text)
+        for claim in ("`Cargo.lock`", "`[Unreleased]` held", "Write the paragraph"):
+            self.assertNotIn(claim, text)
+
+    def test_its_commit_message_says_what_it_holds(self):
+        made = R.message(self.plan())
+        self.assertTrue(made.startswith("release: 0.3.0\n\nThe version and the changelog's section for 0.3.0"), made)
+        self.assertIn("Cargo.lock", made)
+        self.assertTrue(all(len(line) <= 72 for line in made.split("\n")), made)
+        fold = R.message(self.plan(folded=True))
+        self.assertTrue(fold.startswith("release: 0.2.1\n\nThe entries that merged after 0.2.1 was prepared"), fold)
+        self.assertIn("nothing is bumped", fold)
+        for claim in ("Cargo.lock", "[Unreleased]", "follows, by hand"):
+            self.assertNotIn(claim, fold)
 
 
 # ─── the command, on a scratch repository ────────────────────────────────────
@@ -554,12 +578,9 @@ class TheHistory(unittest.TestCase):
             self.history(t)
             out_file = t.root / "out"
             out_file.write_text("")
-            body = t.root / "body.md"
-            os.environ["GITHUB_OUTPUT"] = str(out_file)
-            try:
-                code, out, err = t.run("plan", "--github-output", "--body", str(body))
-            finally:
-                del os.environ["GITHUB_OUTPUT"]
+            body, message = t.root / "body.md", t.root / "message"
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out_file)}):
+                code, out, err = t.run("plan", "--github-output", "--body", str(body), "--message", str(message))
             self.assertEqual(code, 0, err)
             self.assertIn("release: 0.2.0", out)
             self.assertIn("a minor bump from v0.1.1: 1 breaking (`!`), which moves the minor while the major is 0", out)
@@ -568,6 +589,29 @@ class TheHistory(unittest.TestCase):
             self.assertEqual(out_file.read_text(), "version=0.2.0\nprevious=v0.1.1\nfolded=false\n")
             self.assertIn("No issue: the 0.2.0 release", body.read_text())
             self.assertIn("with the 0 entries that waited", body.read_text())
+            self.assertTrue(message.read_text().startswith("release: 0.2.0\n\nThe version and the changelog's section for 0.2.0"))
+
+    def test_a_late_entry_folds_into_the_untagged_release_and_bumps_nothing(self):
+        with Tree(git=True) as t:
+            self.history(t)
+            # The release PR for 0.2.0 merged and its tag was refused; an entry
+            # merged after it.
+            t.write("Cargo.toml", CARGO)
+            t.write("CHANGELOG.md", f"# Changelog\n\n## [Unreleased]\n\n{C.NOTE}\n\n## [0.2.0] - 2026-02-03\n\nThe paragraph.\n\n- y\n\n## [0.1.1] - 2026-01-02\n\n- x\n")
+            t.commit("release: 0.2.0 (#7)")
+            t.write("changelog.d/late.md", "### Fixed: late\n\n- **Late.**\n")
+            t.commit("fix: late (#8)")
+            out_file, body, message = t.root / "out", t.root / "body.md", t.root / "message"
+            out_file.write_text("")
+            with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out_file)}):
+                code, out, err = t.run("plan", "--github-output", "--body", str(body), "--message", str(message))
+            self.assertEqual(code, 0, err)
+            self.assertIn("folded into 0.2.0, prepared and not tagged", out)
+            self.assertEqual(out_file.read_text(), "version=0.2.0\nprevious=v0.1.1\nfolded=true\n")
+            self.assertIn("**The bump:** none. The workspace is at 0.2.0 already", body.read_text())
+            self.assertIn("the one entry that waited in `changelog.d/` (now deleted), folded into the top of `## [0.2.0]`", body.read_text())
+            self.assertIn("nothing is bumped", message.read_text())
+            self.assertEqual(t.run("bump", "0.2.0")[1], "  the workspace is at 0.2.0 already: nothing to bump\n")
 
     def test_the_entries_waiting_are_counted_where_the_plan_reads(self):
         with Tree(git=True) as t:

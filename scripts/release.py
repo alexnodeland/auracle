@@ -5,11 +5,13 @@ of what merged, by type, under its notes (the Prepare release workflow,
 § Cutting a release).
 
     python3 scripts/release.py plan [--version X.Y.Z] [--ref REF] [--notes]
-                                    [--body FILE] [--github-output]
+                                    [--body FILE] [--message FILE]
+                                    [--github-output]
         the version the next release takes, and why, from the titles merged
         since the last tag; --notes adds the list `notes` would write (it
         reads the PRs' authors with `gh`), --body writes the release PR's
-        body, --github-output the version for the workflow's next steps
+        body, --message its commit message, --github-output the version
+        for the workflow's next steps
     python3 scripts/release.py bump X.Y.Z
         the workspace's version, everywhere it is written
     python3 scripts/release.py verify vX.Y.Z
@@ -70,6 +72,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import textwrap
 import time
 from typing import Any, Callable, Iterable, NamedTuple
 
@@ -613,35 +616,72 @@ def previous_tag(root: pathlib.Path, tag: str) -> str | None:
 def body(plan: Plan, fragments: int, run: str = "") -> str:
     """The release PR's body: what it holds, why this version, what the
     operator does before it is queued, and the line PR checks asks of a PR
-    with no issue."""
+    with no issue. A fold bumps nothing and keeps the section's paragraph,
+    and says so."""
     since = plan.previous or "the first commit"
     made = f"the Prepare release workflow ([its run]({run}))" if run else "the Prepare release workflow"
-    if plan.folded:
-        version = (
-            f"{plan.version}, prepared before and not tagged: what merged since folds into its section "
-            f"(the titles since {since} alone would make {plan.computed}: {plan.why})"
-        )
-    else:
-        version = f"{plan.version}, from {since}: {plan.why}"
     tally = ", ".join(f"{kind} {n}" for kind, n in counts(plan.titles))
     entries = "the one entry" if fragments == 1 else f"the {fragments} entries"
+    checks = (
+        "That push starts `CI` and `PR checks`: a PR this workflow opens with its own token starts no workflow "
+        "(GitHub's rule). With nothing to {what}, close the PR and reopen it, which starts them too. This PR "
+        "carries the `queue` label, so once the label alone queues a PR (`docs/process.md` § CI and merging), "
+        "it enters the queue when they are green: read what it holds before that push."
+    )
+    if plan.folded:
+        held = f"""- **The version:** {plan.version}, prepared before and not tagged: what merged since folds into its section (the titles since {since} alone would make {plan.computed}: {plan.why}).
+- **The changelog:** {entries} that waited in `changelog.d/` (now deleted), folded into the top of `## [{plan.version}]` in `CHANGELOG.md`. Its heading and paragraph are as they were.
+- **The bump:** none. The workspace is at {plan.version} already, from the release PR before."""
+        first = (
+            f"Check the paragraph under `## [{plan.version}]` still says what this release is, with what folded in, "
+            "and push any change to this branch. " + checks.format(what="change")
+        )
+    else:
+        held = f"""- **The version:** {plan.version}, from {since}: {plan.why}.
+- **The changelog:** `## [{plan.version}]` in `CHANGELOG.md`, with {entries} that waited in `changelog.d/` (now deleted) and what `[Unreleased]` held.
+- **The bump:** the workspace's version in `Cargo.toml`, `crates/auracle-wasm/Cargo.toml` and `Cargo.lock`."""
+        first = (
+            f"Write the paragraph under `## [{plan.version}]` that says what this release is, and push it to this "
+            "branch. " + checks.format(what="write")
+        )
     return f"""The release PR for {plan.version}, made by {made}.
 
-- **The version:** {version}.
-- **The changelog:** `## [{plan.version}]` in `CHANGELOG.md`, with {entries} that waited in `changelog.d/` (now deleted) and what `[Unreleased]` held.
-- **The bump:** the workspace's version in `Cargo.toml`, `crates/auracle-wasm/Cargo.toml` and `Cargo.lock`.
+{held}
 
 Titles merged since {since}, by type: {tally}.
 
 **Before it is queued:**
 
-1. Write the paragraph under `## [{plan.version}]` that says what this release is, and push it to this branch. That push starts `CI` and `PR checks`: a PR this workflow opens with its own token starts no workflow (GitHub's rule). With nothing to write, close the PR and reopen it, which starts them too.
-2. Queue it: `@mergifyio queue`. It is tested and merged alone (the `release` label).
+1. {first}
+2. Queue it: `@mergifyio queue`, until the label alone does. It is tested and merged alone (the `release` label).
 
 Once it merges, the same workflow tags its merge commit `v{plan.version}` and starts `release.yml` on the tag, which publishes the release: the `## [{plan.version}]` section as its notes, then every PR merged since {since}, by type.
 
 No issue: the {plan.version} release
 """
+
+
+def message(plan: Plan) -> str:
+    """The release PR's commit message. The queue's squash commit on `main`
+    carries it (the repository's squash setting), so it says what the commit
+    is and where it came from, a fold included."""
+    since = plan.previous or "the first commit"
+    if plan.folded:
+        text = (
+            f"The entries that merged after {plan.version} was prepared, folded into its section by the Prepare "
+            f"release workflow: v{plan.version} was never tagged, so they ship in it. CHANGELOG.md's "
+            f"`## [{plan.version}]` takes them at its top, its heading and paragraph as they were, and "
+            f"changelog.d/ is empty again. The workspace is at {plan.version} already: nothing is bumped."
+        )
+    else:
+        text = (
+            f"The version and the changelog's section for {plan.version}, made by the Prepare release workflow "
+            f"from what merged since {since}: the workspace's version in Cargo.toml, "
+            f"crates/auracle-wasm/Cargo.toml and Cargo.lock, and CHANGELOG.md's `## [{plan.version}]` with the "
+            f"entries that waited in changelog.d/ and under [Unreleased]. The paragraph that says what the "
+            f"release is follows, by hand."
+        )
+    return f"release: {plan.version}\n\n{textwrap.fill(text, 72)}\n"
 
 
 # ─── the command ─────────────────────────────────────────────────────────────
@@ -682,6 +722,7 @@ def main(argv: list[str], root: pathlib.Path = ROOT, get: Callable[[str], Any] =
     p.add_argument("--ref", default=None)
     p.add_argument("--notes", action="store_true")
     p.add_argument("--body", default=None)
+    p.add_argument("--message", default=None)
     p.add_argument("--github-output", action="store_true")
     sub.add_parser("bump").add_argument("version")
     sub.add_parser("verify").add_argument("tag")
@@ -697,6 +738,8 @@ def main(argv: list[str], root: pathlib.Path = ROOT, get: Callable[[str], Any] =
                 server, repo, run = (os.environ.get(k, "") for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"))
                 url = f"{server}/{repo}/actions/runs/{run}" if server and repo and run else ""
                 pathlib.Path(args.body).write_text(body(plan, waiting(root, args.ref), url), encoding="utf-8")
+            if args.message:
+                pathlib.Path(args.message).write_text(message(plan), encoding="utf-8")
             if args.github_output:
                 if not os.environ.get("GITHUB_OUTPUT"):
                     raise Refused("--github-output: GITHUB_OUTPUT is not set (it is in a workflow's step)")

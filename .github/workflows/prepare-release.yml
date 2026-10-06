@@ -90,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          python3 scripts/release.py plan --version "$ASKED" --body "$RUNNER_TEMP/release-pr.md" --github-output 2>&1 | tee "$RUNNER_TEMP/plan.txt" || status=$?
+          python3 scripts/release.py plan --version "$ASKED" --body "$RUNNER_TEMP/release-pr.md" --message "$RUNNER_TEMP/message" --github-output 2>&1 | tee "$RUNNER_TEMP/plan.txt" || status=$?
           { echo '### The plan'; echo; echo '```'; cat "$RUNNER_TEMP/plan.txt"; echo '```'; echo; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
@@ -140,24 +140,15 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ steps.plan.outputs.version }}
-          PREVIOUS: ${{ steps.plan.outputs.previous }}
         run: |
           set -euo pipefail
           branch="release/$VERSION"
           git switch -q -c "$branch"
           git add -A
           # The squash commit on main carries this message (the repository's
-          # squash setting), so it says what the commit is and where from.
-          {
-            echo "release: $VERSION"
-            echo
-            echo "The version and the changelog's section for $VERSION, made by the"
-            echo "Prepare release workflow from what merged since ${PREVIOUS:-the first commit}:"
-            echo "the workspace's version in Cargo.toml, crates/auracle-wasm/Cargo.toml"
-            echo "and Cargo.lock, and CHANGELOG.md's \`## [$VERSION]\` with the entries that"
-            echo "waited in changelog.d/ and under [Unreleased]. The paragraph that says"
-            echo "what the release is follows, by hand."
-          } > "$RUNNER_TEMP/message"
+          # squash setting), so the plan wrote it to say what the commit is
+          # and where from: a bump and a new section, or entries folded into
+          # a section prepared before, with nothing bumped.
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -F "$RUNNER_TEMP/message"
           git push -q origin "HEAD:refs/heads/$branch"
