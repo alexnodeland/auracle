@@ -1568,10 +1568,11 @@ every machine: the farm's results are folded in draw-index order
 (`runFarm` absorbs only the contiguous run from the cursor, and
 `Engine::absorb_prior` refuses any other index), the serial fill folds the
 same indexed stream from the same cursor, and a restore takes the bank back
-in its saved order (`deferred_restore_equals_import_state`).
-`tests/web/session_seed.spec.js` fills the same pool from a seed on two
-fresh sessions, and `crates/auracle-wasm/tests/boot_agrees.rs` the same pool
-on both targets. A draw retired after its renders time out twice changes
+in its saved order (`deferred_restore_equals_import_state`). A fill gives
+each sound it admits the next id (`alloc_id`), so ids follow pool order:
+`tests/web/session_seed.spec.js` finds the same sound under each id on two
+fresh sessions of one seed, and `crates/auracle-wasm/tests/boot_agrees.rs`
+the same pool on both targets. A draw retired after its renders time out twice changes
 the pool (the farm's watchdog), and so does a sound the player adds while
 the pool fills (the warm start's picks, a preset opened, an edit kept as
 new), which joins wherever the fill has got to: the pairs dealt after
