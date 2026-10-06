@@ -537,3 +537,36 @@ from it ([Rules](#rules)).
   `SLOW_ENGINE`), which CDP's throttling does not reach: with
   `AURACLE_CPU_THROTTLE=4` a step measures 1.8 to 2.4 s on a 16-core M3 Max,
   about a CI runner's, against 0.3 s without it.
+
+## Budgets
+
+How long each tier may take, so a slow run is seen rather than felt. Each
+budget is the p90 that `scripts/ci_stats.py` measured on the last week's
+green runs in today's shape (those since #177's wave 0 merged, 2026-10-06
+02:31 to 10:00 UTC), plus a fifth, rounded up to a whole minute.
+
+| Tier | Budget | Measured: median / p90 / max | Of |
+| --- | --- | --- | --- |
+| The PR's `CI` answer: the run created to `CI` done, on a PR that changes Rust, CI or the app | 30 min | 19.6 / 24.8 / 31.0 min | 24 runs |
+| The Rust fast tier: each `Test (k/2)` runner | 9 min | 6.0 / 6.9 / 7.5 min | 46 jobs |
+| The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | 7.6 / 8.4 / 9.8 min | 276 shards |
+| The browser fast tier in total: the first shard's start to the last one's end | 20 min | 12.4 / 16.2 / 19.0 min | 23 runs |
+| The browser fast tier in total: runner-minutes a run | 109 | 87.0 / 90.5 / 94.0 | 23 runs |
+| Coverage: *Coverage build*'s start to *Coverage*'s end | 23 min | 13.5 / 18.8 / 22.7 min | 15 runs |
+| The *Slow suite*: a green run, created to its last job done | 62 min | 32.8 / 51.5 / 77.8 min | 8 runs |
+| The nightly *Flake hunt*: created to its last job done | 75 min | not run yet | its design: 12 shards three times over, 4 at a time, about 20 minutes a round |
+
+A budget is where a run starts to be slow, not the goal: #177's targets are a
+PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
+waiting a median of 30 s for a runner. The budgets come down as that work
+lands, each from a new measurement.
+
+**Reading it.** `python3 scripts/ci_stats.py` measures the last 7 days
+(`--since` and `--until` take dates): `CI`'s wall time, runner waits, red
+runs and the job that failed, and runs per PR, by kind of PR; open to merge,
+PRs merged a day, open to the first red, the queue's time, and how long
+`main` stayed red; each browser shard's time and their spread; and each
+job's time on green runs. `--format json` keeps a run, and `--compare` sets
+each headline against one: the week before wave 0 is
+[`docs/notes/ci-baseline-2026-10-05.json`](../notes/ci-baseline-2026-10-05.json).
+The nightly *Flake hunt* writes the last 7 days against it to its summary.

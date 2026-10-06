@@ -52,6 +52,10 @@ playwright-report/
 www/video/out/
 __pycache__/
 
+# scripts/ci_stats.py's copies of the API's answers that can no longer change
+# (finished runs' jobs, closed PRs' files and timelines).
+.cache/
+
 # Claude Code: agents' worktrees and per-person settings stay local. The
 # shared setup (settings.json, hooks, skills, agents) is committed.
 .claude/worktrees/

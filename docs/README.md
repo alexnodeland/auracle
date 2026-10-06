@@ -124,6 +124,12 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 - [`suggest-2026-10/`](notes/suggest-2026-10/README.md): how the model could
   suggest the next module in PATCH; four designs measured for cost and against
   synthetic listeners, and a recommendation (RFC-006 Open 2, Plan-005 task 9d)
+- [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
+  health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
+  the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the
+  base its `--compare` reads #177's targets against. A PR that changes only
+  workflows, the Makefile or scripts is a CI PR there, where #177's own table
+  counted it as Rust
 
 ## Runbooks
 

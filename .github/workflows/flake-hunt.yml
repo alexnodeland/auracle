@@ -16,6 +16,12 @@ name: Flake hunt
 # Beside it, the speed budgets (ADR-022): the gate records each as an
 # annotation and never fails on one; here they are judged, once a night, on
 # main, and the ones over their limit file an issue of their own.
+#
+# And CI's own health over the last 7 days (scripts/ci_stats.py): how long a
+# PR waits for `CI`, for runners and for the queue, how often a run goes red
+# and on which job, and how the browser shards spread, in the run's summary,
+# each headline against the week before #177's wave 0
+# (docs/notes/ci-baseline-2026-10-05.json).
 
 on:
   schedule:
@@ -185,6 +191,30 @@ jobs:
             one over its limit, with the CPU each shard ran on. Read whether the
             app got slower or the runner was slow. A failure there that is not
             a budget is the Flake hunt's to find.
+
+  # CI's health (#177 § 7.1), read-only: GETs from the Actions and pull
+  # request APIs, the PRs' timelines included (an issues endpoint, so
+  # `issues: read`). It needs no other job, so a red hunt still gets its
+  # numbers, and it holds one runner for a few minutes.
+  stats:
+    name: CI health
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The last 7 days, against the baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/ci_stats.py
+          --since "$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          --compare docs/notes/ci-baseline-2026-10-05.json
+          >> "$GITHUB_STEP_SUMMARY"
 
   # Which tests failed, and on which of their three runs, in one report.
   report:
