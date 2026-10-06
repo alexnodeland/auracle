@@ -902,8 +902,8 @@ fn an_empty_posterior_is_inert() {
 /// Reweighting always leaves the weights a distribution, finite and
 /// summing to one: after a vote on a candidate whose φ holds a NaN (a
 /// render that escaped the featurizer's quarantine), where no draw has a
-/// likelihood; and after one that rules out every draw still carrying
-/// weight.
+/// likelihood; after one that rules out every draw still carrying weight;
+/// and even from weights with nothing left to keep.
 #[test]
 fn reweighting_always_leaves_a_distribution() {
     let mut rng = StdRng::seed_from_u64(0xD157);
@@ -959,6 +959,21 @@ fn reweighting_always_leaves_a_distribution() {
         chose_a: false,
     };
     assert!(is_distribution(&decided.reweighted(&contradiction, 0)));
+
+    // Weights that are all zero are no distribution to keep, which only a
+    // posterior built by hand can hold: an ordinary vote leaves them uniform.
+    let spent = TastePosterior {
+        weights: vec![0.0; p.samples.len()],
+        ..p.clone()
+    };
+    let ordinary = Feedback::Duel {
+        a: random_phi(&mut rng),
+        b: random_phi(&mut rng),
+        chose_a: true,
+    };
+    let healed = spent.reweighted(&ordinary, 0);
+    assert!(is_distribution(&healed), "weights {:?}", healed.weights);
+    assert_eq!(healed.weights, vec![1.0 / 20.0; 20]);
 }
 
 /// Three draws, each with both lenses on dimension 0: two that love it,

@@ -896,8 +896,17 @@ impl TastePosterior {
             // posterior persisted before reweighting existed stores none,
             // which reads as uniform); the observation waits in the log for
             // the next fit. Resetting to uniform here, as this used to, threw
-            // away the evidence gathered since the last fit.
-            w = (0..n).map(|i| self.weight(i)).collect();
+            // away the evidence gathered since the last fit. Weights with
+            // nothing left to keep (all zero, which only a posterior built by
+            // hand holds) become uniform, so the result is always a
+            // distribution.
+            let kept: Vec<f64> = (0..n).map(|i| self.weight(i)).collect();
+            let total: f64 = kept.iter().sum();
+            w = if total > 0.0 && total.is_finite() {
+                kept
+            } else {
+                vec![1.0 / n as f64; n]
+            };
         }
         TastePosterior {
             cfg: self.cfg.clone(),
