@@ -62,7 +62,11 @@ FIXTURES = {
     "www/reference/src/page.md": "# Reference\n\nEach duel updates the posterior, and none of it is magic.\n",
     "README.md": "# Auracle\n\nA grey note — once.\n",
     "CHANGELOG.md": "# Changelog\n\n- A centre fix.\n",
+    "changelog.d/topic.md": "### Fixed: a sound\n\n- A grey pad, fixed.\n",
 }
+# In the tree but on no surface: the note on how to write a changelog entry,
+# which quotes what not to write.
+NOT_READ = {"changelog.d/README.md": "# changelog.d\n\nNot an entry — so its colour and its magic are never read.\n"}
 
 
 def words(segments, kind="md", entries=LIST):
@@ -88,7 +92,7 @@ class Tree:
     def __enter__(self):
         self.root = tempfile.mkdtemp(prefix="checkwords-")
         self.real, W.ROOT = W.ROOT, self.root
-        for rel, text in {W.VOICE: VOICE, **FIXTURES}.items():
+        for rel, text in {W.VOICE: VOICE, **NOT_READ, **FIXTURES}.items():
             self.edit(rel, lambda _, text=text: text)
         code, _, err = self.run("--update", "--allow-rise")
         assert code == 0, err
@@ -472,7 +476,7 @@ class TheRatchet(unittest.TestCase):
         with Tree() as t:
             code, out, err = t.run()
             self.assertEqual((code, err), (0, ""))
-            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 16 hits under baseline, 0 rises\n")
+            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 17 hits under baseline, 0 rises\n")
 
     def test_a_new_hit_fails_and_says_where(self):
         with Tree() as t:
@@ -504,6 +508,7 @@ class TheRatchet(unittest.TestCase):
             "www/reference/src/page.md": ("AI", lambda s: s + "\nIt is not AI.\n"),
             "README.md": ("next-generation", lambda s: s + "\nA next-generation synth.\n"),
             "CHANGELOG.md": ("em dash", lambda s: s + "- Fixed — at last.\n"),
+            "changelog.d/topic.md": ("magic", lambda s: s + "- No magic to it.\n"),
         }
         self.assertEqual(set(planted), set(FIXTURES))
         with Tree() as t:
@@ -590,6 +595,29 @@ class TheRatchet(unittest.TestCase):
                 self.assertRegex(out, rf"(?m)^  {surface} \({tier}, \d+ files\): \d+ hits")
             self.assertIn("  readme (all, 1 files): 2 hits: em dash 1 · grey 1\n", out)
             self.assertIn("  films (player, 3 files): 2 hits: duel 1 · vote 1\n", out)
+            self.assertIn("  changelog (all, 2 files): 2 hits: centre 1 · grey 1\n", out)
+
+    def test_a_new_changelog_entry_is_read_as_the_changelog_is(self):
+        # Each change's entry is a new file, which the baseline doesn't list:
+        # any hit fails. A word the reference may use is the changelog's too.
+        with Tree() as t:
+            t.edit("changelog.d/another.md", lambda s: "### Added: pairs\n\n- Each duel is a vote on the bench.\n")
+            self.assertEqual(t.run()[0], 0)
+            t.edit("changelog.d/another.md", lambda s: s + "- Faster — at last.\n")
+            code, _, err = t.run()
+            self.assertEqual(code, 1)
+            self.assertIn("changelog.d/another.md: em dash (a colon, a comma, a period, or parentheses): 1 hits, and a file the baseline does not list", err)
+            self.assertIn("changelog.d/another.md:4: em dash: - Faster — at last.", err)
+
+    def test_the_note_in_changelog_d_is_never_read(self):
+        with Tree() as t:
+            self.assertNotIn("changelog.d/README.md", {f for f, *_ in W.files()})
+            self.assertNotIn("changelog.d/README.md", t.baseline())
+            t.edit("changelog.d/README.md", lambda s: s + "\nAnd a grey AI — towards nothing.\n")
+            self.assertEqual(t.run()[0], 0)
+            code, _, err = t.run("--where", "changelog.d/README.md")
+            self.assertEqual(code, 1)
+            self.assertIn("changelog.d/README.md is not on any surface this check reads", err)
 
     def test_a_broken_baseline_is_reported_not_a_traceback(self):
         with Tree() as t:
@@ -627,7 +655,7 @@ class TheSurfaces(unittest.TestCase):
 
     def test_the_guide_and_this_check_are_never_read(self):
         read = {f for f, *_ in W.files()}
-        for rel in (W.VOICE, W.BASELINE, "www/checkwords.py", "www/test_checkwords.py"):
+        for rel in (W.VOICE, W.BASELINE, "www/checkwords.py", "www/test_checkwords.py", "changelog.d/README.md"):
             self.assertNotIn(rel, read)
         self.assertFalse(any(f.startswith("docs/") for f in read))
 

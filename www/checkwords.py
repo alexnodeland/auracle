@@ -14,7 +14,8 @@ It counts three things on every surface in SURFACES:
   guide stays the one list. Each line there is `word or phrase | scope | say
   instead`; `player` applies to the app (and the words the engine's Rust
   sends it), the landing page and its figures, the guide and the films, and
-  `all` adds the reference, the README and the changelog;
+  `all` adds the reference, the README and the changelog (with the entries
+  waiting in `changelog.d/`);
 - em dashes (voice.md: "No em dashes, anywhere");
 - the British spellings in BRITISH below (voice.md: "The spelling is
   American").
@@ -112,18 +113,22 @@ SURFACES = [
     ),
     ("reference", "all", [("www/reference/src/**/*.md", "md")]),
     ("readme", "all", [("README.md", "md")]),
-    ("changelog", "all", [("CHANGELOG.md", "md")]),
+    # The released notes, and each change's entry waiting in changelog.d/ for
+    # the next release (scripts/changelog.py moves them in): the same words.
+    ("changelog", "all", [("CHANGELOG.md", "md"), ("changelog.d/*.md", "md")]),
 ]
 
-# Never read: the guide that quotes every banned word, the dated records, and
-# this check's own files. None of them is on a surface above; the list is here
-# so that a wider glob one day cannot pull them in.
+# Never read: the guide that quotes every banned word, the dated records, this
+# check's own files, and the note on how to write a changelog entry (it is not
+# one). Only that note is under a glob above; the list is here so that a wider
+# glob one day cannot pull the others in.
 EXEMPT = [
     VOICE,
     "docs/**",
     "www/checkwords.py",
     "www/test_checkwords.py",
     BASELINE,
+    "changelog.d/README.md",
 ]
 
 EM_DASH = "em dash"
