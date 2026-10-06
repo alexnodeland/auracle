@@ -132,7 +132,7 @@ jobs:
 
       - name: The specs that record a budget
         id: files
-        run: echo "files=$(cd tests/web && grep -lE '\bbudget\(' *.spec.js | sed 's|^|/|' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+        run: echo "files=$(cd tests/web && grep -lE '\bbudget\(' -- *.spec.js | sed 's|^|/|' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/browser-shard
         env:
