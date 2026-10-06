@@ -34,7 +34,7 @@ music changes.
   of the scale's ratio, 12 × 1.2ⁿ, in pixels of the 1920 × 1080 frame), and
   spaces and corners from the shared steps. The drawing helpers (the kit's
   `textBlock()`, a film's `label()` or `txt()`) still take a number for a
-  label's size, which the token check does not count.
+  label's size, which the token check does not count (#291).
 
 `stage/walk.js` turns recorded footage into a walkthrough. It adds a slow
 camera, callouts that point at the thing being named, a chapter label and

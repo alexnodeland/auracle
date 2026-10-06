@@ -83,7 +83,8 @@ and printed key hints are built here; its other contracts stay in
      is empty.
    - *Still to do:* the films' drawing helpers (the kit's `textBlock()`, a
      film's `label()` or `txt()`) take a number for a label's size, which the
-     check does not count, so those labels are not yet on the frame tier.
+     check does not count, so those labels are not yet on the frame tier
+     (#291).
 2. **Voice guide** (part 2). Written 2026-09-30, as
    [`www/brand/voice.md`](../../www/brand/voice.md) under
    [ADR-013](../decisions/013-one-voice.md). It has a new line, American
