@@ -1,7 +1,7 @@
 use super::*;
 use crate::SessionConfig;
 use auracle_features::{featurize_memo, RenderMemo};
-use auracle_grammar::{preset_bank, PatchGrammarPrior, Uid};
+use auracle_grammar::{preset_bank, validate_tree, PatchGrammarPrior, Uid};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -619,4 +619,170 @@ fn audio_in_is_never_guessed_and_a_lone_input_is_silent() {
     assert!(offered
         .iter()
         .all(|c| matches!(c.op, StructOp::Replace { .. }) && c.kind != "audio_in"));
+}
+
+/// **Why there is no guess crosses to the app as a code**, so the codes are
+/// a wire format, pinned as a literal table; the match below stops a new
+/// refusal compiling until it is in it.
+#[test]
+fn guess_refusal_codes_are_pinned() {
+    const WIRE: [(GuessRefusal, &str); 3] = [
+        (GuessRefusal::NoTaste, "no_taste"),
+        (GuessRefusal::Full, "full"),
+        (GuessRefusal::Unmeasured, "unmeasured"),
+    ];
+    for (refusal, code) in WIRE {
+        match refusal {
+            GuessRefusal::NoTaste | GuessRefusal::Full | GuessRefusal::Unmeasured => {}
+        }
+        assert_eq!(refusal.code(), code);
+    }
+}
+
+/// **Every kind is counted in a family φ names**, or is one of the few φ
+/// counts without a column of their own (pinned here: the mix, AUDIO IN,
+/// TRACK and CAPTURE). Swept from `NodeKind::ALL` and `ModKind::ALL`, so a
+/// new kind is checked the day it is added; a modulator's `None` is no
+/// family at all.
+#[test]
+fn every_kind_is_counted_in_a_family_phi_names() {
+    let column = |family: &str| StructFeatures::NAMES.contains(&format!("n_{family}").as_str());
+    const NO_COLUMN: [&str; 4] = ["mix", "audio_in", "track", "capture"];
+    for kind in NodeKind::ALL {
+        let family = node_family(kind);
+        assert!(
+            column(family) != NO_COLUMN.contains(&family),
+            "{kind:?} is counted as {family}, which is neither a column nor pinned as none"
+        );
+    }
+    for kind in ModKind::ALL {
+        let family = mod_family(kind);
+        assert_eq!(column(family), kind != ModKind::None, "{kind:?}: {family}");
+    }
+}
+
+/// A sounding patch at the size ceiling, mixes of oscillators and one
+/// filter, under a mix: nothing can go in at its output without breaking the
+/// ceiling, and its output has no modulation slot a guess could fill.
+fn at_the_ceiling() -> PatchTree {
+    use auracle_grammar::term::{FilterKind, Waveform};
+    let vco = || AudioNode::Vco {
+        wave: Waveform::Saw,
+        octave: 0,
+        detune: 0.2,
+        mod_depth: 0.0,
+        modulation: ModNode::None,
+        uid: Uid::NEW,
+    };
+    fn mix(a: AudioNode, b: AudioNode) -> AudioNode {
+        AudioNode::Mix {
+            balance: 0.5,
+            a: Box::new(a),
+            b: Box::new(b),
+            uid: Uid::NEW,
+        }
+    }
+    let four = || mix(mix(vco(), vco()), mix(vco(), vco()));
+    let filtered = |input| AudioNode::Filter {
+        kind: FilterKind::SvfLp,
+        cutoff: 0.5,
+        resonance: 0.2,
+        mod_depth: 0.0,
+        modulation: ModNode::None,
+        input: Box::new(input),
+        uid: Uid::NEW,
+    };
+    let mut tree = preset("Hornet");
+    tree.root = mix(
+        mix(four(), four()),
+        mix(mix(vco(), vco()), mix(vco(), filtered(vco()))),
+    );
+    tree.ensure_uids();
+    tree
+}
+
+/// **A patch with no room is offered nothing, and the guess says it is
+/// full.** Every placement at its output would break the size ceiling and is
+/// refused as it is made, so there is no candidate, and a plan for it is
+/// refused as `full` rather than planning nothing.
+#[test]
+fn a_patch_with_no_room_is_refused_as_full() {
+    let tree = at_the_ceiling();
+    assert_eq!(tree.root.size(), auracle_grammar::mutate::MAX_SIZE);
+    assert!(validate_tree(&tree).is_ok());
+    assert!(guess_candidates(&tree, None).is_empty());
+    let e = warm(4, false);
+    let none = HashSet::new();
+    assert_eq!(
+        e.guess_plan(&tree, None, &[], &none, 0).map(|p| p.total),
+        Err(GuessRefusal::Full)
+    );
+    assert!(!guess_is_current(
+        &tree,
+        &StructOp::Delete { key: "node".into() },
+        OUTPUT_SOCKET,
+        "mix"
+    ));
+}
+
+/// **A ranking reads only what is rendered.** A planned candidate known not
+/// to vet counts as rendered and is left out; one the memo does not hold yet
+/// is neither ranked nor counted. Here on a taste with two lenses, where a
+/// reason is read under the lens most responsible for the guess.
+#[test]
+fn a_ranking_reads_only_what_is_rendered() {
+    let mut e = warm(4, false);
+    let mut rng = StdRng::seed_from_u64(0x2A4);
+    while e.log.len() < crate::OBS_PER_STYLE {
+        let (a, b) = e.next_duel(&mut rng).unwrap();
+        e.record_duel(a, b, a < b);
+    }
+    e.fit_posterior(&mut rng);
+    assert_eq!(e.posterior.as_ref().unwrap().k_styles(), 2);
+    let tree = preset("Hornet");
+    let none = HashSet::new();
+    featurize_memo(&tree, &e.cfg.phrase, e.memo(), false).unwrap();
+    let plan = e.guess_plan(&tree, None, &[], &none, 0).unwrap();
+    assert!(plan.jobs.len() >= 3);
+    let failed: HashSet<String> = [plan.jobs[0].key.clone()].into();
+    featurize_memo(&plan.jobs[1].tree, &e.cfg.phrase, e.memo(), false).unwrap();
+    let r = e.guess_rank(&tree, None, &[], &failed, 0).unwrap();
+    assert_eq!(
+        r.rendered, 2,
+        "a failure is rendered, an owed render is not"
+    );
+    let keys: Vec<&str> = r.guesses.iter().map(|g| g.key.as_str()).collect();
+    assert_eq!(keys, [plan.jobs[1].key.as_str()]);
+}
+
+/// **The memory carries to a kept sound, and remembers only so many
+/// takes.** A patch carried to itself is unchanged; one with skips and no
+/// taken guess carries the skips alone. Past `GUESS_TAKEN_KEEP` taken
+/// guesses the oldest is forgotten: undoing back to the tree before it is
+/// no longer a skip.
+#[test]
+fn the_memory_carries_and_remembers_only_so_many_takes() {
+    let tree = preset("Hornet");
+    let cands = guess_candidates(&tree, None);
+    let mut mem = GuessMemory::default();
+    assert!(mem.skip(1, cands[0].skip()));
+    mem.carry(1, 1);
+    assert_eq!(mem.skips(1), [cands[0].skip()]);
+    mem.carry(1, 2);
+    assert_eq!(mem.skips(2), [cands[0].skip()]);
+    assert_eq!(mem.observe(2, &tree), None, "a take carried that never was");
+
+    let mut befores = Vec::new();
+    for (i, c) in cands.iter().take(GUESS_TAKEN_KEEP + 1).enumerate() {
+        let mut before = tree.clone();
+        before.amp.attack = 0.01 * (i + 1) as f64;
+        mem.took(3, c.skip(), before.clone());
+        befores.push(before);
+    }
+    assert_eq!(
+        mem.observe(3, &befores[0]),
+        None,
+        "the oldest take was kept"
+    );
+    assert_eq!(mem.observe(3, &befores[1]), Some(cands[1].skip()));
 }
