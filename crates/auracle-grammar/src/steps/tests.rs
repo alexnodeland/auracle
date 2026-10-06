@@ -278,14 +278,16 @@ fn a_reseat_on_another_step_glides_from_where_the_output_was() {
 
 /// A host so slow that one sample is several steps (4 Hz against 16 steps a
 /// second) still plays the pattern, a step per sample, rather than stalling
-/// on one.
+/// on one. With glide on, which is where the old post-wrap guard reset the
+/// phase into the glide every sample and froze the output on its first
+/// value.
 #[test]
 fn a_host_slower_than_the_steps_still_plays_the_pattern() {
     let mut m = StepsCv::new(4.0);
     let mut inp = PortValues::new();
     inp.set(PORT_RATE, 1.0); // 16 Hz
     inp.set(PORT_LENGTH, 1.0);
-    inp.set(PORT_SLEW, 0.0);
+    inp.set(PORT_SLEW, 0.5);
     for i in 0..8 {
         inp.set(PORT_S0 + i, i as f64 / 7.0);
     }
