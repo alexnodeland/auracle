@@ -886,9 +886,9 @@
  },
  "workflows": {
   "Slow suite": {
-   "runs": 205,
+   "runs": 196,
    "green": 161,
-   "red": 32,
+   "red": 35,
    "wall_green": {
     "n": 161,
     "median": 10.9,
@@ -908,5 +908,5 @@
    }
   }
  },
- "generated": "2026-10-06T09:57:44Z"
+ "generated": "2026-10-06T10:15:09Z"
 }

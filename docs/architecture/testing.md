@@ -543,17 +543,18 @@ from it ([Rules](#rules)).
 How long each tier may take, so a slow run is seen rather than felt. Each
 budget is the p90 that `scripts/ci_stats.py` measured on the last week's
 green runs in today's shape (those since #177's wave 0 merged, 2026-10-06
-02:31 to 10:00 UTC), plus a fifth, rounded up to a whole minute.
+02:31 to 09:00 UTC, every one of them finished), plus a fifth, rounded up to
+a whole minute.
 
 | Tier | Budget | Measured: median / p90 / max | Of |
 | --- | --- | --- | --- |
-| The PR's `CI` answer: the run created to `CI` done, on a PR that changes Rust, CI or the app | 30 min | 19.6 / 24.8 / 31.0 min | 24 runs |
-| The Rust fast tier: each `Test (k/2)` runner | 9 min | 6.0 / 6.9 / 7.5 min | 46 jobs |
-| The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | 7.6 / 8.4 / 9.8 min | 276 shards |
-| The browser fast tier in total: the first shard's start to the last one's end | 20 min | 12.4 / 16.2 / 19.0 min | 23 runs |
-| The browser fast tier in total: runner-minutes a run | 109 | 87.0 / 90.5 / 94.0 | 23 runs |
-| Coverage: *Coverage build*'s start to *Coverage*'s end | 23 min | 13.5 / 18.8 / 22.7 min | 15 runs |
-| The *Slow suite*: a green run, created to its last job done | 62 min | 32.8 / 51.5 / 77.8 min | 8 runs |
+| The PR's `CI` answer: the run created to `CI` done, on a PR that changes Rust, CI or the app | 28 min | 19.6 / 23.0 / 26.4 min | 20 runs |
+| The Rust fast tier: each `Test (k/2)` runner | 9 min | 6.2 / 6.8 / 7.5 min | 36 jobs |
+| The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | 7.6 / 8.4 / 9.8 min | 228 shards |
+| The browser fast tier in total: the first shard's start to the last one's end | 19 min | 12.4 / 15.7 / 19.0 min | 19 runs |
+| The browser fast tier in total: runner-minutes a run | 108 | 86.4 / 89.9 / 94.0 | 19 runs |
+| Coverage: *Coverage build*'s start to *Coverage*'s end | 20 min | 13.2 / 16.5 / 16.9 min | 10 runs |
+| The *Slow suite*: a green run, created to its last job done | 67 min | 33.2 / 55.2 / 77.8 min | 7 runs |
 | The nightly *Flake hunt*: created to its last job done | 75 min | not run yet | its design: 12 shards three times over, 4 at a time, about 20 minutes a round |
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a

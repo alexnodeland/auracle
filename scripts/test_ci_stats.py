@@ -16,7 +16,9 @@ import os
 import shutil
 import sys
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -412,6 +414,22 @@ class Cache(unittest.TestCase):
             self.assertEqual(api.get("pulls/3/files", paginate=True), [{"filename": "a"}, {"filename": "b"}])
         self.assertEqual(len(self.calls), 2)
         self.assertEqual(os.listdir(self.dir), [])
+
+    def test_a_server_error_is_asked_again_and_a_refusal_is_not(self):
+        answers = [types.SimpleNamespace(returncode=1, stdout="", stderr="gh: Server Error (HTTP 502)"), types.SimpleNamespace(returncode=0, stdout="[]", stderr="")]
+        with mock.patch.object(S.subprocess, "run", side_effect=answers) as run, mock.patch.object(S.time, "sleep"):
+            self.assertEqual(S.gh("repos/o/r/pulls", False), "[]")
+        self.assertEqual(run.call_count, 2)
+        refused = types.SimpleNamespace(returncode=1, stdout="", stderr="gh: Not Found (HTTP 404)")
+        with mock.patch.object(S.subprocess, "run", return_value=refused) as run, mock.patch.object(S.time, "sleep"):
+            with self.assertRaises(S.ApiError):
+                S.gh("repos/o/r/pulls/9", False)
+        self.assertEqual(run.call_count, 1)
+        down = types.SimpleNamespace(returncode=1, stdout="", stderr="gh: (HTTP 503)")
+        with mock.patch.object(S.subprocess, "run", return_value=down) as run, mock.patch.object(S.time, "sleep"):
+            with self.assertRaises(S.ApiError):
+                S.gh("repos/o/r/pulls", False)
+        self.assertEqual(run.call_count, 3)
 
     def test_a_refusal_is_none(self):
         def refuse(url, paginate):

@@ -63,6 +63,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -508,20 +509,22 @@ def job_stats(runs) -> dict:
 
 
 def workflow_runs(runs, since, until) -> dict:
-    """A workflow's completed runs in the window that ran more than one job,
-    and their minutes from created to the last first-attempt job done."""
+    """A workflow's runs in the window: the red ones, the green ones that ran
+    more than one job (not only the job that decides there is nothing to
+    run), and the green ones' minutes from created to the last first-attempt
+    job done."""
     rs = [r for r in runs if r.get("status") == "completed" and in_window(r, since, until)]
-    real = [r for r in rs if sum(1 for j in first_attempt(r.get("jobs")) if ran(j)) > 1]
-    green = [r for r in real if r.get("conclusion") == "success"]
+    green = [r for r in rs if r.get("conclusion") == "success" and sum(1 for j in first_attempt(r.get("jobs")) if ran(j)) > 1]
+    red = [r for r in rs if r.get("conclusion") == "failure"]
 
     def span(r):
         ends = [ts(j.get("completed_at")) for j in first_attempt(r.get("jobs")) if ran(j)]
         return mins(ts(r["created_at"]), max(e for e in ends if e)) if any(ends) else None
 
     return {
-        "runs": len(real),
+        "runs": len(green) + len(red),
         "green": len(green),
-        "red": sum(1 for r in real if r.get("conclusion") == "failure"),
+        "red": len(red),
         "wall_green": dist(span(r) for r in green),
     }
 
@@ -739,15 +742,20 @@ class ApiError(RuntimeError):
     pass
 
 
-def gh(url: str, paginate: bool) -> str:
-    """`gh api` GET of one URL, every page when paginate."""
+def gh(url: str, paginate: bool, tries: int = 3) -> str:
+    """`gh api` GET of one URL, every page when paginate. A server error
+    (HTTP 5xx: GitHub's, not the request's) is asked again, twice at most."""
     cmd = ["gh", "api", "-X", "GET", "-H", "Accept: application/vnd.github+json"]
     if paginate:
         cmd.append("--paginate")
-    p = subprocess.run(cmd + [url], capture_output=True, text=True)
-    if p.returncode != 0:
-        raise ApiError(f"gh api {url}: {p.stderr.strip() or p.returncode}")
-    return p.stdout
+    for attempt in range(1, tries + 1):
+        p = subprocess.run(cmd + [url], capture_output=True, text=True)
+        if p.returncode == 0:
+            return p.stdout
+        if attempt == tries or not re.search(r"HTTP 5\d\d", p.stderr):
+            raise ApiError(f"gh api {url}: {p.stderr.strip() or p.returncode}")
+        time.sleep(2 * attempt)
+    raise AssertionError("unreachable")
 
 
 def decode_all(text: str) -> list:
@@ -867,13 +875,23 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
             f"actions/runs/{r['id']}/jobs", {"filter": "all", "per_page": 100}, key="jobs", paginate=True, keep=r.get("status") == "completed"
         )
 
+    # Only what a number reads, as a nightly's token has 1,000 requests an
+    # hour: the jobs of the window's runs and of the merged PRs' earlier
+    # ones, the other workflows' green runs, and the files of the PRs those
+    # runs belong to.
     branches = by_branch(prs)
     in_merged = {p["number"] for p in merged}
     wanted = {p["number"]: p for p in merged}
+    need = []
     for r in ci:
         p = pr_for(r, branches)
-        if p is not None:
-            wanted[p["number"]] = p
+        if since <= ts(r["created_at"]):
+            need.append(r)
+            if p is not None:
+                wanted[p["number"]] = p
+        elif p is not None and p["number"] in in_merged:
+            need.append(r)
+    need += [r for rs in other.values() for r in rs if r.get("conclusion") == "success"]
 
     def files_of(p):
         closed = p["closed_at"] is not None
@@ -884,7 +902,7 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
             p["comments"] = api.get_or_none(f"issues/{p['number']}/comments", {"per_page": 100}, paginate=True, keep=closed)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(jobs_of, ci + [r for rs in other.values() for r in rs]))
+        list(pool.map(jobs_of, need))
         list(pool.map(files_of, list(wanted.values())))
     for p in prs:
         p.setdefault("kind", "docs")

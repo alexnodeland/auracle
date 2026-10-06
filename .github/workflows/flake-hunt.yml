@@ -207,6 +207,14 @@ jobs:
       issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The answers that can no longer change (finished runs' jobs, closed
+      # PRs' files and timelines), kept from one night to the next: read cold,
+      # a week is about 800 requests of the token's 1,000 an hour.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/ci_stats
+          key: ci-stats-${{ github.run_id }}
+          restore-keys: ci-stats-
       - name: The last 7 days, against the baseline
         env:
           GH_TOKEN: ${{ github.token }}
@@ -215,6 +223,10 @@ jobs:
           --since "$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
           --compare docs/notes/ci-baseline-2026-10-05.json
           >> "$GITHUB_STEP_SUMMARY"
+      # A run three weeks old is in no window: 7 days, and 14 more for a
+      # merged PR's first runs.
+      - name: Forget what no window reads
+        run: mkdir -p .cache/ci_stats && find .cache/ci_stats -type f -mtime +21 -delete
 
   # Which tests failed, and on which of their three runs, in one report.
   report:
