@@ -76,10 +76,11 @@ which way your taste leans on this kind of module, and how sure the model is.
 The model's guess for the next module has an amber dot beside its name.
 
 The bar appears only once the model has been fitted and at least five sounds
-in the pool use the module; until then it’s a dash. It is solid when the
-whisker clears zero, and hollow while it crosses it (still a guess), as
-LEARNING’s weights draw it. “The model barely leans on this” and “the model has never
-seen this” are different statements, and they don’t look alike.
+in the pool use the module or another of its family (a filter, an EQ, and a
+vocoder are one family to the model); until then it’s a dash. It is solid
+when the whisker clears zero, and hollow while it crosses it (still a guess),
+as LEARNING’s weights draw it. “The model barely leans on this” and “the model
+has never seen this” are different statements, and they don’t look alike.
 
 ### Searching it
 
