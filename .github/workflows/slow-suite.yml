@@ -41,14 +41,16 @@ name: Slow suite
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners). A PR's whole `CI` at its widest is
 # twelve browser runners, the Site job (then the Browser smoke, in its
-# place) and the two Rust test runners, 15, and one more for the Browser
-# report or a Lint or Web job still running:
-# 16 + 4 = 20, the account's cap. But the push to main that starts this
-# workflow also starts main's own CI, which re-runs what the merged PR's run
-# did not cover (of the 20 runs on main before Oct 6, the whole browser tier
-# in 9, both Rust test jobs in 15, and Site in all 20, for the deploy). So a
-# PR pushed right after a merge can wait for runners until main's run is
-# done; the merge queue (ADR-021) keeps merges one at a time.
+# place), the two Rust test runners and the three Coverage runners, 18, and
+# one more for the Browser report or a Lint or Web job still running:
+# 19 + 4 = 23, over the account's cap of 20, so a PR can wait for up to
+# three runners while this runs (folding Test into Coverage gives two back;
+# testing.md § Coverage). And the push to main that starts this workflow
+# also starts main's own CI, which re-runs what the merged PR's run did not
+# cover (of the 20 runs on main before Oct 6, the whole browser tier in 9,
+# both Rust test jobs in 15, and Site in all 20, for the deploy). So a PR
+# pushed right after a merge can wait for runners until main's run is done;
+# the merge queue (ADR-021) keeps merges one at a time.
 
 on:
   pull_request:
