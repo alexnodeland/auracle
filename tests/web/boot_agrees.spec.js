@@ -21,6 +21,10 @@
 // digest is the stream itself (a draw whose width depends on the target),
 // `kept` or `draws_consumed` a render or a vetting decision, and `spread`
 // alone the features in their last digits.
+//
+// The one spec off the fixture (./fixtures): its automatic `pageErrors`
+// watches the test's browser context, so a test taking `test` from there
+// launches a browser even when it opens no page, and this one opens none.
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");

@@ -20,22 +20,9 @@
 // the browser computes instead, on every view, so a rule that wins the
 // cascade with a smaller size, or a script that sets one, fails here even
 // when the count is clean.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { test, expect, goLevel } = require("./fixtures");
 
 const INIT = `(() => {
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured", "auracle-warmed"]) localStorage.setItem(k, "1");
-  } catch (_) {}
-  // The engine worker, to hand main.js a calibration as the worker would.
-  const Orig = window.Worker;
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) window.__pwWorker = w;
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
   // Every line of text a canvas draws: its words, its baseline, the canvas's
   // height, and the font it was drawn in, in CSS pixels.
   const texts = (window.__pwCanvasText = []);
@@ -48,13 +35,11 @@ const INIT = `(() => {
   };
 })();`;
 
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
+/** Seeded, with the warm start and the tours seen (the fixture's
+ *  `app.boot`), every canvas's text recorded. */
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  return errs;
+  await app.boot();
 }
 
 /** Two frames: whatever a click changed has been laid out and drawn. */
@@ -90,9 +75,8 @@ const UNDER = (floor) => `(() => {
   return out;
 })()`;
 
-test("the page's text is at least the label size, 11 px, on every view", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("the page's text is at least the label size, 11 px, on every view", async ({ page, app }) => {
+  await boot(page, app);
   const under = {};
   for (const view of ["perform", "patch", "evolve", "taste", "learning"]) {
     await openView(page, view);
@@ -122,12 +106,10 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   await expect(page.locator("#help")).toBeVisible();
   under["? card"] = await page.evaluate(UNDER(11));
   for (const [where, list] of Object.entries(under)) expect(list, `text under 11 px on ${where}`).toEqual([]);
-  expect(errs).toEqual([]);
 });
 
-test("a canvas draws its text at the canvas floor, 12 px, or larger, and the forecast strip's labels stay inside it", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("a canvas draws its text at the canvas floor, 12 px, or larger, and the forecast strip's labels stay inside it", async ({ page, app }) => {
+  await boot(page, app);
   const drawn = (canvas, text) => page.waitForFunction(
     ([c, s]) => window.__pwCanvasText.some((t) => (!c || c.includes(t.canvas)) && t.text.startsWith(s)),
     [canvas, text], { timeout: 90_000 },
@@ -136,35 +118,31 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
   // commit pair's scopes still label full scale; they are drawn only in a
   // commit, which this boot doesn't reach.)
   // TASTE's map, and LEARNING with forecasts to draw, handed over as the
-  // worker hands them.
+  // worker hands them (`app.inject`).
   await openView(page, "taste");
   await openView(page, "learning");
-  await page.evaluate(() => {
-    const calib = {
-      n: 34, brier: 0.214, skill: 0.12, check_n: 9, check_skill: 0.05, bins: [],
-      by_provenance: [{ provenance: "duel", n: 24, skill: 0.1 }, { provenance: "heard_edit", n: 10, skill: 0.2 }],
-    };
-    const forecasts = [0.62, 0.3, 0.71, 0.55].map((p_a, i) => ({ p_a, chose_a: i % 2 === 0, random_check: false, provenance: "duel" }));
-    window.__pwWorker.dispatchEvent(new MessageEvent("message", { data: { type: "calibration", calib, forecasts } }));
-  });
+  const calib = {
+    n: 34, brier: 0.214, skill: 0.12, check_n: 9, check_skill: 0.05, bins: [],
+    by_provenance: [{ provenance: "duel", n: 24, skill: 0.1 }, { provenance: "heard_edit", n: 10, skill: 0.2 }],
+  };
+  const forecasts = [0.62, 0.3, 0.71, 0.55].map((p_a, i) => ({ p_a, chose_a: i % 2 === 0, random_check: false, provenance: "duel" }));
+  await app.inject({ type: "calibration", calib, forecasts });
   await drawn(["md-strip-cv"], "100%");
   const texts = await page.evaluate(() => window.__pwCanvasText);
   const small = texts.filter((t) => !(t.css >= 12)).map((t) => `${t.canvas}: ${t.text} at ${t.css}px`);
   expect(small, "canvas text under 12 px").toEqual([]);
   const last = texts.filter((t) => t.canvas === "md-strip-cv").pop();
   expect(last.y, `the strip's labels, at ${last.y} of ${last.h}, keep their descenders inside it`).toBeLessThanOrEqual(last.h - 4 * last.dpr);
-  expect(errs).toEqual([]);
 });
 
-test("the menu bar is one row as tall as --menubar-h, which the alarm is placed under, at every width", async ({ browser }) => {
+test("the menu bar is one row as tall as --menubar-h, which the alarm is placed under, at every width", async ({ newContext }) => {
   // One row at every width (Plan-008): what gives way on a narrower window
   // is words (TAUGHT's, the level's line, the sound's name, then the level),
   // never a second row, and ⋯ stays on screen, on a phone behind "look
   // around anyway" too.
   for (const [width, height, mobile] of [[1440, 900, false], [1000, 800, false], [860, 800, false], [390, 844, true]]) {
-    const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
-    const errs = [];
-    page.on("pageerror", (e) => errs.push(e.message));
+    const context = await newContext({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
+    const page = await context.newPage();
     await page.addInitScript(() => { try { sessionStorage.setItem("auracle-anyway", "1"); } catch (_) {} });
     await page.goto("/");
     await expect(page.locator(".menubar")).toBeVisible();
@@ -176,19 +154,17 @@ test("the menu bar is one row as tall as --menubar-h, which the alarm is placed 
     const ovf = await page.locator("#ovf-btn").boundingBox();
     expect(ovf.x + ovf.width, `⋯ on screen at ${width} px`).toBeLessThanOrEqual(width);
     expect(ovf.y + ovf.height, `⋯ in the bar's one row at ${width} px`).toBeLessThanOrEqual(got[1]);
-    expect(errs).toEqual([]);
-    await page.close();
+    await context.close();
   }
 });
 
-test("reduced motion makes every duration on the scale instant, and without it a transition plays", async ({ browser }) => {
+test("reduced motion makes every duration on the scale instant, and without it a transition plays", async ({ newContext }) => {
   for (const [reducedMotion, want] of [
     ["no-preference", { press: "90ms", state: "180ms", move: "320ms", boot: "0.32s" }],
     ["reduce", { press: "0ms", state: "0ms", move: "0ms", boot: "0s" }],
   ]) {
-    const page = await browser.newPage({ reducedMotion });
-    const errs = [];
-    page.on("pageerror", (e) => errs.push(e.message));
+    const context = await newContext({ reducedMotion });
+    const page = await context.newPage();
     await page.goto("/");
     // The boot veil fades out on --d-move; nothing here needs the engine.
     const got = await page.evaluate(() => {
@@ -201,7 +177,6 @@ test("reduced motion makes every duration on the scale instant, and without it a
       };
     });
     expect(got, `with prefers-reduced-motion: ${reducedMotion}`).toEqual(want);
-    expect(errs).toEqual([]);
-    await page.close();
+    await context.close();
   }
 });

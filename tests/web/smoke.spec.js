@@ -13,45 +13,42 @@
 // that the binary no longer exports, a protocol field renamed on one side. All
 // of those pass `cargo test`, `node --check` and `make site-check`, and show
 // up only as a blank instrument in a browser.
-const { test, expect } = require("@playwright/test");
+//
+// Everything the page says that is an error fails it: the fixture's
+// `pageErrors`, with `console.error` counted too. Worker console output
+// reaches the page's console event in Chromium, so the engine worker and the
+// render farm are covered. Warnings are not failures here: the app's own
+// degradation log (a re-issued render, a serial fallback) is not an error,
+// and the console gate for warnings is the developer's, run by hand.
+const { test, expect } = require("./fixtures");
 const fs = require("fs");
 const path = require("path");
 
 const PKG = path.resolve(__dirname, "../../apps/web/pkg/auracle_wasm_bg.wasm");
 
-test("the instrument boots clean: no console errors, worklet registered, engine playable", async ({ page }) => {
+test.use({ consoleErrors: true });
+
+test("the instrument boots clean: no console errors, worklet registered, engine playable", async ({ page, app }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
 
-  // Everything the page says that is an error. Worker console output reaches
-  // the page's console event in Chromium, so the engine worker and the render
-  // farm are covered too. Warnings are not failures here: the app's own
-  // degradation log (a re-issued render, a serial fallback) is not an error,
-  // and the console gate for warnings is the developer's, run by hand.
-  const errors = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
-  });
-  page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
-
-  await page.goto("/");
+  // A first visit (the warm start and the tours not yet seen), seeded.
+  await app.boot({ warmed: false, seen: false, wait: false });
 
   // The worklet registered and the live instrument exists. `window.__aur` is
   // the app's own debug hook (CONTRIBUTING § Verification beyond make check).
-  await page.waitForFunction(
+  await app.engine((timeout) => page.waitForFunction(
     () => window.__aur && typeof window.__aur.getLive === "function" && window.__aur.getLive() != null,
     null,
-    { timeout: 60_000 },
-  );
+    { timeout },
+  ), { ms: 60_000 });
 
   // The engine came up: `playable` lifts the boot veil. Boot renders eight
   // patches before this fires, which on a two-core runner is tens of seconds.
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await app.booted();
 
   // The alert strip is for conditions that persist — a crashed engine, an
   // unreadable save, a failed boot. A clean boot has none.
   await expect(page.locator("#alarm")).toHaveClass(/\bhidden\b/);
-
-  expect(errors, `the page raised errors:\n${errors.join("\n")}`).toEqual([]);
 });
 
 // Every binding `worker.js` calls must exist in the binary it is served

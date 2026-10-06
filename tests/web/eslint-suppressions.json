@@ -76,15 +76,6 @@
     }
   },
   "booth.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 2
-    },
     "playwright/prefer-web-first-assertions": {
       "count": 1
     }
@@ -230,14 +221,6 @@
       "count": 5
     }
   },
-  "film_chip.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    }
-  },
   "first_run.spec.js": {
     "auracle/no-own-pageerror": {
       "count": 3
@@ -263,22 +246,6 @@
       "count": 3
     }
   },
-  "keys_for_the_platform.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    }
-  },
-  "midi_announced.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    }
-  },
   "model_view.spec.js": {
     "auracle/no-own-pageerror": {
       "count": 1
@@ -291,17 +258,6 @@
     },
     "playwright/no-wait-for-timeout": {
       "count": 5
-    }
-  },
-  "narrow_gate.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/consistent-spacing-between-blocks": {
-      "count": 4
     }
   },
   "patch_audible.spec.js": {
@@ -606,12 +562,6 @@
   "smoke.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
     }
   },
   "space_after_a_click.spec.js": {
@@ -646,24 +596,7 @@
       "count": 2
     }
   },
-  "text_fits.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/consistent-spacing-between-blocks": {
-      "count": 3
-    }
-  },
   "type_scale.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
       "count": 1
     }
