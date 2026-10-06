@@ -1,26 +1,56 @@
 name: Playwright
 description: >
-  Node, tests/web's locked dependencies and Playwright's Chromium with the
-  runner's system libraries, ready for `npx playwright test` in tests/web.
+  Node and tests/web's locked dependencies, ready for `npx playwright test` in
+  tests/web. Runs in Playwright's image, which has the browser and its system
+  libraries: the job's `container` is
+  mcr.microsoft.com/playwright:v<version>-noble, with the version the engine
+  job reads from the lockfile (./.github/actions/playwright-version).
 
-# The browser download is cached on the lockfile (it pins the Playwright
-# version, which pins the Chromium build). The system libraries are apt
-# packages outside the cache, so they are installed on every run either way.
+# Why the image. Every browser job used to install Chromium's system
+# libraries, apt packages fetched from Ubuntu's mirror on every run. Twice on
+# Oct 5 a slow mirror took a shard past its job limit (once fourteen minutes
+# for 32 MB, #162), and the shard was cancelled with no report. The image has
+# Chromium and its libraries, so the jobs fetch neither: no apt step and no
+# browser download, and no browser cache to restore.
 #
-# Each network step is cut at three minutes, with a message naming the slow
-# server: a step that usually takes seconds once took fourteen minutes on a
-# slow apt mirror (#162), and the shard was cancelled at its job limit with
-# no report. A composite action's steps take no `timeout-minutes`, so the
-# commands run under coreutils' `timeout`.
+# The image's tag is the lockfile's @playwright/test version, so its browsers
+# are the revisions this Playwright looks for under /ms-playwright (its
+# PLAYWRIGHT_BROWSERS_PATH). The job's container options are
+# `--ipc=host --init`, as Playwright's Docker guide asks: Chromium can run out
+# of Docker's 64 MB of shared memory and crash, and an init process as PID 1
+# reaps the browser's child processes. The image runs as root, where
+# Chromium's sandbox is not available; Playwright launches Chromium without
+# it unless a launch asks for `chromiumSandbox: true`, which
+# tests/web/playwright.config.js does not.
+#
+# Pulling the image is not a step: it happens when the job starts its
+# container, bounded only by the job's `timeout-minutes`. The one network
+# step left is npm, cut at three minutes with a message naming the registry.
+# A composite action's steps take no `timeout-minutes`, so the command runs
+# under coreutils' `timeout`.
 
 runs:
   using: composite
   steps:
+    # A job that uses this action outside the image has no browser at all.
+    # Say so here, once, rather than in every test.
+    - name: Check this job runs in Playwright's image
+      shell: bash
+      run: |
+        if [ ! -d "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ]; then
+          echo "::error::No Playwright browsers here. A job that runs the browser tests runs in Playwright's image: container: mcr.microsoft.com/playwright:v<the lockfile's version>-noble (see .github/actions/playwright)."
+          exit 1
+        fi
+        echo "browsers in $PLAYWRIGHT_BROWSERS_PATH: $(ls "$PLAYWRIGHT_BROWSERS_PATH" | tr '\n' ' ')"
+
+    # The Node .node-version pins, as every other job runs (the image's own
+    # is newer), from the runner's tool cache. No npm cache: tests/web locks
+    # three packages, which install in seconds, and in the image the cache
+    # would be a set of entries of its own (no zstd there, so gzip, a
+    # different key from the runner's).
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version-file: .node-version
-        cache: npm
-        cache-dependency-path: tests/web/package-lock.json
 
     - name: Install tests/web's dependencies
       shell: bash
@@ -30,38 +60,6 @@ runs:
           s=$?
           if [ "$s" = 124 ] || [ "$s" = 137 ]; then
             echo "::error::npm ci took over three minutes: the npm registry (registry.npmjs.org) is slow or unreachable from this runner, not the change. Re-run the job."
-          fi
-          exit "$s"
-        }
-
-    - id: browsers
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('tests/web/package-lock.json') }}
-
-    - name: Install Playwright's Chromium
-      if: steps.browsers.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        cd tests/web
-        timeout -k 10 180 npx playwright install --with-deps chromium || {
-          s=$?
-          if [ "$s" = 124 ] || [ "$s" = 137 ]; then
-            echo "::error::Installing Chromium took over three minutes: Playwright's download server or the runner's Ubuntu package mirror (apt) is slow, not the change (#162). Re-run the job."
-          fi
-          exit "$s"
-        }
-
-    - name: Install Chromium's system libraries
-      if: steps.browsers.outputs.cache-hit == 'true'
-      shell: bash
-      run: |
-        cd tests/web
-        timeout -k 10 180 npx playwright install-deps chromium || {
-          s=$?
-          if [ "$s" = 124 ] || [ "$s" = 137 ]; then
-            echo "::error::Chromium's system libraries took over three minutes to install: the runner's Ubuntu package mirror (apt) is slow, not the change (#162). Re-run the job."
           fi
           exit "$s"
         }

@@ -43,7 +43,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine), then Browser smoke (`make smoke`'s two specs, against the same engine); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 
@@ -76,9 +76,21 @@ run's times into the timings the next run deals by. A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
-running is reported as interrupted, with its trace. The setup's network
-steps (npm, Playwright's download, the apt mirror) are each cut at three
-minutes, with a message naming the server.
+running is reported as interrupted, with its trace.
+
+**In Playwright's image.** Every job that runs a browser (the fast tier's
+runners, Browser smoke, the *Slow suite*'s and the flake hunt's runners)
+runs in `mcr.microsoft.com/playwright:v<version>-noble`, with
+`--ipc=host --init`. It has Chromium and its system libraries, so no job
+installs them: they were apt packages fetched from Ubuntu's mirror on every
+run, and a slow mirror twice took a shard past its job limit (#162). The
+version is the `@playwright/test` that `tests/web/package-lock.json` locks,
+read by each workflow's engine job, so a bump of it moves the image in the
+same PR and the image's browser is always the one that Playwright looks for.
+Its `npm ci`, the one network step left in the setup, is cut at three
+minutes with a message naming the registry; the image's pull, which
+happens before any step, is bounded by the job's limit.
+`.github/actions/playwright` says why the image and why those options.
 
 **A PR that changes only specs** runs those specs and nothing else, on one
 runner per spec up to twelve: no other spec's code changed, and the app it
@@ -117,7 +129,8 @@ pins (`rustup toolchain install`), as `make` does locally, so a new Rust
 release does too. Every action is pinned to
 a commit SHA with its version in a comment; Dependabot
 (`.github/dependabot.yml`) opens one grouped PR a week for the actions and
-one for `tests/web`'s npm packages.
+one for `tests/web`'s npm packages (whose `@playwright/test` is also the
+tag of the browser jobs' image, so its bump is one PR).
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a
 failure there opens an issue titled *Slow suite failing on main*, or comments
@@ -137,8 +150,9 @@ test catches it.
 
 **Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
 widest holds 16 (twelve browser runners, Site, the two Rust test runners and
-one more); the *Slow suite* holds at most four (`max-parallel`: one Rust leg
-and three browser runners), so the two fit together. A merge also starts
+one more; Browser smoke waits for Site and takes its place); the *Slow
+suite* holds at most four (`max-parallel`: one Rust leg and three browser
+runners), so the two fit together. A merge also starts
 `main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
 on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
 15, Site in all), so a PR pushed right after a merge can wait for runners

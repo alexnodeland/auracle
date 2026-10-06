@@ -26,12 +26,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The engine, the fast tier's timings and the image's tag (the Playwright
+  # version tests/web/package-lock.json locks), once for the run, as in
+  # ci.yml.
   engine:
     name: Engine for the browser
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: playwright
+        uses: ./.github/actions/playwright-version
       - uses: ./.github/actions/web-engine
       - uses: ./.github/actions/browser-timings
         with:
@@ -50,6 +57,11 @@ jobs:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
     runs-on: ubuntu-24.04
+    # In Playwright's image, as the gate's browser job: the same Chromium and
+    # libraries (.github/actions/playwright says why).
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
     # Playwright's global timeout, five minutes under the job's limit; the
     # shard interrupts the run a minute before it, so a shard that runs long
     # still reports its tests and the one it was running (ci.yml's browser

@@ -2,9 +2,9 @@ name: Browser shard
 description: >
   One runner's share of a browser tier: the tests tests/web/shard.mjs deals
   this runner from the run's timings (the `browser-timings-<tier>` artifact),
-  run against apps/web/pkg (download the web-engine artifact first, and run
-  ./.github/actions/playwright). Keeps the runner's blob report for the run's
-  merged report.
+  run against apps/web/pkg (in a job whose container is Playwright's image:
+  download the web-engine artifact first, and run ./.github/actions/playwright).
+  Keeps the runner's blob report for the run's merged report.
 
 inputs:
   tier:

@@ -22,9 +22,11 @@ updates:
     commit-message:
       prefix: ci
 
-  # @playwright/test pins the Chromium the specs run in (and the browser cache
-  # key in .github/actions/playwright), so a bump is a real change to what the
-  # specs run against, and CI runs the whole browser tier on it.
+  # @playwright/test pins the Chromium the specs run in, and the tag of the
+  # Playwright image CI's browser jobs run in, which each workflow's engine job
+  # reads from the lockfile (.github/actions/playwright-version): a bump moves
+  # both in one PR. It is a real change to what the specs run against, and CI
+  # runs the whole browser tier on it.
   - package-ecosystem: npm
     directory: /tests/web
     schedule:
