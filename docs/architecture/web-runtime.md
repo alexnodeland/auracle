@@ -377,7 +377,8 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
   so the seeds and what may be replaced.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
-`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`), and TASTE
+`seeds` and `may_replace` in the bank (`evolveMarks` in `marks.js`, unit-tested
+in `tests/marks.test.mjs`), and TASTE
 draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
 arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
 every halo on the map moves to the ratings it carries, in one tween; a views
@@ -1331,8 +1332,9 @@ Long work has one home, in the menu bar just left of the sound in hand:
 taste map…", with **stop** where the job can be stopped. It shows only while
 such a job runs, and the round lamp after the wordmark (`#wm-lamp`) is lit
 exactly while it shows: both are drawn from `lampJobs` (`lampOn`/`lampOff`,
-one count per job kind) in `renderJobSlot`. GENERATIONS (`#gen-count`) is on
-EVOLVE's cap line.
+one count per job kind) in `renderJobSlot`. The estimate counts down from the
+worker's last one (`breedLeft`), in words.js's words (`jobEta`). GENERATIONS
+(`#gen-count`) is on EVOLVE's cap line.
 EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
@@ -1380,7 +1382,8 @@ that pick commits (`settleFit`), so it keeps its window too.
 - `?film` hides chrome that must not be on camera (the film chip).
 - `?seed=N` (any whole number, taken modulo 2³² exactly; anything else is
   said in the console and ignored) is the session's random seed
-  (`seedOverride` in `main.js`, read at boot beside `?farm`, never saved).
+  (`seedOverride` in `params.js`, unit-tested in `tests/params.test.mjs`
+  with `?farm`'s `farmOverride`; read at boot, never saved).
   Without it every boot draws one from `Math.random`. The engine derives
   every stream from it (fills, pairs, evolution, PERFORM; a fit from it and
   its number of picks: ADR-001), so a fresh session with the same random
@@ -1394,10 +1397,11 @@ that pick commits (`settleFit`), so it keeps its window too.
   next visitor reload without `?seed` (`reloadAfresh`), keeping the rest of
   the address, so they deal a new pool. The page's own draws stay random on
   purpose: which side of the table a sound stands on (`placePair`), the warm
-  start's nine cards (`warmSample`) and the sides of the keep-as-new
-  comparison, each there against position bias. Nothing on screen names the
-  random seed or says how a session began, and a seeded pair is still dealt
-  at random by the engine, so the copy holds either way. A browser spec on
+  start's nine cards (`warmSample` in `warm.js`, handed `Math.random`) and
+  the sides of the keep-as-new comparison, each there against position
+  bias. Nothing on screen names the random seed or says how a session
+  began, and a seeded pair is still dealt at random by the engine, so the
+  copy holds either way. A browser spec on
   the shared fixture that names no seed of its own seeds both
   (`tests/web/fixtures.js` `SEED`: `?seed=` and the page's Math.random, as
   the films seed it), so it starts from the same pool, warm start and sides

@@ -97,6 +97,10 @@ import {
   takeAgain,
   takeLanded,
   takeReadmitted,
+  DEAL_RULE,
+  dealRule,
+  jobEta,
+  resetQuestion,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -716,4 +720,111 @@ test("PATCH's readout names the PERFORM controls that turn a knob, from the meas
   assert.equal(turnsItsKnobs([["Bright", ["cutoff", "res"]], ["Space", ["decay"]], ["Snap", []]]), "BRIGHT turns its cutoff and res; SPACE turns its decay");
   assert.equal(turnsItsKnobs([]), "");
   voiced(turnedBy(["Bright", "Space", "Motion"], "cutoff"));
+});
+
+/** ◇'s line through a run of deals, from no rule read: the words each deal
+ *  shows (its `text`, or null where the line stays as it was) and whether
+ *  it carries the check's mark. */
+function ruleLines(methods) {
+  let rule = null;
+  return methods.map((m) => {
+    const line = dealRule(m, rule);
+    rule = line.rule;
+    return line.said ? `${line.said.text}${line.check ? " [check]" : ""}` : null;
+  });
+}
+
+test("◇ states the default rule on every pair, and a check under it reads as the default", () => {
+  const RANDOM = DEAL_RULE.random.text;
+  assert.equal(RANDOM, "◇ random pair · a fair test");
+  assert.deepEqual(ruleLines(["random", "random", "random"]), [RANDOM, RANDOM, RANDOM]);
+  // A "check" reaching the page under Random is not a change of rule.
+  assert.deepEqual(ruleLines(["random", "check", "random"]), [RANDOM, RANDOM, RANDOM]);
+  const after = dealRule("check", "random");
+  assert.equal(after.rule, "random", "a check never becomes the rule");
+  assert.equal(after.said, DEAL_RULE.random);
+  assert.equal(after.check, false);
+  // The default's title says every pair, and not one in ten.
+  assert.match(DEAL_RULE.random.title, /every pair is dealt at random/);
+  assert.doesNotMatch(DEAL_RULE.random.title, /one pair in ten/);
+});
+
+test("◇ under a choosing rule names it, and marks a scheduled check as the fair test it is", () => {
+  const CHECK = `${DEAL_RULE.check.text} [check]`;
+  assert.deepEqual(ruleLines(["bald", "check", "bald"]), ["chosen where it’s least sure", CHECK, "chosen where it’s least sure"]);
+  assert.deepEqual(ruleLines(["thompson", "check", "check", "thompson"]), ["chosen from its best guesses", CHECK, CHECK, "chosen from its best guesses"]);
+  assert.equal(DEAL_RULE.check.text, "◇ fair test · dealt at random");
+  assert.match(DEAL_RULE.check.title, /one pair in ten/);
+  for (const m of ["bald", "thompson"]) assert.match(DEAL_RULE[m].title, /About one pair in ten is dealt at random instead/);
+  // The rule read is the last deal's that was not a check: a check under
+  // bald keeps bald, and the next rule replaces it.
+  assert.equal(dealRule("check", "bald").rule, "bald");
+  assert.deepEqual(ruleLines(["random", "bald", "check", "random", "check"]), [
+    DEAL_RULE.random.text, DEAL_RULE.bald.text, CHECK, DEAL_RULE.random.text, DEAL_RULE.random.text,
+  ]);
+});
+
+test("◇ before any rule is read, and for a method it has no words for", () => {
+  // A check first (an engine's first deal never is one) is said as a check.
+  const first = dealRule("check", null);
+  assert.equal(first.rule, null);
+  assert.equal(first.said, DEAL_RULE.check);
+  assert.equal(first.check, true);
+  // A method with no words leaves the line as it was, and is the rule read,
+  // so a check after it is said as a check.
+  const odd = dealRule("ucb", "random");
+  assert.deepEqual(odd, { rule: "ucb", said: null, check: false });
+  assert.equal(dealRule("check", "ucb").said, DEAL_RULE.check);
+  assert.deepEqual(ruleLines(["random", "ucb", "random"]), [DEAL_RULE.random.text, null, DEAL_RULE.random.text]);
+  for (const k of Object.keys(DEAL_RULE)) {
+    voiced(DEAL_RULE[k].text);
+    voiced(DEAL_RULE[k].title);
+  }
+});
+
+test("the job slot's estimate: about N s to the nearest 5, minutes from one, almost done under 3 s", () => {
+  assert.equal(jobEta(40_000), "about 40 s");
+  assert.equal(jobEta(42_400), "about 40 s");
+  assert.equal(jobEta(42_500), "about 45 s");
+  assert.equal(jobEta(59_999), "about 60 s", "under a minute is still seconds");
+  assert.equal(jobEta(60_000), "about 1 min");
+  assert.equal(jobEta(89_999), "about 1 min");
+  assert.equal(jobEta(90_000), "about 2 min");
+  assert.equal(jobEta(600_000), "about 10 min");
+  // Never under 5 s, and under 3 s it says so.
+  assert.equal(jobEta(3_000), "about 5 s");
+  assert.equal(jobEta(7_400), "about 5 s");
+  assert.equal(jobEta(2_999), "almost done");
+  assert.equal(jobEta(0), "almost done");
+  assert.equal(jobEta(-500), "almost done");
+  for (const ms of [3_000, 40_000, 90_000, 0]) voiced(jobEta(ms));
+});
+
+test("the job slot gives no estimate when there is none", () => {
+  for (const none of [null, undefined, NaN, Infinity, -Infinity]) assert.equal(jobEta(none), "", String(none));
+});
+
+test("Reset asks with the counts, and says what stays", () => {
+  assert.equal(
+    resetQuestion({ picks: 2, stars: 0, cuts: 0, generations: 0, saved: 1 }),
+    "Reset your taste? Your 2 picks, 0 stars, 0 cuts, and 0 generations are forgotten, with every sound you haven’t saved. " +
+      "Your 1 saved sound stays. A copy of your taste downloads first.",
+  );
+  assert.equal(
+    resetQuestion({ picks: 1, stars: 1, cuts: 1, generations: 1, saved: 3 }),
+    "Reset your taste? Your 1 pick, 1 star, 1 cut, and 1 generation are forgotten, with every sound you haven’t saved. " +
+      "Your 3 saved sounds stay. A copy of your taste downloads first.",
+  );
+  // Nothing saved: the bank starts afresh, and nothing is said to stay.
+  assert.equal(
+    resetQuestion({ picks: 12, stars: 4, cuts: 2, generations: 3, saved: 0 }),
+    "Reset your taste? Your 12 picks, 4 stars, 2 cuts, and 3 generations are forgotten, and the bank starts afresh. " +
+      "A copy of your taste downloads first.",
+  );
+  assert.equal(
+    resetQuestion(),
+    "Reset your taste? Your 0 picks, 0 stars, 0 cuts, and 0 generations are forgotten, and the bank starts afresh. " +
+      "A copy of your taste downloads first.",
+  );
+  for (const saved of [0, 1, 2]) voiced(resetQuestion({ picks: 1, saved }));
 });
