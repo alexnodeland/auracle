@@ -181,23 +181,27 @@ generations or PERFORM's offers. It does not block the merge.
 ## 6. The merge, waited on by state
 
 The PR's own `CI` is the fast lane (a few minutes). Green, with its
-`PR checks` and its *Mutants* green too (a crate PR's *Mutants* run takes
-up to 40 minutes, any other PR's about one), the PR is in the queue, which
-tests it in a batch of up to three (a release PR alone) on a draft PR (the
-full gate, about twelve minutes, from a `mergify/merge-queue/` branch) and
-merges each PR of a green batch. Wait until it merges, its own `CI`,
-`PR checks` or *Mutants* goes red, or it leaves the queue:
+`PR checks` and its `Mutants in the changed code` green too (a crate PR's
+*Mutants* run takes up to 40 minutes, any other PR's about one), the PR is
+in the queue, which tests it in a batch of up to three (a release PR alone)
+on a draft PR (the full gate, about twelve minutes, from a
+`mergify/merge-queue/` branch) and merges each PR of a green batch. Wait
+until it merges, one of those three goes red or ends neither green nor red,
+or it leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
-    def red($check): [.statusCheckRollup[] | select(.name == $check)]
+    def latest($check): [.statusCheckRollup[] | select(.name == $check)]
       | sort_by(.detailsUrl | capture("/runs/(?<run>[0-9]+)/job/(?<job>[0-9]+)") | [(.run | tonumber), (.job | tonumber)])
-      | last | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
+      | last;
+    def red($check): latest($check) | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
+    def stuck($check): latest($check) | .status == "COMPLETED" and .conclusion != "SUCCESS";
     if .state != "OPEN" then .state
     elif any(.labels[]; .name == "dequeued") then "dequeued"
     elif red("CI") then "CI red"
     elif red("PR checks") then "PR checks red"
     elif red("Mutants in the changed code") then "Mutants red"
+    elif stuck("CI") or stuck("PR checks") or stuck("Mutants in the changed code") then "stuck"
     else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
 ```
 
@@ -240,6 +244,16 @@ Run the wait in the background; never sleep a fixed time and assume.
   tests failed has a red `CI` beside it: read that first. A timeout, or a
   run the 25-minute cap stopped before it judged a mutant, passes; it never
   turns the job red. Then step 7.
+- **`stuck`:** the latest run of `CI`, `PR checks` or
+  `Mutants in the changed code` on the PR's head ended neither green nor
+  red (skipped or cancelled). Mergify takes a PR only once all three are
+  green, so it never entered the queue.
+  `gh -R alexnodeland/auracle pr checks <n>` says which. Run the PR's own
+  run of that workflow again:
+  `gh -R alexnodeland/auracle run list --workflow <ci.yml, pr-checks.yml or mutants.yml> --branch claude/<topic> --event pull_request --json databaseId,conclusion,headSha`,
+  then `gh -R alexnodeland/auracle run rerun <run>`. Start the wait again
+  once `gh -R alexnodeland/auracle pr checks <n>` shows the check pending;
+  started sooner, it stops at once.
 - **`dequeued`:** it left the queue without merging. Red in the queue (the
   full gate failed on its batch, and the split narrowed the failure to this
   PR), a conflict, or a run that was cancelled.
