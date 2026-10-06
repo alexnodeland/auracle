@@ -8,7 +8,9 @@
 // worker, and the worker's reply path (`reOf`, `emit`, `post`, `answer`,
 // `news`, `engineError`, `runMessage`, `renderJoined`) over handlers that post
 // the way `dispatch`'s cases do, and over `dispatch`'s own bench cases and a
-// generation's replies on a stand-in engine. The list of requests the worker
+// generation's replies on a stand-in engine; `not_ready` from both ends, the
+// worker's `onmessage` with no engine yet and main's `notReady` over a
+// stand-in PERFORM. The list of requests the worker
 // never answers (the fixture's UNANSWERED) is read against the worker's
 // source, both ways.
 import test from "node:test";
@@ -20,17 +22,28 @@ const workerSrc = read("../worker.js");
 const mainSrc = read("../main.js");
 const fixturesSrc = read("../../../tests/web/fixtures.js");
 
-// The source of `[async ]function name(…) { … }` in `src`, braces matched.
-function lift(src, name) {
-  let at = src.indexOf(`function ${name}(`);
-  assert.ok(at >= 0, `no function ${name}`);
-  if (src.slice(at - 6, at) === "async ") at -= 6;
+// `src` from `at` to the brace that closes the first one after it.
+function braced(src, at, name) {
   let depth = 0;
   for (let i = src.indexOf("{", at); i < src.length; i++) {
     if (src[i] === "{") depth++;
     if (src[i] === "}" && --depth === 0) return src.slice(at, i + 1);
   }
   throw new Error(`unbalanced ${name}`);
+}
+// The source of `[async ]function name(…) { … }` in `src`, braces matched.
+function lift(src, name) {
+  let at = src.indexOf(`function ${name}(`);
+  assert.ok(at >= 0, `no function ${name}`);
+  if (src.slice(at - 6, at) === "async ") at -= 6;
+  return braced(src, at, name);
+}
+// The function `src` assigns to `target` (`self.onmessage = (e) => { … }`).
+function liftAssigned(src, target) {
+  const head = `${target} = `;
+  const at = src.indexOf(head);
+  assert.ok(at >= 0, `no ${target}`);
+  return braced(src, at + head.length, target);
 }
 const line = (src, re) => {
   const m = src.match(re);
@@ -173,6 +186,56 @@ test("a reply that already names its request keeps it, and what main did not sen
   await w.runMessage({ type: "face_lookup" }); // the worker's own queued work
   await w.runMessage({ type: "retire", rid: 5 });
   assert.deepEqual(w.out, [{ type: "faces" }, { type: "perform_offered", error: "retired", re: 2 }]);
+});
+
+test("a request that arrives before the engine is up is answered not_ready, naming it as engine_error does", () => {
+  // `self.onmessage` as written, with no engine yet (its `init` still
+  // importing the wasm).
+  const w = worker({}, {
+    engine: null,
+    prelude: [`const onmessage = ${liftAssigned(workerSrc, "self.onmessage")};`],
+    returns: ["onmessage"],
+  });
+  w.onmessage({ data: { type: "perform_wire", tree: "{}", overrides: [], req: 3, rid: 9 } });
+  w.onmessage({ data: { type: "presets", rid: 10 } });
+  // Its type, its number and PERFORM's `req` (none for a request that has
+  // none), as the worker's `engine_error` names a request it could not run.
+  assert.deepEqual(w.out, [
+    { type: "not_ready", request: "perform_wire", req: 3, re: 9 },
+    { type: "not_ready", request: "presets", req: null, re: 10 },
+  ]);
+});
+
+// main.js's `notReady` as written, with `releaseRequest` (PERFORM's part of
+// it) over a stand-in PERFORM; what else it calls is recorded.
+function mainNotReady() {
+  const seen = { failed: [], sent: [], faces: 0, said: [] };
+  const perform = { requestFailed: (req, message, fatal) => seen.failed.push({ req, fatal }) };
+  const notReady = new Function(
+    "send", "setTimeout", "facesUnanswered", "note", "perform", "console",
+    `let engineBusy = false;\n${lift(mainSrc, "releaseRequest")}\n${lift(mainSrc, "notReady")}\nreturn notReady;`,
+  )((msg) => seen.sent.push(msg), (fn) => fn(), () => seen.faces++, (text) => seen.said.push(text), perform, { error() {} });
+  return { notReady, seen };
+}
+
+test("a PERFORM question answered not_ready is let go by its req, as one the engine could not run, and nothing is said", () => {
+  const { notReady, seen } = mainNotReady();
+  notReady({ type: "not_ready", request: "perform_wire", req: 3, re: 9 });
+  notReady({ type: "not_ready", request: "perform_offer", req: 4, re: 10 });
+  // Answered as failed (perform.js `requestFailed`), not as a crash.
+  assert.deepEqual(seen.failed, [{ req: 3, fatal: false }, { req: 4, fatal: false }]);
+  // Nothing of PERFORM's is let go for another's request, or for one that
+  // names no question.
+  notReady({ type: "not_ready", request: "render", req: null, re: 11 });
+  notReady({ type: "not_ready", request: "perform_wire", req: null, re: 12 });
+  assert.equal(seen.failed.length, 2);
+  // The preset list is asked again, and a face when a slot next wants it.
+  notReady({ type: "not_ready", request: "presets", req: null, re: 13 });
+  notReady({ type: "not_ready", request: "faces", req: null, re: 14 });
+  assert.deepEqual(seen.sent, [{ type: "presets" }]);
+  assert.equal(seen.faces, 1);
+  // Nothing failed, so no toast says the engine couldn't finish.
+  assert.deepEqual(seen.said, []);
 });
 
 test("one render of an id answers everyone who asked: its reply names both requests", () => {

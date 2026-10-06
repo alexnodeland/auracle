@@ -2939,19 +2939,15 @@ worker.onmessage = (e) => {
       patchView.benchLanded(m);
       break;
     }
-    // A request that arrived before the engine finished booting. The worker
-    // now says so instead of throwing into the void; the only one that needs
-    // re-asking is the preset list, because the bank shows an empty shelf
-    // until it lands and nothing else would ever ask again.
     // Faces, as the worker files them (Plan-005 task 3).
     case "faces":
       facesLanded(m);
       break;
-    case "not_ready": {
-      if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
-      if (m.request === "faces") facesUnanswered();
+    // A request that arrived before the engine finished booting (see
+    // `notReady`).
+    case "not_ready":
+      notReady(m);
       break;
-    }
     // The engine is up. It says what the structural ceilings are so the
     // budget readout cannot restate a number the grammar has since moved.
     case "ready": {
@@ -3580,6 +3576,24 @@ function releaseRequest(request, id, req, message, fatal = false) {
       break;
     default:
       break;
+  }
+}
+
+// A request that arrived before the engine finished booting. The worker says
+// so (`not_ready`, naming it by type, by its number and by PERFORM's `req`)
+// instead of throwing into the void, and the request is never run. Nothing
+// failed, so nothing is said; what waits on it is seen to here:
+// - the preset list is asked again, because the bank shows an empty shelf
+//   until it lands and nothing else would ever ask again;
+// - a face is asked again when a slot next wants it (`facesUnanswered`);
+// - a PERFORM question is answered as one the engine could not run
+//   (`releaseRequest`, by its `req`), or what it held stayed for good: a
+//   measurement's "listening…" or "re-checking", an offer growing (#138).
+function notReady(m) {
+  if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+  if (m.request === "faces") facesUnanswered();
+  if (typeof m.request === "string" && m.request.startsWith("perform_") && m.req != null) {
+    releaseRequest(m.request, null, m.req, "the engine had not started yet");
   }
 }
 
