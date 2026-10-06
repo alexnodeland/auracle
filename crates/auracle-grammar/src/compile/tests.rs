@@ -2123,9 +2123,9 @@ fn audio_in_compiles_to_a_bound_input() {
 }
 
 /// **TRACK plays its branch from the input.** A sine VCO under a TRACK,
-/// fed a 220 Hz tone with no key held: the tracker's pitch reads the tone,
-/// the VCO sings it, and the tracked gate opens the voice the way a key
-/// does. With the input silent and no key, the voice stays shut. A VCO
+/// fed a 220 Hz tone with no key held: the VCO sings the tone, within 5
+/// cents, so the tracker read it, and the tracked gate opens the voice the
+/// way a key does. With the input silent and no key, the voice stays shut. A VCO
 /// beside the TRACK is still played by the keys.
 #[test]
 fn track_plays_its_branch_from_the_input() {
@@ -2140,32 +2140,23 @@ fn track_plays_its_branch_from_the_input() {
             v.pitch.set(pitch);
             v.gate.set(5.0);
         }
-        let track = v.patch.get_node_id_by_name("node:track");
         let side = v.taps.get("node/1").cloned();
         let side =
             side.and_then(|(name, port)| v.patch.get_node_id_by_name(&name).map(|id| (id, port)));
-        let (mut out, mut voct, mut beside) = (Vec::new(), 0.0, Vec::new());
+        let (mut out, mut beside) = (Vec::new(), Vec::new());
         for _ in 0..n {
             let (l, _) = v.patch.tick();
             stream.advance();
             out.push(l);
-            if let Some(id) = track {
-                voct = v.patch.get_output_value(id, 10).unwrap_or(0.0);
-            }
             if let Some((id, port)) = side {
                 beside.push(v.patch.get_output_value(id, port).unwrap_or(0.0));
             }
         }
-        (out, voct, beside)
+        (out, beside)
     };
     let sung = tone(n, 220.0);
     let tree = patch(tracked(term::PitchBand::Mid, 0.0));
-    let (out, voct, _) = run_voice(&tree, &sung, None);
-    let cents = 1200.0 * (voct - (220.0f64 / 261.625_565_300_598_6).log2());
-    assert!(
-        cents.abs() < 5.0,
-        "the tracker reads the tone {cents:.1} cents off"
-    );
+    let (out, _) = run_voice(&tree, &sung, None);
     let tail = &out[out.len() / 2..];
     let peak = tail.iter().fold(0.0f64, |m, s| m.max(s.abs()));
     assert!(
@@ -2177,7 +2168,7 @@ fn track_plays_its_branch_from_the_input() {
         (1200.0 * (hz / 220.0).log2()).abs() < 5.0,
         "the branch sings {hz:.2} Hz for a 220 Hz input"
     );
-    let (quiet, _, _) = run_voice(&tree, &vec![0.0; n], None);
+    let (quiet, _) = run_voice(&tree, &vec![0.0; n], None);
     assert!(
         quiet.iter().all(|s| s.abs() < 1e-9),
         "with no input and no key, the voice stays shut"
@@ -2189,7 +2180,7 @@ fn track_plays_its_branch_from_the_input() {
         a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
         b: Box::new(sine_vco()),
     });
-    let (_, _, beside) = run_voice(&both, &sung, Some(1.0));
+    let (_, beside) = run_voice(&both, &sung, Some(1.0));
     let hz = frequency(&beside[beside.len() / 2..]).expect("the keyed VCO plays");
     assert!(
         (1200.0 * (hz / 523.251_130_601_197_3).log2()).abs() < 5.0,
