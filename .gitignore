@@ -59,3 +59,6 @@ __pycache__/
 
 # The voice and film tools environment (make film-setup)
 .venv-voice
+
+# cargo-mutants' results (make mutants).
+/mutants.out*

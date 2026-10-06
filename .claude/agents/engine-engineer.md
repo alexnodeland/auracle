@@ -37,8 +37,12 @@ How you work:
   `make wasm-check` if the wasm crate or its callers changed, and
   `make coverage`: every crate at its floor and every line you added or
   changed covered by a test that asserts what it does
-  ([`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage)). Say
-  in your report what it printed.
+  ([`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage)). Then
+  `nice -n 19 make mutants DIFF=1`: kill every mutant of the code you
+  changed that survives, with a test that asserts what the code does, or
+  say why no behavior can show it
+  ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
+  Say in your report what each printed.
 
 Where your work goes ([`docs/process.md`](../../docs/process.md)):
 

@@ -30,6 +30,7 @@ this table.
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
+| Mutants | `make mutants DIFF=1` (the code changed since `origin/main`, `BASE=` for another), `make mutants CRATE=<crate>` (needs cargo-mutants at the `Makefile`'s `MUTANTS_VERSION`: `make setup`) | A test notices when the code is wrong: every mutant cargo-mutants makes of the code (a function returning a default, a `<` made `<=`) fails a test of its crate's fast tier. Each survivor is named by file, line, function and change in `mutants.out/missed.txt` ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)) | Any Rust change, before review; a survivor there is a finding |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
@@ -50,6 +51,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
+| Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane:
 
@@ -222,6 +224,11 @@ test catches it.
   three browser runners), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy: two.
+- ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
+  forty minutes (the job's limit; the run inside stops at 25), well after a
+  crate PR's fast lane is done, and for about a minute on a PR that changes
+  no Rust. Its weekly run holds two on Saturdays, for about eleven hours
+  from 09:17 UTC.
 
 So the queue's run and the *Slow suite* together are 21, one over: a merge
 starts the *Slow suite* just as the queue starts its next batch, and that
@@ -229,8 +236,14 @@ batch can wait a few minutes for a runner. A PR's fast lane beside a queue
 run fits when it is small (a docs or app PR) and waits for a few runners
 when it is wide. Before two lanes, every PR's run was the full gate at 19
 (the two plain Test runners as well), and a second PR in CI could not fit
-beside it. At night the *Flake hunt* holds four and its *Speed budgets* two,
-beside *Search health*'s three long jobs: nine in all.
+beside it. *Mutants* adds a runner for each crate PR in flight: a crate
+PR's fast lane (seven) and its *Mutants* job are eight, two such PRs
+sixteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
+fast lanes are done, nineteen. On Saturdays the weekly run's two leave
+eighteen: a queue run fits beside it with one *Mutants* job, and a crate
+PR's fast lane then waits for runners. At night the *Flake hunt* holds four
+and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
+in all.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
@@ -293,6 +306,91 @@ whole tier, writes `target/llvm-cov/html/index.html`, `lcov.info` and
 another). `make coverage-report` runs the gate again without the tests, and
 `make coverage-floors` raises the floors to the last run's values.
 `make setup` installs cargo-llvm-cov and the `llvm-tools` component.
+
+## Mutants
+
+[cargo-mutants](https://mutants.rs) over the fast tier: each mutant, a small
+change to the code, is built and its crate's fast tier run on it, and a
+mutant no test fails on survives. What it runs, how to read a survivor and
+what review does with one are the crates' rules, in
+[`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing).
+The *Mutants* workflow (`mutants.yml`) is a workflow of its own, part of
+neither `CI` lane, and not required. On the queue's draft PRs (branches
+under `mergify/merge-queue/`) its job passes at once, about a runner-minute
+a batch, since each PR's own run has judged its code; it still runs there,
+so that once it is required its check reports instead of sitting as
+skipped.
+
+**On every PR**, one runner tests the mutants in the changed code
+(`make mutants DIFF=1`'s command against the merge base, in place, one at a
+time) for at most 25 minutes, the unmutated build and tests included, then
+stops and reports what it judged. It runs `make -s mutants-command`'s
+command itself rather than `make mutants`, whose exit code is make's 2 for
+any failure, so it reads cargo-mutants' own: a survivor, a timeout, the
+unmutated tests failing, a diff that doesn't match the tree, or the run
+breaking. A PR that changes no Rust in `crates/` passes at once; the
+workflow has no `paths:` filter, which would leave the check waiting, never
+run, on such a PR once it is required. The run's summary has the table and
+every survivor and timeout, linked; the job is red when a mutant survived.
+A run the cap stops before the unmutated tests are done judges nothing and
+passes, with a warning on the PR's checks.
+
+**Weekly** (Saturdays, 09:17 UTC) **and by hand**, one part of the
+workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
+job: taste 1, grammar 4, features 16, session 26, wasm 11), and each week
+runs the next four, two runners at a time, each stopped at five and a half
+hours. Fifty-eight shards make fifteen parts, so a fifteen-week cycle aims
+to cover the workspace. The cover is approximate: a shard is a slice of
+its crate's mutants in source order on the day it runs, so code that
+changes between weeks moves the slices' edges, and a mutant near one can be
+tested twice in a cycle or not at all. Weeks run Monday to Sunday, so a
+run by hand takes the part of its week's Saturday (on a Sunday, the day
+before's), unless its `part` input names another (its summary lists them
+all). A week whose run is dropped
+leaves its part to the next cycle. A run on `main` that finds a survivor,
+or a shard that left no outcomes, files or comments on *Mutants that
+survive*, naming its part.
+
+**How long.** Measured on Oct 6 on a 16-core Mac shared with other work,
+two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a
+load of 17 to 76, with the timeout at 3 times the unmutated time (it is 5
+now: `.cargo/mutants.toml` says why); the run at `cf61f48`, after taste's
+PR (#198), at 5.
+
+| Run | Mutants | Wall time | Caught | Survived | Timed out | Unviable | A mutant, on average |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `auracle-taste` at `cf61f48`, whole | 619 | 18 min | 506 | 87 | 0 | 26 | 2.3 s to build, 1.1 s of tests (of a 4.7 s suite) |
+| `auracle-taste` at `db2103f`, whole | 622 | 29.4 min | 428 | 166 | 2 | 26 | 3.1 s to build, 2.5 s of tests (of a 4.7 s suite) |
+| `auracle-session` at `db2103f`, 1 in 100 (round robin) | 21 | 10.3 min | 11 | 7 | 0 | 3 | 13 s to build, 37 s of tests (of a 46 s suite) |
+
+Taste's survivors at `cf61f48`, by file: `model.rs` 53, `synthetic.rs` 21,
+`standardize.rs` 8, `observe.rs` 5. A caught mutant costs little: nextest
+stops at the first failing test (`--max-fail=1:immediate`), so at `db2103f`
+taste's took 1.1 s of their 4.7 s suite and session's 16 s of 46. A
+survivor runs every test (taste's 6.3 s, session's 86 s), so the cost falls
+as survivors are killed: taste's mutants took 2.5 s of tests each at
+`db2103f` and 1.1 s at `cf61f48`, with half as many survivors (and a
+lighter load). Each crate's fast tier alone, on the same machine under like load,
+took: taste 9 s, grammar 1 s, features 38 s, wasm 40 s, session 64 s;
+rebuilding a crate's tests after a change, 3 to 11 s. Two of taste's
+mutants timed out at `db2103f` (`synthetic.rs:54` and `:55`, in
+`SyntheticUser::stars`), at the 20 s floor over a 4.7 s suite; why is not
+known. At `cf61f48`, with #198's tests and a 24 s limit, both finished in
+4 s and survived.
+
+**On a runner**, estimated, not yet measured. CI's Test job, before
+Coverage took its place (ADR-023), spent about eleven minutes of a runner's
+time on the fast tier (two runners, five and a half each), which this Mac
+ran in about a minute and a half unloaded: about eight times slower. A
+build is taken to be about four times slower. A mutant then costs about
+15 s in taste, 25 s in grammar, two minutes in features and wasm, and three
+to four in session; over the workspace's 8,307 mutants at `0f7a85d`, about
+235 to 265 runner-hours. Four runners for six hours a week are 24, hence
+the parts. `PLAN`'s counts are sized from these estimates to keep each shard
+near four and a half hours, under its cap of five and a half (session's
+2,001 mutants in 26 shards are 77 each: four and a half hours at three and
+a half minutes a mutant, five at four). A weekly shard that stops at its
+cap is a measurement that says its crate needs more.
 
 ## Flakes
 
