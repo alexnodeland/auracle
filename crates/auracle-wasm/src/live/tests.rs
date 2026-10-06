@@ -1903,3 +1903,386 @@ fn a_capture_records_and_reads_back_its_take() {
     assert!(peak > 0.05, "the take is silent ({peak})");
     assert_eq!(poly.take_json("node/9"), "");
 }
+
+/// Loom (a patch with a sequencer) on four voices at 48 kHz, tempo sync on.
+fn loom_synced() -> LivePoly {
+    quiver::rng::seed(7);
+    let (_, tree) = auracle_grammar::presets()
+        .into_iter()
+        .find(|(n, _)| *n == "Loom")
+        .expect("Loom exists");
+    let mut p = LivePoly::new(&serde_json::to_string(&tree).unwrap(), 48_000.0, 4).unwrap();
+    p.set_sync(true);
+    p
+}
+
+/// The arp notes one instrument plays over `quanta` quanta, in order, a
+/// note entered once per step.
+fn arp_notes(p: &mut LivePoly, quanta: usize) -> Vec<u8> {
+    let mut notes = Vec::new();
+    let mut prev = None;
+    for _ in 0..quanta {
+        let _ = p.process(128);
+        if p.arp_note.is_some() && p.arp_note != prev {
+            notes.push(p.arp_note.unwrap());
+        }
+        prev = p.arp_note;
+    }
+    notes
+}
+
+/// An arp over the chord C3, E3, G3 in `mode`, 16ths at 240 BPM.
+fn chord_arp(mode: u32, gate: f64) -> LivePoly {
+    quiver::rng::seed(7);
+    let mut p = LivePoly::new(&plucked_json(), 44_100.0, 4).unwrap();
+    p.set_arp(true, mode, 4.0, 240.0, gate, 1, 0.0);
+    for n in [48, 52, 55] {
+        p.note_on(n, 1.0);
+    }
+    p
+}
+
+/// No voices, no knobs: the live parameter table is read off the first
+/// voice. (`new` never builds an instrument without one; the table is
+/// asked of whatever a build made.)
+#[test]
+fn no_voices_intern_no_knobs() {
+    assert!(intern_params(&[], None).is_empty());
+}
+
+/// The meter reads levels and nothing else: an update of another kind off
+/// the same observer (a scope's, on the same port) is not a tap's, and the
+/// taps read what they read without it.
+#[test]
+fn the_meter_reads_levels_and_nothing_else() {
+    let read = |scope: bool| {
+        quiver::rng::seed(7);
+        let mut poly = LivePoly::new(&pad_json(), 44_100.0, 1).unwrap();
+        assert_eq!(poly.set_meter(true), 1);
+        if scope {
+            let (node, port) = poly.meter.ports[0].clone();
+            poly.meter
+                .observer
+                .add_subscriptions(vec![SubscriptionTarget::Scope {
+                    node_id: node,
+                    port_id: port,
+                    buffer_size: 64,
+                }]);
+        }
+        poly.note_on(60, 1.0);
+        for _ in 0..8 {
+            let _ = poly.process(512);
+        }
+        poly.meter.levels.clone()
+    };
+    let levels = read(false);
+    assert!(levels[0] > -60.0, "the tap read nothing: {levels:?}");
+    assert_eq!(read(true), levels);
+}
+
+/// With no key sounding, the meter follows the open voice, so the rack's
+/// levels follow the input; with the meter off, nothing is read.
+#[test]
+fn the_meter_follows_the_open_voice_when_no_key_sounds() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).unwrap();
+    poly.set_leveler(false);
+    poly.set_open(true);
+    let n = poly.set_meter(true);
+    assert!(n > 0);
+    loudest_with_input(&mut poly, 0, 40);
+    assert!(poly.voices.iter().all(|v| !v.running), "no key sounds");
+    let db = unsafe { std::slice::from_raw_parts(poly.meter_ptr(), poly.meter_len()) };
+    assert!(
+        db.iter().all(|d| *d > -60.0),
+        "the open voice's taps read silent: {db:?}"
+    );
+}
+
+/// The transport restarts on a MIDI start: the sequencers go back to step 0
+/// and a held chord's arp fires on that same block. Another instrument
+/// joins its grid at its position (`set_transport_beats`), and a position
+/// that is no position (below 0, not a number) changes nothing.
+#[test]
+fn the_transport_restarts_and_another_instrument_joins_it() {
+    let mut a = loom_synced();
+    a.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
+    a.note_on(60, 0.8);
+    for _ in 0..300 {
+        let _ = a.process(128);
+    }
+    assert!(a.transport_beats() > 1.0);
+    a.restart_transport();
+    assert_eq!(a.transport_beats(), 0.0);
+    // Mid-step a moment ago: the arp fires again in the restart's block.
+    let _ = a.process(128);
+    assert!(
+        a.arp_note.is_some(),
+        "the arp did not restart with the transport"
+    );
+    let slot = a.sync_lanes[0].sync_slot;
+    assert_eq!(
+        a.param_slots[slot].values[0].get(),
+        0.0,
+        "the sequencer is at step 0"
+    );
+    let mut b = loom_synced();
+    b.set_transport_beats(a.transport_beats());
+    assert_eq!(b.transport_beats(), a.transport_beats());
+    for nonsense in [-1.0, f64::NAN, f64::INFINITY] {
+        b.set_transport_beats(nonsense);
+        assert_eq!(b.transport_beats(), a.transport_beats(), "{nonsense}");
+    }
+}
+
+/// Unison on a one-voice instrument is the note itself: no detune and the
+/// voice in the middle.
+#[test]
+fn unison_on_one_voice_is_the_note() {
+    quiver::rng::seed(7);
+    let mut p = LivePoly::new(&plucked_json(), 44_100.0, 1).unwrap();
+    p.set_unison(true, 1.0, 1.0);
+    p.note_on(67, 1.0);
+    let v = &p.voices[0];
+    assert!((v.pitch_tgt - 7.0 / 12.0).abs() < 1e-12, "{}", v.pitch_tgt);
+    assert!((v.pan_l - v.pan_r).abs() < 1e-6, "{} {}", v.pan_l, v.pan_r);
+}
+
+/// A bend or a makeup that is not a number is no gesture: the pitch and the
+/// level stay where they were.
+#[test]
+fn a_bend_or_makeup_that_is_not_a_number_changes_nothing() {
+    quiver::rng::seed(7);
+    let mut p = LivePoly::new(&pad_json(), 44_100.0, 1).unwrap();
+    p.set_leveler(false);
+    p.note_on(60, 1.0);
+    p.set_bend(2.0);
+    for _ in 0..200 {
+        let _ = p.process(128);
+    }
+    let pitch = p.voices[0].voice.pitch.get();
+    assert!((pitch - 2.0 / 12.0).abs() < 1e-6, "{pitch}");
+    let level = peak(&p.process(512));
+    p.set_bend(f64::NAN);
+    p.set_makeup(f64::NAN);
+    for _ in 0..20 {
+        let _ = p.process(128);
+    }
+    assert_eq!(p.voices[0].voice.pitch.get(), pitch);
+    let after = peak(&p.process(512));
+    assert!(
+        (after - level).abs() < level * 0.05,
+        "{after} against {level}"
+    );
+}
+
+/// An arp gate or swing that is not a number is the default (half the
+/// step, no swing): the steps start where they would and sound as long.
+#[test]
+fn an_arp_gate_or_swing_that_is_not_a_number_is_the_default() {
+    quiver::rng::seed(7);
+    let json = plucked_json();
+    assert_eq!(
+        arp_run(&json, 4.0, 120.0, f64::NAN, f64::NAN, 600),
+        arp_run(&json, 4.0, 120.0, 0.5, 0.0, 600)
+    );
+}
+
+/// Turning the arp on hands the held chord to the scheduler: the chord's
+/// voices are let go at once, and from the next step one note sounds at a
+/// time. Turning it off just after a step lets go of the arp's note, an
+/// octave up the chord, and presses the chord again.
+#[test]
+fn the_arp_takes_the_chord_and_gives_it_back() {
+    quiver::rng::seed(7);
+    let mut p = LivePoly::new(&first_bass(), 44_100.0, 4).unwrap();
+    for n in [48, 52, 55] {
+        p.note_on(n, 1.0);
+    }
+    let _ = p.process(128);
+    let gated = |p: &LivePoly| -> Vec<u8> {
+        let mut g: Vec<u8> = p.voices.iter().filter_map(|v| v.note).collect();
+        g.sort_unstable();
+        g
+    };
+    assert_eq!(gated(&p), vec![48, 52, 55]);
+    p.set_arp(true, 0, 4.0, 240.0, 0.9, 2, 0.0);
+    assert!(gated(&p).is_empty(), "the chord was not handed over");
+    let _ = p.process(128);
+    assert_eq!(gated(&p).len(), 1);
+    // Step until the arp plays the chord an octave up, then stop it there.
+    let mut steps = 0;
+    while p.arp_note.is_none_or(|n| n < 60) {
+        let _ = p.process(128);
+        steps += 1;
+        assert!(steps < 400, "the arp never climbed an octave");
+    }
+    p.set_arp(false, 0, 4.0, 240.0, 0.9, 2, 0.0);
+    assert_eq!(gated(&p), vec![48, 52, 55], "not the chord again");
+}
+
+/// The arp's patterns: up climbs the chord, down descends it, up and down
+/// bounces, and one note bounces on itself; random plays only the chord,
+/// every note of it in time, in an order of its own that two instruments
+/// play alike (no clock reaches the audio thread).
+#[test]
+fn the_arp_plays_its_patterns() {
+    let up = arp_notes(&mut chord_arp(0, 0.5), 600);
+    assert_eq!(&up[..6], &[52, 55, 48, 52, 55, 48], "{up:?}");
+    let down = arp_notes(&mut chord_arp(1, 0.5), 600);
+    assert_eq!(&down[..6], &[55, 52, 48, 55, 52, 48], "{down:?}");
+    let bounce = arp_notes(&mut chord_arp(2, 0.5), 600);
+    assert_eq!(&bounce[..6], &[52, 55, 52, 48, 52, 55], "{bounce:?}");
+    let mut one = LivePoly::new(&plucked_json(), 44_100.0, 4).unwrap();
+    one.set_arp(true, 2, 4.0, 240.0, 0.5, 1, 0.0);
+    one.note_on(50, 1.0);
+    let lone = arp_notes(&mut one, 300);
+    assert!(lone.len() > 3 && lone.iter().all(|n| *n == 50), "{lone:?}");
+    let random = arp_notes(&mut chord_arp(3, 0.5), 1200);
+    assert_eq!(random, arp_notes(&mut chord_arp(3, 0.5), 1200));
+    assert!(
+        random.iter().all(|n| [48, 52, 55].contains(n)),
+        "{random:?}"
+    );
+    for n in [48, 52, 55] {
+        assert!(random.contains(&n), "{n} never played: {random:?}");
+    }
+    assert_ne!(&random[..6], &up[..6], "random played the up pattern");
+}
+
+/// A tied arp (gate at or past 0.95) slides one sounding voice from pitch
+/// to pitch: its gate never falls between steps, so no other voice is
+/// pressed and the amp envelope keeps its place.
+#[test]
+fn a_tied_arp_slides_one_voice() {
+    let mut p = chord_arp(0, 1.0);
+    p.set_glide(0.2);
+    let _ = p.process(128);
+    let sounding = p.voices.iter().position(|v| v.note.is_some()).unwrap();
+    let mut pitches = std::collections::HashSet::new();
+    for _ in 0..400 {
+        let _ = p.process(128);
+        let gated: Vec<usize> = (0..4).filter(|&i| p.voices[i].note.is_some()).collect();
+        assert_eq!(gated, vec![sounding], "the tie moved to another voice");
+        pitches.insert(p.voices[sounding].note.unwrap());
+    }
+    assert_eq!(pitches.len(), 3, "the tie never moved: {pitches:?}");
+}
+
+/// A knob write that is not a number is refused. A sequencer's rate turned
+/// with sync off ramps like any knob; with sync on it snaps to the grid at
+/// once, and leaves another knob's ramp running.
+#[test]
+fn a_rate_knob_ramps_free_and_snaps_synced() {
+    use auracle_grammar::steps::rate_hz;
+    let mut p = loom_synced();
+    p.set_sync(false);
+    let (rate, sync) = (p.sync_lanes[0].rate_slot, p.sync_lanes[0].sync_slot);
+    let rate_addr = p.param_slots[rate].addr.clone();
+    let other = (0..p.param_slots.len())
+        .find(|&s| s != rate && s != sync)
+        .expect("Loom has another knob");
+    let other_addr = p.param_slots[other].addr.clone();
+    assert!(!p.set_param(&rate_addr, f64::NAN), "a NaN rate was taken");
+    let before = p.param_slots[rate].values[0].get();
+    assert!(p.set_param(&rate_addr, 0.95));
+    let _ = p.process(128);
+    let first = p.param_slots[rate].values[0].get();
+    assert!(
+        first != before && first != p.param_slots[rate].map.apply(0.95),
+        "free, the rate ramps: {before} -> {first}"
+    );
+    p.set_sync(true);
+    assert!(p.set_param(&other_addr, 0.9));
+    assert!(p.set_param(&rate_addr, 0.3));
+    let hz = rate_hz(p.param_slots[rate].values[0].get());
+    assert!(
+        SYNC_DIVISIONS.iter().any(|d| (hz - 2.0 * d).abs() < 1e-9),
+        "synced, the rate is on the grid at once: {hz} Hz"
+    );
+    assert!(
+        p.smoothers.iter().any(|s| s.slot == other),
+        "the other knob's ramp was dropped"
+    );
+}
+
+/// A swap with the arp on hands the new voices to the scheduler, which
+/// presses its next step on them; the swap is reported as any is.
+#[test]
+fn a_swap_under_the_arp_keeps_it_stepping() {
+    let mut p = chord_arp(0, 0.5);
+    let _ = arp_notes(&mut p, 40);
+    assert!(p.set_patch(&first_bass()));
+    let (mut patched, mut after) = (false, Vec::new());
+    for _ in 0..200 {
+        let _ = p.process(128);
+        patched |= p.poll_event() == EVENT_PATCHED;
+        if patched {
+            after.extend(p.arp_note);
+        }
+    }
+    assert!(patched, "swap never completed");
+    assert!(
+        [48, 52, 55].iter().all(|n| after.contains(n)),
+        "the arp did not carry on after the swap: {after:?}"
+    );
+}
+
+/// The envelope carry follows notes, not voices: a held note no voice was
+/// sounding before a swap (a unison stack moved every voice to the last
+/// key) starts its attack on the new patch, while the note that was
+/// sounding comes back where it was.
+#[test]
+fn a_held_note_no_voice_sounded_starts_fresh_after_a_swap() {
+    quiver::rng::seed(7);
+    let json = pad_json();
+    let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+    p.set_unison(true, 0.5, 0.5);
+    p.note_on(48, 1.0);
+    p.note_on(55, 1.0);
+    p.set_unison(false, 0.5, 0.5);
+    for _ in 0..200 {
+        let _ = p.process(128);
+    }
+    assert!(p.voices.iter().all(|v| v.note != Some(48)), "fixture");
+    let carried = p.voices[0].voice.env_phase();
+    assert!(p.set_patch(&json));
+    let mut patched = false;
+    while !patched {
+        let _ = p.process(128);
+        patched = p.poll_event() == EVENT_PATCHED;
+    }
+    let phase = |note: u8| {
+        p.voices
+            .iter()
+            .find(|v| v.note == Some(note))
+            .map(|v| v.voice.env_phase())
+            .unwrap()
+    };
+    assert!(
+        (phase(55) - carried).abs() < 0.05,
+        "{} against {carried}",
+        phase(55)
+    );
+    assert!(
+        phase(48) < 0.2 * carried,
+        "48 did not start fresh: {}",
+        phase(48)
+    );
+}
+
+/// A host block longer than the lead's buffer still plays every frame: the
+/// keys' voices hold the last frame the lead tracked for the rest of it.
+#[test]
+fn a_block_longer_than_the_lead_buffer_plays_on() {
+    let mut poly = tracked_open(&tracked_patch());
+    for n in CHORD {
+        poly.note_on(n, 1.0);
+    }
+    loudest_with_input(&mut poly, 120, 40);
+    let out = poly.process(LIVE_INPUT_FRAMES * 2);
+    assert_eq!(out.len(), LIVE_INPUT_FRAMES * 4);
+    assert!(out.iter().all(|s| s.is_finite()));
+    let tail = peak(&out[LIVE_INPUT_FRAMES * 2..]);
+    assert!(tail > 0.01, "the block's second half fell silent ({tail})");
+}
