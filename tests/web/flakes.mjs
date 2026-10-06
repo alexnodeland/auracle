@@ -301,7 +301,7 @@ function cmdHunt(opts) {
     summary(`### Never ran: ${h.lost.length} of the ${testsIn(listing).length} tests the hunt was dealt\n\nNo runner's report holds them: a runner was lost, or a step before its run failed.\n\n${named.join("\n")}\n`);
   }
   if (unlisted) summary("### The hunt's tests could not be listed\n\nSo a runner lost would not show here.\n");
-  if (!open && h.flaky.length) summary("The open issues could not be read: each test's annotated issue was taken to be open, and no issue was found by its title.\n");
+  if (!open && h.flaky.length) summary("The open issues could not be read: each test's annotated issue was taken to be open, and a flake's issue opened by hand was not looked for (one the hunt opened is found under its title when it is filed).\n");
   return 0;
 }
 

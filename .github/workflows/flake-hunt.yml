@@ -232,8 +232,9 @@ jobs:
           timings: ${{ github.ref == 'refs/heads/main' && 'fast' || '' }}
       # The open issues: a flake's issue opened by hand is found by its
       # title, and an issue a test names that is closed is passed over.
-      # Unread, the issue a test names is taken as open and no title is
-      # matched, so a test with no issue of its own gets a new one. And the
+      # Unread, the issue a test names is taken as open, and only an issue
+      # the hunt opened itself is found by its title (file-issue's own
+      # search), so a flake's issue opened by hand gets a twin. And the
       # tests the hunt was dealt, listed as its runners list them (no
       # browser): one in no runner's report never ran. A listing that fails
       # is said, and files the run.
@@ -248,7 +249,7 @@ jobs:
           if gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json; then
             open=(--open open-issues.json)
           else
-            echo "::warning::The open issues could not be listed: each failed test goes to the issue it names, or a new one."
+            echo "::warning::The open issues could not be listed: each failed test goes to the issue it names, else to the hunt's own issue under its title."
           fi
           npx playwright test --list --reporter=json --pass-with-no-tests ${{ env.HUNT_TESTS }} > listed.json || rm -f listed.json
           node flakes.mjs hunt merged.json "${open[@]}" --listed listed.json --outcome "$OUTCOME"
