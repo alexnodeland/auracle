@@ -58,7 +58,8 @@ whether filtered first deals move the search's measured numbers
   pair from the pool. The default rule (`Acquisition::Random`) stays uniform
   afterwards.
 - **The warm start** deals presets, not prior draws: one card per preset
-  category, then two more at random (`warmSample` in `main.js`). Its "teach
+  category, then two more at random (`warmSample` in `main.js`). The page
+  draws them, not the session's seed (`seedOverride`). Its "teach
   it" fits a posterior at once (`warmStartDone` sends `fit`). So for a player
   who takes the warm start, one duel is dealt before a posterior exists.
 - **The films** cast presets from RFC-007's shortlist. What a seeded session
@@ -281,9 +282,11 @@ from.
 **(i) At the fill.** A draw below the floor is consumed and does not land,
 exactly as a vet failure is (`push_prior`'s callers, `fill_pool_step` and
 `absorb_prior`, reading the farm's report).
-- The whole first bank is above the floor: the duels, the bank's ▶, the
-  TASTE map, the patches a first offer walks from, and every film that
-  records a seeded session.
+- Every prior draw in the first bank is above the floor, and so is the
+  whole bank until the player adds to it: the duels, the bank's ▶, the
+  TASTE map, the patches a first offer walks from, and the pool a film
+  records of a seeded session. What the player adds is not floored: the
+  warm start's three, a preset, an edit.
 - It costs renders: 1.37 per patch that lands instead of 1.02. The app
   waits 11.8 draws for the 8 it hands over at, instead of 8.6, and 57 for a
   full pool, instead of 41.
@@ -364,10 +367,14 @@ For the maintainer to accept or amend.
    6.7% of draws (3.2% after #62), and still drops Deadfall and Flint.
 5. **The films cast from the same report.** For anything not on the
    shortlist, it replaces RFC-007's unrecorded probe (`noise share ≤ 0.02,
-   roughness ≤ 6`). With the floor at the fill, what a seeded session deals is
-   above the floor by construction, and the rule in `shotgen.py` and
-   `films.md` that it is "logged, not cast" can point at the floor
-   instead.
+   roughness ≤ 6`). With the floor at the fill, the prior draws a seeded
+   session deals are above the floor by construction: the prior draws in
+   the pool and the duels between two of them. For those, the rule in `shotgen.py` and
+   `films.md` that what a session deals is "logged, not cast" can point at
+   the floor instead. The warm start's other cards are not floored (point
+   2), and the page draws them, not the seed. About four warm starts in five
+   show one below the floor, so they stay logged, not cast, unless open
+   question 6 floors them.
 6. **Hollow faces read the same verdict**, sent with each sound's row, when
    RFC-006's views are built.
 
@@ -403,8 +410,10 @@ For the maintainer to accept or amend.
     first 8 land") stays true.
   - Hollow faces come with RFC-006's views.
 - **The films**: `www/video/tools/shotgen.py` and
-  [`films.md`](../architecture/films.md) say that what a session deals is
-  cast; `www/brand/sound.json`'s shortlist criteria point at the floor.
+  [`films.md`](../architecture/films.md) say that the prior draws in the
+  pool and the duels between two of them are cast by the floor, and that the warm start's other
+  cards stay logged, not cast (open question 6); `www/brand/sound.json`'s
+  shortlist criteria point at the floor.
 - **The words**:
   - the reference gains a page beside the vet's, "The floor is not the vet",
     with the constants and this measurement, and a line in the design
@@ -485,7 +494,8 @@ For the maintainer:
    About four warm starts in five show at least one preset below the floor.
    It deals one card per category, then two from the rest, so none is below
    the floor with probability (9/13)·(4/8)·(5/6)·(46/55)·(45/54) ≈ 0.20.
-   Keep it so?
+   Keep it so? If so, the films keep logging its other cards rather than
+   casting them.
 7. **Roughness and the noise share in φ**, for Grit: a separate φ change.
 8. **Slow attacks:** 38% of draws take over a second to arrive. That is a
    question about the prior's attack site, like #62's octaves, and outside
