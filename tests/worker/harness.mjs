@@ -7,9 +7,10 @@
 // with `postMessage`, `onmessage` and `location`, the `unhandledrejection`
 // event, and a `fetch` that reads the app's own files from disk. Nothing else
 // of the browser is here: no IndexedDB (the face store is off, as where a
-// browser refuses one), no page, no audio, and no farm: main's answer to
-// `farm_want` is a crew of no workers, as with `?farm=0` (`holdFarm` keeps
-// the answer back instead).
+// browser refuses one), no page, no audio, and no farm.js: main's answer to
+// `farm_want` is a crew of no workers, as with `?farm=0`, unless the test
+// hands the worker ports of its own (`fakeCrew`, at boot or as a crew) or
+// keeps the answer back (`holdFarm`).
 //
 // The same file is both ends: imported by a test it is the client
 // (`startWorker`); run as the thread's entry it hosts the worker.
@@ -176,8 +177,9 @@ function matches(r, where) {
 }
 
 class EngineWorker {
-  constructor(thread, { errors }) {
+  constructor(thread, { errors, crew }) {
     this.thread = thread;
+    this.crew = crew;
     /** Every reply the worker posted, in order; each carries its place, `_n`. */
     this.replies = [];
     /** What the worker said on `console.error` and `console.warn`. */
@@ -212,10 +214,11 @@ class EngineWorker {
     }
     m._n = this.replies.length;
     this.replies.push(m);
-    // Main's answer to a crew wanted: none (`?farm=0`), unless held.
+    // Main's answer to a crew wanted: the test's (`crew`), else none
+    // (`?farm=0`), unless held.
     if (m.type === "farm_want") {
       if (this.farmHeld) this.farmHeld.push(m);
-      else this.post({ type: "farm_ports", crew: m.crew, ports: [] });
+      else this.answerCrew(m);
     }
     for (const w of [...this.waits]) w.check();
   }
@@ -322,17 +325,23 @@ class EngineWorker {
     this.farmHeld = this.farmHeld || [];
   }
 
-  /** Answer every crew wanted while held: none. */
+  /** Answer every crew wanted while held. */
   releaseFarm() {
     const held = this.farmHeld || [];
     this.farmHeld = null;
-    for (const m of held) this.post({ type: "farm_ports", crew: m.crew, ports: [] });
+    for (const m of held) this.answerCrew(m);
     return held.length;
   }
 
-  /** Boot the engine as main does (`init`), and wait until the pool is full. */
-  async boot({ seed = 1, poolSize = 12, playableAt = 8, saved = null } = {}) {
-    const after = this.post({ type: "init", seed, poolSize, playableAt, saved, farmPorts: [] });
+  answerCrew(m) {
+    const ports = this.crew ? this.crew(m) : [];
+    this.post({ type: "farm_ports", crew: m.crew, ports }, { transfer: ports });
+  }
+
+  /** Boot the engine as main does (`init`), and wait until the pool is full.
+   *  `farmPorts` are boot's crew (`fakeCrew`). */
+  async boot({ seed = 1, poolSize = 12, playableAt = 8, saved = null, farmPorts = [] } = {}) {
+    const after = this.post({ type: "init", seed, poolSize, playableAt, saved, farmPorts }, { transfer: farmPorts });
     const r = await this.until((x) => x.type === "filled" || x.type === "boot_failed", { after });
     if (r.type === "boot_failed") throw new Error(`boot failed: ${r.error}`);
     return r;
@@ -358,11 +367,12 @@ class EngineWorker {
 }
 
 /** A worker thread running apps/web/worker.js, booted as main boots it
- *  (`boot: false` leaves that to the test). */
-export async function startWorker({ boot = true, errors = false, ...init } = {}) {
+ *  (`boot: false` leaves that to the test). `crew(want)` answers a
+ *  `farm_want` with ports (`fakeCrew`). */
+export async function startWorker({ boot = true, errors = false, crew, ...init } = {}) {
   if (!existsSync(WASM)) throw new Error("apps/web/pkg has no built engine: run `make wasm` first");
   const thread = new Worker(new URL(import.meta.url), { workerData: { auracleWorker: true } });
-  const w = new EngineWorker(thread, { errors });
+  const w = new EngineWorker(thread, { errors, crew });
   await w.ready;
   if (boot) await w.boot(init);
   return w;
@@ -374,6 +384,29 @@ export async function workerFor(t, options) {
   const w = await startWorker(options);
   t.after(() => w.stop());
   return w;
+}
+
+/** `n` farm workers that render nothing: each says `ready` as farm.js does
+ *  once its engine is up, keeps every message the engine worker sends it
+ *  (`heard[k]`), and answers a render (`job`) as a draw that did not vet,
+ *  so the engine renders the work itself. `ports` go to the engine worker. */
+export function fakeCrew(n) {
+  const heard = [];
+  const ports = [];
+  const ends = [];
+  for (let k = 0; k < n; k++) {
+    const { port1, port2 } = new MessageChannel();
+    const got = [];
+    heard.push(got);
+    port1.on("message", (m) => {
+      got.push(m);
+      if (m.type === "job") port1.postMessage({ type: "done", i: m.i, ok: false });
+    });
+    port1.postMessage({ type: "ready", build: V });
+    ends.push(port1);
+    ports.push(port2);
+  }
+  return { ports, heard, close: () => ends.forEach((p) => p.close()) };
 }
 
 /** The engine calls between two places in a trace (exclusive), by name. */
