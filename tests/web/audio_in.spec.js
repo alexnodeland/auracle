@@ -83,6 +83,37 @@ async function placeAudioIn(page) {
 }
 
 const lane = (page) => page.locator("#rack-svg .ain-lane").first();
+/** The audition clip's source in the session main stored (IndexedDB
+ *  `auracle`, `kv`, `state`, as fixtures.js `savedUi` reads it), or null. */
+const storedClip = (page) =>
+  page.evaluate(() => new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open("auracle");
+    } catch (_) {
+      return resolve(null);
+    }
+    req.onupgradeneeded = () => {
+      try { req.transaction.abort(); } catch (_) {}
+      resolve(null);
+    };
+    req.onerror = () => resolve(null);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("kv")) { db.close(); return resolve(null); }
+      const get = db.transaction("kv", "readonly").objectStore("kv").get("state");
+      get.onsuccess = () => {
+        db.close();
+        try {
+          const clip = get.result && JSON.parse(get.result.session).audition_clip;
+          resolve(clip ? clip.source : null);
+        } catch (_) {
+          resolve(null);
+        }
+      };
+      get.onerror = () => { db.close(); resolve(null); };
+    };
+  }));
 const state = (page) => page.evaluate(() => window.__aur.audioIn());
 const calls = (page) => page.evaluate(() => window.__pwMic.calls.length);
 const at = (page, hz) => page.evaluate((h) => window.__pwAt(h), hz);
@@ -340,10 +371,10 @@ test("a captured clip is saved with the session, and is the session's clip again
   await openPreset(page, "Glass Pad");
   await placeAudioIn(page);
   await expect.poll(() => page.evaluate(() => window.__pwLast.audition_clip && window.__pwLast.audition_clip.ok), { timeout: 40_000 }).toBe(true);
-  // The clip is saved with the session: a save after the engine took it
-  // (main saves 2.5 s after the last change).
-  const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
+  // The clip is saved with the session: reload only once the record main
+  // stores (`persistState`, written after the worker's `saved`) holds it, or
+  // the reload can cut the write short.
+  await expect.poll(() => storedClip(page), { timeout: 30_000 }).toBe("captured");
 
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
