@@ -361,7 +361,7 @@ one queued PR.** Workflows do the rest:
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
   the GitHub Release: the changelog's section as its notes, and under it every
   PR merged since the last release, grouped by its title's type, each with its
-  author.
+  author, then the link to the whole diff from the last release's tag.
 
 CI's deploy job ([`ci.yml`](.github/workflows/ci.yml)) publishes the live site —
 the landing page, the instrument at `/play/`, and both books — from the build
@@ -394,7 +394,9 @@ The steps, in order:
    `gh workflow run prepare-release.yml` (`-f version=X.Y.Z` to choose the
    version; `-f dry_run=true` to see the plan, what the PR would hold and the
    list under the notes, with nothing pushed). Locally,
-   `python3 scripts/release.py plan --notes` says the same. The workflow:
+   `python3 scripts/release.py plan --notes` gives the plan and the list,
+   and changes nothing; only the dry run shows what the PR would hold. The
+   workflow:
    - picks the version as above, and says why in its summary;
    - bumps it everywhere the workspace writes it: `[workspace.package]
      version` in `Cargo.toml`, the `version = "…"` on each intra-workspace
@@ -420,7 +422,10 @@ The steps, in order:
    repo. The push also starts the PR's `CI` and `PR checks`: a PR opened with
    a workflow's own token starts no workflow (GitHub's rule), and the
    repository has no app or token of its own to open it with. With nothing to
-   write, close the PR and reopen it, which starts them too.
+   write, close the PR and reopen it, which starts them too. Read the bump
+   and the section before that push: the PR carries the `queue` label from
+   the start, so once the label alone queues a PR, the push is what puts it
+   in the queue when its checks are green.
 4. **Queue it** (`@mergifyio queue`, until the label alone does:
    `docs/process.md` § CI and merging), and wait for the queue to merge it.
 5. **The tag follows.** When the PR merges, the workflow checks its merge
@@ -454,11 +459,13 @@ gives the `gh pr create` command and the body; a PR opened that way starts
 its checks itself.
 
 **By hand**, should the workflow be unable to: each of its steps is one
-command (`python3 scripts/release.py bump X.Y.Z`, then `changelog.py
---release`, then a PR as any other, titled `release: X.Y.Z` and labelled
-`release`), and its merge is tagged as in step 5. A tag pushed by hand on the
-release PR's merge commit starts `release.yml` too, for a merge the workflow
-couldn't tag:
+command (`python3 scripts/release.py bump X.Y.Z`, then `cargo update
+--workspace --locked`, which fails if the lock disagrees with the bump and is
+the only check of it, since CI builds without `--locked`, then
+`changelog.py --release`, then a PR as any other, titled `release: X.Y.Z` and
+labelled `release`), and its merge is tagged as in step 5. A tag pushed by
+hand on the release PR's merge commit starts `release.yml` too, for a merge
+the workflow couldn't tag:
 
 ```bash
 git fetch origin
@@ -467,7 +474,10 @@ git push origin vX.Y.Z
 ```
 
 `<sha>` is the commit the release PR merged as
-(`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`).
+(`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`). When the tag is
+there and its release isn't (release.yml failed, or never started), start it
+on the tag: `gh workflow run release.yml --ref vX.Y.Z`. Running the tag job
+again stops at the tag that is there.
 
 To rehearse the bundle locally without tagging anything:
 

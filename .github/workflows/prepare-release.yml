@@ -217,7 +217,7 @@ jobs:
           fi
           tag="v$version"
           if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
-            echo "::error::$tag is tagged already, on $(git rev-parse --short "$tag^{commit}"): nothing is tagged"
+            echo "::error::$tag is tagged already, on $(git rev-parse --short "$tag^{commit}"): nothing is tagged. If its release isn't published, start release.yml on it: gh workflow run release.yml --ref $tag"
             exit 1
           fi
           python3 scripts/release.py verify "$tag"
@@ -237,5 +237,9 @@ jobs:
           TAG: ${{ steps.check.outputs.tag }}
         run: |
           set -euo pipefail
-          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          if ! gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"; then
+            # Running this job again stops at the tag, so say how to go on.
+            echo "::error::$TAG is tagged, and release.yml didn't start on it: start it by hand, gh workflow run release.yml --ref $TAG"
+            exit 1
+          fi
           echo "Started release.yml on $TAG: it publishes the release." >> "$GITHUB_STEP_SUMMARY"
