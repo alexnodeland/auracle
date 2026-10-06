@@ -107,7 +107,8 @@ New readings, defined in the example and nowhere else:
 - **rough**: sensory roughness, Vassilakis's pair model (Sethares-style
   dissonance) over the 40 strongest spectral peaks, frame by frame. It takes
   the median over the held C4 or over the C4+E4 dyad, whichever is larger. A
-  harmonic tone reads near 0; beating partials and noise read high.
+  steady harmonic tone reads near 0; beating partials, deep vibrato and noise
+  read high.
 - **hi**, **spk**: the share of energy above 5 kHz, and in 200 Hz–5 kHz (what
   a laptop speaker plays; `pool_loudness`'s `spk`, which #62 quotes).
   `hi_face` and `spk_face` are the same shares read off the face.
@@ -115,14 +116,34 @@ New readings, defined in the example and nowhere else:
   in cents. **mute**: the quietest of the phrase's four notes against the
   loudest, dB.
 
+The example first runs noise and roughness on held C4s it makes itself
+(the appendix's first table):
+
+- A steady tone of eight harmonics reads rough 0.01 and noise 0.00.
+- White noise reads rough 3.05 and noise 1.00, and white noise low-passed at
+  500 Hz reads 4.09 and 0.99.
+- One pair of equal partials 30 Hz apart near 1 kHz reads 0.08, so a reading
+  over 2 sums many beating pairs.
+- Vibrato alone reads rough. The eight harmonics read 0.18 with ±25 cents at
+  5 Hz, 0.86 with ±50 cents at 5 Hz, 1.83 with ±50 cents at 6 Hz, and 2.57
+  with ±100 cents at 5 Hz, which is over the line this proposal draws at 2.5.
+  Their noise share stays at or below 0.15.
+
 What the numbers say:
 
-1. **The render is the cost; a reading is not.** Over four runs of the
-   example as committed, a featurization's median is 186–235 ms, and the
-   render is 92–94% of it. The new readings cost, as a share of one
-   featurization: roughness and noise together 1.8–2.1%, pitch 1.1–1.4%, the
-   bands 0.9–1.1%, mute 0.1%. The face,
-   as a precedent, costs 1.0% or less here, and its own measurement found
+1. **The render is the cost; a reading is not.** In every run the render is
+   92–94% of a featurization. A featurization's median moves with the
+   machine's load: 186–235 ms over four runs at a load average of 19–36, and
+   715 ms in a fifth at 100–150. The new passes barely move with it, so their
+   cost reads in milliseconds (the two runs the appendix prints):
+   - roughness and noise together 4.0–4.6 ms;
+   - pitch 2.5–2.6 ms;
+   - the bands 2.1–2.3 ms;
+   - mute 0.13 ms.
+
+   At the lighter load that is 2.1%, 1.4%, 1.1% and 0.1% of a
+   featurization; at the heavier, 0.6%, 0.4%, 0.3% and under 0.1%. The
+   face, as a precedent, takes 1.9 ms in both, and its own measurement found
    1.1% natively and 1.2% in wasm
    ([faces](../../www/reference/src/features/faces.md)). Read off the face,
    `hi` is free: it agrees with the new pass to a median difference of 0.000,
@@ -144,8 +165,9 @@ What the numbers say:
    cast, and Sub & Sparkle, Deadfall, Flint, Sour Mash and Inside Out. Six of
    the seven bass presets sit just above it (`spk` 0.21–0.32). By lowest
    oscillator octave, `spk < 0.2` holds for 54% of draws at −2 and 25% at −1,
-   against 1–4% from 0 up: #62's table, reproduced. Even `spk ≥ 0.05` drops
-   Deadfall and Flint.
+   against 1–4% from 0 up. That is the same pattern as #62's table, on its
+   `spk` measure: #62 counts patches mostly below 200 Hz, 72% at −2, 61% at
+   −1 and about 2% from 0 up. Even `spk ≥ 0.05` drops Deadfall and Flint.
 5. **What the vet and the normalizer already measure is not a floor.**
    `pinned_fraction` is at most 0.002 in 95% of draws, so as a floor it would
    separate nothing. `dc_ratio` is at most 0.038 in 95% of draws (a blocker
@@ -168,16 +190,19 @@ The candidate floors, over the 1,956 vetted draws (the full table, with the
 | none (vet only) | 100% | 8.6 | 41.4 | 1.02 | 1.00 | 0 |
 | noise ≤ 0.5 | 83.0% | 10.8 | 50.6 | 1.23 | 0.96 | 7 |
 | rough ≤ 2.5, hi ≤ 0.2 | 76.3% | 11.8 | 56.6 | 1.34 | 0.95 | 8 |
-| **noise ≤ 0.5, rough ≤ 2.5, hi ≤ 0.2** | **74.8%** | **11.8** | **57.2** | **1.37** | **0.95** | **9, none cast** |
-| the same, hi off the face | 75.2% | 11.8 | 56.8 | 1.36 | 0.95 | 9, none cast |
-| … and spk ≥ 0.05 | 68.8% | 12.0 | 62.2 | 1.49 | 0.93 | 10 |
-| … and mute ≥ −30 dB | 72.9% | 11.8 | 57.8 | 1.40 | 0.94 | 9 |
+| noise ≤ 0.5, rough ≤ 2.5, hi ≤ 0.2 (hi from a new pass) | 74.8% | 11.8 | 57.2 | 1.37 | 0.95 | 9, none cast |
+| **the same, hi off the face (recommended)** | **75.2%** | **11.8** | **56.8** | **1.36** | **0.95** | **9, none cast** |
+| the new-pass floor, and spk ≥ 0.05 | 68.8% | 12.0 | 62.2 | 1.49 | 0.93 | 10 |
+| the new-pass floor, and mute ≥ −30 dB | 72.9% | 11.8 | 57.8 | 1.40 | 0.94 | 9 |
 | spk ≥ 0.2 (register) | 80.8% | 10.4 | 49.6 | 1.27 | 0.98 | 8, three cast |
 | flatness ≤ 0.1, hi_face ≤ 0.2 (no new pass) | 87.8% | 10.2 | 48.8 | 1.16 | 0.97 | 4 |
 
 "Draws to 8" and "to 40" are the draws a fill-time floor consumes before the
 8th and 40th patch lands (mean of five boots). "Spread" is the mean pairwise
 distance of the floored draws in standardized φ, against all vetted draws.
+The recommended floor reads `hi` off the face (Recommendation 1). Its row
+and the new pass's are within half a point, or half a draw, of each other on
+every column, and differ more only on the climb's best of 48 (below).
 
 The proposed floor drops nine presets: Noise Wash, Static Ocean, Jet Wash and
 Long Way Down (4 of the 13 textures); Flint, Ticker, Woodblock and Gated
@@ -185,11 +210,12 @@ Snare (4 of the 8 percussion); and Inside Out (1 of the 6 weird). It drops
 none of the 16 the films cast. The cast preset nearest a threshold is Wobble
 Board, at roughness 2.39 against 2.5.
 
-What it does to the first deals: it removes 81% of the draws that hold a
-noise source (58 of 303 clear it), about 40% of those with a ring modulator,
-granular or vibrato, and about 37% of those with a chorus or a delay. The
-floored draws sit 0.29–0.31σ lower on `n_noise`, `flatness_mean`,
-`rolloff_mean` and `zcr_mean` than all vetted draws.
+What it does to the first deals, on the new pass's row (the face's is within
+a point on each): it removes 81% of the draws that hold a noise source (58 of
+303 clear it), about 40% of those with a ring modulator, granular or
+vibrato, and about 37% of those with a chorus or a delay. The floored draws
+sit 0.29–0.31σ lower on `n_noise`, `flatness_mean`, `rolloff_mean` and
+`zcr_mean` than all vetted draws.
 
 ## Constraints
 
@@ -272,8 +298,8 @@ from.
     it misses filtered noise (Noise Wash, Static Ocean, Ticker and Woodblock
     all clear it).
   - **C2:** the noise share and roughness from one new analysis of the held
-    note and the dyad (about 2% of a featurization), and the high band off
-    the face.
+    note and the dyad (about 4 ms, 2% of a featurization at the lighter
+    load), and the high band off the face.
 
 **D. Reweight the prior.** Ruled out by RFC-004. Register belongs to #62.
 
@@ -287,10 +313,11 @@ exactly as a vet failure is (`push_prior`'s callers, `fill_pool_step` and
   TASTE map, the patches a first offer walks from, and the pool a film
   records of a seeded session. What the player adds is not floored: the
   warm start's three, a preset, an edit.
-- It costs renders: 1.37 per patch that lands instead of 1.02. The app
-  waits 11.8 draws for the 8 it hands over at, instead of 8.6, and 57 for a
-  full pool, instead of 41.
-- 400 draws are still ample: a full pool takes 57. `fill_draw` keeps a
+- It costs renders. With `hi` off the face, as recommended, that is 1.36
+  renders per patch that lands instead of 1.02 (1.37 with the new pass's
+  `hi`). The app waits 11.8 draws for the 8 it hands over at, instead of
+  8.6, and 56.8 for a full pool, instead of 41.4.
+- 400 draws are still ample: a full pool takes about 57. `fill_draw` keeps a
   quarter more draws in flight than the pool still needs, sized for today's
   pass rate of 98%; the build checks what 73% wants.
 - It moves what a seed deals: the boot probe is regenerated, and the
@@ -329,10 +356,11 @@ more.
 Read off the draws, on one reference scale (every vetted draw), with
 `search_health`'s synthetic listener, the one `make climb` grades with:
 
-- **Where the climb starts:** the pool's mean utility moves +0.07 and its
-  expected best of 48 moves −0.13 (−0.18 with `hi` off the face), against a
-  utility spread of 2.44. `search_health` documents that a change of ±0.4 in
-  the climb's mean gain is inside its seed-to-seed spread.
+- **Where the climb starts:** with `hi` off the face, as recommended, the
+  pool's mean utility moves +0.07 and its expected best of 48 moves −0.18
+  (−0.13 with the new pass's `hi`), against a utility spread of 2.44.
+  `search_health` documents that a change of ±0.4 in the climb's mean gain
+  is inside its seed-to-seed spread.
 - **The standardizer:** the floored pool's scale is 5% tighter (spread
   0.95). Four coordinates move about 0.3σ.
 
@@ -367,14 +395,14 @@ For the maintainer to accept or amend.
    6.7% of draws (3.2% after #62), and still drops Deadfall and Flint.
 5. **The films cast from the same report.** For anything not on the
    shortlist, it replaces RFC-007's unrecorded probe (`noise share ≤ 0.02,
-   roughness ≤ 6`). With the floor at the fill, the prior draws a seeded
-   session deals are above the floor by construction: the prior draws in
-   the pool and the duels between two of them. For those, the rule in `shotgen.py` and
-   `films.md` that what a session deals is "logged, not cast" can point at
-   the floor instead. The warm start's other cards are not floored (point
-   2), and the page draws them, not the seed. About four warm starts in five
-   show one below the floor, so they stay logged, not cast, unless open
-   question 6 floors them.
+   roughness ≤ 6`). With the floor at the fill, part of what a seeded
+   session deals is above the floor by construction: the prior draws in the
+   pool, and a duel between two of them. For those, the rule in
+   `shotgen.py` and `films.md` that what a session deals is "logged, not
+   cast" can point at the floor instead. The warm start's other cards are
+   not floored (point 2), and the page draws them, not the seed. About four
+   warm starts in five show one below the floor, so they stay logged, not
+   cast, unless open question 6 floors them.
 6. **Hollow faces read the same verdict**, sent with each sound's row, when
    RFC-006's views are built.
 
@@ -411,9 +439,9 @@ For the maintainer to accept or amend.
   - Hollow faces come with RFC-006's views.
 - **The films**: `www/video/tools/shotgen.py` and
   [`films.md`](../architecture/films.md) say that the prior draws in the
-  pool and the duels between two of them are cast by the floor, and that the warm start's other
-  cards stay logged, not cast (open question 6); `www/brand/sound.json`'s
-  shortlist criteria point at the floor.
+  pool, and a duel between two of them, are cast by the floor, and that the
+  warm start's other cards stay logged, not cast (open question 6);
+  `www/brand/sound.json`'s shortlist criteria point at the floor.
 - **The words**:
   - the reference gains a page beside the vet's, "The floor is not the vet",
     with the constants and this measurement, and a line in the design
@@ -461,15 +489,24 @@ For the maintainer to accept or amend.
 
 ## What a listen checks
 
-The example's `--listen DIR` writes the renders to start from: for each rule,
-the four draws nearest its threshold on each side among those the other two
-rules clear, and the first eight draws that clear the floor and the first
-eight that don't. On laptop speakers and on headphones:
+The example's `--listen DIR` writes the 48 renders to start from:
+
+- for each rule, the four draws nearest its threshold on each side among
+  those the other two rules clear;
+- the same at roughness's line among draws whose pitch spreads over 25
+  cents (`wobble-rough-…`), since vibrato alone reads rough;
+- the first eight draws that clear the floor and the first eight that
+  don't.
+
+On laptop speakers and on headphones:
 
 1. **Roughness's line first.** Are the draws just over 2.5 harsh, or lush
    detuned sounds that belong in a first impression? Most of what roughness
    removes alone is supersaw and chorus, and Wobble Board, in the cast, sits
-   at 2.39.
+   at 2.39. The line sits nearer white noise (3.05) than a steady tone
+   (0.01), and a held tone with ±100 cents of vibrato reads 2.57 while its
+   noise share stays 0.15. So the `wobble-rough-…` renders ask whether it is
+   their vibrato or their harshness that crosses the line.
 2. **Each edge.** If the side that fails sounds fine, the threshold moves
    out; if the side that clears sounds bad, it moves in.
 3. **Clears against fails, blind.** Would you be glad to hear each as one of
@@ -480,7 +517,8 @@ eight that don't. On laptop speakers and on headphones:
 
 ## Open questions
 
-For the maintainer:
+For the maintainer. #144 tracks them until this proposal is accepted or
+rejected.
 
 1. **Fill, deal or quota?** This proposal recommends the fill.
 2. **The thresholds:** noise ≤ 0.5, rough ≤ 2.5, hi ≤ 0.2, after a listen.
@@ -510,17 +548,36 @@ For the maintainer:
 nice -n 10 cargo run -p auracle-features --example sonic_floor --release -- 5 8 --listen DIR
 ```
 
-Five boots, eight threads, on an Apple M3 Max (16 cores) with a load average
-of 19–36 from other builds during the runs. The readings are deterministic:
-six runs printed the same values. The timings are not: read them as shares,
-which held to within a point across runs. A run takes about 90 s. The
-example prints every table below; the preset table is cut here to the
-presets a floor drops and the cast preset nearest a threshold.
+Five boots, eight threads, on an Apple M3 Max (16 cores), with other builds
+running: six runs at a load average of 19–36, and a seventh at 100–150. The
+readings are deterministic: all seven printed the same values. The timings
+are not. The render's time moves with the load and every share with it, so
+read the new passes in milliseconds, which moved by under 0.7 ms. A run
+takes about 90 s at the lighter load and 270 s at the heavier. The example
+prints every table below; the preset table is cut here to the presets a
+floor drops and the cast preset nearest a threshold.
+
+The new pass on held C4s whose make-up is known (1.8 s, as the phrase holds
+it; the 8 harmonics fall off as 1/k; the low-pass is four one-pole stages at
+500 Hz):
+
+```text
+signal                              rough  noise
+sine                                 0.00   0.00
+8 harmonics                          0.01   0.00
+8 harmonics, ±25 cents at 5 Hz       0.18   0.01
+8 harmonics, ±50 cents at 5 Hz       0.86   0.05
+8 harmonics, ±50 cents at 6 Hz       1.83   0.06
+8 harmonics, ±100 cents at 5 Hz      2.57   0.15
+sines at 1000 and 1030 Hz            0.08   0.00
+white noise                          3.05   1.00
+white noise, low-passed              4.09   0.99
+```
 
 The vet, over 2,000 draws: 1,956 land (97.8%), 41 are silent (2.0%), 3 are
 DC-dominated (0.1%); under #62's weights, 97.9%, 1.9% and 0.1%.
 
-Cost per patch, one run (ms):
+Cost per patch (ms), at a load average of 19–36:
 
 ```text
 step                                 median      p90    share
@@ -533,6 +590,21 @@ bands: spk, hi (new pass)              2.09     3.28     1.1%
 peaks: rough + noise (8192 FFT)        3.97    13.87     2.1%
 pitch: period + wobble (NACF)          2.52     4.24     1.4%
 mute (per-note RMS)                    0.13     0.14     0.1%
+```
+
+The same at 100–150:
+
+```text
+step                                 median      p90    share
+featurize (render, vet, φ, face)     714.70  2029.99   100.0%
+  render                             667.47  1984.35    93.4%
+  vet + normalize                      2.88    38.10     0.4%
+  φ (audio + struct)                   7.91    82.28     1.1%
+  face                                 1.94    22.03     0.3%
+bands: spk, hi (new pass)              2.29    23.06     0.3%
+peaks: rough + noise (8192 FFT)        4.63    66.84     0.6%
+pitch: period + wobble (NACF)          2.63    37.29     0.4%
+mute (per-note RMS)                    0.13     0.18     0.0%
 ```
 
 The candidates over vetted draws, and the share that clears each threshold
@@ -570,6 +642,8 @@ the best of 48, on the same scale, where u has a spread of 2.44:
 ```text
 floor     rule                                            clears   (#62)   to 8  to 40  renders/  P(≥2|8)  spread     Δu Δbest48
 vet only  the fill as it is: no floor                     100.0%  100.0%    8.6   41.4      1.02     100%    1.00  +0.00   +0.00
+          moves: motion_fast -0.00σ, tail_ratio +0.00σ, centroid_mean +0.00σ, motion_mid -0.00σ
+          removes 0% overall; more of: none
 noise     noise ≤ 0.5                                      83.0%   84.2%   10.8   50.6      1.23     100%    0.96  +0.19   -0.02
           moves: flatness_mean -0.30σ, n_noise -0.29σ, rolloff_mean -0.23σ, zcr_mean -0.23σ
           removes 17% overall; more of: noise 76% of 303, granular 34% of 47, ringmod 31% of 58, vibrato 26% of 90, phaser 24% of 62, bitcrush 23% of 65
@@ -594,6 +668,7 @@ register  spk ≥ 0.2 (#62's laptop threshold)               80.8%   90.8%   10.
 free      flatness ≤ 0.1 and hi_face ≤ 0.2 (no new pass)   87.8%   88.1%   10.2   48.8      1.16     100%    0.97  +0.20   -0.02
           moves: flatness_mean -0.30σ, rolloff_mean -0.26σ, zcr_mean -0.25σ, n_noise -0.24σ
           removes 12% overall; more of: noise 63% of 303, duck 18% of 44, phaser 18% of 62
+(to 8, to 40: draws consumed, mean over 5 boots; renders/: draws per patch that lands; P(≥2|8): the share of the 243 runs of 8 vetted draws with two that clear; spread: mean pairwise distance in standardized φ; Δu, Δbest48: search_health's listener, the mean and the best of 48; each against all vetted draws, on one scale, where u has sd 2.44)
 ```
 
 How the readings relate, and the proposed floor's rules:
@@ -611,7 +686,7 @@ draws with a noise source: 303, of which 58 clear the floor
 #62's weights: effective n 1328 of 1956
 ```
 
-Register by lowest oscillator octave:
+Register by lowest oscillator octave (#62's pattern, on `spk`):
 
 ```text
 lowest octave   -2   465 draws   spk < 0.2:   54%   spk < 0.05:   19%
