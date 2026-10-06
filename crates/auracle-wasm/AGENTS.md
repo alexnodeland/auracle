@@ -70,4 +70,14 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 
 Each module's tests sit beside it, in a file of their own: `live.rs`'s in
 `live/tests.rs`, and so on; `lib.rs`'s (`WasmEngine` and the farm's exports)
-are in `src/tests.rs` (`../AGENTS.md` § Coverage says why).
+are in `src/tests.rs` (`../AGENTS.md` § Coverage says why). The integration
+tests: `tests/boot_agrees.rs` (the cross-target seed contract),
+`tests/shipped_wirings.rs` (the shipped wirings are current) and
+`tests/no_alloc.rs` (a quantum of play allocates nothing; a counting
+allocator, so one test in its binary).
+
+A binding test asserts what the binding adds: the reply's shape and field
+names, refusals and their words, `u32` ids, key order, buffers, handles.
+It compares the reply with the engine's own answer once; the engine's fact
+has its test in `auracle-session`, so a binding test builds no twin engine
+to prove it again.

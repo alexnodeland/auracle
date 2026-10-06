@@ -3407,9 +3407,9 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
     let none = "there is no sound open to edit";
     let op = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
     let guess =
-        r#"{"op":{"op":"insert","key":"node","kind":"delay"},"socket":"out","family":"delay"}"#; // voice: name
-                                                                                                 // The member the bank lets go first: with no taste to rank by, the
-                                                                                                 // oldest.
+        r#"{"op":{"op":"insert","key":"node","kind":"delay"},"socket":"out","family":"delay"}"#;
+    // The member the bank lets go first: with no taste to rank by every
+    // member ties, and the tie goes to the first in the pool.
     let lowest = engine.engine.pool[0].id as u32;
     let tree = engine.tree_json_of(lowest);
     assert_eq!(engine.edit_structure_apply(op), none);
