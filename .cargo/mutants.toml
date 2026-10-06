@@ -1,0 +1,63 @@
+# cargo-mutants (https://mutants.rs), the version the Makefile's
+# MUTANTS_VERSION names: it changes the code one small way at a time (a
+# function returns a default, a `<` becomes `<=`, a `+` a `-`) and runs the
+# mutated crate's fast tier on each change. A change no test fails on is a
+# survivor: code the tests run without checking what it does
+# (crates/AGENTS.md § Mutation testing). `make mutants` runs it, with the
+# fast tier's filter (the Makefile's SEARCH_FLOOR and SLOW_TESTS), which is
+# named there and nowhere else; the Mutants workflow (mutants.yml) runs
+# `make mutants` too.
+#
+# A key here is the same as its command-line option; a list here is added to
+# the command line's.
+
+# nextest, as every Rust test job runs: it runs each test in its own process,
+# so a mutant is judged by the first test that fails on it, and it takes the
+# fast tier's filter expression.
+test_tool = "nextest"
+
+# The tests render audio sample by sample, so they build optimized, as
+# `make test` and CI build them (Cargo.toml's test-fast profile says why).
+profile = "test-fast"
+
+# A mutant is tested by its own crate's tests only (cargo-mutants' default,
+# written so it stays). A survivor in auracle-grammar is then code that
+# auracle-grammar's own tests don't check, whatever the session crate's tests
+# happen to notice: the same standard as each crate's coverage floor.
+test_workspace = false
+
+# To every cargo call, the build and the test run alike: the libraries, the
+# binaries and the test targets (the Makefile's TEST_TARGETS). The examples
+# are never mutated (cargo-mutants mutates library and binary code only), and
+# this keeps them out of the build too: left to itself, nextest compiles all
+# 34 of them for each mutant and runs none.
+additional_cargo_args = ["--lib", "--bins", "--tests"]
+
+# To the test run only: stop at the first failing test, and stop the tests
+# still running with it. One failure is the verdict (the mutant is caught),
+# and a DSP test still rendering would otherwise run to its end first.
+additional_cargo_test_args = ["--max-fail=1:immediate"]
+
+# A mutant's tests are stopped at 5 times the unmutated run's test time
+# (cargo-mutants' default, written so it stays, with its floor of 20 s), and
+# the mutant is reported as a timeout, never as a survivor. That makes a
+# limit too tight the worse mistake: a survivor stopped early is a finding
+# hidden. Measured at db2103f, two mutants at a time on a shared 16-core Mac
+# (load 17 to 76): auracle-taste's survivors ran their tests in up to 4.0
+# times the unmutated time (1.1 at the median), auracle-session's in up to
+# 2.3; at 3, some would have been timeouts. What the limit costs is a mutant
+# that hangs, which is rare: 2 of taste's 622 timed out, both at the 20 s
+# floor, and none of a sample of 21 of session's. In CI one mutant runs at
+# a time, on a runner nothing else uses.
+timeout_multiplier = 5.0
+
+# Not mutated: what is not behavior. Each entry says why.
+exclude_re = [
+    # A hand-written `Debug` (RenderMemo, AuditionClip, Take): it prints a
+    # summary in place of every sample, for a developer's `{:?}`. No player
+    # sees it, nothing is saved or parsed from it, and no result depends on
+    # it, so "returns Ok(()) and prints nothing" is a change no behavior can
+    # show. A hand-written `Display` (there is none today) would not be
+    # excluded: its text is a message, which can reach the screen.
+    '<impl (std::)?(fmt::)?Debug for ',
+]

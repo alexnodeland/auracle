@@ -28,6 +28,7 @@
 #          the wasm32-unknown-unknown target) and its llvm-tools component,
 #          wasm-pack 0.15.0, cargo-nextest (the Rust test runner),
 #          cargo-llvm-cov at the Makefile's LLVM_COV_VERSION (make coverage),
+#          cargo-mutants at exactly the Makefile's MUTANTS_VERSION (make mutants),
 #          the browser tests' npm packages and Playwright's Chromium, the git
 #          hooks, and the app's engine (make wasm)
 #   film   .venv-voice (the voice's pinned torch/kokoro/whisper set plus the
@@ -85,6 +86,13 @@ llvm_cov="$(sed -n 's/^LLVM_COV_VERSION := //p' Makefile)"
 have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }')"
 if [ -z "$have" ] || [ "$(printf '%s\n%s\n' "$llvm_cov" "$have" | sort -V | head -1)" != "$llvm_cov" ]; then
   cargo install cargo-llvm-cov --version "$llvm_cov" --locked
+fi
+# `make mutants`: cargo-mutants at exactly the version the Makefile names, as
+# CI pins it (mutants.yml). Another version can list other mutants, so a
+# local run and CI's would not agree on what survives.
+mutants="$(sed -n 's/^MUTANTS_VERSION := //p' Makefile)"
+if [ "$(cargo mutants --version 2>/dev/null | awk '{ print $2 }')" != "$mutants" ]; then
+  cargo install --locked "cargo-mutants@$mutants"
 fi
 
 say "Node and the browser tests"
