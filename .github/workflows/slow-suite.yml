@@ -9,9 +9,10 @@ name: Slow suite
 #   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
 #   every test NOT named there.
 # - Browser: the specs tagged `@slow` (~35 min of test time in one worker:
-#   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and
-#   any tagged `@quarantine`, a flaky test moved out of the gate until it is
-#   fixed. The fast tier runs `--grep-invert "@slow|@quarantine"`.
+#   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and,
+#   in a job of their own, any tagged `@quarantine`: a flaky test moved out
+#   of the gate until it is fixed, which names its issue (testing.md §
+#   Flakes). The fast tier runs `--grep-invert "@slow|@quarantine"`.
 #
 # The nightly flake hunt is its own workflow (flake-hunt.yml), so its hour
 # never holds this one's queue on main.
@@ -35,7 +36,9 @@ name: Slow suite
 # - on main, in full: the latest push, and nightly. A failure there opens an
 #   issue titled "Slow suite failing on main", or comments on it if one is
 #   already open, so a regression that merged on the fast tier is found
-#   within one merge or one night. Latest only: a run in progress finishes,
+#   within one merge or one night. A quarantined test's failure is not one:
+#   it is said on the test's own issue, and the run stays green, so that
+#   issue means a new regression and nothing else. Latest only: a run in progress finishes,
 #   and of the pushes that land meanwhile only the newest waits, since its
 #   run covers everything before it. A batch from the merge queue lands as
 #   two or three merges seconds apart; a run whose commit main has already
@@ -43,7 +46,8 @@ name: Slow suite
 # - on demand (Actions → Slow suite → Run workflow), in full.
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
-# Rust leg and three browser runners). The account runs at most 20 jobs at
+# Rust leg and three browser runners; the quarantined tests' one runner
+# starts once the browser runners are done). The account runs at most 20 jobs at
 # once. The merge queue's run of CI, the full gate, holds about 18 at its
 # widest: twelve browser runners, the Site job, the Worker protocol job, the
 # three Coverage runners and one more for a Lint, Web or Doctests job still
@@ -184,11 +188,11 @@ jobs:
         with:
           tier: slow
 
-  # The @slow specs, and any @quarantine'd out of the gate while it is fixed,
-  # in six shards, dealt by main's last timings for this tier (see
-  # tests/web/shard.mjs): a few of these tests take ~3 min each, so the split
-  # by count left one runner with twice another's work. Three run at a time
-  # (`max-parallel`), so the six take two rounds of about seven minutes.
+  # The @slow specs, in six shards, dealt by main's last timings for this
+  # tier (see tests/web/shard.mjs): a few of these tests take ~3 min each, so
+  # the split by count left one runner with twice another's work. Three run
+  # at a time (`max-parallel`), so the six take two rounds of about seven
+  # minutes. A test tagged @quarantine too is the quarantine job's.
   browser:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
@@ -226,7 +230,114 @@ jobs:
           name: slow
           shard: ${{ matrix.shard }}
           index: ${{ strategy.job-index }}
-          args: --grep "@slow|@quarantine"
+          args: --grep "@slow" --grep-invert "@quarantine"
+
+  # The @quarantine specs: flaky tests out of the gate while they are fixed
+  # (testing.md § Flakes), still run so they are still seen. Each names its
+  # flake issue (`annotation: { type: "issue", description: "#N" }`, which
+  # `make spec-lint` checks), and a failure is said there (the jobs below),
+  # not here: the run step may fail and this job stays green. What no issue
+  # owns turns the run red in the next job. One runner, once the slow browser
+  # runners are done, so the run holds at most four at once. With nothing
+  # quarantined it runs no test.
+  quarantine:
+    name: Quarantined browser
+    needs: [scope, engine, browser]
+    if: ${{ !cancelled() && needs.engine.result == 'success' }}
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
+    # As the slow browser runners: the global timeout five minutes under the
+    # job's limit.
+    timeout-minutes: 30
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 25
+    outputs:
+      outcome: ${{ steps.run.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - id: run
+        continue-on-error: true
+        uses: ./.github/actions/browser-shard
+        with:
+          tier: slow
+          name: quarantine
+          shard: "1/1"
+          index: "0"
+          args: --grep "@quarantine"
+
+  # A quarantined run that failed: one report of it (linked from the run's
+  # summary, traces and all), and which issue each failed test is said on
+  # (tests/web/flakes.mjs). A failure no issue owns (a test naming none, one
+  # cut short, an error outside the tests, a failed run with no failed test)
+  # is not a known flake: this job fails on it, and the run is red.
+  report-quarantine:
+    name: Quarantined browser report
+    needs: quarantine
+    if: ${{ !cancelled() && needs.quarantine.outputs.outcome == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      issues: ${{ steps.who.outputs.issues }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: quarantine
+          failed: "true"
+      - name: Which issue each failure is said on
+        id: who
+        run: cd tests/web && node flakes.mjs quarantined merged.json --outcome failure
+      - name: What no issue owns
+        if: steps.who.outputs.unowned != '0'
+        run: |
+          echo "::error::The quarantined tests' run failed in a way no flake's issue owns; the run's summary says how."
+          exit 1
+
+  # Each issue whose quarantined test failed on main gets one comment: the
+  # test, how many of its runs failed and what the first said, and the run.
+  # Nothing here is a verdict on main.
+  file-quarantine:
+    name: Say it on #${{ matrix.issue }}
+    needs: report-quarantine
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      needs.report-quarantine.outputs.issues != '' &&
+      needs.report-quarantine.outputs.issues != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.report-quarantine.outputs.issues) }}
+    steps:
+      # A local action: the job checks out first.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
+        with:
+          issue: ${{ matrix.issue }}
+          failed: ${{ matrix.failed }}
+          detail: ${{ matrix.detail }}
+          advice: >-
+            This test is quarantined under this issue: out of the gate, it runs
+            in the Slow suite's job for quarantined tests, where a failure is
+            said here and leaves the suite green. The run's summary links a
+            report with the failed run's trace. The PR that fixes it removes
+            the @quarantine tag and its issue annotation (docs/process.md §
+            Flakes).
 
   # The runners' reports as one HTML report when one failed, and on main this
   # tier's timings for its next deal, as ci.yml's `report` job does.
@@ -247,9 +358,11 @@ jobs:
   # A red slow tier on main is a regression that merged on the fast tier.
   # Nobody is watching a nightly run, so it files an issue: one open issue at
   # a time, commented on by every further failing run until someone closes it.
+  # A quarantined test's failure is not among them: its job stays green, and
+  # only a failure no issue owns fails report-quarantine.
   report:
     name: Report a failure on main
-    needs: [scope, rust, engine, browser]
+    needs: [scope, rust, engine, browser, quarantine, report-quarantine]
     if: >-
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'schedule') &&

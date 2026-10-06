@@ -19,8 +19,8 @@ this table.
 | Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
-| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below | Any JS |
-| Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
+| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`) | Any JS, the Slow suite's or the Flake hunt's filing |
+| Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`); every test tagged `@quarantine` names its issue (`flakes.mjs check`, [Flakes](#flakes)) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
 | Worker protocol | `make worker-test` (after `make wasm`) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
@@ -104,7 +104,7 @@ the fast tier and the PR checks alone.
 | --- | --- | --- | --- |
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, and tells each closed issue's parent its count of sub-issues closed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
@@ -255,7 +255,9 @@ tag of the browser jobs' image, so its bump is one PR).
 **When the slow tier runs.** On `main`, in full: the newest push (its run
 covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
 failure there opens an issue titled *Slow suite failing on main*, or comments
-on the open one. On demand from the Actions tab. On a PR, only when the PR
+on the open one. A quarantined test's failure is not one: it is said on that
+test's own issue, and the run stays green, so the issue means a new
+regression ([Flakes](#flakes)). On demand from the Actions tab. On a PR, only when the PR
 carries the `full-ci` label: adding it starts a run, and every push to the
 labelled PR runs it again; a PR without it runs nothing there. Add it to a
 PR that changes what the slow tests cover, the paths the workflow used to run
@@ -281,7 +283,8 @@ test catches it.
   own reaches that. A docs PR holds two (Web, then the engine and Site), an
   app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
-  three browser runners), on `main`, latest only.
+  three browser runners; the quarantined tests' runner starts once those
+  three are done), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy: two.
 - ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
@@ -478,9 +481,15 @@ from it ([Rules](#rules)).
   state, an exact count of something a slow machine may do twice, or a
   speed bound asserted where a budget belongs ([Rules](#rules)).
 - **Or quarantine it** while it is fixed: add `@quarantine` to the test's
-  tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) with a comment naming
-  the issue. It leaves the gate and runs in the *Slow suite*, so it is still
-  run and still seen. Remove the tag in the PR that fixes it.
+  tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) and name its issue
+  beside the tag, `annotation: { type: "issue", description: "#N" }`
+  (`make spec-lint` fails a quarantined test that names none). It leaves the
+  gate and runs in the *Slow suite*'s job for quarantined tests, so it is
+  still run and still seen. A failure there is a comment on that issue (the
+  test, its runs, the run), and the job stays green: only a failure no issue
+  owns (a test cut short, an error outside the tests) turns the run red. So
+  *Slow suite failing on main* means a new regression and nothing else.
+  Remove the tag and its annotation in the PR that fixes it.
 
 ## What each browser spec pins
 

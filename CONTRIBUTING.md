@@ -164,7 +164,8 @@ may merge on the fast tier and `PR checks` alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push, whose run covers the ones before it) and
-nightly, where a failure opens an issue; on a PR
+nightly, where a failure opens an issue (a quarantined test's is a comment
+on its own issue instead); on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
 the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s

@@ -5,8 +5,9 @@ labels: flake, area:tests
 ---
 
 <!-- Title: Flaky: <file> '<test title>'
-     docs/process.md § Flakes: fix it, or tag it @quarantine (with a comment
-     naming this issue) and label this issue `quarantined`. -->
+     docs/process.md § Flakes: fix it, or tag it @quarantine with this issue
+     named beside the tag (annotation: { type: "issue", description: "#N" })
+     and label this issue `quarantined`. -->
 
 ## The test
 
@@ -31,4 +32,4 @@ labels: flake, area:tests
 
 ## Quarantined?
 
-- [ ] Tagged `@quarantine` in the spec, with a comment naming this issue
+- [ ] Tagged `@quarantine` in the spec, with this issue named beside the tag (`annotation: { type: "issue", description: "#N" }`)

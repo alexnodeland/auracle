@@ -171,23 +171,25 @@ sound:
 
 ## web-check: every web module parses (js-check), the pure-logic modules'
 ## unit tests pass, the browser specs pass their lint (spec-lint), and CI's
-## file-issue action picks the issue it should (.github/actions/file-issue)
+## flake routing passes its tests: which issue a failed test is said on
+## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue)
 web-check: js-check spec-lint
-	node --test apps/web/tests/*.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test apps/web/tests/*.test.mjs tests/web/flakes.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no
 ## file's count of a rule above tests/web/eslint-suppressions.json and none
-## below it unrecorded; the lint's own tests (eslint.test.mjs); and the
+## below it unrecorded; the lint's own tests (eslint.test.mjs); the
 ## suppressions file against the merge base with BASE (origin/main): every
-## key a file, no count risen, no file with a new entry (suppressions.mjs).
+## key a file, no count risen, no file with a new entry (suppressions.mjs);
+## and every test tagged @quarantine naming its issue (flakes.mjs check).
 ## tests/web/AGENTS.md § The lint. Run from tests/web, where the
 ## suppressions are; needs tests/web's packages (npm ci there).
 LINT_PACKAGES := .bin/eslint eslint-plugin-playwright @eslint-community/eslint-plugin-eslint-comments
 spec-lint:
 	@for p in $(LINT_PACKAGES); do test -e tests/web/node_modules/$$p || { \
 		printf '  ESLint is not installed in tests/web (no %s): run  cd tests/web && npm ci\n' "$$p"; exit 1; }; done
-	@cd tests/web && node_modules/.bin/eslint . && node --test --test-reporter=dot eslint.test.mjs && node suppressions.mjs $(BASE)
+	@cd tests/web && node_modules/.bin/eslint . && node --test --test-reporter=dot eslint.test.mjs && node suppressions.mjs $(BASE) && node flakes.mjs check
 
 build:
 	$(CARGO) build --workspace
@@ -471,7 +473,8 @@ mutants-command:
 
 # The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) or
 # `@quarantine` (testing.md § Flakes) runs in the slow tier, every other one in
-# the fast tier. Through the browser queue
+# the fast tier (in CI the Slow suite runs the quarantined ones in a job of
+# their own, which says a failure on the test's issue). Through the browser queue
 # and on a port of their own, like any local browser job (ADR-010): the port
 # is BROWSER_PORT when set, else AURACLE_TEST_PORT when the environment sets
 # it (a branch's worktree is given one; docs/process.md § The machine), else

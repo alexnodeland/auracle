@@ -383,9 +383,13 @@ how long something took is a budget, not a gate assertion.
    an injected reply the engine can overwrite, a count a slow runner can
    double, a speed bound that should be a budget, or a real race in the app.
 3. **Or quarantine it** while it is fixed: open a `flake` issue (the template
-   says what goes in it), tag the test `@quarantine` with a comment naming the
-   issue, label the issue `quarantined`. It leaves the gate and runs in the
-   *Slow suite*. The PR that fixes it removes the tag and closes the issue.
+   says what goes in it), tag the test `@quarantine` with the issue named
+   beside the tag, `{ tag: "@quarantine", annotation: { type: "issue",
+   description: "#N" } }` (`make spec-lint` fails a quarantined test that
+   names none), and label the issue `quarantined`. It leaves the gate and
+   runs in the *Slow suite*'s job for quarantined tests, where a failure is a
+   comment on its issue and never turns the suite red. The PR that fixes it
+   removes the tag and its annotation and closes the issue.
 4. **On a PR, an unrelated failure is quarantined on sight**, on its own run
    or in the queue's run that dequeued it. The failure qualifies when all
    three hold:
