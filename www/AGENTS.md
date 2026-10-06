@@ -60,9 +60,10 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   stand-in is labelled as one.
 - **Colours come from `www/brand/tokens.json`, never a literal**: a new colour
   is a token first, then `make tokens`. `make dev-check` fails on a colour
-  written in the landing page, the docs theme, the brand page, the 404, the
-  stage, the kit or a film; `www/viz/`, `theme/fonts/auracle.css` and
-  `brand/render.html` are not checked yet
+  written in the landing page, the docs theme, the live figures
+  (`www/viz/`), the brand page and its raster source, the 404, the stage,
+  the kit or a film, and on a token a figure reads that one of the pages
+  loading it (the docs' Rack and Paper, the landing page) does not define
   ([`brand/README.md`](brand/README.md#the-tokens)).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in

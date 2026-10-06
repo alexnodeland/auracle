@@ -4,7 +4,7 @@ number: 4
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-06
 originating_proposal: 4
 related_adrs: [4, 9, 11]
 ---
@@ -62,14 +62,18 @@ and printed key hints are built here; its other contracts stay in
      counts literal font sizes, spacings, radii and durations per file
      against `www/brand/sizes-baseline.json`, a ratchet that only goes down,
      and fails when a token is redefined after its block.
-   - *Still to do:* move the landing page, the brand page, the 404 and the
-     films onto the scale (their counts are in the baseline, listed by every
-     `--check`) (#145).
-     Not yet checked for colour (`NOT_YET` in `tokens.py`) (#146):
-     `www/viz/viz.js` and `viz.css` (the grammar figure's tiles glow in the
-     dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
-     (a literal fallback for `--bezel`, which Paper lacks) and
-     `www/brand/render.html` (a hand copy of six tokens, with task 3).
+   - *Progress (2026-10-06):* **every styled page is checked for colour**
+     (#146), and `NOT_YET` in `tokens.py` is empty. The grammar figure fills
+     its tiles with `--phos-a-10` and `--phos-b-10`, which on Paper are
+     Paper's own green and amber; Paper has a `--bezel`, dark on purpose, for
+     a film's ground; `www/brand/render.html` reads the brand page's tokens
+     from a generated block. The live figures are held to the tokens every
+     page that loads them defines (`ON_EVERY`). On the Rack theme nothing
+     renders differently.
+   - *Still to do:* move the landing page, the docs theme, the live figures,
+     the brand page and its raster source, the 404 and the films onto the
+     scale (their counts are in the baseline, listed by every `--check`)
+     (#145).
 2. **Voice guide** (part 2). Written 2026-09-30, as
    [`www/brand/voice.md`](../../www/brand/voice.md) under
    [ADR-013](../decisions/013-one-voice.md). It has a new line, American
