@@ -1423,6 +1423,107 @@ fn a_seed_evolving_is_never_evicted_until_its_walk_lands() {
     assert!(evolving.refine_from_inflight().is_empty());
 }
 
+/// **A ⚡ child replaces the first sound that may be replaced, never its
+/// seed.** With no generation open, ⚡'s child is a generation of its own:
+/// it displaces the member its finish would, the first EVOLVE marks "may be
+/// replaced", unless that member is the seed, which its own child never
+/// displaces. Here the seed *is* that member, the one every insert would
+/// take first, so the child must pass it over for the next one.
+#[test]
+fn a_lightning_child_replaces_the_first_it_may_replace_and_never_its_seed() {
+    let mut engine = taught(0x1E7);
+    let may = engine.may_replace();
+    assert!(may.len() >= 2, "too few marks to tell: {may:?}");
+    let seed = may[0];
+    let before: HashSet<u64> = engine.pool.iter().map(|c| c.id).collect();
+    let child = (0..16u64)
+        .find_map(|k| {
+            let (ctx, job) = engine
+                .refine_from_job(&mut StdRng::seed_from_u64(k), seed, &[])
+                .expect("the seed is in the pool");
+            let result = run_walk(&ctx, &job, engine.memo());
+            engine.refine_from_absorb(seed, result)
+        })
+        .expect("no ⚡ walk from the seed landed a child");
+    assert_eq!(engine.last_refine(), RefineOutcome::Injected);
+    let after: HashSet<u64> = engine.pool.iter().map(|c| c.id).collect();
+    let gone: Vec<u64> = before.difference(&after).copied().collect();
+    assert_eq!(
+        gone,
+        vec![may[1]],
+        "the child replaced another than the first it may"
+    );
+    assert!(after.contains(&seed), "the child replaced its own seed");
+    assert!(after.contains(&child));
+    assert_eq!(engine.pool.len(), engine.cfg.pool_size);
+}
+
+/// **A bred child's lineage names its seed, what changed, and both
+/// ratings.** For a ⚡ child and for every child of a generation, the event
+/// the bank's lineage shows has the job's parent, the diff from the seed's
+/// tree to the child's as admitted, and each side's posterior-mean utility
+/// at the time (no pick between, so the posterior's as it stands).
+#[test]
+fn a_refined_childs_lineage_names_its_seed_what_changed_and_both_ratings() {
+    let mut engine = taught(0x11E);
+    let ratings = |engine: &Engine| -> HashMap<u64, f64> {
+        engine
+            .pool
+            .iter()
+            .map(|c| (c.id, engine.utility_of(&c.phi_std)))
+            .collect()
+    };
+    let check =
+        |engine: &Engine, rating: &HashMap<u64, f64>, seed: &PatchTree, parent: u64, child: u64| {
+            let ev = engine.lineage.last().expect("an event");
+            let c = &engine.pool[engine.find(child).expect("the child is in the pool")];
+            assert_eq!(
+                (ev.kind.as_str(), ev.parent_id, ev.child_id),
+                ("refine", parent, child)
+            );
+            assert_eq!(ev.generation, engine.generation);
+            assert_eq!(ev.diff, auracle_grammar::tree_diff(seed, &c.tree));
+            assert!(!ev.diff.is_empty(), "a child the same as its seed");
+            assert_eq!(ev.parent_utility, rating[&parent]);
+            assert_eq!(ev.child_utility, engine.utility_of(&c.phi_std));
+        };
+
+    // ⚡ from the best member.
+    let rating = ratings(&engine);
+    let best = engine.pool[engine.ranked()[0].0].id;
+    let child = (0..16u64)
+        .find_map(|k| {
+            let (ctx, job) = engine
+                .refine_from_job(&mut StdRng::seed_from_u64(k), best, &[])
+                .expect("in the pool");
+            let result = run_walk(&ctx, &job, engine.memo());
+            engine
+                .refine_from_absorb(best, result)
+                .map(|child| (child, job.seed))
+        })
+        .expect("no ⚡ walk landed a child");
+    check(&engine, &rating, &child.1, best, child.0);
+
+    // A generation, every job but the last absorbed, so no finish retires a
+    // child before it is checked.
+    let rating = ratings(&engine);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x11F))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len() - 1).collect();
+    let mut checked = 0;
+    for (job, r) in jobs.iter().zip(farm_walks(&ctx, &jobs, &order)) {
+        if let Some(child) = engine.refine_absorb(r) {
+            check(&engine, &rating, &job.seed, job.parent_id, child);
+            checked += 1;
+        }
+    }
+    assert!(
+        checked > 0,
+        "no child of the generation landed: nothing was compared"
+    );
+}
+
 /// **The seeds and may-be-replaced marks are what a generation does.**
 /// `next_seeds` names the parents `refine_jobs` then takes, and
 /// `may_replace` bounds what that generation's end retires:
