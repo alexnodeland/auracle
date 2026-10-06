@@ -1099,8 +1099,9 @@ EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 One lane, bottom right, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
 jumps the queue (and honours `replace` too); an undo keeps its full window,
-and when the window closes its button is removed. Read the comment above
-`note()` before adding a toast.
+and when the window closes its button is removed. The queue is
+`apps/web/toasts.js` (`createToastLane`); read its rules before adding a
+toast.
 
 ## ⌘Z
 
