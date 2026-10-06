@@ -6,7 +6,10 @@ use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use thiserror::Error;
 
 use crate::genome::clamp_param;
-use crate::term::PatchTree;
+use crate::term::{
+    CaptureMode, DriveMode, FilterKind, InputChannel, NoiseColor, PatchTree, PitchBand, TableShape,
+    Waveform, INPUT_SLOTS,
+};
 
 /// A knob-edit value.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,22 +39,22 @@ pub enum EditError {
     Decode(String),
 }
 
-/// Category count for enum sites, by site name.
-fn enum_arity(site: &str) -> Option<usize> {
-    match site {
-        "wave" => Some(4),
-        "color" => Some(2),
-        "fkind" => Some(4),
-        "oct" => Some(5),
-        "table" => Some(8),
-        "dmode" => Some(3),
-        "input" => Some(crate::term::INPUT_SLOTS),
-        "channel" => Some(crate::term::InputChannel::ALL.len()),
-        "band" => Some(crate::term::PitchBand::ALL.len()),
-        "play" => Some(crate::term::CaptureMode::ALL.len()),
-        _ => None,
-    }
-}
+/// Every selector a knob gesture sets, with its category count: each read
+/// from its type's `ALL`, so a new waveform or capture mode is a new option
+/// here too. An index past the last is clamped to it.
+const SELECTORS: [(&str, usize); 10] = [
+    ("wave", Waveform::ALL.len()),
+    ("color", NoiseColor::ALL.len()),
+    ("fkind", FilterKind::ALL.len()),
+    // Octave −2..=+2.
+    ("oct", 5),
+    ("table", TableShape::ALL.len()),
+    ("dmode", DriveMode::ALL.len()),
+    ("input", INPUT_SLOTS),
+    ("channel", InputChannel::ALL.len()),
+    ("band", PitchBand::ALL.len()),
+    ("play", CaptureMode::ALL.len()),
+];
 
 fn is_structural(site: &str) -> bool {
     // `modop` and `pairop` joined in wave 2C: which CV processor sits in a mod
@@ -106,7 +109,10 @@ pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<Patc
             slot.value = ChoiceValue::F64(clamp_param(v));
         }
         (ChoiceValue::Usize(_), ParamValue::Index(i)) => {
-            let n = enum_arity(site).unwrap_or(usize::MAX);
+            let n = SELECTORS
+                .iter()
+                .find(|(s, _)| *s == site)
+                .map_or(usize::MAX, |&(_, n)| n);
             slot.value = ChoiceValue::Usize(i.min(n.saturating_sub(1)));
         }
         _ => return Err(EditError::KindMismatch(addr.into())),
@@ -119,3 +125,6 @@ pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<Patc
     edited.inherit_uids(tree);
     Ok(edited)
 }
+
+#[cfg(test)]
+mod tests;

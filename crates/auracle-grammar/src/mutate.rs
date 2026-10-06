@@ -213,8 +213,9 @@ impl NodeKind {
 // declared after the last entry is the one case a const cannot see, and
 // `node_kind_all_names_every_kind` catches it by asking serde for every name.
 const _: () = {
-    const fn named(k: NodeKind) {
-        match k {
+    let mut i = 0;
+    while i < NodeKind::ALL.len() {
+        match NodeKind::ALL[i] {
             NodeKind::Vco
             | NodeKind::Supersaw
             | NodeKind::Noise
@@ -246,10 +247,6 @@ const _: () = {
             | NodeKind::Track
             | NodeKind::Capture => {}
         }
-    }
-    let mut i = 0;
-    while i < NodeKind::ALL.len() {
-        named(NodeKind::ALL[i]);
         assert!(
             NodeKind::ALL[i] as usize == i,
             "NodeKind::ALL must list every kind once, in declaration order"
@@ -310,8 +307,11 @@ pub enum ModKind {
 }
 
 impl ModKind {
-    /// Every modulation choice, in declaration order.
-    pub const ALL: [ModKind; 16] = [
+    /// Every modulation choice, in declaration order: the table a sweep over
+    /// "every modulation a hand can set" reads, so it cannot skip the newest
+    /// one (it skipped `Steps`, the last declared, until a const below tied
+    /// the two).
+    pub const ALL: [ModKind; 17] = [
         ModKind::None,
         ModKind::Lfo,
         ModKind::Env,
@@ -328,6 +328,7 @@ impl ModKind {
         ModKind::Or,
         ModKind::Xor,
         ModKind::Switch,
+        ModKind::Steps,
     ];
 
     /// The unary CV processor this kind wraps the slot in, if any.
@@ -354,6 +355,39 @@ impl ModKind {
         })
     }
 }
+
+// `ModKind::ALL` lists every kind once, in declaration order, checked when the
+// crate compiles, as `NodeKind::ALL` is above; `mod_kind_all_names_every_kind`
+// catches a kind declared after the last entry.
+const _: () = {
+    let mut i = 0;
+    while i < ModKind::ALL.len() {
+        match ModKind::ALL[i] {
+            ModKind::None
+            | ModKind::Lfo
+            | ModKind::Env
+            | ModKind::Rand
+            | ModKind::Follow
+            | ModKind::Euclid
+            | ModKind::Quantize
+            | ModKind::Slew
+            | ModKind::Rectify
+            | ModKind::Hold
+            | ModKind::Min
+            | ModKind::Max
+            | ModKind::And
+            | ModKind::Or
+            | ModKind::Xor
+            | ModKind::Switch
+            | ModKind::Steps => {}
+        }
+        assert!(
+            ModKind::ALL[i] as usize == i,
+            "ModKind::ALL must list every kind once, in declaration order"
+        );
+        i += 1;
+    }
+};
 
 /// Default knob values for a hand-placed [`ModOp`], as `(p0, p1)`.
 ///
@@ -1090,7 +1124,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 let parent = node_at_mut(&mut out.root, parent_path)
                     .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
                 if let Some((a, b)) = binary_children_mut(parent) {
-                    let keep = take(if last == 0 { b } else { a });
+                    let keep = match last {
+                        0 => take(b),
+                        1 => take(a),
+                        // A binary module has two inputs: there is no `/2`.
+                        _ => return Err(StructError::NoSuchNode(key.clone())),
+                    };
                     *parent = keep;
                     return finish(out);
                 }
@@ -1768,3 +1807,6 @@ fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     tree.ensure_uids();
     Ok(tree)
 }
+
+#[cfg(test)]
+mod tests;

@@ -52,3 +52,9 @@ in [`../AGENTS.md`](../AGENTS.md).
 
 `cargo test -p auracle-grammar --profile test-fast`. Never in debug: the
 compiler recurses with large modules on the stack and overflows.
+
+Each module's tests sit beside it, in a file of their own: `compile.rs`'s in
+`compile/tests.rs`, and so on (`crates/AGENTS.md` § Coverage says why).
+`src/tests.rs` holds the gates that cross modules (the edit gate, the
+finite-prior gate, the identity gates, the two samplers) and the fixtures
+several modules' tests share.
