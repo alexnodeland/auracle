@@ -408,8 +408,18 @@ def size_sections(src: dict, surface: str | None) -> list[tuple[str, list[tuple[
     return out
 
 
+def sized_as(surface: str) -> str:
+    """The surface whose sizes a surface's pages read: the one its consumer
+    writes, which for the docs' Paper is the docs' (both themes share the
+    :root that holds them)."""
+    for c in CONSUMERS:
+        if any(s == surface for _, s in c["rules"]):
+            return sizes_surface(c) or surface
+    return surface
+
+
 def size_names(src: dict, surface: str | None) -> dict[str, str]:
-    return {n: v for _, toks in size_sections(src, surface) for n, v, _ in toks}
+    return {n: v for _, toks in size_sections(src, sized_as(surface) if surface else None) for n, v, _ in toks}
 
 
 def reduced_motion(src: dict) -> list[tuple[str, str]]:

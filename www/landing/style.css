@@ -160,10 +160,10 @@
      scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
      has sizes of its own, and a lone glyph is sized to its button */
   --t-label: 11px;                /* silk caps: panel labels, tabs, buttons; the floor for text */
-  --t-value: 12px;                /* mono values, readouts, small print */
+  --t-value: 0.75rem;             /* landing: 12 px, in rem as the prose is, so small print follows the reader's font size */
   --t-body: 1rem;                 /* landing: prose, read at arm's length */
-  --t-voice: 17px;                /* the model speaking (Newsreader italic), and nothing else */
-  --t-title: 21px;                /* a title: a sound's name, a card's heading, the wordmark */
+  --t-voice: 1.0625rem;           /* landing: 17 px, in rem: the model speaking */
+  --t-title: 1.3125rem;           /* landing: 21 px, in rem: a column's or a card's heading */
   --t-display: clamp(2.4rem, 6.4vw, 4.6rem); /* landing: the hero line, Jost 300 with negative tracking: an instrument panel's signage */
   --t-canvas: 12px;               /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
 

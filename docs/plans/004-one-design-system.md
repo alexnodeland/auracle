@@ -74,10 +74,13 @@ and printed key hints are built here; its other contracts stay in
    - *Progress (2026-10-06):* **every surface is on the scale** (#145): the
      landing page, the docs theme and the live figures, the brand page and
      its raster source, the 404, the film stage and the films. The docs hold
-     their prose and headings as sizes of their own, and the films set their
-     text on a frame tier, the scale's ratio continued past the page's steps
-     (`--t-frame-n`); what has no step says why. `sizes-baseline.json` is
-     empty.
+     their prose, lede and headings as sizes of their own, and the films set
+     their text on a frame tier, the scale's ratio continued past the page's
+     steps (`--t-frame-n`); what has no step says why. The site's pages
+     restate in rem the steps their prose and small print use, so their text
+     still follows the reader's font size, and a live figure's text holds at
+     11 px (`--t-micro`) on every page that loads it. `sizes-baseline.json`
+     is empty.
    - *Still to do:* the films' drawing helpers (the kit's `textBlock()`, a
      film's `label()` or `txt()`) take a number for a label's size, which the
      check does not count, so those labels are not yet on the frame tier.

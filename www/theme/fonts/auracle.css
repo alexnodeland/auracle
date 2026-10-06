@@ -99,7 +99,7 @@ thead th,
    italic belongs to the model alone, in the app (www/brand/voice.md, "The
    model's voice"), and `<em>` everywhere here is ordinary emphasis. */
 .content .lede {
-    font-size: var(--t-title);
+    font-size: var(--t-lede);
     font-weight: 300;
     line-height: 1.45;
     color: var(--silk-dim);

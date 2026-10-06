@@ -120,15 +120,29 @@ rasters), the 404, and the film stage. It holds:
 - **each surface's own sizes**: the rack's type tier in the app (`--t-rack-*`,
   drawn through its camera and sized at zoom 1), the landing page's display
   tier, prose size and wide steps (`--s8`, `--s9`), the headings of the brand
-  page and the 404, the docs' prose and headings (`--t-prose`, `--t-h1`,
-  `--t-h3`), and the film stage's frame tier: a film's text is set in pixels
-  of its 1920 × 1080 frame, on the type scale's ratio continued past the
-  page's steps (`--t-frame-n` is step n, 12 × 1.2ⁿ rounded, which
-  `test_tokens.py` holds). The docs' sizes go in their stylesheet's `:root`,
-  which both themes share: a consumer whose families' rule holds no palette
-  names the surface whose sizes it writes (`sizes` in `tokens.py`). A surface
-  may restate a shared size for itself, with a note that says why (the landing
-  page reads its prose at `1rem`).
+  page and the 404, the docs' prose, lede and headings (`--t-prose`,
+  `--t-lede`, `--t-h1`, `--t-h3`), the live figures' text (`--t-micro`, on
+  each page that loads them), and the film stage's frame tier: a film's text
+  is set in pixels of its 1920 × 1080 frame, on the type scale's ratio
+  continued past the page's steps (`--t-frame-n` is step n, 12 × 1.2ⁿ
+  rounded, which `test_tokens.py` holds). The docs' sizes go in their
+  stylesheet's `:root`, which both themes share: a consumer whose families'
+  rule holds no palette names the surface whose sizes it writes (`sizes` in
+  `tokens.py`), and the check reads them as Paper's too. A surface may
+  restate a shared size for itself, with a note that says why.
+
+  **A page's text follows the reader's font size.** The site's pages restate
+  in rem the steps their prose and small print are set in, so a reader who
+  sets a larger default in the browser gets larger text, as before the
+  scale: the docs every step their theme reads, at mdBook's 10 px root
+  (`--t-body` is `1.4rem`, 14 px), and the landing page, the brand page and
+  the 404 theirs at the browser's 16 px (the landing page reads its prose at
+  `1rem`, its small print at `0.75rem`). At the default the sizes are the
+  steps' own. Two kinds of text hold their size in px: the landing page's
+  labels at the floor (`--t-label`, `--t-micro`), as they always have, and a
+  live figure's text (`--t-micro`, 11 px), because a figure lays its drawing
+  out around its labels and a label that grew would run off it.
+  `test_tokens.py` holds the docs to rem and the figures to px.
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS
 beside it.

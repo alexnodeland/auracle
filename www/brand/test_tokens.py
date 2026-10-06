@@ -329,6 +329,8 @@ class TheSizesRatchet(unittest.TestCase):
         rules = dict(re.findall(r"^(\S[^{\n]*) \{\n(.*?)^\}", T.render_block(src, c), re.S | re.M))
         self.assertIn("--t-prose:", rules[":root"])
         self.assertNotIn("--t-prose:", rules["html.coal"] + rules["html.light"])
+        # …so the check reads them as Paper's too.
+        self.assertEqual(T.size_names(src, "docs-paper"), T.size_names(src, "docs"))
         # Without the name, the families' rule has no surface, and the docs'
         # sizes have nowhere to go: the source is refused.
         unnamed = {k: v for k, v in c.items() if k != "sizes"}
@@ -338,6 +340,29 @@ class TheSizesRatchet(unittest.TestCase):
             self.assertIn(f"{T.SOURCE}: docs has sizes, but no consumer writes them (they go in the rule that holds the families)", T.validate_sizes(src))
         finally:
             T.CONSUMERS = consumers
+
+    def test_the_docs_type_follows_the_readers_font_size(self):
+        # mdBook sets its root at 62.5% so a theme in rem scales with the
+        # reader's font size. Every type size the docs' theme reads is in rem,
+        # at that root, or the books stop following it.
+        src = T.load()
+        names = T.size_names(src, "docs")
+        read = set(re.findall(r"var\(--(t-[a-z0-9-]+)\)", source("www/theme/fonts/auracle.css")))
+        self.assertTrue(read)
+        for n in sorted(read):
+            self.assertRegex(names.get(n, ""), r"^\d+(\.\d+)?rem$", f"--{n} in the docs' :root")
+
+    def test_a_figures_text_holds_its_size_on_every_page_that_loads_it(self):
+        # A figure lays its drawing out around its labels: text that followed
+        # the reader's font size would run off it. So whatever a figure's text
+        # reads is in px on each page that loads the runtime.
+        src = T.load()
+        read = set(re.findall(r"var\(--(t-[a-z0-9-]+)\)", source("www/viz/viz.css")))
+        self.assertTrue(read)
+        for surface in ("docs", "docs-paper", "landing"):
+            names = T.size_names(src, surface)
+            for n in sorted(read):
+                self.assertRegex(names.get(n, ""), r"^\d+px$", f"--{n} on {surface}")
 
     def test_the_frames_type_is_the_scales_ratio_continued(self):
         # A film's text is set in pixels of its frame, on the type scale's

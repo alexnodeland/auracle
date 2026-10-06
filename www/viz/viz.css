@@ -11,6 +11,10 @@
  * makes these readable at a glance: GREEN IS SOUND, AMBER IS THE MODEL'S MIND.
  * A figure about a waveform is green. A figure about a posterior is amber. A
  * figure about both says which is which by colour alone.
+ *
+ * Its text is set at --t-micro, 11px on every page that loads it, where the
+ * page's prose is in rem and follows the reader's font size. A figure lays
+ * its drawing out around its labels, so a label that grew would run off it.
  */
 
 .viz {
@@ -36,7 +40,7 @@
    axis name — the tracking law says mono gets no letter-spacing. */
 .viz text {
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
   letter-spacing: 0;
   fill: var(--silk-dim);
 }
@@ -46,7 +50,7 @@
    and these are glyphs at the floor on a dark panel — the tier below reads as unlit. */
 .viz .v-axis {
   fill: var(--silk-dim);
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
 }
 
 .viz .v-grid {
@@ -68,7 +72,7 @@
    label the figure had deliberately painted green went black too. */
 .viz .v-num {
   fill: var(--fg, var(--silk));
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
   font-variant-numeric: tabular-nums;
 }
 
@@ -92,7 +96,7 @@
   align-items: center;
   gap: var(--s2);
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
   color: var(--silk-dim);
 }
 
@@ -114,7 +118,7 @@
 
 .viz-btn {
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
   color: var(--fg, var(--silk));
   background: var(--panel-hi);
   border: 1px solid var(--hairline);
@@ -162,7 +166,7 @@
 .viz-readout {
   margin-top: var(--s3);
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: var(--t-label);
+  font-size: var(--t-micro);
   line-height: 1.55;
   color: var(--silk-dim);
   min-height: 1.55em;
