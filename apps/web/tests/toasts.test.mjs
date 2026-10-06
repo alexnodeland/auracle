@@ -336,3 +336,118 @@ test("a remark about the player's sounds waits its turn behind other remarks, ho
   assert.ok(REMARK * 3 - 3000 > TOAST_STALE_MS, "it waited longer than the stale age");
   assert.deepEqual(l.shown.slice(-1), [replaced]);
 });
+
+// #183: the three paths by which a remark about the player's sounds was still
+// taken off the lane before it was read, after #129. Each was found in the
+// review of #129's fix; the words are the app's.
+
+// Keep a sound as new, and keep another before the first toast shows. The
+// second commit's reveal (`replace: "commit"`) took the first one's place,
+// and Woodblock was never named.
+test("replace: a later word on its key doesn't take a waiting remark about the player's sounds; it waits behind it", { todo: "#183" }, (t) => {
+  const l = setup(t);
+  l.say("Picked Glass Pad over Soft Wash.");
+  l.wait(1000);
+  const first = "Kept Noisy Pluck as new. It replaced the lowest-rated sound it could: Woodblock.";
+  l.say(first, { replace: "commit", bank: true });
+  l.wait(1000);
+  const reveal = "B was your edit, and you picked it.";
+  l.say(reveal, { replace: "commit" });
+  assert.deepEqual(l.waiting(), [first, reveal]);
+  // The second commit lands: its own remark about the player's sounds takes
+  // the reveal's place, as a later word on the same thing does.
+  l.wait(1000);
+  const second = "Kept Noisy Bell as new: B was your edit, and you picked it. It replaced the lowest-rated sound it could: Tine.";
+  l.say(second, { replace: "commit", bank: true });
+  assert.deepEqual(l.waiting(), [first, second]);
+  assert.deepEqual(l.removed, [reveal]);
+  l.wait(NEVER);
+  assert.deepEqual(l.shown, ["Picked Glass Pad over Soft Wash.", first, second]);
+});
+
+test("replace: a later word on its key leaves a remark about the player's sounds on screen for its whole window", { todo: "#183" }, (t) => {
+  const l = setup(t);
+  const bred = "⚡ bred Glass 2 from Glass Pad, and it’s ready to play. It replaced the lowest-rated sound it could: Tine.";
+  l.say(bred, { replace: "evolve-from", bank: true });
+  l.wait(1000);
+  const stopped = "⚡ stopped. Nothing was added to the pool.";
+  l.say(stopped, { replace: "evolve-from" });
+  assert.equal(l.onScreen(), bred);
+  assert.deepEqual(l.waiting(), [stopped]);
+  l.wait(TOAST_MS - 1001);
+  assert.deepEqual(l.faded, []);
+  l.wait(1);
+  assert.deepEqual(l.faded, [bred]);
+  l.wait(FADE);
+  assert.equal(l.onScreen(), stopped);
+  assert.deepEqual(l.removed, [bred]);
+});
+
+test("replace: a remark about the player's sounds still takes the place of an earlier plain word on its key", (t) => {
+  const l = setup(t);
+  const loading = "Opening those and teaching the model what you picked…";
+  l.say(loading, { replace: "warm" });
+  l.wait(2000);
+  const taught = "Your three taught it 18 picks, so it starts out pointed at you. Your three are saved.";
+  l.say(taught, { replace: "warm", bank: true });
+  assert.equal(l.onScreen(), taught);
+  assert.deepEqual(l.removed, [loading]);
+  l.wait(TOAST_MS - 1);
+  assert.deepEqual(l.faded, []);
+});
+
+// "⚡ bred Glass 2 … It replaced Tine." is on screen with OPEN IT, and ⚡ is
+// pressed again while EVOLVE POOL is breeding. The refusal shares the key
+// (`replace: "evolve-from"`), and took that toast and its button down at once.
+test("urgent: a refusal on its key interrupts a remark about the player's sounds; it comes back with its button and a fresh window", { todo: "#183" }, (t) => {
+  const l = setup(t);
+  const bred = "⚡ bred Glass 2 from Glass Pad: it’s at the top of the pool, and your edits are still open. It replaced the lowest-rated sound it could: Tine.";
+  l.say(bred, { undo: () => {}, undoLabel: "open it", replace: "evolve-from", bank: true });
+  l.wait(3000);
+  const refused = "⚡ didn’t start: EVOLVE POOL is breeding a generation. Press ⚡ again when it finishes.";
+  l.say(refused, { urgent: true, replace: "evolve-from" });
+  assert.equal(l.onScreen(), refused);
+  assert.deepEqual(l.waiting(), [bred]);
+  l.wait(REMARK);
+  assert.equal(l.onScreen(), bred);
+  l.wait(UNDO_WINDOW_MS - 1);
+  assert.equal(l.onScreen(), bred);
+  assert.deepEqual(l.faded, [refused]);
+  l.wait(1);
+  assert.deepEqual(l.faded, [refused, bred]);
+  assert.deepEqual(l.shown, [bred, refused, bred]);
+});
+
+// "Opened the preset as … It replaced Tine." waits behind a pick's undo, and
+// three cuts follow (each an undo and a remark about the player's sounds).
+// The trim, finding no plain remark, cut the one nearest the front: the
+// preset's.
+test("trim: a remark about the player's sounds waiting behind an undo isn't cut by the toasts said after it", { todo: "#183" }, (t) => {
+  const l = setup(t);
+  const pick = "Picked Glass Pad over Soft Wash.";
+  l.say(pick, { undo: () => {}, replace: "vote" });
+  const preset = "Opened the preset as First Bass. It replaced the lowest-rated sound it could: Tine.";
+  l.say(preset, { bank: true });
+  const cuts = ["Bell Jar", "Soft Wash", "Glass Rain"].map((n) => `Cut ${n}. It won’t be dealt again.`);
+  for (const c of cuts) l.say(c, { undo: () => {}, bank: true });
+  assert.deepEqual(l.waiting(), [preset, ...cuts]);
+  assert.equal(l.stacks.get(pick), 4);
+  l.wait(NEVER);
+  assert.deepEqual(l.shown, [pick, preset, ...cuts]);
+});
+
+test("trim: past three refusals waiting it cuts the oldest refusal, never a remark about the player's sounds behind them", { todo: "#183" }, (t) => {
+  const l = setup(t);
+  const saved = "Saved Glass Pad. No generation will replace it (1 of 8 saved).";
+  l.say(saved, { bank: true });
+  // Each refusal pre-empts the one before, which waits right behind it, and
+  // the remark about the player's sounds is pushed back behind them all.
+  for (const r of ["refused 1", "refused 2", "refused 3"]) l.say(r, { urgent: true });
+  assert.deepEqual(l.waiting(), ["refused 2", "refused 1", saved]);
+  // A fourth refusal makes four waiting before it takes the screen: the trim
+  // has only refusals to cut among them, and takes the one at the back.
+  l.say("refused 4", { urgent: true });
+  assert.deepEqual(l.waiting(), ["refused 3", "refused 2", saved]);
+  l.wait(NEVER);
+  assert.deepEqual(l.shown, [saved, "refused 1", "refused 2", "refused 3", "refused 4", "refused 3", "refused 2", saved]);
+});
