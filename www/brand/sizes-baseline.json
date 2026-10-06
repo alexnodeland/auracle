@@ -13,12 +13,6 @@
     "font": 5,
     "space": 4
   },
-  "www/landing/style.css": {
-    "font": 34,
-    "radius": 7,
-    "space": 26,
-    "time": 18
-  },
   "www/theme/css/variables.css": {
     "space": 1
   },

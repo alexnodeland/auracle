@@ -225,7 +225,7 @@
 
   --measure: 62ch;
   --wide: 1440px;
-  --gutter: clamp(20px, 5vw, 64px);
+  --gutter: clamp(var(--s5), 5vw, var(--s8));
   /* The page frame. 1440 + two gutters, so a screenshot published at its
      captured size fits inside it without being scaled down — see
      www/SCREENSHOTS.md for why scaling a frame of this app is not an option.
@@ -288,7 +288,7 @@ kbd {
   border: 1px solid var(--hairline);
   border-bottom-width: 2px;
   border-radius: 3px;
-  padding: 0 4px;
+  padding: 0 var(--s1);
   line-height: 1.5;
 }
 
@@ -332,7 +332,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 0.62em;
-  font-size: 1.02rem;
+  font-size: var(--t-body);
   font-weight: 500;
   letter-spacing: 0.145em;
   color: var(--silk);
@@ -363,11 +363,11 @@ kbd {
 }
 
 .bar-nav a {
-  font-size: 0.82rem;
+  font-size: var(--t-value);
   letter-spacing: 0.06em;
   color: var(--silk-dim);
   text-decoration: none;
-  padding: 5px 10px;
+  padding: var(--s1) var(--s3);
   border: 1px solid transparent;
   border-radius: 3px;
   white-space: nowrap;
@@ -441,14 +441,14 @@ kbd {
   align-items: center;
   gap: var(--s2);
   font-family: var(--font-silk);
-  font-size: 0.9rem;
+  font-size: var(--t-body);
   letter-spacing: 0.03em;
   color: var(--silk);
   text-decoration: none;
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
   border-radius: 3px;
-  padding: 11px 20px;
+  padding: var(--s3) var(--s5);
   box-shadow: var(--lift), var(--cast);
   cursor: pointer;
 }
@@ -465,7 +465,7 @@ kbd {
 .inline-go {
   display: inline-block;
   margin-top: var(--s5);
-  font-size: 0.92rem;
+  font-size: var(--t-body);
   letter-spacing: 0.03em;
 }
 
@@ -493,7 +493,7 @@ kbd {
 
 .fineprint {
   margin-top: var(--s4);
-  font-size: 0.82rem;
+  font-size: var(--t-value);
   color: var(--silk-mute);
   max-width: 42ch;
 }
@@ -505,7 +505,7 @@ kbd {
   min-width: 0;
   background: linear-gradient(180deg, var(--panel-hi), var(--panel-lo));
   border: 1px solid var(--hairline);
-  border-radius: 5px;
+  border-radius: var(--r1);
   padding: var(--s4);
   box-shadow: var(--lift), 0 24px 60px var(--black-55);
 }
@@ -566,7 +566,7 @@ kbd {
   border: 1px solid var(--card-edge);
   border-radius: 3px;
   padding: var(--s3);
-  transition: border-color 0.18s ease, background-color 0.18s ease;
+  transition: border-color var(--d-state) ease, background-color var(--d-state) ease;
 }
 .card[data-armed] {
   border-color: var(--phos-a-deep);
@@ -603,16 +603,16 @@ kbd {
 .card-play {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--s2);
   margin-top: var(--s2);
   font-family: var(--font-silk);
-  font-size: 0.78rem;
+  font-size: var(--t-value);
   letter-spacing: 0.05em;
   color: var(--phos-a);
   background: transparent;
   border: 1px solid var(--phos-a-deep);
   border-radius: 3px;
-  padding: 5px 11px;
+  padding: var(--s1) var(--s3);
   cursor: pointer;
 }
 .card-play:hover { background: var(--phos-a-09); }
@@ -655,11 +655,11 @@ kbd {
   color: var(--rack);
   background: var(--phos-b);
   border-radius: 2px;
-  padding: 3px 7px;
+  padding: 3px var(--s2);
 }
 
 .made-name {
-  font-size: 0.95rem;
+  font-size: var(--t-body);
   color: var(--phos-b);
   letter-spacing: 0;
 }
@@ -706,13 +706,13 @@ kbd {
 
 .pick {
   font-family: var(--font-silk);
-  font-size: 0.88rem;
+  font-size: var(--t-body);
   letter-spacing: 0.04em;
   color: var(--silk);
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
   border-radius: 3px;
-  padding: 10px;
+  padding: var(--s3);
   box-shadow: var(--lift);
   cursor: pointer;
 }
@@ -745,7 +745,7 @@ kbd {
 
 .pips { font-size: var(--t-micro); color: var(--phos-b-deep); letter-spacing: 0.2em; }
 
-.bars { display: grid; gap: 7px; }
+.bars { display: grid; gap: var(--s2); }
 
 .bar-row {
   display: grid;
@@ -783,7 +783,7 @@ kbd {
   height: 6px;
   background: var(--phos-b);
   box-shadow: 0 0 6px var(--phos-b-45);
-  transition: left 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: left var(--d-move) cubic-bezier(0.2, 0.7, 0.2, 1), width var(--d-move) cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .bar-whisk {
@@ -791,7 +791,7 @@ kbd {
   top: 6px;
   height: 1px;
   background: var(--phos-b-deep);
-  transition: left 0.4s ease, width 0.4s ease;
+  transition: left var(--d-move) ease, width var(--d-move) ease;
 }
 
 /* Caps at both ends. Without them a wide prior interval reads as an unstyled
@@ -821,12 +821,12 @@ kbd {
    `.model` spans (hero.js), and only those are italic. */
 .verdict {
   margin-top: var(--s3);
-  font-size: 0.94rem;
+  font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk-dim);
   min-height: 2.9em;
 }
-.verdict .model { font-size: 1.04em; }
+.verdict .model { font-size: var(--t-voice); }
 .verdict strong { color: var(--phos-b); font-style: normal; font-weight: 500; }
 
 .btn-make {
@@ -839,7 +839,7 @@ kbd {
 
 .honesty {
   margin-top: var(--s3);
-  font-size: 0.76rem;
+  font-size: var(--t-value);
   line-height: 1.5;
   color: var(--silk-mute);
 }
@@ -858,10 +858,10 @@ kbd {
 }
 
 .tcol { padding-top: var(--s4); border-top: 2px solid var(--hairline); }
-.tcol p { color: var(--silk-dim); font-size: 0.94rem; }
+.tcol p { color: var(--silk-dim); font-size: var(--t-body); }
 
 .tcol-h {
-  font-size: 1.06rem;
+  font-size: var(--t-title);
   letter-spacing: 0.02em;
   margin-bottom: var(--s3);
   color: var(--silk-dim);
@@ -887,14 +887,14 @@ kbd {
 
 .shot-tab {
   font-family: var(--font-silk);
-  font-size: 0.82rem;
+  font-size: var(--t-value);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--silk-dim);
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
   border-radius: 3px;
-  padding: 8px 18px;
+  padding: var(--s2) var(--s4);
   box-shadow: var(--lift);
   cursor: pointer;
 }
@@ -903,7 +903,7 @@ kbd {
 /* Four tabs at full padding ran 5 px past a 390 px phone and scrolled the page
    sideways; tighter tabs fit, and the row wraps below that. */
 @media (max-width: 480px) {
-  .shot-tab { padding: 8px 12px; letter-spacing: 0.1em; }
+  .shot-tab { padding: var(--s2) var(--s3); letter-spacing: 0.1em; }
 }
 
 .shot-pane { max-width: var(--wide); margin: 0 auto; }
@@ -915,7 +915,7 @@ kbd {
   max-width: 100%;
   height: auto;
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: var(--r1);
   background: var(--bezel);
   box-shadow: 0 20px 60px var(--black-50);
 }
@@ -923,7 +923,7 @@ kbd {
 .shot-cap {
   max-width: 68ch;
   margin: var(--s4) auto 0;
-  font-size: 0.9rem;
+  font-size: var(--t-body);
   color: var(--silk-dim);
   text-align: center;
 }
@@ -939,7 +939,7 @@ kbd {
    Green, because a film is something you *hear*: the play badges are the
    sound phosphor, the same as the instrument's play buttons. */
 
-.btn-film { padding-left: 12px; }
+.btn-film { padding-left: var(--s3); }
 .btn-film-play {
   display: inline-grid;
   place-items: center;
@@ -948,7 +948,7 @@ kbd {
   border-radius: 50%;
   border: 1px solid var(--phos-a-deep);
   color: var(--phos-a);
-  font-size: 0.62rem;
+  font-size: 0.62rem; /* token-exempt: a glyph sized to its 24px button */
   padding-left: 2px;
 }
 .btn-film:hover .btn-film-play { border-color: var(--phos-a); box-shadow: 0 0 10px var(--phos-a-25); }
@@ -962,7 +962,7 @@ kbd {
   position: relative;
   display: block;
   aspect-ratio: 16 / 9;
-  border-radius: 6px;
+  border-radius: var(--r2);
   overflow: hidden;
   background: var(--bezel);
   box-shadow: inset 0 0 0 1px var(--hairline), inset 0 0 60px var(--black-60);
@@ -977,15 +977,15 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: var(--s3);
-  padding: 8px 16px 8px 8px;
+  padding: var(--s2) var(--s4) var(--s2) var(--s2);
   border: 1px solid var(--phos-a-deep);
   border-radius: 999px;
   background: var(--bezel-78);
-  font-size: 0.92rem;
+  font-size: var(--t-body);
   letter-spacing: 0.02em;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color var(--d-state) ease, box-shadow var(--d-state) ease;
 }
-.hero-film-play .btn-film-play { width: 30px; height: 30px; font-size: 0.72rem; border-color: var(--phos-a); }
+.hero-film-play .btn-film-play { width: 30px; height: 30px; font-size: var(--t-value); border-color: var(--phos-a); }
 .hero-film-screen:hover .hero-film-play,
 .hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px var(--phos-a-30); }
 .hero-film-screen:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
@@ -1028,7 +1028,7 @@ kbd {
   display: block;
   aspect-ratio: 16 / 9;
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: var(--r1);
   overflow: hidden;
   background: var(--bezel);
 }
@@ -1047,9 +1047,9 @@ kbd {
   border: 1px solid var(--phos-a-deep);
   background: var(--bezel-75);
   color: var(--phos-a);
-  font-size: 0.7rem;
+  font-size: var(--t-label);
   padding-left: 2px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color var(--d-state) ease, box-shadow var(--d-state) ease;
 }
 .film-chip:hover .film-chip-shot,
 .film-chip:focus-visible .film-chip-shot { border-color: var(--phos-a-deep); }
@@ -1058,7 +1058,7 @@ kbd {
 .film-chip:focus-visible { outline: none; }
 .film-chip:focus-visible .film-chip-shot { outline: 2px solid var(--phos-a); outline-offset: 3px; }
 .film-chip-meta { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
-.film-chip-title { font-size: 0.92rem; letter-spacing: 0.01em; }
+.film-chip-title { font-size: var(--t-body); letter-spacing: 0.01em; }
 .film-chip-len { font-size: var(--t-micro); color: var(--silk-dim); }
 
 /* The player: a native <dialog>, the page dimmed behind it. */
@@ -1078,7 +1078,7 @@ kbd {
   aspect-ratio: 16 / 9;
   background: var(--bezel);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: var(--r1);
   box-shadow: 0 30px 90px var(--black-70);
 }
 .film-dialog-close {
@@ -1091,7 +1091,7 @@ kbd {
   border: 1px solid var(--hairline);
   background: var(--panel);
   color: var(--silk);
-  font-size: 0.8rem;
+  font-size: var(--t-value);
   cursor: pointer;
 }
 .film-dialog-close:hover { border-color: var(--silk-mute); }
@@ -1101,8 +1101,8 @@ kbd {
   .film-dialog-close { top: -40px; }
   /* A phone's hero screen is ~330px wide: the pill says less and covers less. */
   .hero-film { padding: var(--s2); }
-  .hero-film-play { left: var(--s2); bottom: var(--s2); padding: 5px 12px 5px 5px; font-size: 0.8rem; gap: var(--s2); }
-  .hero-film-play .btn-film-play { width: 24px; height: 24px; font-size: 0.6rem; }
+  .hero-film-play { left: var(--s2); bottom: var(--s2); padding: var(--s1) var(--s3) var(--s1) var(--s1); font-size: var(--t-value); gap: var(--s2); }
+  .hero-film-play .btn-film-play { width: 24px; height: 24px; font-size: 0.6rem; } /* token-exempt: a glyph sized to its 24px button */
   .hero-film-play .hfp-more { display: none; }
 }
 
@@ -1126,14 +1126,14 @@ kbd {
   height: auto;
   margin-inline: auto;
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: var(--r1);
   background: var(--bezel);
 }
 /* A caption describes the figure; it is not the model speaking, so it is
    plain. */
 .learn-fig figcaption {
   margin-top: var(--s3);
-  font-size: 0.88rem;
+  font-size: var(--t-body);
   line-height: 1.5;
   color: var(--silk-dim);
 }
@@ -1163,14 +1163,14 @@ kbd {
   color: var(--phos-a-dim);
 }
 
-.path-b { color: var(--silk-dim); font-size: 0.94rem; }
+.path-b { color: var(--silk-dim); font-size: var(--t-body); }
 .path-b strong { color: var(--silk); font-weight: 500; }
-.path-b .mono { font-size: 0.86em; color: var(--phos-b-dim); }
+.path-b .mono { font-size: 0.86em; /* token-exempt: a mono value set into a line of prose, sized to it */ color: var(--phos-b-dim); }
 
 .path-note {
   margin-top: var(--s5);
   max-width: 60ch;
-  font-size: 0.9rem;
+  font-size: var(--t-body);
   color: var(--silk-mute);
 }
 
@@ -1192,18 +1192,18 @@ kbd {
   color: var(--silk-dim);
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: var(--r1);
   box-shadow: var(--lift);
 }
 .route:hover { border-color: var(--silk-mute); }
-.route p { font-size: 0.9rem; }
+.route p { font-size: var(--t-body); }
 
-.route-h { font-size: 1.06rem; color: var(--silk); letter-spacing: 0.01em; }
+.route-h { font-size: var(--t-title); color: var(--silk); letter-spacing: 0.01em; }
 
 .route-go {
   margin-top: auto;
   padding-top: var(--s2);
-  font-size: 0.84rem;
+  font-size: var(--t-value);
   letter-spacing: 0.04em;
   color: var(--silk);
 }
@@ -1238,8 +1238,8 @@ kbd {
 }
 
 .foot-mark { display: grid; gap: var(--s3); max-width: 46ch; }
-.mark-static { font-size: 0.94rem; }
-.foot-mark p { font-size: 0.88rem; color: var(--silk-mute); }
+.mark-static { font-size: var(--t-body); }
+.foot-mark p { font-size: var(--t-body); color: var(--silk-mute); }
 
 .foot-nav {
   display: flex;
@@ -1247,7 +1247,7 @@ kbd {
   justify-content: flex-end;
   gap: var(--s3) var(--s5);
 }
-.foot-nav a { font-size: 0.88rem; color: var(--silk-dim); text-decoration: none; }
+.foot-nav a { font-size: var(--t-body); color: var(--silk-dim); text-decoration: none; }
 .foot-nav a:hover { color: var(--silk); text-decoration: underline; }
 
 /* Full width, so the rule above it reads as a divider across the footer
@@ -1255,7 +1255,7 @@ kbd {
    are one short line; they do not need a measure. */
 .foot-fine {
   grid-column: 1 / -1;
-  font-size: 0.82rem;
+  font-size: var(--t-value);
   color: var(--silk-mute);
   padding-top: var(--s5);
   border-top: 1px solid var(--hairline);
@@ -1303,12 +1303,12 @@ kbd {
    animates on scroll, because a page where everything arrives is a page where
    nothing does. */
 @media (prefers-reduced-motion: no-preference) {
-  .panel { animation: power-on 0.6s ease-out both; }
-  .card:nth-child(1) { animation: trace-in 0.5s ease-out 0.34s both; }
-  .card:nth-child(2) { animation: trace-in 0.5s ease-out 0.46s both; }
+  .panel { animation: power-on 0.6s ease-out both; } /* token-exempt: the page's one entrance, a ~900 ms sequence; a move is 320 ms */
+  .card:nth-child(1) { animation: trace-in 0.5s ease-out 0.34s both; } /* token-exempt: the page's one entrance, a ~900 ms sequence; a move is 320 ms */
+  .card:nth-child(2) { animation: trace-in 0.5s ease-out 0.46s both; } /* token-exempt: the page's one entrance, a ~900 ms sequence; a move is 320 ms */
   /* Same sweep when its guess replaces them — it starts on reveal, since
      an animation on a display:none box does not run until the box exists. */
-  .made { animation: trace-in 0.45s ease-out both; }
+  .made { animation: trace-in 0.45s ease-out both; } /* token-exempt: the entrance's sweep, again for the guess that replaces the pair */
 
   @keyframes power-on {
     from { opacity: 0; transform: translateY(10px); box-shadow: none; }
@@ -1322,9 +1322,9 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
     scroll-behavior: auto !important;
   }
 }
