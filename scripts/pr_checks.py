@@ -41,11 +41,11 @@ failure: whether a change is noticeable is a judgment the script can't make.
 close is closed here, with a comment saying why; each issue that closed with
 the PR (not one closed before it merged) and has a parent (GitHub's
 sub-issues) is counted on the parent, with how many of its sub-issues are
-closed; each `Refs` issue gets a comment naming the PR. One
-comment per issue per PR, each of its lines carrying a marker of its own, so a
-run again adds only what an earlier run left out: a line a failed run couldn't
-write is posted, and none is posted twice. GitHub closes linked issues a moment
-after the merge, so an issue still open is read again for up to POLLS * EVERY
+closed; each `Refs` issue gets a comment naming the PR. One comment per issue
+per PR, each of its lines carrying a marker of its own, so a run again adds
+only what an earlier run left out: a line a failed run couldn't write is
+posted, and none is posted twice. GitHub closes linked issues a moment after
+the merge, so an issue still open is read again for up to POLLS * EVERY
 seconds before it is closed here.
 
 The GitHub API is read and written through `gh api` (GH_TOKEN in CI).
@@ -152,14 +152,16 @@ def check_title(title: str) -> list[str]:
 def off(m: re.Match) -> str:
     """What is off in a prefix LOOSE read and TITLE didn't."""
     scope = m.group("scope")
-    if m.group("gap"):
+    if m.group("gap") and scope is not None:
         return "no space goes between the type and the `(`"
+    if m.group("gap") and m.group("bang"):
+        return "no space goes before the `!`"
+    if m.group("gap") or m.group("before"):
+        return "no space goes before the colon"
     if scope is not None and not scope.strip():
         return "the `()` is empty; name a scope in it, or leave it out"
     if scope is not None and re.search(r"\s", scope):
         return "a scope has no spaces in it"
-    if m.group("before"):
-        return "no space goes before the colon"
     if not m.group("subject").strip():
         return "the subject after the colon is missing"
     return "one space goes after the colon, then the subject"

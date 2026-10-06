@@ -156,6 +156,8 @@ class Title(unittest.TestCase):
             ("fix(): an empty scope", "the `()` is empty"),
             ("fix(we b): a space in the scope", "a scope has no spaces in it"),
             ("fix(web) : a space before the colon", "no space goes before the colon"),
+            ("fix : a space before the colon", "no space goes before the colon"),
+            ("feat !: a space before the bang", "no space goes before the `!`"),
         ]:
             (problem,) = P.check_title(title)
             self.assertIn(f"is almost right: {off}", problem, title)
