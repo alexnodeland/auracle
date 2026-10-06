@@ -94,6 +94,18 @@ bank as it stood when it arrived, and the first eight from each other
 names its pool the same at any handover and any farm width
 (`a_seed_names_its_pool_however_the_bank_was_handed_over`).
 
+Pairs are dealt the same way. The $k$-th deal of a session draws only from the
+first $8(k+1)$ sounds of the pool (8, 16, 24, 32), in the order the seed's
+fill folds them in, and every later deal from the whole pool (`DealSchedule`,
+in `auracle-session`). A deal whose sounds have not all arrived **waits for
+them** in the worker (`dealsWaiting`), and every other request is served
+meanwhile. A deal used to draw over however many sounds had arrived, so a
+seed dealt other pairs on a faster machine; now it deals the same pairs at
+any speed and farm width. A uniform pair is drawn over every sound its
+schedule names, cut ones included, and one holding a cut sound is drawn
+again as the next deal, so a cut moves no pair but one holding the sound
+cut.
+
 `filled` still fires, and everything downstream of it still runs.
 `fill_progress` carries `stage`/`stages`, so a restore and a top-up fill each
 own a labeled share of one bar.

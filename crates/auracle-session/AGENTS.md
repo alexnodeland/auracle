@@ -10,6 +10,7 @@ loop (observe, refit). Rules shared by all crates are in
 | File | Holds |
 | --- | --- |
 | `engine.rs` | `Engine`: pool, fills, duel choice (`next_duel_full`), `fit_posterior`, refinement (`refine_jobs` → `refine_absorb` → `refine_finish`, and the serial `refine`, `refine_seed`, `refine_from`), PERFORM's `offer`/`drift`, persistence |
+| `engine/deal.rs` | Which sounds a deal draws from: the fill's schedule (`DealSchedule`, the k-th deal of a session from the first `step·(k+1)` members in pool order), `deal_need` (what the next deal waits for, drawing nothing) and `deal_duel_scheduled`, which draws a pair holding a cut sound again as the next deal (#211) |
 | `walk.rs` | A generation's walks as data: `WalkContext`, `WalkJob`, `WalkResult`, and `run_walk`, the walk as a pure function the farm runs ([ADR-007](../../docs/decisions/007-generations-breed-in-parallel.md)) |
 | `job.rs` | PERFORM's offers, aimed offers and drifts as walks that can be paused: `PerformJob` (`step`, `finish_moved`), built by `Engine::offer_job`, `offer_aimed_job` and `drift_job`; `walk.rs`'s `WalkRun` is the locked walk's state between steps, and `walk_on` is it run to the end, so stepping and not stepping are one walk |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |

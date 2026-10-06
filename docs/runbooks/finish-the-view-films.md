@@ -146,18 +146,23 @@ themselves (`film_chip.spec.js`).
 
 ## Known
 
-- **Seeded deals are not fully reproducible** (ADR-001): the duel stream's
-  draws depend on the pool's size at each deal (range sampling rejects draws),
-  so deals made while the pool fills can differ between runs. (A draw of
-  wasm's 32-bit `usize` used to read the stream differently from a native one.
+- **Seeded deals made while the pool fills** used to differ between runs
+  (ADR-001): each was drawn over however many sounds had joined, and the
+  duel stream's draws depend on that number (range sampling rejects draws).
+  Since #211 the k-th deal of a session draws only from the first 8·(k+1)
+  sounds in the order the seed fills the pool, and waits for them, so a
+  seeded take deals the same pairs at any machine speed; a sound added while
+  the pool fills (the warm start's picks, a preset opened) still joins
+  wherever the fill has got to. That changed the first four pairs a seed
+  deals, so re-check patch names in a recording against the new deal. The
+  films' taught set-up still re-deals to the fifth pair (`shotgen.REDEAL`),
+  and no line depends on which pair shows. (A draw of wasm's 32-bit `usize`
+  used to read the stream differently from a native one.
   `auracle_grammar::rng::gen_index` pins it for the pool and the random-rule
   duels; taste fits, walks and PERFORM's offers still differ across targets
-  until `fugue-ppl` draws its site as a `u64`.) The fix also changed what a
-  seed deals in the browser: a film's seeded session, and every seeded spec,
-  now deals a different pool than before it. Re-check patch names in a
-  recording against the new deal. The films' taught set-up re-deals to the fifth pair, and no
-  line depends on which pair shows, but takes still land on different pairs.
-  Fix: derive each deal's draw from the seed and the deal's index. Its own PR.
+  until `fugue-ppl` draws its site as a `u64`. That fix changed what a seed
+  deals in the browser too: a film's seeded session, and every seeded spec,
+  dealt a different pool than before it.)
 - **Published films with stale details** (`taste`, `math`, `dsp`, and the
   unpublished `sounddesign`): six callouts or cards describe the app before
   Wave 1 (for example the TASTE film's inset shows bare bars where the app now

@@ -41,8 +41,9 @@ const PLAN = [
     shot: "vt-open",
     // Wide on the map before any fit; in on the pair; wide as the map
     // lights; then a slow, centred push. Centred, not onto the dot that is
-    // played: this session's first deal can differ between takes (it is dealt
-    // while the pool fills), and with it which dot that is.
+    // played: this session's first deal used to differ between takes (it is
+    // dealt while the pool fills; the same in every take since #211), and
+    // with it which dot that is.
     cam: [[0, 1.0, 0.5, 0.5], [1.4, 1.0, 0.5, 0.5], [2.0, ...aim(1.12, 960, 470)], [6.1, ...aim(1.12, 960, 470)],
       [6.9, 1.0, 0.5, 0.5], [8.4, 1.0, 0.5, 0.5], [14.2, ...aim(1.08, 1080, 540)]],
   },

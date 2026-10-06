@@ -120,8 +120,13 @@ the `refine` stream, so which farm worker finishes first cannot change what
 is bred. PERFORM's offers and drifts are seeded the same way: each takes one
 draw of the `perform` stream when it begins and walks on a generator of its
 own, so pausing one, or beginning another beside it, cannot change what either
-finds. The one remaining nondeterminism in the app is *when* the first duel is
-dealt: it is dealt at `playable`, while the pool is still filling.
+finds. The duels dealt while the pool is still filling (the first at
+`playable`) keep to a fixed schedule, the k-th drawing only from the first
+8·(k+1) sounds in the order the seed's fill folds them in, and the worker
+holds one until those have joined, so how far the fill had got does not
+change them ([web-runtime.md](web-runtime.md#deals-while-the-pool-fills)).
+What a player does while the pool fills can: a sound they add (the warm
+start's picks, a preset opened) joins wherever the fill has got to.
 
 ## Adding a module
 

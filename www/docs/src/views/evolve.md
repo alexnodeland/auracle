@@ -97,10 +97,20 @@ after that is dealt behind it. Pairs go up in the order they were dealt, so a
 seeded session shows the same pairs in the same order however long each deal
 took.
 
+While the pool is still filling, the first pair is dealt from its first eight
+sounds, the next from the first 16, then 24 and 32, in the order the pool
+fills, and every pair after that from the whole pool. A pair whose sounds
+haven’t all arrived waits for them, so the same random seed and the same
+picks deal the same pairs on any machine. Pick very fast in the first
+seconds and the next pair can take a moment.
+
 The next pair is chosen before your pick is known. That changes nothing,
 because pairs are dealt at random and your pick is held for its seven seconds
 anyway. A sound you cut meanwhile is never put up: that pair is dropped and
-dealt again, and so is one that lost a sound to a generation.
+dealt again, and so is one that lost a sound to a generation. A cut changes
+no pair but one holding the sound you cut. After <kbd>⌘Z</kbd>, picking
+again or **ANOTHER PAIR** shows the same pairs, however fast their sounds
+arrived.
 
 Those renders wait behind what you ask for: a sound you open, a ▶ you press,
 and PERFORM’s offers and first measurements. When no pair is waiting (right
@@ -113,6 +123,11 @@ deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B**,
 **⇄ CIRCUIT**, **↓ PATCH** and **ANOTHER PAIR** off, and say *Nothing to
 pair. Fewer than two sounds are left to deal.* They deal again by themselves
 when a cut is taken back or the pool changes.
+
+If the engine can’t deal a pair, the cards stay dimmed with **▶ PLAY**,
+**PICK A**, **PICK B**, **⇄ CIRCUIT** and **↓ PATCH** off, and say
+*Couldn’t deal a pair. ANOTHER PAIR tries again.* **ANOTHER PAIR** (or
+<kbd>N</kbd>) deals again.
 ```
 
 ```admonish info collapsible=true title="How it works: between refits"

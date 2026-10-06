@@ -55,10 +55,12 @@ preset by a table, so it judges the same way every time.
 once. Two things follow for a seeded session (`session.py`):
 
 - The first pair is dealt while the pool is still filling, and so, most
-  likely, is the pair dealt ahead behind it: those are the two deals that can
-  differ between takes. Both sessions skip **twice** once the pool is full
-  (`REDEAL`), so the pair on the table was dealt from the full pool. One skip
-  was enough when a pair was dealt only after the one before it was answered.
+  likely, is the pair dealt ahead behind it: those were the two deals that
+  could differ between takes, until each deal made while the pool fills drew
+  from a fixed number of its first sounds (#211). Both sessions skip
+  **twice** once the pool is full (`REDEAL`), so the pair on the table was
+  dealt after them. One skip was enough when a pair was dealt only after the
+  one before it was answered.
 - A pick made while the next pair's deal is still on its way races it, and
   the next two pairs can come up in either order. So every scripted pick and
   skip first waits (`settle`) for the table's sounds and for the pair dealt
