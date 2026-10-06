@@ -89,11 +89,7 @@ fn live_poly_plays_and_parks() {
 #[test]
 fn live_params_ramp_without_retrigger() {
     quiver::rng::seed(7);
-    let (_, tree) = auracle_grammar::presets()
-        .into_iter()
-        .find(|(n, _)| *n == "First Bass")
-        .expect("preset exists");
-    let json = serde_json::to_string(&tree).unwrap();
+    let json = first_bass();
     let mut a = LivePoly::new(&json, 44_100.0, 1).unwrap();
     let mut b = LivePoly::new(&json, 44_100.0, 1).unwrap();
     a.note_on(48, 1.0);
@@ -826,33 +822,39 @@ fn table_and_oct_are_live_at_index_scale() {
     );
 }
 
-/// The arpeggiator steps through a held chord on its own clock, and
-/// velocity scales output level.
-#[test]
-fn arp_steps_and_velocity_scales() {
+/// "First Bass": the sustained preset the velocity and arp tests play.
+fn first_bass() -> String {
     let (_, tree) = auracle_grammar::presets()
         .into_iter()
         .find(|(n, _)| *n == "First Bass")
         .expect("preset exists");
-    let json = serde_json::to_string(&tree).unwrap();
+    serde_json::to_string(&tree).unwrap()
+}
 
-    // Velocity: same note, soft vs hard, soft must be quieter.
+/// Velocity scales the level: the same note played soft is quieter than
+/// played hard.
+#[test]
+fn velocity_scales_the_level() {
+    quiver::rng::seed(7);
+    let json = first_bass();
     let energy_at = |vel: f64| {
         let mut p = LivePoly::new(&json, 44_100.0, 1).unwrap();
         p.note_on(60, vel);
-        (0..20)
-            .flat_map(|_| p.process(512))
-            .map(|s| (s as f64) * (s as f64))
-            .sum::<f64>()
+        (0..20).map(|_| energy(&p.process(512))).sum::<f64>()
     };
     let (soft, hard) = (energy_at(0.15), energy_at(1.0));
     assert!(
         soft < hard * 0.5,
         "velocity had no effect: soft {soft}, hard {hard}"
     );
+}
 
-    // Arp: hold a triad with the arp on; distinct pitches must be
-    // pressed over time, and turning it off restores the chord.
+/// The arpeggiator steps through a held chord on its own clock, one gated
+/// note at a time, and turning it off presses the held chord again.
+#[test]
+fn the_arp_cycles_a_held_chord_and_off_re_presses_it() {
+    quiver::rng::seed(7);
+    let json = first_bass();
     let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
     p.set_arp(true, 0, 4.0, 240.0, 0.5, 1, 0.0); // 16ths at 240 BPM ≈ 16 steps/s
     p.note_on(48, 1.0);
@@ -867,17 +869,22 @@ fn arp_steps_and_velocity_scales() {
                 seen.insert(n);
             }
         }
+        // At any instant the arp holds at most one gated note.
+        let gated = p.voices.iter().filter(|v| v.note.is_some()).count();
+        assert!(gated <= 1, "arp gated {gated} notes at once");
     }
     assert!(
         seen.len() >= 3,
         "arp never cycled the chord: pressed {seen:?}"
     );
-    // At any instant the arp holds at most one gated note.
-    let gated = p.voices.iter().filter(|v| v.note.is_some()).count();
-    assert!(gated <= 1, "arp gated {gated} notes at once");
     p.set_arp(false, 0, 4.0, 240.0, 0.5, 1, 0.0);
-    let gated: Vec<_> = p.voices.iter().filter_map(|v| v.note).collect();
-    assert_eq!(gated.len(), 3, "chord not re-pressed after arp off");
+    let mut gated: Vec<_> = p.voices.iter().filter_map(|v| v.note).collect();
+    gated.sort_unstable();
+    assert_eq!(
+        gated,
+        vec![48, 52, 55],
+        "chord not re-pressed after arp off"
+    );
 }
 
 /// The master bus holds a full chord inside full scale. Four voices sum to
