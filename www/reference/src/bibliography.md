@@ -91,6 +91,14 @@ determinism.
 B 62(4), 795–809. → Why per-component summaries of a mixture posterior need
 [post-hoc alignment](./taste/posterior.md#label-alignment).
 
+## Numerics
+
+**Mächler, M. (2012).** *Accurately Computing log(1 − exp(−|a|)), Assessed by
+the Rmpfr Package.* Vignette of the R package Rmpfr. → `log1mexp`, the
+$\log(1 - e^{-d})$ that keeps a star rating’s log-probability exact far outside
+its cutpoints and in a category squeezed nearly shut.
+[Used in](./taste/likelihoods.md#star-ratings-a-cumulative-logit)
+
 ## Probabilistic programming
 
 **Goodman, N. D. and Stuhlmüller, A. (2014).** *The Design and Implementation
