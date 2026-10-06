@@ -108,7 +108,7 @@ contributor guide; this file does not repeat it.
    quarantined with an issue, never retried. A new term, label or phrase that
    `www/brand/voice.md`'s word table governs waits for the maintainer's
    approval. The whole flow is [`docs/process.md`](docs/process.md); the
-   `ship` skill walks one task through it.
+   `ship` skill walks one task through it, and `ship-wave` several.
 
 ## Commands
 
@@ -141,7 +141,12 @@ beside each `AGENTS.md`; the rules live here, never in a `CLAUDE.md`. The setup
 in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
 
 - **Skills:** `auracle-strategy` (background), `check`, `wasm`, `browser-test`,
-  `truth-pass`, `changelog`, `film`, and `ship` (an issue to a merged PR).
+  `truth-pass`, `changelog`, `film`, `ship` (an issue to a merged PR), and
+  `ship-wave` (several at once, with the saved workflows).
+- **Workflows** (`.claude/workflows/`, run by name when the maintainer asks:
+  they spend many tokens): `triage-backlog`, `ship-issues`, `fix-flake`,
+  `review-pr`, `mutants-burndown`. The operator's scripts around a run are
+  in `scripts/ops/` ([`docs/process.md` § Waves](docs/process.md#waves)).
 - **Agents:** `engine-engineer`, `web-engineer`, `docs-writer`,
   `film-producer` build in their own worktree and commit only;
   `truth-auditor` and `reviewer` are read-only. The operator pushes and opens
@@ -152,7 +157,8 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
   hand edits under the five generated paths of a file's own checkout, a
   worktree included (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
-  `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
+  `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`
+  (as a module for an ES module), the workflow check on a saved workflow,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
   `cargo test` without `--release`, `--profile` or `--doc` refused on any
   crate, and `playwright test` refused outside `one_browser.sh`.
