@@ -242,6 +242,7 @@ test("a face is the same drawing for the same render after a reload", async ({ p
 });
 
 test("a refit is answered promptly while sixty face renders wait", async ({ page, app }) => {
+  test.setTimeout(100_000); // about 37 to 46 s on CI, most of it engine waits: a boot, six picks, two refits, the faces
   await boot(page, app);
   await booted(app);
   await bankDrawn(page, app);
