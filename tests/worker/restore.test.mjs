@@ -1,0 +1,129 @@
+// A returning visit's restore (#285, docs/architecture/web-runtime.md "The
+// farm on demand"). With no farm worker ready, the engine worker restores the
+// bank itself one sound at a time: each sound read from the render store when
+// this build has measured it before (the farm's store, key and namespace),
+// rendered and written back otherwise, with its progress posted and the
+// player's requests answered between sounds. Whichever ran, the bank comes
+// back as `import_state` builds it, in its order.
+//
+// worker.js runs here as it is, over the built engine (harness.mjs). The
+// render store is the harness's stand-in IndexedDB (`idb`), carried from one
+// thread to the next as a browser keeps it between visits. The bank `import_state`
+// builds is computed in this thread, over the same binary: an engine of the
+// glue's own, handed the same save (`import_session_checked`).
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { workerFor, startWorker } from "./harness.mjs";
+
+const SEED = 1;
+const POOL = 12;
+// A test that hangs fails here, well inside the CI job's limit.
+const TIMEOUT = 150_000;
+
+const glue = await import(new URL("../../apps/web/pkg/auracle_wasm.js", import.meta.url).href);
+glue.initSync({ module: readFileSync(new URL("../../apps/web/pkg/auracle_wasm_bg.wasm", import.meta.url)) });
+
+// The session every test restores: a bank of POOL sounds, filled with no
+// farm and saved (`saved`), and that pool as the worker held it (`pool`).
+// Made once for the file.
+let saving = null;
+function serialSession() {
+  saving ??= (async () => {
+    const w = await startWorker({ seed: SEED, poolSize: POOL });
+    try {
+      const [{ json }] = await w.send({ type: "save" });
+      return { saved: json, pool: await bankOf(w) };
+    } finally {
+      await w.close();
+    }
+  })();
+  return saving;
+}
+
+/** The bank as `import_state` builds it from `saved`: each sound's id and
+ *  standardized φ, in bank order, as `pool_features` lists them. */
+function importState(saved) {
+  const e = new glue.WasmEngine(BigInt(SEED), POOL);
+  try {
+    assert.equal(JSON.parse(e.import_session_checked(saved)).status, "ok");
+    e.restandardize_if_untaught();
+    return JSON.parse(e.pool_features()).rows;
+  } finally {
+    e.free();
+  }
+}
+
+/** The bank as the worker holds it now, in the same form. */
+async function bankOf(w) {
+  const [r] = await w.send({ type: "taste_views" });
+  return r.views.features.rows;
+}
+
+/** Boot from `saved` and wait for `filled`, as main boots a returning visit. */
+async function restore(w, saved, extra = {}) {
+  const after = w.replies.length;
+  await w.boot({ seed: SEED, poolSize: POOL, saved, ...extra });
+  return after;
+}
+
+const recalling = (w, after) => w.repliesOf("fill_progress", { after }).filter((r) => /^recalling \d+ of \d+ sounds…$/.test(r.label || ""));
+const cacheLine = (w, after) => w.repliesOf("log", { after }).filter((r) => r.kind === "render_cache" && r.here);
+
+test("a restore with no farm comes back sound by sound, with its bar moving and a request answered between sounds, as import_state builds it", { timeout: TIMEOUT }, async (t) => {
+  const { saved } = await serialSession();
+  const w = await workerFor(t, { boot: false, idb: {} });
+  // A preset list asked for while the third sound is measured, as main asks
+  // while the veil is up.
+  const ask = { type: "presets" };
+  w.post(ask, { during: { call: "bank_absorb", nth: 3 } });
+  const after = await restore(w, saved);
+
+  // The bar moved: one step per sound, counting up, each posted before the
+  // restore ended, not all at its end.
+  const steps = recalling(w, after);
+  assert.deepEqual(steps.map((r) => r.pool), Array.from({ length: POOL }, (_, i) => i + 1), "the restore did not say each sound as it landed");
+  for (const r of steps) assert.equal(r.workers, 0, "a restore with no farm said it had renderers");
+  const recalled = w.repliesOf("fill_progress", { after }).find((r) => /^recalled/.test(r.label || ""));
+  assert.equal(recalled.label, `recalled ${POOL} sounds`);
+  assert.ok(steps.every((r) => r._n < recalled._n), "the restore's progress came after it ended");
+
+  // Answered between two sounds: before the fourth was folded in.
+  const [presets] = await w.answers(ask);
+  assert.ok(presets.rows.length > 0);
+  const trace = await w.trace();
+  const absorbs = trace.flatMap((e, i) => (e.ev === "call" && e.name === "bank_absorb" ? [i] : []));
+  const answered = trace.findIndex((e) => e.ev === "out" && e.n === presets._n);
+  assert.ok(absorbs.length >= POOL, "the sounds were not folded in one at a time");
+  assert.ok(answered > absorbs[2] && answered < absorbs[3], "the request waited for more than the sound in hand");
+  assert.equal(trace.some((e) => e.ev === "call" && /^import_session(_checked)?$/.test(e.name)), false, "the restore took the one call");
+
+  // Every sound was rendered here (the store was empty) and kept there.
+  const [line] = cacheLine(w, after);
+  assert.deepEqual([line.served, line.rendered], [0, POOL], "the render cache's line does not say what this worker did");
+  const rows = (await w.idb())["auracle-renders"].stores.rows;
+  assert.equal(rows.length, POOL, "a render made here was not kept in the store");
+
+  assert.deepEqual(await bankOf(w), importState(saved), "the bank is not import_state's, in its order");
+  await w.close();
+});
+
+test("a restore with no farm reads what this build measured before from the render store, and renders none of it", { timeout: TIMEOUT }, async (t) => {
+  const { saved } = await serialSession();
+  // The first visit renders the bank and keeps it in the store.
+  const first = await workerFor(t, { boot: false, idb: {} });
+  await restore(first, saved);
+  const kept = await first.idb();
+  await first.close();
+
+  // The next finds it there.
+  const w = await workerFor(t, { boot: false, idb: kept });
+  const after = await restore(w, saved);
+  const [line] = cacheLine(w, after);
+  assert.deepEqual([line.served, line.rendered], [POOL, 0], "a sound in the store was rendered again");
+  const trace = await w.trace();
+  assert.equal(trace.some((e) => e.ev === "call" && e.name === "bank_render"), false, "a sound in the store was rendered again");
+  assert.equal(recalling(w, after).length, POOL, "the restore did not say each sound as it landed");
+  assert.deepEqual(await bankOf(w), importState(saved), "the bank is not import_state's, in its order");
+  await w.close();
+});

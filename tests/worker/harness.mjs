@@ -6,11 +6,13 @@
 // thread that gives it what a module Web Worker has and Node does not: `self`
 // with `postMessage`, `onmessage` and `location`, the `unhandledrejection`
 // event, and a `fetch` that reads the app's own files from disk. Nothing else
-// of the browser is here: no IndexedDB (the face store is off, as where a
-// browser refuses one), no page, no audio, and no farm.js: main's answer to
-// `farm_want` is a crew of no workers, as with `?farm=0`, unless the test
-// hands the worker ports of its own (`fakeCrew`, at boot or as a crew) or
-// keeps the answer back (`holdFarm`).
+// of the browser is here: no IndexedDB unless the test gives it a stand-in
+// (`idb`: the render store and the face store in memory, apps/web/tests/
+// fake-idb.mjs, read back with `w.idb()`; without it the stores are off, as
+// where a browser refuses them), no page, no audio, and no farm.js: main's
+// answer to `farm_want` is a crew of no workers, as with `?farm=0`, unless
+// the test hands the worker ports of its own (`fakeCrew`, at boot or as a
+// crew) or keeps the answer back (`holdFarm`).
 //
 // The same file is both ends: imported by a test it is the client
 // (`startWorker`); run as the thread's entry it hosts the worker.
@@ -27,6 +29,7 @@ import { Worker, isMainThread, parentPort, workerData, MessageChannel } from "no
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as nodeModule from "node:module";
+import { fakeIndexedDB } from "../../apps/web/tests/fake-idb.mjs";
 
 const WEB = new URL("../../apps/web/", import.meta.url);
 const WORKER_URL = new URL("worker.js", WEB).href;
@@ -76,6 +79,10 @@ async function host() {
 
   globalThis.self = globalThis;
   self.location = { href: `${WORKER_URL}?v=${V}` };
+  // The stand-in IndexedDB, when the test asked for one (`idb`), starting
+  // from what it handed over.
+  const idb = workerData.idb ? fakeIndexedDB({ dbs: workerData.idb }) : null;
+  if (idb) self.indexedDB = idb.as("engine");
   self.postMessage = (msg, transfer) => {
     trace.push({ ev: "out", n: replies++, type: msg && msg.type });
     parentPort.postMessage(msg, transfer || []);
@@ -158,6 +165,7 @@ async function host() {
     if (!h) return deliver(data);
     if (h.op === "during") armed.push({ call: h.call, left: h.nth || 1, msg: h.msg, tag: h.tag });
     if (h.op === "trace") say({ op: "trace", id: h.id, trace });
+    if (h.op === "idb") say({ op: "idb", id: h.id, dbs: idb ? idb.dump() : null });
   });
 
   // A module with no exports has none; CommonJS would have `default`.
@@ -211,8 +219,8 @@ class EngineWorker {
     if (h) {
       if (h.op === "ready") this.readyResolve();
       if (h.op === "console") this.console.push({ level: h.level, text: h.text });
-      if (h.op === "trace") {
-        this.traces.get(h.id).resolve(h.trace);
+      if (h.op === "trace" || h.op === "idb") {
+        this.traces.get(h.id).resolve(h.op === "trace" ? h.trace : h.dbs);
         this.traces.delete(h.id);
       }
       return;
@@ -328,6 +336,17 @@ class EngineWorker {
     });
   }
 
+  /** What the stand-in IndexedDB holds now (`idb`, the form `startWorker`'s
+   *  `idb` takes), or null without one. */
+  idb() {
+    if (this.failure) return Promise.reject(this.failure);
+    const id = ++this.traceSeq;
+    return new Promise((resolve, reject) => {
+      this.traces.set(id, { resolve, reject });
+      this.thread.postMessage({ __harness: { op: "idb", id } });
+    });
+  }
+
   /** Keep main's answers to `farm_want` back until `releaseFarm`. */
   holdFarm() {
     this.farmHeld = this.farmHeld || [];
@@ -376,10 +395,12 @@ class EngineWorker {
 
 /** A worker thread running apps/web/worker.js, booted as main boots it
  *  (`boot: false` leaves that to the test). `crew(want)` answers a
- *  `farm_want` with ports (`fakeCrew`). */
-export async function startWorker({ boot = true, errors = false, crew, ...init } = {}) {
+ *  `farm_want` with ports (`fakeCrew`). `idb` gives the thread a stand-in
+ *  IndexedDB: `{}` for an empty one, or what another thread's held
+ *  (`w.idb()`), as a later visit finds what an earlier one left. */
+export async function startWorker({ boot = true, errors = false, crew, idb = null, ...init } = {}) {
   if (!existsSync(WASM)) throw new Error("apps/web/pkg has no built engine: run `make wasm` first");
-  const thread = new Worker(new URL(import.meta.url), { workerData: { auracleWorker: true } });
+  const thread = new Worker(new URL(import.meta.url), { workerData: { auracleWorker: true, idb } });
   const w = new EngineWorker(thread, { errors, crew });
   await w.ready;
   if (boot) await w.boot(init);

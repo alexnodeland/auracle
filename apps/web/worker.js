@@ -866,15 +866,20 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
 
 const EMPTY_F32 = new Float32Array(0);
 
-// Restore a saved session, farming the bank's re-featurization when a farm is
-// available.
+// Restore a saved session one bank entry at a time, in bank order: on the farm
+// while a farm worker is ready, and in this worker otherwise.
 //
-// Restore is the *returning* user's boot and today it is worse than a cold
-// one: `import_session` re-featurizes every bank entry in one synchronous call
-// behind a bar that cannot move, because nothing lands until all of it does.
-// The deferred form does the same work in the same order — the native gate
-// `deferred_restore_equals_import_state` pins that — but one entry at a time,
-// off-engine, with the bar tracking it.
+// Restore is the *returning* user's boot. `import_session` re-featurizes every
+// bank entry in one synchronous call behind a bar that cannot move, because
+// nothing lands until all of it does, and the worker answers nothing until
+// then: with no farm (`?farm=0`, or no worker ready in the handshake's window)
+// a 40-sound session sat 13.6 s on "restoring your bank & taste…" in Firefox
+// on an M-series laptop, and over two minutes on an Intel MacBook Air (#285).
+// The deferred form does the same work in the same order (the native gate
+// `deferred_restore_equals_import_state` pins that), but one entry at a time,
+// with the bar tracking it and the worker answering between entries. An entry
+// this build has measured before is read from the render store, as a farm
+// worker reads it, so a returning visit renders only what is missing.
 //
 // Both paths ask the engine for a *verdict*, not a count. `import_session`
 // answered 0 for a save with nothing in it and for a save this build cannot
@@ -903,6 +908,9 @@ function restoreFailed(status) {
   news({ type: "restore_failed", status });
   return 0;
 }
+// The one-call restore, for a binary without the deferred surface (a stale
+// cache): every entry re-featurized in one call, with nothing posted until it
+// returns.
 function restoreSerial(saved) {
   let verdict = null;
   try {
@@ -917,94 +925,214 @@ function restoreSerial(saved) {
   postClip();
   return verdict.restored | 0;
 }
-async function restoreSession(saved, farmed, stages) {
-  if (!farmed) return restoreSerial(saved);
 
+// This worker's own pass over a restore's bank: the render store's rows for
+// its entries, read in one transaction the first time this worker measures an
+// entry itself, and each render it makes written back, as a farm worker reads
+// and writes them (farm.js `onJob`: the same store, namespace and key). So a
+// session restored without a farm comes back from the store the next time,
+// and so does one whose farm wrote its rows. The open waits for the stamp
+// (`renderStoreReady`, bounded) and is bounded itself by `RENDER_STAMP_MS`, as
+// a crew's is: an open that never answers costs the renders it would have
+// saved and nothing else, and its connection is closed when it comes. Without
+// IndexedDB (a private window, a refusal) every entry is rendered.
+async function bankPass(trees, ns) {
+  const phrase = engine.phrase_json();
+  const keys = trees.map((t) => {
+    try {
+      return glue.farm_key(t, phrase) || null;
+    } catch (_) {
+      return null;
+    }
+  });
+  const pass = { trees, phrase, keys, rows: new Map(), db: null, served: 0, rendered: 0 };
+  await renderStoreReady(ns);
+  let late = false;
+  const reading = (async () => {
+    const { renderStoreOpen, RENDER_ROWS } = await renderStoreModule();
+    const db = await renderStoreOpen(self.indexedDB, ns);
+    if (!db) return;
+    if (late) {
+      db.close();
+      return;
+    }
+    pass.db = db;
+    pass.table = RENDER_ROWS;
+    const store = db.transaction(RENDER_ROWS, "readonly").objectStore(RENDER_ROWS);
+    const got = await Promise.all(keys.map((k) => (k ? idb(store.get(k)).catch(() => null) : null)));
+    got.forEach((row, i) => {
+      if (typeof row === "string" && row) pass.rows.set(i, row);
+    });
+  })().catch(() => {});
+  let timer = null;
+  const bound = new Promise((resolve) => {
+    timer = setTimeout(resolve, RENDER_STAMP_MS);
+  });
+  await Promise.race([reading, bound]);
+  clearTimeout(timer);
+  late = true;
+  return pass;
+}
+
+// A render this worker made, written back to the render store for the next
+// visit. Fire and forget, as farm.js writes: a failed write is a slower
+// restore next time, never a failed one now.
+function bankPassKeep(pass, i, cached) {
+  if (!pass.db || !pass.keys[i]) return;
+  try {
+    pass.db.transaction(pass.table, "readwrite").objectStore(pass.table).put(cached, pass.keys[i]);
+  } catch (_) { /* a slower restore next time */ }
+}
+
+// One bank entry measured in this worker: its stored row, or a render (the
+// farm's `farm_render`, here, so its row can be kept), each folded in with
+// `bank_absorb` as a farm result is. A row this engine will not take (`bank_absorb`
+// checks its content address against the entry) or a render that did not vet
+// goes to `bank_render`, which drops an entry that no longer vets as
+// `import_state` drops it. True when the entry landed.
+function bankHere(pass, i) {
+  const row = pass.rows.get(i);
+  if (row && engine.bank_absorb(i, row, EMPTY_F32)) {
+    pass.served++;
+    return true;
+  }
+  pass.rendered++;
+  let cached = "";
+  let job = null;
+  try {
+    job = glue.farm_render(pass.trees[i], pass.phrase, false);
+    if (job.ok) cached = job.cached;
+  } catch (_) {
+    cached = "";
+  } finally {
+    if (job) job.free();
+  }
+  if (cached) {
+    bankPassKeep(pass, i, cached);
+    if (engine.bank_absorb(i, cached, EMPTY_F32)) return true;
+  }
+  return engine.bank_render(i);
+}
+
+// The pass is over: its tally in the app's log, as a farm wave's is
+// (`runFarm`), and its connection closed (writes already queued complete).
+function bankPassDone(pass) {
+  const { served, rendered } = pass;
+  if (served + rendered > 0) {
+    logNote(
+      `[auracle] render cache: ${served} served, ${rendered} rendered ` +
+        `(${Math.round((100 * served) / (served + rendered))}% hit)`,
+      { kind: "render_cache", served, rendered, here: true }
+    );
+  }
+  try {
+    if (pass.db) pass.db.close();
+  } catch (_) { /* already closed */ }
+}
+
+async function restoreSession(saved, stages, ns) {
   let jobs = null;
   try {
     const verdict = JSON.parse(engine.import_session_deferred_v2(saved));
     if (verdict.status === "unparseable") return restoreFailed(verdict.status);
     jobs = verdict.jobs;
-    // The import installed the session's saved clip; the crew was handed the
-    // phrase before it. Re-sent before any bank job goes out, so the farm
-    // renders the bank's listeners with the clip they were saved with.
-    if (auditionClip()?.source === "captured") farmResendPhrase();
   } catch (err) {
     // A binary without the v2 surface (stale cache): the un-verdicted form, and
-    // failing that the serial path.
+    // failing that the one call.
     console.warn("[auracle] verdicted restore unavailable:", err);
     try {
       jobs = JSON.parse(engine.import_session_deferred(saved));
-      // As on the v2 path: the import installed the saved clip after the
-      // crew's handshake.
-      if (auditionClip()?.source === "captured") farmResendPhrase();
     } catch (err2) {
       console.warn("[auracle] deferred restore unavailable:", err2);
       return restoreSerial(saved);
     }
   }
+  // The import installed the session's saved clip; a crew standing (ready, or
+  // still starting) was handed the phrase before it. Re-sent before any bank
+  // job goes out, so the farm renders the bank's listeners with the clip they
+  // were saved with.
+  if (auditionClip()?.source === "captured") farmResendPhrase();
   if (!Array.isArray(jobs) || jobs.length === 0) {
     postClip();
     try { return engine.restore_finish(); } catch (_) { return 0; }
   }
 
   const trees = jobs.map((j) => JSON.stringify(j.tree));
-  let issued = 0;
-  let next = 0;    // first bank index the farm has not folded in
+  let next = 0;    // first bank index not yet folded in
   let landed = 0;
-  await runFarm({
-    startAt: 0,
-    take: (n) => {
-      const out = [];
-      while (out.length < n && issued < jobs.length) {
-        out.push({ i: issued, tree: trees[issued] });
-        issued++;
+  const progress = () =>
+    news({
+      type: "fill_progress",
+      pool: landed,
+      target: jobs.length,
+      stage: 0,
+      stages,
+      workers: farmCrew(),
+      label: `recalling ${landed} of ${jobs.length} sounds…`,
+    });
+  let pass = null; // this worker's own (`bankPass`), opened when first needed
+  try {
+    while (next < jobs.length) {
+      // A farm worker ready now takes the rest. The farm stops short only
+      // when every worker is gone, and this worker goes on from the first
+      // entry it did not fold in, so the bank comes back in the order it was
+      // saved in whichever path ran.
+      if (farmUsable()) {
+        const from = next;
+        let issued = from;
+        await runFarm({
+          startAt: from,
+          take: (n) => {
+            const out = [];
+            while (out.length < n && issued < jobs.length) {
+              out.push({ i: issued, tree: trees[issued] });
+              issued++;
+            }
+            return out;
+          },
+          absorb: (i, r) => {
+            next = i + 1;
+            if (r.ok) {
+              // `false` from absorb is either a genuine vet failure or a farmed
+              // row this engine cannot read — one from an older featurizer
+              // (RENDER_EPOCH) that no longer deserializes. The second is not
+              // a verdict on the patch, and dropping a bank entry deletes a
+              // patch the user kept (the next autosave makes that permanent),
+              // so it is rendered here instead. A genuine vet failure fails
+              // that too, and the entry is dropped as `import_state` would
+              // drop it.
+              if (engine.bank_absorb(i, r.cached, r.samples || EMPTY_F32)) landed++;
+              else if (engine.bank_render(i)) landed++;
+              return;
+            }
+            // `!ok` on this path is a *watchdog retirement*, not a verdict on
+            // the patch — and a retired index here would silently delete a
+            // patch the user made and kept, then let the next autosave persist
+            // the shortened bank. Render it in this worker instead. It costs
+            // one blocking render in a rare case and keeps the bank exactly
+            // what `import_state` builds, in exactly its order, which is what
+            // `deferred_restore_equals_import_state` pins.
+            logNote(`[auracle] bank entry ${i} not farmed; rendering in-worker`,
+              { kind: "bank_in_worker", i });
+            if (engine.bank_render(i)) landed++;
+          },
+          stop: () => false,
+          wantAudio: (i) => i < FARM_AUDIO_AHEAD,
+          after: progress,
+        });
+        if (next > from) continue;
       }
-      return out;
-    },
-    absorb: (i, r) => {
-      next = i + 1;
-      if (r.ok) {
-        // `false` from absorb is either a genuine vet failure or a farmed
-        // row this engine cannot read — one from an older featurizer
-        // (RENDER_EPOCH) that no longer deserializes. The second is not a
-        // verdict on the patch, and dropping a bank entry deletes a patch the
-        // user kept (the next autosave makes that permanent), so it is
-        // rendered here instead. A genuine vet failure fails that too, and
-        // the entry is dropped as `import_state` would drop it.
-        if (engine.bank_absorb(i, r.cached, r.samples || EMPTY_F32)) landed++;
-        else if (engine.bank_render(i)) landed++;
-        return;
-      }
-      // `!ok` on this path is a *watchdog retirement*, not a verdict on the
-      // patch — and a retired index here would silently delete a patch the
-      // user made and kept, then let the next autosave persist the shortened
-      // bank. Render it in this worker instead. It costs one blocking render
-      // in a rare case and keeps the bank exactly what `import_state` builds,
-      // in exactly its order, which is what `deferred_restore_equals_import_state`
-      // pins.
-      logNote(`[auracle] bank entry ${i} not farmed; rendering in-worker`,
-        { kind: "bank_in_worker", i });
-      if (engine.bank_render(i)) landed++;
-    },
-    stop: () => false,
-    wantAudio: (i) => i < FARM_AUDIO_AHEAD,
-    after: () =>
-      news({
-        type: "fill_progress",
-        pool: landed,
-        target: jobs.length,
-        stage: 0,
-        stages,
-        workers: farmCrew(),
-        label: `recalling ${landed} of ${jobs.length} sounds…`,
-      }),
-  });
-  // Whatever the farm did not finish (every worker died, a draw retired) is
-  // rendered here, in bank order, so the pool comes back in the order it was
-  // saved in whichever path ran.
-  for (let i = next; i < jobs.length; i++) {
-    if (engine.bank_render(i)) landed++;
+      // No farm worker ready: the next entry here, from the store or
+      // rendered, then a breath, so the bar moves and every request that
+      // arrived meanwhile is answered before the next.
+      if (!pass) pass = await bankPass(trees, ns);
+      if (bankHere(pass, next)) landed++;
+      next++;
+      progress();
+      await yieldToQueue();
+    }
+  } finally {
+    if (pass) bankPassDone(pass);
   }
   postClip();
   return engine.restore_finish();
@@ -3062,7 +3190,7 @@ async function dispatch(m) {
             stages,
             label: "restoring your bank & taste…",
           });
-          restored = await restoreSession(m.saved, farmed, stages);
+          restored = await restoreSession(m.saved, stages, ns);
           news({
             type: "fill_progress",
             pool: 1,
