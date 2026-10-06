@@ -67,8 +67,9 @@ const DURATION =
   "/^(ms|dt|took|elapsed|waited|latency|duration|delay|lag)$|(Ms|MS|_ms|Elapsed|Took|Latency|Duration|Delay|Lag|Waited)$|^(ms|elapsed|took|waited|latency|duration|delay|lag)[A-Z_]/";
 // The test's fixture waits that fail when what they wait for never comes:
 // for expect-expect, as good as an expect. Matched by the called name
-// (app.reply, app.toast, …).
-const ASSERTING_WAITS = ["booted", "engine", "filled", "fullPool", "poolRows", "quiet", "reached", "reply", "toast"];
+// (app.reply, app.toast, app.replyTo, app.answered, …). Not app.unanswered:
+// it reads the requests still waiting, and fails on nothing.
+const ASSERTING_WAITS = ["answered", "booted", "engine", "filled", "fullPool", "poolRows", "quiet", "reached", "reply", "replyTo", "toast"];
 
 const house = {
   meta: { name: "auracle" },

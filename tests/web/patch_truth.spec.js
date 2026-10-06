@@ -13,9 +13,9 @@
 //   to 7.83 kHz read "1.78 kHz"). PERFORM's copy of the knob never heard the
 //   turn, so its next move also wrote the old value back into the voices.
 //
-// The engine is reached through the fixture's tap (fixtures.js): edits are
-// counted out and replies back, and the lane has settled when they agree
-// (patch_page.js `settled`).
+// The engine is reached through the fixture's tap (fixtures.js): each edit's
+// last reply is the one carrying its request number, and the lane has settled
+// when every edit sent has had it (patch_page.js `settled`).
 const { test, expect, goLevel } = require("./fixtures");
 const patchPage = require("./patch_page.js");
 const { settled } = patchPage;

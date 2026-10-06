@@ -1901,7 +1901,18 @@ function settleRestore() {
 }
 
 // ---------- worker protocol ----------
-const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
+// Every request to the engine worker goes out here, numbered: `rid`, counted
+// from 1 on this page, assigned in this one place. Each reply the worker sends
+// in answer carries the number back as `re` (and `more: true` on all but the
+// last reply to it), and what the worker says of its own accord carries none
+// (worker.js `post`, `answer`, `news`). Main still matches a reply by what it
+// is about (an id, a `token`, PERFORM's `req`); `re` names the request
+// itself, which is what a trace of the protocol, and the browser specs' tap
+// (tests/web/fixtures.js), read.
+let requestSeq = 0;
+function send(msg, transfer) {
+  worker.postMessage({ ...msg, rid: ++requestSeq }, transfer || []);
+}
 // The render namespace the engine measures in (`cache_namespace`: the
 // stimulus, the featurizer's RENDER_EPOCH and the quiver version), from its
 // `ready`. Null until then, or from a binary too old to say.
@@ -2362,6 +2373,9 @@ worker.onmessage = (e) => {
       break;
     }
     case "calibration": {
+      // No summary (an older engine, or one that failed to make it): what was
+      // shown stands, the engine's last summary or the page's own tally.
+      if (m.calib == null) break;
       engineCalib = m.calib;
       if (m.forecasts) engineForecasts = m.forecasts;
       if (m.facts) engineFacts = m.facts;

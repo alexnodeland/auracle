@@ -145,7 +145,7 @@ function floorJobs() {
     perform_wire_known: () => "{}",
   };
   const fns = new Function(
-    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "runMessage", "schedulePump", "beginLongOp", "endLongOp",
+    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "answer", "runMessage", "schedulePump", "beginLongOp", "endLongOp",
     [
       line(/^const yieldToQueue = .*$/m), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
       line(/^const idleOnly = .*$/m), line(/^const laterWaiting = .*$/m), line(/^const bgWaits = .*$/m),
@@ -157,6 +157,9 @@ function floorJobs() {
   )(
     NOW, SOON, LATER, 3, lanes, null, () => false, () => false, engine,
     (m) => log.push(`reply ${m.type}`),
+    // A reply to `m` from after an await (worker.js `answer`): its request's
+    // number aside, a reply like any other.
+    (m, msg) => log.push(`reply ${msg.type}`),
     async (m) => log.push(`served ${m.type}`),
     () => {},
     () => {},

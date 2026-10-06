@@ -115,7 +115,9 @@ runs. No retries anywhere
     run to run; with the warm start and the tours marked seen
     (`{ warmed: false }` shows the warm start, `seed: null, random: null`
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
-    slows the engine's wasm). PERFORM's specs boot with `{ seed:
+    slows the engine's wasm, `workerPrefix` runs a spec's own code in the
+    engine worker ahead of `worker.js`, kept on a throttled run too).
+    PERFORM's specs boot with `{ seed:
     PERFORM_SEED, random: PERFORM_SEED }` instead, a seed whose first offer
     on Glass Pad is a typical one (SEED's is unusually light).
     `AURACLE_SEED=random` boots every spec that names no seed of its own
@@ -126,6 +128,18 @@ runs. No retries anywhere
     `app.replies`, `app.last`, `app.count`, `app.sent`, `app.sentCount`,
     `app.log` (both directions, in order), `app.facts()` (views, ranked,
     ratings, status as main last heard them), `app.toast`/`app.toasts`;
+  - a request and its answer: main numbers every request (`rid`), and each
+    reply to it carries the number back (`re`, with `more: true` on all but
+    the last; `docs/architecture/web-runtime.md` § The worker's replies).
+    `app.replyTo(sent)` waits for the last reply to one request (as
+    `app.sent` returns it), whatever its type and whatever lands first;
+    `app.answered({ types, lanes })` waits until every request of those
+    types, or in those lanes (`"bench"`: the bench lane's edits), sent so far
+    has had its last reply, and names what it is still waiting for when it
+    gives up; `app.unanswered(…)` lists them now. Neither waits for the
+    requests the worker never answers (`UNANSWERED`) or a spec's own
+    `app.post`. A reply the tap gives for a request (`app.answer`,
+    `app.fail`) carries its `re`;
   - a state the engine reaches only by chance is handed to main with
     `app.inject(reply)`; **`app.hold(patterns, { inject })` keeps the
     engine's own replies of that kind from main while an injected one
@@ -164,8 +178,9 @@ runs. No retries anywhere
   ([ADR-022](../../docs/decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)):
   a slow runner may make a test slower, never wrong.
   - *An engine fact:* wait for the reply that answers your request (the
-    reply carrying its token, the request sent after the gesture), through
-    `app.reply` or `app.engine`, not for a time.
+    request sent after the gesture, and its last reply by the number it
+    carries back), through `app.replyTo`, `app.answered`, `app.reply` or
+    `app.engine`, not for a time and not for the first reply of its type.
   - *A promise about the app's own timeline:* assert it on the app's clock.
     Read the state in the gesture's own task, inside the `page.evaluate` that
     makes it, before its first `await` (the pair swapped by the click, the
@@ -214,8 +229,9 @@ runs. No retries anywhere
 - **PATCH's specs share `patch_page.js`**: a preset opened with its rack
   drawn and at rest (`openPreset`, and `rackAtRest` on a page: the camera's
   fit and the plates' moves are tweens, and a size read or a press aimed
-  mid-way is at another zoom), the bench lane settled (`settled`,
-  `laneCounts`), the model's guess as drawn and as asked (`drawnGuess`,
+  mid-way is at another zoom), the bench lane settled (`settled`, a state:
+  every edit sent has had its last reply, and two frames later still has,
+  so the rack is drawn; `laneCounts`), the model's guess as drawn and as asked (`drawnGuess`,
   `rankedGuess`, `guessAfter`), and a pinned fit (`pinPulls`). Every helper
   but `rackAtRest` takes the test's `app`.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour

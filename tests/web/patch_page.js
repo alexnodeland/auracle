@@ -51,34 +51,40 @@ async function rackAtRest(page) {
 /** The tree on the bench, as the engine last described it (its `bench`). */
 const benchTree = (app) => app.page.evaluate(() => (window.__tap.last.bench ? window.__tap.last.bench.treeJson : null));
 
-// The bench lane's requests, counted out: a knob write, an op, a whole tree.
+// The bench lane's requests: a knob write, an op, a whole tree (fixtures.js
+// `LANES.bench`).
 const EDITS = ["edit_param", "edit_structure", "edit_set_tree"];
-/** How long the lane's counts must stay agreed before it has settled: long
- *  enough for whatever the test's last gesture set going to have reached
- *  the lane. */
-const LANE_QUIET_MS = 700;
 
-/** The bench lane's edits so far, [sent, answered]: an answer is a `bench`
- *  reply to an edit, or `edit_rejected`. */
+/** The bench lane's edits so far, [sent, answered]: an answer is the last
+ *  reply to an edit (the `bench`, or `edit_rejected`), found by the request
+ *  it names (`re`). */
 const laneCounts = (app) => app.page.evaluate((edits) => {
   const T = window.__tap;
-  const out = T.sent.filter((s) => edits.includes(s.type)).length;
-  const back = T.replies.filter((r) => !r.injected && ((r.type === "bench" && r.d.edited !== undefined) || r.type === "edit_rejected")).length;
-  return [out, back];
+  const sent = T.sent.filter((s) => edits.includes(s.type) && s.m.rid != null);
+  return [sent.length, sent.filter((s) => s.m.rid in T.finals).length];
 }, EDITS);
 
-/** Every edit the page has sent is answered, and stays that way for
- *  LANE_QUIET_MS: the lane has nothing at the engine and nothing it is about
- *  to send. An engine wait. */
+/** The bench lane has settled: every edit the page has sent has had its last
+ *  reply (`app.unanswered`, by the request each names), and still has two
+ *  frames later, so the rack is drawn from it. An edit the lane held back
+ *  goes out in the task of the reply ahead of it, and so is seen waiting
+ *  here, never missed between the two. A state, not a quiet window: an
+ *  engine wait. */
 async function settled(app, { timeout = 90_000 } = {}) {
-  const counts = () => laneCounts(app);
-  await app.engine((ms) => expect.poll(async () => {
-    const a = await counts();
-    if (a[0] !== a[1]) return false;
-    await app.page.waitForTimeout(LANE_QUIET_MS);
-    const b = await counts();
-    return a[0] === b[0] && a[1] === b[1];
-  }, { timeout: ms, intervals: [250], message: "the bench lane settled" }).toBe(true), { ms: timeout });
+  let left = [];
+  const waiting = async () => (left = await app.unanswered({ lanes: ["bench"] })).length;
+  const frames = () => app.page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  try {
+    await app.engine((ms) => expect.poll(async () => {
+      if (await waiting()) return false;
+      await frames();
+      return (await waiting()) === 0;
+    }, { timeout: ms, message: "the bench lane settled" }).toBe(true), { ms: timeout });
+  } catch (err) {
+    // Say which edits were still waiting for their last reply, as
+    // `app.answered` does.
+    throw new Error(`the bench lane never settled: still waiting for ${left.map((r) => `${r.type} #${r.rid}`).join(", ") || "none at the last look"}\n${err.message}`);
+  }
 }
 
 /** The newest `guess` reply with a ranking in it for the tree on the bench,

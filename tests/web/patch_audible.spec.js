@@ -87,8 +87,6 @@
 // prints it); that every selector change keeps its level within 3 dB (the
 // makeup is measured on the whole phrase, a held C4 is one note of it);
 // anything about other patches.
-const fs = require("fs");
-const path = require("path");
 const { test, expect, goLevel, bankTab } = require("./fixtures");
 const patchPage = require("./patch_page.js");
 
@@ -314,27 +312,17 @@ self.addEventListener("message", (e) => {
 
 const C4 = 261.63;
 
-// The slowed worker is served from the file, not fetched through the server:
-// a route handler then has nothing in flight that a failing test's teardown
-// could wait on. It is the file the server would send.
-const WORKER_JS = path.join(__dirname, "..", "..", "apps", "web", "worker.js");
-
 // No route outlives its test, whatever state a failure left it in.
 test.afterEach(async ({ page, app }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 /** Boot with this spec's taps; `slowable`, with the engine's handler slowed
- *  on demand (`slow`, `slowRender`). */
+ *  on demand (`slow`, `slowRender`): the fixture serves the worker with SLOW
+ *  ahead of it (`workerPrefix`), throttled or not. */
 async function boot(app, { slowable = false } = {}) {
-  const { page } = app;
-  await page.addInitScript(LISTEN);
-  if (slowable) {
-    const body = SLOW + fs.readFileSync(WORKER_JS, "utf8");
-    await page.route(/\/worker\.js(\?|$)/, (route) =>
-      route.fulfill({ status: 200, body, contentType: "text/javascript", headers: { "Cache-Control": "no-store" } }));
-  }
-  await app.boot();
+  await app.page.addInitScript(LISTEN);
+  await app.boot(slowable ? { workerPrefix: SLOW } : {});
 }
 
 // Posted to the worker past the tap (it is not the app's): the prefix above
@@ -344,7 +332,8 @@ const slow = (app, map) =>
 const slowRender = (app, ms) =>
   app.page.evaluate((n) => window.__tap.post({ type: "__pw_slow_render", ms: n }), ms);
 
-/** Every edit posted has been answered, and stays that way (patch_page.js). */
+/** Every edit posted has had its last reply, and the rack is drawn from it
+ *  (patch_page.js). */
 const settled = (app) => patchPage.settled(app, { timeout: 30_000 });
 
 async function openPreset(app, name) {
@@ -652,7 +641,6 @@ test("an undo and a redo of a selector keep the held note's level: the voices ta
   await steadyRms(page);
   await slowRender(app, 1500);
   for (const [key, want] of [["ControlOrMeta+z", "svf lp"], ["ControlOrMeta+Shift+z", "svf bp"]]) {
-    const n = await page.evaluate(() => window.__pwIO.replies.length);
     // Recorded until the reply, not for a fixed time: the restored tree can
     // reach the voices late, behind the cable probe the last change asked
     // for (CI: 2 s after the key, which left 5 reads before a fixed 2.6 s
@@ -661,12 +649,20 @@ test("an undo and a redo of a selector keep the held note's level: the voices ta
     const t0 = await app.now();
     await page.locator("#rack-subject").click();
     await page.keyboard.press(key);
-    await expect.poll(() => page.evaluate((i) => window.__pwIO.replies.length > i, n), { timeout: 30_000 }).toBe(true);
+    // The reply to this undo (or redo): the last reply to the restore the key
+    // sent, by the request it names, rather than the first bench reply after
+    // the key, which is right only while nothing else is in the lane. (#175
+    // failed at throttle 4 for another reason: the spec's slowdown, served
+    // with the worker, was dropped whenever the fixture routed the worker
+    // itself, so the restore's render was a memo hit and its reply came at
+    // once. Booting with `workerPrefix` keeps it.)
+    await expect.poll(async () => (await app.sent({ type: "edit_set_tree", restore: true }, { after: t0 })).length).toBe(1);
+    const [asked] = await app.sent({ type: "edit_set_tree", restore: true }, { after: t0 });
+    const back = await app.replyTo(asked, { timeout: 30_000 });
+    expect(back, `${key}: the restore's own reply is its bench`).toMatchObject({ type: "bench", edited: "restore" });
     const snaps = await page.evaluate(() => { window.__pwRecStop = true; return window.__pwRec; });
-    const { reply, early } = await page.evaluate(([i, t]) => {
-      const reply = window.__pwIO.replies[i];
-      return { reply, early: window.__pwMakeups.filter((m) => m.t > t && m.t < reply.t && m.type === "patch") };
-    }, [n, t0]);
+    const reply = { t: back._at, makeup: back.makeup };
+    const early = await page.evaluate(([t, r]) => window.__pwMakeups.filter((m) => m.t > t && m.t < r && m.type === "patch"), [t0, reply.t]);
     await expect(fk.locator(".enum-text")).toHaveText(want);
     await settled(app);
     const after = await steadyRms(page);

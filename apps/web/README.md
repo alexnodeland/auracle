@@ -275,7 +275,9 @@ to a pinned `role="alert"` strip that stays until resolved.
 - **Worker replies are load-bearing, so a request that throws must still
   reply.** `worker.js` runs every request through one `dispatch` under a
   `try/catch` that answers `{type: "engine_error", request, id, req, message,
-  fatal}`; `main.js` releases exactly the state that request was holding
+  fatal, re}` (`re`, the request's own number, as every reply carries it:
+  `docs/architecture/web-runtime.md` § The worker's replies); `main.js`
+  releases exactly the state that request was holding
   (`releaseRequest`: `editInFlight`, `fitting`, `dealing`, the evolve buttons,
   a preview slot, …). PERFORM's requests are named by their `req`, and
   `perform.requestFailed` answers that one as an empty reply carrying the

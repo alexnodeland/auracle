@@ -13,7 +13,47 @@ let engine = null;
 let WasmEngine = null;
 let glue = null; // the wasm-bindgen module: its free functions (`farm_walk`)
 
-const post = (msg, transfer) => self.postMessage(msg, transfer || []);
+// ---------- replies ----------
+//
+// Every request main sends carries its own number, `rid` (main.js `send`, a
+// count per page), and every reply to it carries that number back as `re`,
+// so a reply names the request it answers whatever its type. A request with
+// several replies (a bench edit's early tree, then the bench; a generation's
+// progress and children, then `refined`) has `re` on each, and `more: true`
+// on every one but the last. What the worker says of its own accord (`busy`,
+// a log line, a crew wanted or reaped, the boot fill, a face found later)
+// carries no `re`. A few requests are never answered, by design: the table
+// is in docs/architecture/web-runtime.md (The worker's replies).
+//
+// One way out for a reply, so the echo cannot be forgotten:
+// - `post`: the reply to the request whose handler is running. `runMessage`
+//   names it (`answering`) for the synchronous part of the handler, so every
+//   case in `dispatch`, and what it calls in the same turn (`postBench`,
+//   `postLiveTree`, `engineError`), is stamped without saying so;
+// - `answer(m, …)`: the reply to `m` from anywhere else. After an `await` (a
+//   long job's later pieces: PERFORM's measurement and walks, the guess, an
+//   explain, a generation and ⚡ answering from farm messages), or on
+//   another request's behalf (a cancelled explain, a retired offer,
+//   `not_ready`);
+// - `news`: what nobody asked for. Never stamped, wherever it is said.
+//
+// `answering` never outlives the turn that set it, so a post after an await
+// is never taken for a reply to whatever ran last.
+let answering = null;
+// The `re` of a reply to `m`: its `rid`, or a list where one reply answers
+// several (`also`: a render of one id asked for twice, see `onmessage`).
+// Undefined for what main did not send (the worker's own queued work).
+function reOf(m) {
+  if (!m || m.rid == null) return undefined;
+  return m.also && m.also.length ? [m.rid, ...m.also] : m.rid;
+}
+function emit(msg, transfer, to) {
+  const re = reOf(to);
+  self.postMessage(re === undefined || msg.re !== undefined ? msg : { ...msg, re }, transfer || []);
+}
+const post = (msg, transfer) => emit(msg, transfer, answering);
+const answer = (m, msg, transfer) => emit(msg, transfer, m);
+const news = (msg, transfer) => self.postMessage(msg, transfer || []);
 
 const status = () => JSON.parse(engine.status());
 
@@ -37,7 +77,7 @@ const status = () => JSON.parse(engine.status());
 // the same array the live-audio worklet's messages land in. This worker has no
 // `window`, so it posts and main appends.
 const logNote = (text, detail) =>
-  post({ type: "log", at: Date.now(), text, ...(detail || {}) });
+  news({ type: "log", at: Date.now(), text, ...(detail || {}) });
 
 // ---------- long-op signalling ----------
 //
@@ -61,12 +101,12 @@ const logNote = (text, detail) =>
 // that already announced itself; main only ever sees the outermost pair.
 let longOpDepth = 0;
 function beginLongOp() {
-  if (longOpDepth++ === 0) post({ type: "busy" });
+  if (longOpDepth++ === 0) news({ type: "busy" });
 }
 function endLongOp() {
   if (--longOpDepth <= 0) {
     longOpDepth = 0;
-    post({ type: "idle" });
+    news({ type: "idle" });
   }
 }
 
@@ -75,15 +115,18 @@ function endLongOp() {
 // with the fatal `engine_error` (carrying `req`) that also latches
 // `poisoned`, so the page hears that the engine is down before it hears
 // anything about this request. Answered here first, it said "try again"
-// about a request no engine would ever run again.
-function performReply(m, type, field, long, fn) {
+// about a request no engine would ever run again. Answers `m` wherever it is
+// called from (after a measurement's last breath, too); `more` when another
+// reply to it follows (`perform_record`'s status).
+function performReply(m, type, field, long, fn, more = false) {
+  const also = more ? { more: true } : {};
   if (long) beginLongOp();
   try {
-    post({ type, req: m.req, [field]: fn() });
+    answer(m, { type, req: m.req, [field]: fn(), ...also });
   } catch (err) {
     const message = String((err && err.message) || err);
     if (isFatal(err, message)) throw err;
-    post({ type, req: m.req, [field]: null, error: message });
+    answer(m, { type, req: m.req, [field]: null, error: message, ...also });
   } finally {
     if (long) endLongOp();
   }
@@ -325,7 +368,7 @@ function farmShutdown() {
   farmSay({ type: "bye" });
   for (const f of farm) f.alive = false;
   farmSink = null;
-  post({ type: "farm_done", crew: farmCrew_ });
+  news({ type: "farm_done", crew: farmCrew_ });
 }
 
 // ---------- the farm on demand ----------
@@ -372,7 +415,7 @@ function crewUp() {
           resolve(p);
         },
       };
-      post({ type: "farm_want", crew: id });
+      news({ type: "farm_want", crew: id });
     });
     if (!ports || ports.length === 0) return false;
     // The last crew (boot's, or a reaped one) is gone: start clean.
@@ -404,7 +447,7 @@ function crewArrived(m) {
   for (const p of m.ports || []) {
     try { p.postMessage({ type: "bye" }); p.close(); } catch (_) { /* gone */ }
   }
-  post({ type: "farm_done", crew: m.crew });
+  news({ type: "farm_done", crew: m.crew });
 }
 
 function crewKeep() {
@@ -434,10 +477,11 @@ function crewReap() {
 
 // ---------- walks on the crew ----------
 //
-// A walk task is `{ctx, job, start(), done(result, ms), fail(reason)}`: the
-// context and the job as the exact text the engine gave (the context is the
-// same string for every job of a generation, and `farm_walk` keeps its parse
-// by that text), and what to do with the result. Tasks are handed out in the
+// A walk task is `{ctx, job, start(), done(result, ms), fail(reason), to}`:
+// the context and the job as the exact text the engine gave (the context is
+// the same string for every job of a generation, and `farm_walk` keeps its
+// parse by that text), what to do with the result, and the request it walks
+// for (`to`, which a failure answers). Tasks are handed out in the
 // order they were queued, one per idle worker; the owner (a generation, ⚡)
 // decides what order to *absorb* in. A worker that dies gives its task back to
 // the queue; a task no worker can run fails, and its owner runs it here.
@@ -464,7 +508,7 @@ function walkPump() {
     // The crew is gone (every worker died, or it was reaped) and nothing is
     // on its way back: whatever waits is walked here.
     if (!crewRaising && walkInflight.size === 0) {
-      for (const task of walkQueue.splice(0)) if (!task.dead) runOwned(task.request, () => task.fail("no farm"));
+      for (const task of walkQueue.splice(0)) if (!task.dead) runOwned(task, () => task.fail("no farm"));
     }
     return;
   }
@@ -502,7 +546,7 @@ function walkDone(f, m) {
       walkTimes.push(m.ms);
       if (walkTimes.length > 30) walkTimes.shift();
     }
-    runOwned(task.request, () => task.done(m.result, m.ms));
+    runOwned(task, () => task.done(m.result, m.ms));
   }
   walkPump();
   if (!walkBusy()) crewIdle();
@@ -510,7 +554,7 @@ function walkDone(f, m) {
 
 function walkCannot(f, m) {
   const task = walkSettle(f, m.i);
-  if (task && !task.dead) runOwned(task.request, () => task.fail(m.reason || "declined"));
+  if (task && !task.dead) runOwned(task, () => task.fail(m.reason || "declined"));
 }
 
 // A worker died holding a walk: that says nothing about the walk, so it goes
@@ -536,7 +580,7 @@ function walkTimeout(i) {
   if (!s) return;
   walkInflight.delete(i);
   logNote(`[auracle] walk ${i} timed out on the farm; walking it here`, { kind: "walk_timeout", i });
-  if (!s.task.dead) runOwned(s.task.request, () => s.task.fail("timed out"));
+  if (!s.task.dead) runOwned(s.task, () => s.task.fail("timed out"));
 }
 
 /** Drop every task `mine` names: queued ones leave the queue, running ones
@@ -547,12 +591,13 @@ function walkAbandon(mine) {
 }
 
 // A task's owner runs inside a farm message, outside `dispatch`, so its
-// failures are caught here and reported the way `dispatch` reports them.
-function runOwned(request, fn) {
+// failures are caught here and reported the way `dispatch` reports them, to
+// the request the task is walking for (`to`).
+function runOwned(task, fn) {
   try {
     fn();
   } catch (err) {
-    engineError(request || "refine", null, err);
+    engineError(task.request || "refine", null, err, null, task.to);
   }
 }
 
@@ -779,7 +824,7 @@ function postClip() {
 }
 
 function restoreFailed(status) {
-  post({ type: "restore_failed", status });
+  news({ type: "restore_failed", status });
   return 0;
 }
 function restoreSerial(saved) {
@@ -869,7 +914,7 @@ async function restoreSession(saved, farmed, stages) {
     stop: () => false,
     wantAudio: (i) => i < FARM_AUDIO_AHEAD,
     after: () =>
-      post({
+      news({
         type: "fill_progress",
         pool: landed,
         target: jobs.length,
@@ -1003,8 +1048,10 @@ function postLiveTree(edited, why, makeup) {
       knobs = undefined;
     }
   }
+  // Ahead of the edit's `bench`, which is the last reply to it.
   post({
     type: "tree_json",
+    more: true,
     edited,
     json,
     makeup: makeup != null ? makeup : engine.edit_makeup(),
@@ -1148,12 +1195,13 @@ function isFatal(err, message) {
 // `req`: the request's own number, for the requests that carry one (PERFORM's
 // questions, matched to their reply by it), so main can answer the right one
 // when this is the only reply it will get (a poisoned engine never runs it).
-function engineError(request, id, err, req) {
+// `to`: the request this answers (its `re`), the one running unless named.
+function engineError(request, id, err, req, to = answering) {
   const message = poisoned ? `the engine is down (${poisoned})` : String((err && err.message) || err);
   const fatal = !!poisoned || isFatal(err, message);
   if (fatal && !poisoned) poisoned = message;
   console.error(`[auracle] engine error handling ${request}:`, err);
-  post({ type: "engine_error", request, id: id == null ? null : id, req: req == null ? null : req, message, fatal });
+  answer(to, { type: "engine_error", request, id: id == null ? null : id, req: req == null ? null : req, message, fatal });
 }
 
 // A rejection nothing awaited. Not a request's own failure — `dispatch`
@@ -1162,7 +1210,7 @@ function engineError(request, id, err, req) {
 self.addEventListener("unhandledrejection", (ev) => {
   const err = ev.reason;
   console.error("[auracle] unhandled rejection in the engine worker:", err);
-  post({
+  news({
     type: "engine_error",
     request: null,
     id: null,
@@ -1311,7 +1359,9 @@ async function faces(m) {
     lanes[LATER].push({ type: "face_lookup", asks: waiting, render: !!m.render });
     schedulePump();
   }
-  post({ type: "faces", items, pending: waiting.map(faceTag), failed });
+  // The answer: what is here now, and what is `pending`. A pending face comes
+  // later, as the worker's news (a lookup and a render it queued itself).
+  answer(m, { type: "faces", items, pending: waiting.map(faceTag), failed });
 }
 
 const faceTag = (q) => (q.id != null ? { id: q.id } : { ref: q.ref });
@@ -1353,7 +1403,7 @@ async function faceLookup(m) {
       failed.push({ ...faceTag(q), missing: true });
     }
   }
-  if (items.length || failed.length) post({ type: "faces", items, pending: [], failed });
+  if (items.length || failed.length) news({ type: "faces", items, pending: [], failed });
 }
 
 // A face asked for and no longer in view (a preset row scrolled past): its
@@ -1385,13 +1435,13 @@ function faceRender(q) {
     try {
       b = faceNow(q, true);
     } catch (err) {
-      post({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
+      news({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
       throw err; // fatal: the engine is down, and says so once
     }
     if (b) faceKeep(q.key, b);
   }
   const tag = q.id != null ? { id: q.id } : { ref: q.ref };
-  post(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
+  news(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
 }
 
 // After a render reaches main: its face, if main has not been sent it, looked
@@ -1463,7 +1513,7 @@ async function measure(m) {
     // `runMessage`'s fatal `engine_error` instead, as in `performReply`.
     const message = String((err && err.message) || err);
     if (isFatal(err, message)) throw err;
-    post({ type: "perform_wired", req: m.req, data: null, error: message });
+    answer(m, { type: "perform_wired", req: m.req, data: null, error: message });
     return;
   }
   performReply(m, "perform_wired", "data", false, () =>
@@ -1516,7 +1566,7 @@ async function walkRun(m) {
   const retired = () => {
     if (m.job != null) engine.perform_job_drop(m.job);
     m.job = null;
-    post({ type, req: m.req, [field]: null, error: "retired" });
+    answer(m, { type, req: m.req, [field]: null, error: "retired" });
   };
   beginLongOp();
   try {
@@ -1530,7 +1580,7 @@ async function walkRun(m) {
       // A walk that cannot start answers as the one call would: `{reason}`,
       // or null for a tree that does not parse.
       if (!begun || begun.job == null) {
-        post({ type, req: m.req, [field]: begun });
+        answer(m, { type, req: m.req, [field]: begun });
         return;
       }
       m.job = begun.job;
@@ -1547,7 +1597,7 @@ async function walkRun(m) {
     }
     const job = m.job;
     m.job = null;
-    post({ type, req: m.req, [field]: JSON.parse(engine.perform_job_finish(job)) });
+    answer(m, { type, req: m.req, [field]: JSON.parse(engine.perform_job_finish(job)) });
   } catch (err) {
     const message = String((err && err.message) || err);
     // A trap: the engine is not called again (its job goes with it), and
@@ -1563,7 +1613,7 @@ async function walkRun(m) {
       /* reported by the next request that reaches the engine */
     }
     m.job = null;
-    post({ type, req: m.req, [field]: null, error: message });
+    answer(m, { type, req: m.req, [field]: null, error: message });
   } finally {
     endLongOp();
   }
@@ -1731,14 +1781,14 @@ async function guessCrewPhase(m) {
   try {
     const crew = await guessOnCrew(at, failed);
     if (crew && crew.reason) {
-      post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data: crew });
+      answer(m, { type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data: crew });
       return true;
     }
     if (crew === null) m.crew = true;
     return false;
   } catch (err) {
     const message = String((err && err.message) || err);
-    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    answer(m, { type: "guess", token: m.token ?? null, data: null, error: message });
     if (isFatal(err, message)) throw err;
     return true;
   }
@@ -1747,7 +1797,7 @@ async function guessCrewPhase(m) {
 async function guessRun(m) {
   const at = m.at || undefined;
   const failed = m.failed || (m.failed = []);
-  const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
+  const reply = (data) => answer(m, { type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
   m.spent = m.spent || 0;
   try {
     // After a crew (`guessCrewPhase`) the ranking covers every candidate it
@@ -1780,7 +1830,7 @@ async function guessRun(m) {
     // Answered, as `measure` answers: the page holds a guess open until its
     // reply lands. A trap still poisons the engine, through `dispatch`.
     const message = String((err && err.message) || err);
-    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    answer(m, { type: "guess", token: m.token ?? null, data: null, error: message });
     if (isFatal(err, message)) throw err;
   }
 }
@@ -1852,8 +1902,9 @@ function genEta(g) {
 }
 
 function genProgress(g) {
-  post({
+  answer(g.to, {
     type: "refine_progress",
+    more: true,
     generation: g.generation,
     done: g.next,
     total: g.total,
@@ -1868,12 +1919,14 @@ function genProgress(g) {
   });
 }
 
-// Open a generation. Called from `dispatch`, and returns as soon as the jobs
-// are out: the generation runs from farm messages and `soon` pieces.
-// `toward`: bred toward the sound of your own (`refine_toward_jobs`): its
-// context carries the target, so every walk, farmed or here, is tilted to
-// it, and it is absorbed and finished as any generation is.
-function breedOpen(toward = false) {
+// Open a generation for the request `m`. Called from `dispatch`, and returns
+// as soon as the jobs are out: the generation runs from farm messages and
+// `soon` pieces, and answers `m` from them (`g.to`): its progress and each
+// child (`more`), then `refined`. `toward`: bred toward the sound of your own
+// (`refine_toward_jobs`): its context carries the target, so every walk,
+// farmed or here, is tilted to it, and it is absorbed and finished as any
+// generation is.
+function breedOpen(m, toward = false) {
   let parents;
   let ctx = null;
   let jobs = null;
@@ -1881,7 +1934,7 @@ function breedOpen(toward = false) {
   // a generation trims it first. Done here, on its own, so the rows it
   // retires leave main's bank now and are named, rather than going silently
   // inside `refine_jobs` and staying live in main until the first child.
-  poolTrim();
+  poolTrim(m);
   let towardReason = null;
   if (toward) {
     const reply = typeof engine.refine_toward_jobs === "function"
@@ -1911,7 +1964,7 @@ function breedOpen(toward = false) {
     // taste yet (`untaught`), no sound (`no_sound`), or a sound saved under
     // coordinates φ no longer has (`stale_sound`: bring the file again).
     const reason = toward ? towardReason || "untaught" : "untaught";
-    post({
+    answer(m, {
       type: "refined", views: tasteViews(), status: status(), born: [],
       untaught: reason === "untaught",
       ...(toward ? { toward: true, reason, no_sound: reason === "no_sound", stale_sound: reason === "stale_sound" } : {}),
@@ -1919,6 +1972,7 @@ function breedOpen(toward = false) {
     return;
   }
   const g = {
+    to: m,
     generation: status().generation,
     parents,
     ctx,
@@ -1938,21 +1992,22 @@ function breedOpen(toward = false) {
   gen = g;
   genProgress(g);
   breedFarm(g).catch((err) => {
-    engineError("refine", null, err);
+    engineError("refine", null, err, null, g.to);
     if (gen === g) genDrop(g);
   });
 }
 
 // Bring the pool back to size (`refine_finish` with no generation open) and
-// tell main what left, with the views that no longer hold it.
-function poolTrim() {
+// tell main what left, with the views that no longer hold it: the first of
+// the generation's replies to `m`.
+function poolTrim(m) {
   let gone = [];
   try {
     gone = JSON.parse(engine.refine_finish());
   } catch (_) {
     gone = [];
   }
-  if (gone.length) post({ type: "pool_trimmed", retired: gone, views: tasteViews(), status: status() });
+  if (gone.length) answer(m, { type: "pool_trimmed", more: true, retired: gone, views: tasteViews(), status: status() });
 }
 
 // Every preset's measurement, for the presets nearest a sound of your own:
@@ -1975,9 +2030,9 @@ function ownPresetsFetch() {
       try {
         engine.own_presets_set(text);
         const sound = JSON.parse(engine.own_sound());
-        if (sound) post({ type: "own_sound", sound, presets: true });
+        if (sound) news({ type: "own_sound", sound, presets: true });
       } catch (err) {
-        engineError("own_sound", null, err);
+        engineError("own_sound", null, err, null, null);
       }
     })
     .catch(() => {
@@ -2003,6 +2058,7 @@ async function breedFarm(g) {
   for (let i = 0; i < g.total; i++) {
     walkSubmit({
       request: "refine",
+      to: g.to,
       gen: g,
       ctx: g.ctx,
       job: g.jobs[i],
@@ -2045,7 +2101,7 @@ function genStep(g) {
 // An absorb or a walk here threw: main is told (it releases EVOLVE POOL), and
 // the generation is forgotten rather than left open with nothing driving it.
 function genFailed(g, err) {
-  engineError("refine", null, err);
+  engineError("refine", null, err, null, g.to);
   if (gen === g) genDrop(g);
 }
 
@@ -2121,8 +2177,9 @@ function genLanded(g, child) {
     g.born.push(child);
   }
   g.next++;
-  post({
+  answer(g.to, {
     type: "refine_child",
+    more: true,
     generation: g.generation,
     index: g.next - 1,
     child: child > 0 ? child : 0,
@@ -2156,8 +2213,8 @@ function genFinish(g) {
     retired = []; // an older engine: each walk replaced as it went
   }
   genDrop(g);
-  post({ type: "refine_progress", generation: g.generation, done: g.next, total: g.total, eta: 0, farm: g.farmed });
-  post({
+  answer(g.to, { type: "refine_progress", more: true, generation: g.generation, done: g.next, total: g.total, eta: 0, farm: g.farmed });
+  answer(g.to, {
     type: "refined",
     views: tasteViews(),
     status: status(),
@@ -2227,12 +2284,13 @@ async function evolveFrom(m) {
   const reply = JSON.parse(engine.refine_from_job(m.id, locks));
   if (!reply.job) {
     // No taste yet, or the seed has gone. No crew is raised for nothing.
-    post({ type: "evolved_from", seedId: m.id, childId: 0, reason: reply.reason || refineReason(), views: tasteViews(), status: status() });
+    answer(m, { type: "evolved_from", seedId: m.id, childId: 0, reason: reply.reason || refineReason(), views: tasteViews(), status: status() });
     schedulePump();
     return;
   }
   // Held from the draw, so what waits for ⚡ (see `blocked`) waits from now.
-  const ev = { id: m.id, dead: false };
+  // `to`: the request every reply from here answers.
+  const ev = { id: m.id, dead: false, to: m };
   evolving = ev;
   const ctx = JSON.stringify(reply.context);
   const job = JSON.stringify(reply.job);
@@ -2244,17 +2302,18 @@ async function evolveFrom(m) {
     return;
   }
   if (!farmed) return evolveHere(ev);
-  post({ type: "evolve_started", seedId: m.id, stoppable: true });
+  answer(m, { type: "evolve_started", more: true, seedId: m.id, stoppable: true });
   walkSubmit(
     {
       request: "refine_from",
+      to: m,
       evolve: ev,
       ctx,
       job,
       done: (result) => {
         if (ev.dead) return;
         evolveEnd(ev);
-        evolvedFrom(ev.id, Number(engine.refine_from_absorb(ev.id, result)));
+        evolvedFrom(ev, Number(engine.refine_from_absorb(ev.id, result)));
       },
       // No worker could walk it (it declined, died with no one left, or the
       // watchdog fired): walked here, the same job.
@@ -2269,7 +2328,7 @@ async function evolveFrom(m) {
 // stop already on its way is answered rather than ignored.
 function evolveHere(ev) {
   if (ev.dead) return;
-  post({ type: "evolve_started", seedId: ev.id, stoppable: false });
+  answer(ev.to, { type: "evolve_started", more: true, seedId: ev.id, stoppable: false });
   setTimeout(() => {
     if (ev.dead || evolving !== ev) return;
     let child = 0;
@@ -2278,13 +2337,13 @@ function evolveHere(ev) {
       child = Number(engine.refine_from_walk(ev.id));
     } catch (err) {
       evolveEnd(ev);
-      engineError("refine_from", ev.id, err);
+      engineError("refine_from", ev.id, err, null, ev.to);
       return;
     } finally {
       endLongOp();
     }
     evolveEnd(ev);
-    evolvedFrom(ev.id, child);
+    evolvedFrom(ev, child);
   }, 0);
 }
 
@@ -2296,10 +2355,10 @@ function evolveEnd(ev) {
   schedulePump();
 }
 
-function evolvedFrom(seedId, childId) {
-  post({
+function evolvedFrom(ev, childId) {
+  answer(ev.to, {
     type: "evolved_from",
-    seedId,
+    seedId: ev.id,
     childId,
     reason: childId > 0 ? null : refineReason(),
     views: tasteViews(),
@@ -2320,7 +2379,8 @@ function evolveStop() {
     /* a poisoned engine: already reported */
   }
   walkAbandon((t) => t.evolve === ev);
-  post({ type: "evolved_from", seedId: ev.id, childId: 0, reason: "stopped", views: tasteViews(), status: status() });
+  // The ⚡'s own answer (the stop has none of its own).
+  answer(ev.to, { type: "evolved_from", seedId: ev.id, childId: 0, reason: "stopped", views: tasteViews(), status: status() });
   if (!walkBusy()) {
     if (walkInflight.size > 0) crewReap();
     else crewIdle();
@@ -2555,15 +2615,27 @@ async function pump() {
   if (runnable()) schedulePump();
 }
 
+// Run one request's handler. Its synchronous part runs with `m` as the request
+// being answered (`answering`, which `post` stamps), restored before this
+// returns: what the handler says after an `await` is said with `answer(m, …)`.
+// A handler that throws, at once or later, is answered with `engine_error`.
 async function runMessage(m) {
   if (poisoned) {
-    engineError(m.type, m.id, null, m.req);
+    engineError(m.type, m.id, null, m.req, m);
     return;
   }
+  const outer = answering;
+  answering = m;
+  let running;
   try {
-    await dispatch(m);
+    running = dispatch(m);
+  } finally {
+    answering = outer;
+  }
+  try {
+    await running;
   } catch (err) {
-    engineError(m.type, m.id, err, m.req);
+    engineError(m.type, m.id, err, m.req, m);
   }
 }
 
@@ -2603,7 +2675,7 @@ self.onmessage = (e) => {
   // of the boot sequence, not of any one message, and thirty individual
   // `if (!engine) break` lines is thirty chances to forget the thirty-first.
   if (!engine && m.type !== "init") {
-    post({ type: "not_ready", request: m.type });
+    answer(m, { type: "not_ready", request: m.type });
     return;
   }
   // Boot is not queued: it is the fill everything else is served *between*
@@ -2637,7 +2709,7 @@ self.onmessage = (e) => {
         const q = lane[i];
         if (q.type !== m.kind) continue;
         lane.splice(i, 1);
-        post({ type: q.type, token: q.token ?? null, tree: q.tree, k: q.k, cutoff: q.cutoff, error: "cancelled" });
+        answer(q, { type: q.type, token: q.token ?? null, tree: q.tree, k: q.k, cutoff: q.cutoff, error: "cancelled" });
       }
     }
     return;
@@ -2691,9 +2763,9 @@ self.onmessage = (e) => {
           }
         }
         if (q.type === "perform_offer") {
-          post({ type: "perform_offered", req: q.req, offer: null, error: "retired" });
+          answer(q, { type: "perform_offered", req: q.req, offer: null, error: "retired" });
         } else if (q.type === "perform_drift") {
-          post({ type: "perform_drifted", req: q.req, drift: null, error: "retired" });
+          answer(q, { type: "perform_drifted", req: q.req, drift: null, error: "retired" });
         } else {
           continue; // not a kind that is ever retired
         }
@@ -2703,16 +2775,7 @@ self.onmessage = (e) => {
     return;
   }
   const lane = laneOf(m);
-  // One render of an id answers everyone who asked (main keeps every buffer
-  // it is sent): a sound asked for in the background and then wanted at once
-  // (▶ on a pair that is waiting for it) is rendered once, as the player's.
-  if (m.type === "render") {
-    const i = lanes[NOW].findIndex((q) => q.type === "render" && q.id === m.id);
-    if (i >= 0) {
-      if (m.bg) return;
-      if (lanes[NOW][i].bg) lanes[NOW].splice(i, 1);
-    }
-  }
+  if (m.type === "render" && renderJoined(lanes[NOW], m)) return;
   lanes[lane].push(m);
   // The player's requests run on arrival, as every request used to: parked
   // behind a timer, the boot fill's next batch — a second or more of renders
@@ -2722,6 +2785,27 @@ self.onmessage = (e) => {
   if (lane === NOW) drainNow();
   if (runnable()) schedulePump();
 };
+
+// One render of an id answers everyone who asked (main keeps every buffer it
+// is sent): a sound asked for in the background and then wanted at once (▶ on
+// a pair that is waiting for it) is rendered once, as the player's. True when
+// `m` is answered by a render already queued in `queue` (the `now` lane); a
+// queued background render `m` replaces is taken out. Either way the render
+// that runs carries the other's number (`also`), so its one reply answers both.
+function renderJoined(queue, m) {
+  const i = queue.findIndex((q) => q.type === "render" && q.id === m.id);
+  if (i < 0) return false;
+  const join = (into, from) => {
+    const rids = [from.rid, ...(from.also || [])].filter((r) => r != null);
+    if (rids.length) into.also = [...(into.also || []), ...rids];
+  };
+  if (m.bg) {
+    join(queue[i], m);
+    return true;
+  }
+  if (queue[i].bg) join(m, queue.splice(i, 1)[0]);
+  return false;
+}
 
 let draining = false;
 async function drainNow() {
@@ -2744,6 +2828,7 @@ async function dispatch(m) {
       // on, and the boot veil up forever because neither `playable` nor
       // `filled` was ever posted. `finally` reaps; `catch` drops the veil into
       // a degraded state rather than hanging on it.
+      let readied = false;
       try {
         const mod = await import(`./pkg/auracle_wasm.js?v=${V}`);
         await mod.default({
@@ -2783,7 +2868,11 @@ async function dispatch(m) {
         try {
           takeSeconds = mod.take_seconds();
         } catch (_) { /* older engine */ }
-        post({ type: "ready", ceilings, ns, clip: auditionClip(), takeSeconds });
+        // `init`'s answer: the engine is up. The fill that follows is the
+        // worker's own news (its progress, `playable`, `filled`, a restore's
+        // refit), as is a boot that fails after this.
+        answer(m, { type: "ready", ceilings, ns, clip: auditionClip(), takeSeconds });
+        readied = true;
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.
@@ -2815,7 +2904,7 @@ async function dispatch(m) {
         // pool is then topped up if it came back short.
         let restored = 0;
         if (m.saved) {
-          post({
+          news({
             type: "fill_progress",
             pool: 0,
             target: 1,
@@ -2824,7 +2913,7 @@ async function dispatch(m) {
             label: "restoring your bank & taste…",
           });
           restored = await restoreSession(m.saved, farmed, stages);
-          post({
+          news({
             type: "fill_progress",
             pool: 1,
             target: 1,
@@ -2842,7 +2931,7 @@ async function dispatch(m) {
             // Which sounds are kept for a recording that couldn't be read, so
             // main says so once per set rather than on every boot.
             if (rep.held) rep.heldIds = JSON.parse(engine.held_sounds()).map((h) => h.id);
-            if (rep.terms || rep.cells || rep.dropped || rep.held) post({ type: "repaired", repair: rep });
+            if (rep.terms || rep.cells || rep.dropped || rep.held) news({ type: "repaired", repair: rep });
           } catch (_) { /* an engine without the report is an engine with nothing to report */ }
         }
 
@@ -2861,11 +2950,11 @@ async function dispatch(m) {
           // the engine is too old to have it, the veil still lifts and `filled`
           // deals the first pair, i.e. exactly today's behaviour.
           tryEngine("standardize_now");
-          post({ type: "playable", status: status(), restored });
+          news({ type: "playable", status: status(), restored });
         };
 
         let st = status();
-        post({
+        news({
           type: "fill_progress",
           pool: st.pool,
           target: st.pool_target,
@@ -2877,7 +2966,7 @@ async function dispatch(m) {
 
         const fillProgress = () => {
           st = status();
-          post({
+          news({
             type: "fill_progress",
             pool: st.pool,
             target: st.pool_target,
@@ -2931,7 +3020,7 @@ async function dispatch(m) {
         while (st.pool < st.pool_target) {
           const added = engine.fill_step(2);
           st = status();
-          post({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });
+          news({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });
           if (added === 0) break;
           if (st.pool >= playableAt) announcePlayable();
           await yieldToQueue();
@@ -2946,7 +3035,7 @@ async function dispatch(m) {
         // something to keep resident behind a running instrument; walks raise
         // a crew of their own when they want one.
         bootCrewDone();
-        post({ type: "filled", status: st, restored });
+        news({ type: "filled", status: st, restored });
         // Taste continuity: re-fit from the restored log so the map and
         // styles come back with the bank.
         //
@@ -2964,14 +3053,16 @@ async function dispatch(m) {
             engine.fit();
             lastStylesObs = -1;
             obsAtFit = status().observations;
-            post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
+            news({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
           }
         }
       } catch (err) {
         console.error("[auracle] boot failed:", err);
-        post({ type: "boot_failed", error: String((err && err.message) || err) });
+        const failed = { type: "boot_failed", error: String((err && err.message) || err) };
+        if (readied) news(failed);
+        else answer(m, failed);
       } finally {
         bootCrewDone();
         // From here a generation or ⚡ may raise a crew of its own.
@@ -3082,7 +3173,15 @@ async function dispatch(m) {
         // With the summary, every forecast it scores (LEARNING's strip) and
         // the numbers LEARNING's math states (`modelFacts`).
         post({ type: "calibration", calib: JSON.parse(engine.calibration()), forecasts: engineForecasts(), facts: modelFacts() });
-      } catch (_) { /* older engine: the UI falls back to its own tally */ }
+      } catch (err) {
+        // An older engine, or a summary that failed: answered all the same,
+        // with none (`calib: null`), and main keeps what it had (its own
+        // tally until a summary lands). A trap is rethrown unanswered, as in
+        // `performReply`: `runMessage` answers it with the fatal
+        // `engine_error` and latches `poisoned`.
+        if (isFatal(err, String((err && err.message) || err))) throw err;
+        post({ type: "calibration", calib: null });
+      }
       break;
     }
     case "render": {
@@ -3195,7 +3294,7 @@ async function dispatch(m) {
       // per turn, and nothing else waits for it but a refit. `toward`: bred
       // toward the sound of your own (Breed toward it); same lane, same
       // waits, so it queues behind a generation or ⚡ like any other.
-      breedOpen(m.toward === true);
+      breedOpen(m, m.toward === true);
       break;
     }
     // ---- a sound of your own (Plan-005 task 11) ----
@@ -3236,7 +3335,7 @@ async function dispatch(m) {
       // one render sooner. The `bench` reply that follows vets it.
       const early = engine.tree_json_of(m.id);
       if (early && early !== "null") {
-        post({ type: "bench_opening", id: m.id, json: early, makeup: engine.makeup_of(m.id) });
+        post({ type: "bench_opening", more: true, id: m.id, json: early, makeup: engine.makeup_of(m.id) });
       }
       const ok = engine.edit_begin(m.id);
       if (ok) postBench({ subject: m.id });
@@ -3357,7 +3456,7 @@ async function dispatch(m) {
         } catch (_) {
           /* a poisoned engine: reported below */
         }
-        engineError("refine_from", m.id, err);
+        engineError("refine_from", m.id, err, null, m);
         schedulePump();
       });
       break;
@@ -3389,7 +3488,7 @@ async function dispatch(m) {
             if (await guessCrewPhase(m)) return;
             lanes[LATER].unshift(m);
           })
-          .catch((err) => engineError("guess", null, err))
+          .catch((err) => engineError("guess", null, err, null, m))
           .finally(schedulePump);
         break;
       }
@@ -3426,7 +3525,8 @@ async function dispatch(m) {
         // `asOf`: the newest pool id main had seen when the answer was given.
         // A sound kept as new after it (a Take waits eight seconds) is not
         // judged by it (`Engine::record_tree_duel_as_of`).
-        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took, m.asOf == null ? 0xffffffff : m.asOf >>> 0)));
+        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took, m.asOf == null ? 0xffffffff : m.asOf >>> 0)),
+      true);
       // `recorded` false when the engine took nothing (the two the same, no
       // standardizer yet, a vet that failed): nothing moved, so no ratings,
       // and TASTE keeps no moment for it.
@@ -3541,9 +3641,9 @@ async function dispatch(m) {
             reply.turned = one(m.turned);
           }
         });
-        post(reply);
+        answer(m, reply);
       } catch (err) {
-        post({ ...reply, error: String((err && err.message) || err) });
+        answer(m, { ...reply, error: String((err && err.message) || err) });
         throw err;
       }
       break;
@@ -3631,8 +3731,10 @@ async function dispatch(m) {
       // wants to hear it, so the UI must not haul it onto the bench.
       // `prewarm` (booth mode) wants the tree itself, to measure PERFORM's
       // wiring without opening the patch, so the tree rides back too.
+      // Last unless the bench's early tree follows it (`bench_opening`).
+      const opening = !!(m.open && id > 0);
       post({
-        type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
+        type: "preset_loaded", ...(opening ? { more: true } : {}), id, index: m.index, warm: m.warm, preview: m.preview,
         prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
         views: tasteViews(), status: status(), retiring: openRetiring(),
       });
@@ -3641,7 +3743,7 @@ async function dispatch(m) {
       // start a background render. Its tree and makeup are known now, so
       // they are sent now, and main hands them to the voices (and PERFORM)
       // when it opens the patch — without waiting for that turn.
-      if (m.open && id > 0) {
+      if (opening) {
         post({ type: "bench_opening", id, index: m.index, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
       }
       break;
@@ -3669,7 +3771,7 @@ async function dispatch(m) {
           // the voices (and PERFORM) seconds before `warm_done` does; the
           // bench follows when main's open is served.
           if (i === m.picked[0]) {
-            post({ type: "warm_first", id, index: i, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
+            post({ type: "warm_first", more: true, id, index: i, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
           }
         }
       }
@@ -3753,7 +3855,7 @@ async function dispatch(m) {
     case "readmit_held": {
       const reply = JSON.parse(engine.readmit_held(m.id >>> 0, m.take || ""));
       // Back in the pool, it is ranked and mapped: the views go with it.
-      post({ type: "readmitted", ...reply, status: status(), ...(reply.ok ? { views: tasteViews() } : {}) });
+      post({ type: "readmitted", ...reply, status: status(), ...(reply.ok ? { views: tasteViews(), more: true } : {}) });
       if (reply.ok) post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
       break;
     }

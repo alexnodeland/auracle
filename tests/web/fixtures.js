@@ -28,11 +28,22 @@
 //   last      the last engine reply of each type (injected ones aside)
 //   counts    engine replies by type, and requests as `sent:<type>`
 //   sent      every request posted to the engine: { type, at, m }
+//   finals    by request number (`rid`), where in `replies` its last reply is
 //   toasts    every toast that entered the lane: { text, at }
 //   facts     the engine's facts as main last heard them from the engine:
 //             views, ranked, lineage, ratings, status, and every name a
 //             sound has had (`names`)
 // Times are the page's clock (`performance.now()`, `app.now()`).
+//
+// Requests and their replies. Main numbers every request it sends (`rid`,
+// main.js `send`), and each reply the worker sends in answer carries that
+// number as `re` (a list where one reply answers several), with `more: true`
+// on every reply to it but the last (worker.js `post`, `answer`). What the
+// worker says of its own accord carries no `re`. So `app.replyTo(sent)` is the
+// last reply to that very request, and `app.answered({ types, lanes })` waits
+// until every such request sent so far has had it: an engine wait on the
+// request, not on a reply of some type or a quiet window. A reply the spec
+// injects for a request (`app.answer`, `app.fail`) carries its `re` too.
 //
 // Matching. Where a method takes a pattern it is a type name, or a partial
 // object matched against a message: each key must equal its value, `true`
@@ -144,13 +155,33 @@ const PERFORM_SEED = (() => {
   return v && /^\d+$/.test(v) ? Number(v) : 1085668085;
 })();
 
+/** What main sends that the worker never answers, by design: a log line, a
+ *  count of a pair shown, a style's name, the farm's plumbing, and the
+ *  requests that act on others (a stop, `retire`, `promote`, a cancel),
+ *  whose effect is the other request's own last reply. `app.answered` does
+ *  not wait for these. apps/web/tests/worker-protocol.test.mjs holds the
+ *  worker to this list, and docs/architecture/web-runtime.md (The worker's
+ *  replies) names them. */
+const UNANSWERED = [
+  "duel_shown", "log_edit", "log_event", "set_style_name",
+  "farm_lost", "farm_ports",
+  "promote", "retire", "explain_cancel", "refine_stop", "refine_from_stop",
+];
+/** The lanes `app.answered` knows by name, as the request types in them.
+ *  `bench`: main's bench lane, every edit to the patch on the bench, one at
+ *  the worker at a time (main.js `pumpLane`): a knob write, an op, a whole
+ *  tree (an undo or a redo too). */
+const LANES = {
+  bench: ["edit_param", "edit_structure", "edit_set_tree"],
+};
+
 // The tap, installed before the page's scripts on every navigation. One
 // wrapper of `Worker`: whatever a spec adds later wraps it.
 const TAP = `(() => {
   if (window.__tap) return;
   const T = (window.__tap = {
     engine: null, workers: [],
-    replies: [], last: {}, counts: {}, sent: [], toasts: [],
+    replies: [], last: {}, counts: {}, sent: [], toasts: [], finals: {},
     facts: { views: null, ranked: null, lineage: null, ratings: null, status: null, names: {} },
     holds: [], holdFrom: null, holdNext: [], held: [],
     amends: [],
@@ -266,6 +297,8 @@ const TAP = `(() => {
       // Each reply gets its own copy of an object set into it.
       if (!injected) for (const a of T.amends) if (matches(a.match, d)) for (const [k, v] of Object.entries(a.set)) set(d, k, v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v);
       T.replies.push({ type: d.type, at: performance.now(), injected, d: light(d) });
+      // The last reply to a request: one with its number and no \`more\`.
+      if (d.re != null && !d.more) for (const r of [].concat(d.re)) if (!(r in T.finals)) T.finals[r] = T.replies.length - 1;
       if (injected) return;
       T.last[d.type] = d;
       T.counts[d.type] = (T.counts[d.type] || 0) + 1;
@@ -297,13 +330,14 @@ const TAP = `(() => {
       const fail = typed && (T.fails || []).find((f) => matches(f.match, m));
       if (fail) {
         if (fail.once) T.fails.splice(T.fails.indexOf(fail), 1);
-        const data = { type: "engine_error", request: m.type, id: m.id == null ? null : m.id, req: m.req == null ? null : m.req, message: fail.message, fatal: fail.fatal };
+        const data = { type: "engine_error", request: m.type, id: m.id == null ? null : m.id, req: m.req == null ? null : m.req, message: fail.message, fatal: fail.fatal, ...(m.rid != null ? { re: m.rid } : {}) };
         setTimeout(() => T.inject(data), 0);
         return;
       }
       const answer = typed && T.answers.find((a) => matches(a.match, m));
       if (answer) {
-        setTimeout(() => T.inject(answer.reply), 0);
+        const reply = m.rid != null && answer.reply.re === undefined ? { ...answer.reply, re: m.rid } : answer.reply;
+        setTimeout(() => T.inject(reply), 0);
         return;
       }
       const delay = typed && T.delays.find((x) => matches(x.match, m));
@@ -357,6 +391,17 @@ self.addEventListener("message", (e) => {
 
 const asPattern = (p) => (typeof p === "string" ? { type: p } : p);
 
+/** The request types `types` and `lanes` name together, or null for all. */
+function requestTypes(types, lanes) {
+  if (types == null && lanes == null) return null;
+  const out = new Set([].concat(types || []));
+  for (const name of [].concat(lanes || [])) {
+    if (!LANES[name]) throw new Error(`no lane named ${name}: the tap knows ${Object.keys(LANES).join(", ")}`);
+    for (const t of LANES[name]) out.add(t);
+  }
+  return [...out];
+}
+
 class App {
   constructor(page) {
     this.page = page;
@@ -384,8 +429,13 @@ class App {
    *  - `slowEngine`: run the engine's wasm calls that many times slower
    *    (perform_budget.js `SLOW_ENGINE`). AURACLE_CPU_THROTTLE does that and
    *    throttles the page (CDP);
+   *  - `workerPrefix`: a spec's own code to run in the engine worker ahead of
+   *    worker.js (a slowdown of its own, switched on by a message). The
+   *    fixture serves the worker with it, after its own: a spec that routed
+   *    worker.js itself lost its prefix whenever the fixture routed it too,
+   *    as every throttled run does (#166);
    *  - `wait` (true): wait for the boot. */
-  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, wait = true } = {}) {
+  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, workerPrefix = "", wait = true } = {}) {
     const { page } = this;
     if (seed === undefined) seed = random === undefined ? DEFAULT_SEED : null;
     if (random === undefined) random = DEFAULT_SEED;
@@ -393,8 +443,8 @@ class App {
     await page.addInitScript(SEEN({ warmed, seen }));
     const throttle = Number(process.env.AURACLE_CPU_THROTTLE || 0);
     const rate = Math.max(slowEngine || 0, throttle > 1 ? throttle : 0);
-    if (busy || rate > 1) {
-      const prefix = (busy ? BUSY : "") + (rate > 1 ? performBudget.SLOW_ENGINE(rate) : "");
+    if (busy || rate > 1 || workerPrefix) {
+      const prefix = (busy ? BUSY : "") + (rate > 1 ? performBudget.SLOW_ENGINE(rate) : "") + workerPrefix;
       await page.route(/\/worker\.js(\?|$)/, async (route) => {
         const resp = await route.fetch();
         await route.fulfill({ response: resp, body: prefix + (await resp.text()), contentType: "text/javascript" });
@@ -546,6 +596,79 @@ class App {
       const got = T.replies.filter((r) => r.at > t && !r.injected).map((r) => ({ ...plain(r.d), type: r.type, at: r.at }));
       return sent.concat(got).sort((a, b) => a.at - b.at);
     }, after === -Infinity ? -1e15 : after);
+  }
+
+  /** The requests main has sent (after `after`, the page's clock) still
+   *  waiting for their last reply: those of `types`, or in `lanes` (`LANES`,
+   *  by name), or every one with neither. Not those the worker never answers
+   *  (`UNANSWERED`), nor any main did not number (a spec's own `app.post`).
+   *  Only the first `upTo` requests the tap recorded, when given. As they
+   *  are now, oldest first: { type, rid, _at }. */
+  unanswered({ types = null, lanes = null, after = -Infinity, upTo = null } = {}) {
+    return this.page.evaluate(
+      ([want, skip, t, n]) => {
+        const T = window.__tap;
+        const out = [];
+        for (const s of n == null ? T.sent : T.sent.slice(0, n)) {
+          const rid = s.m && s.m.rid;
+          if (rid == null || s.at <= t || skip.includes(s.type) || (want && !want.includes(s.type))) continue;
+          if (!(rid in T.finals)) out.push({ type: s.type, rid, _at: s.at });
+        }
+        return out;
+      },
+      [requestTypes(types, lanes), UNANSWERED, after === -Infinity ? -1e15 : after, upTo],
+    );
+  }
+
+  /** Every request of `types`, or in `lanes` (`LANES`: `"bench"`), that main
+   *  has sent so far (after `after`, the page's clock) has had its last reply,
+   *  as main was handed it: an engine wait, ENGINE_MS unless `timeout` says.
+   *  With neither, every request sent so far. A request asked for after this
+   *  call is not waited for (settled waits for those: patch_page.js). Fails
+   *  naming what was still waiting. */
+  async answered({ types = null, lanes = null, after = -Infinity, timeout = ENGINE_MS } = {}) {
+    const upTo = await this.page.evaluate(() => window.__tap.sent.length);
+    let left = [];
+    try {
+      await this.engine(
+        (ms) =>
+          expect
+            .poll(async () => (left = await this.unanswered({ types, lanes, after, upTo })).length, {
+              timeout: ms,
+              message: "every request asked was answered",
+            })
+            .toBe(0),
+        { ms: timeout },
+      );
+    } catch (err) {
+      throw new Error(`still waiting for ${left.map((r) => `${r.type} #${r.rid}`).join(", ")}\n${err.message}`);
+    }
+  }
+
+  /** The last reply to one request (`sent`: as `app.sent` returns it, or its
+   *  number), once main has been handed it: the one carrying its number
+   *  (`re`) without `more`, whatever its type. An engine wait. `_at` says
+   *  when it landed. */
+  async replyTo(sent, { timeout = ENGINE_MS } = {}) {
+    const rid = typeof sent === "number" ? sent : sent && sent.rid;
+    if (rid == null) throw new Error(`replyTo: ${JSON.stringify(sent)} has no request number (rid); was it sent by main?`);
+    const find = (r) => {
+      const T = window.__tap;
+      const i = T.finals[r];
+      return i == null ? null : { ...T.replies[i].d, _at: T.replies[i].at };
+    };
+    let found = null;
+    await this.engine(
+      (ms) =>
+        expect
+          .poll(async () => (found = await this.page.evaluate(find, rid)) != null, {
+            timeout: ms,
+            message: `the last reply to ${sent.type || "request"} #${rid}`,
+          })
+          .toBe(true),
+      { ms: timeout },
+    );
+    return found;
   }
 
   /** The engine's facts as main last heard them from the engine. */
@@ -877,4 +1000,4 @@ const test = base.test.extend({
 
 });
 
-module.exports = { test, expect, openApp, budget, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };
+module.exports = { test, expect, openApp, budget, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, UNANSWERED, LANES, ...shell };

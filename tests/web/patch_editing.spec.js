@@ -11,14 +11,14 @@
 // through the page. The slowdown is switched on only once the patch is on the
 // bench, so boot runs at full speed.
 //
-// Edits are counted on the way out (`edit_*` posted to the worker) and on the
-// way back (a `bench` reply that answers an edit, or `edit_rejected`), from
-// the fixture's tap; the lane has settled when the two agree and stay agreed
-// (patch_page.js `settled`). That works the same against any build, so each
-// test here can be run against the code before its fix to watch it fail.
+// Each edit (`edit_*` posted to the worker) is matched to its last reply (a
+// `bench`, or `edit_rejected`) by the request number the reply carries back,
+// through the fixture's tap; the lane has settled when every edit sent has
+// had it (patch_page.js `settled`). A test here run against the code before
+// its fix watches it fail, as long as that code numbers its requests.
 const { test, expect, openKeys, openCatalog } = require("./fixtures");
 const patchPage = require("./patch_page.js");
-const { laneCounts, settled } = patchPage;
+const { settled } = patchPage;
 
 // A player's pace: between two gestures in quick succession, and between the
 // steps of a slow drag or of arrow-key nudges (slower than the engine answers
@@ -182,10 +182,7 @@ test("a knob's element survives the redraw of a knob edit, and is never rebuilt 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 6);
   // The replies to b land while a is held: every write sent is answered
   // (a's own waits in the lane while the hand is on it).
-  await app.engine((timeout) => expect.poll(async () => {
-    const [out, back] = await laneCounts(app);
-    return out === back;
-  }, { timeout }).toBe(true), { ms: 30_000 });
+  await app.answered({ lanes: ["bench"], timeout: 30_000 });
   expect(await page.evaluate(() => window.__pwHeld.isConnected)).toBe(true);
   await page.mouse.up();
   await settled(app);
