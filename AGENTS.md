@@ -96,7 +96,7 @@ contributor guide; this file does not repeat it.
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, dev-check, wasm32 check, all Rust tests) |
 | After changing Rust the app calls | `make wasm` |
 | Only JS changed | `make web-check` |
-| One crate's tests | `cargo test -p auracle-<crate> --profile test-fast --lib --bins --tests` |
+| One crate's tests | `make test-crate CRATE=auracle-<crate>` (`FILTER=` a test name) |
 | Browser tests | `cd tests/web && AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test [spec]` |
 | One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow` or `@quarantine`) |
 | The specs a change reaches | `make browser-changed` (against `origin/main`; `BASE=` for another) |

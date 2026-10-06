@@ -29,7 +29,7 @@ git diff --stat HEAD
 
 | Changed | Run |
 | --- | --- |
-| `crates/<crate>/**` | `cargo test -p <crate> --profile test-fast --lib --bins --tests` (the flags skip building the examples, which no test runs), then `make lint` |
+| `crates/<crate>/**` | `make test-crate CRATE=<crate>` (optimized, on the pinned compiler, without building the examples no test runs), then `make lint` |
 | Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test |
 | φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |

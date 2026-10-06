@@ -23,8 +23,11 @@ ifneq ($(wildcard $(CARGO_BIN)/cargo),)
 CARGO := $(CARGO_BIN)/cargo
 export PATH := $(CARGO_BIN):$(PATH)
 else
-CARGO := cargo
-$(warning no rustup in $(CARGO_BIN): using the cargo on PATH, which ignores rust-toolchain.toml)
+# Without them, cargo and rustc come from PATH. Said once, by the first
+# recipe that runs cargo or wasm-pack (RUSTUP_NOTE empties itself on use),
+# and not at all by a target that builds no Rust.
+RUSTUP_NOTE = $(eval RUSTUP_NOTE :=)$(warning no cargo in $(CARGO_BIN): cargo and rustc come from PATH, and rust-toolchain.toml applies only if they are rustup's proxies)
+CARGO = $(RUSTUP_NOTE)cargo
 endif
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
@@ -50,7 +53,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
 
 .PHONY: setup film-setup web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
-        nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
+        test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
@@ -219,6 +222,14 @@ test:
 test-verbose:
 	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS) -- --nocapture
 
+## test-crate: one crate's tests, optimized, with the pinned compiler:
+## `make test-crate CRATE=auracle-session` (FILTER= a test name filter;
+## TEST_TARGETS="--test boot_agrees" for one test target). A bare `cargo test`
+## in a shell with Homebrew's cargo or rustc first on PATH builds with those
+test-crate:
+	@test -n "$(CRATE)" || { printf '  name the crate: make test-crate CRATE=auracle-<crate>\n'; exit 2; }
+	$(CARGO) test -p $(CRATE) --profile test-fast $(TEST_TARGETS) $(FILTER)
+
 # ─── CI's two tiers ──────────────────────────────────────────────────────────
 #
 # CI splits the tests into a fast tier that gates merging and a slow tier that
@@ -246,7 +257,7 @@ SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) 
 	| test(=perform::tests::a_stepped_walk_is_the_walk) \
 	| test(=tests::farm_walks_breed_the_serial_generation) \
 	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
-NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS) --no-tests=fail
+NEXTEST = $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS) --no-tests=fail
 # CI passes `--partition slice:k/N` here to split the fast tier across runners.
 NEXTEST_ARGS ?=
 
@@ -281,7 +292,7 @@ BROWSER_PORT ?= $(or $(AURACLE_TEST_PORT),8690)
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
-## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~70 min serially)
+## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~75 min serially)
 browser-fast:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
 	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
@@ -385,7 +396,7 @@ revalidate: phi-stats norm-peak climb search-check
 
 ## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
-	$(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+	$(RUSTUP_NOTE)$(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
 	@$(MAKE) --no-print-directory wasm-stamp
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content

@@ -20,7 +20,8 @@ How you work:
 
 - Reproduce first: a failing test, an example's measurement, or a native
   repro of a browser report. Fix the cause, not the symptom.
-- Tests run optimized: `cargo test -p <crate> --profile test-fast`. Prefer
+- Tests run optimized, on the pinned compiler: `make test-crate
+  CRATE=<crate>` (`FILTER=` a test name). Prefer
   extending a gate test (random trees, synthetic users) to asserting an
   implementation detail. Every fix gets a test that fails without it.
 - Keep the invariants: φ is a contract (`make revalidate` for any φ change);

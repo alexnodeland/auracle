@@ -61,6 +61,14 @@ say "Rust"
 need rustup "install it from https://rustup.rs, then re-run this"
 # Given no toolchain, rustup installs the one rust-toolchain.toml names, with
 # the components and target it lists (here, at the root, it finds the file).
+# That needs rustup 1.28 or later; an older one wants a toolchain named.
+ru_version="$(rustup --version 2>/dev/null | awk '{ print $2; exit }')"
+IFS=. read -r ru_major ru_minor _ <<<"${ru_version:-0.0}"
+if [ "${ru_major:-0}" -lt 1 ] || { [ "$ru_major" = 1 ] && [ "${ru_minor:-0}" -lt 28 ]; }; then
+  echo "!! rustup ${ru_version:-of unknown version} is older than 1.28, which installs the toolchain rust-toolchain.toml names." >&2
+  echo "   Update it (\`rustup self update\`, or \`brew upgrade rustup\` if Homebrew installed it), then re-run this." >&2
+  exit 1
+fi
 rustup toolchain install --no-self-update
 if ! wasm-pack --version 2>/dev/null | grep -q '0\.15\.'; then
   cargo install wasm-pack --version 0.15.0 --locked
