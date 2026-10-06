@@ -672,6 +672,11 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   refit, a guess or a cable probe always goes first, and blocked until boot
   has finished (`blocked`: half a second each, they would slow the fill);
   each is answered as it lands, or in `failed` (a tree that does not vet).
+  One render per key: a job carries every asker (`asks`), and a later asker
+  for the same key joins it rather than being queued again, so a preset's
+  row, that preset's row in the pool and the bench (an unedited preset's
+  tree is the preset's) are all answered by the one render (before #153 the
+  second was left unanswered).
   Rendering a pool member for its face does not make it resident, so it
   evicts no audition. A preset is asked by index (`preset_tree_json`), so its
   face does not insert it into the bank. Every request is answered; a
@@ -680,7 +685,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   PATCH's "without this module" outline (Plan-008 C2b) asks the same way, by
   tree, with `seen` on its entry: the patch the structure menu's verb would
   leave without the selected module (`withoutTree`), rendered for its face at
-  the front of the faces lane (moved there if it was already waiting) and
+  the front of the faces lane (moved there, with everyone on it, if it was
+  already waiting) and
   ahead of a measurement nobody is waiting on (`seenFaceWaiting`, in
   `nextLong` and in `measure`'s breaths). It still waits for `soon` work, the
   rest of `later` (the guess, the cable probe, a refit) and PERFORM's own
@@ -688,8 +694,10 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
 - **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
   that left the view (a preset row scrolled past, the PRESETS tab left, or
   PATCH's selection moved on before its "without" face was rendered) is
-  dropped from the faces lane and from waiting lookups, and answered as `faces`
-  with `cancelled`; main asks again when the slot comes back into view.
+  taken off the render it waits on and out of waiting lookups, and answered
+  as `faces` with `cancelled`; a render is dropped once nobody is left on it,
+  so another slot waiting on the same key still gets its face. Main asks
+  again when the slot comes back into view.
 - **After a `render`**, the worker posts the buffer first; the face, if main
   hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
   stored audition (not the PCM main is sent: `audition_pcm` limits). No face
