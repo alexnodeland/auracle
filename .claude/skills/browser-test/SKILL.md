@@ -51,7 +51,8 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   `main.js`, `worker.js` or a crate, the smoke pair alone.
 - The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on
   a PR only with the `full-ci` label, the quarantined tests in a job of their
-  own whose failures are said on each test's issue, never as a red run; the
+  own whose failures are said on each test's issue, never as a red run while
+  that issue is open; the
   nightly *Flake hunt* runs the fast tier three times each, and files each
   test that fails on its own `Flaky:` issue.
 - A runner that runs out of time still reports: it is interrupted a minute
