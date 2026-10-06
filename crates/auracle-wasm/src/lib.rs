@@ -944,9 +944,6 @@ fn bench_audio(
     })
 }
 
-/// Parse `tree_json` and write the knob `overrides_json` (`[[addr, value]]`)
-/// into it. Non-finite values and addresses that are not continuous knobs on
-/// this tree are skipped. `None` only if the tree itself does not parse.
 /// The ids a deal must not use, from the worker's `Uint32Array`.
 fn exclude_ids(exclude: Option<Vec<u32>>) -> Vec<u64> {
     exclude
@@ -956,13 +953,41 @@ fn exclude_ids(exclude: Option<Vec<u32>>) -> Vec<u64> {
         .collect()
 }
 
+/// The first `seconds` (at least 0.1 s) of `a` as it is played: levelled
+/// over the whole phrase and cut afterwards, so a preview is exactly the
+/// head of what ▶ plays, and faded out at the cut.
+///
+/// A phrase cut at an arbitrary sample is a step discontinuity, which is a
+/// click, and a click at the end of every audition is the loudest thing in
+/// the preview. 12 ms of cosine is below the threshold where a release sounds
+/// shortened and well above the one where an edge is audible. The ramp ends
+/// exactly at zero: t runs over 0..=1, so the last sample is multiplied by
+/// cos(π) + 1 = 0. It used to stop one step short, at (fade−1)/fade, and left
+/// about 9e-6 of a loud patch's last sample, the very edge the fade exists to
+/// remove.
+fn faded_head(a: &Audition, seconds: f64) -> Vec<f32> {
+    let played = audition_pcm(a);
+    let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(played.len());
+    let mut out = played[..n].to_vec();
+    let fade = ((0.012 * a.sample_rate) as usize).min(out.len());
+    let span = fade.saturating_sub(1).max(1) as f32;
+    for i in 0..fade {
+        let t = i as f32 / span;
+        let k = out.len() - fade + i;
+        out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
+    }
+    out
+}
+
+/// Parse `tree_json` and write the knob `overrides_json` (`[[addr, value]]`)
+/// into it, each value clamped to a knob's range (a JSON number is always
+/// finite). Addresses that are not continuous knobs on this tree are
+/// skipped, and overrides that do not read are none. `None` only if the tree
+/// itself does not parse.
 fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     let mut tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
     let overrides: Vec<(String, f64)> = serde_json::from_str(overrides_json).unwrap_or_default();
     for (addr, v) in overrides {
-        if !v.is_finite() {
-            continue;
-        }
         let v = v.clamp(0.0, auracle_session::perform::KNOB_MAX);
         if let Ok(t) = auracle_grammar::edit::set_param(
             &tree,
@@ -3015,45 +3040,22 @@ impl WasmEngine {
         let Ok(op) = serde_json::from_str::<StructOp>(op_json) else {
             return Vec::new();
         };
+        // `apply_struct_op` refuses an edit past the grammar's ceilings, the
+        // gate `edit_set_tree_apply` runs: a preview is not a commit, but
+        // auditioning a patch the grammar would refuse teaches the player a
+        // move that will be taken away from them later.
         let Ok(edited) = apply_struct_op(tree, &op) else {
             return Vec::new();
         };
-        // The same ceiling gate `edit_set_tree_apply` runs. A preview is not a
-        // commit, but auditioning a patch the grammar would refuse teaches the
-        // player a move that will be taken away from them later.
-        if validate_tree(&edited).is_err() {
-            return Vec::new();
-        }
         let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         let Ok((cf, audio)) = featurize_memo(&edited, &phrase, &memo, true) else {
             return Vec::new();
         };
-        let Some(a) = bench_audio(&edited, &phrase, &cf.features, audio) else {
-            return Vec::new();
-        };
-        // Levelled over the whole phrase and cut afterwards, so the preview is
-        // exactly the head of what ▶ would play once the module is placed.
-        let played = audition_pcm(&a);
-        let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(played.len());
-        let mut out = played[..n].to_vec();
-        // A phrase cut at an arbitrary sample is a step discontinuity, which is
-        // a click — and a click at the end of every audition is the loudest
-        // thing in the preview. 12 ms of cosine is below the threshold where a
-        // release sounds shortened and well above the one where an edge is
-        // audible.
-        //
-        // The ramp ends exactly at zero: t runs over 0..=1, so the last sample
-        // is multiplied by cos(π) + 1 = 0. It used to stop one step short, at
-        // (fade−1)/fade, and left about 9e-6 of a loud patch's last sample,
-        // the very edge the fade exists to remove.
-        let fade = ((0.012 * a.sample_rate) as usize).min(out.len());
-        let span = fade.saturating_sub(1).max(1) as f32;
-        for i in 0..fade {
-            let t = i as f32 / span;
-            let k = out.len() - fade + i;
-            out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
-        }
-        out
+        // The render is the one this patch would be measured on (a memo hit
+        // whose buffer aged out renders it again).
+        bench_audio(&edited, &phrase, &cf.features, audio)
+            .map(|a| faded_head(&a, seconds))
+            .unwrap_or_default()
     }
 
     /// The patch the bench's guesses are remembered under: the pool id it
