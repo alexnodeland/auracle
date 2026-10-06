@@ -2902,6 +2902,34 @@ async function pump() {
   if (runnable()) schedulePump();
 }
 
+// Deals waiting for the sounds the fill's schedule names (#211). The k-th
+// deal of a session draws only from the first `playableAt`·(k+1) sounds of
+// the pool, in the order the seed's fill folds them in (`set_deal_schedule`,
+// at boot), and a deal asked for before they have all joined waits here, in
+// the order it was asked for, until the fill has folded them in
+// (`serveDeals`, after each fold) or is over. It used to be drawn at once over
+// however many had joined, so a slower machine dealt the same seed other
+// pairs. Only the deal waits: every other request is served as it was, and
+// the fill goes on between them. The engine says what a deal waits for
+// (`deal_need`, in sounds, 0 for nothing); a binary without it deals at once.
+const dealsWaiting = [];
+let fillDone = false;
+function dealWaits(m) {
+  if (fillDone || typeof engine.deal_need !== "function") return false;
+  try {
+    return engine.deal_need(new Uint32Array(m.exclude || [])) > 0;
+  } catch (_) {
+    return false; // dealt now, and the deal reports what failed
+  }
+}
+function serveDeals() {
+  while (dealsWaiting.length && !dealWaits(dealsWaiting[0])) {
+    const m = dealsWaiting.shift();
+    m.waited = true;
+    runMessage(m);
+  }
+}
+
 // Run one request's handler. Its synchronous part runs with `m` as the request
 // being answered (`answering`, which `post` stamps), restored before this
 // returns: what the handler says after an `await` is said with `answer(m, …)`.
@@ -3258,6 +3286,10 @@ async function dispatch(m) {
         // out of vetted draws), where announcing anyway is what keeps the veil
         // from being left up forever.
         const playableAt = Math.max(2, m.playableAt || PLAYABLE_AT);
+        // Deals keep to the fill's schedule (#211, `dealsWaiting`): the
+        // first reaches the sounds the app is handed over at, so it waits
+        // for nothing.
+        if (typeof engine.set_deal_schedule === "function") engine.set_deal_schedule(playableAt);
         let announced = false;
         const announcePlayable = () => {
           if (announced) return;
@@ -3292,6 +3324,7 @@ async function dispatch(m) {
             workers: farmCrew(),
           });
           if (st.pool >= playableAt) announcePlayable();
+          serveDeals();
         };
 
         // The farm renders; this worker draws, absorbs and standardizes. Every
@@ -3373,9 +3406,14 @@ async function dispatch(m) {
           news({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });
           if (added === 0) break;
           if (st.pool >= playableAt) announcePlayable();
+          serveDeals();
           await yieldToQueue();
         }
         announcePlayable();
+        // The pool will grow no further: a deal still waiting is dealt from
+        // what joined (a fill that ran out of draws stops short).
+        fillDone = true;
+        serveDeals();
         // The provisional standardizer was fit on the first handful of draws;
         // the finished pool is a better reference population. No-op once a
         // posterior exists — see `Engine::restandardize_if_untaught`.
@@ -3415,6 +3453,10 @@ async function dispatch(m) {
         else answer(m, failed);
       } finally {
         bootCrewDone();
+        // A boot that failed folds nothing more: a deal still waiting is
+        // answered now (by the engine, or with what failed).
+        fillDone = true;
+        serveDeals();
         // From here a generation or ⚡ may raise a crew of its own.
         booted = true;
         schedulePump();
@@ -3429,6 +3471,13 @@ async function dispatch(m) {
       break;
     }
     case "duel": {
+      // While the pool fills, a deal waits for the sounds its schedule
+      // names, behind any deal already waiting (`dealsWaiting`), and is
+      // answered here once they have joined (`serveDeals`).
+      if (!m.waited && (dealsWaiting.length || dealWaits(m))) {
+        dealsWaiting.push(m);
+        return;
+      }
       // `next_duel_ex` carries *why* this pair was chosen. A duel the engine
       // picked at random is a calibration check, and labelling it is the only
       // way the reliability numbers mean anything — the acquisition function

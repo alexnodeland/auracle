@@ -76,6 +76,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // (`walkRun`); without them it falls back to the one uninterruptible call,
 // which is how a pick came to wait a minute. `perform_lean` is which way your
 // taste leans along each control, drawn on PERFORM under the model view.
+// `set_deal_schedule` and `deal_need` are the fill's schedule for deals
+// (#211): without them a deal made while the pool fills is drawn at once,
+// over however many had joined.
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -93,7 +96,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "perform_offer_begin", "perform_drift_begin", "perform_job_step", "perform_job_finish", "perform_job_drop",
       "perform_lean",
       "face_of", "face_key", "face_of_tree", "preset_tree_json", "face_of_key",
-      "bank_twin_of",
+      "bank_twin_of", "set_deal_schedule", "deal_need",
     ];
     const live = ["input_ptr", "input_capacity", "write_input", "clear_input", "set_open", "open_sounding"];
     return {
