@@ -144,7 +144,7 @@ only once the maintainer switches on Merge Protections in Mergify's
 dashboard. Put the label on anyway; once Merge Protections is on, the label
 alone queues the PR and the comment is only for putting one back. The PR
 enters Mergify's merge queue once its own `CI`, the fast lane, its
-`PR checks` and its *Mutants* (`Mutants in the changed code`) are green;
+`PR checks` and its `Mutants in the changed code` are green;
 the queue runs the full gate on its batch and merges it (`process.md` § CI
 and merging). The title becomes the squash commit's subject,
 `<title> (#<n>)`, so it starts with a type as a commit does
@@ -230,8 +230,8 @@ Run the wait in the background; never sleep a fixed time and assume.
   the edit runs it again, and no push is needed. Start the wait again once
   `gh -R alexnodeland/auracle pr checks <n>` shows the new run of
   `PR checks` pending; started sooner, it finds only the red run and stops
-  at once. Green, with `CI` and *Mutants*, the PR enters the queue by
-  itself.
+  at once. Green, with `CI` and `Mutants in the changed code`, the PR
+  enters the queue by itself.
 - **`Mutants red`:** a mutant of the code the PR changed survived, or the
   run broke; the PR never entered the queue. The run's summary names each
   survivor (its line, its function, its change):
@@ -241,9 +241,9 @@ Run the wait in the background; never sleep a fixed time and assume.
   no behavior can show it, excludes it in `.cargo/mutants.toml` with its
   reason (`crates/AGENTS.md` § Mutation testing); saying why in the PR body
   does not turn it green. The push runs it again. A run whose unmutated
-  tests failed has a red `CI` beside it: read that first. A timeout, or a
-  run the 25-minute cap stopped before it judged a mutant, passes; it never
-  turns the job red. Then step 7.
+  tests failed usually has a red `CI` beside it: read that first. A
+  timeout, or a run the 25-minute cap stopped before it judged a mutant,
+  passes; it never turns the job red. Then step 7.
 - **`stuck`:** the latest run of `CI`, `PR checks` or
   `Mutants in the changed code` on the PR's head ended neither green nor
   red (skipped or cancelled). Mergify takes a PR only once all three are
@@ -313,15 +313,15 @@ or dequeued (red on its own run, or red in the queue):
 
    The comment is safe either way: a PR whose own first run was red never
    entered the queue, and enters by itself once `CI`, `PR checks` and
-   *Mutants* are green. Then step 6 again.
+   `Mutants in the changed code` are green. Then step 6 again.
 
 **By hand, only when Mergify is down.** The PR's own `CI` is the fast lane,
 not the full gate, and the ruleset requires only that one, so nothing stops
 a merge by hand that skips the full gate: run it first. Up to date with
 `main` (if `main` moved, rebase it with the lease above), start a run by
 hand, which is the full gate, wait for it to finish, and merge only if it is
-green on the PR's head and the PR's own `CI`, `PR checks` and *Mutants*
-are too:
+green on the PR's head and the PR's own `CI`, `PR checks` and
+`Mutants in the changed code` are too:
 
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)

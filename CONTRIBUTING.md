@@ -157,11 +157,11 @@ tagged `@slow` or `@quarantine`, dealt to twelve runners by time, about
 twelve minutes. It runs in two lanes. Your PR's own run is the fast lane,
 the part of it your change reaches: about five minutes for docs, up to about
 ten when Rust changed or an app module's specs run; green, with `PR checks`
-([Pull requests](#pull-requests)) and *Mutants* (below), it puts the PR in
-the merge queue. The merge queue's run is the full gate, on your PR
-together with up to two others queued beside it, on top of `main`, and it
-is what merges them. A PR may merge on the fast tier, `PR checks` and
-*Mutants* alone. The **slow tier**
+([Pull requests](#pull-requests)) and `Mutants in the changed code`
+(below), it puts the PR in the merge queue. The merge queue's run is the
+full gate, on your PR together with up to two others queued beside it, on
+top of `main`, and it is what merges them. A PR may merge on the fast tier,
+`PR checks` and `Mutants in the changed code` alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push, whose run covers the ones before it) and
@@ -318,7 +318,8 @@ an alias for notes written before the rename).
 4. Add or extend a **gate test** for new behavior. Property-style tests over
    random trees / synthetic users are preferred over mocks.
 5. CI must be green: `main` requires it, and nobody can merge past it. So
-   must `PR checks` and *Mutants*, before the merge queue takes the PR:
+   must `PR checks` and `Mutants in the changed code`, before the merge
+   queue takes the PR:
    - **The title** is the squash commit's subject on `main`, so it starts
      with a type, as a commit message does: `fix(web): a toast is never
      dropped`, `tests: …`, `docs: …` ([Commit messages](#commit-messages)).
@@ -329,8 +330,8 @@ an alias for notes written before the rename).
      a line that starts `No issue:`.
    - A change to `apps/web/`, `www/docs/src/` or `www/landing/` with no
      entry in `changelog.d/` gets a warning there (item 3), not a failure.
-   - *Mutants* is green when every mutant of the Rust you changed fails a
-     test, or is excluded as equivalent with its reason
+   - `Mutants in the changed code` is green when every mutant of the Rust
+     you changed fails a test, or is excluded as equivalent with its reason
      ([Quality bar](#quality-bar)); a PR that changes no Rust passes at once.
 
    Once the PR merges, the `PR checks` workflow comments on each `Refs`
@@ -341,9 +342,10 @@ an alias for notes written before the rename).
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
-   label and queues it. When its CI, `PR checks` and *Mutants* are green it
-   enters the queue, which runs the full gate
-   on it together with up to two other queued PRs, on top of `main`, and
+   label and queues it. When its CI, `PR checks` and
+   `Mutants in the changed code` are green it enters the queue, which runs
+   the full gate on it together with up to two other queued PRs, on top of
+   `main`, and
    squash-merges each as `<title> (#<number>)`, with the PR's commit messages
    as the commit's body (the repository's squash setting), so write each
    commit message to say why. A PR green on its own run can be red there: the queue

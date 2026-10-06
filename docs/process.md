@@ -21,7 +21,7 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
 | 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
-| 9. Checked | Green `CI` (the fast lane), `PR checks` and *Mutants* on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
+| 9. Checked | Green `CI` (the fast lane), `PR checks` and `Mutants in the changed code` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
 | 12. Closed | The issues it finishes closed, the ones it advances and their parents told, the boxes naming them in other issues ticked; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
@@ -285,8 +285,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   the cap stopped passes unless a mutant it judged survived, so no PR is
   held by time alone. A PR that changes no Rust in `crates/` passes at once.
   The builder runs `make mutants DIFF=1` before review, so survivors are
-  answered before the PR. On the queue's draft PRs it passes at once, since
-  each PR's own run has judged their code.
+  killed or excluded before the PR. On the queue's draft PRs it passes at
+  once, since each PR's own run has judged their code.
 - **Codecov comments on the PR** when the PR's own run uploads coverage
   (the Rust's, or the web units' or the worker-protocol tests'), each flag
   the run didn't reach carried forward from `main`. It is a view,
@@ -319,7 +319,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
   - It enters the queue once its fast lane's `CI`, its `PR checks` and its
-    *Mutants* (`Mutants in the changed code`) are green. All three are
+    `Mutants in the changed code` are green. All three are
     required of every PR, in either of `.mergify.yml`'s queues. A crate
     PR's *Mutants* run takes up to 40 minutes, so it often enters well
     after its fast lane is green.
@@ -356,10 +356,11 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     test it doesn't touch, for a cause outside it, is a flake case
     ([Flakes](#flakes), step 4): the test is quarantined with one commit on
     that PR, and the PR goes back in.
-  - A PR whose own fast lane, `PR checks` or *Mutants* is red never entered
-    the queue: it enters once a fix makes them green.
-- **Merge at green.** A PR whose `CI`, `PR checks` and *Mutants* are green
-  and that has no blocking finding is in the queue then. Nothing is added to
+  - A PR whose own fast lane, `PR checks` or `Mutants in the changed code`
+    is red never entered the queue: it enters once a fix makes them green.
+- **Merge at green.** A PR whose `CI`, `PR checks` and
+  `Mutants in the changed code` are green and that has no blocking finding
+  is in the queue then. Nothing is added to
   a green PR. A finding raised after it, or an improvement seen in passing,
   becomes an issue or the next PR
   ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
@@ -379,7 +380,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 - **By hand, only when Mergify is down:** on a PR up to date with `main`
   (rebased if `main` moved), run CI by hand on its branch (Actions → CI → Run
   workflow: a run by hand is the full gate), and once that run and the PR's
-  `CI`, `PR checks` and *Mutants* are green,
+  `CI`, `PR checks` and `Mutants in the changed code` are green,
   `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`.
   Nothing enforces the full run first: the ruleset requires only `CI` on
   the PR's head, the fast lane, so a merge by hand without it lands code

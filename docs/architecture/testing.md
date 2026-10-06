@@ -462,9 +462,9 @@ every survivor and timeout, linked.
 **What a red job means for a PR.** The job is red when a mutant of the
 changed code survived, or when the run broke (the unmutated tests failed,
 or cargo-mutants did), and red keeps the PR out of the merge queue. A
-survivor is answered on the branch: killed with a test that asserts what
-the code does, or, when no behavior can show it (an equivalent mutant),
-excluded narrowly in `.cargo/mutants.toml`'s `exclude_re`, by file,
+survivor is killed on the branch with a test that asserts what the code
+does, or, when no behavior can show it (an equivalent mutant), excluded
+narrowly in `.cargo/mutants.toml`'s `exclude_re`, by file,
 function and change, with its reason
 ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing));
 the push runs the job again. A timeout is reported and passes. A run the

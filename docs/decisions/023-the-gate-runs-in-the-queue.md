@@ -32,9 +32,9 @@ green, one review round, quarantine an unrelated failure on sight.
 Since #216, a PR enters the queue once its `PR checks` are green beside its
 fast lane, and its title carries a type
 ([`docs/process.md` § Pull requests](../process.md#pull-requests)). Since
-#181, its *Mutants* check (`Mutants in the changed code`, `mutants.yml`)
-must be green too: a mutant of the Rust the PR changed that survives keeps
-it out of the queue
+the PR that finished #181, its `Mutants in the changed code`
+(`mutants.yml`) must be green too: a mutant of the Rust the PR changed that
+survives keeps it out of the queue
 ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
 Both are Mergify's queue conditions, not the ruleset's. The rest of this
 record is as accepted.
