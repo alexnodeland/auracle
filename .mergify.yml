@@ -93,7 +93,7 @@ queue_rules:
       - check-success = @github-actions/CI
       - or:
           - check-success = @github-actions/PR checks
-          - number <= 230
+          - number <= 232
       - label = release
     batch_size: 1
 
@@ -102,7 +102,7 @@ queue_rules:
       - check-success = @github-actions/CI
       - or:
           - check-success = @github-actions/PR checks
-          - number <= 230
+          - number <= 232
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
     # streams of work docs/process.md allows in flight, and a Dependabot PR.
