@@ -51,7 +51,7 @@ WASM_STACK := 8388608
 # helper only the native-only items use) must fail.
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: setup film-setup web-check spec-lint all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: setup film-setup web-check spec-lint all check check-changed build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools worker-test \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
@@ -72,6 +72,14 @@ all: check
 ## its pure-logic unit tests, the tooling's own checks, the wasm target, full
 ## test suite
 check: fmt-check lint web-check dev-check wasm-check test
+
+## check-changed: the parts of `make check` your change reaches since BASE
+## (origin/main), uncommitted and untracked files included, by the classifier
+## CI's fast lane uses (scripts/changes.py), and what else CI runs for it.
+## `make -j check-changed` runs them side by side
+check-changed:
+	@parts="$$(python3 scripts/changes.py check --base $(BASE))" || exit 1; \
+	if [ -n "$$parts" ]; then $(MAKE) --no-print-directory $$parts; fi
 
 ## help: every target with a description, in the order this file defines them
 help:
@@ -107,7 +115,8 @@ install-hooks:
 ## changelog (every entry waiting in changelog.d/ parses, and the assembler's
 ## own tests), the PR checks' own tests (scripts/test_pr_checks.py: a PR's
 ## title, its issue links, the changelog's warning, what a merge does to the
-## issues), the Claude Code hooks against inputs they must block and pass,
+## issues), the path classifier's tests (scripts/test_changes.py: what each
+## kind of change reaches), the Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), and the tests of the coverage gate's, the mutation
 ## report's, CI stats' and the engine stamp's scripts
@@ -118,7 +127,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-wasm-pkg
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-changes dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-wasm-pkg
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -141,6 +150,8 @@ dev-changelog:
 	@python3 scripts/test_changelog.py
 dev-pr-checks:
 	@python3 scripts/test_pr_checks.py
+dev-changes:
+	@python3 scripts/test_changes.py
 dev-hooks:
 	@bash .claude/checks/test_hooks.sh
 dev-syntax:

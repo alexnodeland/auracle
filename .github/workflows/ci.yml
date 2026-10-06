@@ -212,76 +212,27 @@ jobs:
           echo "changed files:"
           echo "$files" | awk '{ print "  " $0 }'
 
-          # A change to CI itself runs the full gate here too: a workflow or
+          # What the change reaches, from scripts/changes.py: the one path
+          # classifier, which `make check-changed` runs too, so CI and a
+          # workstation agree on what a change reaches. It prints a
+          # `class=true|false` line for each job (its docstring and comments
+          # say why each path reaches what). A change to CI itself, the
+          # classifier included, runs the full gate here too: a workflow or
           # an action the queue would trip on proves itself before it
           # reaches the queue, where it would hold up a batch.
-          if echo "$files" | grep -qE '^\.github/(workflows|actions)/'; then
+          classes="$(printf '%s\n' "$files" | python3 scripts/changes.py classify)"
+          class() { echo "$classes" | sed -n "s/^$1=//p"; }
+          if [ "$(class full)" = true ]; then
             echo "a change to CI itself: the full gate, as the queue runs it"
             full
             exit 0
           fi
-
-          # Anything that can change what the compiler sees or how CI builds.
-          # The Makefile is in here deliberately: it defines every build, so a
-          # change to it is treated as touching everything. So are the
-          # coverage gate's own scripts, which only the Coverage jobs run on
-          # real numbers (their tests run in Web's dev-check), and setup.sh:
-          # a change to either used to reach no job at all. Only those:
-          # another script under scripts/ is no reason to run the Rust.
-          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)'; then
-            rust=true
-          else
-            rust=false
-          fi
-
-          # The site embeds the wasm engine and rustdoc for every crate, so a
-          # Rust change is also a site change. The agent docs, the Claude
-          # Code setup and the engineering record are checked in the web job
-          # (make dev-check), so they count too, and so do the app and its
-          # specs, whose smoke test runs after Site.
-          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$'; then
-            site=true
-          else
-            site=false
-          fi
-
-          # Web (make web-check, make dev-check) checks all of the above, and
-          # the scripts' own tests too (scripts/*.py: the changelog's
-          # assembler, the coverage gate, each with its tests), which reach
-          # no other job. A changelog entry (changelog.d/) reaches none: the
-          # entries' check and the voice run in this job, on every PR, and
-          # the site doesn't read them.
-          if [ "$site" = true ] || echo "$files" | grep -qE '^scripts/[^/]+\.py$'; then
-            web=true
-          else
-            web=false
-          fi
-
-          # What the browser reads: the app, its specs and what runs them,
-          # and the engine. Their prose aside, and what Web runs and no
-          # browser reads: the specs' lint (its config, its suppressions, its
-          # own tests), CI's flake routing (flakes.mjs and its tests) and the
-          # timings fold's tests. A change to them alone, or beside spec
-          # files, runs what a spec-only change runs.
-          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' | grep -vE '^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs|flakes(\.test)?\.mjs|shard\.test\.mjs)$' || true)"
-
-          # Browser smoke: anything the browser reads changed, other than
-          # spec files alone (a spec runs against main's app, and runs
-          # itself below).
-          smoke=false
-          if [ -n "$reach" ] && echo "$reach" | grep -qvE '^tests/web/[^/]+\.spec\.js$'; then
-            smoke=true
-          fi
-
-          # Worker protocol: worker.js (in apps/web), the engine it runs
-          # over, or the tests themselves, their prose aside. changed.mjs
-          # picks no spec for worker.js, so this is the fast lane's check of it.
-          wreach="$(echo "$files" | grep -E '^(apps/web/|tests/worker/)' | grep -vE '\.md$' || true)"
-          if [ "$rust" = true ] || [ -n "$wreach" ]; then
-            worker=true
-          else
-            worker=false
-          fi
+          rust="$(class rust)"
+          site="$(class site)"
+          web="$(class web)"
+          smoke="$(class smoke)"
+          worker="$(class worker)"
+          reach="$(class reach)"
 
           # The specs the change reaches (tests/web/changed.mjs, as `make
           # browser-changed` picks them before it follows the views): a
@@ -298,7 +249,7 @@ jobs:
           browser=false
           specs=""
           n=1
-          if [ -n "$reach" ]; then
+          if [ "$reach" = true ]; then
             sel="$(cd tests/web && node changed.mjs "origin/$BASE_REF")" || { echo "changed.mjs could not say: smoke only"; sel=""; }
             count="$(echo "$sel" | grep -c . || true)"
             if [ "$count" -gt 20 ]; then
