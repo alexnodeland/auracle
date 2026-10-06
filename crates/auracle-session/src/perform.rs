@@ -169,10 +169,10 @@ where
         if f <= QUARANTINE_FITNESS {
             return f;
         }
-        match self.along(genome) {
-            Some(a) => f + self.gamma * self.sign * a,
-            None => f,
-        }
+        // What the inner fitness heard vets, so it has a place on the axis.
+        f + self
+            .along(genome)
+            .map_or(0.0, |a| self.gamma * self.sign * a)
     }
 }
 
@@ -901,16 +901,15 @@ pub(crate) fn jacobian_by(
         } else {
             -JACOBIAN_STEP
         };
-        let zn = match set_param(tree, addr, ParamValue::Continuous(v + h)) {
-            Ok(t) => match look(&t) {
-                Look::Z(zn) => Some(zn),
-                Look::Fails => None,
-                Look::Pending => {
-                    pending = true;
-                    None
-                }
-            },
-            Err(_) => None,
+        // A live knob takes any value in its range, so the write succeeds;
+        // its render may not vet, or may still be owed.
+        let zn = match set_param(tree, addr, ParamValue::Continuous(v + h)).map(|t| look(&t)) {
+            Ok(Look::Z(zn)) => Some(zn),
+            Ok(Look::Pending) => {
+                pending = true;
+                None
+            }
+            _ => None,
         };
         nudged.push((h, zn));
     }

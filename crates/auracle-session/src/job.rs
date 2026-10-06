@@ -259,10 +259,10 @@ impl PerformJob {
     /// anyone likes; what the steps draw is the only thing they share with
     /// the rest of the world.
     pub fn step(&mut self, rng: &mut dyn RngCore, mut n: usize) -> bool {
-        while self.out.is_none() && n > 0 {
+        // A job without a verdict is walking, and one with a verdict is not:
+        // `settle` either gives the verdict or launches the next walk.
+        while n > 0 {
             let Some(w) = self.cur.as_mut() else {
-                // Unreachable: a job without a verdict is walking.
-                self.out = Some(Err(RefineOutcome::NoMove));
                 break;
             };
             if w.left() > 0 {
@@ -346,6 +346,46 @@ where
     left: usize,
 }
 
+impl<F> DriftRun<F>
+where
+    F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    /// One proposal: a free knob, moved by `σ·N(0, 1)` and reflected into
+    /// its range. `None` if the knob cannot be read or written, which a
+    /// drift's own knobs always can be: they are the tree's live knobs, and
+    /// a drift turns knobs only.
+    fn propose(&self, rng: &mut dyn RngCore) -> Option<PatchTree> {
+        let mut rng = rng;
+        let rng = &mut rng;
+        let addr = &self.free[auracle_grammar::rng::gen_index(rng, self.free.len())];
+        let v = crate::perform::continuous_knobs(&self.cur)
+            .into_iter()
+            .find_map(|(a, v)| (a == *addr).then_some(v))?;
+        // Box–Muller: one standard normal from two uniforms.
+        let (u1, u2): (f64, f64) = (rng.gen::<f64>().max(1e-300), rng.gen());
+        let z = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+        let mut nv = v + self.sigma * z;
+        // Reflect into [0, PARAM_MAX]: symmetric, so no Hastings term.
+        let top = auracle_grammar::PARAM_MAX;
+        for _ in 0..4 {
+            if nv < 0.0 {
+                nv = -nv;
+            } else if nv > top {
+                nv = 2.0 * top - nv;
+            } else {
+                break;
+            }
+        }
+        let nv = auracle_grammar::clamp_param(nv);
+        auracle_grammar::set_param(&self.cur, addr, auracle_grammar::ParamValue::Continuous(nv))
+            .ok()
+    }
+}
+
 impl<F> Stepper for DriftRun<F>
 where
     F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
@@ -365,40 +405,12 @@ where
         self.left -= 1;
         let mut rng = rng;
         let rng = &mut rng;
-        let addr = &self.free[auracle_grammar::rng::gen_index(rng, self.free.len())];
-        let Some(v) = crate::perform::continuous_knobs(&self.cur)
-            .into_iter()
-            .find_map(|(a, v)| (a == *addr).then_some(v))
-        else {
-            return;
-        };
-        // Box–Muller: one standard normal from two uniforms.
-        let (u1, u2): (f64, f64) = (rng.gen::<f64>().max(1e-300), rng.gen());
-        let z = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
-        let mut nv = v + self.sigma * z;
-        // Reflect into [0, PARAM_MAX]: symmetric, so no Hastings term.
-        let top = auracle_grammar::PARAM_MAX;
-        for _ in 0..4 {
-            if nv < 0.0 {
-                nv = -nv;
-            } else if nv > top {
-                nv = 2.0 * top - nv;
-            } else {
-                break;
+        if let Some(cand) = self.propose(rng) {
+            let nw = self.model.score(&cand).1.total_log_weight();
+            if nw.is_finite() && (nw >= self.w || rng.gen::<f64>().ln() < nw - self.w) {
+                self.cur = cand;
+                self.w = nw;
             }
-        }
-        let nv = auracle_grammar::clamp_param(nv);
-        let Ok(cand) = auracle_grammar::set_param(
-            &self.cur,
-            addr,
-            auracle_grammar::ParamValue::Continuous(nv),
-        ) else {
-            return;
-        };
-        let nw = self.model.score(&cand).1.total_log_weight();
-        if nw.is_finite() && (nw >= self.w || rng.gen::<f64>().ln() < nw - self.w) {
-            self.cur = cand;
-            self.w = nw;
         }
     }
 
