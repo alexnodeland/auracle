@@ -7,6 +7,13 @@
 # Which test is slow (the CI tiers) is named in the Makefile (SEARCH_FLOOR,
 # SLOW_TESTS) and nowhere else; nothing here moves a test between tiers.
 
+# `priority` below came in nextest 0.9.91, and an older one runs the tests
+# without it: the tests that take the whole pool are met midway again, and
+# the pool drains around them. This makes an older nextest say so, and run
+# as before. `make setup` installs nextest only when it is missing: upgrade
+# with `cargo install cargo-nextest --locked`.
+nextest-version = { recommended = "0.9.91" }
+
 [profile.default]
 # A test running past a minute is reported as slow, every minute it runs,
 # and stopped at twenty: a hung test ends with its name in the report,
