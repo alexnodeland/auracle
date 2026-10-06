@@ -88,6 +88,20 @@ class Watch(unittest.TestCase):
         # Queued already: the queue's own states decide, not the Slow suite.
         self.assertIsNone(Q.classify(pr(check("CI"), asked(300), browser(300, "FAILURE"), labels=("full-ci", "queue"))))
 
+    def test_a_slow_suite_verdict_waits_for_its_run_to_complete(self):
+        # 'Asked for' is done and the next jobs have checks, but a job that
+        # needs those has none yet: every check shown is done, the run is not.
+        asked = check("Asked for", run=300, workflow="Slow suite")
+        rust = check("Slow Rust", run=300, job=2, workflow="Slow suite")
+        p = pr(check("CI"), asked, rust, labels=("full-ci",))
+        self.assertEqual(Q.slow_run(p), 300)
+        self.assertEqual(Q.classify(p), "Slow suite green", "the checks alone can't tell")
+        self.assertIsNone(Q.classify(p, run_status="in_progress"))
+        self.assertEqual(Q.classify(p, run_status="completed"), "Slow suite green")
+        # Only a full-ci PR not yet queued has a run to look up.
+        self.assertIsNone(Q.slow_run(pr(check("CI"), asked, labels=("full-ci", "queue"))))
+        self.assertIsNone(Q.slow_run(pr(check("CI"), labels=("full-ci",))))
+
     def test_a_status_context_is_read_too(self):
         ctx = {"__typename": "StatusContext", "context": "CI", "state": "FAILURE", "targetUrl": URL.format(run=5, job=0)}
         self.assertEqual(Q.classify(pr(ctx)), "CI red")
