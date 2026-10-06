@@ -1326,8 +1326,29 @@ fn a_save_made_mid_generation_is_never_retired() {
         engine.find(doomed).is_some(),
         "the displaced member left before the generation ended"
     );
+    let before = engine.retiring();
+    // The next-lowest member nothing protects, under the posterior the
+    // generation opened with (no pick since, so the ranked list's).
+    let next = engine
+        .ranked()
+        .iter()
+        .rev()
+        .map(|&(i, _, _)| &engine.pool[i])
+        .find(|c| !before.contains(&c.id) && !c.kept())
+        .map(|c| c.id)
+        .expect("a member left to retire");
     assert!(engine.set_pinned(doomed, true), "the save was refused");
-    assert!(!engine.retiring().contains(&doomed));
+    let after = engine.retiring();
+    assert!(!after.contains(&doomed));
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "the save changed how many go, not which"
+    );
+    assert!(
+        after.contains(&next),
+        "the next-lowest did not take the saved one's place: {after:?}, want {next}"
+    );
     for r in rest {
         engine.refine_absorb(r);
     }
