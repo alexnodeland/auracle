@@ -610,12 +610,14 @@ pub const REFERENCE_PEAK: f64 = 0.5;
 /// same 16-bit quantization as a capture. Built once per rate and length and
 /// shared.
 pub fn reference(spec: &PhraseSpec) -> AuditionClip {
-    static BUILT: Mutex<Vec<AuditionClip>> = Mutex::new(Vec::new());
     let frames = spec
         .total_samples()
         .min((MAX_CLIP_SECONDS * spec.sample_rate) as usize)
         .max(1);
-    let mut built = BUILT.lock().unwrap_or_else(|e| e.into_inner());
+    // A panic elsewhere while the list was held leaves it whole (it is only
+    // changed after the clip is built), so a poisoned lock is still a good
+    // list: recover it rather than take every later render down with it.
+    let mut built = REFERENCES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(c) = built
         .iter()
         .find(|c| c.sample_rate == spec.sample_rate && c.frames() == frames)
@@ -623,14 +625,21 @@ pub fn reference(spec: &PhraseSpec) -> AuditionClip {
         return c.clone();
     }
     let clip = synthesize_reference(spec.sample_rate, frames);
-    // A handful of (rate, length) pairs is all a process meets; the cap only
-    // keeps a test that sweeps rates from growing this without end.
-    if built.len() >= 8 {
+    if built.len() >= REFERENCES_KEPT {
         built.remove(0);
     }
     built.push(clip.clone());
     clip
 }
+
+/// The references built so far, oldest first: [`reference`] builds each
+/// (rate, length) once and shares it.
+static REFERENCES: Mutex<Vec<AuditionClip>> = Mutex::new(Vec::new());
+
+/// How many references are kept. A handful of (rate, length) pairs is all a
+/// process meets; the cap only keeps a sweep over rates from growing the
+/// list without end.
+const REFERENCES_KEPT: usize = 8;
 
 fn synthesize_reference(sr: f64, frames: usize) -> AuditionClip {
     use std::f64::consts::TAU;
