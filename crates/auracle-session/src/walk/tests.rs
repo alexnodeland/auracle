@@ -390,3 +390,70 @@ fn a_walk_is_a_function_of_its_job() {
     }
     assert!(moved > 0, "no walk moved, so no child was compared");
 }
+
+/// **Under `RefineKeep::Best` a walk returns the best state it stood on.**
+/// The archive is scored on the walk's own target (`log π_β`), seed
+/// included: stepped by hand, the state with the highest weight the walk
+/// occupied is what it returns, or `NoMove` when none beat the seed. A walk
+/// with no steps left takes no more.
+#[test]
+fn under_keep_best_a_walk_returns_the_best_state_it_stood_on() {
+    let seed = auracle_grammar::presets().remove(1).1;
+    let mut improved = 0;
+    for k in 0..4u64 {
+        let mut run = WalkRun::begin(
+            PatchGrammarPrior::default(),
+            1.0,
+            RefineKeep::Best,
+            Flat,
+            &seed,
+            &HashSet::new(),
+            12,
+        )
+        .expect("a preset is in the prior's support");
+        let mut rng = StdRng::seed_from_u64(k);
+        let (mut best_w, mut best) = (run.trace.total_log_weight(), None);
+        while run.left() > 0 {
+            run.step(&mut rng);
+            let w = run.trace.total_log_weight();
+            if w > best_w {
+                (best_w, best) = (w, Some(run.current.clone()));
+            }
+        }
+        let (at_end, mut untouched) = (run.current.clone(), rng.clone());
+        run.step(&mut rng);
+        assert_eq!(run.current, at_end, "a walk with no steps left moved");
+        assert_eq!(rng.gen::<u64>(), untouched.gen::<u64>(), "it drew");
+        match (run.finish(), best) {
+            (Ok(child), Some(want)) => {
+                assert_eq!(child, want, "seed {k}");
+                improved += 1;
+            }
+            (Err(RefineOutcome::NoMove), None) => {}
+            (got, want) => panic!("seed {k}: returned {got:?}, the best was {want:?}"),
+        }
+    }
+    assert!(
+        improved > 0,
+        "no walk beat its seed: the archive was never compared"
+    );
+}
+
+/// A walk's result reads as its child, or as the reason it has none
+/// (`NoMove` when it gives none).
+#[test]
+fn a_walk_result_reads_as_its_child_or_its_reason() {
+    let tree = auracle_grammar::presets().remove(0).1;
+    let result = |child: Option<PatchTree>, reason| WalkResult {
+        generation: 1,
+        index: 0,
+        parent_id: 7,
+        child,
+        reason,
+        cached: None,
+    };
+    assert_eq!(result(Some(tree.clone()), None).walk(), Ok(&tree));
+    let stale = result(None, Some(RefineOutcome::Stale));
+    assert_eq!(stale.walk(), Err(RefineOutcome::Stale));
+    assert_eq!(result(None, None).walk(), Err(RefineOutcome::NoMove));
+}
