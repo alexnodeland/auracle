@@ -37,12 +37,12 @@ impl SyntheticUser {
 
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Sample a keep/kill decision.
     pub fn keep<R: Rng>(&self, rng: &mut R, x: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(x) - self.tau).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(x) - self.tau))
     }
 
     /// Sample a star rating (cumulative-logit ordinal).
@@ -96,7 +96,7 @@ impl MixtureSyntheticUser {
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise on the
     /// max-utility.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Generate a full duel observation on the given pair.
@@ -158,7 +158,7 @@ impl IdealPointUser {
 
     /// Sample a duel outcome (true = chose A), Bradley–Terry noise.
     pub fn duel<R: Rng>(&self, rng: &mut R, a: &[f64], b: &[f64]) -> bool {
-        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)).clamp(1e-9, 1.0 - 1e-9))
+        rng.gen_bool(sigmoid(self.utility(a) - self.utility(b)))
     }
 
     /// Generate a full duel observation on the given pair.

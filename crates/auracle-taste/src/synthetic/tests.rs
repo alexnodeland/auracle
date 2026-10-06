@@ -196,3 +196,36 @@ fn a_star_rating_inverts_the_cumulative_logit() {
         }
     }
 }
+
+/// Where the observation model is certain, so are the listeners: at a
+/// utility gap of 200, whose logistic is 1 to the last bit one way and
+/// under 2^-64 (rand's resolution for a probability) the other, every draw
+/// picks and keeps the better candidate, the largest `u64` included, and
+/// none picks or keeps the worse, the smallest included. The noise has no
+/// floor and no ceiling: a 1e-9 one used to make every answer uncertain,
+/// which is not the model the gates fit.
+#[test]
+fn where_the_model_is_certain_so_are_the_listeners() {
+    let user = ground_truth();
+    let (better, worse) = (
+        scored_at(&user.theta, 100.0),
+        scored_at(&user.theta, -100.0),
+    );
+    let mut e = vec![0.0; D];
+    e[0] = 100.0;
+    let islands = MixtureSyntheticUser {
+        thetas: vec![e.clone(), e.iter().rev().copied().collect()],
+    };
+    let ideal = ideal_point();
+    let mut far = ideal.center.clone();
+    far[0] += 20.0;
+    for draw in [0, u64::MAX] {
+        let mut fixed = StepRng::new(draw, 0);
+        let rng = &mut fixed;
+        assert!(user.duel(rng, &better, &worse) && !user.duel(rng, &worse, &better));
+        assert!(user.keep(rng, &better) && !user.keep(rng, &worse));
+        let (high, low) = (vec![1.0; D], vec![-1.0; D]);
+        assert!(islands.duel(rng, &high, &low) && !islands.duel(rng, &low, &high));
+        assert!(ideal.duel(rng, &ideal.center, &far) && !ideal.duel(rng, &far, &ideal.center));
+    }
+}
