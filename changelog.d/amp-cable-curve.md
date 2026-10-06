@@ -1,9 +1,10 @@
-### Fixed: the cable into the amp stays a curve while the amp slides
+### Fixed: a new cable stays a curve while its module slides past its source
 
-- **The cable into the amp stays a curve all the way through a slide.** When
-  a change to the patch slid the amp past the module plugged into it
-  (inserting a module before the amp, or ⌘Z or BACK TO after NEW PATCH), the
-  cable took a right-angle run below both modules for the first half of the
-  slide or more, then jumped to a curve as the amp came out from behind. Its
-  shape is now decided by where the modules come to rest, so it bends with the
-  amp instead (`patch_motion.spec.js`, #228).
+- **A cable that comes with a change to the patch stays a curve all the way
+  through the slide.** When a change slid a module past the module newly
+  plugged into it (inserting a module, which fades in where the next one was
+  as that one slides along, or ⌘Z or BACK TO after NEW PATCH, which slide
+  the amp back), the new cable took a right-angle run below both modules for
+  about half the slide or more, then jumped to a curve as the module came out
+  from behind. It now fades in as the curve it ends as, and bends with the
+  module as it slides (`patch_motion.spec.js`, #228).
