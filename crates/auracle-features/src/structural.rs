@@ -587,7 +587,7 @@ impl StructFeatures {
     ///
     /// A subset of [`Self::NAMES`] and *not* a reordering of it: the counts
     /// have no upper bound, so a range check over the whole vector could only
-    /// be a finiteness check. Named here so the debug assertion below, the
+    /// be a finiteness check. Named here so this module's tests, the
     /// featurizer's quarantine and the saved-log repair all read one list
     /// instead of three that drift.
     ///
@@ -809,11 +809,9 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     // for an audio tree they are the same number (every leaf is a source), and
     // taking it from the walk keeps the ratio's two halves measured by the
     // same pass. A one-node tree gives 1/1.
-    f.chain_balance = if t.leaves > 0 && t.leaf_depth_max > 0 {
-        (t.leaf_depth_sum as f64 / t.leaves as f64) / t.leaf_depth_max as f64
-    } else {
-        0.0
-    };
+    // Never a division by zero: every tree ends in at least one leaf, and its
+    // path to the root is at least the leaf itself.
+    f.chain_balance = (t.leaf_depth_sum as f64 / t.leaves as f64) / t.leaf_depth_max as f64;
     f.frac_sidechained = if t.binaries > 0 {
         t.sidechained as f64 / t.binaries as f64
     } else {
@@ -824,27 +822,13 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     } else {
         0.0
     };
-    // The invariant, shouted where it is cheapest to hear it. Every coordinate
-    // in `UNIT_NAMES` is either a normalized genome site read straight through
-    // or a ratio of two counts, so all six live in [0,1] for any term the
-    // grammar can produce — and `amp_sustain` sat at 1e30 for four patches and
-    // six cells of the persisted log precisely because nothing ever said so.
-    //
-    // `debug_assert` and not a clamp: by the time a term reaches the featurizer
-    // it has already been through `finish()`/`clamp_domains`, so a violation
-    // here is a hole in *that*, and quietly repairing it a second time would be
-    // how the hole stays open. Release builds are covered by the quarantine in
-    // `crate::featurize`, which refuses the row rather than trusting it.
-    #[cfg(debug_assertions)]
-    {
-        for (name, v) in StructFeatures::UNIT_NAMES.iter().zip(f.unit_coordinates()) {
-            debug_assert!(
-                v.is_finite() && (0.0..=1.0).contains(&v),
-                "φ_struct coordinate {name} left its domain: {v} (term: {})",
-                tree.root.to_sexpr()
-            );
-        }
-    }
+    // Every coordinate in `UNIT_NAMES` is a normalized genome site read
+    // straight through or a ratio of two counts, so all six live in [0,1] for
+    // any term the grammar can produce (the sweeps in this module's tests
+    // check it on every kind). A term with a site out of its domain is not
+    // repaired here: `crate::featurize` refuses it before it is measured
+    // (`FeaturizeError::OutOfDomain`), which is how `amp_sustain = 1e30`
+    // stopped reaching the persisted log.
     f
 }
 
@@ -899,7 +883,7 @@ struct Tally {
 /// module *is* the source, so it reads 1.
 fn count_mod(m: &ModNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
     t.slots += 1;
-    if matches!(m, ModNode::None) {
+    if !count_mod_nodes(m, f) {
         return;
     }
     t.filled += 1;
@@ -909,14 +893,13 @@ fn count_mod(m: &ModNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
     } else {
         1.0
     };
-    count_mod_nodes(m, f);
 }
 
 /// The per-kind counters for one modulation term, recursing through the
-/// shapers.
-fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
+/// shapers; `false` for an empty term, which counts nothing.
+fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) -> bool {
     match m {
-        ModNode::None => {}
+        ModNode::None => return false,
         ModNode::Lfo { .. } => f.n_lfo += 1.0,
         ModNode::Env { .. } => f.n_env += 1.0,
         ModNode::Rand { .. } => f.n_rand += 1.0,
@@ -945,6 +928,7 @@ fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
             count_mod_nodes(b, f);
         }
     }
+    true
 }
 
 fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
@@ -1180,3 +1164,6 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
         walk(i, f, t, d + 1);
     }
 }
+
+#[cfg(test)]
+mod tests;

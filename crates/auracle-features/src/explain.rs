@@ -247,12 +247,9 @@ fn frame_power(x: &[f64], pos: usize, hann: &[f64]) -> (Vec<f64>, f64) {
     (power, total)
 }
 
+/// The RMS of `seg`; 0 for no samples.
 fn rms(seg: &[f64]) -> f64 {
-    if seg.is_empty() {
-        0.0
-    } else {
-        (seg.iter().map(|s| s * s).sum::<f64>() / seg.len() as f64).sqrt()
-    }
+    (seg.iter().map(|s| s * s).sum::<f64>() / seg.len().max(1) as f64).sqrt()
 }
 
 /// The portrait of a render whose audio φ is `phi` (both from one
@@ -404,118 +401,4 @@ pub fn response_bands(h: &[f64], sample_rate: f64) -> Vec<f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::audio::log_axis;
-    use crate::render::NoteSpan;
-
-    fn phrase(samples: Vec<f64>, sr: f64) -> RenderedPhrase {
-        let n = samples.len();
-        RenderedPhrase {
-            samples,
-            sample_rate: sr,
-            note_onsets: vec![0],
-            spans: vec![NoteSpan {
-                voct: 0.0,
-                chord: 0,
-                on_start: 0,
-                on_end: n,
-            }],
-        }
-    }
-
-    /// A sine sits in the band holding its frequency, and that band is the
-    /// loudest; the held note's spectrum peaks at its bin.
-    #[test]
-    fn a_sine_lands_in_its_band() {
-        let sr = 44_100.0;
-        let f = 1_000.0;
-        let x: Vec<f64> = (0..44_100)
-            .map(|i| 0.5 * (std::f64::consts::TAU * f * i as f64 / sr).sin())
-            .collect();
-        let r = phrase(x, sr);
-        let p = portrait(&r, &crate::audio::audio_features(&r));
-        let edges = band_edges_hz();
-        let band = (0..BANDS)
-            .find(|&b| edges[b] <= f && f < edges[b + 1])
-            .unwrap();
-        assert_eq!(p.bands[band], 0.0);
-        // The face of the same render is the same spectrum, in its 0.5 dB
-        // steps: one band layout for both.
-        for (a, b) in p.face.ltas_db().iter().zip(&p.bands) {
-            assert!((a - b).abs() <= 0.55, "{a} vs {b}");
-        }
-        assert!(p
-            .bands
-            .iter()
-            .enumerate()
-            .all(|(b, d)| b == band || *d < 0.0));
-        let peak = p
-            .held
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.total_cmp(b.1))
-            .unwrap()
-            .0;
-        assert!(((peak as f64 * p.held_step_hz) - f).abs() <= p.held_step_hz);
-        // A steady sine's centroid is its frequency, and it does not move.
-        let b: Vec<f64> = p.bright.iter().flatten().cloned().collect();
-        assert!(b.iter().all(|c| (c - f).abs() < 30.0), "{b:?}");
-        assert!(
-            (p.facts.centroid_hz - f).abs() / f < 0.05,
-            "{}",
-            p.facts.centroid_hz
-        );
-    }
-
-    /// The facts invert φ's coordinates: a known attack and tail read back.
-    #[test]
-    fn facts_read_phi_in_its_units() {
-        let phi = AudioFeatures {
-            centroid_mean: log_axis(2_000.0, 22_050.0),
-            centroid_std: 0.0,
-            rolloff_mean: log_axis(5_000.0, 22_050.0),
-            flatness_mean: 0.1,
-            flux_mean: 0.2,
-            zcr_mean: log_axis(3_000.0, 22_050.0),
-            rms_mean: 0.1,
-            rms_std: 0.05,
-            crest: 2.0f64.ln(),
-            attack_s: (0.020f64 + 0.005).ln(),
-            tail_ratio: (0.1f64 + 1e-3).ln(),
-            bass_fraction: 0.25,
-            held_centroid_std: 0.03,
-            high_ratio: 0.5f64.ln(),
-            chord_flatness_delta: 0.0,
-            motion_slow: 0.5 * (0.04f64).log2(),
-            motion_mid: crate::audio::MOTION_FLOOR,
-            motion_fast: crate::audio::MOTION_FLOOR,
-        };
-        let f = Facts::of(&phi, 44_100.0);
-        assert!((f.centroid_hz - 2_000.0).abs() < 0.5);
-        assert!((f.rolloff_hz - 5_000.0).abs() < 1.0);
-        assert!((f.zcr_hz - 3_000.0).abs() < 1.0);
-        assert!((f.attack_ms - 20.0).abs() < 1e-9);
-        assert!((f.tail_db + 20.0).abs() < 1e-9);
-        assert!((f.crest_db - 6.0206).abs() < 1e-3);
-        assert!((f.high_db + 6.0206).abs() < 1e-3);
-        assert!((f.bass_pct - 25.0).abs() < 1e-9);
-        assert!((f.swing - 0.5).abs() < 1e-9);
-        assert!((f.motion_oct[0] - 0.2).abs() < 1e-9);
-        // The held note's wander is on φ's log axis: 0.03 of 20 Hz to
-        // Nyquist is 0.30 octave at 44.1 kHz, not 0.03.
-        assert!((f.held_move_oct - 0.03 * (22_050.0f64 / 20.0).log2()).abs() < 1e-12);
-        assert!((f.held_move_oct - 0.3032).abs() < 1e-3);
-        assert!((f.motion_oct[1] - 0.01).abs() < 1e-9);
-    }
-
-    /// An impulse passes every band at 0 dB.
-    #[test]
-    fn an_impulse_has_a_flat_response() {
-        let mut h = vec![0.0; 4096];
-        h[0] = 1.0;
-        let r = response_bands(&h, 44_100.0);
-        assert_eq!(r.len(), BANDS);
-        assert!(r.iter().all(|d| d.abs() < 0.05), "{r:?}");
-    }
-}
+mod tests;

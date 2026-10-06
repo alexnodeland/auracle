@@ -54,3 +54,7 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 ## Tests
 
 `cargo test -p auracle-features --profile test-fast`.
+
+Each module's tests sit beside it, in a file of their own: `audio.rs`'s in
+`audio/tests.rs`, and so on (`crates/AGENTS.md` § Coverage says why).
+`src/tests.rs` holds only the fixtures several modules' tests share.
