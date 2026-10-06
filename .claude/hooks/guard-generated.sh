@@ -3,9 +3,13 @@
 # Exit 2 sends the message back to Claude and cancels the edit.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/_root.sh"
 file="$(python3 "$here/_input.py" file_path)"
 [ -n "$file" ] || exit 0
-root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# The path within the file's own checkout: a worktree under
+# .claude/worktrees/ has its own apps/web/pkg/, site/ and target/.
+root="$(checkout_root "$(dirname "$file")")"
+[ -n "$root" ] || root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 rel="${file#"$root"/}"
 case "$rel" in
   apps/web/pkg/*)
