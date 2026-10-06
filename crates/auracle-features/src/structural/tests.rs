@@ -2,7 +2,7 @@ use super::*;
 use crate::pipeline::Features;
 use crate::tests::{amp, vco};
 use auracle_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Uid, Waveform};
-use auracle_grammar::PatchTree;
+use auracle_grammar::{apply_struct_op, ModKind, NodeKind, PatchTree, StructOp};
 
 /// `mod_depth_mean` reads 2 for a modulator wrapped in one processor, and
 /// it is not one of the unit-bounded coordinates — the pairing that made
@@ -397,4 +397,158 @@ fn shape_separates_serial_from_parallel() {
         .frac_sidechained,
         1.0
     );
+}
+
+/// The raw per-kind counters, every one: what `size` must be the sum of.
+fn counters(s: &StructFeatures) -> [f64; 30] {
+    [
+        s.n_vco,
+        s.n_supersaw,
+        s.n_noise,
+        s.n_wavetable,
+        s.n_pluck,
+        s.n_formant,
+        s.n_silence,
+        s.n_audio_in,
+        s.n_track,
+        s.n_capture,
+        s.n_mix,
+        s.n_ringmod,
+        s.n_filter,
+        s.n_eq,
+        s.n_fold,
+        s.n_distortion,
+        s.n_bitcrush,
+        s.n_delay,
+        s.n_granular,
+        s.n_shift,
+        s.n_comp,
+        s.n_duck,
+        s.n_gate,
+        s.n_vocoder,
+        s.n_chorus,
+        s.n_phaser,
+        s.n_flanger,
+        s.n_tremolo,
+        s.n_vibrato,
+        s.n_reverb,
+    ]
+}
+
+/// **Every kind a hand can place bumps exactly one counter, its own**, so
+/// `size ≡ Σ n_*` whatever the patch holds, and the source leaves (AUDIO IN
+/// and holes among them) outnumber the two-input nodes (TRACK among them) by
+/// exactly one: the identities the module doc rests on. Swept over
+/// `NodeKind::ALL`, so a kind added to the grammar is checked the day it
+/// lands: each one replaces the root of a saw (a source swaps in, a
+/// processor wraps the saw), and the match naming its counter has no
+/// wildcard, so a new kind does not compile here until it has one.
+#[test]
+fn every_kind_bumps_exactly_one_counter() {
+    for kind in NodeKind::ALL {
+        let op = StructOp::Replace {
+            key: "node".into(),
+            kind,
+        };
+        let tree = apply_struct_op(&vco(Waveform::Saw), &op)
+            .unwrap_or_else(|e| panic!("{kind:?} cannot replace a saw: {e:?}"));
+        let s = struct_features(&tree);
+        let own = match kind {
+            NodeKind::Vco => s.n_vco,
+            NodeKind::Supersaw => s.n_supersaw,
+            NodeKind::Noise => s.n_noise,
+            NodeKind::Mix => s.n_mix,
+            NodeKind::Filter => s.n_filter,
+            NodeKind::Fold => s.n_fold,
+            NodeKind::Delay => s.n_delay,
+            NodeKind::Chorus => s.n_chorus,
+            NodeKind::Reverb => s.n_reverb,
+            NodeKind::Wavetable => s.n_wavetable,
+            NodeKind::Pluck => s.n_pluck,
+            NodeKind::Distortion => s.n_distortion,
+            NodeKind::Bitcrush => s.n_bitcrush,
+            NodeKind::Phaser => s.n_phaser,
+            NodeKind::RingMod => s.n_ringmod,
+            NodeKind::Formant => s.n_formant,
+            NodeKind::Flanger => s.n_flanger,
+            NodeKind::Tremolo => s.n_tremolo,
+            NodeKind::Vibrato => s.n_vibrato,
+            NodeKind::Eq => s.n_eq,
+            NodeKind::Granular => s.n_granular,
+            NodeKind::Shift => s.n_shift,
+            NodeKind::Comp => s.n_comp,
+            NodeKind::Duck => s.n_duck,
+            NodeKind::Gate => s.n_gate,
+            NodeKind::Vocoder => s.n_vocoder,
+            NodeKind::Silence => s.n_silence,
+            NodeKind::AudioIn => s.n_audio_in,
+            NodeKind::Track => s.n_track,
+            NodeKind::Capture => s.n_capture,
+        };
+        assert_eq!(own, 1.0, "{kind:?} is not counted once: {s:?}");
+        let sum: f64 = counters(&s).iter().sum();
+        assert_eq!(sum, s.size, "{kind:?}: size is not the sum of the counters");
+        assert_eq!(s.size, tree.root.size() as f64);
+        let leaves = s.n_vco
+            + s.n_supersaw
+            + s.n_noise
+            + s.n_wavetable
+            + s.n_pluck
+            + s.n_formant
+            + s.n_silence
+            + s.n_audio_in;
+        let binaries =
+            s.n_mix + s.n_ringmod + s.n_comp + s.n_duck + s.n_gate + s.n_vocoder + s.n_track;
+        assert_eq!(leaves - binaries, 1.0, "{kind:?}: {s:?}");
+        assert!(s.to_vec().iter().all(|v| v.is_finite()), "{kind:?}");
+    }
+}
+
+/// **Every modulation choice counts as what it is.** Set on a saw's empty
+/// slot, each kind in `ModKind::ALL` (and the step sequence, which that list
+/// does not hold) fills the one slot, bumps its own counter, and keeps the
+/// modulation forest's identity: its leaves outnumber its combiners by the
+/// filled slots. A shaper or a combiner is a chain two deep, a bare
+/// modulator one; `None` leaves the slot empty and every count at zero.
+#[test]
+fn every_modulation_kind_counts_as_what_it_is() {
+    for kind in ModKind::ALL.into_iter().chain([ModKind::Steps]) {
+        let op = StructOp::SetMod {
+            key: "node".into(),
+            kind,
+        };
+        let tree = apply_struct_op(&vco(Waveform::Saw), &op)
+            .unwrap_or_else(|e| panic!("{kind:?} cannot modulate a saw: {e:?}"));
+        let s = struct_features(&tree);
+        let (own, depth) = match kind {
+            ModKind::None => (None, 0.0),
+            ModKind::Lfo => (Some(s.n_lfo), 1.0),
+            ModKind::Env => (Some(s.n_env), 1.0),
+            ModKind::Rand => (Some(s.n_rand), 1.0),
+            ModKind::Follow => (Some(s.n_follow), 1.0),
+            ModKind::Euclid => (Some(s.n_euclid), 1.0),
+            ModKind::Steps => (Some(s.n_steps), 1.0),
+            ModKind::Quantize => (Some(s.n_quantize), 2.0),
+            ModKind::Slew => (Some(s.n_slew), 2.0),
+            ModKind::Rectify => (Some(s.n_rectify), 2.0),
+            ModKind::Hold => (Some(s.n_hold), 2.0),
+            ModKind::Min => (Some(s.n_min), 2.0),
+            ModKind::Max => (Some(s.n_max), 2.0),
+            ModKind::And => (Some(s.n_and), 2.0),
+            ModKind::Or => (Some(s.n_or), 2.0),
+            ModKind::Xor => (Some(s.n_xor), 2.0),
+            ModKind::Switch => (Some(s.n_switch), 2.0),
+        };
+        let filled = if own.is_some() { 1.0 } else { 0.0 };
+        assert_eq!(
+            own.unwrap_or(1.0),
+            1.0,
+            "{kind:?} is not counted once: {s:?}"
+        );
+        assert_eq!(s.mod_density, filled, "{kind:?}: one slot, filled or not");
+        assert_eq!(s.mod_depth_mean, depth, "{kind:?}");
+        let leaves = s.n_lfo + s.n_env + s.n_rand + s.n_steps + s.n_follow + s.n_euclid;
+        let combiners = s.n_min + s.n_max + s.n_and + s.n_or + s.n_xor + s.n_switch;
+        assert_eq!(leaves - combiners, filled, "{kind:?}: {s:?}");
+    }
 }
