@@ -472,7 +472,6 @@ fn a_ringing_chord_voice_keeps_its_tail_into_the_next_chord() {
         window.iter().fold(0.0f64, |m, d| m.max(d.abs()))
     };
     let ringing = tail(0.05);
-    println!("ringing {ringing:.3e} parked {:.3e}", tail(2.0));
     assert!(
         ringing > 1e-3,
         "the first chord's tail was cut at the next onset ({ringing:.2e})"
