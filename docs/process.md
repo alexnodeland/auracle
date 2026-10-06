@@ -65,10 +65,15 @@ in a plan's prose, a session's notes or a conversation.
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:
   real, not yet scheduled.
 - **Titles** say the outcome, not the activity: "Faces on the PRESETS rows",
-  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`.
+  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`
+  (the file without `.spec.js`; the title may be cut short with … and a note
+  may follow it): the nightly *Flake hunt* finds an open flake's issue by it.
 - **Bodies** follow the templates in `.github/ISSUE_TEMPLATE/`: a task names
   its plan, its brief and what done means; a flake names the test, the run
-  that caught it, why it fails, the fix, and whether it is quarantined.
+  that caught it, why it fails, the fix, and whether it is quarantined. A
+  flake's issue the *Flake hunt* opens begins as its first report instead
+  (the run, the test, how many of its runs failed, the first error line, the
+  CPU); whoever takes it adds the template's sections.
 - **Plans link their issues.** A plan's progress table has an issue column,
   and each task row links its issue and, once merged, its PR. The plan stays
   the design; the issue tracks the work.
@@ -220,9 +225,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   site, the docs or the app changed (Web alone for a script's own tests, and
   nothing more for a changelog entry, which *What changed* checks on every
   run); Browser smoke when the app, the engine or what runs the specs changed
-  (not the specs' lint, which no browser reads); Worker protocol
-  (`make worker-test`) when the app, the engine or `tests/worker/` changed;
-  and the browser specs the change reaches
+  (not the specs' lint or CI's flake routing, which no browser reads);
+  Worker protocol (`make worker-test`) when the app, the engine or
+  `tests/worker/` changed; and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
   four runners. About five minutes for docs; up to about ten when Rust
   changed (Coverage sets the length) or an app module's specs run (`patch.js`
@@ -383,9 +388,15 @@ how long something took is a budget, not a gate assertion.
    an injected reply the engine can overwrite, a count a slow runner can
    double, a speed bound that should be a budget, or a real race in the app.
 3. **Or quarantine it** while it is fixed: open a `flake` issue (the template
-   says what goes in it), tag the test `@quarantine` with a comment naming the
-   issue, label the issue `quarantined`. It leaves the gate and runs in the
-   *Slow suite*. The PR that fixes it removes the tag and closes the issue.
+   says what goes in it), tag the test `@quarantine` with the issue named
+   beside the tag, `{ tag: "@quarantine", annotation: { type: "issue",
+   description: "#N" } }` (`make spec-lint` fails a quarantined test that
+   names none), and label the issue `quarantined`. It leaves the gate and
+   runs in the *Slow suite*'s job for quarantined tests, where a failure is a
+   comment on its issue and never turns the suite red while the issue is
+   open. The PR that fixes it removes the tag and its annotation and closes
+   the issue; an issue closed with the tag still on its test owns nothing,
+   and that test's next failure turns the suite red.
 4. **On a PR, an unrelated failure is quarantined on sight**, on its own run
    or in the queue's run that dequeued it. The failure qualifies when all
    three hold:
@@ -398,7 +409,8 @@ how long something took is a budget, not a gate assertion.
    the PR's.
 
 The nightly *Flake hunt* runs the gate's browser tests three times each
-against `main` and files an issue when one fails.
+against `main`, and files each test that fails on its own `Flaky:` issue, or
+comments on the one open for it.
 
 ## Dependencies
 
