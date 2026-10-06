@@ -3220,9 +3220,9 @@ impl Engine {
 
     /// The bank's sound a shared patch file already is: the member whose
     /// tree is the file's normal form, compared as [`Engine::import_patch`]
-    /// compares it, or `None`. It tells the two refusals an import answers
-    /// with `None` apart: a file the bank holds is that sound, and the app
-    /// opens it, where a file that does not vet is refused.
+    /// compares it, or `None`. It says which of an import's `None`s is not a
+    /// refusal: a file the bank holds is that sound, and the app opens it,
+    /// where one that does not vet, or is over the ceilings, is refused.
     ///
     /// Put in normal form first, as the import does. Compared as written, a
     /// file holding a term the import folds (a quantizer over nothing from an
