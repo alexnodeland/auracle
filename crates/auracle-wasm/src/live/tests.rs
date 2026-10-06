@@ -372,8 +372,8 @@ fn sync_snaps_to_the_nearest_division() {
 /// and sync off returns every sequencer to free-running at its own rate.
 #[test]
 fn sync_drives_every_voice_from_one_transport() {
-    quiver::rng::seed(7);
     use auracle_grammar::steps::{rate_hz, SYNC_FREE};
+    quiver::rng::seed(7);
     let (_, tree) = auracle_grammar::presets()
         .into_iter()
         .find(|(n, _)| *n == "Loom")
@@ -438,9 +438,9 @@ fn sync_drives_every_voice_from_one_transport() {
 /// off, however it was turned off.
 #[test]
 fn velocity_touch_offsets_its_own_voice_only() {
-    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    quiver::rng::seed(7);
     let json = serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.01,
@@ -707,9 +707,9 @@ fn a_makeup_sent_with_a_swap_waits_for_it() {
 /// shelf: a note swapped 30 ms into a 1 s attack must keep rising.
 #[test]
 fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
-    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    quiver::rng::seed(7);
     let json = serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.75, // ≈1 s
@@ -767,9 +767,9 @@ fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
 /// swap is reported.
 #[test]
 fn table_and_oct_are_live_at_index_scale() {
-    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, TableShape, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    quiver::rng::seed(7);
     let tree = |root| PatchTree {
         amp: AmpEnv {
             attack: 0.1,
@@ -1265,7 +1265,6 @@ fn glide_slides_a_line_but_not_a_chord() {
 /// it, through `meter_ptr` and `meter_len`.
 #[test]
 fn meter_reads_levels_off_interior_ports() {
-    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
     quiver::rng::seed(7);
@@ -1368,8 +1367,8 @@ fn held(json: &str, makeup: f64, leveler: bool, secs: f64) -> Vec<f64> {
 /// ceiling instead of at the brickwall.
 #[test]
 fn a_held_note_past_the_ceiling_settles_at_it() {
-    quiver::rng::seed(7);
     use auracle_features::{integrated_lufs, TARGET_LUFS};
+    quiver::rng::seed(7);
     let json = sustained_json();
     let settled = |leveler: bool| {
         let mono = held(&json, 10f64.powf(30.0 / 20.0), leveler, 6.0);
@@ -1968,20 +1967,11 @@ fn chord_arp(mode: u32, gate: f64) -> LivePoly {
     p
 }
 
-/// No voices, no knobs: the live parameter table is read off the first
-/// voice. (`new` never builds an instrument without one; the table is
-/// asked of whatever a build made.)
-#[test]
-fn no_voices_intern_no_knobs() {
-    assert!(intern_params(&[], None).is_empty());
-}
-
 /// The meter reads levels and nothing else: an update of another kind off
 /// the same observer (a scope's, on the same port) is not a tap's, and the
 /// taps read what they read without it.
 #[test]
 fn the_meter_reads_levels_and_nothing_else() {
-    quiver::rng::seed(7);
     let read = |scope: bool| {
         quiver::rng::seed(7);
         let mut poly = LivePoly::new(&pad_json(), 44_100.0, 1).unwrap();
@@ -2215,8 +2205,8 @@ fn a_tied_arp_slides_one_voice() {
 /// once, and leaves another knob's ramp running.
 #[test]
 fn a_rate_knob_ramps_free_and_snaps_synced() {
-    quiver::rng::seed(7);
     use auracle_grammar::steps::rate_hz;
+    quiver::rng::seed(7);
     let mut p = loom_synced();
     p.set_sync(false);
     let (rate, sync) = (p.sync_lanes[0].rate_slot, p.sync_lanes[0].sync_slot);

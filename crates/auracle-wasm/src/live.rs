@@ -454,12 +454,12 @@ struct TouchSite {
 /// order is a property of the patch and not of `HashMap` iteration. Every
 /// voice is the same tree compiled, so voice 0's keys are everyone's keys;
 /// a voice missing one (which cannot happen) simply has no entry to write.
-/// The open voice ([`LivePoly::set_open`]), when the patch has one, is in the
-/// table too, so a knob turned while it sounds reaches it as it reaches a key.
+/// There is always a voice 0: `new` builds `n_voices.max(1)`, and a swap
+/// never fewer. The open voice ([`LivePoly::set_open`]), when the patch has
+/// one, is in the table too, so a knob turned while it sounds reaches it as
+/// it reaches a key.
 fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
-    let Some(first) = voices.first() else {
-        return Vec::new();
-    };
+    let first = &voices[0];
     let mut addrs: Vec<&String> = first.voice.params.keys().collect();
     addrs.sort();
     addrs
@@ -886,8 +886,8 @@ fn tick_voice(
 impl LivePoly {
     /// Build an `n_voices`-voice instrument from a `PatchTree` JSON, or say
     /// why not. The error is a `String`, which wasm-bindgen throws as a JS
-    /// string (the host reads it with `String(err)`), and which
-    /// [`render_take`] and the native tests read as it is.
+    /// string (the host reads it with `String(err)`), and which `render_take`
+    /// and the native tests read as it is.
     #[wasm_bindgen(constructor)]
     pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
         let tree: PatchTree = serde_json::from_str(tree_json).map_err(|e| e.to_string())?;
