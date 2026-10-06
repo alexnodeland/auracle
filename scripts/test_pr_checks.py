@@ -5,8 +5,9 @@ does to the issues it names.
 
     python3 scripts/test_pr_checks.py      (run by `make dev-check`)
 
-No test reaches the network: the GitHub API is a fake that holds issues,
-comments and parents in memory and records every write, and `gh` never runs
+No test reaches the network: the GitHub API is a fake that holds issues
+(their bodies too), comments and parents in memory, searches the bodies, and
+records every write, and `gh` never runs
 (the API wrapper's own tests hand it a stand-in for `subprocess.run`). The
 last case reads the real pull request template. Python 3 standard library
 only.
@@ -17,6 +18,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
@@ -31,18 +33,20 @@ REPO = "alexnodeland/auracle"
 
 
 class Fake:
-    """The GitHub API in memory: issues by number ({state, title, pr,
+    """The GitHub API in memory: issues by number ({state, title, body, pr,
     parent}), each issue's comments, and the writes made. `closes_after`
     closes an issue (as GitHub does after a merge) once it has been read
-    that many times."""
+    that many times. `edits` gives an issue the body a person saves just
+    after the job's first read of it."""
 
-    def __init__(self, issues=None, comments=None, closes_after=None, fail=(), lag=False):
+    def __init__(self, issues=None, comments=None, closes_after=None, fail=(), lag=False, edits=None):
         self.issues = {n: dict(i) for n, i in (issues or {}).items()}
         # With `lag`, a parent's list of sub-issues gives each one's state
         # from before any write, as GitHub's can for a moment.
         self.before = {n: i.get("state", "open") for n, i in self.issues.items()} if lag else None
         self.comments = {n: list(c) for n, c in (comments or {}).items()}
         self.closes_after = dict(closes_after or {})
+        self.edits = dict(edits or {})
         self.reads = {}
         self.fail = set(fail)
         self.writes = []
@@ -54,6 +58,7 @@ class Fake:
             "number": n,
             "title": i.get("title", f"issue {n}"),
             "state": i.get("state", "open"),
+            "body": i.get("body", ""),
             "closed_at": i.get("closed_at"),
             "repository_url": f"https://api.github.com/repos/{i.get('repo', REPO)}",
         }
@@ -74,7 +79,10 @@ class Fake:
             self.reads[n] = self.reads.get(n, 0) + 1
             if n in self.closes_after and self.reads[n] > self.closes_after[n]:
                 self.issues[n]["state"] = "closed"
-            return 200, self._issue(n)
+            read = self._issue(n)
+            if n in self.edits:
+                self.issues[n]["body"] = self.edits.pop(n)
+            return 200, read
         if parts[5] == "parent":
             p = self.issues[n].get("parent")
             return (404, "gh: No parent issue found (HTTP 404)") if p is None else (200, self._issue(p))
@@ -90,6 +98,18 @@ class Fake:
     def all(self, path):
         return self.get(path)
 
+    def search(self, q):
+        """The search API as loose as GitHub's: an open issue matches when
+        its body has the number anywhere, as a word, `#` or not."""
+        if f"search/issues?q={q}" in self.fail:
+            return 502, []
+        n = re.search(r"#(\d+)", q).group(1)
+        return 200, [
+            self._issue(m)
+            for m, i in self.issues.items()
+            if not i.get("pr") and i.get("state", "open") == "open" and re.search(rf"\b{n}\b", i.get("body", ""))
+        ]
+
     def post(self, path, data):
         n = int(path.split("/")[4])
         self.writes.append(("comment", n, data["body"]))
@@ -98,16 +118,20 @@ class Fake:
 
     def patch(self, path, data):
         n = int(path.split("/")[4])
-        self.writes.append(("close", n, data["state"]))
-        self.issues[n]["state"] = data["state"]
+        if "body" in data:
+            self.writes.append(("body", n, data["body"]))
+            self.issues[n]["body"] = data["body"]
+        else:
+            self.writes.append(("close", n, data["state"]))
+            self.issues[n]["state"] = data["state"]
         return 200, {}
 
 
-def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO, merged_at=""):
+def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO, merged_at="", dry=False):
     """Run the merge job on a PR with `body` against `api`: its exit code,
     its log, and how many times it slept."""
     log, slept = [], []
-    code = P.on_merge(P.Pr(number, title, body, author, head, merged_at), api, REPO, sleep=slept.append, log=log.append)
+    code = P.on_merge(P.Pr(number, title, body, author, head, merged_at), api, REPO, dry_run=dry, sleep=slept.append, log=log.append)
     return code, log, len(slept)
 
 
@@ -490,11 +514,146 @@ class OnMerge(unittest.TestCase):
         self.assertEqual(fake.writes, [])
 
     def test_a_dry_run_writes_nothing_and_does_not_wait(self):
-        fake = Fake({5: {}, 177: {}})
+        fake = Fake({5: {}, 177: {"body": "- [ ] Flakes can't merge — #5"}})
         log, slept = [], []
         P.on_merge(P.Pr(300, "t", "Closes #5\nRefs #177", "a"), fake, REPO, dry_run=True, sleep=slept.append, log=log.append)
         self.assertEqual((fake.writes, slept), ([], []))
         self.assertIn("#5: open: would close it", log)
+        self.assertIn("#177: would tick “Flakes can't merge — #5”", log)
+
+
+class Ticks(unittest.TestCase):
+    """On merge, a box in another open issue that names an issue the PR
+    closed is ticked once every issue it names is closed, and said once."""
+
+    def ticked(self, fake):
+        return [w for w in fake.writes if w[0] == "body"]
+
+    def said(self, fake, n):
+        return [w[2] for w in fake.writes if w[0] == "comment" and w[1] == n]
+
+    def test_a_box_naming_an_issue_the_merge_closed_is_ticked_and_said(self):
+        # Every kind of list GitHub draws a box in, and a body saved with
+        # CRLF: only the box's character changes.
+        umbrella = "## The PRs\n\n- [ ] Flakes can't merge — #5\n- [ ] Not started\n* [ ] Hangs too (#5)\n1. [ ] Done when #5 is"
+        crlf = "- [ ] Saved with CRLF — #5\r\n- [ ] The rest\r\n"
+        fake = Fake({5: {"state": "closed"}, 177: {"body": umbrella}, 178: {"body": crlf}})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            self.ticked(fake),
+            [
+                ("body", 177, "## The PRs\n\n- [x] Flakes can't merge — #5\n- [ ] Not started\n* [x] Hangs too (#5)\n1. [x] Done when #5 is"),
+                ("body", 178, "- [x] Saved with CRLF — #5\r\n- [ ] The rest\r\n"),
+            ],
+        )
+        (said,) = self.said(fake, 177)
+        self.assertIn(
+            "#300 closed #5, and every issue these 3 boxes name is closed now, so they are ticked: "
+            "“Flakes can't merge — #5”; “Hangs too (#5)”; “Done when #5 is”.",
+            said,
+        )
+        self.assertIn("<!-- pr-checks: ticked #300 -->", said)
+        (said,) = self.said(fake, 178)
+        self.assertIn("every issue this box names is closed now, so it is ticked: “Saved with CRLF — #5”.", said)
+        self.assertIn("#177: ticked “Hangs too (#5)”", log)
+
+    def test_a_box_naming_two_issues_waits_until_both_are_closed(self):
+        fake = Fake({130: {"state": "closed"}, 153: {}, 177: {"body": "- [ ] Both halves: #130 + #153"}})
+        code, log, _ = merge("Closes #130", fake)
+        self.assertEqual((code, fake.writes), (0, []))
+        self.assertIn("#177: “Both halves: #130 + #153” waits for #153, still open", log)
+        # Another PR closes the second: now the box is ticked.
+        fake.issues[153]["state"] = "closed"
+        code, _, _ = merge("Closes #153", fake, number=301)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.ticked(fake), [("body", 177, "- [x] Both halves: #130 + #153")])
+        self.assertIn("#301 closed #153, and every issue this box names", self.said(fake, 177)[0])
+
+    def test_a_box_in_code_a_comment_or_a_quote_or_naming_it_only_in_code_is_not_ticked(self):
+        body = "\n".join(
+            [
+                "```",
+                "- [ ] In a fence: #5",
+                "```",
+                "  ~~~md",
+                "  - [ ] In a tilde fence: #5",
+                "  ~~~",
+                "<!-- - [ ] In a comment: #5 -->",
+                "<!--",
+                "- [ ] In a comment over lines: #5",
+                "-->",
+                "- [ ] Named only in code: `Closes #5`",
+                "- [ ] Named only in a comment <!-- #5 -->",
+                "> - [ ] Quoted: #5",
+            ]
+        )
+        fake = Fake({5: {"state": "closed"}, 177: {"body": body}})
+        code, _, _ = merge("Closes #5", fake)
+        self.assertEqual((code, fake.writes), (0, []))
+
+    def test_a_box_naming_an_issue_in_another_repository_is_left_for_a_person(self):
+        fake = Fake({5: {"state": "closed"}, 177: {"body": "- [ ] Upstream too: #5 and rhysd/actionlint#654"}})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual((code, fake.writes), (0, []))
+        self.assertIn("#177: “Upstream too: #5 and rhysd/actionlint#654” names an issue in another repository: not ticked", log)
+
+    def test_a_ticked_box_is_left_alone(self):
+        fake = Fake({5: {"state": "closed"}, 177: {"body": "- [x] Done — #5\n- [X] Also done — #5"}})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual((code, fake.writes), (0, []))
+        # Not a box to tick at all: nothing is said of it, in a dry run too.
+        log += merge("Closes #5", fake, dry=True)[1]
+        self.assertEqual([line for line in log if line.startswith("#177")], [])
+
+    def test_a_pr_a_box_names_is_not_an_issue_to_wait_for(self):
+        # #206 is an open PR. The box naming #5 and it is ticked once #5
+        # closes; the box naming only the PR is not.
+        fake = Fake({5: {"state": "closed"}, 206: {"pr": True}, 177: {"body": "- [ ] The fix — #5 (#206)\n- [ ] Merged — #206"}})
+        code, _, _ = merge("Closes #5", fake)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.ticked(fake), [("body", 177, "- [x] The fix — #5 (#206)\n- [ ] Merged — #206")])
+        # A PR named with `Closes` closes nothing, so no box naming it is
+        # ticked.
+        fake = Fake({206: {"pr": True}, 177: {"body": "- [ ] Merged — #206"}})
+        self.assertEqual((merge("Closes #206", fake)[0], fake.writes), (0, []))
+
+    def test_a_run_again_ticks_nothing_and_says_nothing_twice(self):
+        fake = Fake({5: {"state": "closed"}, 177: {"body": "- [ ] Flakes can't merge — #5"}})
+        merge("Closes #5", fake)
+        self.assertEqual([(w[0], w[1]) for w in fake.writes], [("body", 177), ("comment", 177)])
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual((code, len(fake.writes)), (0, 2))
+        self.assertEqual([line for line in log if line.startswith("#177")], [])
+
+    def test_a_box_changed_between_the_read_and_the_write_is_not_ticked(self):
+        # A person rewrites the first box and adds a line just after the
+        # job's first read: the second box is ticked in their body, the
+        # first is left.
+        fake = Fake(
+            {5: {"state": "closed"}, 177: {"body": "- [ ] Flakes — #5\n- [ ] Hangs — #5"}},
+            edits={177: "- [ ] Flakes, and slow suites — #5\n- [ ] Hangs — #5\nA line of theirs."},
+        )
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.ticked(fake), [("body", 177, "- [ ] Flakes, and slow suites — #5\n- [x] Hangs — #5\nA line of theirs.")])
+        self.assertIn("#177: “Flakes — #5” changed since it was read: not ticked", log)
+        (said,) = self.said(fake, 177)
+        self.assertIn("so it is ticked: “Hangs — #5”.", said)
+
+    def test_a_failed_search_or_read_fails_the_job_and_ticks_nothing(self):
+        search = f"search/issues?q=repo:{REPO} is:issue is:open #5 in:body"
+        for fail in [search, f"repos/{REPO}/issues/6"]:
+            fake = Fake({5: {"state": "closed"}, 6: {"state": "closed"}, 177: {"body": "- [ ] Both: #5 and #6"}}, fail={fail})
+            code, _, _ = merge("Closes #5", fake)
+            self.assertEqual((code, fake.writes), (1, []), fail)
+
+    def test_a_long_box_is_quoted_cut_short_at_a_word(self):
+        text = "Quarantined specs report to their own issues; the nightly files Flaky: issues and refreshes the timings — #5"
+        fake = Fake({5: {"state": "closed"}, 177: {"body": f"- [ ] {text}"}})
+        merge("Closes #5", fake)
+        (said,) = self.said(fake, 177)
+        self.assertIn("ticked: “Quarantined specs report to their own issues; the nightly files Flaky: issues…”.", said)
 
 
 class ReadPr(unittest.TestCase):
@@ -558,6 +717,20 @@ class GhApi(unittest.TestCase):
         status, items = P.Api(run).all(f"repos/{REPO}/issues/5/comments")
         self.assertEqual((status, len(items)), (200, 101))
         self.assertEqual(seen, [f"repos/{REPO}/issues/5/comments?per_page=100&page={k}" for k in (1, 2)])
+
+    def test_a_search_is_read_page_by_page_its_query_encoded(self):
+        pages = [{"total_count": 101, "items": [{"number": i} for i in range(100)]}, {"total_count": 101, "items": [{"number": 100}]}]
+        seen = []
+
+        def run(args, **kw):
+            seen.append(args[-1])
+            return subprocess.CompletedProcess(args, 0, json.dumps(pages[len(seen) - 1]), "")
+
+        status, items = P.Api(run).search(f"repo:{REPO} is:issue is:open #5 in:body")
+        self.assertEqual((status, len(items)), (200, 101))
+        # `#` unencoded would end the path there: the rest a URL fragment.
+        q = "repo%3Aalexnodeland%2Fauracle%20is%3Aissue%20is%3Aopen%20%235%20in%3Abody"
+        self.assertEqual(seen, [f"search/issues?q={q}&per_page=100&page={k}" for k in (1, 2)])
 
 
 class TheRealTemplate(unittest.TestCase):

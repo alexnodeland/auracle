@@ -6,7 +6,7 @@ docs/process.md § Pull requests).
     python3 scripts/pr_checks.py title       the title is a conventional subject
     python3 scripts/pr_checks.py links       the body names its issues, one per keyword
     python3 scripts/pr_checks.py changelog   a warning: a player-facing change, no entry
-    python3 scripts/pr_checks.py merged      on merge: comment, close, tell the parents
+    python3 scripts/pr_checks.py merged      on merge: comment, close, tell the parents, tick
 
 In CI each reads the PR from the event, through the environment
 (PR_NUMBER, PR_TITLE, PR_BODY, PR_AUTHOR, PR_HEAD_REPO, PR_MERGED_AT,
@@ -48,6 +48,23 @@ posted, and none is posted twice. GitHub closes linked issues a moment after
 the merge, so an issue still open is read again for up to POLLS * EVERY
 seconds before it is closed here.
 
+**The boxes.** Each issue that closed with the PR is searched for in the
+bodies of the other open issues (an umbrella's checklist), and each body
+found is read and parsed. A box there (`- [ ] …`) that names it is ticked
+once every issue the box names is closed: `#130 + #153` waits for both. A
+number that is a PR is not an issue to wait for. A box in fenced code, an
+HTML comment or a quote isn't read, nor a number in inline code; a box that
+names an issue in another repository is left for a person. Only `[ ]`
+becomes `[x]`: the body is read again just before the write, and a box whose
+line changed since the first read is left as it is. A person's edit made in
+the moment between that read and the write is lost: the API has no
+conditional write for a body. The issue's comment gets a line listing the
+boxes ticked. A box ticked is ticked for good, so a run again ticks nothing
+twice; a run that ticked a box and then failed to post its line doesn't post
+it later, since a box ticked by the job looks like one ticked by hand. The
+search index can lag an edit by a minute, so a box added just before the
+merge can be missed; it is ticked by hand.
+
 The GitHub API is read and written through `gh api` (GH_TOKEN in CI).
 Python 3 standard library only.
 """
@@ -64,6 +81,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
+from urllib.parse import quote
 
 REPO = "alexnodeland/auracle"
 
@@ -106,10 +124,19 @@ NO_ISSUE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?no issue:[ \t]*(?P<why>.*?)[ \t]*
 
 # Each line the merge job writes carries a marker naming what it says and the
 # PR: `closed by` (the job closed the issue), `advanced by` (a `Refs` line),
-# `sub-issues` (a parent's count of them closed).
+# `sub-issues` (a parent's count of them closed), `ticked` (the boxes it
+# ticked in the issue's body).
 MARK = "<!-- pr-checks: {what} #{pr} -->"
 POLLS = 6
 EVERY = 10  # seconds
+
+# A task list's box, as GitHub draws one: `- [ ] text`, `* [x] text`,
+# `1. [ ] text`. The line is matched whole, a CR at its end included (GitHub's
+# web editor saves a body with CRLF line ends), so ticking a box changes one
+# character and nothing else on the line.
+BOX = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\[(?P<mark>[ xX])\][ \t]+(?P<text>[^\r]*?)[ \t]*\r?")
+# How much of a box's text the comment that says it was ticked quotes.
+QUOTE = 80  # characters
 
 
 # ─── the title ───────────────────────────────────────────────────────────────
@@ -170,12 +197,14 @@ def off(m: re.Match) -> str:
 # ─── the links ───────────────────────────────────────────────────────────────
 
 
-def readable(body: str) -> str:
-    """`body` without what GitHub doesn't read as a link: HTML comments,
-    fenced code, quoted lines and inline code."""
-    text = re.sub(r"<!--.*?-->", " ", body.replace("\r\n", "\n"), flags=re.DOTALL)
-    kept, fence = [], None
-    for line in text.split("\n"):
+INLINE_CODE = r"(`+)(?:(?!\1).)+?\1"
+
+
+def unfenced(lines: list[str]):
+    """Each (index, line) of `lines` outside fenced code; the fences' own
+    lines are left out too."""
+    fence = None
+    for i, line in enumerate(lines):
         m = re.match(r"[ \t]*(`{3,}|~{3,})", line)
         if fence is None and m:
             fence = m.group(1)
@@ -184,10 +213,14 @@ def readable(body: str) -> str:
             if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not line.strip()[len(m.group(1)) :].strip():
                 fence = None
             continue
-        if line.lstrip().startswith(">"):
-            continue
-        kept.append(re.sub(r"(`+)(?:(?!\1).)+?\1", " ", line))
-    return "\n".join(kept)
+        yield i, line
+
+
+def readable(body: str) -> str:
+    """`body` without what GitHub doesn't read as a link: HTML comments,
+    fenced code, quoted lines and inline code."""
+    text = re.sub(r"<!--.*?-->", " ", body.replace("\r\n", "\n"), flags=re.DOTALL)
+    return "\n".join(re.sub(INLINE_CODE, " ", line) for _, line in unfenced(text.split("\n")) if not line.lstrip().startswith(">"))
 
 
 def number(ref: str, repo: str) -> int | None:
@@ -241,6 +274,57 @@ def parse(body: str, repo: str = REPO) -> Links:
     if no:
         links.no_issue = no.group("why")
     return links
+
+
+@dataclass
+class Box:
+    """A box in an issue's task list."""
+
+    line: int  # its line's index in the body split at "\n"
+    raw: str  # that line, exactly as the body has it
+    mark: int  # the column of the space or `x` between its brackets
+    ticked: bool
+    text: str  # what follows the box, its spaces collapsed
+    issues: list[int]  # the numbers in this repository it names, in order
+    elsewhere: bool  # it names an issue in another repository
+
+
+def boxes(body: str, repo: str = REPO) -> list[Box]:
+    """Every box GitHub draws in `body`, and the numbers each names: not one
+    in fenced code, in an HTML comment or in a quote, and no number in inline
+    code or a comment, which GitHub doesn't link."""
+    # Each comment blanked to spaces, its line ends kept, so every line keeps
+    # its place and its columns. One that is never closed hides the rest of
+    # the body, as it does on GitHub.
+    shown = re.sub(r"<!--.*?(?:-->|\Z)", lambda m: re.sub(r"[^\n]", " ", m.group(0)), body, flags=re.DOTALL)
+    raw = body.split("\n")
+    found = []
+    for i, line in unfenced(shown.split("\n")):
+        m = BOX.fullmatch(line)
+        if not m:
+            continue
+        issues: list[int] = []
+        elsewhere = False
+        for ref in re.findall(REF, re.sub(INLINE_CODE, " ", m.group("text"))):
+            n = number(ref, repo)
+            if n is None:
+                elsewhere = True
+            elif n not in issues:
+                issues.append(n)
+        found.append(Box(i, raw[i], m.start("mark"), m.group("mark") != " ", " ".join(m.group("text").split()), issues, elsewhere))
+    return found
+
+
+def listed(numbers: list[int]) -> str:
+    """`#1`, `#1 and #2`, `#1, #2 and #3`."""
+    named = [f"#{n}" for n in numbers]
+    return ", ".join(named[:-1]) + (" and " if len(named) > 1 else "") + named[-1]
+
+
+def quoted(box: Box) -> str:
+    """The box's text in quotes, cut short at a word when it is long."""
+    text = box.text if len(box.text) <= QUOTE else box.text[:QUOTE].rsplit(" ", 1)[0] + "…"
+    return f"“{text}”"
 
 
 def check_links(links: Links, get: Callable[[str], tuple[int, object]], repo: str = REPO) -> tuple[list[str], list[str]]:
@@ -337,6 +421,20 @@ class Api:
             if len(data) < 100:
                 return 200, items
             page += 1
+
+    def search(self, q: str) -> tuple[int, list]:
+        """Every issue and PR the search API finds for `q`, page by page (it
+        gives at most ten pages)."""
+        items: list = []
+        for page in range(1, 11):
+            status, data = self.get(f"search/issues?q={quote(q, safe='')}&per_page=100&page={page}")
+            if status != 200 or not isinstance(data, dict):
+                return (status if status != 200 else 0), items
+            got = data.get("items") or []
+            items += got
+            if len(got) < 100 or len(items) >= (data.get("total_count") or 0):
+                break
+        return 200, items
 
     def post(self, path: str, data: dict) -> tuple[int, object]:
         return self.call(path, "POST", data)
@@ -500,8 +598,7 @@ def on_merge(
             failed = True
             continue
         done = sum(1 for s in subs if s.get("state") == "closed" or s.get("number") in closed)
-        named = ", ".join(f"#{c}" for c in children[:-1]) + (" and " if len(children) > 1 else "") + f"#{children[-1]}"
-        lines.setdefault(p, []).append(("sub-issues", f"{named} closed with #{pr.number}. {done} of {len(subs)} sub-issues are closed."))
+        lines.setdefault(p, []).append(("sub-issues", f"{listed(children)} closed with #{pr.number}. {done} of {len(subs)} sub-issues are closed."))
     for n in links.refs:
         if n in links.closes:
             continue
@@ -510,9 +607,119 @@ def on_merge(
             failed = failed or status not in (200, 404, 410)
             continue
         lines.setdefault(n, []).insert(0, ("advanced by", f"Advanced by #{pr.number}, merged: {pr.title}"))
+
+    # The boxes in other open issues that name what closed, ticked once
+    # every issue each names is closed; said in the same comment.
+    ticked, bad = tick(pr, closed, api, repo, dry_run, log)
+    failed = failed or bad
+    for n, text in ticked.items():
+        lines.setdefault(n, []).append(("ticked", text))
     for n, said in lines.items():
         say(n, said)
     return 1 if failed else 0
+
+
+def tick(
+    pr: Pr,
+    closed: list[int],
+    api: Api,
+    repo: str = REPO,
+    dry_run: bool = False,
+    log: Callable[[str], None] = print,
+) -> tuple[dict[int, str], bool]:
+    """Tick each box in another open issue that names an issue in `closed`,
+    the issues that closed with `pr`, once every issue the box names is
+    closed. A PR a box names is not an issue to wait for. Only the box's
+    `[ ]` changes, and only when its line is as it was read: the body is
+    read again just before the write, and a line changed since (or moved,
+    or ticked by hand) is left. Returns what to say on each issue edited,
+    and whether a read or a write failed."""
+    failed = False
+    # The open issues whose bodies name one that closed. The search matches
+    # the number anywhere in a body, so each body is read and parsed.
+    found: list[int] = []
+    for n in closed:
+        status, items = api.search(f"repo:{repo} is:issue is:open #{n} in:body")
+        if status != 200:
+            log(f"#{n}: the issues naming it couldn't be searched (HTTP {status}): no box ticked for it")
+            failed = True
+            continue
+        found += [i["number"] for i in items if i["number"] not in closed + found and not i.get("pull_request")]
+
+    # What each number a box names is: "open" or "closed", None for what
+    # isn't an issue (a PR, or no such issue), "?" when it couldn't be read.
+    kinds: dict[int, str | None] = {n: "closed" for n in closed}
+
+    def kind(n: int) -> str | None:
+        if n not in kinds:
+            status, issue = api.get(f"repos/{repo}/issues/{n}")
+            if status == 200 and isinstance(issue, dict):
+                kinds[n] = None if issue.get("pull_request") else issue.get("state")
+            elif status in (404, 410):
+                kinds[n] = None
+            else:
+                log(f"#{n}: couldn't be read (HTTP {status})")
+                kinds[n] = "?"
+        return kinds[n]
+
+    said: dict[int, str] = {}
+    for m in sorted(found):
+        status, issue = api.get(f"repos/{repo}/issues/{m}")
+        if status != 200 or not isinstance(issue, dict):
+            log(f"#{m}: couldn't be read (HTTP {status}): its boxes aren't ticked")
+            failed = True
+            continue
+        due: list[Box] = []
+        for box in boxes(issue.get("body") or "", repo):
+            if box.ticked or not any(n in closed for n in box.issues):
+                continue
+            if box.elsewhere:
+                log(f"#{m}: {quoted(box)} names an issue in another repository: not ticked")
+                continue
+            states = {n: kind(n) for n in box.issues}
+            if "?" in states.values():
+                log(f"#{m}: {quoted(box)} names an issue that couldn't be read: not ticked")
+                failed = True
+                continue
+            waiting = [n for n, s in states.items() if s == "open"]
+            if waiting:
+                log(f"#{m}: {quoted(box)} waits for {listed(waiting)}, still open")
+                continue
+            due.append(box)
+        if not due:
+            continue
+        if dry_run:
+            for box in due:
+                log(f"#{m}: would tick {quoted(box)}")
+        else:
+            # Read again, and tick only the lines still as they were read;
+            # what a person changes in the moment before the write is lost.
+            status, again = api.get(f"repos/{repo}/issues/{m}")
+            if status != 200 or not isinstance(again, dict):
+                log(f"#{m}: couldn't be read again (HTTP {status}): its boxes aren't ticked")
+                failed = True
+                continue
+            body = again.get("body") or ""
+            still = {(b.line, b.raw) for b in boxes(body, repo) if not b.ticked}
+            for box in [b for b in due if (b.line, b.raw) not in still]:
+                log(f"#{m}: {quoted(box)} changed since it was read: not ticked")
+            due = [b for b in due if (b.line, b.raw) in still]
+            if not due:
+                continue
+            text = body.split("\n")
+            for box in due:
+                text[box.line] = box.raw[: box.mark] + "x" + box.raw[box.mark + 1 :]
+            status, _ = api.patch(f"repos/{repo}/issues/{m}", {"body": "\n".join(text)})
+            if status != 200:
+                log(f"#{m}: ticking {len(due)} box{'es' if len(due) > 1 else ''} failed (HTTP {status})")
+                failed = True
+                continue
+            for box in due:
+                log(f"#{m}: ticked {quoted(box)}")
+        closers = listed(sorted({n for b in due for n in b.issues if n in closed}))
+        these = "this box names is closed now, so it is" if len(due) == 1 else f"these {len(due)} boxes name is closed now, so they are"
+        said[m] = f"#{pr.number} closed {closers}, and every issue {these} ticked: {'; '.join(quoted(b) for b in due)}."
+    return said, failed
 
 
 # ─── the command line ────────────────────────────────────────────────────────
