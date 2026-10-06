@@ -143,10 +143,11 @@ The `@mergifyio queue` comment is the act of enqueueing, for now: the
 only once the maintainer switches on Merge Protections in Mergify's
 dashboard. Put the label on anyway; once Merge Protections is on, the label
 alone queues the PR and the comment is only for putting one back. The PR
-enters Mergify's merge queue once its own `CI`, the fast lane, and its
-`PR checks` are green; the queue runs the full gate on its batch and merges
-it (`process.md` § CI and merging). The title becomes the squash commit's
-subject, `<title> (#<n>)`, so it starts with a type as a commit does
+enters Mergify's merge queue once its own `CI`, the fast lane, its
+`PR checks` and its *Mutants* (*Mutants in the changed code*) are green;
+the queue runs the full gate on its batch and merges it (`process.md` § CI
+and merging). The title becomes the squash commit's subject,
+`<title> (#<n>)`, so it starts with a type as a commit does
 (`fix(web): …`, `tests: …`, `ci: …`); the commit's body is the PR's commit
 messages (the repository's squash setting), so each commit's why reaches
 `main`.
@@ -180,11 +181,12 @@ generations or PERFORM's offers. It does not block the merge.
 ## 6. The merge, waited on by state
 
 The PR's own `CI` is the fast lane (a few minutes). Green, with its
-`PR checks` green too, the PR is in the queue, which tests it in a batch of
-up to three (a release PR alone) on a draft PR (the full gate, about twelve
-minutes, from a `mergify/merge-queue/` branch) and merges each PR of a green
-batch. Wait until it merges, its own `CI` or `PR checks` goes red, or it
-leaves the queue:
+`PR checks` and its *Mutants* green too (a crate PR's *Mutants* run takes
+up to 40 minutes, any other PR's about one), the PR is in the queue, which
+tests it in a batch of up to three (a release PR alone) on a draft PR (the
+full gate, about twelve minutes, from a `mergify/merge-queue/` branch) and
+merges each PR of a green batch. Wait until it merges, its own `CI`,
+`PR checks` or *Mutants* goes red, or it leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
@@ -195,6 +197,7 @@ until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheck
     elif any(.labels[]; .name == "dequeued") then "dequeued"
     elif red("CI") then "CI red"
     elif red("PR checks") then "PR checks red"
+    elif red("Mutants in the changed code") then "Mutants red"
     else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
 ```
 
@@ -223,7 +226,20 @@ Run the wait in the background; never sleep a fixed time and assume.
   the edit runs it again, and no push is needed. Start the wait again once
   `gh -R alexnodeland/auracle pr checks <n>` shows the new run of
   `PR checks` pending; started sooner, it finds only the red run and stops
-  at once. Green, the PR enters the queue by itself.
+  at once. Green, with `CI` and *Mutants*, the PR enters the queue by
+  itself.
+- **`Mutants red`:** a mutant of the code the PR changed survived, or the
+  run broke; the PR never entered the queue. The run's summary names each
+  survivor (its line, its function, its change):
+  `gh -R alexnodeland/auracle run list --workflow mutants.yml --branch claude/<topic> --json databaseId,conclusion,headSha`,
+  then `gh -R alexnodeland/auracle run view <run> --log-failed`. The
+  builder kills each with a test that asserts what the code does, or, when
+  no behavior can show it, excludes it in `.cargo/mutants.toml` with its
+  reason (`crates/AGENTS.md` § Mutation testing); saying why in the PR body
+  does not turn it green. The push runs it again. A run whose unmutated
+  tests failed has a red `CI` beside it: read that first. A timeout, or a
+  run the 25-minute cap stopped before it judged a mutant, passes; it never
+  turns the job red. Then step 7.
 - **`dequeued`:** it left the queue without merging. Red in the queue (the
   full gate failed on its batch, and the split narrowed the failure to this
   PR), a conflict, or a run that was cancelled.
@@ -282,15 +298,16 @@ or dequeued (red on its own run, or red in the queue):
    ```
 
    The comment is safe either way: a PR whose own first run was red never
-   entered the queue, and enters by itself once `CI` is green. Then step 6
-   again.
+   entered the queue, and enters by itself once `CI`, `PR checks` and
+   *Mutants* are green. Then step 6 again.
 
 **By hand, only when Mergify is down.** The PR's own `CI` is the fast lane,
 not the full gate, and the ruleset requires only that one, so nothing stops
 a merge by hand that skips the full gate: run it first. Up to date with
 `main` (if `main` moved, rebase it with the lease above), start a run by
 hand, which is the full gate, wait for it to finish, and merge only if it is
-green on the PR's head and the PR's own `CI` is too:
+green on the PR's head and the PR's own `CI`, `PR checks` and *Mutants*
+are too:
 
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
