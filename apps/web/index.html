@@ -818,21 +818,23 @@
       <!-- ------------- the levels: where you are ------------- -->
       <!-- A cross at the stage's right edge (shell.js): out to in, LEARNING,
            TASTE, PERFORM and PATCH, with EVOLVE beside PERFORM. The current
-           stop is lit (`aria-current=location`); a stop's name shows on hover
-           or focus; a click goes there, and so do the level keys (ADR-017). -->
+           stop is lit (`aria-current=location`); a stop's name and key are its
+           tooltip (`title`) and its name, line and key a screen reader's
+           (`aria-label`, `aria-keyshortcuts`), and nothing pops up over the
+           stage; a click goes there, and so do the level keys (ADR-017). -->
       <nav class="rail" id="rail" aria-label="Where you are">
         <span class="rail-hint" aria-hidden="true">out</span>
-        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg><span class="rl" aria-hidden="true">Learning</span></button>
+        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg></button>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg><span class="rl" aria-hidden="true">Taste</span></button>
+        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg></button>
         <span class="rail-line" aria-hidden="true"></span>
         <div class="rail-mid">
-          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg><span class="rl" aria-hidden="true">Evolve</span></button>
+          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg></button>
           <span class="rail-branch" aria-hidden="true"></span>
-          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg><span class="rl" aria-hidden="true">Perform</span></button>
+          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg></button>
         </div>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg><span class="rl" aria-hidden="true">Patch</span></button>
+        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg></button>
         <span class="rail-hint" aria-hidden="true">in</span>
       </nav>
 

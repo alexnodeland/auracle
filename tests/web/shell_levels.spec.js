@@ -15,7 +15,10 @@
 //   module search and in the tempo field changes no level. A modal dialog
 //   keeps them too. ⌥ alone is taken (Firefox and Edge on Windows open the
 //   window's menu on it).
-// - A stop's name shows while the rail is pointed at.
+// - Pointing at the levels puts no names over the stage: each stop holds its
+//   icon alone, its name and key are its tooltip (`title`, the platform's
+//   own keys), and its name, line and key a screen reader's (`aria-label`,
+//   `aria-keyshortcuts`).
 // - Space plays the sound in hand at every level (ADR-016): the output
 //   sounds, the header's ▶ lights, and Space again stops it.
 // - A reload comes back to the level you were at; a link with a level's hash
@@ -135,13 +138,27 @@ test("the rail and the level keys move between the levels, and the header says w
   await page.evaluate(() => { window.__pwAlt.length = 0; });
   await page.keyboard.press("Alt");
   expect(await page.evaluate(() => window.__pwAlt)).toEqual([true]);
+});
 
-  // A stop's name shows while the rail is pointed at.
-  const label = page.locator('.rail-stop[data-level="taste"] .rl');
-  await page.mouse.move(400, 400);
-  await expect(label).toHaveCSS("opacity", "0");
-  await page.locator('.rail-stop[data-level="taste"]').hover();
-  await expect(label).toHaveCSS("opacity", "1");
+// The names that popped up beside every stop while the levels were pointed at
+// (#286) are gone: a stop's name and key are its tooltip, and its name, line
+// and key a screen reader's.
+test("pointing at the levels puts no names over the stage, and each stop keeps its name and key", async ({ page, app }) => {
+  await boot(page, app);
+  const KEY = { perform: 1, patch: 2, evolve: 3, taste: 4, learning: 5 };
+  for (const [level, n] of Object.entries(KEY)) {
+    const [name, line] = WHERE[level];
+    const stop = page.locator(`.rail-stop[data-level="${level}"]`);
+    await stop.hover();
+    // Pointed at, the stop holds its icon alone, and the levels hold no words
+    // but their ends' (out, in).
+    await expect(stop).toHaveText("");
+    await expect(page.locator("#rail")).toHaveText(/^\s*out\s*in\s*$/);
+    // Its tooltip, in the platform's own keys: Taste · ⌥4 on a Mac, Taste · Alt 4 elsewhere.
+    await expect(stop).toHaveAttribute("title", new RegExp(`^${name} · (⌥|Alt )${n}$`));
+    await expect(stop).toHaveAttribute("aria-label", `${name}: ${line}`);
+    await expect(stop).toHaveAttribute("aria-keyshortcuts", `Alt+${n}`);
+  }
 });
 
 test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page, app }) => {
