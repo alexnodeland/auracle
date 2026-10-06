@@ -1,4 +1,9 @@
-<!-- How a change lands: docs/process.md. Delete what doesn't apply. -->
+<!-- How a change lands: docs/process.md. Delete what doesn't apply.
+
+     The title is the squash commit's subject on main, so it starts with a
+     type, as a commit's does: `fix(web): what is true now`, `tests: …`,
+     `ci: …` (AGENTS.md rule 8). The `PR checks` workflow checks the title and
+     the issue lines under Why; the merge queue takes a PR once it is green. -->
 
 ## What
 
@@ -6,9 +11,15 @@
 
 ## Why
 
-<!-- What was wrong or missing. -->
+<!-- What was wrong or missing. Then the issues, one per line: `Closes #n`
+     for each issue this PR finishes, one keyword per issue (GitHub reads
+     one issue per keyword, so a list after one closes only its first), and
+     `Refs #n` for each issue it advances, which gets a comment naming this
+     PR once it merges. No issue? Delete both lines and say why on a line
+     that starts `No issue:`. -->
 
 Closes #
+Refs #
 
 ## How
 
