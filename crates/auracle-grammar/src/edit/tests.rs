@@ -45,10 +45,11 @@ fn edits_reject_structure_and_unknowns() {
 /// is set past its end and before its start, and the rack reads back the
 /// last option and the first. The sets come from `NodeKind::ALL` and the
 /// rack's own option lists, so a selector whose clamp disagrees with its
-/// faceplate fails here by address.
+/// faceplate fails here by address, and the selector sites the rack shows
+/// are exactly the ones the clamp knows.
 #[test]
 fn every_selector_stops_at_the_options_the_rack_shows() {
-    let mut selectors = 0;
+    let mut sites = std::collections::BTreeSet::new();
     for kind in NodeKind::ALL {
         let tree = voice(default_fragment(kind));
         for m in describe(&tree).modules {
@@ -58,7 +59,7 @@ fn every_selector_stops_at_the_options_the_rack_shows() {
                     KnobKind::Octave => 4,
                     KnobKind::Continuous => continue,
                 };
-                selectors += 1;
+                sites.insert(split_addr(&k.addr).1.to_string());
                 for (asked, want) in [(usize::MAX, last), (0, 0)] {
                     let set = set_param(&tree, &k.addr, ParamValue::Index(asked))
                         .unwrap_or_else(|e| panic!("{kind:?} {}: {e}", k.addr));
@@ -74,9 +75,11 @@ fn every_selector_stops_at_the_options_the_rack_shows() {
             }
         }
     }
-    // wave, color, oct, table, mode (filter and drive), input, channel,
-    // band, play: every selector site is on some module.
-    assert!(selectors >= SELECTORS.len(), "only {selectors} selectors");
+    // Every site the clamp knows is a selector on some module, and the rack
+    // shows no selector the clamp does not know.
+    let known: std::collections::BTreeSet<String> =
+        SELECTORS.iter().map(|(s, _)| s.to_string()).collect();
+    assert_eq!(sites, known);
 }
 
 /// A knob takes a value and a selector takes an index; each refuses the
