@@ -11,7 +11,7 @@ in [`../AGENTS.md`](../AGENTS.md).
 | `prior.rs` | The PCFG prior (a fugue program) that draws terms and scores them |
 | `compile.rs` | Term → quiver `Patch`, including the limiter and output stage |
 | `edit.rs` | Knob writes by trace address (`node/0#cut`) |
-| `mutate.rs` | Structural edits a player makes: insert, delete, replace, rewire, and module defaults |
+| `mutate.rs` | Structural edits a player makes: insert, delete, replace, rewire, and module defaults; `normalize_tree`, the normal form every tree is put in once on its way in (a structural edit, an import, a restore, a whole-tree replace), and `validate_tree`, the ceilings |
 | `describe.rs` | The rack view the app draws: modules, knobs, **knob labels**, cables |
 | `diff.rs` | What changed between two trees, in address terms (the lineage log and offer strips read it) |
 | `presets.rs` | The hand-made library. The warm start deals from it. |
