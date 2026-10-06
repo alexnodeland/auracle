@@ -181,6 +181,10 @@ const { createGuide } = await import(`./guide.js?v=${BUILD}`);
 // The toast lane's queue (toasts.js, tests/toasts.test.mjs): created with the
 // DOM it draws on, where `note()` is, below.
 const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}`);
+// EVOLVE's dealing rules (deal.js, tests/deal.test.mjs): which answer to a
+// deal goes up, waits as the next pair or is dealt again. Created with what
+// it reads of the table where the next pair is dealt ahead, below.
+const { createDealer } = await import(`./deal.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -2078,7 +2082,7 @@ worker.onmessage = (e) => {
       // unconditionally; `choose()`'s early return on it is inert here because
       // there is no pair on the table yet.
       dealing = true;
-      requestDeal();
+      dealer.deal();
       send({ type: "taste_views" });
       // A session restored with no picks in it — the saved patches a reset
       // kept — is not "your taste restored": there is none yet, and the warm
@@ -2149,7 +2153,7 @@ worker.onmessage = (e) => {
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing && !dealsOut) requestDeal();
+      if (!currentDuel && !dealing && !dealer.out) dealer.deal();
       renderFillHint();
       warmPrewarmPump();
       break;
@@ -2292,9 +2296,8 @@ worker.onmessage = (e) => {
     }
     case "duel": {
       // Every deal, a pick's or one dealt ahead, lands here in the order it
-      // was asked for (see `onDealt`).
-      dealsOut = Math.max(0, dealsOut - 1);
-      onDealt(m.pair, m.meta || null);
+      // was asked for (deal.js `dealt`).
+      dealer.dealt(m.pair, m.meta || null);
       break;
     }
     // The worker announces the start and end of every call that blocks its
@@ -2327,7 +2330,7 @@ worker.onmessage = (e) => {
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
       onRenderArrived(m.id);
       compareRenderArrived(m.id);
-      requestAhead();
+      dealer.dealAhead();
       break;
     }
     case "tree_json": {
@@ -3563,10 +3566,9 @@ function releaseRequest(request, id, req, message, fatal = false) {
       pendingEvolve = false;
       break;
     case "duel":
-      dealsOut = Math.max(0, dealsOut - 1);
       // The table waits on nothing else: it stops waiting, as it always did.
       // A deal ahead that died leaves the table as it was.
-      if (!currentDuel && dealsOut === 0) {
+      if (dealer.failed()) {
         dealing = false;
         setDuelControlsEnabled(true);
       }
@@ -4353,7 +4355,7 @@ function applyViews(next) {
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
     dealAnother();
   }
-  checkAhead();
+  dealer.check();
   // New ratings move the seeds and what may be replaced, if they are marked.
   if (mayGoShown) markMayGo(true);
   // The engine owns the budget and ships it with every views post, which is
@@ -6892,16 +6894,6 @@ $("pd-back").onclick = () => {
 // away. Normal deal latency is ~30 ms, so nobody feels the lockout.
 let dealing = false;
 
-/** Ask the engine for the next pair. The patches the player has cut go with
- *  the request, their undo windows included: a cut patch is never dealt
- *  again (the engine skips them, `next_duel_ex`). It stays in the pool until a
- *  generation replaces it, and dealing used to ignore the cut, so a sound the
- *  player had thrown out came back minutes later as a question. */
-function requestDeal() {
-  dealsOut += 1;
-  send({ type: "duel", exclude: [...cutIds] });
-}
-
 // A deal that takes longer than this says why on the dimmed cards. Most deals
 // land in ~30 ms and say nothing; during a generation a deal waits for the
 // seed being bred, up to twenty seconds, and inert cards with no reason read
@@ -6964,7 +6956,6 @@ function setDuelControlsEnabled(on) {
  *  The one place a pair goes up, so anything owed to a pair being *shown*
  *  belongs here. */
 function placePair(pair, meta) {
-  leftPair = null;
   currentDuel = pair;
   // Randomise the presented side: the engine's first pick was always A,
   // always left, always ←. `duel_pred` is computed at record time from
@@ -6991,145 +6982,48 @@ function placePair(pair, meta) {
   // The pair is on the table; a refit armed by the last vote can now be
   // enqueued *behind* this pair's audio rather than in front of it.
   settleFit();
-  aheadRetries = 0;
-  // A pair waiting that is the one just put up is no next pair.
-  checkAhead();
-  requestAhead();
+  // A pair waiting that is the one just put up is no next pair, and the one
+  // after is dealt.
+  dealer.placed();
 }
 
 // ---------- the next pair, dealt ahead ----------
-// A pick used to put the table away and wait for the engine to deal: ~30 ms
-// on a quiet engine, but a whole seed's walk (up to about 20 s) while a
-// generation ran, and the new pair's sounds then rendered after it. So while
-// a pair is on the table the next one is dealt and both its sounds fetched,
-// and a pick or "another pair" swaps it in at once; the one after is dealt
-// in the background. The pair is chosen before the pick is known, which is
-// what already happened (the pick is held in its undo window, and the deal
-// used to go out before it was logged): under the default rule every pair is
-// dealt at random, and under bald/thompson it is chosen against the current
-// posterior, which the model already lets lag its log by up to six picks.
-//
-// Asked for only once the table's own two sounds are here, so the pair in
-// front of the player never waits behind the next one's. The next pair's
-// sounds are fetched in the background (`bg`): the worker renders them
-// behind every gesture waiting on it.
-//
-// The worker answers deals in the order they were asked for, and `onDealt`
-// takes each answer on its own terms rather than by which request asked for
-// it: the first to land while the table waits goes up, and any other waits as
-// the next pair. A pick made while a deal ahead is still out (a generation
-// holds deals behind the seed being bred) waits for that deal rather than
-// asking for a second. It used to ask for one, keep the first answer as "the
-// next" because a pick's deal was expected, and put the second up: the table
-// ran P, R, Q, with the cards dimmed through a deal and two renders nobody
-// needed, and when an answer landed changed what a seeded session showed
-// (ADR-001). Now the pairs go up in the order the engine dealt them.
-let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
-let dealsOut = 0; // deals asked for and not yet answered
-let aheadRetries = 0; // deals refused since the table last changed
-let leftPair = null; // the pair ↻ or a lost side just put away, until the next goes up
+// While a pair is on the table the next one is dealt and both its sounds
+// fetched, so a pick or "another pair" swaps it in at once (deal.js says why,
+// and holds the rules: which answer goes up, waits or is dealt again). Here
+// is what the dealer reads and does.
 const goneIds = new Set(); // ids that have left the pool, as views said so
-
-/** A side of the pair was cut (its undo window included) after the deal was
- *  asked for: the deal excluded the cuts made before it, and this checks
- *  the ones made since. */
-function holdsCut(pair) {
-  return pair.some((id) => cutIds.has(id));
-}
-
-function aheadUsable(pair) {
-  if (!pair || pair.length !== 2) return false;
-  // A patch cut since is never dealt.
-  if (holdsCut(pair)) return false;
-  // Replaced since (a generation, a preset load or an import can replace a
-  // patch while the pair waits): `applyViews` drops the pair when one of
-  // its ids leaves the pool. The bank's rows can lag the pool while it
-  // fills, so a missing row is not taken for a replaced patch.
-  if (pair.some((id) => goneIds.has(id))) return false;
-  // Not the question on the table, the one just put away, or the one being
-  // held in an undo window.
-  const same = (p) => p && p.includes(pair[0]) && p.includes(pair[1]);
-  return !same(currentDuel) && !same(leftPair) && !same(pendingVote && pendingVote.pair);
-}
-
-function requestAhead() {
-  if (ahead || dealsOut || !currentDuel || dealing) return;
-  const heard = (id) => renders.has(id) || renderFailures.has(id);
-  if (!currentDuel.every(heard)) return;
-  dealsOut += 1;
-  send({ type: "duel", exclude: [...cutIds], ahead: true });
-}
-
-/** A deal's answer. With the table waiting it goes up; with a pair on the
- *  table it waits as the next one, its sounds fetched, unless one already
- *  waits. */
-function onDealt(pair, meta) {
-  if (!currentDuel) {
-    if (!pair || aheadUsable(pair)) return void placePair(pair, meta);
-    // Dealt before a cut, or the pair just put away: the next answer is
-    // already on its way, or one more is asked for.
-    if (dealsOut) return;
-    // A pair holding a cut sound is never put up, however many tries it
-    // takes: it is dealt again. That ends, because every deal excludes the
-    // cuts made before it was asked for: only a cut made while a deal is out
-    // brings its answer back here, once per cut. It used to go up after the
-    // third try like any other refusal.
-    if (holdsCut(pair)) return void requestDeal();
-    // A pool too small to deal anything else puts it up after a few tries.
-    if (aheadRetries++ < 3) return void requestDeal();
-    return void placePair(pair, meta);
-  }
-  // No pair: the engine dealt nothing (fewer than two sounds it may deal),
-  // so nothing new waits, take-back or not. A pair already waiting: the one a
-  // taken-back pick had put up, back as the next (`retractVote`), and this
-  // answer, the deal asked for behind that pair, is thrown away unseen.
-  if (!pair || ahead) return;
-  if (!aheadUsable(pair)) {
-    // The engine may deal the very pair on the table again (a small pool
-    // early in a session does, often): ask again, a few times.
-    if (aheadRetries++ < 3) requestAhead();
-    return;
-  }
-  ahead = { pair, meta };
+const dealer = createDealer({
+  table: () => currentDuel,
+  held: () => (pendingVote ? pendingVote.pair : null),
+  cut: cutIds,
+  gone: goneIds,
+  heard: (id) => renders.has(id) || renderFailures.has(id),
+  // The patches the player has cut go with every deal, their undo windows
+  // included: a cut patch is never dealt again (the engine skips them,
+  // `deal_duel_ex`). It stays in the pool until a generation replaces it,
+  // and dealing used to ignore the cut, so a sound the player had thrown out
+  // came back minutes later as a question.
+  ask: (ahead) => send(ahead ? { type: "duel", exclude: [...cutIds], ahead: true } : { type: "duel", exclude: [...cutIds] }),
+  place: (pair, meta) => placePair(pair, meta),
   // In the background (`bg`, see `requestPairRendersNow`): nobody hears
   // these until the next pick, and a gesture must not wait behind them.
-  for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
-}
-
-/** Swap the pair dealt ahead onto the table; false when there is none that
- *  may still be dealt. */
-function takeAhead() {
-  const a = ahead;
-  ahead = null;
-  if (!a || !aheadUsable(a.pair)) return false;
-  placePair(a.pair, a.meta);
-  return true;
-}
-
-/** A pair that may no longer be dealt (cut, or replaced) is dropped, and the
- *  next is asked for. */
-function checkAhead() {
-  if (ahead && !aheadUsable(ahead.pair)) {
-    ahead = null;
-    requestAhead();
-  }
-}
+  fetch: (pair) => {
+    for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
+  },
+});
 
 /** Put the pair on the table away and deal another: a pick does this, and so
  *  does "another pair" (↻), which used to leave the old pair up with buttons
  *  that looked live and did nothing until the deal landed. The pair dealt
- *  ahead goes up at once when there is one; the pair put away is remembered
- *  until the next goes up, so neither it nor a deal of it goes straight back. */
+ *  ahead goes up at once when there is one; otherwise the cards go inert
+ *  until a deal lands (deal.js `another`). */
 function dealAnother() {
-  leftPair = currentDuel;
+  const prev = currentDuel;
   currentDuel = null;
-  aheadRetries = 0;
-  if (takeAhead()) return;
+  if (dealer.another(prev)) return;
   dealing = true;
   setDuelControlsEnabled(false);
-  // A deal already out (one asked for ahead) is the next pair: its answer
-  // goes up when it lands. Only with none out is one asked for.
-  if (!dealsOut) requestDeal();
 }
 
 // ---------- taking back a teaching act ----------
@@ -7209,27 +7103,10 @@ function retractVote() {
     return true;
   }
   // The pick's pair goes back on the table, and which pair is next depends
-  // on what went up in its place.
-  //
-  // A pair went up (the one dealt ahead, or a deal that landed inside the
-  // window): it waits as the next one, sounds and all, when it may
-  // (`aheadUsable`). The player has seen it, so it comes before any pair
-  // dealt behind it, and the deal asked for behind it, if one was, is thrown
-  // away unseen: one that has landed is overwritten here, and one still out
-  // lands with a pair waiting and is dropped (`onDealt`). The pair after it
-  // is dealt when it goes up (`placePair`). When it may not wait (as when it
-  // is this same pair, put up again by a pool too small to deal another),
-  // nothing is thrown away: a deal behind it that has landed stays the next
-  // pair, and one still out becomes it.
-  //
-  // Nothing went up (the table was waiting on a deal): that deal lands with
-  // this pair on the table, so it becomes the next pair (`onDealt`) rather
-  // than covering this one.
+  // on what went up in its place (deal.js `retract`).
   const displaced = currentDuel;
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
-  leftPair = null;
-  if (displaced && aheadUsable(displaced)) ahead = { pair: displaced, meta: duelMeta };
   dealing = false;
   setDuelControlsEnabled(true);
   setFlip("a", false);
@@ -7239,9 +7116,10 @@ function retractVote() {
   setDuelSelection(null);
   dealCards();
   renderPlayDuel();
-  // Its sounds are resident, so no render will land to ask for the pair
-  // after it: asked here, unless one is waiting or on its way.
-  requestAhead();
+  // What went up in its place waits as the next pair. Its sounds are
+  // resident, so no render will land to ask for the pair after it: asked
+  // here, unless one is waiting or on its way.
+  dealer.retract(displaced, duelMeta);
   return true;
 }
 
@@ -8376,11 +8254,11 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
-  // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
+  // A cut patch is never dealt again (every deal sends the cut ids), and
   // that includes the pair on the table: a side the player just threw out is
   // not a question worth asking, so another pair is dealt the way ↻ deals one.
   // …and so does the pair dealt ahead: it is dropped, and dealt again.
-  checkAhead();
+  dealer.check();
   if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
   let toast = null;
   let back = null;

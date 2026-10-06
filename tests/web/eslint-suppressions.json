@@ -170,15 +170,12 @@
       "count": 8
     },
     "playwright/no-conditional-in-test": {
-      "count": 14
+      "count": 13
     },
     "playwright/no-wait-for-timeout": {
       "count": 1
     },
     "playwright/prefer-to-have-count": {
-      "count": 1
-    },
-    "playwright/prefer-to-have-length": {
       "count": 1
     }
   },

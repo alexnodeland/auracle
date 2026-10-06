@@ -175,7 +175,7 @@ const key = (p) => [...p].sort((x, y) => x - y).join();
 // pool is still filling while these tests deal, so it depends on the
 // machine's speed: the same deal came back [3,6] on one CI run, [3,12] on
 // another and [3,7], the pair just put on the table, on a third. An answer
-// main may not put up (`aheadUsable`: the pair on the table, the pair just
+// main may not put up (deal.js `usable`: the pair on the table, the pair just
 // put away, the pick held in its undo window) is dealt again, one deal per
 // refused answer, by design. So "the pair dealt next" is the first answer
 // main may put up: the order holds, and a refused answer is skipped.

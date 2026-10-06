@@ -1093,35 +1093,42 @@ used to (`prefetch_render`), and a preset clicked just after a reload waited
 out four renders before it opened. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
 cuts and replacements made since, and against the pair just put away
-(`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a
+(`usable`). Only with nothing waiting does a pick wait for a deal, and a
 deal already out (asked for ahead) is the one it waits for: no second deal
 is asked for.
 
-Every deal's reply goes through `onDealt`, whichever request asked for it:
-the first to land while the table waits goes up, any other waits as the next
-pair. The worker answers deals in the order they were asked, so pairs go up
-in the order they were dealt whatever the timing (a seeded session shows the
-same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
-`dealsOut` counts deals not yet answered. A taken-back pick (`retractVote`)
-puts its pair back on the table, and which pair is next depends on what went
-up in its place. If a pair did (the one dealt ahead, or a deal that landed
-inside the undo window), that pair waits as the next one when `aheadUsable`
-allows, since the player has seen it. Then the deal asked for behind it, if
-one was, is thrown away unseen: overwritten if it has landed, dropped by
-`onDealt` when it lands, because a pair already waits. The pair after it is
-dealt when it goes up. When `aheadUsable` refuses it (as when it is the
-pick's own pair, put up again by a pool too small to deal another), nothing
-is thrown away: a deal behind it that has landed stays the next pair, and
-one still out becomes it. If nothing went up, the deal the table was waiting
-on lands with the pair back on the table and becomes the next pair. A
-retraction asks for a deal only when no pair waits and none is out. With the
-table waiting, an answer that may not go up is dealt again, and after three
-tries goes up anyway, so a pool too small to deal anything else cannot leave
-the cards dimmed. An answer holding a cut sound is the exception: it is
-always dealt again (`holdsCut`). That ends, because each deal excludes the
-cuts made before it was asked for, so only a cut made while a deal is out
-brings one back. `placePair` is the one place a pair goes up: anything owed
-to a pair being shown belongs there.
+The rules are `apps/web/deal.js` (`createDealer`), unit-tested in
+`apps/web/tests/deal.test.mjs` against a scripted engine. `main.js` hands the
+dealer the table, the pick held in its undo window, the cuts and the ids
+gone from the pool, and gets back the requests, the pair to put up and the
+sounds to fetch.
+
+Every deal's reply goes through the dealer's `dealt`, whichever request
+asked for it: the first to land while the table waits goes up, any other
+waits as the next pair. The worker answers deals in the order they were
+asked, so pairs go up in the order they were dealt whatever the timing (a
+seeded session shows the same pairs,
+[ADR-001](../decisions/001-one-random-stream-per-consumer.md)). The dealer's
+`out` counts deals not yet answered. A taken-back pick (`retractVote`, then
+the dealer's `retract`) puts its pair back on the table, and which pair is
+next depends on what went up in its place. If a pair did (the one dealt
+ahead, or a deal that landed inside the undo window), that pair waits as the
+next one when `usable` allows, since the player has seen it. Then the deal
+asked for behind it, if one was, is thrown away unseen: overwritten if it
+has landed, dropped by `dealt` when it lands, because a pair already waits.
+The pair after it is dealt when it goes up. When `usable` refuses it (as
+when it is the pick's own pair, put up again by a pool too small to deal
+another), nothing is thrown away: a deal behind it that has landed stays the
+next pair, and one still out becomes it. If nothing went up, the deal the
+table was waiting on lands with the pair back on the table and becomes the
+next pair. A retraction asks for a deal only when no pair waits and none is
+out. With the table waiting, an answer that may not go up is dealt again,
+and after three tries goes up anyway, so a pool too small to deal anything
+else cannot leave the cards dimmed. An answer holding a cut sound is the
+exception: it is always dealt again (`holdsCut`). That ends, because each
+deal excludes the cuts made before it was asked for, so only a cut made
+while a deal is out brings one back. `placePair` is the one place a pair
+goes up: anything owed to a pair being shown belongs there.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
