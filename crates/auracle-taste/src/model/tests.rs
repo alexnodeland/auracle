@@ -1093,11 +1093,9 @@ fn two_lovers_and_a_spent_hater() -> TastePosterior {
 /// draw that contradicts it least, so a stronger contradiction never moves
 /// it less than a weaker one, and a draw with no weight stays at none. That
 /// holds for any vote whose log-likelihood stays finite on the weighted
-/// draws, as a duel's does for any finite φ. A star rating between the
-/// lowest and the highest is the exception until #227: far below its lower
-/// cutpoint its log-likelihood underflows to −∞, a draw it underflows for
-/// loses all its weight, and once it underflows on every weighted draw the
-/// weights are kept instead.
+/// draws, as every vote's does for any finite φ
+/// (`every_vote_on_a_finite_phi_has_a_finite_likelihood`; a star rating's
+/// probe is `a_star_rating_far_below_its_cutpoint_updates_exactly_at_every_strength`).
 ///
 /// The exponentials are shifted by the best log-likelihood among the draws
 /// that carry weight. Shifted by the best of all draws, here the one with
@@ -1137,10 +1135,11 @@ fn the_update_is_exact_however_strong_the_contradiction() {
 /// the weights as they were: what the votes since the last fit taught the
 /// draws is kept, and the observation waits in the log for the next fit.
 /// Resetting them to uniform threw that away and claimed a full effective
-/// sample size besides. Here the vote is one on a φ that holds a NaN. A
-/// star rating between the lowest and the highest, far below its lower
-/// cutpoint on every weighted draw, reaches the same arm, until #227 gives
-/// it a finite likelihood there.
+/// sample size besides. Here the vote is one on a φ that holds a NaN, the
+/// only kind that gets there: every vote on a finite φ has a finite
+/// likelihood (`every_vote_on_a_finite_phi_has_a_finite_likelihood`). A
+/// star rating far below its lower cutpoint on every weighted draw used to
+/// get there too, its likelihood rounded to nothing (#227).
 ///
 /// The kept weights are a copy, not a computation, so they are compared
 /// exactly.
@@ -1162,6 +1161,226 @@ fn a_vote_with_no_finite_likelihood_keeps_the_previous_weights() {
         ..p.clone()
     };
     assert_eq!(older.reweighted(&unreadable, 0).weights, vec![1.0 / 3.0; 3]);
+}
+
+/// The log-probability of a rating between two cutpoints, for a utility
+/// `t ≥ 20` past the nearer of them, in a category `d` wide (both in units
+/// of the attenuated utility), from the series
+/// `ln P = −t + ln(1 − e^{−d}) − (1 + e^{−d})·e^{−t} + O(e^{−2t})`. Its first
+/// dropped term, `(1 + e^{−2d})·e^{−2t}/2`, is under 5e-18 at t ≥ 20, below
+/// one ulp of `|ln P| > 20` (3.6e-15), so this is exact in a double. It is
+/// the same on either side, since `σ(b) − σ(l) = σ(−l) − σ(−b)`. Checked
+/// against 80-digit decimal arithmetic at t from 20 to 10⁶ and d of 0.3,
+/// 1 and 1.5: within 1e-16 relative at every point.
+fn middle_rating_tail(t: f64, d: f64) -> f64 {
+    let q = (-d).exp();
+    -t + (-q).ln_1p() - (1.0 + q) * (-t).exp()
+}
+
+/// Relative error of `got` against `want`.
+fn rel_err(got: f64, want: f64) -> f64 {
+    ((got - want) / want).abs()
+}
+
+/// A rating between the lowest and the highest scores its exact
+/// log-probability however far its utility sits outside its two cutpoints,
+/// below the lower or above the upper. Far below, it tends to
+/// `a·(u − c_{k−1}) + ln(1 − e^{−d})`: finite, where it used to round to
+/// −∞ once `a·(c_{k−1} − u)` passed about 37, and lose digits from about
+/// 20 (#227). Pinned against [`middle_rating_tail`] out to 10⁶, past the
+/// smallest double's exponent (745) where every sigmoid in it has
+/// underflowed, and, up to 700, against the textbook difference taken on
+/// the side where it does not cancel, `ln(σ(−t) − σ(−t − d))`, whose
+/// relative error is a few ulps. For ratings 1 and 2 of three cutpoints
+/// (categories 1 and 1.5 wide), measured (`a = 1`) and with one weighted
+/// coordinate imputed (`a ≈ 0.62`, so `d` is 0.62 and 0.94, either side of
+/// ln 2). The tolerance, 1e-14 relative (about 45 ulps), is far above the
+/// few ulps both sides are good to and far below the 3.5e-10 the old form
+/// was off by at t = 20.
+#[test]
+fn a_middle_rating_far_outside_its_cutpoints_scores_its_exact_tail() {
+    // One lens: u is x[0] exactly, and coordinate 1, weighted 2, is
+    // imputed in the second pass, at the mean (0).
+    let mut theta = vec![0.0; D];
+    theta[0] = 1.0;
+    theta[1] = 2.0;
+    let s = TasteSample {
+        theta: vec![theta],
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.5],
+    };
+    let sigmoid = |v: f64| 1.0 / (1.0 + (-v).exp());
+    let imputed_scale = 1.0 / (1.0 + std::f64::consts::PI * 4.0 / 8.0).sqrt();
+    for (absent, a) in [(&[][..], 1.0), (&[1][..], imputed_scale)] {
+        for rating in [1u8, 2] {
+            let (lower, upper) = (s.cuts[rating as usize - 1], s.cuts[rating as usize]);
+            let d = a * (upper - lower);
+            for t in [
+                20.0, 30.0, 36.0, 37.0, 38.0, 40.0, 100.0, 700.0, 745.0, 800.0, 1e4, 1e6,
+            ] {
+                for below in [true, false] {
+                    let mut x = vec![0.0; D];
+                    x[0] = if below { lower - t / a } else { upper + t / a };
+                    // The distance the likelihood sees, rounding and all.
+                    let past = if below {
+                        a * (lower - x[0])
+                    } else {
+                        a * (x[0] - upper)
+                    };
+                    let want = middle_rating_tail(past, d);
+                    let got = s.loglik_with(&Feedback::Stars { x, rating }, 0, absent);
+                    let at = format!("rating {rating}, a = {a}, t = {t}, below = {below}");
+                    assert!(rel_err(got, want) < 1e-14, "{at}: {got} against {want}");
+                    if t <= 700.0 {
+                        let direct = (sigmoid(-past) - sigmoid(-past - d)).ln();
+                        assert!(
+                            rel_err(direct, want) < 1e-14,
+                            "{at}: {direct} against {want}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A rating between the lowest and the highest stays exact whatever the
+/// width of its category. Squeezed between two cutpoints `d` apart it is
+/// as unlikely as its width: `σ(b) − σ(l) = d·σ'(m)·(1 + O(d²))` with `m`
+/// the category's middle, so `ln P = ln d + ln σ(m) + ln σ(−m)` to within
+/// `d²/24`: 4e-16 at d = 1e-7, under one ulp of `|ln P| > 17`. Deep inside
+/// a wide one it is nearly certain, short by exactly the two tails it
+/// leaves: `ln P = ln(1 − σ(−b) − σ(l))`, which `ln_1p` takes without
+/// cancelling. Against 80-digit decimal arithmetic, the likelihood is
+/// within 2e-16 relative at every point here, and the old form lost the
+/// narrow category's width to rounding: 9e-10 of its log-probability at
+/// d = 1e-7, 2e-6 at d = 1e-10. The tolerance is 1e-14, as for the tails.
+#[test]
+fn a_middle_rating_is_exact_however_narrow_or_wide_its_category() {
+    let mut theta = vec![0.0; D];
+    theta[0] = 1.0;
+    let sigmoid = |v: f64| 1.0 / (1.0 + (-v).exp());
+    let ln_sigmoid = |v: f64| -(-v).exp().ln_1p();
+    let at = |cuts: Vec<f64>, u: f64| {
+        let s = TasteSample {
+            theta: vec![theta.clone()],
+            tau: vec![0.0],
+            cuts,
+        };
+        let mut x = vec![0.0; D];
+        x[0] = u;
+        s.loglik(&Feedback::Stars { x, rating: 1 }, 0)
+    };
+    for width in [1e-7, 1e-10] {
+        let cuts: Vec<f64> = vec![-1.0, -1.0 + width, 1.5];
+        let d = cuts[1] - cuts[0];
+        for u in [-6.0, -1.0, 0.0, 3.0] {
+            let m = (cuts[0] + cuts[1]) / 2.0 - u;
+            let want = d.ln() + ln_sigmoid(m) + ln_sigmoid(-m);
+            let got = at(cuts.clone(), u);
+            assert!(
+                rel_err(got, want) < 1e-14,
+                "width {width}, u = {u}: {got} against {want}"
+            );
+        }
+    }
+    for u in [-7.0, 0.0, 3.0] {
+        let cuts = vec![-25.0, 25.0];
+        let want = (-(sigmoid(u - cuts[1]) + sigmoid(cuts[0] - u))).ln_1p();
+        let got = at(cuts, u);
+        assert!(rel_err(got, want) < 1e-14, "u = {u}: {got} against {want}");
+    }
+}
+
+/// The probe of #227: a rating of 1 ever further below its lower cutpoint
+/// (−1) on the two weighted draws, which score `u = 50·x` and `40·x`. The
+/// update is exact at every strength, and a stronger vote never moves the
+/// weights less: the weight leaves the draw the vote contradicts more, by
+/// the ratio `(0.7 / 0.3)·e^{−10|x|}` (the log-likelihoods' next term,
+/// `(1 + e^{−1})·e^{−29}`, is under 4e-13 at the weakest), and the draw
+/// with no weight stays at none. Its log-likelihood used to lose digits
+/// (off by 0.22 on the first draw at x = −0.75) and then round to −∞: the
+/// weights collapsed to [0, 1, 0] at x = −0.8, and at x = −1, where both
+/// weighted draws rounded, were kept at [0.7, 0.3, 0] and armed nothing,
+/// where the exact update gives about [1.1e-4, 0.9999, 0].
+#[test]
+fn a_star_rating_far_below_its_cutpoint_updates_exactly_at_every_strength() {
+    let p = two_lovers_and_a_spent_hater();
+    let mut first = f64::INFINITY;
+    for x in [0.75, 0.8, 1.0, 2.0, 10.0, 30.0] {
+        let mut phi = vec![0.0; D];
+        phi[0] = -x;
+        let vote = Feedback::Stars { x: phi, rating: 1 };
+        let moved = p.reweighted(&vote, 0).weights;
+        let exact = (0.7 / 0.3) * (-10.0 * x).exp();
+        let ratio = moved[0] / moved[1] / exact;
+        assert!((ratio - 1.0).abs() < 1e-9, "x = −{x}: weights {moved:?}");
+        assert!(
+            (moved[0] + moved[1] - 1.0).abs() < 1e-12,
+            "x = −{x}: {moved:?}"
+        );
+        assert_eq!(moved[2], 0.0, "x = −{x}: weights {moved:?}");
+        assert!(moved[0] < first, "x = −{x}: weights {moved:?}");
+        first = moved[0];
+    }
+}
+
+/// Every vote on a finite φ has a finite log-likelihood under every draw,
+/// however far its utility sits from the keep/kill bar and the cutpoints:
+/// a duel, a keep and a cut, and every star rating. So the vote always
+/// moves the weights by the exact update, and only a vote on a φ that is
+/// not finite reaches the arm that keeps them (as
+/// `a_vote_with_no_finite_likelihood_keeps_the_previous_weights` shows).
+/// Swept over twenty random two-lens draws and random φ scaled up to 10⁶,
+/// which puts utilities thousands of units past every cutpoint, on both
+/// sides.
+#[test]
+fn every_vote_on_a_finite_phi_has_a_finite_likelihood() {
+    let mut rng = StdRng::seed_from_u64(0xF1417E);
+    let samples: Vec<TasteSample> = (0..20).map(|_| two_lens_draw(&mut rng)).collect();
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights: vec![1.0 / 20.0; 20],
+    };
+    for scale in [1.0, 30.0, 1e3, 1e6] {
+        for _ in 0..10 {
+            let mut phi = || -> Vec<f64> {
+                random_phi(&mut rng)
+                    .into_iter()
+                    .map(|v| v * scale)
+                    .collect()
+            };
+            let (a, b) = (phi(), phi());
+            let mut votes = vec![
+                Feedback::Duel {
+                    a: a.clone(),
+                    b,
+                    chose_a: true,
+                },
+                Feedback::KeepKill {
+                    x: a.clone(),
+                    kept: true,
+                },
+                Feedback::KeepKill {
+                    x: a.clone(),
+                    kept: false,
+                },
+            ];
+            let top = p.samples[0].cuts.len() as u8;
+            votes.extend((0..=top).map(|rating| Feedback::Stars {
+                x: a.clone(),
+                rating,
+            }));
+            for vote in &votes {
+                for s in &p.samples {
+                    let ll = s.loglik(vote, 0);
+                    assert!(ll.is_finite(), "scale {scale}: {ll} for {vote:?}");
+                }
+                assert_ne!(p.reweighted(vote, 0).weights, p.weights, "{vote:?}");
+            }
+        }
+    }
 }
 
 /// Every per-style summary is importance-weighted, as the crate's rule
