@@ -1466,64 +1466,44 @@ fn perform_wire_measures_the_palette_controls_asked_for() {
         engine.perform_wire_known(&tree, "[]", "[]", Some(all)),
         full
     );
-    // A palette index names the same control to an aimed offer: the
-    // reply says how far it moved along that control's own direction.
-    let home: PatchTree = serde_json::from_str(&tree).unwrap();
-    let mut aimed = 0;
-    for _ in 0..4 {
-        let reply = engine.perform_offer(&tree, "[]", "[]", 6, Some(16), Some(1.0));
-        let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
-        if v.get("reason").is_some() {
-            continue;
-        }
-        let grown: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
-        let want = engine.engine.moved_along(&home, &grown, 16).unwrap();
-        assert!((v["moved"].as_f64().expect("moved") - want).abs() < 1e-9);
-        aimed += 1;
-    }
-    assert!(aimed > 0, "no offer aimed along Bite grew");
 }
 
 /// A search control's offer says how far it moved the way it was turned
-/// (ADR-008): the reply is the struct reply with `moved`, a number in σ
-/// that is the engine's own measure of the move, the tree still in its
-/// own key order. The Offer button's reply has no `moved`, and neither
-/// does one for a control that does not exist (it walks undirected).
+/// (ADR-008): `moved`, a number in σ that is the engine's own measure of the
+/// move along that control's direction. A palette index names the same
+/// control to an offer as to a wiring (`perform_wire`'s `index`), one of the
+/// panel's six (Grit) as one past them (16, Bite). The Offer button's reply
+/// has no `moved`, and neither does one for a control that does not exist
+/// (it walks undirected).
 #[test]
 fn an_aimed_offer_reply_carries_how_far_it_moved() {
+    use auracle_session::perform::{CONTROLS, PALETTE};
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
-    assert!(engine.edit_begin(id));
+    assert!(engine.edit_begin(pool_ids(&engine)[0]));
     let tree_json = engine.edit_tree_json();
     let home: PatchTree = serde_json::from_str(&tree_json).unwrap();
-    let grit = auracle_session::perform::CONTROLS
-        .iter()
-        .position(|c| c.name == "Grit")
-        .unwrap() as u32;
-    let mut aimed = 0;
-    for _ in 0..4 {
-        let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, Some(grit), Some(1.0));
-        let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
-        if v.get("reason").is_some() {
-            continue; // nothing grew this time
-        }
-        let tree: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
-        let own = serde_json::to_string(&tree).unwrap();
-        assert!(reply.starts_with(&format!("{{\"tree\":{own}")));
-        let moved = v["moved"]
+    let grit = CONTROLS.iter().position(|c| c.name == "Grit").unwrap() as u32;
+    assert_eq!(PALETTE[16].name, "Bite");
+    for k in [grit, 16] {
+        // The first offer that grows: a walk may not move at all.
+        let (reply, grown) = (0..4)
+            .find_map(|_| {
+                let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, Some(k), Some(1.0));
+                let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+                let grown: PatchTree = serde_json::from_value(v.get("tree")?.clone()).unwrap();
+                Some((v, grown))
+            })
+            .unwrap_or_else(|| panic!("no offer aimed along {} grew", PALETTE[k as usize].name));
+        let moved = reply["moved"]
             .as_f64()
             .expect("an aimed offer says how far it moved");
         let want = engine
             .engine
-            .moved_along(&home, &tree, grit as usize)
+            .moved_along(&home, &grown, k as usize)
             .unwrap();
-        assert!((moved - want).abs() < 1e-9, "{moved} vs {want}");
-        aimed += 1;
+        assert!((moved - want).abs() < 1e-9, "{k}: {moved} vs {want}");
     }
-    assert!(aimed > 0, "no aimed offer grew, so nothing was checked");
     for (control, sign) in [(None, None), (Some(99), Some(-1.0))] {
         let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, control, sign);
         let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
