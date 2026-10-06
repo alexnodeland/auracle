@@ -105,7 +105,14 @@ fn it_round_trips_as_one_string() {
     assert!(text.len() < 760, "{} bytes", text.len());
     let back: Face = serde_json::from_str(&text).unwrap();
     assert_eq!(back, f);
-    assert!(serde_json::from_str::<Face>("\"AAAA\"").is_err());
+    // Text that is not a face: the wrong length, a group of one character
+    // (no byte ends there), a character outside the alphabet.
+    for bad in ["AAAA", "AAAAA", "A!AA"] {
+        assert!(
+            serde_json::from_str::<Face>(&format!("\"{bad}\"")).is_err(),
+            "{bad:?} read as a face"
+        );
+    }
     for n in 0..7 {
         let bytes: Vec<u8> = (0..n).map(|i| (i * 37 + 11) as u8).collect();
         assert_eq!(b64_decode(&b64_encode(&bytes)).unwrap(), bytes);
