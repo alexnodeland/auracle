@@ -53,7 +53,14 @@ loop (observe, refit). Rules shared by all crates are in
 
 ## Tests and measurements
 
-`cargo test -p auracle-session --profile test-fast`. `make search-check`,
+`cargo test -p auracle-session --profile test-fast`. Each module's tests are
+in `<module>/tests.rs` beside it (engine's in `engine/tests.rs`: the pool,
+duels, fits, generations, edits, the bank's names, the check cadence, clips
+and takes); the fixtures several files share, `fast()`, `ground_truth()`,
+`taught()`, `contrary_picks()`, `sweep_clip()` and `restore()`/`reload()`,
+are in `src/testkit.rs`. The Makefile names the slow tier's tests by path
+(`SLOW_TESTS`, `SEARCH_FLOOR`), so a test moved or renamed there moves in
+the Makefile too. `make search-check`,
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and

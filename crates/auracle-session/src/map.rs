@@ -176,11 +176,20 @@ pub fn liking_direction(points: &[[f64; 3]]) -> Option<LikingDirection> {
 }
 
 impl Engine {
+    /// The map's axes as last drawn, locked: the one way every reader and
+    /// writer of `Engine::map_axes` takes it. The value is only ever read or
+    /// written whole, so a panic while another holder had it (which poisons
+    /// the lock) cannot leave it half written, and it is taken as it stands
+    /// rather than the panic spreading to every later map and save.
+    pub(crate) fn drawn_axes(&self) -> std::sync::MutexGuard<'_, Option<[Vec<f64>; 2]>> {
+        self.map_axes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// A standardized φ on the last map's two axes, uncentred (so up to the
     /// map's translation, which a direction does not see). `None` before a
     /// map has been drawn.
     pub(crate) fn map_coordinates(&self, phi: &[f64]) -> Option<(f64, f64)> {
-        let drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+        let drawn = self.drawn_axes();
         let [a1, a2] = drawn.as_ref()?;
         if a1.len() != phi.len() {
             return None;
@@ -543,7 +552,7 @@ impl Engine {
         let (mut ax1, var1, ok1) = leading_axis(&centered, None);
         let (mut ax2, var2, ok2) = leading_axis(&centered, Some(&ax1));
         {
-            let mut drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+            let mut drawn = self.drawn_axes();
             if let Some([d1, d2]) = drawn.as_ref() {
                 orient(&mut ax1, d1);
                 orient(&mut ax2, d2);
@@ -566,128 +575,4 @@ impl Engine {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Rows on a plane: strong variance along `u1`, weaker along `u2`, plus a
-    /// third near-flat coordinate so the deflated axis has somewhere to go.
-    fn plane(u1: [f64; 3], u2: [f64; 3], n: usize) -> Vec<Vec<f64>> {
-        (0..n)
-            .map(|i| {
-                let a = i as f64 - (n as f64 - 1.0) / 2.0;
-                // A second loading that is not a multiple of the first, so the
-                // two directions are genuinely distinguishable.
-                let b = ((i * 7) % 5) as f64 - 2.0;
-                (0..3).map(|k| 6.0 * a * u1[k] + b * u2[k]).collect()
-            })
-            .collect()
-    }
-
-    /// **The sign convention, on data built to violate it.**
-    ///
-    /// A PCA axis is defined only up to sign. Power iteration returns whichever
-    /// orientation has a positive inner product with its start vector, so the
-    /// orientation is a fact about the *solver*, not about the data — and it
-    /// changes when the start changes, which it does as the pool moves. On the
-    /// map that mirrors "where you have travelled" left-for-right between one
-    /// recompute and the next.
-    ///
-    /// This is the regression test proper: with the convention removed, the
-    /// second axis below comes back with its largest component negative.
-    ///
-    /// The **second** axis is where this bites hardest and is why the case is
-    /// built around it. The first axis starts from the highest-variance
-    /// coordinate, which is usually also where the leading eigenvector puts its
-    /// mass, so the natural orientation tends to satisfy the convention by
-    /// accident. The deflated axis starts from that same vector with the first
-    /// axis projected *out* of it, and what is left has no such relationship to
-    /// the second eigenvector — its sign is genuinely arbitrary.
-    #[test]
-    fn axes_come_back_with_their_largest_component_positive() {
-        let cases = [
-            (plane([0.9, 0.3, 0.3], [-0.2, 0.9, -0.4], 40), "a"),
-            (plane([0.2, 0.95, 0.2], [0.7, -0.1, -0.7], 40), "b"),
-            (plane([0.5, 0.5, 0.7], [-0.8, 0.1, 0.6], 60), "c"),
-        ];
-        for (rows, name) in &cases {
-            let mut centered = rows.clone();
-            mean_center(&mut centered);
-            let (ax1, _, ok1) = leading_axis(&centered, None);
-            let (ax2, _, ok2) = leading_axis(&centered, Some(&ax1));
-            assert!(ok1 && ok2, "case {name}: an axis did not converge");
-
-            for (which, ax) in [("ax1", &ax1), ("ax2", &ax2)] {
-                let pivot = (0..ax.len())
-                    .max_by(|&i, &j| ax[i].abs().total_cmp(&ax[j].abs()))
-                    .expect("nonempty axis");
-                assert!(
-                    ax[pivot] > 0.0,
-                    "case {name}: {which} largest component is {:.4} — the sign is unpinned",
-                    ax[pivot]
-                );
-            }
-
-            // Orthonormal, so the two axes are still a basis after the flip.
-            let dot: f64 = ax1.iter().zip(&ax2).map(|(a, b)| a * b).sum();
-            assert!(
-                dot.abs() < 1e-8,
-                "case {name}: axes not orthogonal ({dot:.2e})"
-            );
-            for (which, ax) in [("ax1", &ax1), ("ax2", &ax2)] {
-                let norm: f64 = ax.iter().map(|x| x * x).sum::<f64>().sqrt();
-                assert!((norm - 1.0).abs() < 1e-8, "case {name}: {which} not unit");
-            }
-        }
-    }
-
-    fn dot(a: &[f64], b: &[f64]) -> f64 {
-        a.iter().zip(b).map(|(x, y)| x * y).sum()
-    }
-
-    /// **A redraw never mirrors the map.** Two pools a refit apart: the
-    /// leading axis turns by about a degree, and its two largest loadings,
-    /// of opposite sign, trade places. That is where the largest-component
-    /// convention flips, so on its own it mirrors the map (the first assert
-    /// documents that). Oriented against the axis last drawn, it does not.
-    #[test]
-    fn a_redraw_never_mirrors_the_map() {
-        let unit = |v: [f64; 3]| {
-            let n = v.iter().map(|x| x * x).sum::<f64>().sqrt();
-            [v[0] / n, v[1] / n, v[2] / n]
-        };
-        let before = plane(unit([0.62, -0.60, 0.3]), unit([0.3, 0.2, -0.5]), 40);
-        let after = plane(unit([0.60, -0.62, 0.3]), unit([0.3, 0.2, -0.5]), 40);
-        let axis = |rows: &Vec<Vec<f64>>| {
-            let mut c = rows.clone();
-            mean_center(&mut c);
-            leading_axis(&c, None).0
-        };
-        let drawn = axis(&before);
-        let mut next = axis(&after);
-        assert!(
-            dot(&drawn, &next) < -0.9,
-            "this case no longer flips under the convention alone"
-        );
-        orient(&mut next, &drawn);
-        assert!(dot(&drawn, &next) > 0.9, "the redraw mirrored the map");
-    }
-
-    /// A near-degenerate spectrum must be *reported*, not silently returned as
-    /// though it had settled. Two coordinates with identical variance and no
-    /// covariance leave the second axis with nothing to converge toward.
-    #[test]
-    fn a_tied_spectrum_is_reported_rather_than_hidden() {
-        let rows: Vec<Vec<f64>> = (0..40)
-            .map(|i| {
-                let a = i as f64 - 19.5;
-                vec![a, if i % 2 == 0 { 1.0 } else { -1.0 }, 0.0]
-            })
-            .collect();
-        let mut centered = rows.clone();
-        mean_center(&mut centered);
-        let (ax1, var1, _) = leading_axis(&centered, None);
-        let (_, var2, _) = leading_axis(&centered, Some(&ax1));
-        // Whatever it reports, it must not lie about the ordering.
-        assert!(var1 >= var2);
-    }
-}
+mod tests;
