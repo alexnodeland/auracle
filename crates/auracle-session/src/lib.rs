@@ -3414,6 +3414,62 @@ mod tests {
         assert_eq!(unique.len(), names.len(), "names collide: {names:?}");
     }
 
+    /// A name cleared on a sound that never had a generated one (named in a
+    /// session saved before names were kept) is read off the bank as it
+    /// stands, like any name given now, not off the oldest sounds in it. Only
+    /// patches named in the order they joined are read off the bank as it
+    /// stood when they joined (#154).
+    #[test]
+    fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
+        use std::collections::HashSet;
+        let mut rng = StdRng::seed_from_u64(0x9A7);
+        let cfg = || SessionConfig {
+            pool_size: 24,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg());
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let mut by_id: Vec<&Candidate> = engine.pool.iter().collect();
+        by_id.sort_by_key(|c| c.id);
+        // Among the oldest sounds, one the oldest NAME_FLOOR and the whole
+        // bank would call different things, or this proves nothing.
+        let oldest = NameScale::fit(by_id[..NAME_FLOOR].iter().map(|c| &c.features));
+        let whole = NameScale::fit(engine.pool.iter().map(|c| &c.features));
+        let id = by_id[..NAME_FLOOR]
+            .iter()
+            .find(|c| oldest.name(&c.features) != whole.name(&c.features))
+            .map(|c| c.id)
+            .expect("the oldest sounds read alike either way; the test needs a seed that does not");
+        let base = whole.name(&engine.pool.iter().find(|c| c.id == id).unwrap().features);
+
+        // Named by the player, saved by a build before names were kept.
+        engine.set_name(id, "Mine");
+        let mut old = serde_json::to_value(engine.export_state()).unwrap();
+        for entry in old["bank"].as_array_mut().unwrap() {
+            if entry["id"].as_u64() == Some(id) {
+                entry.as_object_mut().unwrap().remove("auto_name");
+            }
+        }
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
+        restored.import_state(serde_json::from_value(old).unwrap());
+        let c = restored.pool.iter().find(|c| c.id == id).unwrap();
+        assert!(c.auto_name.is_none(), "the fixture's sound came back named");
+
+        restored.set_name(id, "");
+        let mut taken: HashSet<String> = restored
+            .pool
+            .iter()
+            .filter(|c| c.id != id)
+            .filter_map(|c| c.name.clone().or_else(|| c.auto_name.clone()))
+            .collect();
+        assert_eq!(
+            restored.display_names()[&id],
+            claim_name(&base, &mut taken),
+            "a cleared name was read off the oldest sounds, not the bank"
+        );
+    }
+
     /// Duels must spread over *candidates*, not just over pairs.
     ///
     /// Measured in the shipped app: over twelve consecutive duels one

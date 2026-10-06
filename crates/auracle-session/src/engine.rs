@@ -3988,7 +3988,9 @@ impl Engine {
     /// draw order. A handover at 8, at 15 or at the end of the fill gives the
     /// same names, and so does a fill folded in one at a time or two at a
     /// time. A patch that joins after the fill has the newest id, so it is
-    /// read off the whole pool.
+    /// read off the whole pool, and so is a patch named out of joining order:
+    /// one whose own name was cleared and that never had a generated one (a
+    /// sound named in a session saved before names were kept).
     fn fix_names(&mut self) {
         if self.standardizer.is_none()
             || self
@@ -4006,13 +4008,25 @@ impl Engine {
         if first && self.pool.len() < floor && !fill_spent {
             return;
         }
-        // The newest member a fresh patch is read against: itself (the bank
-        // as it stood when it joined), or the `floor`-th to join, whichever
-        // came later.
+        // The newest member a fresh patch is read against. One named in
+        // joining order (newer than every kept name): itself, the bank as it
+        // stood when it joined, or the `floor`-th to join, whichever came
+        // later. One named out of it (a sound whose own name was cleared, and
+        // that never had a generated one): the whole pool, as it stands.
         let floor_id = {
             let mut ids: Vec<u64> = self.pool.iter().map(|c| c.id).collect();
             ids.sort_unstable();
             ids[floor.min(ids.len()) - 1]
+        };
+        let newest_kept = self
+            .pool
+            .iter()
+            .filter(|c| c.auto_name.is_some())
+            .map(|c| c.id)
+            .max();
+        let reach = |id: u64| match newest_kept {
+            Some(kept) if id < kept => u64::MAX,
+            _ => id.max(floor_id),
         };
         let mut taken: HashSet<String> = self
             .pool
@@ -4025,7 +4039,7 @@ impl Engine {
         fresh.sort_by_key(|&i| self.pool[i].id);
         let mut scale: Option<(u64, NameScale)> = None;
         for i in fresh {
-            let upto = self.pool[i].id.max(floor_id);
+            let upto = reach(self.pool[i].id);
             if scale.as_ref().map(|(u, _)| *u) != Some(upto) {
                 let joined = self.pool.iter().filter(|c| c.id <= upto);
                 scale = Some((upto, NameScale::fit(joined.map(|c| &c.features))));
