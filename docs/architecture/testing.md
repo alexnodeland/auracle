@@ -247,7 +247,8 @@ waits run to two minutes).
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named
   bounds that add their time to the test's timeout (`app.engine`,
-  `app.reply`, `ENGINE_MS`), and holds the engine's own replies while an
+  `app.reply`, `ENGINE_MS`; 450 s in all at most, `ENGINE_CAP_MS`), and
+  holds the engine's own replies while an
   injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
   1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.

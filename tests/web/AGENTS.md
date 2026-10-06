@@ -139,7 +139,9 @@ runs. No retries anywhere
   call names its own bound: shorter for what is quick (a deal, 30 s), longer
   only where the engine's work is (the pool filling behind a refit, 300 s;
   a generation, 400 to 480 s). Its time is added to the test's timeout, so
-  a slow runner's engine never eats the test's own 90 s. When the app gets faster, a spec that expected to see
+  a slow runner's engine never eats the test's own 90 s, up to
+  `ENGINE_CAP_MS` (450 s) in all for one test: past that, an engine that
+  hangs fails the test rather than taking the shard's remaining time. When the app gets faster, a spec that expected to see
   an intermediate state may miss it: accept either state rather than slowing
   the app down. A timeout under about 1.5 s is a flake waiting to happen.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
