@@ -637,10 +637,14 @@ class TheHistory(unittest.TestCase):
             self.assertIn("- fix(web): b (#2) by @ann", out)
             self.assertIn("- docs: c (#3) by @ann", out)
             self.assertNotIn("(#1)", out)
+            self.assertTrue(out.endswith(f"\n\n**Full Changelog**: https://github.com/{R.REPO}/compare/v0.1.0...v0.1.1\n"), out)
             code, out, _ = t.run("notes", "--to", "HEAD", get=api)
             self.assertTrue(out.startswith("## Merged since v0.1.1\n"))
             self.assertIn("- fix!: d (#5) by @ann", out)
             self.assertNotIn("never merged", out)
+            # Not a tag yet, so no diff to link to; nor with no tag before.
+            self.assertNotIn("Full Changelog", out)
+            self.assertNotIn("Full Changelog", t.run("notes", "v0.1.0", get=api)[1])
 
     def test_a_ref_is_read_as_it_was_there(self):
         with Tree(git=True) as t:

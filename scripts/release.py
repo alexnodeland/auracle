@@ -20,7 +20,8 @@ of what merged, by type, under its notes (the Prepare release workflow,
         changelog.d/
     python3 scripts/release.py notes (vX.Y.Z | --to REF)
         every PR merged since the tag before, grouped by its title's type,
-        each with its author (`gh`)
+        each with its author (`gh`); for a tag, then the link to the whole
+        diff from the tag before
 
 **The version.** A PR's title is a conventional subject (PR checks), and the
 merge queue squash-merges it as `<title> (#n)`, so `main`'s first-parent
@@ -52,9 +53,11 @@ lock left behind would be rewritten on every runner rather than noticed.
 
 **The notes.** The changelog's section is the release's notes, curated and
 written for players (ADR-013). Under it, `notes` lists every PR merged since
-the tag before, by type, each with its author, in place of GitHub's
-generated list. The titles come from git; only the authors are asked of the
-API (`gh api`, GET), a page of a hundred closed PRs at a time.
+the tag before, by type, each with its author, then the link to the whole
+diff from that tag, in place of GitHub's generated list (whose "New
+Contributors" it leaves out: its line of contributors names everyone). The
+titles come from git; only the authors are asked of the API (`gh api`, GET),
+a page of a hundred closed PRs at a time.
 
 Python 3 standard library only, from 3.9 (macOS's own `python3`, which
 `make dev-check` may run on): the manifests are read line by line, as Cargo
@@ -567,10 +570,12 @@ def handle(name: str) -> str:
     return f"@{name}"
 
 
-def render(titles: list[Title], who: dict[int, str], since: str | None) -> str:
+def render(titles: list[Title], who: dict[int, str], since: str | None, to: str | None = None) -> str:
     """The list under a release's notes: every PR merged since `since`, by
     type in GROUPS' order, oldest first within each, each with its author;
-    the release PR itself left out."""
+    the release PR itself left out. With both tags, it ends on the link to
+    the whole diff between them, the line GitHub's generated notes ended
+    on."""
     shown = [t for t in reversed(titles) if t.type not in LEFT_OUT]
 
     def by(t: Title) -> str:
@@ -594,12 +599,14 @@ def render(titles: list[Title], who: dict[int, str], since: str | None) -> str:
         for t in items:
             number = f" (#{t.number})" if t.number is not None else ""
             out.append(f"- {t.title}{number} by {by(t)}")
+    if since and to:
+        out += ["", f"**Full Changelog**: https://github.com/{REPO}/compare/{since}...{to}"]
     return "\n".join(out) + "\n"
 
 
-def notes(titles: list[Title], since: str | None, get: Callable[[str], Any] = gh_get) -> str:
+def notes(titles: list[Title], since: str | None, get: Callable[[str], Any] = gh_get, to: str | None = None) -> str:
     numbers = [t.number for t in titles if t.number is not None and t.type not in LEFT_OUT]
-    return render(titles, authors(numbers, get), since)
+    return render(titles, authors(numbers, get), since, to)
 
 
 def previous_tag(root: pathlib.Path, tag: str) -> str | None:
@@ -770,10 +777,11 @@ def main(argv: list[str], root: pathlib.Path = ROOT, get: Callable[[str], Any] =
             if args.tag:
                 if not RELEASE_TAG.fullmatch(args.tag):
                     raise Refused(f"`{args.tag}` is not a release's tag: vX.Y.Z")
-                since, ref = previous_tag(root, args.tag), args.tag
+                since, ref, to = previous_tag(root, args.tag), args.tag, args.tag
             else:
-                since, ref = last_tag(tags_merged(root, args.to)), args.to
-            print(notes(titles_between(root, since, ref), since, get), end="")
+                # Not a tag yet: no link to a diff that GitHub can't show.
+                since, ref, to = last_tag(tags_merged(root, args.to)), args.to, None
+            print(notes(titles_between(root, since, ref), since, get, to), end="")
             return 0
     except (Refused, changelog.Refused) as e:
         for line in str(e).split("\n"):
