@@ -227,3 +227,40 @@ fn op_kind_samples_what_the_old_table_sampled() {
     assert_eq!(op_label(N_OPS - 1), Some("vocoder"));
     assert_eq!(op_label(N_OP_KINDS), None);
 }
+
+/// **`#input` is the player's, at every slot alike**: a drawn AUDIO IN
+/// reads slot 0, every slot in `0..INPUT_SLOTS` scores the same (0), and a
+/// slot past the last is outside the support.
+#[test]
+fn every_input_slot_scores_alike_and_a_draw_reads_the_first() {
+    use fugue::Distribution;
+    let mut rng = StdRng::seed_from_u64(0x1A9);
+    assert!((0..50).all(|_| PlayerInput.sample(&mut rng) == 0));
+    for slot in 0..INPUT_SLOTS {
+        assert_eq!(PlayerInput.log_prob(&slot), 0.0, "slot {slot}");
+    }
+    assert_eq!(PlayerInput.log_prob(&INPUT_SLOTS), f64::NEG_INFINITY);
+}
+
+/// The three site distributions the grammar writes itself (`#input`, `#op`,
+/// `#src`) clone, as fugue clones a boxed distribution, into ones that draw
+/// the same indices from the same stream and score every index the same.
+#[test]
+fn the_grammars_own_distributions_clone_into_the_same_distribution() {
+    let prior = PatchGrammarPrior::default();
+    let sites: [(&str, Box<dyn fugue::Distribution<usize>>); 3] = [
+        ("#input", Box::new(PlayerInput)),
+        ("#op", Box::new(OpKind::new(&prior.op_weights))),
+        ("#src", Box::new(SourceKind::new(&prior.source_weights))),
+    ];
+    for (site, d) in &sites {
+        let copy = d.clone_box();
+        for i in 0..=N_OP_KINDS {
+            assert_eq!(copy.log_prob(&i), d.log_prob(&i), "{site} at {i}");
+        }
+        let (mut a, mut b) = (StdRng::seed_from_u64(0xC10), StdRng::seed_from_u64(0xC10));
+        for _ in 0..200 {
+            assert_eq!(copy.sample(&mut a), d.sample(&mut b), "{site}");
+        }
+    }
+}
