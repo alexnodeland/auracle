@@ -86,7 +86,8 @@ fn a_hole_beside_a_source_still_renders() {
 /// measurement: φ has the documented dimension and is finite, a draw that
 /// fails fails only as a quarantine (never a compile error, an out-of-domain
 /// term or a non-finite feature), and most draws vet. Over a sweep of 26
-/// seeds of 30 draws, the fewest that vetted was 28; the bound is half.
+/// seeds of 30 draws, the fewest that vetted was 28 (and 28 again over 42
+/// seeds in review), so the bound is 24: a tripwire, not a coin toss.
 #[test]
 fn no_vetted_render_leaves_above_the_peak_ceiling() {
     let spec = PhraseSpec::default();
@@ -142,7 +143,7 @@ fn no_vetted_render_leaves_above_the_peak_ceiling() {
             check(&format!("prior draw {i}"), &vc);
         }
     }
-    assert!(vetted * 2 > n, "only {vetted}/{n} prior draws vetted");
+    assert!(vetted >= 24, "only {vetted}/{n} prior draws vetted");
     println!("{checked} renders under the ceiling, {pulled} of them pulled down to get there");
 }
 
