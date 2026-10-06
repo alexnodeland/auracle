@@ -6,8 +6,8 @@
 # Three uploads, one flag each, from ci.yml (.github/actions/codecov):
 # - rust: Coverage's lcov, the fast tier's Rust tests (cargo-llvm-cov);
 # - web: Web's, apps/web's unit tests (make web-check COVERAGE=1);
-# - worker: Worker protocol's, worker.js under tests/worker
-#   (make worker-test COVERAGE=1).
+# - worker: Worker protocol's, worker.js and what it loads (render-store.js)
+#   under tests/worker (make worker-test COVERAGE=1).
 # The browser specs, which run most of apps/web, are not measured, so the
 # web and worker numbers are what Node's tests reach, not what is tested.
 

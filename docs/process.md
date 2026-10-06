@@ -270,9 +270,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `make mutants DIFF=1` before review, so they are answered before the PR.
   On the queue's draft PRs it passes at once, since each PR's own run has
   judged their code.
-- **Codecov comments on the PR,** from the coverage the PR's own run
-  uploads (the Rust's, and the web units' and the worker-protocol tests'),
-  each flag the run didn't reach carried forward from `main`. It is a view,
+- **Codecov comments on the PR** when the PR's own run uploads coverage
+  (the Rust's, or the web units' or the worker-protocol tests'), each flag
+  the run didn't reach carried forward from `main`. It is a view,
   not a gate: its statuses are informational and never block the queue,
   and Coverage's own gate (`scripts/coverage_gate.py`) is what holds a
   Rust change. Read its JavaScript numbers knowing that the browser specs

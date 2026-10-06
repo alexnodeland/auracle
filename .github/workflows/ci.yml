@@ -941,9 +941,10 @@ jobs:
         with:
           name: web-engine
           path: apps/web/pkg
-      # COVERAGE=1: what the tests ran of apps/web (worker.js, in its thread)
-      # as an lcov too (target/js-cov/worker.lcov), for Codecov. The time is
-      # the engine's wasm, which JavaScript coverage does not instrument.
+      # COVERAGE=1: what the tests ran of apps/web (worker.js and what it
+      # loads, render-store.js, in its thread) as an lcov too
+      # (target/js-cov/worker.lcov), for Codecov. The time is the engine's
+      # wasm, which JavaScript coverage does not instrument.
       - run: make worker-test COVERAGE=1
       # Not from the queue's run, which keeps the lcov for main's (the
       # codecov-main job).
