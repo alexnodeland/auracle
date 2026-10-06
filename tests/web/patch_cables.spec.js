@@ -33,7 +33,10 @@ const drawn = (page) =>
     })),
   }));
 
-test("cables carry light by the levels the engine measured, keyed as the rack draws them, and modulation cables carry none", async ({ page, app }) => {
+// Quarantined (#182): on a slow runner the knob turn below waited over 30 s
+// behind the model's guess for the open (#174), so the marks never went
+// hollow inside the wait.
+test("cables carry light by the levels the engine measured, keyed as the rack draws them, and modulation cables carry none", { tag: "@quarantine" }, async ({ page, app }) => {
   await app.boot({ busy: true });
   await openPreset(app, "Reese");
   // The levels measured on the tree the rack is drawing (an earlier reply can

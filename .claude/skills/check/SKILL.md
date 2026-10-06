@@ -13,7 +13,8 @@ committing anything that touches Rust. The full table of gates and what each
 proves is `docs/architecture/testing.md`.
 
 CI is the gate for everything else: the full browser tier runs there, dealt to
-eight runners by time, and a PR that changes only specs runs only those specs.
+twelve runners by time, and a PR that changes only specs runs only those specs.
+The slow tier runs on a PR only with the `full-ci` label.
 Locally, run what your change reaches, never the full browser suite
 (`docs/process.md` § Building).
 
@@ -28,7 +29,7 @@ git diff --stat HEAD
 
 | Changed | Run |
 | --- | --- |
-| `crates/<crate>/**` | `cargo test -p <crate> --profile test-fast`, then `make lint` |
+| `crates/<crate>/**` | `make test-crate CRATE=<crate>` (optimized, on the pinned compiler, without building the examples no test runs), then `make lint` |
 | Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test |
 | φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |

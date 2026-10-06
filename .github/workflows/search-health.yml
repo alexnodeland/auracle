@@ -49,13 +49,12 @@ jobs:
   # which is worse than a slow one.
   stats:
     name: φ statistics and peaks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # Everything below writes to the job summary as well as the log, because
@@ -85,16 +84,15 @@ jobs:
 
   climb:
     name: Pool climb
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Measured: over 90 minutes for 16 paired seeds on a hosted runner. The
     # cap is still a cap — enough for the measurement with margin, not the
     # default six hours a stuck run would otherwise hold a runner for.
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Pool climb
         run: |
@@ -111,13 +109,12 @@ jobs:
 
   battery:
     name: Search-health battery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Full search-health battery
         run: |

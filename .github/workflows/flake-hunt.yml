@@ -10,8 +10,8 @@ name: Flake hunt
 # can be tagged @quarantine, which moves it from the gate to the Slow suite
 # (docs/architecture/testing.md § Flakes).
 #
-# Its own workflow, not a job in the Slow suite, so its half hour never holds
-# that workflow's queue on main.
+# Its own workflow, not a job in the Slow suite, so its hour never holds that
+# workflow's queue on main.
 
 on:
   schedule:
@@ -28,7 +28,7 @@ concurrency:
 jobs:
   engine:
     name: Engine for the browser
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,16 +37,31 @@ jobs:
         with:
           tier: fast
 
+  # The gate's twelve shards, each run three times over: about twenty
+  # minutes a shard, so the job limit leaves room for a slow runner. Four at a
+  # time (`max-parallel`), in three rounds of about twenty minutes: it runs at
+  # night beside Search health, which holds three runners for hours, so the
+  # two hold seven of the account's 20 and leave a PR's `CI` (16 at its
+  # widest) nearly all it needs. At eight wide the hunt would be over sooner
+  # but hold eleven, and a PR pushed then would wait for runners. The Slow
+  # suite's nightly run (04:23 UTC, about twenty minutes) is over before this
+  # one starts (05:41 UTC).
   hunt:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
-    runs-on: ubuntu-latest
-    # Three times the gate's ~8 minutes a runner, and room.
+    runs-on: ubuntu-24.04
+    # Playwright's global timeout, five minutes under the job's limit; the
+    # shard interrupts the run a minute before it, so a shard that runs long
+    # still reports its tests and the one it was running (ci.yml's browser
+    # job says why). The two numbers move together.
     timeout-minutes: 45
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 40
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
-        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -77,7 +92,7 @@ jobs:
     name: Flake hunt report
     needs: hunt
     if: ${{ !cancelled() && needs.hunt.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,7 +105,7 @@ jobs:
     name: File what it found
     needs: [engine, hunt]
     if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

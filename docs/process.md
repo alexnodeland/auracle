@@ -51,7 +51,8 @@ in a plan's prose, a session's notes or a conversation.
   `blocked` (waiting on another issue or on the maintainer; the body says
   which).
 - **CI:** `full-ci` on a PR asks the *Slow suite* to run on it in full
-  (adding the label starts a run).
+  (adding the label starts a run, and every push to the PR runs it again).
+  Without it the *Slow suite* does not run on a PR at all.
 - **Milestones:** one per plan ("Plan-008: the shell", "Plan-005: the sound at
   the centre"), and one per standing stream of work ("Testing and CI",
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:
@@ -81,7 +82,7 @@ in a plan's prose, a session's notes or a conversation.
   nothing follows it.
 - **The gates a builder runs** are the fast ones for what changed (the `check`
   skill) and the specs it added or touched (`make browser-changed`), through
-  the browser queue on its own port. Not the full suite: CI runs it eight wide.
+  the browser queue on its own port. Not the full suite: CI runs it twelve wide.
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
@@ -158,8 +159,18 @@ Findings come back ranked, and review is **one round**:
 CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)):
 
 - **The required check is `CI`.** It holds Lint, Web, Site, the Rust tests and
-  the browser tier, dealt to eight runners by time, about ten minutes. A PR
-  that changes only specs runs only those specs.
+  the browser tier, dealt to twelve runners by time, about eleven minutes. A
+  PR that changes only specs runs only those specs.
+- **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
+  PR that changes what the slow tests cover: any crate, `Cargo.toml` or
+  `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
+  `.github/actions/`; `apps/web/`'s `worker.js`, `farm.js`, `perform.js`,
+  `patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
+  `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
+  `package.json` or `package-lock.json`; a spec file that holds an `@slow` or
+  `@quarantine` test; or a `main.js` change that reaches EVOLVE's
+  generations or PERFORM's offers. It does not block merging; without it,
+  the push to `main` is where a slow test catches the change.
 - **Wait on the run's state, never a fixed time:** poll until it completes,
   then read its jobs.
 - **Merge on green only:** `gh pr merge <n> --squash --match-head-commit <sha>`,
@@ -201,7 +212,8 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
 - **On `main`**, a job the merged PR already passed is not run again, but only
   when the merged files are exactly the files the PR's run tested (the same
   git tree): `main` did not move between the PR's run and its merge. The
-  site deploys from CI's own build once `CI` is green. The *Slow suite* runs on every push to `main`
+  site deploys from CI's own build once `CI` is green. `main`'s runs queue,
+  so each merge gets its own run. The *Slow suite* runs on every push to `main`
   and nightly; the *Flake hunt* nightly. A failure there files an issue.
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table

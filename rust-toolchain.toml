@@ -1,0 +1,10 @@
+# The one Rust compiler for this repo: CI, `make`, the git hooks and the
+# Claude Code hooks all build with it, so a lint is red locally exactly when it
+# is red in CI. rustup's proxies (~/.cargo/bin) read this file and install it on
+# first use; Homebrew's cargo does not, which is why the Makefile calls
+# rustup's. A bump is its own PR: it changes every Rust cache key at once.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

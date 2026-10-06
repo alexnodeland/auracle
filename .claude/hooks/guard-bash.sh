@@ -10,7 +10,7 @@ cmd="$(python3 "$here/_input.py" command)"
 #    overflows its stack (docs/decisions/005-tests-run-optimized.md).
 if printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|\s)cargo(\s+\+\S+)?\s+test\b'; then
   if ! printf '%s' "$cmd" | grep -Eq -- '--release|--profile|--doc'; then
-    echo "Rust tests run optimized here: add \`--profile test-fast\` (e.g. \`cargo test -p auracle-grammar --profile test-fast\`), or use \`make test\`. Debug builds are ~20x slower on audio and overflow the grammar suite's stack." >&2
+    echo "Rust tests run optimized here: use \`make test-crate CRATE=auracle-grammar\` (optimized, on the pinned compiler) or \`make test\`, or add \`--profile test-fast\`. Debug builds are ~20x slower on audio and overflow the grammar suite's stack." >&2
     exit 2
   fi
 fi

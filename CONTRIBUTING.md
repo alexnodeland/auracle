@@ -34,7 +34,8 @@ Be respectful and constructive.
    uncommented patch.
 2. **Install [rustup](https://rustup.rs/) and Node 22** (the version in
    `.node-version`; fnm or nvm pick it up), then run **`make setup`**
-   (`scripts/setup.sh`): it adds the wasm32 target, `wasm-pack` and
+   (`scripts/setup.sh`): it installs the Rust release `rust-toolchain.toml`
+   pins (with rustfmt, clippy and the wasm32 target), `wasm-pack` and
    `cargo-nextest`, installs the browser tests' packages and Chromium, turns on
    the git hooks and builds the app's engine. It is idempotent; run it again
    after pulling. For the films, **`make film-setup`** also builds
@@ -97,8 +98,13 @@ project subpath or from a `file://` copy.
 
 - **Tests run in release mode.** The grammar/features/session suites render
   real audio sample-by-sample; debug DSP is ~20× slower.
-- **Wasm builds need rustup's toolchain.** A Homebrew rustc earlier in PATH
-  lacks the wasm32 std; `make wasm` prefixes `~/.cargo/bin` for you.
+- **One Rust compiler, rustup's.** `rust-toolchain.toml` pins the release
+  CI builds with, and rustup's proxies read it; a Homebrew cargo or rustc
+  does not (and lacks the wasm32 std). Every `make` target puts
+  `~/.cargo/bin` first on its PATH, and both formatting hooks run rustup's
+  rustfmt. A bare `cargo` in a shell with Homebrew first on PATH runs
+  Homebrew's: go through `make`, or put `~/.cargo/bin` first. A new Rust
+  release arrives in a PR of its own that changes the file.
 - **The dev server sends `Cache-Control: no-store`** and the app version-stamps
   its worker/wasm URLs. Both are needed; the browser's heuristic cache ignores
   late `no-store` on already-cached module workers.
@@ -123,9 +129,11 @@ Every change must pass `make check`:
    hooks against the inputs they must block and pass, and the syntax of every
    film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
-   (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
-6. `cargo test --workspace --profile test-fast` — release-grade codegen
-   without release's shipping flags; see the profile's comment in `Cargo.toml`
+   (`make wasm-check`; the pinned toolchain brings the target)
+6. `cargo test --workspace --profile test-fast --lib --bins --tests`, then
+   the doctests (`--doc`) — release-grade codegen without release's shipping
+   flags (see the profile's comment in `Cargo.toml`), and no build of the
+   examples, which no test runs and step 2 already compiles
 
 That list is what CI's `lint`, `web` and `test` jobs and its wasm32 build
 (the engine job, with warnings as errors) run, so "green locally" and "green
@@ -136,14 +144,20 @@ wasm built and the first needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
-The **fast tier** is the required `CI` check, about ten minutes: the jobs
+The **fast tier** is the required `CI` check, about eleven minutes: the jobs
 above, the Rust tests except the slow ones, and every browser spec not tagged
-`@slow` or `@quarantine`, dealt to eight runners by time. A PR may merge on it
+`@slow` or `@quarantine`, dealt to twelve runners by time. A PR may merge on it
 alone. The **slow tier** (the *Slow suite* workflow) runs the search floor, the
 other Rust tests over a minute and the `@slow` and `@quarantine` browser specs
-on every push to `main` and nightly, where a failure opens an issue; on a PR it
-runs when the diff reaches what those tests cover, or when you add the
-`full-ci` label. A flaky test is fixed or quarantined, never retried
+on every push to `main` and nightly, where a failure opens an issue; on a PR
+only when you add the `full-ci` label. Add it when the PR changes what those
+tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
+the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
+`worker.js`, `farm.js`, `perform.js`, `patch.js`, `live-audio.js`,
+`audio-in.js`, `explain.js`, `faces.js` or `vessel.js`; `tests/web/`'s
+`fixtures.js`, `playwright.config.js`, `package.json` or `package-lock.json`;
+a spec file that holds an `@slow` or `@quarantine` test; or a `main.js`
+change that reaches EVOLVE's generations or PERFORM's offers. A flaky test is fixed or quarantined, never retried
 ([§ Flakes](docs/architecture/testing.md#flakes)). Locally, `make check` still runs every
 Rust test; `make test-fast-tier` / `make test-slow-tier` and
 `make browser-fast` / `make browser-slow` run one tier the way CI does.
@@ -238,7 +252,7 @@ an alias for notes written before the rename).
 
 1. Keep PRs focused; separate refactors from behavior changes.
 2. Run `make check` locally before you push your branch and open the PR: it
-   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, eight runners wide;
+   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, twelve runners wide;
    locally, run the specs your change reaches (`make browser-changed`). If you
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).

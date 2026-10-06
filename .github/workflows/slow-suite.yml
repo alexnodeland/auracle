@@ -13,20 +13,41 @@ name: Slow suite
 #   any tagged `@quarantine`, a flaky test moved out of the gate until it is
 #   fixed. The fast tier runs `--grep-invert "@slow|@quarantine"`.
 #
-# The nightly flake hunt is its own workflow (flake-hunt.yml), so its half
-# hour never holds this one's queue on main.
+# The nightly flake hunt is its own workflow (flake-hunt.yml), so its hour
+# never holds this one's queue on main.
 #
 # When it runs:
 #
-# - on a PR, only when the diff touches what these tests cover (the `scope`
-#   job below says exactly which paths and why), or when the PR carries the
-#   `full-ci` label (adding the label starts a run). It reports; it does not
-#   block merging.
+# - on a PR, only when the PR carries the `full-ci` label: adding the label
+#   starts a run, and every push to a labelled PR runs it again. A PR without
+#   the label runs nothing here (the `scope` job is skipped, and every job
+#   after it). It reports; it does not block merging, and it no longer takes
+#   runners from the gate on every PR push that reaches what it covers. Add
+#   `full-ci` to a PR that changes what these tests cover, the paths this
+#   workflow used to run a PR for: any crate, Cargo.toml or Cargo.lock,
+#   rust-toolchain.toml, the Makefile, this workflow or .github/actions/;
+#   apps/web's worker.js, farm.js, perform.js, patch.js, live-audio.js,
+#   audio-in.js, explain.js, faces.js or vessel.js; tests/web's fixtures.js,
+#   playwright.config.js, package.json or package-lock.json; or a spec file
+#   that holds an @slow or @quarantine test. Also a main.js change that
+#   reaches EVOLVE's generations or PERFORM's offers. Otherwise the push to
+#   main is where a slow test catches it.
 # - on every push to main and nightly, always and in full. A failure there
 #   opens an issue titled "Slow suite failing on main", or comments on it if
 #   one is already open, so a regression that merged on the fast tier is found
 #   within one push or one night.
 # - on demand (Actions → Slow suite → Run workflow), in full.
+#
+# It holds at most four runners at once (the matrices' `max-parallel`: one
+# Rust leg and three browser runners). A PR's whole `CI` at its widest is
+# twelve browser runners, the Site job and the two Rust test runners, 15,
+# and one more for the Browser report or a Lint or Web job still running:
+# 16 + 4 = 20, the account's cap. But the push to main that starts this
+# workflow also starts main's own CI, which re-runs what the merged PR's run
+# did not cover (of the 20 runs on main before Oct 6, the whole browser tier
+# in 9, both Rust test jobs in 15, and Site in all 20, for the deploy). So a
+# PR pushed right after a merge can wait for runners until main's run is
+# done; the merge queue #177 plans keeps merges one at a time.
 
 on:
   pull_request:
@@ -41,12 +62,17 @@ permissions:
   contents: read
 
 # A new push to a PR makes its in-flight run obsolete. On main nothing is
-# cancelled: every push there gets its own verdict. Adding an unrelated label
-# to a PR starts a run too (GitHub cannot filter `labeled` by name); it gets a
-# group of its own, so it does nothing rather than cancel a real run.
+# cancelled, and nothing is skipped: main's runs (each push, the nightly run)
+# wait in a queue (`queue: max`) and run in turn, so every push there gets
+# its own verdict. On a PR the queue is `single`, since `queue: max` beside
+# `cancel-in-progress: true` is a validation error (ci.yml's concurrency
+# says more). Adding an unrelated label to a PR starts a run too (GitHub
+# cannot filter `labeled` by name); it gets a group of its own, so it does
+# nothing rather than cancel a real run.
 concurrency:
   group: slow-suite-${{ github.head_ref || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && '-label' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -55,107 +81,44 @@ env:
   CARGO_NET_RETRY: 10
 
 jobs:
-  # Does this run cover anything?
-  #
-  # Rust: any crate. Every slow Rust test walks the whole pipeline (the
-  # grammar's edit ops propose, features render and measure, the taste model
-  # scores, the session walks and absorbs), so no crate is outside what they
-  # cover. Plus the manifests, the Makefile (it names the slow set) and this
-  # workflow and its actions.
-  #
-  # Browser: the parts of the app the @slow specs exercise and nothing else
-  # does as hard: the engine worker and the render farm (worker.js, farm.js:
-  # generations, walks, their ordering), PERFORM (perform.js) and the worklet it
-  # plays offers through (live-audio.js), PATCH's guess (patch.js, which the
-  # guess specs drive after a warm start); AUDIO IN (audio-in.js), whose
-  # capture hands a standing walk crew the new phrase; the answers and the
-  # lesson (explain.js), whose figures ask the engine in `soon`; the engine crates those scripts call
-  # into for walks and measurement (auracle-session, auracle-wasm); a spec file
-  # that holds an @slow test; the suite's config and lockfile. NOT main.js:
-  # every view lives in it, so it would make almost every app PR a slow run.
-  # A main.js change that breaks an @slow spec is caught on the push to main;
-  # add `full-ci` to a PR whose main.js change touches EVOLVE's generations
-  # or PERFORM's offers.
+  # Is this run asked for? Everything but a PR is (a push to main, the
+  # nightly run, a run by hand). A PR is when it carries `full-ci`, unless
+  # this event is another label being added to it, which asks for nothing:
+  # the last push's run stands (and the concurrency group above keeps this
+  # run from cancelling it). When this job is skipped, so is every job after
+  # it, and the run costs no runner.
   scope:
-    name: What this covers
-    runs-on: ubuntu-latest
+    name: Asked for
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
-    outputs:
-      rust: ${{ steps.scope.outputs.rust }}
-      browser: ${{ steps.scope.outputs.browser }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - id: scope
-        name: Decide what to run
+      - name: Say why
         env:
           EVENT: ${{ github.event_name }}
-          ACTION: ${{ github.event.action }}
-          LABEL: ${{ github.event.label.name }}
-          FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          set -euo pipefail
-          out() {
-            echo "rust=$1" >> "$GITHUB_OUTPUT"
-            echo "browser=$2" >> "$GITHUB_OUTPUT"
-            printf '\n  rust=%s browser=%s\n' "$1" "$2"
-          }
-
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "$EVENT — running everything"
-            out true true; exit 0
-          fi
-          if [ "$ACTION" = "labeled" ] && [ "$LABEL" != "full-ci" ]; then
-            echo "labelled '$LABEL', which asks for nothing — the last push's run stands"
-            out false false; exit 0
-          fi
-          if [ "$FULL_CI" = "true" ]; then
-            echo "the PR carries full-ci — running everything"
-            out true true; exit 0
-          fi
-
-          base="$(git merge-base "origin/$BASE_REF" HEAD)"
-          files="$(git diff --name-only "$base" HEAD)"
-          echo "changed files:"
-          echo "$files" | awk '{ print "  " $0 }'
-
-          own='^(Makefile$|\.github/workflows/slow-suite\.yml$|\.github/actions/)'
-
-          if echo "$files" | grep -qE "$own|^(crates/|Cargo\.(toml|lock)$|rust-toolchain)"; then
-            rust=true
+          if [ "$EVENT" = pull_request ]; then
+            echo "the PR carries full-ci: running everything"
           else
-            rust=false
+            echo "$EVENT: running everything"
           fi
-
-          # A changed spec counts if it holds an @slow test now.
-          slow_spec=false
-          for f in $(echo "$files" | grep -E '^tests/web/.*\.spec\.js$' || true); do
-            if [ -f "$f" ] && grep -qE '@slow|@quarantine' "$f"; then slow_spec=true; fi
-          done
-
-          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|patch|live-audio|audio-in|explain|faces|vessel)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|fixtures\.js|package(-lock)?\.json)$)"; then
-            browser=true
-          else
-            browser=false
-          fi
-
-          out "$rust" "$browser"
 
   # The slow Rust tests, in two legs: the search floor gets a runner to itself
   # (it walks 16 seeds, one thread each, and on a 4-core runner those threads
   # queue four deep; next to other tests it makes them wait for the cores),
-  # and the other ten share one (~5 min; the longest is ~3 min).
+  # and the other ten share one (~5 min; the longest is ~3 min). One leg at a
+  # time (`max-parallel: 1`), beside at most three browser runners: four.
   rust:
     name: Slow Rust (${{ matrix.name }})
     needs: scope
-    if: needs.scope.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - name: search floor
@@ -164,9 +127,8 @@ jobs:
             target: test-slow-rest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       # CI's test cache (ci.yml saves it from main); never saved from here.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -180,8 +142,7 @@ jobs:
   engine:
     name: Engine for the browser
     needs: scope
-    if: needs.scope.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,17 +152,24 @@ jobs:
           tier: slow
 
   # The @slow specs, and any @quarantine'd out of the gate while it is fixed,
-  # on six runners, dealt by main's last timings for this tier (see
+  # in six shards, dealt by main's last timings for this tier (see
   # tests/web/shard.mjs): a few of these tests take ~3 min each, so the split
-  # by count left one runner with twice another's work.
+  # by count left one runner with twice another's work. Three run at a time
+  # (`max-parallel`), so the six take two rounds of about seven minutes.
   browser:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
-    if: needs.scope.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Playwright's global timeout, five minutes under the job's limit; the
+    # shard interrupts the run a minute before it, so a shard that runs long
+    # still reports its tests and the one it was running (ci.yml's browser
+    # job says why). The two numbers move together.
     timeout-minutes: 30
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 25
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
     steps:
@@ -228,7 +196,7 @@ jobs:
     name: Slow browser report
     needs: browser
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -248,7 +216,7 @@ jobs:
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'schedule') &&
       contains(needs.*.result, 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The specs a change reaches, for `make browser-changed`: what to run on a
-// workstation before pushing, while CI runs the whole tier eight wide.
+// workstation before pushing, while CI runs the whole tier twelve wide.
 //
 //   node changed.mjs [base]     prints spec files, one per line (base: origin/main)
 //

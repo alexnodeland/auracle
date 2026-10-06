@@ -24,11 +24,11 @@ this table.
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
-| Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
+| Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
-| All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
+| All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
-| Native and wasm agree | `cargo test -p auracle-wasm --profile test-fast --test boot_agrees`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
+| Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
@@ -43,14 +43,16 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time) | No |
-| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main ([Flakes](#flakes)) | No |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 
-**How long.** The fast tier's browser tests are about seventy minutes of
-test time in one worker (272 tests at `f6f4612`, each a fresh boot), so they
-set the check's length: about ten minutes, the engine job and eight runners
-of about nine minutes each. Rust takes about seven and a half (a two-minute compile,
+**How long.** The fast tier's browser tests are about seventy-five minutes
+of test time in one worker (284 tests at `42bd322`, each a fresh boot), so
+they set the check's length: about eleven minutes, the engine job and twelve
+runners planned at about six minutes each (the hosted runners differ in
+speed by about two times, and each shard's log and the run's summary name
+its CPU). Rust takes about seven and a half (a two-minute compile,
 then the tests); Web and Site take two to three.
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
@@ -62,17 +64,24 @@ timings, so the engine job reads them once per run (from the Actions cache)
 and uploads them as an artifact every runner downloads, a re-run's included;
 each runner prints the plan's hash, the same on every runner of a run. A
 test with no time yet weighs the median; with no timings the split is by
-count. `node shard.mjs plan --shards 8 -- --grep-invert "@slow|@quarantine"`
+count. `node shard.mjs plan --shards 12 -- --grep-invert "@slow|@quarantine"`
 in `tests/web` prints a split without running it.
 
-**One report.** Each runner keeps a blob report; the *Browser report* job
-merges a run's into one HTML report, every test with the traces of what
-failed, uploaded when a runner failed and linked from the run's summary
+**One report.** Each runner keeps a blob report, uploaded whatever its
+end, a failed or cancelled job's included; the *Browser report* job merges a
+run's into one HTML report, every test with the traces of what failed,
+uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). On main it also folds the
-run's times into the timings the next run deals by.
+run's times into the timings the next run deals by. A runner that would
+outlast its job ends first: Playwright's global timeout
+(`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
+a minute before it `shard.mjs` interrupts the run, so the test that was
+running is reported as interrupted, with its trace. The setup's network
+steps (npm, Playwright's download, the apt mirror) are each cut at three
+minutes, with a message naming the server.
 
 **A PR that changes only specs** runs those specs and nothing else, on one
-runner per spec up to eight: no other spec's code changed, and the app it
+runner per spec up to twelve: no other spec's code changed, and the app it
 runs against is main's. A change to a spec's helpers, the config or anything
 else the browser tier reads runs the whole tier; main always does.
 
@@ -92,34 +101,47 @@ suite* and the nightly flake hunt still run in full.
 **The site deploys from CI.** On main, the Site job keeps the site it built
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. A run on
-main is not cancelled by the next push; GitHub keeps one waiting run, so when
-three merges land inside one run's length the middle one is covered by the
-newest. Lint and the Rust tests are reused only while Rust's stable release
-is the one they ran on (the record keeps `rustc --version`).
+main is not cancelled by the next push, and none is skipped: main's runs
+wait in a queue (`queue: max`) and run in turn, so when three merges land
+inside one run's length each is tested and deployed in order. Lint and the Rust tests are reused only while `rust-toolchain.toml`
+still pins the release they ran on (the record keeps `rustc --version`).
 
 **The workflows themselves.** Each workflow's token is read-only unless a
-job needs more (filing an issue, deploying Pages). Every action is pinned to
+job needs more (filing an issue, deploying Pages). Every job runs on
+`ubuntu-24.04`, not `ubuntu-latest`, so a new runner image arrives in a PR of
+its own, and every Rust job builds with the compiler `rust-toolchain.toml`
+pins (`rustup toolchain install`), as `make` does locally, so a new Rust
+release does too. Every action is pinned to
 a commit SHA with its version in a comment; Dependabot
 (`.github/dependabot.yml`) opens one grouped PR a week for the actions and
 one for `tests/web`'s npm packages.
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a
 failure there opens an issue titled *Slow suite failing on main*, or comments
-on the open one. On demand from the Actions tab. On a PR, when the diff
-reaches what the slow tests cover, or when the PR carries the `full-ci` label
-(adding it starts a run):
+on the open one. On demand from the Actions tab. On a PR, only when the PR
+carries the `full-ci` label: adding it starts a run, and every push to the
+labelled PR runs it again; a PR without it runs nothing there. Add it to a
+PR that changes what the slow tests cover, the paths the workflow used to run
+a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
+`rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
+`apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
+`live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
+`tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or
+`package-lock.json`; or a spec file that holds an `@slow` or `@quarantine`
+test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
+offers. Otherwise the push to `main` is where a slow
+test catches it.
 
-- the slow Rust tests run on a change to any crate, `Cargo.toml`/`Cargo.lock`,
-  the `Makefile`, or the workflow and its actions. Every one of them walks the
-  whole pipeline (grammar edits, rendering and φ, the taste model, the
-  session), so no crate is outside what they cover;
-- the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js`, `patch.js`, `live-audio.js`, `explain.js`, `faces.js` or `vessel.js`, to the spec fixture (`tests/web/fixtures.js`), to `crates/auracle-session` or
-  `crates/auracle-wasm`, to a spec file holding an `@slow` or `@quarantine`
-  test, or to the suite's config and lockfile. Not `main.js`: every view
-  lives there, so it would make nearly every app PR a slow run. A `main.js`
-  change that reaches EVOLVE's generations or PERFORM's offers should carry
-  `full-ci`; otherwise the push to `main` is where it is caught.
+**Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
+widest holds 16 (twelve browser runners, Site, the two Rust test runners and
+one more); the *Slow suite* holds at most four (`max-parallel`: one Rust leg
+and three browser runners), so the two fit together. A merge also starts
+`main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
+on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
+15, Site in all), so a PR pushed right after a merge can wait for runners
+until `main`'s run is done; the merge queue #177 plans keeps merges one at a
+time. The nightly *Flake hunt* holds four, beside *Search health*'s three
+long jobs.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
@@ -238,12 +260,14 @@ waits run to two minutes).
   in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
-  boot costs seconds here and tens of seconds on a CI runner.
+  boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
+  about 28% of the fast tier's test time).
 - **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named
   bounds that add their time to the test's timeout (`app.engine`,
-  `app.reply`, `ENGINE_MS`), and holds the engine's own replies while an
+  `app.reply`, `ENGINE_MS`; 450 s in all at most, `ENGINE_CAP_MS`), and
+  holds the engine's own replies while an
   injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
   1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.

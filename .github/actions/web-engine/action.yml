@@ -10,11 +10,9 @@ description: >
 #
 # The cache key is every input of `make wasm`: the crates, the workspace
 # manifest and lockfile (profiles live in Cargo.toml), the Makefile (the wasm
-# stack size and flags) and a toolchain pin if one is ever added. A PR that
-# touches only apps/web or tests/web restores main's build and skips the Rust
-# toolchain entirely. It does not key on the stable compiler's version, which
-# moves under a fixed key between releases; a new stable changes the wasm's
-# bytes, not what the app does.
+# stack size and flags) and the compiler rust-toolchain.toml pins, so a bump
+# of it builds afresh. A PR that touches only apps/web or tests/web restores
+# main's build and skips the Rust toolchain entirely.
 #
 # On a hit the pkg is re-stamped, because pkg/build.json is a hash over the
 # engine AND the app scripts (see the Makefile's `wasm-stamp`), and the app
@@ -30,10 +28,9 @@ runs:
         key: web-engine-${{ runner.os }}-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'Makefile', 'rust-toolchain*') }}
 
     - if: steps.pkg.outputs.cache-hit != 'true'
-      uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-      with:
-        toolchain: stable
-        targets: wasm32-unknown-unknown
+      name: Install Rust (rust-toolchain.toml)
+      shell: bash
+      run: rustup toolchain install --no-self-update && rustc --version
 
     - if: steps.pkg.outputs.cache-hit != 'true'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

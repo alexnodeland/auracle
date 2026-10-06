@@ -127,6 +127,17 @@ The body: what changed, why, how (what a reviewer should look at), checks
 (gates, specs and counts, the review and its findings), `Closes #<n>`, and,
 when an agent session made it, the session's link line last.
 
+A PR that changes what the slow tests cover also gets the `full-ci` label
+(`gh -R alexnodeland/auracle pr edit <n> --add-label full-ci`): the *Slow
+suite* runs on a PR only with it. It covers any crate, `Cargo.toml` or
+`Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
+`.github/actions/`; `apps/web/`'s `worker.js`, `farm.js`, `perform.js`,
+`patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
+`vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
+`package.json` or `package-lock.json`; a spec file that holds an `@slow` or
+`@quarantine` test; and a `main.js` change that reaches EVOLVE's
+generations or PERFORM's offers. It does not block the merge.
+
 ## 6. CI, waited on by state
 
 ```bash

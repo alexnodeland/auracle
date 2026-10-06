@@ -45,7 +45,9 @@
 // timeout (10 s). A wait on the engine (boot, a fill, a fit, a deal, a reply)
 // goes through `app.engine`, `app.reply` or `app.booted`: its bound is
 // ENGINE_MS unless given, and its time is added to the test's timeout, so a
-// slow runner's engine never eats the test's own budget. PERFORM's growth
+// slow runner's engine never eats the test's own budget, up to
+// ENGINE_CAP_MS in all, so an engine that hangs cannot take the shard's
+// remaining time with it. PERFORM's growth
 // (an offer, a drift) is bounded by `app.offerBudget()` (perform_budget.js).
 // The one fixed wait is `app.quiet()`: QUIET_MS for "nothing happens", where
 // the check is that something does not occur.
@@ -58,6 +60,16 @@ const budget = require("./perform_budget");
  *  filling, a fit, a deal, a generation's reply. The longest of these on a CI
  *  runner was a full pool, about two minutes behind a refit. */
 const ENGINE_MS = 150_000;
+/** The most one test's engine waits may add to its timeout, in all. Once a
+ *  test has used it, its engine waits run inside its own timeout. Measured
+ *  on 30 CI runs of Oct 5 (both tiers): the most any test's waits added was
+ *  297 s (evolve_truth's "with no farm, a pick's deal during a
+ *  generation…"), the next 214 s, and no test ran longer than 325 s in all.
+ *  Half again over the most, for a slower runner: three full ENGINE_MS. */
+const ENGINE_CAP_MS = 3 * ENGINE_MS;
+/** What each test's engine waits have added to its timeout so far, the
+ *  waits still running included (TestInfo → ms). */
+const engineExtension = new WeakMap();
 /** "Nothing happens": long enough for a loaded machine to have done the wrong
  *  thing (testing.md § Rules: timing needs 1.5 s of slack). */
 const QUIET_MS = 1_500;
@@ -325,6 +337,7 @@ class App {
     // each replayed on every load from then on by an init script (`config`).
     this.settings = 0;
     this.ENGINE_MS = ENGINE_MS;
+    this.ENGINE_CAP_MS = ENGINE_CAP_MS;
     this.QUIET_MS = QUIET_MS;
   }
 
@@ -384,16 +397,27 @@ class App {
 
   /** A wait on the engine. `fn(timeout)` gets the bound (`ms`, ENGINE_MS by
    *  default) to pass to its own wait, and the test's timeout grows by the
-   *  time the wait takes. */
+   *  time the wait takes, until the test's waits have added ENGINE_CAP_MS:
+   *  past that, a wait runs inside the test's own timeout. A wait reserves
+   *  its whole grant while it runs, so waits run side by side stay under
+   *  the cap too. */
   async engine(fn, { ms = ENGINE_MS } = {}) {
     const info = base.test.info();
     if (!info.timeout) return fn(ms);
-    info.setTimeout(info.timeout + ms);
+    const used = engineExtension.get(info) || 0;
+    const grant = Math.max(0, Math.min(ms, ENGINE_CAP_MS - used));
+    if (grant < ms && !info.annotations.some((a) => a.type === "engine-cap")) {
+      info.annotations.push({ type: "engine-cap", description: `the engine waits reached ENGINE_CAP_MS (${ENGINE_CAP_MS / 1000} s); later ones run inside the test's own timeout` });
+    }
+    engineExtension.set(info, used + grant);
+    info.setTimeout(info.timeout + grant);
     const t0 = Date.now();
     try {
       return await fn(ms);
     } finally {
-      info.setTimeout(info.timeout - Math.max(0, ms - (Date.now() - t0)));
+      const unused = grant - Math.min(grant, Date.now() - t0);
+      info.setTimeout(info.timeout - unused);
+      engineExtension.set(info, engineExtension.get(info) - unused);
     }
   }
 
@@ -810,4 +834,4 @@ const test = base.test.extend({
 
 });
 
-module.exports = { test, expect, openApp, ENGINE_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };
+module.exports = { test, expect, openApp, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };

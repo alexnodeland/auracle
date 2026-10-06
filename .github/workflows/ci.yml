@@ -1,12 +1,13 @@
 name: CI
 
-# The FAST tier: what a PR must pass to merge, about ten minutes of wall time
-# (the browser tier's eight runners set it). The tests too slow for that (the
-# search floor, the other Rust tests over a minute, the browser specs tagged
-# @slow, and any tagged @quarantine while a flake is fixed) run in the Slow
-# suite workflow (slow-suite.yml): on main, nightly, and on a PR that touches
-# what they cover or carries the `full-ci` label. Each test runs in exactly one
-# tier; docs/architecture/testing.md § CI tiers lists which and why.
+# The FAST tier: what a PR must pass to merge, about eleven minutes of wall
+# time (the engine job, then the browser tier's twelve runners, set it). The
+# tests too slow for that (the search floor, the other Rust tests over a
+# minute, the browser specs tagged @slow, and any tagged @quarantine while a
+# flake is fixed) run in the Slow suite workflow (slow-suite.yml): on main,
+# nightly, and on a PR that carries the `full-ci` label. Each test runs in
+# exactly one tier; docs/architecture/testing.md § CI tiers lists which and
+# why.
 #
 # The branch ruleset requires one check, `CI`. The fast browser shards are
 # inside it; the Slow suite is not.
@@ -14,6 +15,10 @@ name: CI
 # On main a job the merged PR already passed on these exact files is not run
 # again (the `changes` job says which), and the site deploys from this run's
 # own build once `CI` is green (the `deploy` job).
+#
+# Every job in every workflow runs on `ubuntu-24.04`, not `ubuntu-latest`:
+# the label's move to a new image is its own PR, with a Flake hunt run, not a
+# change that lands under whichever PR happens to be in CI that day.
 
 on:
   push:
@@ -23,13 +28,18 @@ on:
 
 # A new push to a PR makes the in-flight run for that PR obsolete, so stop it
 # rather than paying for two answers to the same question. A run on main is
-# not cancelled by the next push: it finishes, and the next waits. (GitHub
-# keeps one waiting run per group, so of three merges inside one run's length
-# the middle one is skipped, and the newest run covers its files.) With the
-# merged PR's jobs reused (the changes job), main's runs are short.
+# not cancelled by the next push, and none is skipped: runs on main wait in
+# a queue (`queue: max`, up to 100 waiting) and run in turn, so each of three
+# merges inside one run's length gets its own verdict.
+# (The default, `single`, keeps one waiting run and replaces it, so the
+# middle merge was never tested on main.) On a PR the queue stays `single`:
+# `queue: max` with `cancel-in-progress: true` is a workflow validation
+# error, so both keys are expressions on the event. With the merged PR's
+# jobs reused (the changes job), main's runs are short.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 # Read the code, nothing else: no job here writes to the repository. The
 # Actions cache and artifacts use the runner's own token, not this one.
@@ -63,7 +73,7 @@ jobs:
   # releases are cut from, so it is never allowed to be partially verified.
   changes:
     name: What changed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     # actions: read, to find and download a merged PR's record (the reuse step).
     permissions:
@@ -96,7 +106,7 @@ jobs:
               echo "rust=true"
               echo "site=true"
               echo "browser=true"
-              echo 'browser_matrix=["1/8","2/8","3/8","4/8","5/8","6/8","7/8","8/8"]'
+              echo 'browser_matrix=["1/12","2/12","3/12","4/12","5/12","6/12","7/12","8/12","9/12","10/12","11/12","12/12"]'
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -146,10 +156,10 @@ jobs:
             for f in $reach; do [ -f "$f" ] && specs="$specs /${f#tests/web/}"; done
           fi
           specs="${specs# }"
-          n=8
+          n=12
           if [ -n "$specs" ]; then
             n=$(echo "$specs" | wc -w | tr -d " ")
-            [ "$n" -gt 8 ] && n=8
+            [ "$n" -gt 12 ] && n=12
           fi
           matrix="[$(seq 1 "$n" | sed "s#.*#\"&/$n\"#" | paste -sd, -)]"
 
@@ -199,16 +209,15 @@ jobs:
           gh run download "$art" --repo "$REPO" -n "verified-tree-$tree" -D verified
           cat verified/verified.json
           # Lint and the Rust tests hold for the compiler they ran on: reused
-          # only while stable is still that release (the lint job pins none).
-          # Read whole, then parsed: awk stopping at its match would close the
-          # pipe on curl mid-write, which pipefail turns into a failed step.
-          channel="$(curl -sSf https://static.rust-lang.org/dist/channel-rust-stable.toml)"
-          stable="$(awk '/^\[pkg\.rustc\]/{f=1} f && /^version = /{gsub(/^version = "|"$/, ""); print; exit}' <<<"$channel")"
+          # only while rust-toolchain.toml pins that release. The record
+          # keeps what `rustc --version` prints after "rustc", so its first
+          # word is the release ("1.99.0 (b940084d7 2026-09-28)").
+          pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
-          echo "rustc: recorded '$recorded', stable now '$stable'"
+          echo "rustc: recorded '$recorded', pinned '$pinned'"
           for job in lint web test; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
-            if [ "$job" != web ] && [ "$recorded" != "$stable" ]; then continue; fi
+            if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
             if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
           done
           [ "$(jq -r .ran.browser verified/verified.json)" = full ] && echo "browser=true" >> "$GITHUB_OUTPUT"
@@ -237,14 +246,18 @@ jobs:
     outputs:
       rustc: ${{ steps.rustc.outputs.version }}
     if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_lint != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
+      # Every Rust job builds with the one compiler rust-toolchain.toml pins,
+      # as `make` does locally: given no toolchain, rustup installs the file's,
+      # with its components and the wasm32 target (rustup 1.28 and later; the
+      # runner image has 1.29.1). Not dtolnay/rust-toolchain, which does not
+      # read the file. A new stable then changes nothing here until a PR
+      # bumps the file.
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -268,7 +281,7 @@ jobs:
     name: Web
     needs: changes
     if: needs.changes.outputs.site == 'true' && needs.changes.outputs.reuse_web != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -296,9 +309,13 @@ jobs:
   # in neither, and `--no-tests=fail` turns a filter that empties a shard into
   # a red run rather than a silently skipped gate.
   #
-  # What is left, 262 tests, is ~1120 s of test time that nextest runs about
-  # 3.7 wide on a 4-core runner; split in two by hash, each runner takes ~2.5 min
-  # of tests after its ~2 min compile, instead of one runner taking ~5.
+  # What is left, 417 tests at 42bd322, is about 2,200 s of test time, which
+  # nextest runs about 3.7 wide on a 4-core runner, split over two runners.
+  # By `slice`, which deals the filtered list out in turn, each runner gets
+  # half the tests; `hash` put 1,270 test-seconds on one and 933 on the other
+  # (Oct 5). The build names its targets (the Makefile's TEST_TARGETS), so the
+  # 34 examples, which no test runs, are not compiled here; Lint's clippy
+  # --all-targets still compiles them.
   #
   # nextest rather than `cargo test` for the filtering and the partitioning,
   # and because it pools every test binary into one scheduler; `cargo test`
@@ -307,7 +324,7 @@ jobs:
     name: Test (${{ matrix.partition }})
     needs: changes
     if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_test != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       # One shard failing should not hide the other shard's result.
@@ -316,9 +333,8 @@ jobs:
         partition: ["1/2", "2/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       # One cache for every test job, here and in slow-suite.yml, saved from
       # main by this job only.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -335,7 +351,7 @@ jobs:
       # under a tenth of a second while cutting compile CPU ~40% — the LTO was
       # buying the test suite nothing and costing it a serialized link. See the
       # profile's comment in Cargo.toml.
-      - run: make test-fast-tier NEXTEST_ARGS='--partition hash:${{ matrix.partition }}'
+      - run: make test-fast-tier NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
 
       # nextest does not run doctests. There are none today, and this is what
       # keeps that a fact rather than an assumption.
@@ -367,7 +383,7 @@ jobs:
     name: Site
     needs: [changes, engine]
     if: needs.changes.outputs.site == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       pages_artifact: ${{ steps.pages-name.outputs.artifact }}
@@ -379,9 +395,8 @@ jobs:
           name: web-engine
           path: apps/web/pkg
 
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -482,7 +497,7 @@ jobs:
     name: Engine for the browser
     needs: changes
     if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -495,10 +510,16 @@ jobs:
   # The fast browser tier: every spec in tests/web not tagged @slow or
   # @quarantine, against the engine built above.
   #
-  # About 70 minutes of test time in one worker (main at f6f4612, 272 tests,
-  # a fresh boot each). tests/web/shard.mjs deals them to eight runners by
-  # main's last timings, longest first, so each runs about 9 minutes: with
-  # Playwright's own split by count, five runners took from 9 to 19.
+  # About 75 minutes of test time in one worker (main at 42bd322, 284 tests,
+  # a fresh boot each). tests/web/shard.mjs deals them to twelve runners by
+  # main's last timings, longest first, so each is planned at about 6
+  # minutes: with Playwright's own split by count, five runners took from 9
+  # to 19. Twelve, not eight: simulated with the runners' observed spread of
+  # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
+  # (#177 § 3.1). The count is fixed and raised by hand. With the Slow suite
+  # off the PR path, a PR's CI at twelve fits the account's 20 jobs beside
+  # the Slow suite's four; right after a merge, main's own run takes runners
+  # too, and a PR can wait for it (slow-suite.yml says how much).
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
   # the engine works). A failure that only appears here is still a finding
@@ -508,15 +529,22 @@ jobs:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
-    runs-on: ubuntu-latest
-    # The planned ~9 minutes, a test's own five-minute timeout and room: a
-    # test that times out is reported as a failure, with its trace, rather
-    # than the whole runner being cancelled before it can say which.
+    runs-on: ubuntu-24.04
+    # The planned ~6 minutes and room. AURACLE_GLOBAL_TIMEOUT_MIN is
+    # Playwright's global timeout (tests/web/playwright.config.js), five
+    # minutes under the job's limit for the setup (about half a minute; each
+    # network step is cut at three) and the upload. A minute before it,
+    # shard.mjs interrupts the run: a shard that runs long or hangs reports
+    # the test that was running as interrupted, with its trace, and its blob
+    # reaches the merged report, rather than the runner being cancelled
+    # before it can say which. The two numbers move together.
     timeout-minutes: 20
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 15
     strategy:
       fail-fast: false
       matrix:
-        # Eight, or one per changed spec up to eight on a PR that changed
+        # Twelve, or one per changed spec up to twelve on a PR that changed
         # only specs (the changes job).
         shard: ${{ fromJSON(needs.changes.outputs.browser_matrix) }}
     steps:
@@ -546,7 +574,7 @@ jobs:
     name: Browser report
     needs: [changes, browser]
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -566,7 +594,7 @@ jobs:
     name: CI
     if: always()
     needs: [changes, lint, web, test, site, engine, browser]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check the results
@@ -636,7 +664,7 @@ jobs:
     name: Deploy to Pages
     needs: [ci, site]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.ci.result == 'success' && needs.site.outputs.pages_artifact != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write

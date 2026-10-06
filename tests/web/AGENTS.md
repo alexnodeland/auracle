@@ -34,15 +34,15 @@ The suite is about an hour and a half in one worker, so CI splits it
 ([`docs/architecture/testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)):
 
 - **Fast tier**: every test not tagged `@slow` or `@quarantine`, about
-  seventy minutes in one worker. Part of the required `CI` check on any PR
-  that touches `apps/web`, `tests/web` or the engine, dealt to eight runners
-  by `shard.mjs` from main's last timings, about nine minutes each.
+  seventy-five minutes in one worker. Part of the required `CI` check on any
+  PR that touches `apps/web`, `tests/web` or the engine, dealt to twelve
+  runners by `shard.mjs` from main's last timings, about six minutes each.
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
-  (`.github/workflows/slow-suite.yml`) runs them on main, nightly, on a PR
-  that touches what they cover, and on a PR labelled `full-ci`. It does not
-  block merging. A separate nightly flake hunt (`flake-hunt.yml`) runs the
-  fast tier three times over.
+  (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a
+  PR labelled `full-ci`, and on no other PR. It does not block merging. A
+  separate nightly flake hunt (`flake-hunt.yml`) runs the fast tier three
+  times over.
 
 Run a tier locally the same way (after `make wasm`):
 
@@ -52,7 +52,7 @@ make browser-slow   # --grep "@slow|@quarantine"
 ```
 
 On a workstation, run the specs your change reaches and let CI run the rest:
-it is the gate, and it runs them eight wide. `make browser-changed` runs the
+it is the gate, and it runs them twelve wide. `make browser-changed` runs the
 specs changed against `origin/main`, the specs of a changed helper, and the
 specs named for a changed app module (`changed.mjs`); for `main.js` and the
 engine, which reach every level, name them by file or prefix
@@ -60,7 +60,10 @@ engine, which reach every level, name them by file or prefix
 
 When CI fails, the run's summary links one HTML report of every runner, with
 the failed tests' traces: download it and run `npx playwright show-report
-<dir>` here.
+<dir>` here. A runner that ran out of time is in it too: `shard.mjs`
+interrupts the run a minute before Playwright's global timeout
+(`AURACLE_GLOBAL_TIMEOUT_MIN`, which CI sets; none locally), and the test
+that was running is reported as interrupted.
 
 **Tagging a slow test.** A test that takes over about 40 s on CI (the list
 reporter prints each test's time) goes in the slow tier: tag it in its
@@ -70,10 +73,16 @@ declaration with Playwright's tag syntax, leaving the title alone.
 test("EVOLVE POOL breeds beside you: …", { tag: "@slow" }, async ({ page }) => {
 ```
 
-Tag the test, not the file: the rest of a file stays fast. If it exercises
-app code the slow tier's path filter does not cover, add that path to the
-`scope` job in `slow-suite.yml`. A test that is slow only because it waits on
-a fixed timer is better made faster than tagged.
+Tag the test, not the file: the rest of a file stays fast. A PR that adds
+or changes one runs it before merging only with the `full-ci` label (the
+push to main runs it either way), and so does a PR that changes what the
+slow tests cover: in `tests/web`, `fixtures.js`, `playwright.config.js` or
+`package*.json`; in `apps/web`, `worker.js`, `farm.js`, `perform.js`,
+`patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
+`vessel.js`; any crate, the Cargo files, `rust-toolchain.toml`, the
+`Makefile`, `slow-suite.yml` or `.github/actions/`
+([`testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)). A test that is slow only because it waits
+on a fixed timer is better made faster than tagged.
 
 **A flaky test** is fixed, or tagged `@quarantine` with a comment naming its
 issue while it is fixed: it leaves the gate for the slow tier, where it still
@@ -85,7 +94,8 @@ runs. No retries anywhere
 - **Logic belongs in a unit test.** New logic lands in a pure module under
   `apps/web/` with a `node:test` in `apps/web/tests/` (`make web-check` runs
   them in milliseconds); a browser spec proves the wiring and what a player
-  sees, not arithmetic. A boot is seconds here and tens of seconds on CI.
+  sees, not arithmetic. A boot is seconds, here and on CI (a median of 4
+  to 5 s there, about 28% of the fast tier's test time).
 - **Start from the fixture.** `const { test, expect } = require("./fixtures")`
   (`fixtures.js`), never `@playwright/test` directly:
   - **page errors fail the test by themselves** (the auto fixture
@@ -139,7 +149,9 @@ runs. No retries anywhere
   call names its own bound: shorter for what is quick (a deal, 30 s), longer
   only where the engine's work is (the pool filling behind a refit, 300 s;
   a generation, 400 to 480 s). Its time is added to the test's timeout, so
-  a slow runner's engine never eats the test's own 90 s. When the app gets faster, a spec that expected to see
+  a slow runner's engine never eats the test's own 90 s, up to
+  `ENGINE_CAP_MS` (450 s) in all for one test: past that, an engine that
+  hangs fails the test rather than taking the shard's remaining time. When the app gets faster, a spec that expected to see
   an intermediate state may miss it: accept either state rather than slowing
   the app down. A timeout under about 1.5 s is a flake waiting to happen.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`

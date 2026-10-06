@@ -10,7 +10,8 @@
 # `make setup` and `make film-setup` run the first two.
 #
 # What it needs already installed (it checks, and says how to get them):
-#   - rustup (https://rustup.rs); the toolchain and wasm32 target it adds
+#   - rustup (https://rustup.rs) 1.28 or later; it installs the toolchain
+#     rust-toolchain.toml pins, with rustfmt, clippy and the wasm32 target
 #   - Node 22, the version in .node-version that CI runs (fnm or nvm, when
 #     installed, are used to install and select it). Node 26 will not do:
 #     Playwright 1.56's browser install hangs on it (the download finishes,
@@ -23,7 +24,8 @@
 #     that blocks one Python is caught here, with a pointer to this variable
 #
 # What it installs:
-#   base   the wasm32-unknown-unknown target, wasm-pack 0.15.0, cargo-nextest
+#   base   the pinned Rust toolchain (rust-toolchain.toml: its components and
+#          the wasm32-unknown-unknown target), wasm-pack 0.15.0, cargo-nextest
 #          (the Rust test runner), the browser tests' npm packages and
 #          Playwright's Chromium, the git hooks, and the app's engine
 #          (make wasm)
@@ -57,9 +59,17 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 say "Rust"
 need rustup "install it from https://rustup.rs, then re-run this"
-rustup show active-toolchain >/dev/null 2>&1 || rustup default stable
-rustup target add wasm32-unknown-unknown
-rustup component add rustfmt clippy
+# Given no toolchain, rustup installs the one rust-toolchain.toml names, with
+# the components and target it lists (here, at the root, it finds the file).
+# That needs rustup 1.28 or later; an older one wants a toolchain named.
+ru_version="$(rustup --version 2>/dev/null | awk '{ print $2; exit }')"
+IFS=. read -r ru_major ru_minor _ <<<"${ru_version:-0.0}"
+if [ "${ru_major:-0}" -lt 1 ] || { [ "$ru_major" = 1 ] && [ "${ru_minor:-0}" -lt 28 ]; }; then
+  echo "!! rustup ${ru_version:-of unknown version} is older than 1.28, which installs the toolchain rust-toolchain.toml names." >&2
+  echo "   Update it (\`rustup self update\`, or \`brew upgrade rustup\` if Homebrew installed it), then re-run this." >&2
+  exit 1
+fi
+rustup toolchain install --no-self-update
 if ! wasm-pack --version 2>/dev/null | grep -q '0\.15\.'; then
   cargo install wasm-pack --version 0.15.0 --locked
 fi

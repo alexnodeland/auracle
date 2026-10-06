@@ -10,9 +10,14 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 fail=0
 
 rs=$(printf '%s\n' "$staged" | grep -E '\.rs$' || true)
-if [ -n "$rs" ] && command -v rustfmt >/dev/null; then
+# rustup's rustfmt, the one rust-toolchain.toml pins (hooks run at the top of
+# the work tree, where rustup finds the file), as `make fmt` runs it; a
+# Homebrew rustfmt first on PATH would judge with another release.
+rustfmt="${CARGO_HOME:-$HOME/.cargo}/bin/rustfmt"
+[ -x "$rustfmt" ] || rustfmt="$(command -v rustfmt || true)"
+if [ -n "$rs" ] && [ -n "$rustfmt" ]; then
   # shellcheck disable=SC2086
-  rustfmt --edition 2021 --check $rs >/dev/null 2>&1 || { echo "pre-commit: rustfmt would change staged Rust (run \`make fmt\`)"; fail=1; }
+  "$rustfmt" --edition 2021 --check $rs >/dev/null 2>&1 || { echo "pre-commit: rustfmt would change staged Rust (run \`make fmt\`)"; fail=1; }
 fi
 
 for f in $(printf '%s\n' "$staged" | grep -E '\.(js|mjs|cjs)$' || true); do

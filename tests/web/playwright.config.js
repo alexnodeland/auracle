@@ -25,6 +25,15 @@ module.exports = defineConfig({
   // `app.reply`, `app.booted`, `app.offerBudget`) adds its own time to the
   // test's timeout.
   timeout: 90_000,
+  // The whole run's limit, from AURACLE_GLOBAL_TIMEOUT_MIN, which CI's
+  // browser jobs set a few minutes under their own `timeout-minutes` (the
+  // two sit side by side in each workflow), so Playwright stops before the
+  // runner is killed and its blob report is written and uploaded. shard.mjs
+  // interrupts the run a minute before this, so the test that was running
+  // is reported as interrupted, with its trace (this limit alone reports it
+  // as not run); this then bounds the teardown. Unset, as on a workstation:
+  // no limit.
+  globalTimeout: Number(process.env.AURACLE_GLOBAL_TIMEOUT_MIN || 0) * 60_000,
   // A UI state: a wait for the engine says so with a longer bound of its own
   // (fixtures.js ENGINE_MS, perform_budget.js `offerBudget`).
   expect: { timeout: 10_000 },
