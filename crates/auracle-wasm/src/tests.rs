@@ -55,9 +55,7 @@ fn a_tree_that_does_not_compile_has_no_cables() {
 fn perform_replies_write_trees_in_their_own_key_order() {
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let tree_json = engine.edit_tree_json();
     let mut compared = 0;
@@ -195,9 +193,7 @@ fn the_bench_probe_names_the_cables_patch_draws() {
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
     assert_eq!(engine.edit_cable_levels(), "null", "nothing open");
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let (before, tree) = (engine.edit_render(), engine.edit_tree_json());
     let probe: serde_json::Value = serde_json::from_str(&engine.edit_cable_levels()).unwrap();
@@ -351,11 +347,7 @@ fn the_session_clip_crosses_the_boundary() {
 fn status_counts_picks_stars_and_cuts_apart() {
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
-        .unwrap()
-        .iter()
-        .map(|r| r["id"].as_u64().unwrap() as u32)
-        .collect();
+    let ids: Vec<u32> = pool_ids(&engine);
     assert!(engine.record_duel(ids[0], ids[1], true));
     assert!(engine.record_stars(ids[2], 3));
     assert!(engine.record_stars(ids[3], 1));
@@ -432,19 +424,13 @@ fn guess_serial(engine: &WasmEngine, limit: u32) -> (serde_json::Value, String) 
 fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
     let mut cold = WasmEngine::new(5, 6);
     while cold.fill_step(3) > 0 {}
-    let first = serde_json::from_str::<Vec<serde_json::Value>>(&cold.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let first = pool_ids(&cold)[0];
     assert!(cold.edit_begin(first));
     assert_eq!(cold.guess_plan(None, "[]", 0), r#"{"reason":"no_taste"}"#);
 
     let mut engine = taught_wasm(5);
     assert_eq!(engine.guess_plan(None, "[]", 0), r#"{"reason":"no_patch"}"#);
-    let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
-        .unwrap()
-        .iter()
-        .map(|r| r["id"].as_u64().unwrap() as u32)
-        .collect();
+    let ids: Vec<u32> = pool_ids(&engine);
     assert!(engine.edit_begin(ids[0]));
     let before = engine.edit_tree_json();
     let (rank, failed) = guess_serial(&engine, 8);
@@ -485,9 +471,7 @@ fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
 fn an_import_forgets_the_skips() {
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let skip = r#"{"socket":"out","family":"drive"}"#;
     assert!(engine.guess_skip(skip));
@@ -509,7 +493,8 @@ fn a_guess(engine: &WasmEngine, kind: &str) -> String {
     serde_json::json!({ "op": c.op, "socket": c.socket, "family": c.family }).to_string()
 }
 
-fn pool_ids(engine: &WasmEngine) -> Vec<u32> {
+/// The pool's ids, best first, as `ranked()` lists them.
+pub(crate) fn pool_ids(engine: &WasmEngine) -> Vec<u32> {
     serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
         .unwrap()
         .iter()
@@ -766,9 +751,7 @@ fn keep_as_new_carries_the_skips_made_after_it() {
 #[test]
 fn a_guess_respects_the_render_namespace() {
     let mut engine = taught_wasm(6);
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let phrase = engine.phrase_json();
     let ns = cache_namespace(&phrase);
@@ -1368,9 +1351,8 @@ fn perform_wire_measures_the_palette_controls_asked_for() {
     use auracle_session::perform::{CONTROLS, PALETTE};
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let ranked = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap();
-    let id_of = |k: usize| ranked[k]["id"].as_u64().unwrap() as u32;
-    let (id, other) = (id_of(0), id_of(1));
+    let ids = pool_ids(&engine);
+    let (id, other) = (ids[0], ids[1]);
     // `(name, index)` of each wiring, in reply order.
     let wired = |reply: &str| -> Vec<(String, Option<usize>)> {
         let v: serde_json::Value = serde_json::from_str(reply).unwrap();
@@ -1572,9 +1554,7 @@ fn a_walk_replies_with_the_state_it_began_in() {
     engine.engine.cfg.mcmc_samples = 3_000;
     engine.engine.cfg.mcmc_warmup = 1_000;
     while engine.fill_step(4) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let tree = engine.edit_tree_json();
     assert!(!engine.engine.has_taste(), "an untaught engine");
@@ -1982,8 +1962,7 @@ fn transported_audio_neither_moves_nor_misses_the_pool() {
     );
     // The absorbed buffer is what `render_of` hands WebAudio, and it must
     // match a fresh in-process render of the same term.
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&wet.ranked()).unwrap();
-    let id = ranked[0]["id"].as_u64().expect("ranked id") as u32;
+    let id = pool_ids(&wet)[0];
     let from_farm = wet.render_of(id);
     assert!(
         !from_farm.is_empty(),
@@ -2133,9 +2112,7 @@ fn a_restore_says_whether_it_could_read_the_save() {
 fn a_vote_on_a_gone_id_is_refused_not_swallowed() {
     let mut engine = WasmEngine::new(0x7E5, 4);
     while engine.fill_step(2) > 0 {}
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
-    let a = ranked[0]["id"].as_u64().unwrap() as u32;
-    let b = ranked[1]["id"].as_u64().unwrap() as u32;
+    let (a, b) = (pool_ids(&engine)[0], pool_ids(&engine)[1]);
     let before = engine.engine.log.len();
     assert!(engine.record_duel(a, b, true));
     assert!(engine.record_keep(a, true));
@@ -2163,11 +2140,7 @@ fn a_vote_on_a_gone_id_is_refused_not_swallowed() {
 fn a_cut_patch_is_never_dealt_again() {
     let mut engine = WasmEngine::new(0xC07, 6);
     while engine.fill_step(3) > 0 {}
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
-    let ids: Vec<u32> = ranked
-        .iter()
-        .map(|r| r["id"].as_u64().unwrap() as u32)
-        .collect();
+    let ids = pool_ids(&engine);
     assert!(ids.len() >= 4, "pool too small to test: {}", ids.len());
     let cut = ids[0];
     assert!(engine.record_keep(cut, false));
@@ -2267,8 +2240,7 @@ fn import_and_knob_boundaries_refuse_what_they_used_to_pass() {
         0
     );
 
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
-    let id = ranked[0]["id"].as_u64().unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let before = engine.edit_tree_json();
     assert!(!engine.edit_param("amp#attack", f64::NAN, false));
@@ -2329,9 +2301,7 @@ fn a_lost_job_is_recoverable_from_its_index_alone() {
 fn a_bench_edited_back_to_where_it_started_has_no_duel_to_deal() {
     let mut engine = WasmEngine::new(0xD0E1, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     assert_eq!(engine.edit_original_id(), id);
     assert!(
@@ -2382,9 +2352,7 @@ fn a_selector_change_comes_back_at_its_measured_makeup() {
     assert!(changes.len() > 300, "{} selector changes", changes.len());
     let mut engine = WasmEngine::new(0x5E1E, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let mut far = 0;
     let sample: Vec<_> = changes.iter().step_by(25).collect();
@@ -2423,9 +2391,7 @@ fn a_selector_change_comes_back_at_its_measured_makeup() {
 fn an_undone_selector_has_its_measured_makeup_before_its_render() {
     let mut engine = WasmEngine::new(0x5E1E, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
     let wave = rack["modules"]
@@ -2464,9 +2430,7 @@ fn an_undone_selector_has_its_measured_makeup_before_its_render() {
 fn a_selector_written_before_its_render_lands_where_edit_param_does() {
     let mut engine = WasmEngine::new(0x5E1E, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
     let (addr, next) = rack["modules"]
@@ -2537,9 +2501,7 @@ fn a_selector_written_before_its_render_lands_where_edit_param_does() {
 fn the_bench_readout_follows_the_bench() {
     let mut engine = WasmEngine::new(0x0B1E, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
 
     // Untaught: no posterior, so no honest number exists.
@@ -2548,11 +2510,7 @@ fn the_bench_readout_follows_the_bench() {
     assert_eq!(engine.edit_explain(), "null");
 
     // Teach it something, then the same two calls have to answer.
-    let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
-    let (a, b) = (
-        ranked[0]["id"].as_u64().unwrap() as u32,
-        ranked[1]["id"].as_u64().unwrap() as u32,
-    );
+    let (a, b) = (pool_ids(&engine)[0], pool_ids(&engine)[1]);
     engine.record_duel(a, b, true);
     engine.fit();
     let u0: serde_json::Value = serde_json::from_str(&engine.edit_utility()).unwrap();
@@ -2589,9 +2547,7 @@ fn the_bench_readout_follows_the_bench() {
 fn a_bench_with_its_only_source_unplugged_fails_the_vet_as_silent() {
     let mut engine = WasmEngine::new(0x5117, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     assert!(engine.edit_vet_ok());
     assert!(!engine.edit_vet_silent());
@@ -2617,9 +2573,7 @@ fn a_bench_with_its_only_source_unplugged_fails_the_vet_as_silent() {
 fn a_logged_revert_carries_both_sides_of_the_edit() {
     let mut engine = WasmEngine::new(0x2E7, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let before = engine.edit_tree_json();
     assert_eq!(
@@ -2661,9 +2615,7 @@ fn a_preview_renders_the_proposal_and_leaves_the_bench_alone() {
     // pool no longer can; the property is the fixture, not the seed).
     let mut engine = WasmEngine::new(0x9A2, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     let before_tree = engine.edit_tree_json();
     let before_render = engine.edit_render();
@@ -2698,9 +2650,7 @@ fn a_preview_renders_the_proposal_and_leaves_the_bench_alone() {
 fn an_unplayable_preview_is_empty_rather_than_silent() {
     let mut engine = WasmEngine::new(0x9A2, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
 
     // No bench at all.
     assert!(engine
@@ -2751,9 +2701,7 @@ fn the_phi_scale_ships_by_name_once_it_exists() {
 fn a_take_arrives_on_the_bench_through_a_structural_edit() {
     let mut engine = WasmEngine::new(0xCA9, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = pool_ids(&engine)[0];
     assert!(engine.edit_begin(id));
     assert_eq!(
         engine.edit_structure(r#"{"op":"replace","key":"node","kind":"capture"}"#),

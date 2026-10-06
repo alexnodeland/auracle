@@ -3,9 +3,7 @@ use super::*;
 fn engine_with_patch() -> (WasmEngine, String) {
     let mut engine = WasmEngine::new(3, 6);
     while engine.fill_step(3) > 0 {}
-    let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-        .as_u64()
-        .unwrap() as u32;
+    let id = crate::tests::pool_ids(&engine)[0];
     let tree = engine.tree_json_of(id);
     (engine, tree)
 }
@@ -105,11 +103,7 @@ fn the_lesson_filter_darkens_the_sound_in_hand() {
 fn a_patch_with_no_room_gets_the_filter_after_it() {
     let mut engine = WasmEngine::new(20_260_928, 60);
     while engine.fill_step(8) > 0 {}
-    let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
-        .unwrap()
-        .iter()
-        .map(|r| r["id"].as_u64().unwrap() as u32)
-        .collect();
+    let ids: Vec<u32> = crate::tests::pool_ids(&engine);
     let full = ids
         .iter()
         .map(|&id| engine.tree_json_of(id))
