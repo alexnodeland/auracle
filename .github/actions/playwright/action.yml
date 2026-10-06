@@ -43,6 +43,16 @@ runs:
         fi
         echo "browsers in $PLAYWRIGHT_BROWSERS_PATH: $(ls "$PLAYWRIGHT_BROWSERS_PATH" | tr '\n' ' ')"
 
+    # The image runs as root and the workspace belongs to the runner's user
+    # (uid 1001), so git refuses it ("dubious ownership"), and the
+    # safe.directory actions/checkout sets lasts only for its own step.
+    # Playwright runs git on CI (its commit and the PR's diff go into the
+    # report), so the workspace is marked safe here for the rest of the job:
+    # HOME is /github/home for every step of a container job.
+    - name: Let git read the workspace
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
     # The Node .node-version pins, as every other job runs (the image's own
     # is newer), from the runner's tool cache. No npm cache: tests/web locks
     # three packages, which install in seconds, and in the image the cache
