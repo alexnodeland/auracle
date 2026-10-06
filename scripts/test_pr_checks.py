@@ -195,6 +195,18 @@ class Parse(unittest.TestCase):
             (problem,) = P.parse(body, REPO).problems
             self.assertIn("names 2 issues", problem, body)
 
+    def test_a_list_that_goes_on_to_the_next_line_fails(self):
+        for body in ["Closes #3,\n#4", "Closes #3, and\n#4", "Fixes #3 and\n#4", "Closes #3,\r\n#4"]:
+            links = P.parse(body, REPO)
+            (problem,) = links.problems
+            self.assertIn("names 2 issues", problem, body)
+            self.assertNotIn("\n", problem, body)
+            self.assertEqual(links.closes, [3, 4], body)
+
+    def test_one_issue_per_line_is_not_a_list(self):
+        links = P.parse("Closes #3\n#4 is next.\nCloses #5,\ncloses #7;\nRefs #6", REPO)
+        self.assertEqual((links.closes, links.refs, links.problems), ([3, 5, 7], [6], []))
+
     def test_a_list_after_refs_is_fine(self):
         links = P.parse("Refs #181, #178 and #177", REPO)
         self.assertEqual((links.refs, links.problems), ([181, 178, 177], []))

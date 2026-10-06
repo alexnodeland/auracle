@@ -92,8 +92,9 @@ REF = r"(?:https?://(?:www\.)?github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+|(?
 # Between the keyword and its ref: a colon, or spaces.
 AFTER_KEYWORD = r"(?:[ \t]*:[ \t]*|[ \t]+)"
 # Between two refs of a list: a comma, semicolon, ampersand or slash, `and`,
-# or only spaces.
-BETWEEN = r"(?:[ \t]*[,;&/][ \t]*(?:and[ \t]+)?|[ \t]+(?:(?:and|&)[ \t]+)?)"
+# or only spaces. After a separator or an `and` the list may go on to the
+# next line (`Closes #3,` then `#4`); after only spaces it may not.
+BETWEEN = r"(?:[ \t]*[,;&/]\s*(?:and\s+)?|[ \t]+(?:(?:and|&)\s+)?)"
 STATEMENT = re.compile(
     rf"\b(?P<keyword>{CLOSING}|{REFS})\b{AFTER_KEYWORD}(?P<first>{REF})(?P<rest>(?:{BETWEEN}{REF})*)",
     re.IGNORECASE,
@@ -221,7 +222,7 @@ def parse(body: str, repo: str = REPO) -> Links:
         if closing and len(refs) > 1:
             fixed = ", ".join([f"{keyword} {refs[0]}"] + [f"{keyword.lower()} {r}" for r in refs[1:]])
             links.problems.append(
-                f"`{m.group(0).strip()}` names {len(refs)} issues after one `{keyword}`. GitHub reads "
+                f"`{' '.join(m.group(0).split())}` names {len(refs)} issues after one `{keyword}`. GitHub reads "
                 f"one issue per keyword, so it would close {refs[0]} only. Give each its own: `{fixed}`, "
                 "or one per line."
             )
