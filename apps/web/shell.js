@@ -280,9 +280,11 @@ export function createShell(host = {}) {
   // in the bubble phase, after every handler on the page has had it, and not
   // when one of them closed something with it (`defaultPrevented`: a menu,
   // the selection, the catalog, a module in hand, a guess asked for a place,
-  // a new patch) or stopped it on its way (a plate, a knob). So PATCH's Esc
-  // chain walks out one thing a press and the view outlasts it. In a text
-  // field Esc is the field's (Find a sound clears), and the view stays.
+  // a new patch; PERFORM's XY or How it works, the ? card, the scope and
+  // picture panels, TASTE's selected point) or stopped it on its way (a
+  // plate, a knob, a dialog). So Esc walks out one thing a press, at every
+  // level, and the view outlasts it. In a text field Esc is the field's
+  // (Find a sound clears), and the view stays.
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !model.on || e.defaultPrevented || typing(e.target)) return;
     setModelView(false, { sticky: true });

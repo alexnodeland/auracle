@@ -21271,8 +21271,10 @@ function scopePanelInit() {
     if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
     close();
   });
+  // Esc closes it, and that is the press spent: the model view, which takes
+  // Esc last, waits for the next one.
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { close(); $("scope-btn").focus(); }
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { ev.preventDefault(); close(); $("scope-btn").focus(); }
   });
 }
 
@@ -23084,7 +23086,7 @@ function imagePanelInit() {
     close();
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) dismiss();
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { ev.preventDefault(); dismiss(); }
   });
 }
 
@@ -23733,7 +23735,12 @@ document.addEventListener("keydown", (e) => {
   // Same optional-chaining as the note-key guard: a keydown targeting the
   // document has no `closest`, and the throw stopped `?` opening help.
   if (e.key === "?" && !e.target?.closest?.("input")) showHelp(true);
-  if (e.key === "Escape") showHelp(false);
+  // Only a press that closed it is spent (`preventDefault`): with the card
+  // away, Esc goes on to what it closes elsewhere, the model view last.
+  if (e.key === "Escape" && !$("help").classList.contains("hidden")) {
+    e.preventDefault();
+    showHelp(false);
+  }
 });
 
 // ---------- resize ----------
