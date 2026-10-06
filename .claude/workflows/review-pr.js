@@ -11,7 +11,8 @@ export const meta = {
 // args: { pr?: <number>, branch?: 'claude/<topic>', worktree?: '/abs/path' }: a PR, or a branch with its
 // worktree. With a PR and no worktree, nothing is checked out: the diff and the files come from GitHub.
 // Returns { workflow, target, findings: [{ severity, lenses, file, line, summary, scenario, evidence,
-// verdict }], refuted: [...], lenses_failed: [...] }, findings most severe first.
+// verdict }], refuted: [...], lenses_failed: [...] }, findings most severe first, then by place. Every
+// finding is put to a refuter of its own, and each comes back in findings or in refuted.
 
 const REPO = 'alexnodeland/auracle'
 
@@ -109,24 +110,12 @@ Only report a finding you can support with a concrete scenario (inputs, state, w
 const lensesFailed = LENSES.filter((_, i) => !lensResults[i]).map(l => l.name)
 if (lensesFailed.length) log(`lenses that did not return: ${lensesFailed.join(', ')}`)
 
-// Plain code: one finding per place. The same file and line from two lenses
-// is one finding, at the higher severity, with both lenses named.
+// Every finding goes to a refuter of its own. Two findings at one place are
+// not one finding: a file's findings with no line, or two defects on one
+// line, would share a refuter that tests only one of them, and a refutation
+// of that one would lose the rest unseen.
 const rank = s => SEVERITY.indexOf(s)
-const merged = new Map()
-lensResults.forEach((r, i) => {
-  if (!r) return
-  for (const f of r.findings) {
-    const key = `${f.file}:${f.line || 0}`
-    const had = merged.get(key)
-    if (!had) merged.set(key, { ...f, lenses: [LENSES[i].name] })
-    else {
-      had.lenses.push(LENSES[i].name)
-      if (rank(f.severity) < rank(had.severity)) Object.assign(had, { severity: f.severity, summary: f.summary, scenario: f.scenario })
-      had.evidence += `\n(${LENSES[i].name}) ${f.summary}: ${f.evidence}`
-    }
-  }
-})
-const found = [...merged.values()]
+const found = lensResults.flatMap((r, i) => (r ? r.findings.map(f => ({ ...f, lenses: [LENSES[i].name] })) : []))
 log(`${found.length} finding(s) to test`)
 
 phase('Refute')
@@ -151,6 +140,7 @@ found.forEach((f, i) => {
   if (v && !v.refuted) findings.push({ ...f, severity: v.severity, verdict: v.reason })
   else refuted.push({ file: f.file, line: f.line, summary: f.summary, why: v ? v.reason : 'its refuter did not return, so it was not confirmed' })
 })
-findings.sort((a, b) => rank(a.severity) - rank(b.severity) || b.lenses.length - a.lenses.length)
+// Most severe first; at one severity, by place, so findings at one place sit together.
+findings.sort((a, b) => rank(a.severity) - rank(b.severity) || a.file.localeCompare(b.file) || (a.line || 0) - (b.line || 0))
 log(`${findings.length} finding(s) stand, ${refuted.length} refuted`)
 return { workflow: 'review-pr', target: TARGET, findings, refuted, lenses_failed: lensesFailed }

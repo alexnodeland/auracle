@@ -112,8 +112,9 @@ install-hooks:
 ## when it exists), the tests of the coverage gate's, the mutation
 ## report's and CI stats' scripts, and the operator's (dev-ops): the saved
 ## Claude Code workflows (.claude/workflows/), each run dry on stubbed agents
-## by scripts/ops/check_workflows.mjs, that check's own tests, and the tests
-## and syntax of scripts/ops/
+## by scripts/ops/check_workflows.mjs, that check's own tests, what the
+## workflows promise the operator on scripted agents (workflows.test.mjs),
+## and the tests and syntax of scripts/ops/
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
 ## atomically), so they are prerequisites that `make -j` runs side by side; a
@@ -165,7 +166,7 @@ dev-ci-stats:
 	@python3 scripts/test_ci_stats.py
 dev-ops:
 	@node scripts/ops/check_workflows.mjs
-	@node --test --test-reporter=dot scripts/ops/check_workflows.test.mjs
+	@node --test --test-reporter=dot scripts/ops/check_workflows.test.mjs scripts/ops/workflows.test.mjs
 	@for f in scripts/ops/test_*.py; do python3 $$f || exit 1; done
 	@for f in scripts/ops/*.sh; do bash -n $$f || exit 1; done
 
