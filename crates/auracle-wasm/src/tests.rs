@@ -1689,18 +1689,24 @@ fn a_walk_replies_with_the_state_it_began_in() {
     assert!(engine.engine.has_taste(), "taught while the drift was out");
     while engine.perform_job_step(job, 1) {}
     let reply: serde_json::Value = serde_json::from_str(&engine.perform_job_finish(job)).unwrap();
-    if reply.get("reason").is_none() {
-        assert_eq!(reply["taste"], false, "{reply}");
-    }
+    // A six-step knob drift at σ 0.15 from a vetted member moves: the
+    // reply carries a tree, and so the state it began in.
+    assert!(
+        reply.get("reason").is_none(),
+        "the drift grew nothing: {reply}"
+    );
+    assert_eq!(reply["taste"], false, "{reply}");
     // A walk begun now is taste-directed.
     let begun: serde_json::Value =
         serde_json::from_str(&engine.perform_drift_begin(&tree, "[]", "[]", 6, 0.15)).unwrap();
     assert!(begun.get("job").is_some(), "a drift begins");
     let reply: serde_json::Value =
         serde_json::from_str(&engine.run_job(&begun.to_string())).unwrap();
-    if reply.get("reason").is_none() {
-        assert_eq!(reply["taste"], true, "{reply}");
-    }
+    assert!(
+        reply.get("reason").is_none(),
+        "the drift grew nothing: {reply}"
+    );
+    assert_eq!(reply["taste"], true, "{reply}");
 }
 
 /// A draw on one stream never moves another: a spare offer grown in the
