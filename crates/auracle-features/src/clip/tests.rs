@@ -28,7 +28,17 @@ fn a_clip_round_trips_through_its_saved_form() {
     assert_eq!(back.planar(), clip.planar());
     let json = serde_json::to_string(&clip).unwrap();
     let again: AuditionClip = serde_json::from_str(&json).unwrap();
-    // A debug print names the clip and does not dump it.
+    assert_eq!(again.planar(), clip.planar());
+    assert_eq!(again.source(), ClipSource::Captured);
+}
+
+/// A debug print of anything that carries a clip (a phrase, a session
+/// config, a walk context) names the clip and does not dump its samples.
+#[test]
+fn a_debug_print_names_the_clip_and_does_not_dump_it() {
+    let spec = PhraseSpec::default();
+    let clip = AuditionClip::from_interleaved(&tone(44_100, 2, 48_000.0), 2, 48_000.0, &spec)
+        .expect("a stereo capture");
     let printed = format!(
         "{:?}",
         PhraseSpec {
@@ -36,9 +46,8 @@ fn a_clip_round_trips_through_its_saved_form() {
             ..spec.clone()
         }
     );
-    assert!(printed.contains(clip.id()) && printed.len() < 2_000);
-    assert_eq!(again.planar(), clip.planar());
-    assert_eq!(again.source(), ClipSource::Captured);
+    assert!(printed.contains(clip.id()), "{printed}");
+    assert!(printed.len() < 2_000, "{} bytes", printed.len());
 }
 
 /// A capture longer than the phrase is cut to it: nothing past the
