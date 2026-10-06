@@ -110,11 +110,13 @@ test("a face the player is looking at goes before a measurement nobody waits on,
 // guess, PERFORM's measurement) is served before that job's next render, so
 // it waits at most for the render in progress when it arrived: a wasm call
 // cannot be interrupted, and the job answers the `now` lane between renders
-// (`breathe`). The worker's own `serveNow`, `breathe`, `guessRun` and
-// `measure` run here, over an engine that records each render and the
-// requests it served. A request "arrives during render n" by being in the
-// lane when that render returns, as a message posted meanwhile is delivered
-// at the job's next breath.
+// (`breathe`). The worker's own `yieldToQueue`, `serveNow`, `breathe`,
+// `holdFloor`, `guessRun` and `measure` run here, over an engine that records
+// each render and the requests it served. A request "posted during render n"
+// is queued on a later turn of the event loop, as a message posted to a
+// worker that is inside a call is delivered only once the job gives the
+// event loop a turn: so the job must yield (`yieldToQueue`) and then serve
+// the lane (`serveNow`), or the request waits for the next render too.
 const line = (re) => {
   const m = src.match(re);
   assert.ok(m, `worker.js has no ${re}`);
@@ -132,8 +134,8 @@ function floorJobs() {
     memo_render(tree) {
       log.push(`render ${tree}`);
       owed.delete(tree);
-      const arrives = during.get(++renders);
-      if (arrives) lanes[laneOf(arrives)].push(arrives);
+      const posted = during.get(++renders);
+      if (posted) setTimeout(() => lanes[laneOf(posted)].push(posted), 0);
       return true;
     },
     guess_plan: () => JSON.stringify({ jobs: jobs() }),
@@ -143,19 +145,20 @@ function floorJobs() {
     perform_wire_known: () => "{}",
   };
   const fns = new Function(
-    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "runMessage", "yieldToQueue", "beginLongOp", "endLongOp",
+    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "runMessage", "schedulePump", "beginLongOp", "endLongOp",
     [
-      line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
+      line(/^const yieldToQueue = .*$/m), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
       line(/^const idleOnly = .*$/m), line(/^const laterWaiting = .*$/m), line(/^const bgWaits = .*$/m),
       lift("laneOf"), lift("blocked"), lift("seenFaceWaiting"), lift("isFatal"), lift("performReply"),
-      lift("serveNow"), lift("breathe"), lift("guessRun"), lift("measure"),
-      "return { guessRun, measure };",
+      lift("serveNow"), lift("breathe"), lift("holdFloor"), lift("guessRun"), lift("measure"),
+      // Each holding the floor, as `dispatch` runs them.
+      "return { guessRun: (m) => holdFloor(m, () => guessRun(m)), measure: (m) => holdFloor(m, () => measure(m)) };",
     ].join("\n"),
   )(
     NOW, SOON, LATER, 3, lanes, null, () => false, () => false, engine,
     (m) => log.push(`reply ${m.type}`),
     async (m) => log.push(`served ${m.type}`),
-    () => new Promise((resolve) => setTimeout(resolve, 0)),
+    () => {},
     () => {},
     () => {},
   );
@@ -164,6 +167,7 @@ function floorJobs() {
     log,
     lanes,
     owe: (...trees) => trees.forEach((t) => owed.add(t)),
+    // `m` is posted to the worker while render `n` runs.
     during: (n, m) => during.set(n, m),
   };
 }
