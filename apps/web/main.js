@@ -7052,7 +7052,7 @@ function onDealt(pair, meta) {
     return void placePair(pair, meta);
   }
   // No pair: the engine dealt nothing (fewer than two sounds it may deal),
-  // so nothing waits, take-back or not. A pair already waiting: the one a
+  // so nothing new waits, take-back or not. A pair already waiting: the one a
   // taken-back pick had put up, back as the next (`retractVote`), and this
   // answer, the deal asked for behind that pair, is thrown away unseen.
   if (!pair || ahead) return;
