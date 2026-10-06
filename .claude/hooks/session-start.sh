@@ -3,7 +3,14 @@
 # Whatever this prints is added to the session's context. It never fails the
 # session: every check is best-effort.
 set -u
-root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# The session's own checkout, from the cwd the hook is given: a session in a
+# worktree under .claude/worktrees/ has its own apps/web/pkg, and
+# CLAUDE_PROJECT_DIR may still name the main checkout.
+here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/_root.sh"
+cwd="$(python3 "$here/_input.py" cwd)"
+root="$(checkout_root "${cwd:-$(pwd)}")"
+root="${root:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
 cd "$root" 2>/dev/null || exit 0
 
 # 1. Is the app's engine older than the Rust it is built from?
