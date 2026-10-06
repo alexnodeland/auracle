@@ -111,9 +111,23 @@ fn render_all(
     failed
 }
 
+/// Every module count the term's structural features keep, by name, empty
+/// sockets (`n_silence`) aside: φ's columns and the counts with none.
+fn counts(tree: &PatchTree) -> HashMap<String, f64> {
+    let fields = serde_json::to_value(struct_features(tree)).unwrap();
+    fields
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(k, _)| k.starts_with("n_") && *k != "n_silence")
+        .map(|(k, v)| (k.clone(), v.as_f64().unwrap()))
+        .collect()
+}
+
 /// **Every candidate adds, and its family is φ's.** Over random trees from
 /// the prior, at the output and at a deeper socket: each candidate is a
-/// valid tree, larger than the patch, and raises its family's φ
+/// valid tree, larger than the patch, adds a module without taking any
+/// away (no count falls, and their sum rises), and raises its family's φ
 /// coordinate, `n_<family>` (bar the mix, which φ does not count); at the
 /// output, every socket is the output, the root's slot or an empty socket.
 #[test]
@@ -126,6 +140,7 @@ fn every_candidate_adds_and_its_family_is_phis() {
         let mut tree = prior.sample_with_rng(&mut rng);
         tree.ensure_uids();
         let before = struct_features(&tree).to_vec();
+        let had = counts(&tree);
         let mut ks = Vec::new();
         keys(&tree.root, "node".into(), &mut ks);
         let deep = ks.last().map(|k| k.0.clone());
@@ -137,6 +152,13 @@ fn every_candidate_adds_and_its_family_is_phis() {
                     // was added (below).
                     assert!(c.tree.root.size() > tree.root.size(), "{:?}", c.op);
                 }
+                let has = counts(&c.tree);
+                assert!(
+                    had.iter().all(|(k, n)| has[k] >= *n),
+                    "{:?} took a module away",
+                    c.op
+                );
+                assert!(has.values().sum::<f64>() > had.values().sum::<f64>());
                 let after = struct_features(&c.tree).to_vec();
                 if c.family != "mix" {
                     let j = names

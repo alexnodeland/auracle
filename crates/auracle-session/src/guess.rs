@@ -416,21 +416,6 @@ fn sounds(n: &AudioNode) -> bool {
     }
 }
 
-/// Every module count φ_struct keeps raw, empty sockets aside: a candidate
-/// that lowers one took a module away.
-fn counts(s: &StructFeatures) -> Vec<(String, f64)> {
-    // A struct serializes to an object: its fields, by name.
-    let fields = serde_json::to_value(s)
-        .ok()
-        .and_then(|v| v.as_object().cloned())
-        .unwrap_or_default();
-    fields
-        .into_iter()
-        .filter(|(k, _)| k.starts_with("n_") && k != "n_silence")
-        .filter_map(|(k, v)| v.as_f64().map(|v| (k, v)))
-        .collect()
-}
-
 fn socket_of(prefix: &str, n: &AudioNode, key: &str) -> String {
     let uid = n.uid();
     if uid.is_new() {
@@ -448,8 +433,6 @@ fn socket_of(prefix: &str, n: &AudioNode, key: &str) -> String {
 /// In a fixed order: by key, shallower first, then the kinds' order.
 /// `key` is filled in by [`Engine`], which knows the phrase.
 pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidate> {
-    let base = counts(&struct_features(tree));
-    let base_sum: f64 = base.iter().map(|x| x.1).sum();
     let mut nodes = Vec::new();
     keys(&tree.root, "node".into(), &mut nodes);
     // Shallower sockets first, a stable order ties break in: the order the
@@ -523,14 +506,6 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
         let Ok(t) = apply_struct_op(tree, &op) else {
             continue;
         };
-        let c = counts(&struct_features(&t));
-        let keeps = c
-            .iter()
-            .zip(&base)
-            .all(|((k, x), (kb, y))| k == kb && x >= y);
-        if !keeps || c.iter().map(|x| x.1).sum::<f64>() <= base_sum {
-            continue;
-        }
         out.push(GuessCandidate {
             op,
             kind,
