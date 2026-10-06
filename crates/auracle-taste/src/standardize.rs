@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 pub struct Standardizer {
     /// Per-dimension means.
     pub mean: Vec<f64>,
-    /// Per-dimension standard deviations (floored to 1.0 where degenerate).
+    /// Per-dimension standard deviations: 1.0 where a column has no usable
+    /// scale, because its σ is under 1e-9 (it is degenerate) or its moments
+    /// are not finite (no finite cell, or an overflow).
     pub std: Vec<f64>,
 }
 
