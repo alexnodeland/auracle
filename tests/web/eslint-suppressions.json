@@ -292,11 +292,6 @@
       "count": 1
     }
   },
-  "patch_page.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    }
-  },
   "patch_sheet.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 4
