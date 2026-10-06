@@ -435,8 +435,15 @@ fn mixed_modalities_recover() {
     );
 }
 
-/// M3 gate 3: ranking a candidate pool by posterior-mean utility puts
-/// genuinely good candidates on top (the exploit half of acquisition).
+/// M3 gate 3: ranking a candidate pool by posterior-mean utility orders it
+/// as the listener would, so the top of that order (the exploit half of
+/// acquisition) is genuinely good.
+///
+/// Scored over the whole pool of 100, by Spearman's ρ between the model's
+/// ranking and the truth's. The top-10 overlap this used to count is one
+/// draw of ten ranks: over twenty seeds it ran 6 to 10 against a bound of 6.
+/// ρ over the same twenty seeds (this one and 1 to 19) ran 0.944 to 0.984
+/// (this one 0.981), about a hundredth of spread around 0.97.
 #[test]
 fn posterior_ranks_a_pool() {
     let mut rng = StdRng::seed_from_u64(33);
@@ -450,27 +457,31 @@ fn posterior_ranks_a_pool() {
     let model = TasteModel::new(TasteConfig::linear(D));
     let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
-    // Pool of 100; compare model's top-10 against true top-10.
     let pool: Vec<Vec<f64>> = (0..100).map(|_| random_phi(&mut rng)).collect();
-    let mut by_model: Vec<usize> = (0..pool.len()).collect();
-    by_model.sort_by(|&i, &j| {
-        posterior
-            .utility(&pool[j], 0)
-            .0
-            .total_cmp(&posterior.utility(&pool[i], 0).0)
-    });
-    let mut by_truth: Vec<usize> = (0..pool.len()).collect();
-    by_truth.sort_by(|&i, &j| user.utility(&pool[j]).total_cmp(&user.utility(&pool[i])));
-
-    let top_model: std::collections::HashSet<usize> = by_model[..10].iter().copied().collect();
-    let overlap = by_truth[..10]
-        .iter()
-        .filter(|i| top_model.contains(i))
-        .count();
+    let by_model: Vec<f64> = pool.iter().map(|x| posterior.utility(x, 0).0).collect();
+    let by_truth: Vec<f64> = pool.iter().map(|x| user.utility(x)).collect();
+    let rho = spearman(&by_model, &by_truth);
     assert!(
-        overlap >= 6,
-        "only {overlap}/10 of the true best candidates in the model's top 10"
+        rho > 0.9,
+        "the model orders the pool unlike the listener: Spearman ρ {rho}"
     );
+}
+
+/// Spearman's rank correlation (no ties among continuous utilities).
+fn spearman(a: &[f64], b: &[f64]) -> f64 {
+    let ranks = |v: &[f64]| -> Vec<f64> {
+        let mut order: Vec<usize> = (0..v.len()).collect();
+        order.sort_by(|&i, &j| v[i].total_cmp(&v[j]));
+        let mut r = vec![0.0; v.len()];
+        for (rank, &i) in order.iter().enumerate() {
+            r[i] = rank as f64;
+        }
+        r
+    };
+    let (ra, rb) = (ranks(a), ranks(b));
+    let n = a.len() as f64;
+    let d2: f64 = ra.iter().zip(&rb).map(|(x, y)| (x - y) * (x - y)).sum();
+    1.0 - 6.0 * d2 / (n * (n * n - 1.0))
 }
 
 /// **The misspecification gate.** Every other user here is linear in the
