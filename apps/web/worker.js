@@ -199,6 +199,14 @@ const MAX_TRIES = 2;
 // up and taking the serial path. Farm boot overlaps the IndexedDB read, so by
 // the time we get here they are usually already in.
 const FARM_HANDSHAKE_MS = 5000;
+// How long a crew waits for this worker to stamp the render store before it is
+// handed the phrase anyway (`renderStoreReady`). On a first visit the stamp was
+// done 42 to 53 ms after init, most of it importing render-store.js (#200).
+// This bounds an open that never answers, as one does behind a deletion of the
+// store that another tab's connections hold pending; without it the veil would
+// stay up for good. Past it the farm workers open the store themselves, as
+// they did before #200.
+const RENDER_STAMP_MS = 2000;
 // Audition buffers to carry back with the fill. The engine's pool is
 // `RenderPolicy::Lazy` — it keeps no audio at admission — but the memo does,
 // and the first few patches are precisely the ones the user auditions while
@@ -253,6 +261,49 @@ function farmSetup(ports) {
     f.port.postMessage({ type: "phrase", json: phrase, ns });
     farm.push(f);
   }
+}
+
+// The render cache's store (render-store.js), opened and stamped here, once,
+// and closed again. A farm worker opens it when the phrase arrives (farm.js
+// `cacheOpen`), and opens a store already stamped by reading it. When each
+// worker of a crew found no store (a first visit) and created and stamped it
+// itself, their writes queued behind one another's first renders: at width 6
+// the veil waited about 1.5 s for them (#200). Started at init whatever the
+// farm's width, and once per worker: the namespace never sees the audition
+// clip, so a phrase sent again (`farmResendPhrase`) leaves the stamp as it is,
+// and a walk crew waits for it as boot's does (`crewUp`). Settles when the
+// store is stamped or cannot be opened, or after `RENDER_STAMP_MS`, whichever
+// comes first; an open that answers later still stamps the store if it needs
+// it, and its connection is closed.
+const renderStoreModule = () => import(`./render-store.js?v=${V}`);
+let renderStamped = null;
+function renderStoreReady(ns) {
+  if (!renderStamped) {
+    const stamping = (async () => {
+      try {
+        const { renderStoreOpen } = await renderStoreModule();
+        const db = await renderStoreOpen(self.indexedDB, ns);
+        if (db) db.close();
+      } catch (_) {
+        /* each farm worker creates and stamps it, as before */
+      }
+    })();
+    let timer = null;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, RENDER_STAMP_MS);
+    });
+    renderStamped = Promise.race([stamping, late]).finally(() => clearTimeout(timer));
+  }
+  return renderStamped;
+}
+
+// Boot's crew: the store stamped (or `RENDER_STAMP_MS` gone by), then the
+// phrase handed to each worker, then the wait for one to report ready. True
+// when one did.
+async function farmBoot(ports, ns) {
+  await renderStoreReady(ns);
+  farmSetup(ports);
+  return farmHandshake(FARM_HANDSHAKE_MS);
 }
 
 // Set by whichever fill is running; farm messages are meaningless outside one.
@@ -401,6 +452,12 @@ function crewUp() {
   if (crewReady()) return Promise.resolve(true);
   if (crewRaising) return crewRaising;
   crewRaising = (async () => {
+    // As boot's crew (`farmBoot`): a walk crew is asked for once the render
+    // store is stamped (`renderStoreReady`, started at init), so its workers'
+    // opens only read. Settled by then, as a rule: the stamp is done about
+    // 50 ms after init. Waited for here, before main spawns anything, so no
+    // crew stands half set up meanwhile.
+    await renderStamped;
     const id = ++crewSeq;
     const ports = await new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -2866,6 +2923,7 @@ async function dispatch(m) {
         } catch (_) { /* older engine */ }
         faceNs = ns;
         faceStoreOpen(); // ready for the first faces copied out of the memo
+        renderStoreReady(ns); // before any farm worker opens it (`farmBoot`)
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.
@@ -2887,8 +2945,7 @@ async function dispatch(m) {
         let farmed = false;
         if (Array.isArray(m.farmPorts) && m.farmPorts.length) {
           try {
-            farmSetup(m.farmPorts);
-            farmed = await farmHandshake(FARM_HANDSHAKE_MS);
+            farmed = await farmBoot(m.farmPorts, ns);
           } catch (err) {
             console.warn("[auracle] farm unavailable:", err);
             farmed = false;
