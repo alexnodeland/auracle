@@ -22,6 +22,7 @@ deeper material. Read those when a task takes you into their area, not before.
 | `crates/auracle-wasm` | `WasmEngine` for the worker, `LivePoly` for the AudioWorklet | same |
 | `apps/web` | The instrument: `main.js`, `worker.js`, `farm.js`, `perform.js`, `taste.js`, `live-audio.js`, `midi.js`, `booth.js` | [`apps/web/AGENTS.md`](apps/web/AGENTS.md) |
 | `tests/web` | Playwright specs against the real app and the built wasm | [`tests/web/AGENTS.md`](tests/web/AGENTS.md) |
+| `tests/worker` | `worker.js` as it is, in Node over the built wasm with no page: what it answers and in what order | same, and [`docs/architecture/testing.md`](docs/architecture/testing.md#the-levels) |
 | `www` | The site: landing, guide (`www/docs`), reference (`www/reference`), theme, figures | [`www/AGENTS.md`](www/AGENTS.md) |
 | `www/video` | The films: scripts, shots, stage, voice, score, mix, publish | [`www/video/AGENTS.md`](www/video/AGENTS.md) |
 | `docs` | For contributors and agents: architecture, decisions (ADRs), proposals, plans, runbooks | [`docs/README.md`](docs/README.md) |
@@ -104,6 +105,7 @@ contributor guide; this file does not repeat it.
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests) |
 | After changing Rust the app calls | `make wasm` |
 | Only JS changed | `make web-check` |
+| `worker.js`'s replies or lanes | `make worker-test` (after `make wasm`) |
 | One crate's tests | `make test-crate CRATE=auracle-<crate>` (`FILTER=` a test name) |
 | Browser tests | `cd tests/web && AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test [spec]` |
 | One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow` or `@quarantine`) |

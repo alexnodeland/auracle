@@ -21,6 +21,7 @@ this table.
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below | Any JS |
 | Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
+| Worker protocol | `make worker-test` (after `make wasm`) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
@@ -41,13 +42,65 @@ this table.
 | φ | `make revalidate` (both sides, diff), then `make perform-wirings`, then `cargo run -p auracle-features --example file_phi --release` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ; `FILE_MASKED` still names what a recording cannot measure (the mask gate test fails until it does) | Any φ, phrase, vetting or normalization change |
 | Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
 
+## The levels
+
+A behaviour is tested once, at the lowest level that can prove it (#178):
+
+| Level | Proves | Where |
+| --- | --- | --- |
+| Rust unit | One module's logic | The module's crate (`make test-crate`) |
+| Rust engine | Engine behaviour through the crates' public API: the pool, duels, fits, walks, offers, names, persistence | The crates (`make test`) |
+| Wasm binding | Only what the binding adds: shapes, errors, `u64` at the boundary | `crates/auracle-wasm` |
+| Worker protocol | A message to `worker.js` and its reply, its lanes and its scheduling, with no page | `tests/worker/` (`make worker-test`) |
+| JS unit | Pure logic in an `apps/web` module | `apps/web/tests/` (`make web-check`) |
+| Browser | The wiring from a gesture to the engine and back, and what a player sees and hears: one spec for each wiring, not one for each engine case | `tests/web/` |
+
+**The worker-protocol level.** `tests/worker/harness.mjs` runs
+`apps/web/worker.js`, unchanged, as the module worker `main.js` starts, in a
+Node `worker_threads` thread over the built engine in `apps/web/pkg`. It
+gives the worker what a Web Worker has and Node does not (`self` with
+`postMessage`, `onmessage` and `location`, the `unhandledrejection` event, a
+`fetch` of the app's own files), compiles the wasm in the thread and hands
+it to `init` as main does, and answers `farm_want` with no crew, as
+`?farm=0` does. A test boots it (`workerFor`: seeded, with a pool of 12
+where main asks for 40, so a boot is a few seconds and the pool's ids and
+trees follow from the seed), sends what main sends (`send`
+returns the replies that answer a request; `post`, `reply`, `until`) and
+reads the thread's timeline (`trace`): every call the worker makes into
+`WasmEngine`, in order with the messages it took and posted, noted from
+outside on the glue's class. A request can be posted while a given engine
+call runs (`post`'s `during`), as one of main's arrives mid-render, so a
+lane rule is an order of events on one thread, and a slow machine makes it
+slower, never wrong. A farm is ports the test holds (`fakeCrew`): what
+reaches a farm worker, and in what order, is what its port heard. Its
+workers render nothing: each render is answered as a draw that did not vet
+(`ok: false`), so a restore on that crew takes the worker's own
+`bank_render` path for every entry, never `bank_absorb`. A request goes
+out numbered (`rid`), as main's `send` numbers it, and `send` and `answers`
+take the replies that name it (`re`) up to the one without `more`
+([The worker's replies](web-runtime.md#the-workers-replies)).
+
+It has no page, no Web Audio or AudioWorklet, no media stream, no
+IndexedDB (the face store is off) and no `farm.js`: what needs them stays in
+the browser. A behaviour that moves here leaves its spec a check of the
+page's wiring, or nothing where another spec already holds that.
+`apps/web/tests/worker-lanes.test.mjs` and `worker-perform-replies.test.mjs`
+still lift the worker's functions over a stub engine: milliseconds, and an
+engine that traps on demand.
+
+| File | Pins |
+| --- | --- |
+| `tests/worker/lanes.test.mjs` | A request posted during PERFORM's measurement, during the guess's renders, or during a spare offer's steps (a pick) is handed to the worker when the call in progress ends, before any other engine call, and answered before the job's next one; leaving the patch (`retire`) drops the spare at that breath, with no further step; with no crew the guess ranks the likeliest eight |
+| `tests/worker/background.test.mjs` | A measurement nobody waits on (`bg`) gives way to a cable probe asked for during it and finishes after it, where PERFORM's own keeps the floor; a measurement `retire` demoted is the player's again after `promote`, landing before a drift asked for after it, and without `promote` the drift lands first; an Offer asked for while the guess waits for its crew begins before the guess renders anything |
+| `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
+
 ## CI tiers
 
 CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
+| Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
@@ -60,11 +113,12 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
 | Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
 | The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
-| `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; no other spec |
-| An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, and that module's specs on up to four runners |
+| `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; Worker protocol; no other spec |
+| An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
-| A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke |
-| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site |
+| A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
+| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
+| The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
 | Another script (`scripts/*.py`: the changelog's assembler and its tests) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
@@ -74,7 +128,8 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
   changed spec, the specs that require a changed helper, the specs named for
   a changed app module, one runner per file up to four, dealt by time. A
   change that reaches every level (`main.js`, `worker.js`, the engine) picks
-  none, and gets the smoke only; so does a change that reaches more than
+  none, and gets the smoke only (with Worker protocol, which is the fast
+  lane's real check of `worker.js`); so does a change that reaches more than
   twenty spec files (a helper nearly every spec requires, or that many specs
   changed at once). A green fast lane puts the PR in the queue. It is not the
   gate: a `main.js` change has run two specs when it enters the queue.
@@ -147,8 +202,9 @@ batch's last merge, main's files are exactly the files that run tested (a
 pull_request run tests the draft PR merged into main). The queue's run
 leaves a record (its `CI` job writes the artifact `verified-tree-<git
 tree>`, kept 14 days) of the jobs that passed on those files, and main's
-*What changed* job reads it: Lint, Web, the Doctests, Coverage and the
-browser tier are skipped there when the record says they passed, and the
+*What changed* job reads it: Lint, Web, the Doctests, Coverage, Worker
+protocol and the browser tier are skipped there when the record says they
+passed, and the
 run's summary says so, with a link. Only a queue run's record counts: a PR's
 fast lane runs part of the gate and leaves none. Everything runs on main
 when no record matches (a merge by hand, outside the queue), on a manual
@@ -210,16 +266,16 @@ offers. Otherwise the push to `main` is where a slow
 test catches it.
 
 **Runners.** The account runs at most 20 jobs at once.
-- **The queue's run** at its widest holds about 17: twelve browser runners,
-  Site, the three Coverage runners, and one more for a Lint, Web or Doctests
-  job still running, or the *Browser report*. One batch is tested at a
+- **The queue's run** at its widest holds about 18: twelve browser runners,
+  Site, Worker protocol, the three Coverage runners, and one more for a Lint,
+  Web or Doctests job still running, or the *Browser report*. One batch is tested at a
   time.
-- **A PR's fast lane** holds at most eleven: four browser runners, the three
+- **A PR's fast lane** holds at most twelve: four browser runners, the three
   Coverage runners, Site (then Browser smoke, which waits for Site and takes
-  its place), and Lint, Web and the Doctests while they last. Only a PR that
-  changes both Rust and an app module with specs of its own reaches that.
-  A docs PR holds two (Web, then the engine and Site), an app PR without
-  Rust five or six, a Rust PR seven.
+  its place), Worker protocol, and Lint, Web and the Doctests while they
+  last. Only a PR that changes both Rust and an app module with specs of its
+  own reaches that. A docs PR holds two (Web, then the engine and Site), an
+  app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
   three browser runners), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
@@ -230,17 +286,17 @@ test catches it.
   no Rust. Its weekly run holds two on Saturdays, for about eleven hours
   from 09:17 UTC.
 
-So the queue's run and the *Slow suite* together are 21, one over: a merge
+So the queue's run and the *Slow suite* together are 22, two over: a merge
 starts the *Slow suite* just as the queue starts its next batch, and that
 batch can wait a few minutes for a runner. A PR's fast lane beside a queue
 run fits when it is small (a docs or app PR) and waits for a few runners
 when it is wide. Before two lanes, every PR's run was the full gate at 19
 (the two plain Test runners as well), and a second PR in CI could not fit
 beside it. *Mutants* adds a runner for each crate PR in flight: a crate
-PR's fast lane (seven) and its *Mutants* job are eight, two such PRs
-sixteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
-fast lanes are done, nineteen. On Saturdays the weekly run's two leave
-eighteen: a queue run fits beside it with one *Mutants* job, and a crate
+PR's fast lane (eight) and its *Mutants* job are nine, two such PRs
+eighteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
+fast lanes are done, twenty. On Saturdays the weekly run's two leave
+eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
 PR's fast lane then waits for runners. At night the *Flake hunt* holds four
 and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
 in all.
@@ -460,7 +516,7 @@ from it ([Rules](#rules)).
 | `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and how it works say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
-| `perform_offer_latency.spec.js` | With the page's own `later` work done (the shipped wiring's re-check, the page's spare) and then a very long spare offer growing, a pick (`perform_record`) is answered within max(2 s, twice a measured step) and a Keep says so within max(4 s, six steps), the spare still growing (the page's CPU is throttled 4x, which need not reach the engine worker, so the bounds rest on the measured step); leaving the patch (`retire`) stops the running walk, answered `retired`; an Offer pressed while the guess waits for its render crew (the crew's ports held back from the engine worker until the Offer is answered, so the guess is still out every run) is answered within max(2 s, three steps) |
+| `perform_offer_latency.spec.js` | With the page's own `later` work done (the shipped wiring's re-check, the page's spare) and then a very long spare offer growing, a Keep on the panel says so within max(4 s, six measured steps), the spare still growing before and after it (the page's CPU is throttled 4x, which need not reach the engine worker, so the bound rests on the measured step). A pick and a `retire` during a spare, and an Offer while the guess waits for its crew, are the worker's (`tests/worker/`) |
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's face in the well, a taken B fills and goes into the face, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one; a heard Take kept as new inside its eight-second window is recorded after the keep with an `asOf` below the kept id, so it does not judge the kept sound |
 | `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |
@@ -470,10 +526,10 @@ from it ([Rules](#rules)).
 | `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass; a drift's re-check is background; a stalled shipped-wirings fetch still lets a preset be measured; a re-check or a first measurement the engine never answers (an injected `engine_error` naming its `req`, the engine slowed fourfold so it is still out) is let go, the status saying it couldn't re-check or measure the patch instead of *re-checking* or *listening…*, and so is a measurement asked for before the engine has booted (its `init` stalled by the tap, a patch handed to PERFORM as `tree_json`, the worker answering `not_ready` with the request's `req`); after a crash (the engine poisoned, every request answered with a fatal `engine_error`) no spare is asked for by itself and a pressed Offer is not sent, B saying the engine crashed; an offer whose walk crashed the engine says so in B even when its own empty reply came before the crash (a worker from before the worker answered a trap with the crash alone, which `apps/web/tests/worker-perform-replies.test.mjs` pins); a module the engine fails to add (an injected non-fatal `engine_error` for `perform_graft`) is said to have failed and grows no offer in its place |
 | `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
 | `patch_audible.spec.js` | Measured at the output: a VCO's wave cycled in PATCH has each wave's harmonics under a held note and on ▶ and Space; a selector changed under a held note keeps its level while the engine renders it (nothing reaches the voices before the reply) and plays at its measured makeup once it lands; a knob whose check finds a runaway is muted, as the alarm says, until a check passes; a selector whose check fails is not applied and the alarm says so, and a knob turned after it is not muted for it; an edit's reply leaves alone the makeup of a preset opened from memory while the edit rendered; an undo and a redo of a selector reach the voices at their measured makeup, so a held note's level holds while they render; a cutoff turned down lowers the centroid live and on ▶; ▶ or Space pressed while the edit is still at the engine plays the edit, not the sound before it; Space in PERFORM and EVOLVE plays the edited sound, waiting for an edit the same way, and the sound in hand in the menu bar says it waits from before the edit lands; that waiting ▶ is lit before the edit lands (100 ms after the press is a budget for each), and a second press, Space, another ▶ or leaving PATCH takes it back; Space with ▶ disabled says why and plays nothing |
-| `audio_in.spec.js` | AUDIO IN, with the browser's inputs stubbed (tones per fake device, never a microphone): the browser is asked only when AUDIO IN is added, and says what for while it asks; a refusal keeps the module, silent, with ASK AGAIN; each device opens once and fans out to every module reading it (and the input menu reuses it); a tone in is heard at the output with no key down once MONITOR is on and not at all while it is off (a key held or not), monitoring is off after a reload and a sound that listens opens its input without a prompt; the first listen captures a clip the engine takes, NEW CLIP another; a restore that installs a captured clip re-sends the farm's phrase, and (`@slow`) a capture re-sends it to a crew standing; an unplug silences the module and says so, a replug plays again; the browser's `default` is numbered as the input it stands for when only the list's "Default - X" names it; the square draws the input's live face while it plays and nothing, level included, once it is unplugged |
+| `audio_in.spec.js` | AUDIO IN, with the browser's inputs stubbed (tones per fake device, never a microphone): the browser is asked only when AUDIO IN is added, and says what for while it asks; a refusal keeps the module, silent, with ASK AGAIN; each device opens once and fans out to every module reading it (and the input menu reuses it); a tone in is heard at the output with no key down once MONITOR is on and not at all while it is off (a key held or not), monitoring is off after a reload and a sound that listens opens its input without a prompt; the first listen captures a clip the engine takes, NEW CLIP another; the captured clip is saved with the session, and after a reload AUDIO IN has it as the session's clip (the farm handed the phrase with it, after a capture or a restore, is the worker's, `tests/worker/farm.test.mjs`); an unplug silences the module and says so, a replug plays again; the browser's `default` is numbered as the input it stands for when only the list's "Default - X" names it; the square draws the input's live face while it plays and nothing, level included, once it is unplugged |
 | `audio_in_takes.spec.js` | TRACK and CAPTURE, on the same stub (`audio_in_stub.js`): both in the module rail, and placing TRACK asks for an input; a tracked sound monitored plays from the input with one voice, and keys over it sound as voices of the tracked note (held, the output's RMS sits within −3 to +11 dB of the tracked voice's: four voices at one pitch sum by phase, so the 440 Hz bin can't carry a band) and stop with their keys (the level after they are let go is the tracked voice's alone); CAPTURE's RECORD puts a take of its input in the sound as an edit, the module says its length, and a key plays it; a STOP the worklet answers with no frames sends no take and says nothing was recorded (the worklet's own half, exactly, in `apps/web/tests/worklet-take.test.mjs`); moving to another sound while RECORD is lit stops it, and the take lands on neither sound, while a keep as new is the same sound and the take lands on it; a sound whose take couldn't be read is kept safe under *kept safe* and RECORD AGAIN brings it back into the pool, waiting for its input to open (held open by the stub) and recording that input while the bench reads another; a refused input says so and records nothing; the bank's cursor reaches a sound kept safe past the pool's last row, and Enter presses RECORD AGAIN; AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk (the arrows reach them after the knobs, a hidden one is passed by, Enter or Space presses them, Escape backs out to the plate, and the focus stays on RECORD through the redraw its take makes) |
-| `patch_guess.spec.js` | The model's guess for the next module, read as the worker posts it: the top guess drawn at its socket with GUESS · ‹module›, its reason and forecast in the model's italic (and *it may not help* when its lower bound is under zero), the rail's mark beside its name without moving the name; a skip shows the next guess, not that family at that socket; adding it sends the guess with the edit; ⌘Z of an added guess counts as a skip; nothing before the warm start (`no_taste`), with no render crew raised for it; every candidate ranked on a crew, the likeliest eight with `?farm=0` and no crew asked for; a skip made after KEEP AS NEW still holds when the kept sound is opened again; a new patch's skips are not the sound's it was started from; a guess added after its socket was filled is refused with the engine's reason; a guess asked while boot's crew is still filling the pool waits for it and is then ranked on a crew, every candidate |
-| `patch_cables.spec.js` | Each audio cable's light and level mark follow the levels `cable_levels` posts, one per cable, keyed `from>to` as the rack draws them; modulation cables carry neither; never more than one probe at the engine; a knob drag asks for one probe after it settles, its marks hollow until then; every paint of a new structure before its levels arrive is unlit, with hollow marks; with two sounds opened right after arriving in PATCH, every probe and guess goes out with no open on its way and at least the quiet window (`ARRIVE_MS`, 1.2 s) after arriving and after the last open landed; a PERFORM measurement nobody is waiting on (`bg`), sent just before a knob turn's probe, does not hold the probe or the cables' light back, and still finishes |
+| `patch_guess.spec.js` | The model's guess for the next module, read as the worker posts it: the top guess drawn at its socket with GUESS · ‹module›, its reason and forecast in the model's italic (and *it may not help* when its lower bound is under zero), the rail's mark beside its name without moving the name; a skip shows the next guess, not that family at that socket; adding it sends the guess with the edit; ⌘Z of an added guess counts as a skip; nothing before the warm start (`no_taste`), with no render crew raised for it; every candidate ranked on a crew; a skip made after KEEP AS NEW still holds when the kept sound is opened again; a new patch's skips are not the sound's it was started from; a guess added after its socket was filled is refused with the engine's reason; a guess asked while boot's crew is still filling the pool waits for it and is then ranked on a crew, every candidate |
+| `patch_cables.spec.js` | Each audio cable's light and level mark follow the levels `cable_levels` posts, one per cable, keyed `from>to` as the rack draws them; modulation cables carry neither; never more than one probe at the engine; a knob drag asks for one probe after it settles, its marks hollow until then; every paint of a new structure before its levels arrive is unlit, with hollow marks; with two sounds opened right after arriving in PATCH, every probe and guess goes out with no open on its way and at least the quiet window (`ARRIVE_MS`, 1.2 s) after arriving and after the last open landed |
 | `patch_motion.spec.js` | The rack's motion, read on every frame of it, from the frame its build lands to the first frame at rest: a sound opened over one it shares no module with fades up where it lands, with nothing of the last one left to fade out and its amp in its own place (the cable into it a curve on every frame); within one sound an insert still slides the amp from where it was, NEW PATCH fades out what it took as the amp slides along, and the two ways back, ⌘Z past NEW PATCH and BACK TO ‹name› (the sound on the bench opened again), each slide it back as the empty socket fades out |
 | `patch_from_nothing.spec.js` | NEW PATCH leaves one empty socket and the amp, named *New patch* and counted in its caption; modules added from the rail; a processor deleted and put back with the toast's undo; a source deleted leaves its socket empty; CLEAR and its undo; BACK TO ‹name› reopens the sound, and NEW PATCH brings the new patch back; ⌘Z past its start ends it; Esc on a plate button (CAPTURE's RECORD) backs out to its plate and keeps the new patch |
 | `patch_sheet.spec.js` | On a coarse pointer, a tapped module opens a sheet with a row for every knob the engine describes (a slider with − and + of at least 44 px, or the setting's choices); + edits the knob through the lane, a choice sets a named setting and the arrows move between choices, focus goes into the sheet and leaves it with ×, a tap on another module opens that one; an AUDIO IN in the patch is drawn with its three settings, and its sheet has them; a tap on a plate button (CAPTURE's RECORD) presses it and opens no sheet |
@@ -482,7 +538,7 @@ from it ([Rules](#rules)).
 | `space_after_a_click.spec.js` | A click leaves no focus on the wave or filter-mode chip, and Space then plays and leaves the chip alone (the second Space stops it: the app stops the phrase's source, and the output goes quiet); a chip reached with the keyboard cycles on Space and Enter and back with Shift, its name carrying its value and each cycle read out; in PERFORM, Space plays after a drag on a control, a click on the XY pad, and a tap on Wander (which stays frozen); the ⋯ menu's file items open their dialog on Enter and Space |
 | `midi_announced.spec.js` | A MIDI knob that claims or learns a control is announced in a sentence (*CC 74 now moves Bright, the first free control.*), the later replacing the earlier |
 | `keys_for_the_platform.spec.js` | The ? card, the booth menu and the minimap's tooltip print ⌘ and ⇧ on an Apple platform and Ctrl and Shift elsewhere |
-| `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls, and once the engine answers the taken offer's measurement (waited for within `offerBudget`) the status stops saying *re-checking* (`@slow`: up to minutes on CI with a heavy offer); a Take's measurement is the player's again when PERFORM comes back from PATCH, landing before a drift asked for after it (`@slow`, the engine slowed fourfold) |
+| `responsive.spec.js` | Warm-start ▶; teach it opens PERFORM named at once; Take keeps its controls, and once the engine answers the taken offer's measurement (waited for within `offerBudget`) the status stops saying *re-checking* (`@slow`: up to minutes on CI with a heavy offer); a Take's measurement, kept from the engine so it is still out, is retired to the background when PERFORM goes to PATCH and promoted when it comes back (`@slow`, for the offer). The player answered first while PERFORM measures, and what `retire` and `promote` do, are the worker's (`tests/worker/`) |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
 | `shell_levels.spec.js` | The levels (Plan-008, ADR-017): the app opens at PERFORM; the rail's stops, ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 and the arrows on a focused stop move between them, one section shown, its stop alone `aria-current`, `#where` naming it; a text field and a modal keep ⌥ and the arrows, and ⌥ alone is taken; a stop's name shows on hover; Space plays the sound in hand at every level and the menu bar's ▶ lights; a reload, a level's hash and a saved `"play"` open the right level; KEYS ⋯ reaches every control that left the bar, is lit while one plays differently, and folds on Esc or a press outside the dock; the stops cover no control at any level at 1000, 1080 and 1440 px |
@@ -501,7 +557,10 @@ from it ([Rules](#rules)).
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
   boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
-  about 28% of the fast tier's test time).
+  about 28% of the fast tier's test time). What the engine worker answers,
+  and in what order, is a worker-protocol test (`tests/worker/`,
+  [The levels](#the-levels)), not a spec that boots the app to read
+  `app.reply`.
 - **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named

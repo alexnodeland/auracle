@@ -110,6 +110,16 @@ runs. No retries anywhere
   them in milliseconds); a browser spec proves the wiring and what a player
   sees, not arithmetic. A boot is seconds, here and on CI (a median of 4
   to 5 s there, about 28% of the fast tier's test time).
+- **What the engine worker answers belongs in a worker test.** A claim
+  about a reply, its fields, or the order the worker answers in (its lanes,
+  a long job giving way, what reaches the farm's ports) is a test in
+  `tests/worker/` (`make worker-test`): `worker.js` as it is, over the built
+  engine with no page, a request posted mid-call if the claim needs it
+  ([`testing.md` § The levels](../../docs/architecture/testing.md#the-levels)).
+  A spec holds the page's half: that a gesture sends the request, and what
+  the reply does on screen or in the output. A spec that posts its requests
+  through the tap (`app.post`) and reads only replies is a worker test in the
+  wrong place.
 - **Start from the fixture.** `const { test, expect } = require("./fixtures")`
   (`fixtures.js`), never `@playwright/test` directly (the lint holds this
   and the `pageerror` rule below, [§ The lint](#the-lint)):

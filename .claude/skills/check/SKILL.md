@@ -39,6 +39,7 @@ git diff --stat HEAD
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
 | `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed`, or by name for `main.js` (the `browser-test` skill) |
+| `apps/web/worker.js`, `farm.js`, `tests/worker/**` | also `make worker-test` (the worker in Node over `pkg/`, no page; `make wasm` first) |
 | `tests/web/**` | `make spec-lint` (the after-edit hook lints each file as you edit it; a fixed violation is recorded with `npx eslint --prune-suppressions` in `tests/web`, `tests/web/AGENTS.md` § The lint), then the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
 | `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
 | `www/**` or public API docs | `make site && make site-check` |
