@@ -6,7 +6,8 @@
 // same press end the view too: PERFORM's well modes (XY, How it works), the
 // ? card, the scope panel, the picture panel and TASTE's selected point; and
 // with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY), a press closes
-// the nearer only.
+// the nearer only. And XY goes from an axis's drop-down too, where the focus
+// stays after a choice.
 const { test, expect, modelView, openKeys, bankTab } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
@@ -31,6 +32,16 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
   await escCloses(() => expect(page.locator("#keys-pop")).toBeHidden(), "KEYS ⋯");
   await expect(well).toHaveAttribute("data-mode", "xy");
   await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "PERFORM's XY");
+  // With the focus left on an axis's drop-down (an axis chosen, or moved
+  // with the arrow keys), Esc puts the face back all the same: a closed
+  // drop-down has no Esc of its own. (The view stays up for this press
+  // whatever the well does: the face is what this step reads.)
+  await page.locator(".pf-xy-btn").click();
+  await expect(well).toHaveAttribute("data-mode", "xy");
+  const axis = page.locator(".pf-xy-head select").first();
+  await axis.focus();
+  await page.keyboard.press("Escape");
+  await expect(well, "Esc on an axis's drop-down put the face back").toHaveAttribute("data-mode", "face");
   // A bank row's ★ folded out over XY is nearer: that press folds it, and XY
   // stays for the next.
   await bankTab(page, "pool");

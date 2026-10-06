@@ -3290,14 +3290,16 @@ export function createPerform(host) {
     }
   }
   // Esc puts the face back while PERFORM shows, wherever the focus is (a
-  // press on HOW IT WORKS leaves none: Space plays everywhere, ADR-016),
-  // unless something nearer took the press first (`defaultPrevented`: a
-  // menu, a dialog; a text field keeps its own Esc). Putting it back is the
-  // press spent (`preventDefault`): the model view, which takes Esc last on
-  // the window, waits for the next one.
+  // press on HOW IT WORKS leaves none: Space plays everywhere, ADR-016; an
+  // axis's drop-down keeps it after a choice), unless something nearer took
+  // the press first (`defaultPrevented`: a menu, a dialog, a bank row's ★; a
+  // text field keeps its own Esc). A closed drop-down has no Esc of its own,
+  // so it is not a text field here. Putting the face back is the press spent
+  // (`preventDefault`): the model view, which takes Esc last on the window,
+  // waits for the next one.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || wellMode === "face" || !state.visible || e.defaultPrevented) return;
-    if (e.target?.closest?.("input:not([type=range]), textarea, select, [contenteditable]")) return;
+    if (e.target?.closest?.("input:not([type=range]), textarea, [contenteditable]")) return;
     e.preventDefault();
     setWellMode("face");
   });
