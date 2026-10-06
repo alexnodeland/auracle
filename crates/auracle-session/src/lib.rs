@@ -57,7 +57,7 @@ pub use job::PerformJob;
 pub use map::{
     liking_direction, LikingDirection, MapPoint, OwnPoint, Placement, TasteMap, OWN_PLACEMENT,
 };
-pub use naming::{claim_name, NameScale};
+pub use naming::{claim_name, NameScale, NAME_FLOOR};
 pub use own::{OwnSound, PresetPhi, Toward, TowardFitness, OWN_GAMMA};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
 pub use walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult, LOCK_SCALE_CAP};
@@ -1264,6 +1264,11 @@ mod tests {
                 "{name} lineage differs"
             );
             assert_eq!(other.generation, serial.generation);
+            assert_eq!(
+                other.display_names(),
+                serial.display_names(),
+                "{name} named the generation differently"
+            );
         }
         let by_id = |e: &Engine| {
             let mut v = pool_of(e);
@@ -3370,7 +3375,10 @@ mod tests {
     }
 
     /// Kept names survive a reload, and a session saved before names were
-    /// kept is named once, on restore, with every name unique.
+    /// kept is named once, on restore, as it always was: every unnamed sound
+    /// read off the whole restored bank, claimed in id order. A restore is not
+    /// a fill, so the fill's joining order (#154) must not reach it; when it
+    /// did, 12 of these 16 sounds came back under new names.
     #[test]
     fn names_are_kept_across_a_reload() {
         let mut rng = StdRng::seed_from_u64(0x9A6);
@@ -3407,6 +3415,102 @@ mod tests {
         let names = restored.display_names();
         let unique: std::collections::HashSet<&String> = names.values().collect();
         assert_eq!(unique.len(), names.len(), "names collide: {names:?}");
+        let whole = {
+            let scale = NameScale::fit(restored.pool.iter().map(|c| &c.features));
+            let mut taken = std::collections::HashSet::new();
+            let mut by_id: Vec<&Candidate> = restored.pool.iter().collect();
+            by_id.sort_by_key(|c| c.id);
+            by_id
+                .into_iter()
+                .map(|c| (c.id, claim_name(&scale.name(&c.features), &mut taken)))
+                .collect::<std::collections::HashMap<u64, String>>()
+        };
+        assert_eq!(
+            names, whole,
+            "an older save was not named off the whole bank it restored"
+        );
+    }
+
+    /// A name cleared on a sound that never had a generated one (named in a
+    /// session saved before names were kept) is read off the bank as it
+    /// stands, like any name given now, not off the oldest sounds in it. Only
+    /// patches named in the order they joined are read off the bank as it
+    /// stood when they joined (#154).
+    #[test]
+    fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
+        use std::collections::HashSet;
+        let mut rng = StdRng::seed_from_u64(0x9A7);
+        let cfg = || SessionConfig {
+            pool_size: 24,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg());
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let mut by_id: Vec<&Candidate> = engine.pool.iter().collect();
+        by_id.sort_by_key(|c| c.id);
+        // Among the oldest sounds, one the oldest NAME_FLOOR and the whole
+        // bank would call different things, or this proves nothing.
+        let oldest = NameScale::fit(by_id[..NAME_FLOOR].iter().map(|c| &c.features));
+        let whole = NameScale::fit(engine.pool.iter().map(|c| &c.features));
+        let id = by_id[..NAME_FLOOR]
+            .iter()
+            .find(|c| oldest.name(&c.features) != whole.name(&c.features))
+            .map(|c| c.id)
+            .expect("the oldest sounds read alike either way; the test needs a seed that does not");
+        let base = whole.name(&engine.pool.iter().find(|c| c.id == id).unwrap().features);
+
+        // Named by the player, saved by a build before names were kept.
+        engine.set_name(id, "Mine");
+        let mut old = serde_json::to_value(engine.export_state()).unwrap();
+        for entry in old["bank"].as_array_mut().unwrap() {
+            if entry["id"].as_u64() == Some(id) {
+                entry.as_object_mut().unwrap().remove("auto_name");
+            }
+        }
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
+        restored.import_state(serde_json::from_value(old).unwrap());
+        let c = restored.pool.iter().find(|c| c.id == id).unwrap();
+        assert!(c.auto_name.is_none(), "the fixture's sound came back named");
+
+        restored.set_name(id, "");
+        let mut taken: HashSet<String> = restored
+            .pool
+            .iter()
+            .filter(|c| c.id != id)
+            .filter_map(|c| c.name.clone().or_else(|| c.auto_name.clone()))
+            .collect();
+        assert_eq!(
+            restored.display_names()[&id],
+            claim_name(&base, &mut taken),
+            "a cleared name was read off the oldest sounds, not the bank"
+        );
+
+        // The same in a bank where every sound carries a player's name and
+        // none a generated one, so no name is kept to order it by.
+        let ids: Vec<u64> = engine.pool.iter().map(|c| c.id).collect();
+        for (k, each) in ids.iter().enumerate() {
+            engine.set_name(*each, &format!("Mine {k}"));
+        }
+        let mut old = serde_json::to_value(engine.export_state()).unwrap();
+        for entry in old["bank"].as_array_mut().unwrap() {
+            entry.as_object_mut().unwrap().remove("auto_name");
+        }
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
+        restored.import_state(serde_json::from_value(old).unwrap());
+        assert!(restored.pool.iter().all(|c| c.auto_name.is_none()));
+        restored.set_name(id, "");
+        let mut taken: HashSet<String> = restored
+            .pool
+            .iter()
+            .filter(|c| c.id != id)
+            .filter_map(|c| c.name.clone())
+            .collect();
+        assert_eq!(
+            restored.display_names()[&id],
+            claim_name(&base, &mut taken),
+            "in a bank named by its player, a cleared name was read off the oldest sounds"
+        );
     }
 
     /// Duels must spread over *candidates*, not just over pairs.
@@ -4148,6 +4252,22 @@ mod tests {
     /// is the serial fallback — the same code path the app takes when no farm
     /// worker ever reports ready.
     fn farm_fill(width: usize, fill_seed: u64, pool_size: usize) -> Engine {
+        farm_fill_handing(width, fill_seed, pool_size, None).0
+    }
+
+    /// [`farm_fill`] with the app's progressive boot in it: after the first
+    /// batch of absorbs that leaves `hand_at` or more sounds in the pool, the
+    /// bank is handed over (`standardize_now`, as the worker's `playable`
+    /// does) and the names the app would show then are returned beside the
+    /// engine. How many sounds that catches depends on how the batch fell, as
+    /// it does on a farm.
+    fn farm_fill_handing(
+        width: usize,
+        fill_seed: u64,
+        pool_size: usize,
+        hand_at: Option<usize>,
+    ) -> (Engine, Option<std::collections::HashMap<u64, String>>) {
+        let mut shown = None;
         let cfg = SessionConfig {
             pool_size,
             ..fast()
@@ -4190,6 +4310,12 @@ mod tests {
                 engine.absorb_prior(index, pre);
                 absorbed += 1;
             }
+            if let Some(at) = hand_at {
+                if shown.is_none() && engine.pool.len() >= at {
+                    engine.standardize_now();
+                    shown = Some(engine.display_names());
+                }
+            }
             if engine.pool.len() >= pool_size {
                 break;
             }
@@ -4197,7 +4323,7 @@ mod tests {
                 break; // drained: no work left to issue and none outstanding
             }
         }
-        engine
+        (engine, shown)
     }
 
     /// The judge's gate. Same `fill_seed`, farm widths {0,1,2,3,5,8}, one
@@ -4263,6 +4389,110 @@ mod tests {
             pool_signature(&chunked),
             "chunking the fill changed the pool"
         );
+    }
+
+    /// **A seed names the pool it deals, whenever the bank is handed over**
+    /// (#154). The app takes the bank at the first batch of farm results that
+    /// reaches its `playableAt`, so how many sounds it catches depends on how
+    /// the results fell: 8 on one run, more on the next. Names were read off the
+    /// bank caught then, so one `?seed=` named its pool differently from run
+    /// to run (sound 4 was *Soft Lead* on one, *Bright Lead* on another).
+    ///
+    /// The same seed filled four ways — the serial fill, which shows its
+    /// names first when the pool is full; a farm whose batch carries the
+    /// handover past [`NAME_FLOOR`]; a handover below it; and the no-farm
+    /// fallback two at a time — must end with the same names, and every name
+    /// shown at a handover of `NAME_FLOOR` or more must be the one kept. It
+    /// first checks that reading the smallest and the largest bank caught
+    /// whole, the rule before, would have named them apart, so it cannot pass
+    /// on a seed whose names do not move. A pool of 12 keeps it in the fast
+    /// tier: four fills, about 10 s.
+    #[test]
+    fn a_seed_names_its_pool_however_the_bank_was_handed_over() {
+        use std::collections::{HashMap, HashSet};
+        const SEED: u64 = 0x5EED_0154;
+        const POOL: usize = 12;
+        let cfg = || SessionConfig {
+            pool_size: POOL,
+            ..fast()
+        };
+        let mut serial = Engine::new(PatchGrammarPrior::default(), cfg());
+        serial.begin_session();
+        serial.set_fill_seed(SEED);
+        serial.fill_pool(&mut StdRng::seed_from_u64(0xDEAD));
+        assert_eq!(serial.pool.len(), POOL, "the fill fell short");
+        assert!(
+            serial.pool.iter().all(|c| c.auto_name.is_some()),
+            "the full pool was not named"
+        );
+        let names = serial.display_names();
+
+        // Every way to the same pool, with the names shown at the handover.
+        let mut runs: Vec<(String, Engine, HashMap<u64, String>)> = Vec::new();
+        for (width, at) in [(3, NAME_FLOOR), (2, 3)] {
+            let (farm, shown) = farm_fill_handing(width, SEED, POOL, Some(at));
+            let shown = shown.expect("the bank was handed over");
+            let how = format!("width {width}, handed over at {} sounds", shown.len());
+            runs.push((how, farm, shown));
+        }
+        // `?farm=0`: two at a time, handed over at the first step that
+        // reaches the threshold, then two names to give at every step.
+        let mut chunked = Engine::new(PatchGrammarPrior::default(), cfg());
+        chunked.begin_session();
+        chunked.set_fill_seed(SEED);
+        let mut rng = StdRng::seed_from_u64(0xDEAD);
+        let mut shown = None;
+        while chunked.pool.len() < POOL && chunked.fill_pool_step(&mut rng, 2) > 0 {
+            if shown.is_none() && chunked.pool.len() >= NAME_FLOOR {
+                chunked.standardize_now();
+                shown = Some(chunked.display_names());
+            }
+        }
+        let shown = shown.expect("the bank was handed over");
+        let how = format!("two at a time, handed over at {} sounds", shown.len());
+        runs.push((how, chunked, shown));
+
+        // The rule before: the bank the handover caught, read whole, in id
+        // order. Two catches it would have named apart, or this proves nothing.
+        let read_whole = |caught: usize| -> Vec<String> {
+            let mut bank: Vec<&Candidate> = serial.pool.iter().collect();
+            bank.sort_by_key(|c| c.id);
+            bank.truncate(caught);
+            let scale = NameScale::fit(bank.iter().map(|c| &c.features));
+            let mut taken = HashSet::new();
+            bank.iter()
+                .map(|c| claim_name(&scale.name(&c.features), &mut taken))
+                .collect()
+        };
+        // The serial fill first shows its names with the pool full.
+        let caught: Vec<usize> = std::iter::once(POOL)
+            .chain(runs.iter().map(|(_, _, s)| s.len()))
+            .collect();
+        println!("handovers caught {caught:?} sounds");
+        let lo = caught.iter().copied().filter(|&n| n >= NAME_FLOOR).min();
+        let hi = caught.iter().copied().max();
+        let (lo, hi) = (lo.unwrap(), hi.unwrap());
+        assert!(hi > lo, "every handover caught {lo} sounds: nothing varied");
+        assert_ne!(
+            read_whole(lo)[..lo],
+            read_whole(hi)[..lo],
+            "reading the bank at {lo} and at {hi} sounds names the first {lo} alike; \
+             the test needs a seed that does not"
+        );
+
+        for (how, engine, shown) in &runs {
+            assert_eq!(
+                pool_signature(engine),
+                pool_signature(&serial),
+                "{how}: another pool"
+            );
+            assert_eq!(engine.display_names(), names, "{how}: named differently");
+            if shown.len() >= NAME_FLOOR {
+                for (id, name) in shown {
+                    assert_eq!(&names[id], name, "{how}: renamed after it was shown");
+                }
+            }
+        }
     }
 
     /// **A farm on a stale clip still builds the serial pool.** The farm

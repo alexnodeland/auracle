@@ -93,7 +93,9 @@ function performReply(m, type, field, long, fn) {
 // acquisition function is choosing from too few distinct patches for the
 // question to be worth asking; above it, waiting is pure cost — the pool is
 // only ever *wider*, never a prerequisite. Overridable per-boot via
-// `init.playableAt`.
+// `init.playableAt`. The engine's first names wait for `NAME_FLOOR` sounds
+// (auracle-session `naming.rs`), so keep this at or above it, or the first
+// names shown are provisional until the bank reaches it.
 const PLAYABLE_AT = 8;
 
 // The fill used to be one synchronous `while` loop, so the worker could not

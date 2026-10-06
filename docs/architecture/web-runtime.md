@@ -1120,24 +1120,26 @@ that pick commits (`settleFit`), so it keeps its window too.
   Without it every boot draws one from `Math.random`. The engine derives
   every stream from it (fills, pairs, evolution, PERFORM; a fit from it and
   its number of picks: ADR-001), so a fresh session with the same random
-  seed deals the same pool at any farm width, and what follows repeats when
-  the same requests reach the engine in the same order. Timing can still
-  move it: a deal made while the pool is filling depends on how far it has
-  got, and each PERFORM walk takes its draw when it begins. A saved session
-  comes back as it was saved; only what is dealt after boot follows it. A
-  reset is a fresh start: Reset your taste and the booth's next visitor
-  reload without `?seed` (`reloadAfresh`), keeping the rest of the address,
-  so they deal a new pool. The page's own draws stay random on purpose:
-  which side of the table a sound stands on (`placePair`), the warm start's
-  nine cards (`warmSample`) and the sides of the keep-as-new comparison,
-  each there against position bias. Nothing on screen names the random seed
-  or says how a session began, and a seeded pair is still dealt at random by
-  the engine, so the copy holds either way. A browser spec on the shared
-  fixture that names no seed of its own seeds both (`tests/web/fixtures.js`
-  `SEED`: `?seed=` and the page's Math.random, as the films seed it), so it
-  starts from the same pool, warm start and sides on every run; the nightly
-  flake hunt boots those unseeded. A spec that names its own `random:` seed
-  keeps it, and a spec not yet on the fixture boots unseeded.
+  seed deals the same pool at any farm width, under the same names however
+  many sounds `playable` caught (`Engine::fix_names`), and what follows
+  repeats when the same requests reach the engine in the same order. Timing
+  can still move it: a deal made while the pool is filling depends on how
+  far it has got, and each PERFORM walk takes its draw when it begins. A
+  saved session comes back as it was saved; only what is dealt after boot
+  follows it. A reset is a fresh start: Reset your taste and the booth's
+  next visitor reload without `?seed` (`reloadAfresh`), keeping the rest of
+  the address, so they deal a new pool. The page's own draws stay random on
+  purpose: which side of the table a sound stands on (`placePair`), the warm
+  start's nine cards (`warmSample`) and the sides of the keep-as-new
+  comparison, each there against position bias. Nothing on screen names the
+  random seed or says how a session began, and a seeded pair is still dealt
+  at random by the engine, so the copy holds either way. A browser spec on
+  the shared fixture that names no seed of its own seeds both
+  (`tests/web/fixtures.js` `SEED`: `?seed=` and the page's Math.random, as
+  the films seed it), so it starts from the same pool, warm start and sides
+  on every run; the nightly flake hunt boots those unseeded. A spec that
+  names its own `random:` seed keeps it, and a spec not yet on the fixture
+  boots unseeded.
 - Booth mode (the ⋯ menu) plays itself when idle and hides links out of the
   instrument.
 - `window.__aur` is the debugging handle; browser tests wrap `Worker` instead

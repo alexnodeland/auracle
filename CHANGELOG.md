@@ -310,17 +310,20 @@ changelog that edits its own past is not a record.
 ### Added: `?seed=` deals a session you can share
 
 - **Add `?seed=` and a whole number to the address** (for example
-  `?seed=42`) and a fresh session deals the same pool of sounds on any
-  machine running the same version, so you can send someone the address
-  and they start where you did (a sound nobody has named can be named differently). The
-  number is the session's random seed.
-  What follows (pairs, refits, offers) draws from it too and repeats when
-  the same things happen in the same order, though a pair dealt before the
-  pool has finished filling can differ with the machine's speed. A saved
-  session comes back as it was, and **Reset your taste…** or a booth's next
-  visitor takes `?seed` off the address, so a reset deals a new pool.
-  Which side of the table a sound stands on, and the warm start's nine
-  cards, are still shuffled.
+  `?seed=42`) and a fresh session deals the same pool of sounds, under the
+  same names, on any machine running the same version, so you can send
+  someone the address and they start where you did. The number is the
+  session's random seed. A sound you haven't named takes its name from the
+  bank as it stood when the sound arrived, the first eight from each other,
+  so how fast the bank filled can't change it (#154,
+  `a_seed_names_its_pool_however_the_bank_was_handed_over`,
+  `session_seed.spec.js`). What follows (pairs, refits, offers) draws from
+  it too and repeats when the same things happen in the same order, though
+  a pair dealt before the pool has finished filling can differ with the
+  machine's speed. A saved session comes back as it was, and
+  **Reset your taste…** or a booth's next visitor takes `?seed` off the
+  address, so a reset deals a new pool. Which side of the table a sound
+  stands on, and the warm start's nine cards, are still shuffled.
 
 ### Added: ask a control what it does, and a lesson on filters
 

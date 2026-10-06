@@ -51,7 +51,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calib::{calibration, Calibration, Forecast};
 use crate::farm::{draw_seed, Draw, PreFeaturized};
-use crate::naming::{claim_name, NameScale};
+use crate::naming::{claim_name, NameScale, NAME_FLOOR};
 use crate::walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult};
 
 /// The φ coordinate names, as owned strings (what the log records).
@@ -615,8 +615,8 @@ pub struct Candidate {
     /// User-given name (frontends fall back to `tree.signature()`).
     pub name: Option<String>,
     /// The generated name this patch was given, kept from then on (see
-    /// [`Engine::fix_names`]). `None` until the bank is first handed over, and
-    /// for a patch with a name of its own.
+    /// [`Engine::fix_names`]). `None` until the bank is first handed over with
+    /// [`NAME_FLOOR`] sounds in it, and for a patch with a name of its own.
     pub auto_name: Option<String>,
     /// The user asked to keep this one: [`Engine::insert_candidate`] will never
     /// evict it.
@@ -1874,7 +1874,8 @@ impl Engine {
             }
         }
         // The partial pool is handed over here, so this is where names are
-        // first shown, and first kept.
+        // first shown, and first kept once it holds `NAME_FLOOR` sounds; what
+        // they are read against does not depend on how many it holds.
         self.fix_names();
     }
 
@@ -3928,8 +3929,9 @@ impl Engine {
     /// renamed patches that had not changed: the one on the bench went from
     /// `Soft Drone` to `Soft Lead` as the generation landed, and numerals
     /// shifted when the name they counted from left. Only a patch not yet
-    /// named (the bank not yet handed over) gets a provisional name, read off
-    /// the pool as it stands.
+    /// named (the bank not yet handed over, or handed over with fewer than
+    /// [`NAME_FLOOR`] sounds in it) gets a provisional name, read off the pool
+    /// as it stands.
     pub fn display_names(&self) -> HashMap<u64, String> {
         let mut taken: HashSet<String> = HashSet::new();
         let mut out: HashMap<u64, String> = HashMap::new();
@@ -3971,9 +3973,26 @@ impl Engine {
     /// Names start being kept once the bank is handed over — a standardizer
     /// exists: the fill has finished, or a progressive boot made the partial
     /// pool duel-able ([`Engine::standardize_now`]) — which is when a player
-    /// first sees them. Called wherever the pool grows after that, so which
-    /// name a patch gets depends only on the order the engine took patches
-    /// in, never on when a frontend asked (ADR-001).
+    /// first sees them. Called wherever the pool grows after that.
+    ///
+    /// Which name a patch gets depends only on the patches and the order the
+    /// engine took them in, never on when a frontend asked (ADR-001). The
+    /// handover is a when: a progressive boot hands the bank over at the
+    /// first batch of farm results that reaches its threshold, so the bank it
+    /// holds then can be 8 sounds on one run and more on the next. Reading
+    /// every name off that bank named one seeded pool differently from run to
+    /// run (#154). So the first names wait for [`NAME_FLOOR`] sounds (or a fill
+    /// that can add no more), and each patch is read off the members that
+    /// joined no later than it, and at least the first `NAME_FLOOR`: ids are
+    /// handed out in the order patches join, which in a fill is the seed's
+    /// draw order. A handover at 8, at 15 or at the end of the fill gives the
+    /// same names, and so does a fill folded in one at a time or two at a
+    /// time. A patch that joins after the fill has the newest id, so it is
+    /// read off the whole pool, and so is a patch named out of joining order:
+    /// a bank restored from a session saved before names were kept (a
+    /// restore is not a fill, and is named as one bank, as it always was),
+    /// and a sound whose own name was cleared and that never had a generated
+    /// one.
     fn fix_names(&mut self) {
         if self.standardizer.is_none()
             || self
@@ -3983,7 +4002,43 @@ impl Engine {
         {
             return;
         }
-        let scale = NameScale::fit(self.pool.iter().map(|c| &c.features));
+        // The fill's first names: this engine's own fill has folded draws in
+        // and nothing is named yet. They wait for a bank the seed decides,
+        // not the one the handover happened to catch. A restore is not a
+        // fill (its cursor has not moved), so a bank saved before names were
+        // kept is named as it was before: all at once, off the whole bank.
+        let newest_kept = self
+            .pool
+            .iter()
+            .filter(|c| c.auto_name.is_some())
+            .map(|c| c.id)
+            .max();
+        let fill_first = newest_kept.is_none() && self.draw_cursor > 0;
+        let floor = NAME_FLOOR.min(self.cfg.pool_size).max(1);
+        let fill_spent = self.draw_cursor >= self.cfg.max_draws as u64;
+        if fill_first && self.pool.len() < floor && !fill_spent {
+            return;
+        }
+        // The newest member a fresh patch is read against. One named in
+        // joining order (the fill's first names, or newer than every kept
+        // name): itself, the bank as it stood when it joined, or the
+        // `floor`-th to join, whichever came later. Any other (a restored
+        // bank saved before names were kept, a sound whose own name was
+        // cleared and that never had a generated one): the whole pool, as it
+        // stands.
+        let floor_id = {
+            let mut ids: Vec<u64> = self.pool.iter().map(|c| c.id).collect();
+            ids.sort_unstable();
+            ids[floor.min(ids.len()) - 1]
+        };
+        let in_order = |id: u64| fill_first || newest_kept.is_some_and(|kept| id > kept);
+        let reach = |id: u64| {
+            if in_order(id) {
+                id.max(floor_id)
+            } else {
+                u64::MAX
+            }
+        };
         let mut taken: HashSet<String> = self
             .pool
             .iter()
@@ -3993,8 +4048,15 @@ impl Engine {
             .filter(|&i| self.pool[i].name.is_none() && self.pool[i].auto_name.is_none())
             .collect();
         fresh.sort_by_key(|&i| self.pool[i].id);
+        let mut scale: Option<(u64, NameScale)> = None;
         for i in fresh {
-            let name = claim_name(&scale.name(&self.pool[i].features), &mut taken);
+            let upto = reach(self.pool[i].id);
+            if scale.as_ref().map(|(u, _)| *u) != Some(upto) {
+                let joined = self.pool.iter().filter(|c| c.id <= upto);
+                scale = Some((upto, NameScale::fit(joined.map(|c| &c.features))));
+            }
+            let (_, by) = scale.as_ref().expect("fit above");
+            let name = claim_name(&by.name(&self.pool[i].features), &mut taken);
             self.pool[i].auto_name = Some(name);
         }
     }
@@ -4412,7 +4474,8 @@ impl Engine {
             self.standardizer = Some(sz);
         }
         // A session saved before names were kept is named here, once,
-        // against the bank it restored.
+        // against the whole bank it restored: a restore is not a fill, so
+        // the fill's joining order does not apply (`fix_names`).
         self.fix_names();
         // A file can claim more sounds kept as new than the cap allows (an
         // engine with a smaller pool, or a hand edit): the bound holds anyway.

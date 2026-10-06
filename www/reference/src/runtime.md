@@ -86,6 +86,14 @@ dealt. The remaining ~32 fill in
 chunks that **yield to the message queue between batches**, so playing during
 the fill is real rather than cosmetic.
 
+Generated names are kept from the moment the bank is posted, and they don't
+depend on when that was. The farm folds results in batches, so `playable` can
+catch 8 sounds on one run and more on the next; each sound is named from the
+bank as it stood when it arrived, and the first eight from each other
+(`NAME_FLOOR`, in `naming.rs`, which must not exceed `PLAYABLE_AT`). A seed
+names its pool the same at any handover and any farm width
+(`a_seed_names_its_pool_however_the_bank_was_handed_over`).
+
 `filled` still fires, and everything downstream of it still runs.
 `fill_progress` carries `stage`/`stages`, so a restore and a top-up fill each
 own a labeled share of one bar.
