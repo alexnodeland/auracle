@@ -350,26 +350,6 @@ fn a_tempo_change_does_not_jump_the_sequencers() {
     );
 }
 
-/// The arp keeps time: over a minute at 120 BPM in 16ths it fires 480
-/// steps, not the ~470 it did when each step dropped its overshoot past
-/// the block boundary.
-#[test]
-fn the_arp_does_not_drift() {
-    let json = serde_json::to_string(&auracle_grammar::presets()[0].1).unwrap();
-    let mut p = LivePoly::new(&json, 44_100.0, 2).expect("compiles");
-    p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
-    p.note_on(60, 0.8);
-    let blocks = 60 * 44_100 / 128;
-    for _ in 0..blocks {
-        p.process(128);
-    }
-    let steps = p.arp_step as i64;
-    assert!(
-        (steps - 480).abs() <= 1,
-        "arp fired {steps} steps in 60 s, want 480"
-    );
-}
-
 /// Tempo sync snaps a sequencer to the musical division nearest its own
 /// rate: 3.7 steps/s at 120 BPM (2 beats/s) is 16ths, 4 steps/s.
 #[test]
@@ -938,11 +918,47 @@ fn stolen_voice_retriggers_its_envelope() {
     );
 }
 
-/// The arp's new controls each do their documented thing: a short gate
-/// shortens the note without moving the step clock, an octave range reaches
-/// pitches nobody is holding, and swing makes consecutive steps unequal.
+/// The arp over two held keys for `quanta` quanta at `bpm` and `div` steps
+/// a beat: the sample each step was heard to start at (the end of the
+/// quantum its note went on in), and the share of quanta a note sounded.
+fn arp_run(
+    json: &str,
+    div: f64,
+    bpm: f64,
+    gate: f64,
+    swing: f64,
+    quanta: usize,
+) -> (Vec<f64>, f64) {
+    let mut p = LivePoly::new(json, 44_100.0, 4).unwrap();
+    p.set_arp(true, 0, div, bpm, gate, 1, swing);
+    p.note_on(48, 1.0);
+    p.note_on(52, 1.0);
+    let (mut starts, mut on) = (Vec::new(), 0);
+    let mut prev = None;
+    for q in 0..quanta {
+        let _ = p.process(128);
+        if p.arp_note.is_some() {
+            on += 1;
+            if prev.is_none() {
+                starts.push((q * 128) as f64);
+            }
+        }
+        prev = p.arp_note;
+    }
+    (starts, on as f64 / quanta as f64)
+}
+
+/// The arp's controls each do their documented thing, and the arp keeps
+/// time. An octave range reaches pitches nobody is holding. A short gate
+/// shortens the note without moving the step clock: the steps start where
+/// a long gate's do. Straight 16ths at 120 BPM start every 5512.5 samples,
+/// each within the quantum it falls in, after 27 steps as after one: a step
+/// that dropped its overshoot past the block boundary ran 2.2% slow, a
+/// whole step behind in under six seconds. Swing makes consecutive steps
+/// unequal.
 #[test]
 fn arp_gate_octaves_and_swing() {
+    quiver::rng::seed(7);
     let json = plucked_json();
     // Octave range: hold one key, span three octaves, collect the pitches
     // the scheduler actually presses.
@@ -962,55 +978,36 @@ fn arp_gate_octaves_and_swing() {
         "octave range did not transpose the pattern: {seen:?}"
     );
 
-    // Gate length: staccato must sound for a smaller share of the step than
-    // legato, with the step clock itself unchanged.
-    let sounding_frac = |gate: f64| {
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_arp(true, 0, 2.0, 120.0, gate, 1, 0.0);
-        p.note_on(48, 1.0);
-        p.note_on(52, 1.0);
-        let (mut on, mut total) = (0, 0);
-        for _ in 0..600 {
-            let _ = p.process(128);
-            total += 1;
-            if p.arp_note.is_some() {
-                on += 1;
-            }
-        }
-        on as f64 / total as f64
-    };
-    let (staccato, legato) = (sounding_frac(0.1), sounding_frac(0.9));
+    // Gate length: staccato sounds for a smaller share of the step than
+    // legato, on the same step clock.
+    let (short_starts, staccato) = arp_run(&json, 2.0, 120.0, 0.1, 0.0, 600);
+    let (long_starts, legato) = arp_run(&json, 2.0, 120.0, 0.9, 0.0, 600);
     assert!(
         staccato < legato * 0.5,
         "gate length had no effect: {staccato:.2} staccato vs {legato:.2} legato"
     );
+    assert_eq!(short_starts, long_starts, "the gate moved the step clock");
 
-    // Swing: measure the sample distance between consecutive note-ons.
-    let step_gaps = |swing: f64| {
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, swing);
-        p.note_on(48, 1.0);
-        p.note_on(52, 1.0);
-        let mut starts: Vec<usize> = Vec::new();
-        let mut prev = None;
-        for q in 0..1200 {
-            let _ = p.process(128);
-            if p.arp_note.is_some() && prev.is_none() {
-                starts.push(q * 128);
-            }
-            prev = p.arp_note;
-        }
-        starts.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()
+    // The clock: straight 16ths at 120 BPM, 5512.5 samples a step.
+    let (straight, _) = arp_run(&json, 4.0, 120.0, 0.5, 0.0, 1200);
+    assert!(straight.len() > 25, "arp never stepped: {straight:?}");
+    for (k, t) in straight.iter().enumerate() {
+        let due = straight[0] + k as f64 * 5512.5;
+        assert!(
+            (0.0..128.0).contains(&(t - due)),
+            "step {k} started at {t}, due at {due}"
+        );
+    }
+
+    // Swing: the sample distance between consecutive note-ons.
+    let gaps = |starts: &[f64]| -> Vec<f64> { starts.windows(2).map(|w| w[1] - w[0]).collect() };
+    let swung = gaps(&arp_run(&json, 4.0, 120.0, 0.5, 0.6, 1200).0);
+    let spread = |g: &[f64]| {
+        g.iter().cloned().fold(f64::MIN, f64::max) - g.iter().cloned().fold(f64::MAX, f64::min)
     };
-    let straight = step_gaps(0.0);
-    let swung = step_gaps(0.6);
-    let spread = |g: &[usize]| {
-        let (lo, hi) = (g.iter().min().copied(), g.iter().max().copied());
-        hi.unwrap_or(0) as i64 - lo.unwrap_or(0) as i64
-    };
-    assert!(straight.len() > 3 && swung.len() > 3, "arp never stepped");
+    assert!(swung.len() > 3, "arp never stepped");
     assert!(
-        spread(&swung) > spread(&straight) + 2000,
+        spread(&swung) > spread(&gaps(&straight)) + 2000.0,
         "swing did not stagger the steps: straight {straight:?}, swung {swung:?}"
     );
 }
