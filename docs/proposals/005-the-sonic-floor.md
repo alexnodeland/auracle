@@ -116,10 +116,11 @@ New readings, defined in the example and nowhere else:
 
 What the numbers say:
 
-1. **The render is the cost; a reading is not.** A featurization's median is
-   186–235 ms across the runs, and the render is 92–94% of it. The new
-   readings cost, as a share of one featurization: roughness and noise
-   together 1.5–2.1%, pitch 1.1–1.4%, the bands 0.9–1.1%, mute 0.1%. The face,
+1. **The render is the cost; a reading is not.** Over four runs of the
+   example as committed, a featurization's median is 186–235 ms, and the
+   render is 92–94% of it. The new readings cost, as a share of one
+   featurization: roughness and noise together 1.8–2.1%, pitch 1.1–1.4%, the
+   bands 0.9–1.1%, mute 0.1%. The face,
    as a precedent, costs 1.0% or less here, and its own measurement found
    1.1% natively and 1.2% in wasm
    ([faces](../../www/reference/src/features/faces.md)). Read off the face,
@@ -234,7 +235,10 @@ from.
 **C. Beside φ, as the face is.**
 - A `FloorReport` computed in `featurize_memo` from the same normalized
   render, carried on `CachedFeatures` beside the face, with a serde default.
-  Like faces, it needs no `RENDER_EPOCH` bump.
+  A row without it is measured again before the fill admits on it, so, as
+  with faces, no `RENDER_EPOCH` bump. No such row exists today: nothing
+  keeps rows across boots, and the farm sends its rows as whole
+  `CachedFeatures` JSON, which carries a new field as it is.
 - The model never reads it.
 - Every featurization carries it, so a child, an offer or an import has a
   verdict too: enough for hollow faces and for casting any patch.
@@ -339,8 +343,9 @@ For the maintainer to accept or amend.
 5. **The films cast from the same report.** For anything not on the
    shortlist, it replaces RFC-007's unrecorded probe (`noise share ≤ 0.02,
    roughness ≤ 6`). With the floor at the fill, what a seeded session deals is
-   above the floor by construction, and `shotgen` can stop logging it as
-   uncast.
+   above the floor by construction, and the rule in `shotgen.py` and
+   `films.md` that it is "logged, not cast" can point at the floor
+   instead.
 6. **Hollow faces read the same verdict**, sent with each sound's row, when
    RFC-006's views are built.
 
@@ -458,7 +463,7 @@ nice -n 10 cargo run -p auracle-features --example sonic_floor --release -- 5 8 
 
 Five boots, eight threads, on an Apple M3 Max (16 cores) with a load average
 of 19–36 from other builds during the runs. The readings are deterministic:
-five runs printed the same values. The timings are not: read them as shares,
+six runs printed the same values. The timings are not: read them as shares,
 which held to within a point across runs. A run takes about 90 s. The
 example prints every table below; the preset table is cut here to the
 presets a floor drops and the cast preset nearest a threshold.
