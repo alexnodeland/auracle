@@ -51,13 +51,14 @@ seconds before it is closed here.
 **The boxes.** Each issue that closed with the PR is searched for in the
 bodies of the other open issues (an umbrella's checklist), and each body
 found is read and parsed. A box there (`- [ ] …`) that names it is ticked
-once every issue the box names is closed: `#130 + #153` waits for both. A
-number that is a PR is not an issue to wait for. A box that names an issue
-in another repository is left for a person. GitHub's own reading decides
-what is a box and what is a number: not a box in fenced code, in an HTML
-comment or in a quote, nor a number in inline code or a comment; a `<!--` in
-code is text, and one that starts mid-line and never closes is text too
-(only one that starts a line hides the rest of the body).
+once every issue the box names is closed as completed: `#130 + #153` waits
+for both. A number that is a PR is not an issue to wait for. A box naming an
+issue closed as not planned or as a duplicate is left for a person, and so
+is one that names an issue in another repository. GitHub's own reading
+decides what is a box and what is a number: not a box in fenced code, in an
+HTML comment or in a quote, nor a number in inline code or a comment; a
+`<!--` in code is text, and one that starts mid-line and never closes is
+text too (only one that starts a line hides the rest of the body).
 
 Only `[ ]` becomes `[x]`. The body is read again just before the write, and
 a box whose line changed since the first read is left as it is. A queue
@@ -730,10 +731,10 @@ def tick(
 ) -> tuple[dict[int, list[tuple[str, str]]], bool]:
     """Tick each box in another open issue that names an issue in `closed`,
     the issues that closed with `pr`, once every issue the box names is
-    closed. A PR a box names is not an issue to wait for. Only the box's
-    `[ ]` changes, and only when its line is as it was read: the body is
-    read again just before the write, and a line changed since (or moved,
-    or ticked by hand) is left. SETTLE seconds after the write it is
+    closed as completed. A PR a box names is not an issue to wait for. Only
+    the box's `[ ]` changes, and only when its line is as it was read: the
+    body is read again just before the write, and a line changed since (or
+    moved, or ticked by hand) is left. SETTLE seconds after the write it is
     read again, and a box another write put back is ticked again, up to
     TRIES writes. Returns the lines (what, text) to say on each issue edited,
     one per box ticked, and whether a read or a write failed."""
@@ -749,15 +750,23 @@ def tick(
             continue
         found += [i["number"] for i in items if i["number"] not in closed + found and not i.get("pull_request")]
 
-    # What each number a box names is: "open" or "closed", None for what
-    # isn't an issue (a PR, or no such issue), "?" when it couldn't be read.
+    # What each number a box names is: "open", "closed" (as completed), how
+    # else it closed ("not planned", "duplicate"), None for what isn't an
+    # issue (a PR, or no such issue), "?" when it couldn't be read. An issue
+    # closed before GitHub gave a reason has none, and counts as completed.
     kinds: dict[int, str | None] = {n: "closed" for n in closed}
 
     def kind(n: int) -> str | None:
         if n not in kinds:
             status, issue = api.get(f"repos/{repo}/issues/{n}")
             if status == 200 and isinstance(issue, dict):
-                kinds[n] = None if issue.get("pull_request") else issue.get("state")
+                reason = issue.get("state_reason")
+                if issue.get("pull_request"):
+                    kinds[n] = None
+                elif issue.get("state") == "closed" and reason not in (None, "completed"):
+                    kinds[n] = str(reason).replace("_", " ")
+                else:
+                    kinds[n] = issue.get("state")
             elif status in (404, 410):
                 kinds[n] = None
             else:
@@ -840,6 +849,11 @@ def tick(
             waiting = [n for n, s in states.items() if s == "open"]
             if waiting:
                 log(f"#{m}: {quoted(box)} waits for {listed(waiting)}, still open")
+                continue
+            aside = {n: s for n, s in states.items() if s not in ("closed", None)}
+            if aside:
+                how = " or ".join(sorted(set(aside.values())))
+                log(f"#{m}: {quoted(box)} names {listed(list(aside))}, closed as {how}: not ticked")
                 continue
             due.append(box)
         if not due:

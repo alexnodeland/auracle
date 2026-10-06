@@ -34,8 +34,8 @@ REPO = "alexnodeland/auracle"
 
 
 class Fake:
-    """The GitHub API in memory: issues by number ({state, title, body, pr,
-    parent}), each issue's comments, and the writes made.
+    """The GitHub API in memory: issues by number ({state, state_reason,
+    title, body, pr, parent}), each issue's comments, and the writes made.
     `closes_after` closes an issue (as GitHub does after a merge) once it
     has been read that many times. `edits` gives an issue the body a person
     saves just after the job's first read of it. `fail` fails a path's
@@ -62,10 +62,12 @@ class Fake:
 
     def _issue(self, n):
         i = self.issues[n]
+        state = i.get("state", "open")
         out = {
             "number": n,
             "title": i.get("title", f"issue {n}"),
-            "state": i.get("state", "open"),
+            "state": state,
+            "state_reason": i.get("state_reason", "completed" if state == "closed" else None),
             "body": i.get("body", ""),
             "closed_at": i.get("closed_at"),
             "repository_url": f"https://api.github.com/repos/{i.get('repo', REPO)}",
@@ -546,7 +548,8 @@ class OnMerge(unittest.TestCase):
 
 class Ticks(unittest.TestCase):
     """On merge, a box in another open issue that names an issue the PR
-    closed is ticked once every issue it names is closed, and said once."""
+    closed is ticked once every issue it names is closed as completed, and
+    said once."""
 
     def ticked(self, fake):
         return [w for w in fake.writes if w[0] == "body"]
@@ -737,6 +740,24 @@ class Ticks(unittest.TestCase):
         self.assertIn("ticked: `A — #5`.", first)
         self.assertIn("ticked: `B — #5 + #6`.", second)
         self.assertNotIn("`A — #5`", second)
+
+    def test_a_box_naming_an_issue_closed_as_not_planned_or_a_duplicate_is_left_for_a_person(self):
+        # An issue closed before GitHub gave a reason has none, and counts as
+        # completed.
+        fake = Fake(
+            {
+                5: {"state": "closed"},
+                153: {"state": "closed", "state_reason": "not_planned"},
+                154: {"state": "closed", "state_reason": "duplicate"},
+                161: {"state": "closed", "state_reason": None},
+                177: {"body": "- [ ] Both halves: #5 + #153\n- [ ] A duplicate's: #5 + #154\n- [ ] From before reasons: #5 + #161"},
+            }
+        )
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual(code, 0)
+        self.assertEqual(fake.issues[177]["body"], "- [ ] Both halves: #5 + #153\n- [ ] A duplicate's: #5 + #154\n- [x] From before reasons: #5 + #161")
+        self.assertIn("#177: “Both halves: #5 + #153” names #153, closed as not planned: not ticked", log)
+        self.assertIn("#177: “A duplicate's: #5 + #154” names #154, closed as duplicate: not ticked", log)
 
     def test_a_box_is_quoted_in_code_cut_short_at_a_word(self):
         # In code, an @mention or a `#n` in the box notifies no one again; a
