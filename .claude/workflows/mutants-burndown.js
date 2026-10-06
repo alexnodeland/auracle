@@ -233,7 +233,12 @@ Read-only: change nothing in any checkout.`,
   { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'xhigh', schema: REVIEW },
 )
 
+// The review's blocking findings no re-check has yet confirmed fixed, and a
+// fix that did not return (a skipped or dead agent gives null): either keeps
+// the item from `ready`.
 let verify = null
+let open = review ? review.blocking : []
+let lost = null
 if (review && (review.blocking.length || review.should_fix.length || review.nits.length || review.maintainers_call.length)) {
   const fixed = await agent(
     `Continue ${CRATE}'s mutant burndown in worktree ${WT} (branch ${args.branch}, head ${report.head}). The review found these; fix each in new commits, and confirm each changed test still fails on its mutant (the focused run, MUTANTS_ARGS='--file <file>').
@@ -259,6 +264,7 @@ Return the full report, updated (the counts in after still true), with the pr_bo
     { label: `fix ${KEY}`, phase: 'Review', agentType: 'engine-engineer', schema: REPORT },
   )
   if (fixed) report = fixed
+  else lost = `the fix of the review's findings did not return: its ${review.blocking.length} blocking, ${review.should_fix.length} should-fix and ${review.nits.length} nit finding(s) are not done on the branch`
   if (fixed && review.blocking.length) {
     verify = await agent(
       `Re-check only these blocking findings on branch ${args.branch} (worktree ${WT}, head ${report.head}): ${CRATE}'s mutant burndown. For each, confirm the fix resolves it, running the focused mutation run or the test where it helps. Read-only.
@@ -266,6 +272,8 @@ Return the full report, updated (the counts in after still true), with the pr_bo
 ${fmt(review.blocking)}`,
       { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'high', schema: VERIFY },
     )
+    if (verify && verify.all_resolved) open = []
+    else if (verify && verify.remaining.length) open = verify.remaining
   }
 }
 
@@ -292,7 +300,8 @@ if (!TITLE.test(last.pr_title || '')) problems.push(`the title has no convention
 if (SESSION && (last.pr_body || '').split('\n').map(l => l.trim()).filter(Boolean).pop() !== SESSION) problems.push('the body does not end with the session link')
 for (const o of (last.open_items || []).filter(o => o.kind === 'in_area')) problems.push(`an in-area item is left: ${o.text}`)
 if (!review) problems.push('the review did not return: review the branch (review-pr) before the PR')
-if (verify && !verify.all_resolved) problems.push('blocking findings remain after the fix')
+if (lost) problems.push(lost)
+if (open.length) problems.push(verify ? `${open.length} blocking finding(s) remain after the fix` : `the fix or its re-check did not return; ${open.length} blocking finding(s) unresolved`)
 if (!final) problems.push('finalize did not return: rebase, the gates and the PR checks are still to do')
 if (after && after.missed) problems.push(`${after.missed} mutant(s) still survive`)
 log(`${CRATE}: ${before.counts.missed} survivor(s) before, ${after ? after.missed : '?'} after`)

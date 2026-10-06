@@ -110,9 +110,13 @@ writes `pr-<key>.md` (the body, ending with the session link) beside it.
 Before shipping, every item is `ready`, or each problem is dealt with:
 
 - **A problem** (a title with no type, an issue line missing, blocking
-  findings left, finalize missing) is put right on the branch. A workflow's
-  agents can't be resumed afterwards: brief a fresh agent with the branch,
-  the head and what is wrong, or run the workflow again.
+  findings left, an agent that did not return, finalize missing) is put
+  right on the branch. An agent skipped, or dead on an API error, gives the
+  run a null and the run goes on: its item says which (`fix #233 did not
+  return`), and a review's blocking findings no re-check confirmed are a
+  problem, never `none needed`. A workflow's agents can't be resumed
+  afterwards: brief a fresh agent with the branch, the head and what is
+  wrong, or run the workflow again.
 - **Open items, by kind** (the fold-in rule, `docs/process.md` § Review):
   `in_area` work is done on the branch, never filed (one left is a problem);
   `decision` goes to the maintainer, in the batch below; `other_area`

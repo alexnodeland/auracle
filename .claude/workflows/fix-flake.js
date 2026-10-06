@@ -288,7 +288,12 @@ Read-only: change nothing in any checkout. Browser runs, if needed, through one_
   { label: `review ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'xhigh', schema: REVIEW },
 )
 
+// The review's blocking findings no re-check has yet confirmed fixed, and a
+// fix that did not return (a skipped or dead agent gives null): either keeps
+// the item from `ready`.
 let verify = null
+let open = review ? review.blocking : []
+let lost = null
 if (review && (review.blocking.length || review.should_fix.length || review.nits.length || review.maintainers_call.length)) {
   const fixed = await agent(
     `Continue the fix of ${THE_TEST} in worktree ${WT} (branch ${args.branch}, head ${report.head}, port ${PORT}). The review found these; fix each in new commits.
@@ -318,6 +323,7 @@ Return the full report, updated, with the pr_body saying what the review found a
     { label: `fix ${KEY} review`, phase: 'Review', agentType: BUILDER, schema: REPORT },
   )
   if (fixed) report = fixed
+  else lost = `the fix of the review's findings did not return: its ${review.blocking.length} blocking, ${review.should_fix.length} should-fix and ${review.nits.length} nit finding(s) are not done on the branch`
   if (fixed && review.blocking.length) {
     verify = await agent(
       `Re-check only these blocking findings on branch ${args.branch} (worktree ${WT}, head ${report.head}): the fix of ${THE_TEST}. For each, confirm the fix resolves it at its cause, running the test where it helps (through one_browser.sh on port ${PORT + 100}). Read-only.
@@ -325,6 +331,8 @@ Return the full report, updated, with the pr_body saying what the review found a
 ${fmt(review.blocking)}`,
       { label: `verify ${KEY}`, phase: 'Review', agentType: 'reviewer', effort: 'high', schema: VERIFY },
     )
+    if (verify && verify.all_resolved) open = []
+    else if (verify && verify.remaining.length) open = verify.remaining
   }
 }
 
@@ -349,7 +357,8 @@ Return the report again, updated: the new head, every commit, base, conflicts, p
 const last = final || report
 const problems = problemsOf(last, proof)
 if (!review) problems.push('the review did not return: review the branch (review-pr) before the PR')
-if (verify && !verify.all_resolved) problems.push('blocking findings remain after the fix')
+if (lost) problems.push(lost)
+if (open.length) problems.push(verify ? `${open.length} blocking finding(s) remain after the fix` : `the fix or its re-check did not return; ${open.length} blocking finding(s) unresolved`)
 if (!final) problems.push('finalize did not return: rebase, the gates and the PR checks are still to do')
 const labels = ['priority', ...(last.needs_full_ci && last.needs_full_ci.value ? ['full-ci'] : [])]
 log(`${KEY}: ${problems.length ? 'needs attention' : 'ready'}`)

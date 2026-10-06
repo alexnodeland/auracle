@@ -47,9 +47,9 @@ agents too.
 
 Claude Code workflows, saved by name (the Workflow tool runs one by its
 file's name): a script that runs agents in stages, each agent's result
-checked against a schema. The `ship-wave` skill says when and how to run each; they spend
-many tokens, so one runs when the maintainer asks for a wave or for it by
-name.
+checked against a schema. The `ship-wave` skill says when and how to run
+each; they spend many tokens, so one runs when the maintainer asks for a
+wave or for it by name.
 
 | Workflow | Runs |
 | --- | --- |
@@ -66,8 +66,12 @@ A workflow file is a plain script, not a module: `export const meta = {…}`
 and the after-edit hook): meta, the phases it names, no `Date.now()`,
 `Math.random()` or Node API, and a dry run of the body on stubbed agents
 with sample `args` for each, which it keeps. A new workflow adds its sample
-there. An agent label is `<stage> <key>` (`build #233`, `fix #233 r2`),
-which `wf_result.py` reads a running workflow's journal by.
+there. What the workflows promise the operator is tested on scripted agents
+in `scripts/ops/workflows.test.mjs`: an item of `ship-issues`, `fix-flake`
+or `mutants-burndown` is `ready` only when every agent it needed came back,
+and `review-pr` loses no finding. An agent label is `<stage> <key>`
+(`build #233`, `fix #233 r2`), which `wf_result.py` reads a running
+workflow's journal by.
 
 ## The operator's scripts (`scripts/ops/`)
 

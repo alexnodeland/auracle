@@ -23,7 +23,9 @@ export const meta = {
 // Returns { workflow, session, items: [{ issue, branch, worktree, status, problems, final, review, verify,
 // fix_rounds }] }: `final` is the finalized report (head, title, body, closes and refs, needs_full_ci,
 // voice drafts, decisions, open items by kind). `scripts/ops/wf_result.py` reads it, or the run's journal
-// while it is still going, and writes the PR body.
+// while it is still going, and writes the PR body. An item is `ready` only when every agent it needed came
+// back (one skipped or dead gives null): a fix that did not return, or a blocking finding no re-check
+// confirmed fixed, is a problem.
 
 const REPO = 'alexnodeland/auracle'
 const MAX_FIX_ROUNDS = 2
@@ -288,24 +290,32 @@ const results = await pipeline(
     let report = s.build
     let rounds = 0
     let verified = null
+    // A fix round that did not return (a skipped or dead agent gives null),
+    // and the blocking findings no re-check has yet confirmed fixed: either
+    // keeps the item from `ready`.
+    let lost = null
     const rv = s.review
+    let open = rv ? rv.blocking : []
     if (rv && (rv.blocking.length || rv.should_fix.length || rv.nits.length || rv.maintainers_call.length || inArea(report).length)) {
       const fixed = await fix(report, item, rv, ++rounds)
       if (fixed) report = fixed
-      let blocking = rv.blocking
-      while (fixed && blocking.length) {
-        verified = await verify(report, item, blocking, rounds)
-        if (!verified || verified.all_resolved || !verified.remaining.length || rounds >= MAX_FIX_ROUNDS) break
-        const again = await fix(report, item, { blocking: verified.remaining, should_fix: [], maintainers_call: [], nits: [] }, ++rounds)
-        if (!again) break
+      else lost = `the fix did not return: the review's ${rv.blocking.length} blocking, ${rv.should_fix.length} should-fix and ${rv.nits.length} nit finding(s) and ${inArea(report).length} in-area item(s) are not done on the branch`
+      while (fixed && open.length) {
+        verified = await verify(report, item, open, rounds)
+        if (!verified) break
+        if (verified.all_resolved) { open = []; break }
+        if (verified.remaining.length) open = verified.remaining
+        if (!verified.remaining.length || rounds >= MAX_FIX_ROUNDS) break
+        const again = await fix(report, item, { blocking: open, should_fix: [], maintainers_call: [], nits: [] }, ++rounds)
+        if (!again) { lost = `fix round ${rounds} did not return`; break }
         report = again
-        blocking = verified.remaining
       }
     } else if (!rv && inArea(report).length) {
       const fixed = await fix(report, item, { blocking: [], should_fix: [], maintainers_call: [], nits: [] }, ++rounds)
       if (fixed) report = fixed
+      else lost = `the fix did not return: ${inArea(report).length} in-area item(s) are not done on the branch`
     }
-    return { ...s, report, verify: verified, rounds }
+    return { ...s, report, verify: verified, rounds, open, lost }
   },
   async (s, item) => {
     if (!s.build) return s
@@ -322,7 +332,12 @@ const items = results.map((s, i) => {
   const problems = problemsOf(final, item)
   if (!s.review) problems.push('the review did not return: review the branch (review-pr) before the PR')
   if (!s.final) problems.push('finalize did not return: rebase, the gates and the PR checks are still to do')
-  if (s.verify && !s.verify.all_resolved) problems.push(`blocking findings remain after ${s.rounds} fix round(s)`)
+  if (s.lost) problems.push(s.lost)
+  if (s.open && s.open.length) {
+    problems.push(s.verify && !s.lost
+      ? `${s.open.length} blocking finding(s) remain after ${s.rounds} fix round(s)`
+      : `the fix or its re-check did not return; ${s.open.length} blocking finding(s) unresolved`)
+  }
   return {
     ...base,
     status: problems.length ? 'needs_attention' : 'ready',
