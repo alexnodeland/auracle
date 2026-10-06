@@ -1,0 +1,237 @@
+name: Prepare release
+
+# A release from the Actions tab to a published GitHub Release, with two
+# steps by hand: the paragraph that says what the release is, and queueing
+# the release PR (CONTRIBUTING.md § Cutting a release).
+#
+# - Run on main (workflow_dispatch), `Open the release PR` works out the
+#   version from the PR titles merged since the last tag (scripts/release.py:
+#   a feat moves the minor, a fix or perf the patch, a `!` the major, or the
+#   minor while the major is 0), writes it everywhere the workspace keeps it,
+#   closes the changelog's section (scripts/changelog.py --release: the
+#   entries waiting in changelog.d/, written by hand for players and never
+#   generated from commits, ADR-013), and opens the release PR,
+#   `release: X.Y.Z`, labelled `release` and `queue`. `version` asks for a
+#   version instead; `dry_run` says what it would do and pushes nothing.
+# - The operator writes the paragraph under `## [X.Y.Z]`, pushes it to the
+#   release branch, and queues the PR. A PR opened with a workflow's own
+#   token starts no workflow, `CI` and `PR checks` included (GitHub's docs,
+#   "Triggering a workflow from a workflow"), and the repository has no
+#   GitHub App or token of its own to open it with. The operator's push
+#   starts both, as any push does.
+# - When the queue merges it, `Tag the release` checks the merge commit
+#   (scripts/release.py verify), tags it `vX.Y.Z`, and starts release.yml on
+#   the tag, which publishes the release. A tag made with this token starts no
+#   workflow either; `workflow_dispatch` is the documented exception, so the
+#   job starts it.
+#
+# Opening the PR needs "Allow GitHub Actions to create and approve pull
+# requests" on (Settings > Actions > General). Without it the branch is
+# pushed, the run fails, and its summary says how to open the PR by hand.
+#
+# `pull_request`, never `pull_request_target`: the tag job runs for a PR from
+# this repository only, merged into main, with the `release` label.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version, X.Y.Z. Empty: the one the PR titles since the last tag call for"
+        type: string
+        default: ""
+      dry_run:
+        description: "Say what it would do, and push nothing"
+        type: boolean
+        default: false
+  # A release PR merging. Only a PR that changes CHANGELOG.md starts a run,
+  # and only a release PR changes it now (every other change writes
+  # changelog.d/), so another PR's merge starts nothing here.
+  pull_request:
+    types: [closed]
+    paths: [CHANGELOG.md]
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Open the release PR
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: prepare-release
+      cancel-in-progress: false
+    permissions:
+      contents: write # push the release branch
+      pull-requests: write # open the PR and label it; read the PRs' authors
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # Inputs reach the scripts as variables, never written into a script.
+      ASKED: ${{ inputs.version }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::a release is cut from main: run this workflow on main, not on $GITHUB_REF_NAME"
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every tag and all of main's history: the titles since the last
+          # tag, and the order changelog.py puts the entries in.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: plan
+        name: Work out the version
+        run: |
+          python3 scripts/release.py plan --version "$ASKED" --body "$RUNNER_TEMP/release-pr.md" --github-output | tee "$RUNNER_TEMP/plan.txt"
+          { echo '### The plan'; echo; echo '```'; cat "$RUNNER_TEMP/plan.txt"; echo '```'; echo; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refuse when its branch is there already
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --heads origin "release/$VERSION" > /dev/null; then
+            echo "::error::release/$VERSION is there already: a release PR for $VERSION is open, or its branch was left behind. Close that PR and delete the branch, then run this again."
+            exit 1
+          fi
+
+      - name: Bump the version
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: python3 scripts/release.py bump "$VERSION"
+
+      # CI builds without --locked, so a lock the bump left wrong would be
+      # rewritten on every runner rather than seen. Resolving needs no build,
+      # so the runner's own stable cargo can say, with no toolchain install.
+      - name: Cargo.lock agrees with the bump
+        run: RUSTUP_TOOLCHAIN=stable cargo update --workspace --locked
+
+      - name: Close the changelog's section
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          python3 scripts/changelog.py --release "$VERSION" "$(date -u +%F)"
+          python3 scripts/changelog.py --check
+
+      - name: What the release PR holds, and the list under its notes
+        run: |
+          {
+            echo '### What the release PR holds'
+            echo
+            echo '```'
+            git status --short
+            echo '```'
+            echo
+            python3 scripts/release.py notes --to HEAD
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit, push and open the PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          PREVIOUS: ${{ steps.plan.outputs.previous }}
+        run: |
+          branch="release/$VERSION"
+          git switch -q -c "$branch"
+          git add -A
+          # The squash commit on main carries this message (the repository's
+          # squash setting), so it says what the commit is and where from.
+          {
+            echo "release: $VERSION"
+            echo
+            echo "The version and the changelog's section for $VERSION, made by the"
+            echo "Prepare release workflow from what merged since ${PREVIOUS:-the first commit}:"
+            echo "the workspace's version in Cargo.toml, crates/auracle-wasm/Cargo.toml"
+            echo "and Cargo.lock, and CHANGELOG.md's \`## [$VERSION]\` with the entries that"
+            echo "waited in changelog.d/ and under [Unreleased]. The paragraph that says"
+            echo "what the release is follows, by hand."
+          } > "$RUNNER_TEMP/message"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -F "$RUNNER_TEMP/message"
+          git push -q origin "HEAD:refs/heads/$branch"
+          if url="$(gh pr create --base main --head "$branch" --title "release: $VERSION" --body-file "$RUNNER_TEMP/release-pr.md" --label release --label queue 2> "$RUNNER_TEMP/pr.err")"; then
+            echo "The release PR: $url" >> "$GITHUB_STEP_SUMMARY"
+            echo "The release PR: $url"
+            exit 0
+          fi
+          cat "$RUNNER_TEMP/pr.err"
+          {
+            echo '### The PR was not opened'
+            echo
+            echo "\`$branch\` is pushed, and GitHub refused the PR: $(cat "$RUNNER_TEMP/pr.err")"
+            echo
+            echo 'With *Allow GitHub Actions to create and approve pull requests* off (Settings > Actions > General), open it by hand, which starts its checks too. Its body is below.'
+            echo
+            echo '```'
+            echo "gh pr create --base main --head $branch --title \"release: $VERSION\" --label release --label queue --body-file <the body below>"
+            echo '```'
+            echo
+            cat "$RUNNER_TEMP/release-pr.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::the release PR was not opened: the run's summary says how to open it by hand"
+          exit 1
+
+  tag:
+    name: Tag the release
+    if: >-
+      github.event_name == 'pull_request' && github.event.pull_request.merged
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # the tag
+      actions: write # start release.yml on it
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      # The tree the release PR merged as: the commit the queue's full gate
+      # tested, alone (the `release` queue in .mergify.yml).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      # Nothing is tagged unless the merge commit is ready: the workspace at
+      # the title's version, its section in CHANGELOG.md, and changelog.d/
+      # empty. An entry that merged while the release PR waited fails here,
+      # untagged, so running Prepare release again folds it into the same
+      # version (CONTRIBUTING.md § Cutting a release).
+      - id: check
+        name: The merge commit is ready to tag
+        run: |
+          version="${PR_TITLE#release: }"
+          if [ "$version" = "$PR_TITLE" ]; then
+            echo "::error::#$PR_NUMBER has the release label, and its title is '$PR_TITLE', not 'release: X.Y.Z': nothing is tagged"
+            exit 1
+          fi
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "::error::$tag is tagged already, on $(git rev-parse --short "$tag^{commit}"): nothing is tagged"
+            exit 1
+          fi
+          python3 scripts/release.py verify "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Tag it
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$TAG" -f message="Auracle $TAG" -f object="$SHA" -f type=commit -q .sha)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$object" > /dev/null
+          echo "Tagged ${SHA:0:12}, #$PR_NUMBER's merge commit, as $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start release.yml on the tag
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          echo "Started release.yml on $TAG: it publishes the release." >> "$GITHUB_STEP_SUMMARY"
