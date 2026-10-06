@@ -103,9 +103,10 @@ install-hooks:
 ## (the scores and mix defaults generated from www/brand/sound.json current,
 ## its description of the record scores' notes true, no number as a film
 ## tool's level default or a pipeline's fallback, and the check's own tests), the
-## Claude Code hooks against inputs they must block and pass, the syntax of
-## every film tool, and the film tools' own tests (on .venv-voice when it
-## exists)
+## changelog (every entry waiting in changelog.d/ parses, and the assembler's
+## own tests), the Claude Code hooks against inputs they must block and pass,
+## the syntax of every film tool, and the film tools' own tests (on .venv-voice
+## when it exists)
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
 ## atomically), so they are prerequisites that `make -j` runs side by side; a
@@ -113,7 +114,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests dev-coverage
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-hooks dev-syntax dev-film-tests dev-coverage
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -131,6 +132,9 @@ dev-voice:
 dev-sound:
 	@python3 www/brand/sound.py --check
 	@python3 www/brand/test_sound.py
+dev-changelog:
+	@python3 scripts/changelog.py --check
+	@python3 scripts/test_changelog.py
 dev-hooks:
 	@bash .claude/checks/test_hooks.sh
 dev-syntax:
