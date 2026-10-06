@@ -126,8 +126,9 @@ fn counts(tree: &PatchTree) -> HashMap<String, f64> {
 
 /// **Every candidate adds, and its family is φ's.** Over random trees from
 /// the prior, at the output and at a deeper socket: each candidate is a
-/// valid tree, larger than the patch, adds a module without taking any
-/// away (no count falls, and their sum rises), and raises its family's φ
+/// valid tree, placed at the module asked for (when one is), larger than
+/// the patch, adds a module without taking any away (no count falls, and
+/// their sum rises), and raises its family's φ
 /// coordinate, `n_<family>` (bar the mix, which φ does not count); at the
 /// output, every socket is the output, the root's slot or an empty socket.
 #[test]
@@ -147,6 +148,10 @@ fn every_candidate_adds_and_its_family_is_phis() {
         for at in [None, deep.as_deref()] {
             for c in guess_candidates(&tree, at) {
                 assert!(validate_tree(&c.tree).is_ok());
+                // Asked at a module, every guess is placed at that module.
+                if let Some(key) = at {
+                    assert_eq!(op_key(&c.op), key, "{:?} placed elsewhere", c.op);
+                }
                 if !matches!(c.op, StructOp::SetMod { .. }) {
                     // A modulator is not an audio node; its family says it
                     // was added (below).
