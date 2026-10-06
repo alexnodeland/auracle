@@ -118,7 +118,8 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
   // commit pair's scopes still label full scale; they are drawn only in a
   // commit, which this boot doesn't reach.)
   // TASTE's map, and LEARNING with forecasts to draw, handed over as the
-  // worker hands them (`app.inject`).
+  // worker hands them, with the engine's own `calibration` held from then
+  // on (main asks for one at boot), so a late one cannot replace them.
   await openView(page, "taste");
   await openView(page, "learning");
   const calib = {
@@ -126,7 +127,7 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
     by_provenance: [{ provenance: "duel", n: 24, skill: 0.1 }, { provenance: "heard_edit", n: 10, skill: 0.2 }],
   };
   const forecasts = [0.62, 0.3, 0.71, 0.55].map((p_a, i) => ({ p_a, chose_a: i % 2 === 0, random_check: false, provenance: "duel" }));
-  await app.inject({ type: "calibration", calib, forecasts });
+  await app.hold("calibration", { inject: { type: "calibration", calib, forecasts } });
   await drawn(["md-strip-cv"], "100%");
   const texts = await page.evaluate(() => window.__pwCanvasText);
   const small = texts.filter((t) => !(t.css >= 12)).map((t) => `${t.canvas}: ${t.text} at ${t.css}px`);
