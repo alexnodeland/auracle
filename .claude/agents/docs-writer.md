@@ -47,5 +47,9 @@ Where your work goes ([`docs/process.md`](../../docs/process.md)):
 - Anything you move or retire keeps its function by mouse, keyboard and
   touch; when something would have no home, stop and say so.
 
+Use the advisor. If an advisor tool is available, call it before you commit
+to an approach, when you are stuck or going in circles, and before you report
+done.
+
 Report: the head SHA, the pages changed and why, the claims verified live,
 voice drafts, and any app shortfalls found.

@@ -3,14 +3,23 @@ export const meta = {
   description: 'Review one auracle PR or branch through five lenses in parallel (correctness and dropped capability, descriptions, tests, voice, CI and process), then have an independent agent try to refute each finding; returns only the survivors, ranked, each with its failure scenario',
   whenToUse: 'A PR or a claude/ branch before it is queued, when one reviewer is not enough: a large change, several areas, or a second opinion. Read-only. Runs when the maintainer asks for it by name (it spends many tokens).',
   phases: [
-    { title: 'Review', detail: 'five reviewers, one lens each' },
-    { title: 'Refute', detail: 'an independent agent tries to refute each finding' },
+    { title: 'Review', detail: 'five reviewers, one lens each (opus for correctness, descriptions and tests, sonnet for voice and process)' },
+    { title: 'Refute', detail: 'an independent agent tries to refute each finding (opus)' },
   ],
 }
 
 // args: { pr?: <number>, branch?: 'claude/<topic>', worktree?: '$REPO/.claude/worktrees/<topic>' }: a PR,
 // or a branch with its worktree. With a PR and no worktree, nothing is checked out: the diff and the
 // files come from GitHub.
+//   models?: { correctness, descriptions, tests, voice, process, refute: 'opus' | 'sonnet' }
+// Models, by how hard a lens is, and what a miss costs. Defaults: correctness, descriptions and tests
+// opus (a wrong result; the ADR-004 sweep, whose miss is never recovered once the PR merges; a vacuous
+// test), and every refuter opus (a refuter has to confirm a scenario by running it, or the finding is
+// lost); voice and process sonnet (a word against the table; a title and a link against the checks,
+// which a script checks again).
+// `models` sets one lens's model, or `refute` the model of every refuter. Every agent also gets the
+// advisor line: it calls the advisor, when there is one, before it commits to an approach, when stuck,
+// and before it reports done.
 // Returns { workflow, target, findings: [{ severity, lenses, file, line, summary, scenario, evidence,
 // verdict }], refuted: [...], lenses_failed: [...] }, findings most severe first, then by place. Every
 // finding is put to a refuter of its own, and each comes back in findings or in refuted.
@@ -24,6 +33,18 @@ need(args && typeof args === 'object' && !Array.isArray(args), 'args is an objec
 need(args.pr === undefined || Number.isInteger(args.pr), 'pr is a number')
 need(args.pr !== undefined || (typeof args.branch === 'string' && typeof args.worktree === 'string'), 'a pr, or a branch with its worktree')
 need(args.worktree === undefined || (typeof args.worktree === 'string' && args.worktree.startsWith('/')), 'worktree is an absolute path')
+
+// The model of each lens and of the refuters, by how hard they are (see args above).
+const MODELS = ['opus', 'sonnet']
+const STAGE_MODELS = { correctness: 'opus', descriptions: 'opus', tests: 'opus', voice: 'sonnet', process: 'sonnet', refute: 'opus' }
+const MODEL_ARGS = args.models === undefined ? {} : args.models
+need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
+for (const [stage, m] of Object.entries(MODEL_ARGS)) {
+  need(Object.keys(STAGE_MODELS).includes(stage), `models.${stage} is not a lens or refute (${Object.keys(STAGE_MODELS).join(', ')})`)
+  need(MODELS.includes(m), `models.${stage} is 'opus' or 'sonnet'`)
+}
+const modelOf = stage => MODEL_ARGS[stage] || STAGE_MODELS[stage]
+const ADVISOR = 'If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done.'
 
 const WT = args.worktree || null
 const TARGET = args.pr !== undefined ? `PR #${args.pr}${args.branch ? ` (${args.branch})` : ''}` : `branch ${args.branch}`
@@ -105,8 +126,10 @@ ${HOW}
 
 ${lens.brief}
 
-Only report a finding you can support with a concrete scenario (inputs, state, wrong result), with the evidence: what you ran or the code at file:line. Say nothing about the other lenses' ground. ${READ_ONLY}`,
-  { label: `review ${lens.name}`, phase: 'Review', agentType: lens.agentType, effort: lens.effort, schema: FINDINGS },
+Only report a finding you can support with a concrete scenario (inputs, state, wrong result), with the evidence: what you ran or the code at file:line. Say nothing about the other lenses' ground. ${READ_ONLY}
+
+${ADVISOR}`,
+  { label: `review ${lens.name}`, phase: 'Review', agentType: lens.agentType, model: modelOf(lens.name), effort: lens.effort, schema: FINDINGS },
 )))
 const lensesFailed = LENSES.filter((_, i) => !lensResults[i]).map(l => l.name)
 if (lensesFailed.length) log(`lenses that did not return: ${lensesFailed.join(', ')}`)
@@ -130,8 +153,10 @@ The finding (from the ${f.lenses.join(' and ')} review, rated ${f.severity}):
 - scenario: ${f.scenario}
 - evidence: ${f.evidence}
 
-It stands only if you confirm the scenario: the inputs or state are reachable and the result is wrong. Refute it when the code does not do what it says, the scenario cannot happen, the defect is not the change's, or you cannot confirm it: when uncertain, refuted is true. If it stands, rate it again: ${SEVERITY.join(', ')}. ${READ_ONLY}`,
-  { label: `refute ${i + 1}`, phase: 'Refute', agentType: 'reviewer', effort: 'high', schema: VERDICT },
+It stands only if you confirm the scenario: the inputs or state are reachable and the result is wrong. Refute it when the code does not do what it says, the scenario cannot happen, the defect is not the change's, or you cannot confirm it: when uncertain, refuted is true. If it stands, rate it again: ${SEVERITY.join(', ')}. ${READ_ONLY}
+
+${ADVISOR}`,
+  { label: `refute ${i + 1}`, phase: 'Refute', agentType: 'reviewer', model: modelOf('refute'), effort: 'high', schema: VERDICT },
 )))
 
 const findings = []

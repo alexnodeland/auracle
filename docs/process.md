@@ -21,7 +21,7 @@ saved workflows ([Waves](#waves)).
 | 3. Accepted | An ADR for each decision the RFC makes, and a plan when the work spans more than one PR | [`decisions/`](decisions/), [`plans/`](plans/) | |
 | 4. Planned | One issue per plan task, in the plan's milestone | GitHub issues | The operator |
 | 5. Briefed | What the builder needs: scope, decisions, tests, docs, report | The issue body, or a brief it links | The operator |
-| 6. Built | Commits on `claude/<topic>`, in a worktree of its own (`.claude/worktrees/<topic>`) | A branch | An agent, or a person |
+| 6. Built | Commits on `claude/<topic>`, in a worktree of its own (`.claude/worktrees/<topic>`) | A branch | An agent on the model the operator chose, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
 | 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
 | 9. Checked | Green `CI` (the fast lane), `PR checks` and `Mutants in the changed code` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
@@ -123,6 +123,15 @@ in a plan's prose, a session's notes or a conversation.
   deletes it, work and all.
 - **Builders commit only.** An agent never pushes, opens a PR or merges. Its
   commits are small, one area each, each leaving the app working.
+- **The model is chosen per task.** The operator picks Opus or Sonnet for each
+  agent it starts, by how hard the task looks and what a wrong answer costs:
+  Opus for design, diagnosis and judgment, Sonnet for work with a clear recipe
+  and an easy check, and Opus when in doubt
+  ([`.claude/README.md`](../.claude/README.md#choosing-the-model) has examples
+  and the aliases, `opus` and `sonnet`, which name the current models). The
+  agent definitions default to Opus. An agent calls the advisor tool, when the
+  session has one, before it commits to an approach, when it is stuck, and
+  before it reports done.
 - **Commit messages** explain why (root `AGENTS.md` rule 8). They carry
   `Refs #N` when an issue exists. No hand-written attribution trailers: no
   `Co-Authored-By`, no "generated with" line, no model name or version. When
@@ -495,6 +504,19 @@ wave or for it by name.
 | `review-pr` | Five reviewers in parallel, one lens each (correctness and dropped capability, descriptions, tests, voice, CI and process); each finding put to an agent that tries to refute it; the survivors, ranked |
 | `mutants-burndown` | One crate's surviving mutants, killed file by file with tests of behavior or shown equivalent ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)), measured again, reviewed and finalized |
 
+Every agent in a workflow runs on a model the script chooses by how hard its
+stage is and what a wrong answer costs. Opus: `ship-issues`' build, review, fix
+and verify; `fix-flake`'s diagnose, fix, prove, review and verify;
+`mutants-burndown`'s kill, the run after (`remeasure`), review, fix and verify;
+`review-pr`'s correctness, descriptions and tests lenses and its refuters;
+`triage-backlog`'s plan. Sonnet: the finalize of the three that build,
+`mutants-burndown`'s first measure, `review-pr`'s voice and process lenses, and
+`triage-backlog`'s list and its read of each issue. The operator changes a
+stage with `models: {stage: 'opus' | 'sonnet'}` in the run's args, and
+`ship-issues` takes an item's own `model` for its build and fix stages.
+`make dev-check` fails on an `agent()` call with no `model`, and on an override
+that does not reach its stage.
+
 The operator's loop:
 
 1. **Plan.** A triage, when the next wave isn't obvious. Its questions go to
@@ -505,7 +527,8 @@ The operator's loop:
    current.
 3. **Run.** One run per issue, or per small bundle of issues that share
    files: a run returns when its slowest item is done, and one per item
-   lets each completion say so.
+   lets each completion say so. Set the item's `model` here: `sonnet` for a
+   mechanical item the issue specifies exactly, Opus (the default) otherwise.
 4. **Read.** `scripts/ops/wf_result.py` reads a finished run, or a running
    one's journal, and writes each PR body; every item `ready`, or its
    problems put right on the branch. Open items carry a kind: `in_area` is

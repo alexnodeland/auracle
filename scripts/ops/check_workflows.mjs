@@ -39,6 +39,12 @@
 //   prompt with no `undefined`, `NaN` or `[object Object]` in it, only the
 //   options the tool takes, a known agent type, and a schema the tool
 //   accepts (an object at the root, `required` within `properties`).
+// - **a model on every call:** each agent() call passes `model: 'opus'` or
+//   `model: 'sonnet'`, chosen by how hard its stage is (the maintainer's rule,
+//   AGENTS.md § Tooling). Found by reading the source (every call site, even
+//   one no sample reaches), and again at run time (the value). That an
+//   operator's override reaches the right stage is asserted in
+//   scripts/ops/workflows.test.mjs.
 // - **bad args fail fast:** `args` passed as a string (the tool's
 //   documented mistake: a JSON-encoded object reaches the script as one
 //   string) throws before any agent is spent, and so do missing `args`,
@@ -71,9 +77,10 @@ export const SAMPLES = {
     },
     {
       items: [
-        { issue: 301, branch: 'claude/a', worktree: '/tmp/auracle/.claude/worktrees/a', port: 8801, notes: 'A.' },
+        { issue: 301, branch: 'claude/a', worktree: '/tmp/auracle/.claude/worktrees/a', port: 8801, model: 'sonnet', notes: 'A.' },
         { issue: 302, closes: [302, 303], branch: 'claude/b', worktree: '/tmp/auracle/.claude/worktrees/b', port: 8802, agentType: 'engine-engineer', notes: 'B.' },
       ],
+      models: { review: 'sonnet', finalize: 'opus' },
     },
   ],
   'fix-flake': [
@@ -81,19 +88,28 @@ export const SAMPLES = {
       spec: 'patch_facts', test_title: 'a sound opens', run_id: 123456, issue: 304, branch: 'claude/flake-304',
       worktree: '/tmp/auracle/.claude/worktrees/flake-304', port: 8803, session: SESSION,
     },
-    { spec: 'tests/web/perform_touch.spec.js', test_title: 'a touch plays', run_id: 123457, branch: 'claude/flake', worktree: '/tmp/auracle/.claude/worktrees/flake', port: 8804 },
+    {
+      spec: 'tests/web/perform_touch.spec.js', test_title: 'a touch plays', run_id: 123457, branch: 'claude/flake', worktree: '/tmp/auracle/.claude/worktrees/flake', port: 8804,
+      models: { diagnose: 'sonnet', prove: 'opus' },
+    },
   ],
-  'triage-backlog': [{ session: SESSION }, { issues: [1, 2, 3] }],
-  'review-pr': [{ pr: 250 }, { branch: 'claude/sample', worktree: '/tmp/auracle/.claude/worktrees/sample' }],
+  'triage-backlog': [{ session: SESSION }, { issues: [1, 2, 3], models: { read: 'opus', plan: 'sonnet' } }],
+  'review-pr': [
+    { pr: 250 },
+    { branch: 'claude/sample', worktree: '/tmp/auracle/.claude/worktrees/sample', models: { voice: 'opus', refute: 'sonnet' } },
+  ],
   'mutants-burndown': [
     { crate: 'auracle-taste', branch: 'claude/mutants-taste', worktree: '/tmp/auracle/.claude/worktrees/mutants-taste', session: SESSION, issue: 181 },
-    { crate: 'auracle-grammar', branch: 'claude/mutants-grammar', worktree: '/tmp/auracle/.claude/worktrees/mutants-grammar' },
+    { crate: 'auracle-grammar', branch: 'claude/mutants-grammar', worktree: '/tmp/auracle/.claude/worktrees/mutants-grammar', models: { kill: 'sonnet', measure: 'opus' } },
   ],
 }
 
 const META_KEYS = new Set(['name', 'description', 'whenToUse', 'phases'])
 const PHASE_KEYS = new Set(['title', 'detail', 'model'])
 const AGENT_OPTS = new Set(['label', 'phase', 'schema', 'model', 'effort', 'isolation', 'agentType'])
+// The models a workflow's agents run on: opus for the hard stages, sonnet for
+// the easy ones (the Agent tool's own aliases, which the workflow tool shares).
+export const MODELS = new Set(['opus', 'sonnet'])
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 const TYPES = new Set(['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'])
 // Claude Code's own agent types, beside the repo's (.claude/agents/*.md).
@@ -216,27 +232,33 @@ function code(src) {
 
 /** The source as code only: comments dropped, each string, template text and
  * regular expression literal emptied (a template's `${…}` is code, and kept),
- * so a prompt may say "docs/process.md" or "never Date.now()". */
+ * so a prompt may say "docs/process.md" or "never Date.now()". What is dropped
+ * becomes spaces (its newlines stay), so every character of code is at its
+ * place in the source, and a line number there is the file's. */
 export function codeOnly(src) {
+  const blank = text => text.replace(/[^\n]/g, ' ')
   let out = ''
   let i = 0
   const braces = [] // one entry per open `{`: true when it opened a template's `${`
   let last = '' // the last significant character of code, to tell a regex from a division
   const regexCanStart = () => last === '' || '(,=:[!&|?{};+-*%<>~^'.includes(last) || /\b(return|typeof|case|of|in|await|yield)$/.test(out)
   function template() { // from just after a backtick, or after a template's `}`
+    const from = i
     for (; i < src.length; i++) {
       if (src[i] === '\\') { i++; continue }
-      if (src[i] === '`') { i++; out += '``'; last = '`'; return }
-      if (src[i] === '$' && src[i + 1] === '{') { i += 2; out += '`${'; braces.push(true); last = '{'; return }
+      if (src[i] === '`') { out += blank(src.slice(from, i)) + '`'; i++; last = '`'; return }
+      if (src[i] === '$' && src[i + 1] === '{') { out += blank(src.slice(from, i)) + '${'; i += 2; braces.push(true); last = '{'; return }
     }
+    out += blank(src.slice(from))
   }
   while (i < src.length) {
     const c = src[i], n = src[i + 1]
-    if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue }
-    if (c === '/' && n === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 2; out += ' '; continue }
-    if (c === '"' || c === "'") { const e = skipString(src, i); i = e < 0 ? src.length : e; out += c + c; last = c; continue }
-    if (c === '`') { i++; template(); continue }
+    if (c === '/' && n === '/') { const a = i; while (i < src.length && src[i] !== '\n') i++; out += blank(src.slice(a, i)); continue }
+    if (c === '/' && n === '*') { const a = i, e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 2; out += blank(src.slice(a, i)); continue }
+    if (c === '"' || c === "'") { const a = i, e = skipString(src, i); i = e < 0 ? src.length : e; out += c + blank(src.slice(a + 1, Math.max(a + 1, i - 1))) + (e < 0 ? '' : c); last = c; continue }
+    if (c === '`') { i++; out += '`'; template(); continue }
     if (c === '/' && regexCanStart()) {
+      const a = i
       let j = i + 1, cls = false
       for (; j < src.length && src[j] !== '\n'; j++) {
         if (src[j] === '\\') { j++; continue }
@@ -246,13 +268,75 @@ export function codeOnly(src) {
       }
       i = j + 1
       while (/[a-z]/.test(src[i] || '')) i++
-      out += '/re/'; last = '/'; continue
+      out += blank(src.slice(a, i)); last = '/'; continue
     }
     if (c === '{') braces.push(false)
-    if (c === '}' && braces.length && braces.pop()) { i++; template(); continue }
+    if (c === '}' && braces.length && braces.pop()) { out += '}'; i++; template(); continue }
     out += c
     if (!/\s/.test(c)) last = c
     i++
+  }
+  return out
+}
+
+/** The pieces of `text` between its top-level commas, as [from, to) offsets.
+ * Depth rises on `(`, `[` and `{` (a template's `${` too) and falls on their
+ * closers, so a comma inside a nested call, list or object is not a split. */
+function splitTop(text, from = 0, to = text.length) {
+  const parts = []
+  let depth = 0
+  let start = from
+  for (let i = from; i < to; i++) {
+    const c = text[i]
+    if ('([{'.includes(c)) depth++
+    else if (')]}'.includes(c)) depth--
+    else if (c === ',' && depth === 0) { parts.push([start, i]); start = i + 1 }
+  }
+  if (text.slice(start, to).trim()) parts.push([start, to])
+  return parts
+}
+
+/** The keys of the options object (the call's second argument) that the call
+ * names itself: `{ label: …, model }` gives label and model; what is nested
+ * (a schema's own `model` property) is not the call's. `text` is the code and
+ * `src` the source it was made from, character for character, which still
+ * holds a quoted key's name. { problem } when the options cannot be read:
+ * absent, or not an object literal. */
+function optionKeys(text, src, open, close) {
+  const args = splitTop(text, open + 1, close)
+  if (args.length < 2) return { problem: 'passes no options (label, phase, model, schema)' }
+  const [from, to] = args[1]
+  const at = from + (/^\s*/.exec(text.slice(from, to))[0].length)
+  if (text[at] !== '{') return { problem: 'has options that are not an object literal, so its model cannot be read' }
+  const keys = []
+  for (const [a, b] of splitTop(text, at + 1, text.lastIndexOf('}', to))) {
+    const entry = text.slice(a, b)
+    const k = a + (/^\s*/.exec(entry)[0].length)
+    if (text[k] === '"' || text[k] === "'") keys.push(src.slice(k + 1, text.indexOf(text[k], k + 1)))
+    else {
+      const id = /^[A-Za-z_$][\w$]*/.exec(text.slice(k, b))
+      if (id) keys.push(id[0]) // `key: value`, the shorthand `key`, or a method `key()`
+    }
+  }
+  return { keys }
+}
+
+/** Each agent() call in the source's code, as { line, call, keys, problem }:
+ * the line it starts on, its text from `agent(` to the matching `)` (strings
+ * and comments blanked), and the keys of its options object (optionKeys). A
+ * call named in a prompt or a comment is not one. */
+export function agentCalls(src) {
+  const text = codeOnly(src)
+  const out = []
+  for (const m of text.matchAll(/(?<![\w$.])agent\s*\(/g)) {
+    let depth = 0
+    const open = m.index + m[0].length - 1
+    let i = open
+    for (; i < text.length; i++) {
+      if (text[i] === '(') depth++
+      else if (text[i] === ')' && --depth === 0) break
+    }
+    out.push({ line: text.slice(0, m.index).split('\n').length, call: text.slice(m.index, i + 1), ...optionKeys(text, src, open, i) })
   }
   return out
 }
@@ -358,12 +442,13 @@ export function compileWorkflow(src) {
  * answering as `mode` says. `answer(opts, prompt, index)`: answers in place
  * of `mode`'s (a test's scripted agents). */
 export async function dryRun(fn, args, mode, known = agentTypes(), { kill = -1, answer = null } = {}) {
-  const rec = { calls: 0, labels: [], phases: new Set(), problems: [], stageErrors: [], result: undefined, error: null }
+  const rec = { calls: 0, labels: [], models: [], phases: new Set(), problems: [], stageErrors: [], result: undefined, error: null }
   const say = p => { if (!rec.problems.includes(p)) rec.problems.push(p) }
   async function agent(prompt, opts = {}) {
     const index = rec.calls++
     const label = opts && typeof opts.label === 'string' ? opts.label : '(no label)'
     rec.labels.push(label)
+    rec.models.push(opts ? opts.model : undefined)
     if (typeof prompt !== 'string' || !prompt.trim()) say(`agent ${label}: the prompt is not a string, or is empty`)
     else for (const bad of ['undefined', 'NaN', '[object Object]']) {
       if (new RegExp(`(^|[^\\w])${bad.replace(/[[\]]/g, '\\$&')}([^\\w]|$)`).test(prompt)) say(`agent ${label}: the prompt has \`${bad}\` in it (an interpolation of something missing)`)
@@ -376,7 +461,8 @@ export async function dryRun(fn, args, mode, known = agentTypes(), { kill = -1, 
       if (opts.effort !== undefined && !EFFORTS.has(opts.effort)) say(`agent ${label}: effort ${opts.effort} is not one of ${[...EFFORTS].join(', ')}`)
       if (opts.isolation !== undefined && opts.isolation !== 'worktree') say(`agent ${label}: isolation ${opts.isolation} is not 'worktree'`)
       if (opts.agentType !== undefined && !known.has(opts.agentType)) say(`agent ${label}: agent type ${opts.agentType} is not one of ${[...known].join(', ')}`)
-      if (opts.model !== undefined && typeof opts.model !== 'string') say(`agent ${label}: model is not a string`)
+      if (opts.model === undefined) say(`agent ${label}: no model (pass 'opus' or 'sonnet', by how hard the stage is)`)
+      else if (!MODELS.has(opts.model)) say(`agent ${label}: model ${JSON.stringify(opts.model)} is not one of ${[...MODELS].join(', ')}`)
       if (opts.schema !== undefined) for (const p of schemaProblems(opts.schema)) say(`agent ${label}: ${p}`)
     }
     if (mode === 'dead' || index === kill) return null
@@ -436,6 +522,10 @@ export async function checkSource(name, src, samples = SAMPLES[name], known = ag
   if (rest.startsWith(';')) rest = rest.slice(1)
   const body = `const meta = ${m.text};\n${rest}`
   out.push(...forbidden(rest))
+  for (const c of agentCalls(src)) {
+    if (c.problem) out.push(`line ${c.line}: this agent() call ${c.problem}`)
+    else if (!c.keys.includes('model')) out.push(`line ${c.line}: this agent() call passes no \`model\` ('opus' or 'sonnet', by how hard the stage is)`)
+  }
   const named = namedPhases(rest)
   for (const t of named) if (!declared.has(t)) out.push(`phase ${JSON.stringify(t)} is used but not in meta.phases`)
   for (const t of declared) if (!named.has(t)) out.push(`meta.phases has ${JSON.stringify(t)}, which the body never names`)
