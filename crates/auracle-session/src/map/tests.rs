@@ -477,8 +477,10 @@ fn a_map_saved_under_another_phi_is_drawn_afresh() {
 
 /// **Each point on the map says where its sound came from**, by the
 /// spelling the page colors it by: a literal table, since the page reads
-/// these words. A member never standardized has no place on the map (that
-/// state built by hand: the engine standardizes what it admits).
+/// these words. A member with no standardized φ has no place on the map:
+/// the engine holds such members while a fill is short of the pool, before
+/// the standardizer fits (`push_prior`), and here one sits beside
+/// standardized members, a mix built by hand.
 #[test]
 fn map_points_say_where_each_sound_came_from() {
     const WIRE: [(Origin, &str); 4] = [

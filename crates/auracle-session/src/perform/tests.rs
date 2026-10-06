@@ -1443,11 +1443,10 @@ fn verification_counts_a_point_that_does_not_vet_as_no_movement() {
         -JACOBIAN_STEP
     };
     let t = set_param(&tree, nudge, ParamValue::Continuous(jac.values[0] + h)).unwrap();
-    let fresh = Engine::new(
+    let mut fresh = Engine::new(
         auracle_grammar::PatchGrammarPrior::default(),
         SessionConfig::default(),
     );
-    let mut fresh = fresh;
     fresh.standardizer = engine.standardizer.clone();
     let failed: HashSet<String> = [render_key(&t, &spec)].into();
     let plan = fresh.wire_plan(&tree, &failed);

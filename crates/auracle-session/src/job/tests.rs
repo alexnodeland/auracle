@@ -81,7 +81,8 @@ fn an_aimed_offer_that_has_not_moved_walks_again_up_to_its_walks() {
     let mut job = engine
         .offer_aimed_job(&folded_lead(), &[], 0, 0, 1.0, AIM_GAMMA, 2)
         .unwrap();
-    while job.step(&mut StdRng::seed_from_u64(2), 1) {}
+    let mut rng = StdRng::seed_from_u64(2);
+    while job.step(&mut rng, 1) {}
     assert_eq!(job.walks(), 2);
     assert_eq!(job.finish(), Err(RefineOutcome::NoMove));
 }
@@ -101,7 +102,8 @@ fn an_aimed_offer_from_a_sound_that_does_not_vet_reports_no_movement() {
             let mut job = engine
                 .offer_aimed_job(&silent, &[], 6, 0, 1.0, AIM_GAMMA, 1)
                 .unwrap();
-            while job.step(&mut StdRng::seed_from_u64(seed), 4) {}
+            let mut rng = StdRng::seed_from_u64(seed);
+            while job.step(&mut rng, 4) {}
             match job.finish_moved() {
                 (Ok(t), moved) => Some((t, moved)),
                 _ => None,
