@@ -134,8 +134,9 @@ the fast tier and the PR checks alone.
   none, and gets the smoke only (with Worker protocol, which is the fast
   lane's real check of `worker.js`); so does a change that reaches more than
   twenty spec files (a helper nearly every spec requires, or that many specs
-  changed at once). A green fast lane puts the PR in the queue. It is not the
-  gate: a `main.js` change has run two specs when it enters the queue.
+  changed at once). A green fast lane, with the PR checks green beside it,
+  puts the PR in the queue. It is not the gate: a `main.js` change has run
+  two specs when it enters the queue.
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
   opens for a batch of up to three PRs (a release PR alone), from a branch
   under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that

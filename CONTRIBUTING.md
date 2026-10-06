@@ -156,10 +156,11 @@ except the slow ones (instrumented, for coverage), and every browser spec not
 tagged `@slow` or `@quarantine`, dealt to twelve runners by time, about
 twelve minutes. It runs in two lanes. Your PR's own run is the fast lane,
 the part of it your change reaches: about five minutes for docs, up to about
-ten when Rust changed or an app module's specs run; green, it puts the PR in
-the merge queue. The merge queue's run is
-the full gate, on your PR together with up to two others queued beside it,
-on top of `main`, and it is what merges them. A PR may merge on the fast tier alone. The **slow tier**
+ten when Rust changed or an app module's specs run; green, with `PR checks`
+([Pull requests](#pull-requests)), it puts the PR in the merge queue. The
+merge queue's run is the full gate, on your PR together with up to two
+others queued beside it, on top of `main`, and it is what merges them. A PR
+may merge on the fast tier and `PR checks` alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push, whose run covers the ones before it) and
