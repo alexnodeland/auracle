@@ -65,16 +65,6 @@ fn a_hole_beside_a_source_still_renders() {
     featurize(&tree, &PhraseSpec::default()).expect("half a mixer is still a patch you can hear");
 }
 
-/// Every built-in preset renders and passes the vetting gate — a preset
-/// that can't be auditioned must never ship.
-#[test]
-fn presets_pass_vetting() {
-    let spec = PhraseSpec::default();
-    for (name, tree) in auracle_grammar::presets() {
-        featurize(&tree, &spec).unwrap_or_else(|e| panic!("preset {name} failed vetting: {e}"));
-    }
-}
-
 /// **Nothing leaves the pipeline able to clip.**
 ///
 /// The gate belongs here rather than in `loudness`, because the claim that
@@ -89,6 +79,9 @@ fn presets_pass_vetting() {
 /// distribution; this is the always-on floor under it, over the presets
 /// (hand-authored, and the loudest thing a new user meets) plus a sample of
 /// the prior.
+///
+/// Every built-in preset has to vet to get that far, so this is also the
+/// gate that a preset that can't be auditioned never ships.
 #[test]
 fn no_vetted_render_leaves_above_the_peak_ceiling() {
     let spec = PhraseSpec::default();
@@ -111,7 +104,8 @@ fn no_vetted_render_leaves_above_the_peak_ceiling() {
     };
 
     for (name, tree) in auracle_grammar::presets() {
-        let vc = featurize(&tree, &spec).expect("preset vets");
+        let vc =
+            featurize(&tree, &spec).unwrap_or_else(|e| panic!("preset {name} failed vetting: {e}"));
         check(&format!("preset {name}"), &vc);
     }
 
