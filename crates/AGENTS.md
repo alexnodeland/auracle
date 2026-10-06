@@ -74,9 +74,18 @@ per crate (lines, functions and regions, each with what it misses, and the
 floors) and every uncovered changed line with its text (in CI, a link to
 it). The HTML report, `target/llvm-cov/html/index.html` (in CI the
 `coverage-report` artifact), shows each file with the lines no test ran in
-red. A line also counts as uncovered when a function that starts on it
-never ran, a closure most often, even though the rest of the line did: the
-crate's numbers count that function's line as missed too.
+red.
+
+A closure that never ran, on a line whose other code did, is counted three
+ways. The HTML report (and its lcov) shows the line covered, with a `^0`
+under the closure. The crate's line percentage counts a line once for each
+function on it, so this one once covered and once missed, and its function
+percentage counts the closure as missed. The changed-line check names the
+line as uncovered: stricter than the HTML report by design, since a
+closure no test ran is code no test checked. (Measured on a one-function
+crate: lcov 8 lines, all covered; the summary 9 lines, 8 covered; 2 of 3
+functions. At `c92bb12`, 82 lines read as covered in lcov while a closure
+on them never ran.)
 
 **A covering test asserts behavior.** A test that runs a line and checks
 nothing about what it did counts as coverage and proves nothing; one
@@ -91,7 +100,7 @@ checks outcomes; every line it runs is also run by a fast test.
 - Code that builds only for `wasm32`, and the examples, are not built
   natively, so they are not counted.
 - A file under a `tests/` directory, or named `tests.rs` (or ending
-  `_tests.rs`), is left out by cargo-llvm-cov's default rule. An inline
+  `_tests.rs` or `-tests.rs`), is left out by cargo-llvm-cov's default rule. An inline
   `#[cfg(test)] mod tests { … }` is counted. So a crate's tests belong in a
   file of their own (`#[cfg(test)] mod tests;` and a `tests.rs`, as
   `auracle-session/src/guess/tests.rs` does), and a slow-tier test must be
@@ -118,9 +127,19 @@ measured at `c92bb12`:
   run on.
 
 So a `#[cfg_attr(coverage_nightly, coverage(off))]` would do nothing here;
-don't add one. If a line ever truly can't be covered or removed, that is a
-new decision: the nightly, the reason on the line above the attribute, and
-a count of them that only goes down (#181 § 2).
+don't add one.
+
+One kind of code no reasonable test reaches is already here: recovery
+from a poisoned lock, `lock().unwrap_or_else(|e| e.into_inner())`
+(`auracle-features/src/clip.rs`, `auracle-session/src/map.rs` and
+`engine.rs`). Its closure runs only after another thread panicked while
+holding the lock. The line itself reads as covered, but the closure counts
+against the crate's functions and lines. The first crate PR that has to
+bring such a line to 100% decides, for every one like it: restructure (one
+shared helper that a single test poisons on purpose, or a lock that cannot
+be poisoned), or the nightly with `coverage(off)`, its reason on the line
+above, and a count of exclusions that only goes down (#181 § 2). That
+decision is recorded here.
 
 ## Diagnostics worth knowing
 

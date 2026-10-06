@@ -160,8 +160,11 @@ to three runners. Folding Test into Coverage, which runs the same tests,
 gives two of them back ([Coverage](#coverage)). A merge also starts
 `main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
 on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
-15, Site in all), so a PR pushed right after a merge can wait for runners
-until `main`'s run is done; the merge queue
+15, Site in all). Coverage is re-run as Test is: after every merge of a PR
+that changed no Rust, whose record says both were skipped, since `main` runs
+everything: three runners at once (five jobs in a chain: the build, three
+runners, the report) where Test holds two. So a PR pushed right after a
+merge can wait for runners until `main`'s run is done; the merge queue
 ([ADR-021](../decisions/021-merges-go-through-mergifys-queue.md)) keeps
 merges one at a time. The nightly *Flake hunt* holds four, beside *Search health*'s three
 long jobs.

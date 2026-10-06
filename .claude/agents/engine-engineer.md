@@ -33,8 +33,12 @@ How you work:
 - If the app calls what you changed, run `make wasm` and say so in your
   report; browser work goes through `www/video/tools/one_browser.sh` on
   `AURACLE_TEST_PORT`.
-- Before handing back: `cargo fmt --all`, `make lint`, the crate tests, and
-  `make wasm-check` if the wasm crate or its callers changed.
+- Before handing back: `cargo fmt --all`, `make lint`, the crate tests,
+  `make wasm-check` if the wasm crate or its callers changed, and
+  `make coverage`: every crate at its floor and every line you added or
+  changed covered by a test that asserts what it does
+  ([`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage)). Say
+  in your report what it printed.
 
 Where your work goes ([`docs/process.md`](../../docs/process.md)):
 
