@@ -111,8 +111,10 @@ fn k_highpass(fs: f64) -> Biquad {
     }
 }
 
-/// Gated integrated loudness in LUFS. `None` when no block clears the
-/// −70 LUFS absolute gate (i.e. the signal is effectively silent).
+/// Gated integrated loudness in LUFS. `None` when there is nothing to
+/// measure: the buffer is shorter than one 400 ms block, no block clears the
+/// −70 LUFS absolute gate (the signal is effectively silent), or none clears
+/// the relative gate (a buffer so loud its K-weighted energy overflows).
 pub fn integrated_lufs(samples: &[f64], sample_rate: f64) -> Option<f64> {
     let block = (0.4 * sample_rate) as usize; // 400 ms
     let step = block / 4; // 75% overlap
@@ -150,13 +152,19 @@ pub fn integrated_lufs(samples: &[f64], sample_rate: f64) -> Option<f64> {
             .sum::<f64>()
             / ls.len() as f64
     };
-    // Relative gate 10 LU below the absolute-gated mean. Never empty: the
-    // loudest block is at or above that mean, 10 LU over the gate.
+    // Relative gate 10 LU below the absolute-gated mean. For a buffer whose
+    // energy is finite it keeps at least the loudest block, which is at or
+    // above that mean. One whose K-weighted energy overflows has an infinite
+    // mean and an infinite gate, and keeps nothing: no loudness, as for
+    // silence, rather than the NaN an empty mean would be.
     let rel_threshold = -0.691 + 10.0 * mean_energy(&abs_gated).log10() - 10.0;
     let rel_gated: Vec<f64> = abs_gated
         .into_iter()
         .filter(|l| *l > rel_threshold)
         .collect();
+    if rel_gated.is_empty() {
+        return None;
+    }
     Some(-0.691 + 10.0 * mean_energy(&rel_gated).log10())
 }
 
@@ -197,7 +205,9 @@ pub const PEAK_CEILING: f64 = 1.0;
 /// Normalize `samples` in place toward the target integrated loudness, never
 /// exceeding [`PEAK_CEILING`].
 ///
-/// Returns `None` (leaving samples untouched) when the signal is gated silent.
+/// Returns `None` (leaving samples untouched) when [`integrated_lufs`] has
+/// nothing to measure: a signal gated silent, shorter than one block, or too
+/// loud to measure.
 pub fn normalize_to(samples: &mut [f64], sample_rate: f64, target_lufs: f64) -> Option<NormReport> {
     let lufs = integrated_lufs(samples, sample_rate)?;
     let wanted_db = (target_lufs - lufs).min(MAX_GAIN_DB);

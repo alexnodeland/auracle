@@ -87,3 +87,20 @@ fn less_than_one_gating_block_has_no_loudness() {
     let block = peaky(0.3, 0.3, sr)[..(0.4 * sr) as usize].to_vec();
     assert!(integrated_lufs(&block, sr).is_some());
 }
+
+/// **A buffer too loud to measure has no loudness either.** At 1e153 the
+/// K-weighted energy overflows, so every block reads infinitely loud and the
+/// relative gate, 10 LU under an infinite mean, keeps none: `None`, as for
+/// silence, never a NaN loudness, and normalization leaves the buffer alone.
+#[test]
+fn a_buffer_too_loud_to_measure_has_no_loudness() {
+    let sr = 44_100.0;
+    let huge = peaky(1e153, 1e153, sr);
+    assert_eq!(integrated_lufs(&huge, sr), None);
+    let mut y = huge.clone();
+    assert!(normalize_to(&mut y, sr, -18.0).is_none());
+    assert_eq!(
+        y, huge,
+        "normalization rescaled a buffer it could not measure"
+    );
+}
