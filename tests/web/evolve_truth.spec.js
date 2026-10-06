@@ -9,10 +9,11 @@
 // - "● it just learned" appears only once `fitted` has answered, and stays
 //   until the next pick. It used to appear when the refit was *sent*.
 // - "another pair" (↻) with no pair dealt ahead puts the pair away like a
-//   pick does: inert buttons, ▶ among them, and after 300 ms a reason on the
-//   cards. It used to leave the old pair up with buttons that looked live and
-//   did nothing. A deal that comes back empty (no pair left to deal) leaves
-//   them off, and the cards say why at once (#195).
+//   pick does: inert buttons, ▶ and the cards' corners among them, and after
+//   300 ms a reason on the cards. It used to leave the old pair up with
+//   buttons that looked live and did nothing. A deal that comes back empty
+//   (no pair left to deal) leaves them off, and the cards say why at once
+//   (#195).
 // - A cut patch is never dealt again, and its toast names it without an id.
 //   Which answers a cut keeps from going up, wherever they land (a deal
 //   asked for while the cut was taken back, which rightly did not exclude
@@ -58,9 +59,14 @@ const NO_AHEAD = [{ type: "duel", ahead: true }, { type: "duel", pair: null, met
 // "duel" is the table's deal, the next pair's is `ahead`.
 const TABLE = { type: "duel", ahead: false };
 const AHEAD = { type: "duel", ahead: true };
-// The pair's buttons, on EVOLVE's cards and PATCH's strip: off while the
-// table has no pair to show.
-const DUEL_CONTROLS = ["#choose-a", "#choose-b", "#skip-duel", "#play-a", "#play-b", "#pd-pick-a", "#pd-pick-b", "#pd-skip"];
+// The pair's buttons, on EVOLVE's cards (the picks, ▶, ↻ and the corners'
+// ⇄ circuit and ↓ patch) and PATCH's strip: off while the table has no pair
+// to show.
+const DUEL_CONTROLS = [
+  "#choose-a", "#choose-b", "#skip-duel", "#play-a", "#play-b",
+  "#flip-a", "#flip-b", "#promote-a", "#promote-b",
+  "#pd-pick-a", "#pd-pick-b", "#pd-skip",
+];
 
 async function boot(page, app, { holdAhead = false, query = "" } = {}) {
   await page.addInitScript(WATCH);
@@ -229,7 +235,7 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
   const [a0, b0] = await cardIds(page);
   await app.delay(TABLE, 2_500);
   await page.locator("#skip-duel").click();
-  // Inert at once, like after a pick: the picks, ▶ and ↻.
+  // Inert at once, like after a pick: the picks, ▶, ↻ and the corners.
   for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
   await expect(page.locator("#duel-a")).toHaveClass(/\bdealing\b/);
   // After 300 ms the dimmed cards say why.
@@ -294,7 +300,7 @@ test("a deal that comes back empty leaves the table off and says there is nothin
   const mark = await app.now();
   await page.keyboard.press("Control+z");
   await app.reply("duel", { where: { pair: true }, after: mark, timeout: 30_000 });
-  await expect(page.locator("#choose-a")).toBeEnabled();
+  for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeEnabled();
   await expect(why).toBeHidden();
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bdealing\b/);
 });

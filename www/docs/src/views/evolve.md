@@ -99,15 +99,15 @@ dealt again, and so is one that lost a sound to a generation.
 
 Those renders wait behind what you ask for: a sound you open, a ▶ you press,
 and PERFORM’s offers and first measurements. When no pair is waiting (right
-after a cut, say), the cards dim until the next is dealt. A deal that takes
-longer says why on the cards, for example *dealing: the engine is breeding
-(seed 4/10)*.
+after a cut, say), the cards dim, their buttons off, until the next is dealt.
+A deal that takes longer says why on the cards, for example *dealing: the
+engine is breeding (seed 4/10)*.
 
 When fewer than two sounds in the pool are left uncut, there is no pair to
-deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B** and
-**ANOTHER PAIR** off, and say *Nothing to pair. Fewer than two sounds are
-left to deal.* They deal again by themselves when a cut is taken back or the
-pool changes.
+deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B**,
+**⇄ CIRCUIT**, **↓ PATCH** and **ANOTHER PAIR** off, and say *Nothing to
+pair. Fewer than two sounds are left to deal.* They deal again by themselves
+when a cut is taken back or the pool changes.
 ```
 
 ```admonish info collapsible=true title="How it works: between refits"

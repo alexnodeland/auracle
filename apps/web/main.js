@@ -6941,8 +6941,14 @@ function sayDealing(text) {
   }
 }
 
+// The pair's buttons, on EVOLVE's cards and PATCH's strip: the picks, ▶, ↻
+// and the cards' corners (⇄ circuit, ↓ patch). Off while the table has no
+// pair: each acts on the pair on the table, and with none ↓ patch did
+// nothing and ⇄ circuit hid the face for a circuit it had no sound to ask
+// for (#195).
+const DUEL_CONTROLS = ["choose-a", "choose-b", "skip-duel", "play-a", "play-b", "flip-a", "flip-b", "promote-a", "promote-b", "pd-pick-a", "pd-pick-b", "pd-skip"];
 function setDuelControlsEnabled(on) {
-  for (const id of ["choose-a", "choose-b", "skip-duel", "play-a", "play-b", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
+  for (const id of DUEL_CONTROLS) {
     const el = $(id);
     if (el) el.disabled = !on;
   }
