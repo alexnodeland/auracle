@@ -25,6 +25,7 @@ below stay as found; the PR that fixes a row says so in its body.*
 | [shell-misc-units.md](shell-misc-units.md) | The other specs, the `node:test` units, and a review of the fixture | 87 + 125 |
 | [rust-grammar-features-taste.md](rust-grammar-features-taste.md) | `auracle-grammar`, `auracle-features`, `auracle-taste` | 215 |
 | [rust-session-wasm.md](rust-session-wasm.md) | `auracle-session`, `auracle-wasm` | 214 |
+| [measurements.md](measurements.md) | #177's two measurements, run in a browser after the audit (2026-10-06): background load (§1.8) and warm start (§3.3), and the decision on each | |
 
 Each row in a findings file gives:
 - the test, by `file:line`;
