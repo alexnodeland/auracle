@@ -364,7 +364,8 @@ PR carries the `full-ci` label: adding it starts a run, and every push to
 the labelled PR runs it again; a PR without it runs nothing there. Add it to
 a PR that changes what the slow tests cover, the paths the workflow used to
 run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
-`rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
+`rust-toolchain.toml`, the `Makefile`, `.config/nextest.toml`, `slow-suite.yml`
+or `.github/actions/`;
 `apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
 `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
 `tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or

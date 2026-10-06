@@ -198,8 +198,8 @@ closed as completed).
 A PR that changes what the slow tests cover also gets the `full-ci` label
 (`gh -R alexnodeland/auracle pr edit <n> --add-label full-ci`): the *Slow
 suite* runs on a PR only with it. It covers any crate, `Cargo.toml` or
-`Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
-`.github/actions/`; `apps/web/`'s `worker.js`, `farm.js`, `perform.js`,
+`Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `.config/nextest.toml`,
+`slow-suite.yml` or `.github/actions/`; `apps/web/`'s `worker.js`, `farm.js`, `perform.js`,
 `patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
 `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
 `package.json` or `package-lock.json`; a spec file that holds an `@slow` or

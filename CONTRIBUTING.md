@@ -177,7 +177,7 @@ nightly, where a failure opens an issue (a quarantined test's is a comment
 on its own issue instead, while that issue is open); on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
-the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
+the `Makefile`, `.config/nextest.toml`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
 `worker.js`, `farm.js`, `perform.js`, `patch.js`, `live-audio.js`,
 `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`; `tests/web/`'s
 `fixtures.js`, `playwright.config.js`, `package.json` or `package-lock.json`;
