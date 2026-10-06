@@ -881,6 +881,31 @@ worker. `?farm=N` sets both widths; `?farm=0` is the serial path. The crew is
 reaped after 60 s with nothing to walk (`farm_done` with its crew id; main
 terminates those workers), so N × ~15 MB is not kept resident.
 
+### The render cache's store
+
+Each farm worker opens the render cache's store (`auracle-renders`,
+`render-store.js`) when it is handed the phrase, and reads a row before it
+renders a job that wants no audio and writes one after. **The engine worker
+opens the store first, once, before any crew is handed the phrase**
+(`renderStoreReady`, started at `init` whatever the width; boot's crew waits
+for it in `farmBoot`, a walk crew in `crewUp`, before main is asked to spawn
+it): it creates the store on a first visit, clears it when its stamp is
+another build's namespace or it holds more than its cap, stamps it with this
+build's, and closes it. So every crew's opens find it stamped and only read.
+When each worker of a crew created and stamped it itself, their writes queued
+behind one another's first renders, and on a first visit at width 6 the veil
+waited about 1.5 s for them (#200). Where the engine worker cannot open it,
+the farm workers create and stamp it as they did before, at that cost. **A
+crew waits for the stamp `RENDER_STAMP_MS` (2 s) at most.** On a first visit
+the stamp was done 42 to 53 ms after `init`, most of that importing
+`render-store.js`. The bound is for an open that never answers, as one does
+queued behind a deletion of the store that another tab's connections hold
+pending: without it the veil would stay up for good. Past it the crew is
+handed the phrase and opens the store itself, as it did before #200, and an
+open that answers later still stamps the store if it needs it and is closed.
+`tests/render-store.test.mjs` runs the two workers' code as written, in that
+order, over a stand-in IndexedDB.
+
 ## The bench lane
 
 Every edit to the patch on the bench (knobs, bypass, unplug, insert, ⌘Z) goes

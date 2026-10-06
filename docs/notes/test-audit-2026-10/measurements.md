@@ -236,15 +236,69 @@ warm 98.3 s (+7%); at throttle 1, default 65.1 s, pool 8 58.7 s (−10%), warm
   measurement did, with nothing in the app changed. A warm boot would be
   Playwright's `storageState` option, from a file a global setup writes.
 
+## The store made once (#200)
+
+The store's creation, left open below, was
+[#200](https://github.com/alexnodeland/auracle/issues/200). Its fix: the
+engine worker opens the render store, creates it on a first visit and stamps
+it with the namespace, then hands boot's crew the phrase (`farmBoot` in
+`worker.js`, the store's rules in `render-store.js`), so the farm workers'
+opens only read. Measured on 2026-10-06 on the same machine, in the same
+Chromium, booted and seeded as above: `main` e31f60c (build
+`80f90b7e8d2ca5c5`) against the fix (build `66e175c4735b44ce`, whose code
+differs from the commit's by one comment's wording), each served on a port
+of its own, their boots interleaved and the order swapped from run to run,
+through `one_browser.sh` with the machine to themselves. Each boot was a
+fresh profile: in memory (`browser.newContext()`, as the suite's contexts
+are) or on disk (`launchPersistentContext` on a new directory, as a player's
+browser has it on a first visit).
+
+**What the wait was.** A scratch timing of `cacheOpen` in each farm worker
+(not committed), on `main`, cold, at width 6: the worker that created the
+store was done with it in 2 or 3 ms, and the other five at up to 1,930 ms
+(19 of the 20 after 160 ms), nearly all of it waiting to write the stamp
+(their clears of the rows mostly took 1 or 2 ms). A store made beforehand
+with both object stores and no stamp still had the veil down at a median
+1,528 ms (828 to 2,345, n 4), against 816 with the stamp written. So the step
+done once has to write the stamp, which is the engine's namespace: main,
+which has no wasm instance, could not do it.
+
+Milliseconds from `boot-start` to `veil-down`, median (range), 6 boots each:
+
+| Width | Profile | Before | After | Pool full, before → after |
+| --- | --- | --- | --- | --- |
+| 6 | in memory | 2296 (1901 to 2330) | 903 (822 to 1000) | 5728 → 4767 |
+| 6 | on disk | 2520 (2423 to 2673) | 1050 (989 to 1178) | 5528 → 4861 |
+| 2 | in memory | 1649 (1617 to 1729) | 1644 (1623 to 1694) | 10490 → 10280 |
+| 2 | on disk | 2136 (1920 to 2213) | 1887 (1834 to 1920) | 10931 → 10582 |
+
+- **At width 6 the veil is down about 1.4 s sooner,** near where a store
+  already made had it (826 above). Five more boots of the fix alone, in
+  memory, had it at 836 ms (816 to 952), and a store made and stamped
+  beforehand at 814 (807 to 891): with the fix, a first visit's store costs
+  nothing that shows.
+- **At width 2, in memory, nothing moved,** as the table above found. On
+  disk a first visit at width 2 gained about 250 ms too, likely the two
+  workers' writes, which a disk makes dearer (not timed on their own).
+- **The cache still serves.** A cold boot at width 6 left 34 rows under the
+  stamp, and a reload in the same context served 22 and then 11 of them
+  (73% and 100% of its two waves), with nothing in the console.
+- **The stamp itself is short.** Timed in a scratch copy of the fix (a
+  `BroadcastChannel` post from `renderStoreReady`, not committed), cold, 5
+  boots at each of widths 6 and 2: done 42 to 53 ms after `init` on disk and
+  45 to 51 ms in memory, of which importing `render-store.js` was 40 to 50 ms
+  and the open and the stamp 1 to 11 ms. `RENDER_STAMP_MS`, how long a crew
+  waits for it, is 2 s: about 40 times that, and there for an open that never
+  answers, which would otherwise keep the veil up.
+
 ## Left open
 
 - **Six farm workers creating the render store cost a fresh profile about
   1.5 s before the veil** on this machine (width 6), and nothing measurable
-  at width 2. Every local browser test pays it (about 7 minutes over the
+  at width 2. Every local browser test paid it (about 7 minutes over the
   fast tier's 289 boots); CI's runners do not. A player's first visit on a
-  machine with 8 or more cores (width 6) goes the same way, so it likely
-  pays it too. It is `cacheOpen` in `farm.js`, and worth an issue of its
-  own.
+  machine with 8 or more cores (width 6) went the same way. Fixed in #200:
+  [The store made once](#the-store-made-once-200).
 - **These numbers emulate a CI runner.** A runner's farm workers are slower
   too, and its engine is not slowed four times. One CI job printing the marks
   (#177 §3.3's first proposal) would give the fill's real length there. The

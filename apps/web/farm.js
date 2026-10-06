@@ -52,20 +52,15 @@ let port = null;
 // before folding a row in (`WasmEngine::pre_featurized`). A build whose φ
 // differs cannot read rows written by another: their keys carry another
 // namespace, so they are never a hit, and there is no stale-row path to get
-// wrong. The store's stamp (`cacheOpen`) is checked only when it opens, so on
-// its own it could not keep them out: a tab still on an older build writes on
-// into a store a newer tab has cleared and re-stamped.
-const CACHE_DB = "auracle-renders";
-const CACHE_STORE = "rows";
-const CACHE_META = "meta";
-
-// Rows retained before the store is dropped wholesale. ~1 KB each, so this is
-// ~20 MB. Eviction is "clear everything", which is crude and deliberately so:
-// an LRU needs an access-time write on every *hit*, turning the cheap path into
-// a write, and the thing being protected is a disk quota rather than a working
-// set. A cleared cache costs one slow boot.
-const CACHE_MAX_ROWS = 20000;
-
+// wrong. The store's stamp is checked only when it opens, so on its own it
+// could not keep them out: a tab still on an older build writes on into a
+// store a newer tab has cleared and re-stamped.
+//
+// The store itself (its name, its stamp, when it is cleared) is
+// render-store.js's, shared with the engine worker, which opens and stamps it
+// before this worker is handed the phrase. So the open here only reads, and N
+// workers opening it at once write nothing (#200).
+let store = null;           // render-store.js, imported at boot; null without it
 let cacheDb = null;         // IDBDatabase, or null if unavailable
 let cacheNs = null;         // namespace string for the current phrase
 
@@ -79,35 +74,7 @@ function idbReq(req) {
 // Never throws and never rejects: a browser with IndexedDB disabled, a private
 // window, or a quota refusal must cost a slower boot and nothing else.
 async function cacheOpen(ns) {
-  try {
-    if (!self.indexedDB) return;
-    const open = indexedDB.open(CACHE_DB, 1);
-    open.onupgradeneeded = () => {
-      const db = open.result;
-      if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE);
-      if (!db.objectStoreNames.contains(CACHE_META)) db.createObjectStore(CACHE_META);
-    };
-    const db = await idbReq(open);
-    const prev = await idbReq(
-      db.transaction(CACHE_META, "readonly").objectStore(CACHE_META).get("ns")
-    );
-    const count = await idbReq(
-      db.transaction(CACHE_STORE, "readonly").objectStore(CACHE_STORE).count()
-    );
-    // The whole eviction policy, in one condition. φ moving orphans every row
-    // measured under the old φ (their keys carry the old namespace, so they
-    // could never be read), and nothing finer is correct; clearing them is
-    // for the disk quota.
-    if (prev !== ns || count > CACHE_MAX_ROWS) {
-      await idbReq(db.transaction(CACHE_STORE, "readwrite").objectStore(CACHE_STORE).clear());
-      await idbReq(
-        db.transaction(CACHE_META, "readwrite").objectStore(CACHE_META).put(ns, "ns")
-      );
-    }
-    cacheDb = db;
-  } catch (_) {
-    cacheDb = null;
-  }
+  cacheDb = store ? await store.renderStoreOpen(self.indexedDB, ns) : null;
 }
 
 async function cacheGet(key) {
@@ -115,7 +82,7 @@ async function cacheGet(key) {
   try {
     return (
       (await idbReq(
-        cacheDb.transaction(CACHE_STORE, "readonly").objectStore(CACHE_STORE).get(key)
+        cacheDb.transaction(store.RENDER_ROWS, "readonly").objectStore(store.RENDER_ROWS).get(key)
       )) || null
     );
   } catch (_) {
@@ -128,7 +95,7 @@ async function cacheGet(key) {
 function cachePut(key, cached) {
   if (!cacheDb || !key) return;
   try {
-    cacheDb.transaction(CACHE_STORE, "readwrite").objectStore(CACHE_STORE).put(cached, key);
+    cacheDb.transaction(store.RENDER_ROWS, "readwrite").objectStore(store.RENDER_ROWS).put(cached, key);
   } catch (_) {}
 }
 
@@ -289,6 +256,9 @@ self.onmessage = async (e) => {
   const m = e.data;
   if (m.type !== "boot") return;
   port = m.port;
+  // The render cache's store, beside the glue. Without it this worker renders
+  // everything and caches nothing, as with IndexedDB off.
+  const storeImport = import(`./render-store.js?v=${V}`).catch(() => null);
   try {
     const glue = await import(m.glue || `./pkg/auracle_wasm.js?v=${V}`);
     // `module` is the already-compiled WebAssembly.Module main shares across
@@ -308,6 +278,7 @@ self.onmessage = async (e) => {
     } catch (_) {}
     return;
   }
+  store = await storeImport;
   // Serialized, because `onJob` became async when the cache lookup landed and
   // it used to be strictly synchronous. The engine issues one job per worker
   // at a time, so today nothing would interleave anyway — but that is the
