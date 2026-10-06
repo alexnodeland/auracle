@@ -284,6 +284,14 @@ pub enum GuessRefusal {
 }
 
 impl GuessRefusal {
+    /// Every refusal, in declaration order: the table a sweep over the codes
+    /// the app reads takes them from (a const below keeps it whole).
+    pub const ALL: [GuessRefusal; 3] = [
+        GuessRefusal::NoTaste,
+        GuessRefusal::Full,
+        GuessRefusal::Unmeasured,
+    ];
+
     /// The code the app reads.
     pub fn code(self) -> &'static str {
         match self {
@@ -293,6 +301,31 @@ impl GuessRefusal {
         }
     }
 }
+
+// `GuessRefusal::ALL` lists every refusal once, in declaration order,
+// checked when the crate compiles. The match walks the refusals in order,
+// each arm naming the next, so a new refusal does not compile until it has
+// an arm and a place in the walk, and `ALL` must be exactly that walk.
+const _: () = {
+    let mut at = Some(GuessRefusal::NoTaste);
+    let mut i = 0;
+    while let Some(r) = at {
+        assert!(
+            i < GuessRefusal::ALL.len() && GuessRefusal::ALL[i] as usize == r as usize,
+            "GuessRefusal::ALL must list every refusal once, in declaration order"
+        );
+        at = match r {
+            GuessRefusal::NoTaste => Some(GuessRefusal::Full),
+            GuessRefusal::Full => Some(GuessRefusal::Unmeasured),
+            GuessRefusal::Unmeasured => None,
+        };
+        i += 1;
+    }
+    assert!(
+        i == GuessRefusal::ALL.len(),
+        "GuessRefusal::ALL lists a refusal twice"
+    );
+};
 
 /// One render a guess owes.
 #[derive(Clone, Debug, PartialEq)]

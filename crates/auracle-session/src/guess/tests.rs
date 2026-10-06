@@ -649,20 +649,14 @@ fn audio_in_is_never_guessed_and_a_lone_input_is_silent() {
 }
 
 /// **Why there is no guess crosses to the app as a code**, so the codes are
-/// a wire format, pinned as a literal table; the match below stops a new
-/// refusal compiling until it is in it.
+/// a wire format, pinned as a literal table in `GuessRefusal::ALL`'s order.
+/// A new refusal cannot compile until it is in `ALL` (a const in guess.rs),
+/// and then not until it is in this table, whose length is `ALL`'s.
 #[test]
 fn guess_refusal_codes_are_pinned() {
-    const WIRE: [(GuessRefusal, &str); 3] = [
-        (GuessRefusal::NoTaste, "no_taste"),
-        (GuessRefusal::Full, "full"),
-        (GuessRefusal::Unmeasured, "unmeasured"),
-    ];
-    for (refusal, code) in WIRE {
-        match refusal {
-            GuessRefusal::NoTaste | GuessRefusal::Full | GuessRefusal::Unmeasured => {}
-        }
-        assert_eq!(refusal.code(), code);
+    const WIRE: [&str; GuessRefusal::ALL.len()] = ["no_taste", "full", "unmeasured"];
+    for (refusal, code) in GuessRefusal::ALL.into_iter().zip(WIRE) {
+        assert_eq!(refusal.code(), code, "{refusal:?}");
     }
 }
 
@@ -744,8 +738,16 @@ fn a_patch_with_no_room_is_refused_as_full() {
         e.guess_plan(&tree, None, &[], &none, 0).map(|p| p.total),
         Err(GuessRefusal::Full)
     );
+    // An op no guess makes is never a current guess, even where the same
+    // key, socket and family hold one.
+    let hornet = preset("Hornet");
+    let mix = StructOp::Insert {
+        key: "node".into(),
+        kind: NodeKind::Mix,
+    };
+    assert!(guess_is_current(&hornet, &mix, OUTPUT_SOCKET, "mix"));
     assert!(!guess_is_current(
-        &tree,
+        &hornet,
         &StructOp::Delete { key: "node".into() },
         OUTPUT_SOCKET,
         "mix"
