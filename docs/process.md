@@ -206,6 +206,13 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   the queue merges the PR. It does not require the branch to be up to date
   with `main`: the queue tests on top of `main` itself. To merge anything
   else, the maintainer edits the ruleset.
+- **Every PR also runs *Mutants*,** a workflow of its own, part of neither
+  lane's `CI` and not required. On a PR that changes a crate it tests the
+  changed code: its summary lists the mutants of it that no test noticed,
+  and review treats each as a finding. The builder runs
+  `make mutants DIFF=1` before review, so they are answered before the PR.
+  On the queue's draft PRs it passes at once, since each PR's own run has
+  judged their code.
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
@@ -301,7 +308,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   run replaces any older one, and a run whose commit `main` has already moved
   past runs nothing, since the newest run covers it. The *Slow suite* runs on
   `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
-  files an issue.
+  files an issue. *Mutants* runs weekly over a part of the workspace (a
+  fifteen-week cycle aims to cover it all), and a surviving mutant files
+  one too
+  ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table
 gets the PR, and the PR's branch deletes itself on GitHub (the repository
