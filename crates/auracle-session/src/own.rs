@@ -226,15 +226,15 @@ where
         if f <= QUARANTINE_FITNESS {
             return f;
         }
-        match featurize_memo(genome, &self.phrase, &self.memo, false) {
-            Ok((cf, _)) => {
-                let d = self
-                    .toward
-                    .distance_raw(&cf.features.phi(), &self.standardizer);
-                f - (0.5 * self.toward.gamma * d * d).min(OWN_FLOOR)
-            }
-            Err(_) => f,
-        }
+        // A genome scored above quarantine vets, so it measures; the case
+        // where it would not is folded into the `map_or` (no pull toward the
+        // sound) rather than given a branch of its own.
+        featurize_memo(genome, &self.phrase, &self.memo, false).map_or(f, |(cf, _)| {
+            let d = self
+                .toward
+                .distance_raw(&cf.features.phi(), &self.standardizer);
+            f - (0.5 * self.toward.gamma * d * d).min(OWN_FLOOR)
+        })
     }
 }
 

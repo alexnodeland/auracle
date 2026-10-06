@@ -241,12 +241,17 @@ pub fn claim_name(base: &str, taken: &mut HashSet<String>) -> String {
     if taken.insert(base.to_string()) {
         return base.to_string();
     }
-    // Start at 2: the unsuffixed name is conceptually "1".
-    for k in 2..usize::MAX {
+    // Start at 2: the unsuffixed name is conceptually "1". The loop ends
+    // only with a free suffix, so there is nothing after it to fall through to.
+    let mut k: u64 = 2;
+    loop {
         let candidate = format!("{base} {k}");
         if taken.insert(candidate.clone()) {
             return candidate;
         }
+        k += 1;
     }
-    unreachable!("name space exhausted")
 }
+
+#[cfg(test)]
+mod tests;

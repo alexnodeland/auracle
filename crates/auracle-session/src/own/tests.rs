@@ -224,6 +224,25 @@ fn nearest_map_and_save() {
     let before = serde_json::to_string(&engine.taste_map().points).unwrap();
     // A file that measures exactly what pool member 0 measures.
     let (c0_id, c0_audio) = (engine.pool[0].id, engine.pool[0].features.audio);
+    // The preset that is a copy of member 0, and one that sounds like
+    // member 1, listed farthest first.
+    let presets = vec![
+        PresetPhi {
+            index: 3,
+            name: "Other".into(),
+            audio: engine.pool[1].features.audio.to_vec(),
+        },
+        PresetPhi {
+            index: 7,
+            name: "Copy".into(),
+            audio: c0_audio.to_vec(),
+        },
+    ];
+    assert!(
+        engine.own_nearest_presets(2, &presets).is_empty(),
+        "no sound yet"
+    );
+    assert!(engine.own_seeds().is_empty(), "seeds toward no sound");
     engine.own_set("Mine", &file_of(c0_audio));
     let near = engine.own_nearest(3);
     assert_eq!(near[0].0, c0_id, "a member is nearest itself");
@@ -248,12 +267,17 @@ fn nearest_map_and_save() {
     assert_eq!(own.observed, t.observed.len());
     assert_eq!(engine.own_on_map(crate::map::OWN_PLACEMENT), Some(own));
 
-    let presets = vec![PresetPhi {
-        index: 7,
-        name: "Copy".into(),
-        audio: c0_audio.to_vec(),
-    }];
-    assert_eq!(engine.own_nearest_presets(1, &presets)[0].0, 7);
+    let nearest: Vec<usize> = engine
+        .own_nearest_presets(2, &presets)
+        .iter()
+        .map(|r| r.0)
+        .collect();
+    assert_eq!(nearest, [7, 3], "not nearest first");
+    assert_eq!(engine.own_nearest_presets(1, &presets).len(), 1);
+    // With no taste there is no generation to breed toward it.
+    let mut untaught = Engine::new(PatchGrammarPrior::default(), SessionConfig::default());
+    untaught.own_set("Mine", &file_of(c0_audio));
+    assert!(untaught.own_seeds().is_empty());
 
     let saved = serde_json::to_string(&engine.export_state()).unwrap();
     assert!(saved.contains("own_sound"));

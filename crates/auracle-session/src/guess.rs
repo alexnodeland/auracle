@@ -44,7 +44,7 @@ use std::collections::{HashMap, HashSet};
 
 use auracle_features::{render_key, struct_features, AudioFeatures, Features, StructFeatures};
 use auracle_grammar::{
-    apply_struct_op, validate_tree, AudioNode, ModKind, ModNode, NodeKind, PatchTree, StructOp,
+    apply_struct_op, AudioNode, ModKind, ModNode, NodeKind, PatchTree, StructOp,
 };
 use serde::{Deserialize, Serialize};
 
@@ -284,6 +284,14 @@ pub enum GuessRefusal {
 }
 
 impl GuessRefusal {
+    /// Every refusal, in declaration order: the table a sweep over the codes
+    /// the app reads takes them from (a const below keeps it whole).
+    pub const ALL: [GuessRefusal; 3] = [
+        GuessRefusal::NoTaste,
+        GuessRefusal::Full,
+        GuessRefusal::Unmeasured,
+    ];
+
     /// The code the app reads.
     pub fn code(self) -> &'static str {
         match self {
@@ -293,6 +301,31 @@ impl GuessRefusal {
         }
     }
 }
+
+// `GuessRefusal::ALL` lists every refusal once, in declaration order,
+// checked when the crate compiles. The match walks the refusals in order,
+// each arm naming the next, so a new refusal does not compile until it has
+// an arm and a place in the walk, and `ALL` must be exactly that walk.
+const _: () = {
+    let mut at = Some(GuessRefusal::NoTaste);
+    let mut i = 0;
+    while let Some(r) = at {
+        assert!(
+            i < GuessRefusal::ALL.len() && GuessRefusal::ALL[i] as usize == r as usize,
+            "GuessRefusal::ALL must list every refusal once, in declaration order"
+        );
+        at = match r {
+            GuessRefusal::NoTaste => Some(GuessRefusal::Full),
+            GuessRefusal::Full => Some(GuessRefusal::Unmeasured),
+            GuessRefusal::Unmeasured => None,
+        };
+        i += 1;
+    }
+    assert!(
+        i == GuessRefusal::ALL.len(),
+        "GuessRefusal::ALL lists a refusal twice"
+    );
+};
 
 /// One render a guess owes.
 #[derive(Clone, Debug, PartialEq)]
@@ -419,10 +452,13 @@ fn sounds(n: &AudioNode) -> bool {
 /// Every module count φ_struct keeps raw, empty sockets aside: a candidate
 /// that lowers one took a module away.
 fn counts(s: &StructFeatures) -> Vec<(String, f64)> {
-    let Ok(serde_json::Value::Object(m)) = serde_json::to_value(s) else {
-        return Vec::new();
-    };
-    m.into_iter()
+    // A struct serializes to an object: its fields, by name.
+    let fields = serde_json::to_value(s)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    fields
+        .into_iter()
         .filter(|(k, _)| k.starts_with("n_") && k != "n_silence")
         .filter_map(|(k, v)| v.as_f64().map(|v| (k, v)))
         .collect()
@@ -449,6 +485,9 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
     let base_sum: f64 = base.iter().map(|x| x.1).sum();
     let mut nodes = Vec::new();
     keys(&tree.root, "node".into(), &mut nodes);
+    // Shallower sockets first, a stable order ties break in: the order the
+    // candidates come out in.
+    nodes.sort_by_key(|(key, _)| key.len());
     let empty = !sounds(&tree.root);
     let mut ops: Vec<(StructOp, String, String, String)> = Vec::new();
     for (key, n) in &nodes {
@@ -512,12 +551,15 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
     }
     let mut out = Vec::new();
     for (op, kind, family, socket) in ops {
+        // An op that would break a ceiling is refused here: every op that
+        // applies has passed the checks `validate_tree` makes.
         let Ok(t) = apply_struct_op(tree, &op) else {
             continue;
         };
-        if validate_tree(&t).is_err() {
-            continue;
-        }
+        // Every op normalizes the whole term it lands on, so on a patch not
+        // in normal form (a modulation term the grammar would fold away, as
+        // an imported file can hold) an op that adds one module can take
+        // another away. Such a candidate is no guess.
         let c = counts(&struct_features(&t));
         let keeps = c
             .iter()
@@ -535,11 +577,11 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
             tree: t,
         });
     }
-    // Shallower sockets first, a stable order ties break in.
-    out.sort_by_key(|c| op_key(&c.op).len());
     out
 }
 
+/// The key of the module a guess's op is placed at; empty for an op no guess
+/// makes.
 fn op_key(op: &StructOp) -> &str {
     match op {
         StructOp::Replace { key, .. }
@@ -569,14 +611,22 @@ struct Ordered {
 
 impl Engine {
     /// The candidates after skips, keyed under this engine's phrase and in
-    /// the structural design's order, and the patch's standing.
+    /// the structural design's order, and the patch's standing; with the
+    /// posterior and standardizer they were ordered under.
     fn guess_order(
         &self,
         tree: &PatchTree,
         at: Option<&str>,
         skips: &[GuessSkip],
         failed: &HashSet<String>,
-    ) -> Result<Ordered, GuessRefusal> {
+    ) -> Result<
+        (
+            Ordered,
+            &auracle_taste::TastePosterior,
+            &auracle_taste::Standardizer,
+        ),
+        GuessRefusal,
+    > {
         let (Some(post), Some(sz)) = (self.posterior.as_deref(), self.standardizer.as_deref())
         else {
             return Err(GuessRefusal::NoTaste);
@@ -628,12 +678,13 @@ impl Engine {
             .collect();
         scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
         let cands: Vec<GuessCandidate> = scored.into_iter().map(|x| x.2).collect();
-        Ok(Ordered {
+        let ordered = Ordered {
             total: cands.len(),
             cands,
             skipped,
             patch,
-        })
+        };
+        Ok((ordered, post, sz))
     }
 
     /// What a guess for `tree` still owes: the renders not yet in the memo,
@@ -656,7 +707,7 @@ impl Engine {
         failed: &HashSet<String>,
         limit: usize,
     ) -> Result<GuessPlan, GuessRefusal> {
-        let o = self.guess_order(tree, at, skips, failed)?;
+        let (o, _, _) = self.guess_order(tree, at, skips, failed)?;
         let planned = if limit == 0 {
             o.total
         } else {
@@ -696,11 +747,7 @@ impl Engine {
         failed: &HashSet<String>,
         limit: usize,
     ) -> Result<GuessRanking, GuessRefusal> {
-        let o = self.guess_order(tree, at, skips, failed)?;
-        let (Some(post), Some(sz)) = (self.posterior.as_deref(), self.standardizer.as_deref())
-        else {
-            return Err(GuessRefusal::NoTaste);
-        };
+        let (o, post, sz) = self.guess_order(tree, at, skips, failed)?;
         let (zp, against) = match o.patch {
             PatchZ::Owed(_) => return Err(GuessRefusal::Unmeasured),
             PatchZ::Known(z) => (z, "patch"),
