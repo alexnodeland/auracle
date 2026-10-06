@@ -64,7 +64,8 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
         film-sounds film-voice film film-rehearse film-record film-publish \
-        film-record-all film-preview dev-check tokens sound help install-hooks
+        film-record-all film-preview dev-check tokens sound help install-hooks \
+        worktree worktree-rm
 
 all: check
 
@@ -92,6 +93,28 @@ film-setup:
 install-hooks:
 	git config core.hooksPath .githooks
 	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
+
+## worktree: a new branch's worktree, at .claude/worktrees/TOPIC in the main
+## checkout (git ignores it), from any checkout: TOPIC's branch (claude/TOPIC,
+## or BRANCH=) from a fresh origin/main, with tests/web's packages installed;
+## it prints the path (docs/process.md § Building)
+## worktree-rm: remove TOPIC's worktree and its local branch, once merged
+# The main checkout is the one holding the repository (.git), whichever
+# checkout make runs in: run from a worktree, the new one still goes beside it,
+# not inside it.
+MAIN_CHECKOUT = $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir)")
+WT_BRANCH = $(or $(BRANCH),claude/$(TOPIC))
+worktree:
+	@test -n "$(TOPIC)" || { printf '  name it: make worktree TOPIC=<topic> [BRANCH=<branch>]\n'; exit 1; }
+	git -C "$(MAIN_CHECKOUT)" fetch -q origin
+	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
+	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
+	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
+
+worktree-rm:
+	@test -n "$(TOPIC)" || { printf '  name it: make worktree-rm TOPIC=<topic> [BRANCH=<branch>]\n'; exit 1; }
+	git -C "$(MAIN_CHECKOUT)" worktree remove .claude/worktrees/$(TOPIC)
+	git -C "$(MAIN_CHECKOUT)" branch -D $(WT_BRANCH)
 
 ## dev-check: the tooling around the code stays sound: the agent docs'
 ## links, anchors and frontmatter (this checkout's, never a worktree's inside
