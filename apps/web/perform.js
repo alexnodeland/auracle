@@ -481,15 +481,17 @@ export function createPerform(host) {
     // (`paintLean`): its interval, the arc from 12 o'clock toward the end it
     // leans to, a dot at the arc's end, and a tick where an interval runs
     // past the travel. Just outside the ring, clear of the green value arc.
-    let leanG = null;
+    // Its parts are kept on the control, so a repaint looks nothing up.
+    let lean = null;
     if (spec.kind === "named") {
-      leanG = svg("g", {}, "pf-k-lean");
-      leanG.append(
-        svg("path", { d: "" }, "pf-k-lean-iv"),
-        svg("path", { d: "" }, "pf-k-lean-bar"),
-        svg("path", { d: "" }, "pf-k-lean-cut"),
-        svg("circle", { r: 2.4, cx: 0, cy: -LEAN_R }, "pf-k-lean-at"),
-      );
+      lean = {
+        iv: svg("path", { d: "" }, "pf-k-lean-iv"),
+        bar: svg("path", { d: "" }, "pf-k-lean-bar"),
+        cut: svg("path", { d: "" }, "pf-k-lean-cut"),
+        at: svg("circle", { r: 2.4, cx: 0, cy: -LEAN_R }, "pf-k-lean-at"),
+      };
+      const leanG = svg("g", {}, "pf-k-lean");
+      leanG.append(lean.iv, lean.bar, lean.cut, lean.at);
       s.append(leanG);
     }
     if (spec.kind === "wander") {
@@ -528,7 +530,7 @@ export function createPerform(host) {
     wrap.setAttribute("aria-label", spec.name);
     wrap.setAttribute("aria-valuemin", "-1");
     wrap.setAttribute("aria-valuemax", "1");
-    const k = { i, spec, wrap, svg: s, sub, wait, leanG, leanW, value: spec.initial || 0 };
+    const k = { i, spec, wrap, svg: s, sub, wait, lean, leanAt: null, leanSaid: null, leanW, value: spec.initial || 0 };
     bindDrag(k);
     // Wander leads the pad row, ringed in amber (the model's walk); the
     // panel's controls fill the grid.
@@ -743,35 +745,40 @@ export function createPerform(host) {
   // as LEARNING draws one. Nothing before the first fit, when the engine has
   // no lean, and nothing for a lean asked of another sound. CSS shows it only
   // under the view (`body.model-view`).
+  //
+  // `paintKnob` runs every frame of a drag, a glide or a re-centre, so the
+  // arcs are written only when the mark on the control is another one
+  // (`k.leanAt`: each lean that lands makes new marks).
   function paintLean(k) {
     const lean = state.lean && state.lean.gen === state.gen ? state.lean : null;
     const at = lean ? lean.marks.get(k.spec.index) : null;
-    k.wrap.classList.toggle("leaning", !!at);
-    k.wrap.classList.toggle("lean-guess", !!(at && at.mark.guess));
-    if (!at) {
-      k.leanW.textContent = "";
-      k.wrap.removeAttribute("aria-description");
-      return;
+    if (at !== k.leanAt) {
+      k.leanAt = at;
+      k.wrap.classList.toggle("leaning", !!at);
+      k.wrap.classList.toggle("lean-guess", !!(at && at.mark.guess));
+      k.leanW.textContent = at ? at.words : "";
+      if (at) {
+        const m = at.mark;
+        const { iv, bar, cut, at: dot } = k.lean;
+        iv.setAttribute("d", arcAt(m.lo, m.hi, LEAN_R));
+        iv.setAttribute("stroke-opacity", String(m.whiskerAlpha));
+        bar.setAttribute("d", arcAt(0, m.len, LEAN_R));
+        bar.setAttribute("stroke-opacity", String(m.barAlpha));
+        const ticks = [m.clipLo && radial(m.lo, LEAN_R - 3, LEAN_R + 3), m.clipHi && radial(m.hi, LEAN_R - 3, LEAN_R + 3)];
+        cut.setAttribute("d", ticks.filter(Boolean).join(" "));
+        const r = (m.len - 90) * (Math.PI / 180);
+        dot.setAttribute("cx", (LEAN_R * Math.cos(r)).toFixed(2));
+        dot.setAttribute("cy", (LEAN_R * Math.sin(r)).toFixed(2));
+      }
     }
-    const { mark: m, words } = at;
-    const g = k.leanG;
-    const iv = g.querySelector(".pf-k-lean-iv");
-    iv.setAttribute("d", arcAt(m.lo, m.hi, LEAN_R));
-    iv.setAttribute("stroke-opacity", String(m.whiskerAlpha));
-    const bar = g.querySelector(".pf-k-lean-bar");
-    bar.setAttribute("d", arcAt(0, m.len, LEAN_R));
-    bar.setAttribute("stroke-opacity", String(m.barAlpha));
-    const cut = [m.clipLo && radial(m.lo, LEAN_R - 3, LEAN_R + 3), m.clipHi && radial(m.hi, LEAN_R - 3, LEAN_R + 3)];
-    g.querySelector(".pf-k-lean-cut").setAttribute("d", cut.filter(Boolean).join(" "));
-    const r = (m.len - 90) * (Math.PI / 180);
-    const dot = g.querySelector(".pf-k-lean-at");
-    dot.setAttribute("cx", (LEAN_R * Math.cos(r)).toFixed(2));
-    dot.setAttribute("cy", (LEAN_R * Math.sin(r)).toFixed(2));
-    k.leanW.textContent = words;
     // The words, to a screen reader, on the control itself (a slider's
     // children are not read), while the view is up.
-    if (host.modelOn?.()) k.wrap.setAttribute("aria-description", words);
-    else k.wrap.removeAttribute("aria-description");
+    const said = at && host.modelOn?.() ? at.words : null;
+    if (said !== k.leanSaid) {
+      k.leanSaid = said;
+      if (said) k.wrap.setAttribute("aria-description", said);
+      else k.wrap.removeAttribute("aria-description");
+    }
   }
   // What the lean in hand was asked for: the posterior, and the sound and
   // the panel's set as its wiring is keyed (`wireKey`: the tree PERFORM
