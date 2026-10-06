@@ -1,6 +1,6 @@
 // How many sounds in the pool carry each module, and each φ coordinate: the
 // numbers PATCH's catalog states under the model view ("In 12 of 40 sounds",
-// "Too little to go on: 3 of 40 sounds carry this"), and the support a lean
+// "In 3 of 40 sounds: too few for the model to lean yet"), and the support a lean
 // needs before the catalog, the price and the plate's edge will draw it
 // (main.js `NB_SUPPORT_MIN`). Read off the s-expression each ranked row
 // already carries (`WasmEngine::ranked`'s `sexpr`), so it costs no engine

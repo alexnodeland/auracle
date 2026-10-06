@@ -9,3 +9,8 @@
   plate's lean and on the price of a module in hand, and it decides when
   there are too few sounds to lean yet (under five). All of them now count
   sounds (`support.test.mjs`, #202).
+- **The catalog's thin bar says what its card says.** Pointing at a
+  module's dash used to read *Too little to go on: 2 of 40 sounds carry
+  this*, though the count is of the module's family: the compressor said
+  it with no compressor in the pool. It now reads as the card does, *In 2
+  of 40 sounds: too few for the model to lean yet* (#202).

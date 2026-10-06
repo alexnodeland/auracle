@@ -18194,7 +18194,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
       : state === "unfitted" ? unfittedWhy()
-      : `Too little to go on: ${sup} of ${total} sounds carry this.`;
+      : `In ${sup} of ${total} sounds: too few for the model to lean yet.`;
     return;
   }
   // The catalog cell is 34 px with the zero rule at 17; the in-patch pill's
