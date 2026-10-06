@@ -2011,8 +2011,10 @@ fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
     );
     assert!(!engine.belief().may_replace.contains(&kept));
 
+    // One more preset than the pool holds: every place but the kept one
+    // turns over, and the kept one, rated lowest, is passed over each time.
     let mut opened = 0;
-    for (name, tree) in auracle_grammar::presets() {
+    for (name, tree) in auracle_grammar::presets().into_iter().take(size + 1) {
         if engine.insert_preset(tree, name).is_some() {
             opened += 1;
         }
@@ -2023,7 +2025,16 @@ fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
         engine.find(kept).is_some(),
         "a preset replaced the sound kept as new"
     );
-    engine.refine(&mut StdRng::seed_from_u64(0x4EEA));
+    // A generation, bred as the farm breeds it (the serial one, by
+    // `a_generation_absorbed_in_any_completion_order_is_the_serial_one`).
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x4EEA))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    assert_eq!(engine.refine_progress(), None, "the generation did not end");
     assert!(engine.find(kept).is_some(), "a generation replaced it");
     assert!(!engine.retired().contains(&kept));
 
