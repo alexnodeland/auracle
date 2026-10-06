@@ -64,3 +64,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 
 `cargo test -p auracle-wasm --profile test-fast` (native), `make wasm-check`
 (the wasm32 build), then `make wasm` and the browser specs.
+
+Each module's tests sit beside it, in a file of their own: `live.rs`'s in
+`live/tests.rs`, and so on; `lib.rs`'s (`WasmEngine` and the farm's exports)
+are in `src/tests.rs` (`../AGENTS.md` § Coverage says why).
