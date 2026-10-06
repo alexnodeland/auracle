@@ -98,7 +98,9 @@ newest. Lint and the Rust tests are reused only while Rust's stable release
 is the one they ran on (the record keeps `rustc --version`).
 
 **The workflows themselves.** Each workflow's token is read-only unless a
-job needs more (filing an issue, deploying Pages). Every action is pinned to
+job needs more (filing an issue, deploying Pages). Every job runs on
+`ubuntu-24.04`, not `ubuntu-latest`, so a new runner image arrives in a PR of
+its own. Every action is pinned to
 a commit SHA with its version in a comment; Dependabot
 (`.github/dependabot.yml`) opens one grouped PR a week for the actions and
 one for `tests/web`'s npm packages.

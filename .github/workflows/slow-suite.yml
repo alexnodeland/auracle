@@ -78,7 +78,7 @@ jobs:
   # or PERFORM's offers.
   scope:
     name: What this covers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.scope.outputs.rust }}
@@ -152,7 +152,7 @@ jobs:
     name: Slow Rust (${{ matrix.name }})
     needs: scope
     if: needs.scope.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -181,7 +181,7 @@ jobs:
     name: Engine for the browser
     needs: scope
     if: needs.scope.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -198,7 +198,7 @@ jobs:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
     if: needs.scope.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -228,7 +228,7 @@ jobs:
     name: Slow browser report
     needs: browser
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -248,7 +248,7 @@ jobs:
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'schedule') &&
       contains(needs.*.result, 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

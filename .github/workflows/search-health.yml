@@ -49,7 +49,7 @@ jobs:
   # which is worse than a slow one.
   stats:
     name: φ statistics and peaks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -85,7 +85,7 @@ jobs:
 
   climb:
     name: Pool climb
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Measured: over 90 minutes for 16 paired seeds on a hosted runner. The
     # cap is still a cap — enough for the measurement with margin, not the
     # default six hours a stuck run would otherwise hold a runner for.
@@ -111,7 +111,7 @@ jobs:
 
   battery:
     name: Search-health battery
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

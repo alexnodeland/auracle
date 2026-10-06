@@ -14,6 +14,10 @@ name: CI
 # On main a job the merged PR already passed on these exact files is not run
 # again (the `changes` job says which), and the site deploys from this run's
 # own build once `CI` is green (the `deploy` job).
+#
+# Every job in every workflow runs on `ubuntu-24.04`, not `ubuntu-latest`:
+# the label's move to a new image is its own PR, with a Flake hunt run, not a
+# change that lands under whichever PR happens to be in CI that day.
 
 on:
   push:
@@ -63,7 +67,7 @@ jobs:
   # releases are cut from, so it is never allowed to be partially verified.
   changes:
     name: What changed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     # actions: read, to find and download a merged PR's record (the reuse step).
     permissions:
@@ -237,7 +241,7 @@ jobs:
     outputs:
       rustc: ${{ steps.rustc.outputs.version }}
     if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_lint != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -268,7 +272,7 @@ jobs:
     name: Web
     needs: changes
     if: needs.changes.outputs.site == 'true' && needs.changes.outputs.reuse_web != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -307,7 +311,7 @@ jobs:
     name: Test (${{ matrix.partition }})
     needs: changes
     if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_test != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       # One shard failing should not hide the other shard's result.
@@ -367,7 +371,7 @@ jobs:
     name: Site
     needs: [changes, engine]
     if: needs.changes.outputs.site == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       pages_artifact: ${{ steps.pages-name.outputs.artifact }}
@@ -482,7 +486,7 @@ jobs:
     name: Engine for the browser
     needs: changes
     if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -508,7 +512,7 @@ jobs:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The planned ~9 minutes, a test's own five-minute timeout and room: a
     # test that times out is reported as a failure, with its trace, rather
     # than the whole runner being cancelled before it can say which.
@@ -546,7 +550,7 @@ jobs:
     name: Browser report
     needs: [changes, browser]
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -566,7 +570,7 @@ jobs:
     name: CI
     if: always()
     needs: [changes, lint, web, test, site, engine, browser]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check the results
@@ -636,7 +640,7 @@ jobs:
     name: Deploy to Pages
     needs: [ci, site]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.ci.result == 'success' && needs.site.outputs.pages_artifact != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write
