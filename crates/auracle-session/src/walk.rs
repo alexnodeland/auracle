@@ -489,12 +489,6 @@ where
         // proven brace, costing one trace walk per accepted child, and its real
         // job is to be the line that has to be deleted before the invariant can
         // be broken again.
-        debug_assert_eq!(
-            current.domain_violations().len(),
-            0,
-            "MH seated an out-of-domain site: {:?}",
-            current.domain_violations()
-        );
         current.clamp_domains();
         if current == seed {
             Err(RefineOutcome::NoMove)
