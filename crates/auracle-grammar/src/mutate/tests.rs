@@ -221,19 +221,28 @@ fn an_insert_then_a_delete_gives_the_patch_back() {
 
 /// Deleting one input of a two-input module takes that whole branch and
 /// leaves the other in the module's place (pulling the key out of a ducker
-/// leaves the pad), whichever of the two is named; a third is refused, not
-/// read as the second.
+/// leaves the pad), whichever of the two is named, for every kind with two
+/// inputs; a third is refused, not read as the second.
 #[test]
 fn a_delete_under_a_binary_takes_the_branch() {
-    let tree = mixed();
-    let (a, b) = match &tree.root {
-        AudioNode::Mix { a, b, .. } => ((**a).clone(), (**b).clone()),
-        n => panic!("{n:?}"),
-    };
-    let del = |key: &str| mutate::apply_struct_op(&tree, &StructOp::Delete { key: key.into() });
-    assert_eq!(del("node/0").unwrap().root, b);
-    assert_eq!(del("node/1").unwrap().root, a);
-    assert!(matches!(del("node/2"), Err(StructError::NoSuchNode(_))));
+    let mut binaries = 0;
+    for kind in NodeKind::ALL {
+        let tree = patch(graft(default_fragment(kind), saw_vco(0)).unwrap_or_else(|_| saw_vco(0)));
+        let [a, b] = tree.root.children()[..] else {
+            continue;
+        };
+        binaries += 1;
+        let (a, b) = (a.clone(), b.clone());
+        let del = |key: &str| mutate::apply_struct_op(&tree, &StructOp::Delete { key: key.into() });
+        assert_eq!(del("node/0").unwrap().root, b, "{kind:?}");
+        assert_eq!(del("node/1").unwrap().root, a, "{kind:?}");
+        assert!(
+            matches!(del("node/2"), Err(StructError::NoSuchNode(_))),
+            "{kind:?}"
+        );
+    }
+    // Mix, ring mod, the three dynamics modules, the vocoder and TRACK.
+    assert_eq!(binaries, 7);
 }
 
 /// Swapping the inputs of a module that has one is refused, and says why.
