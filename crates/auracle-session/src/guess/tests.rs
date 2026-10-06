@@ -113,7 +113,7 @@ fn render_all(
 
 /// Every module count the term's structural features keep, by name, empty
 /// sockets (`n_silence`) aside: φ's columns and the counts with none.
-fn counts(tree: &PatchTree) -> HashMap<String, f64> {
+fn module_counts(tree: &PatchTree) -> HashMap<String, f64> {
     let fields = serde_json::to_value(struct_features(tree)).unwrap();
     fields
         .as_object()
@@ -141,7 +141,7 @@ fn every_candidate_adds_and_its_family_is_phis() {
         let mut tree = prior.sample_with_rng(&mut rng);
         tree.ensure_uids();
         let before = struct_features(&tree).to_vec();
-        let had = counts(&tree);
+        let had = module_counts(&tree);
         let mut ks = Vec::new();
         keys(&tree.root, "node".into(), &mut ks);
         let deep = ks.last().map(|k| k.0.clone());
@@ -157,7 +157,7 @@ fn every_candidate_adds_and_its_family_is_phis() {
                     // was added (below).
                     assert!(c.tree.root.size() > tree.root.size(), "{:?}", c.op);
                 }
-                let has = counts(&c.tree);
+                let has = module_counts(&c.tree);
                 assert!(
                     had.iter().all(|(k, n)| has[k] >= *n),
                     "{:?} took a module away",
@@ -812,4 +812,63 @@ fn the_memory_carries_and_remembers_only_so_many_takes() {
         "the oldest take was kept"
     );
     assert_eq!(mem.observe(3, &befores[1]), Some(cands[1].skip()));
+}
+
+/// **A guess never takes a module away, even from a patch not in normal
+/// form.** A shared patch file can hold a modulation term the grammar would
+/// fold away (a quantizer over nothing on the root's slot), and the import
+/// (`WasmEngine::import_patch`: parse, clamp, validate, commit) keeps it as
+/// it is. Every op a guess makes normalizes the whole term it lands on, so
+/// on that patch each placement, a slew on that slot included, would delete
+/// the quantizer: none is offered, and the plan is refused as full rather
+/// than offering a guess that silently takes a module away.
+#[test]
+fn a_guess_never_takes_a_module_away_from_a_patch_not_in_normal_form() {
+    use auracle_grammar::term::ModOp;
+    let mut e = warm(4, false);
+    let mut tree = preset("Hornet");
+    *tree.root.modulation_mut().expect("the root has a slot") = ModNode::Op {
+        kind: ModOp::Quantize,
+        p0: 0.5,
+        p1: 0.0,
+        input: Box::new(ModNode::None),
+        uid: Uid::NEW,
+    };
+    let json = serde_json::to_string(&tree).unwrap();
+    let mut imported: PatchTree = serde_json::from_str(&json).unwrap();
+    imported.clamp_domains();
+    assert!(
+        validate_tree(&imported).is_ok(),
+        "the import would refuse it"
+    );
+    let id = e
+        .commit_edit(None, imported, crate::EditOutcome::Untold)
+        .expect("the import lands");
+    let bench = e.pool[e.find(id).unwrap()].tree.clone();
+    assert!(
+        matches!(
+            bench.root.modulation(),
+            Some(ModNode::Op {
+                kind: ModOp::Quantize,
+                ..
+            })
+        ),
+        "the import normalized the term, so this is not the case"
+    );
+    let had = module_counts(&bench);
+    let slew = StructOp::SetMod {
+        key: "node".into(),
+        kind: ModKind::Slew,
+    };
+    let taken = apply_struct_op(&bench, &slew).unwrap();
+    assert!(
+        module_counts(&taken).iter().any(|(k, n)| *n < had[k]),
+        "a slew here keeps the quantizer, so this is not the case"
+    );
+    assert!(guess_candidates(&bench, None).is_empty());
+    let none = HashSet::new();
+    assert_eq!(
+        e.guess_plan(&bench, None, &[], &none, 0).map(|p| p.total),
+        Err(GuessRefusal::Full)
+    );
 }
