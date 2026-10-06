@@ -66,10 +66,10 @@
   },
   "bank_lineage.spec.js": {
     "playwright/no-conditional-expect": {
-      "count": 9
+      "count": 1
     },
     "playwright/no-conditional-in-test": {
-      "count": 11
+      "count": 6
     },
     "playwright/no-skipped-test": {
       "count": 4
