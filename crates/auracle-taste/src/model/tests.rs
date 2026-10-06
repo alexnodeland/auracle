@@ -900,10 +900,10 @@ fn an_empty_posterior_is_inert() {
 }
 
 /// Reweighting always leaves the weights a distribution, finite and
-/// summing to one, even when the update has nothing finite to say: a vote
-/// on a candidate whose φ is not finite (a render that escaped the
-/// featurizer's quarantine), or one that every draw still carrying weight
-/// rules out entirely, so that every product underflows to zero.
+/// summing to one: after a vote on a candidate whose φ holds a NaN (a
+/// render that escaped the featurizer's quarantine), where no draw has a
+/// likelihood; after one that rules out every draw still carrying weight;
+/// and even from weights with nothing left to keep.
 #[test]
 fn reweighting_always_leaves_a_distribution() {
     let mut rng = StdRng::seed_from_u64(0xD157);
@@ -928,7 +928,9 @@ fn reweighting_always_leaves_a_distribution() {
     assert!(is_distribution(&p.reweighted(&unreadable, 0)));
 
     // All the weight on a draw that loves dimension 0; the vote says the
-    // listener hates it, so strongly that draw's likelihood is e^−3000.
+    // listener hates it, so strongly that draw's likelihood is e^−3000,
+    // while the draw with no weight scores about 1. The shift is by the
+    // draw that carries the weight, so its product is its own weight.
     let lens = |sign: f64| {
         let mut t = vec![0.0; D];
         t[0] = sign * 50.0;
@@ -957,6 +959,117 @@ fn reweighting_always_leaves_a_distribution() {
         chose_a: false,
     };
     assert!(is_distribution(&decided.reweighted(&contradiction, 0)));
+
+    // Weights that are all zero are no distribution to keep, which only a
+    // posterior built by hand can hold: an ordinary vote leaves them uniform.
+    let spent = TastePosterior {
+        weights: vec![0.0; p.samples.len()],
+        ..p.clone()
+    };
+    let ordinary = Feedback::Duel {
+        a: random_phi(&mut rng),
+        b: random_phi(&mut rng),
+        chose_a: true,
+    };
+    let healed = spent.reweighted(&ordinary, 0);
+    assert!(is_distribution(&healed), "weights {:?}", healed.weights);
+    assert_eq!(healed.weights, vec![1.0 / 20.0; 20]);
+}
+
+/// Three draws, each with both lenses on dimension 0: two that love it,
+/// holding all the weight between them (0.7 and 0.3), and one that hates
+/// it, holding none.
+fn two_lovers_and_a_spent_hater() -> TastePosterior {
+    let draw = |love: f64| {
+        let mut t = vec![0.0; D];
+        t[0] = love;
+        TasteSample {
+            theta: vec![t.clone(), t],
+            tau: vec![0.3],
+            cuts: vec![-1.0, 0.0, 1.5],
+        }
+    };
+    TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples: vec![draw(50.0), draw(40.0), draw(-50.0)],
+        weights: vec![0.7, 0.3, 0.0],
+    }
+}
+
+/// The update is `w_s · p(y | θ_s)`, renormalized, however firmly a duel
+/// rules out every draw still carrying weight. The weight moves to the
+/// draw that contradicts it least, so a stronger contradiction never moves
+/// it less than a weaker one, and a draw with no weight stays at none. That
+/// holds for any vote whose log-likelihood stays finite on the weighted
+/// draws, as a duel's does for any finite φ. A star rating between the
+/// lowest and the highest is the exception until #227: far below its lower
+/// cutpoint its log-likelihood underflows to −∞, a draw it underflows for
+/// loses all its weight, and once it underflows on every weighted draw the
+/// weights are kept instead.
+///
+/// The exponentials are shifted by the best log-likelihood among the draws
+/// that carry weight. Shifted by the best of all draws, here the one with
+/// no weight, which scores about 0, the first draw's product rounded to
+/// zero by x = 7.5, and by x = 10 every product did: the update was
+/// skipped, and the stronger vote left the weights as they were where a
+/// weaker one had collapsed them.
+#[test]
+fn the_update_is_exact_however_strong_the_contradiction() {
+    let p = two_lovers_and_a_spent_hater();
+    let mut first = f64::INFINITY;
+    for x in [3.0, 7.5, 8.0, 10.0, 30.0] {
+        // A vote against dimension 0, at a utility gap of 100·x under the
+        // first draw and 80·x under the second: likelihoods e^−100x and
+        // e^−80x, up to e^−3000 and e^−2400 at x = 30, far below the
+        // smallest double (about e^−745).
+        let (mut a, mut b) = (vec![0.0; D], vec![0.0; D]);
+        a[0] = x;
+        b[0] = -x;
+        let against = Feedback::Duel {
+            a,
+            b,
+            chose_a: false,
+        };
+        let moved = p.reweighted(&against, 0).weights;
+        assert!((moved[1] - 1.0).abs() < 1e-12, "x = {x}: weights {moved:?}");
+        let exact = (0.7 / 0.3) * (-20.0 * x).exp();
+        let ratio = moved[0] / moved[1] / exact;
+        assert!((ratio - 1.0).abs() < 1e-9, "x = {x}: weights {moved:?}");
+        assert_eq!(moved[2], 0.0, "x = {x}: weights {moved:?}");
+        assert!(moved[0] < first, "x = {x}: weights {moved:?}");
+        first = moved[0];
+    }
+}
+
+/// A vote that leaves the weighted draws no likelihood to update by leaves
+/// the weights as they were: what the votes since the last fit taught the
+/// draws is kept, and the observation waits in the log for the next fit.
+/// Resetting them to uniform threw that away and claimed a full effective
+/// sample size besides. Here the vote is one on a φ that holds a NaN. A
+/// star rating between the lowest and the highest, far below its lower
+/// cutpoint on every weighted draw, reaches the same arm, until #227 gives
+/// it a finite likelihood there.
+///
+/// The kept weights are a copy, not a computation, so they are compared
+/// exactly.
+#[test]
+fn a_vote_with_no_finite_likelihood_keeps_the_previous_weights() {
+    let p = two_lovers_and_a_spent_hater();
+    let mut nan = vec![0.0; D];
+    nan[3] = f64::NAN;
+    let unreadable = Feedback::Duel {
+        a: nan,
+        b: vec![0.0; D],
+        chose_a: true,
+    };
+    assert_eq!(p.reweighted(&unreadable, 0).weights, p.weights);
+    // A posterior persisted before reweighting existed stores no weights
+    // (uniform), and keeps them as one weight per draw.
+    let older = TastePosterior {
+        weights: Vec::new(),
+        ..p.clone()
+    };
+    assert_eq!(older.reweighted(&unreadable, 0).weights, vec![1.0 / 3.0; 3]);
 }
 
 /// Every per-style summary is importance-weighted, as the crate's rule
