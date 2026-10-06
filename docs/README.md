@@ -127,9 +127,13 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 - [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
   health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
   the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the
-  base its `--compare` reads #177's targets against. A PR that changes only
-  workflows, the Makefile or scripts is a CI PR there, where #177's own table
-  counted it as Rust
+  base its `--compare` reads #177's targets against. Its kinds of PR are
+  ci.yml's lanes as of ADR-023: a PR that changes a workflow or an action is
+  a CI PR, even beside docs or the app; the Makefile and the coverage gate's
+  scripts are Rust; other scripts are docs and other. #177's own table
+  counted a CI PR as Rust. 1,900 of its 2,470 minutes of `main` red are one
+  weekend: two reds re-run green by hand (a re-run is not believed), then
+  about 30 hours with no push
 
 ## Runbooks
 

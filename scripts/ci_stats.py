@@ -10,49 +10,61 @@ what, and how a PR gets from open to merged.
                                                       and each headline against a saved run
 
 `--since` and `--until` take a date (YYYY-MM-DD, UTC, both days included) or
-a time (2026-10-06T09:00:00Z). The default is the 7 days up to now.
+a time (2026-10-06T09:00:00Z). The default is the 7 days up to now, and a
+window never runs past now.
 
 It reads the Actions and pull request APIs through `gh api`, GET only, so it
 uses gh's own login, or GH_TOKEN in CI. What can no longer change is kept
 under `.cache/ci_stats/` (gitignored), keyed by URL: the jobs of a completed
-run, and the files, timeline and comments of a closed PR. A second run over
-the same window fetches only the lists and what is still in flight.
+run, and the files and comments of a closed PR. A second run over the same
+window fetches only the lists and what is still in flight. At GitHub's rate
+limit it stops, says so, and reports what it had read.
 
 What it counts, with the definitions #177's numbers used:
 - A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job (on a
   queue batch, its `Full gate` job, the check the queue merges on): green
   (success), red (failure or timed out) or cancelled. A re-run is counted
-  (`reruns`), not believed.
+  (`reruns`), not believed. A run on main that ran nothing (main had moved
+  past it, so ci.yml's `changes` job skipped everything) has no verdict.
 - Two lanes (ADR-023). A PR's own run is the fast lane, reported by the kind
-  of PR, which comes from the PR's files, the first match winning: Rust
-  (crates/, Cargo.*, rust-toolchain), CI (.github/, .mergify.yml, Makefile,
-  scripts/, .config/), web (apps/web/, tests/web/), and docs only (anything
-  else). A run belongs to the PR whose branch it ran on while the PR was open.
-  The merge queue's runs, on its draft PRs from branches under
-  `mergify/merge-queue/`, are the full gate: a row of their own (queue
-  batch), belonging to no PR. A push to main is a row of its own too.
+  of PR. The kind follows ci.yml's `changes` job, in its order, from the PR's
+  files: CI when it changes a workflow or an action (the fast lane runs the
+  full gate), whatever else it changes; then Rust (crates/, Cargo.*,
+  rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh); then
+  web (apps/web/ and tests/web/, their Markdown aside); and docs and other
+  (anything else: the site, docs/, .claude/, the other scripts,
+  changelog.d/, .mergify.yml). The kinds are the same for runs from before
+  ci.yml had these lanes, so a baseline compares like with like. A run
+  belongs to the PR whose branch it ran on while the PR was open. The merge
+  queue's runs, on its draft PRs from branches under `mergify/merge-queue/`,
+  are the full gate: a row of their own (queue batch), belonging to no PR. A
+  push to main is a row of its own too.
 - CI wall time: the run created to its `CI` job completed (a queue batch's
   `Full gate`), on green and red runs.
-- Runner wait: each job's start minus its creation, summed per run; and the
-  longest one in the run (the last shard to get a runner); and every job's.
+- Runner wait: each required job's start minus its creation (a job `CI`
+  needs; on a queue batch, one `Full gate` needs), summed per run, the
+  longest in the run, and every one's; and the longest of all the run's jobs,
+  required or not.
 - Red rate: red runs of the green and red ones; cancelled runs are left out.
 - Runs per PR: the `ci.yml` runs on a merged PR's branch while it was open
   (its fast lane; the queue's batches are counted on their own row).
 - Open to merge, PRs merged a day, and open to the first red (that run's
   `CI` completed): over the PRs merged in the window.
+- In the queue: from when the PR last entered Mergify's queue to its merge,
+  read from the `queued_at` Mergify keeps in its status comment on the PR
+  (one comment for each time it entered); n/a when there is none (a merge by
+  hand). How many times each PR entered is counted too.
 - main red: from a red run's `CI` completed on main to the next green run's
-  `CI` completed on main. Consecutive reds are one stretch.
-- Queue time: from the PR's first `queue` label (its timeline) or
-  `@mergifyio queue` comment, whichever is first, to the merge; n/a when it
-  has neither (a merge by hand, before Mergify).
+  `CI` completed on main. Consecutive reds are one stretch. A stretch that
+  began before the window is counted from the window's start.
 - Shards: each `Browser (k/N)` job's time on the green PR and queue runs that
-  ran all N, grouped by N. The spread is a run's slowest shard minus its fastest. The
-  headlines read the largest N, the whole tier (a fast lane runs only the
-  specs its change reaches, on fewer).
+  ran all N, grouped by N. The spread is a run's slowest shard minus its
+  fastest. The headlines read the largest N, the whole tier (a fast lane
+  runs only the specs its change reaches, on fewer).
 - Jobs: each job's time on green runs, by name with the shard numbers folded
   (`Browser (k/12)`); the Coverage chain from its build's start to its
   report's end; and the Slow suite's and the Flake hunt's runs, created to
-  their last job done.
+  their last job done, each judged by its first attempt.
 
 Python 3 standard library only.
 """
@@ -80,12 +92,12 @@ UTC = dt.timezone.utc
 DAY = dt.timedelta(days=1)
 
 # The rows of the main table, in order, and what each is called.
-ROWS = ("rust", "ci", "web", "docs", "unmatched", "queue", "main")
+ROWS = ("rust", "web", "docs", "ci", "unmatched", "queue", "main")
 LABEL = {
     "rust": "Rust",
-    "ci": "CI",
     "web": "Web",
-    "docs": "Docs only",
+    "docs": "Docs and other",
+    "ci": "CI (full gate)",
     "unmatched": "No PR found",
     "queue": "Queue batch",
     "main": "main (push)",
@@ -96,6 +108,9 @@ QUEUE_BRANCH = "mergify/merge-queue/"
 # The jobs that answer for a run, not jobs of their own: `CI`, which every
 # check needs, and `Full gate`, which a queue run's merge waits on.
 AGGREGATES = ("CI", "Full gate")
+# Jobs no answer waits for: the deploy after a green `CI` on main, and the
+# Slow suite's issue on a red one.
+NOT_NEEDED = ("Deploy to Pages", "Report a failure on main")
 # The other workflows whose runs the budgets need.
 OTHER = (("slow-suite.yml", "Slow suite"), ("flake-hunt.yml", "Flake hunt"))
 # How far before --since a merged PR's runs are still read (runs per PR, and
@@ -171,16 +186,20 @@ def mean(xs) -> float | None:
 
 # ─── what a PR changed ───────────────────────────────────────────────────────
 
-# ci.yml's `changes` job, simplified to one kind per PR.
-RUST = re.compile(r"^(crates/|Cargo\.(toml|lock)$|rust-toolchain)")
-CI = re.compile(r"^(\.github/|\.mergify\.yml$|Makefile$|scripts/|\.config/)")
-WEB = re.compile(r"^(apps/web/|tests/web/)")
+# ci.yml's `changes` job, in its order, one kind per PR (see the docstring).
+CI = re.compile(r"^\.github/(workflows|actions)/")
+RUST = re.compile(
+    r"^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain"
+    r"|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)"
+)
+WEB = re.compile(r"^(apps/web/|tests/web/).*(?<!\.md)$")
 
 
 def classify(files) -> str:
-    """rust, ci, web or docs: the first kind any of the PR's files is."""
+    """ci, rust, web or docs: the first lane, in ci.yml's order, that any of
+    the PR's files reaches."""
     files = list(files)
-    for kind, pattern in (("rust", RUST), ("ci", CI), ("web", WEB)):
+    for kind, pattern in (("ci", CI), ("rust", RUST), ("web", WEB)):
         if any(pattern.match(f) for f in files):
             return kind
     return "docs"
@@ -189,7 +208,13 @@ def classify(files) -> str:
 # ─── a run and its jobs ──────────────────────────────────────────────────────
 
 SHARD = re.compile(r"^Browser \((\d+)/(\d+)\)$")
-VERDICT = {"success": "green", "failure": "red", "timed_out": "red", "cancelled": "cancelled", "skipped": "cancelled"}
+VERDICT = {
+    "success": "green",
+    "failure": "red",
+    "timed_out": "red",
+    "cancelled": "cancelled",
+    "skipped": "cancelled",
+}
 
 
 def first_attempt(jobs) -> list:
@@ -199,6 +224,28 @@ def first_attempt(jobs) -> list:
 def is_queue(run) -> bool:
     """A run of the merge queue's full gate, on one of its draft PRs."""
     return run.get("event") == "pull_request" and (run.get("head_branch") or "").startswith(QUEUE_BRANCH)
+
+
+def is_main(run) -> bool:
+    return run.get("event") == "push" and run.get("head_branch") == "main"
+
+
+def ran(job) -> bool:
+    return bool(job.get("runner_name")) and job.get("conclusion") not in (None, "skipped")
+
+
+def superseded(run) -> bool:
+    """A run on main that ran nothing: main had moved past its commit, so
+    ci.yml's `changes` job skipped every job, and `CI` passed on nothing. (A
+    run cancelled before its jobs began ran nothing too, and is cancelled.)"""
+    jobs = first_attempt(run.get("jobs"))
+    if not is_main(run) or not jobs:
+        return False
+    gate = gate_job(run)
+    if gate is None or gate.get("conclusion") != "success":
+        return False
+    idle = ("What changed",) + AGGREGATES + NOT_NEEDED
+    return not any(ran(j) for j in jobs if j.get("name") not in idle)
 
 
 def gate_job(run) -> dict | None:
@@ -212,12 +259,12 @@ def gate_job(run) -> dict | None:
 
 def verdict(run) -> str | None:
     """green, red or cancelled, from the first attempt's `CI` job (`Full
-    gate` on a queue run); None while it runs. It fails when a job it needs
-    was cancelled, with nothing else failed: that run was cancelled when the
-    run itself was (a newer push replaced it), and red otherwise (a job
-    reached its time limit). A run with no jobs read falls back on its own
-    conclusion."""
-    if run.get("status") != "completed":
+    gate` on a queue run); None while it runs, and for a superseded run on
+    main. It fails when a job it needs was cancelled, with nothing else
+    failed: that run was cancelled when the run itself was (a newer push
+    replaced it), and red otherwise (a job reached its time limit). A run
+    with no jobs read falls back on its own conclusion."""
+    if run.get("status") != "completed" or superseded(run):
         return None
     j = gate_job(run)
     if j is None:
@@ -225,9 +272,12 @@ def verdict(run) -> str | None:
             return VERDICT.get(run.get("conclusion"))
         return None
     v = VERDICT.get(j.get("conclusion"))
-    if v == "red" and not any(
-        x.get("conclusion") in ("failure", "timed_out") for x in first_attempt(run.get("jobs")) if x.get("name") not in AGGREGATES
-    ):
+    others_failed = any(
+        x.get("conclusion") in ("failure", "timed_out")
+        for x in first_attempt(run.get("jobs"))
+        if x.get("name") not in AGGREGATES
+    )
+    if v == "red" and not others_failed:
         if run.get("run_attempt", 1) == 1 and run.get("conclusion") == "cancelled":
             return "cancelled"
     return v
@@ -246,15 +296,25 @@ def wall(run) -> float | None:
     return mins(ts(run["created_at"]), ci_done(run))
 
 
-def ran(job) -> bool:
-    return bool(job.get("runner_name")) and job.get("conclusion") not in (None, "skipped")
+def needed(run, job) -> bool:
+    """A job the run's answer waits for: one `CI` needs, or on a queue run
+    one `Full gate` needs (`CI` itself and the Browser report with them)."""
+    name = job.get("name")
+    if name in NOT_NEEDED:
+        return False
+    if is_queue(run):
+        return name != "Full gate"
+    return name not in ("CI", "Full gate", "Browser report")
 
 
-def waits(run) -> list:
-    """Minutes each first-attempt job that got a runner waited for it."""
+def waits(run, required: bool = True) -> list:
+    """Minutes each first-attempt job that got a runner waited for it: the
+    required ones, or with required=False every one."""
     out = []
     for j in first_attempt(run.get("jobs")):
-        w = mins(ts(j.get("created_at")), ts(j.get("started_at"))) if ran(j) else None
+        if not ran(j) or (required and not needed(run, j)):
+            continue
+        w = mins(ts(j.get("created_at")), ts(j.get("started_at")))
         if w is not None and w >= 0:
             out.append(w)
     return out
@@ -280,6 +340,23 @@ def fold(name: str) -> str:
     """A job's name with its shard number folded: `Browser (3/12)` is
     `Browser (k/12)`."""
     return re.sub(r"\((\d+)/(\d+)\)", r"(k/\2)", name)
+
+
+def workflow_verdict(run) -> str | None:
+    """A Slow suite or Flake hunt run's verdict from its first attempt: red
+    when a job failed, cancelled when one was, green when the rest passed.
+    With no jobs read, a first attempt's own conclusion."""
+    if run.get("status") != "completed":
+        return None
+    jobs = first_attempt(run.get("jobs"))
+    if not jobs:
+        return VERDICT.get(run.get("conclusion")) if run.get("run_attempt", 1) == 1 else None
+    ends = [j.get("conclusion") for j in jobs]
+    if any(c in ("failure", "timed_out") for c in ends):
+        return "red"
+    if "cancelled" in ends:
+        return "cancelled"
+    return "green" if all(c in ("success", "skipped") for c in ends) else None
 
 
 # ─── which PR a run belongs to ───────────────────────────────────────────────
@@ -311,45 +388,59 @@ def pr_for(run, branches) -> dict | None:
 
 
 def row_of(run, branches) -> str | None:
-    if run.get("event") == "push" and run.get("head_branch") == "main":
+    """The run's row; None for a run that is no row's (a manual run), or
+    whose PR's files could not be read."""
+    if is_main(run):
         return "main"
     if run.get("event") != "pull_request":
         return None
     if is_queue(run):
         return "queue"
     p = pr_for(run, branches)
-    return p["kind"] if p else "unmatched"
+    return p.get("kind") if p else "unmatched"
 
 
 # ─── the queue ───────────────────────────────────────────────────────────────
 
-QUEUE_COMMAND = re.compile(r"^\s*@mergify(io)?\s+queue\b", re.I | re.M)
+PAYLOAD = re.compile(r"-\*- Mergify Payload -\*-\s*(\{.*?\})\s*-\*- Mergify Payload End -\*-", re.S)
 
 
-def queued_at(timeline, comments) -> dt.datetime | None:
-    """When the PR first went into the queue: its first `queue` label or
-    `@mergifyio queue` comment (not a bot's), whichever is first. None when
-    it has neither."""
-    times = []
-    for e in timeline or []:
-        if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "queue":
-            times.append(ts(e.get("created_at")))
+def queue_entries(comments) -> list:
+    """Each time the PR entered Mergify's queue, oldest first: the
+    `queued_at` in the payload Mergify keeps, as an HTML comment, in each of
+    its status comments on the PR (a new one each time the PR enters)."""
+    times = set()
     for c in comments or []:
-        if (c.get("user") or {}).get("type") == "Bot":
+        if not (c.get("user") or {}).get("login", "").startswith("mergify"):
             continue
-        if QUEUE_COMMAND.search(c.get("body") or ""):
-            times.append(ts(c.get("created_at")))
-    times = [t for t in times if t is not None]
-    return min(times) if times else None
+        for m in PAYLOAD.finditer(c.get("body") or ""):
+            try:
+                t = ts(json.loads(m.group(1)).get("queued_at"))
+            except (ValueError, AttributeError):
+                continue
+            if t is not None:
+                times.add(t)
+    return sorted(times)
+
+
+def queue_time(comments, merged_at: dt.datetime) -> tuple:
+    """(minutes from the last entry before the merge to the merge, how many
+    times the PR entered); (None, 0) when Mergify never queued it."""
+    entries = [t for t in queue_entries(comments) if t <= merged_at]
+    if not entries:
+        return None, 0
+    return mins(entries[-1], merged_at), len(entries)
 
 
 # ─── main's red stretches ────────────────────────────────────────────────────
 
 
-def main_red(runs, until: dt.datetime) -> list:
-    """Each stretch main stayed red: from the first red run's `CI` completed
-    to the next green run's, in the order the runs were created. A stretch
-    still open at the end is measured to `until` and has no `to`."""
+def main_red(runs, since: dt.datetime, until: dt.datetime) -> list:
+    """Each stretch main stayed red in the window: from the first red run's
+    `CI` completed to the next green run's, in the order the runs were
+    created. A stretch that began before `since` is counted from `since`
+    (`clipped`); one still open at the end is measured to `until` and has no
+    `to`. A run with no verdict neither opens nor closes one."""
     out, cur = [], None
     for r in sorted(runs, key=lambda r: r["created_at"]):
         v = verdict(r)
@@ -363,11 +454,17 @@ def main_red(runs, until: dt.datetime) -> list:
             cur = None
     if cur is not None:
         out.append(cur)
+    kept = []
     for w in out:
-        w["minutes"] = rnd(mins(w["from"], w["to"] or until))
-        w["from"] = iso(w["from"]) if w["from"] else None
+        if w["from"] is None or w["from"] >= until or (w["to"] is not None and w["to"] <= since):
+            continue
+        w["clipped"] = w["from"] < since
+        start = max(w["from"], since)
+        w["minutes"] = rnd(mins(start, w["to"] or until))
+        w["from"] = iso(start)
         w["to"] = iso(w["to"]) if w["to"] else None
-    return out
+        kept.append(w)
+    return kept
 
 
 # ─── the numbers ─────────────────────────────────────────────────────────────
@@ -379,12 +476,13 @@ def in_window(run, since, until) -> bool:
 
 def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
     """Every number, from what `collect` read (or a test wrote): `ci` (ci.yml
-    runs, each with its `jobs`), `main_after` (main's runs after the window,
-    without jobs, to close a red stretch), `prs` (each with `kind`, and
-    `timeline` and `comments` when merged in the window; None when they could
-    not be read) and `other` (each OTHER workflow's runs, with their jobs)."""
+    runs, each with its `jobs`; one marked `unread` is left out),
+    `main_before` (main's last decided run before the window), `main_after`
+    (main's runs after it, without jobs, to close a red stretch), `prs` (each
+    with `kind`, None when its files could not be read, and `comments` when
+    merged in the window) and `other` (each OTHER workflow's runs)."""
     branches = by_branch(data["prs"])
-    runs = [r for r in data["ci"] if r.get("status") == "completed"]
+    runs = [r for r in data["ci"] if r.get("status") == "completed" and not r.get("unread")]
     window = [r for r in runs if in_window(r, since, until)]
 
     # By kind of PR (the fast lane), the queue's batches, and main.
@@ -407,11 +505,13 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
             "green": v["green"],
             "red": v["red"],
             "cancelled": v["cancelled"],
+            "no_verdict": v[None],
             "reruns": sum(1 for r in rs if r.get("run_attempt", 1) > 1),
             "red_rate": rnd(v["red"] / (v["green"] + v["red"]), 3) if decided else None,
             "wall": dist(wall(r) for r in decided),
             "wait_per_run": dist(sum(x) for x in w),
             "longest_wait": dist(max(x, default=0) for x in w),
+            "longest_wait_all": dist(max(waits(r, required=False), default=0) for r in decided),
             "job_wait": dist((y for x in w for y in x), 2),
         }
         for r in rs:
@@ -420,7 +520,13 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
                 failed = failed_jobs(r)
                 failing.update(fold(n) for n in failed)
                 red_runs.append(
-                    {"run": r["id"], "url": r.get("html_url"), "row": k, "pr": p["number"] if p else None, "jobs": failed}
+                    {
+                        "run": r["id"],
+                        "url": r.get("html_url"),
+                        "row": k,
+                        "pr": p["number"] if p else None,
+                        "jobs": failed,
+                    }
                 )
 
     # The PRs merged in the window, and every run of theirs.
@@ -431,20 +537,20 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
             runs_of[p["number"]].append(r)
     merged = [p for p in data["prs"] if p.get("merged_at") and since <= ts(p["merged_at"]) < until]
     days = (until - since).total_seconds() / 86400
-    opened, first_red, queue, no_queue, per_kind = [], [], [], 0, defaultdict(list)
+    opened, first_red, queue, entries, per_kind = [], [], [], [], defaultdict(list)
     for p in merged:
         c, m = ts(p["created_at"]), ts(p["merged_at"])
         opened.append(mins(c, m))
         mine = runs_of[p["number"]]
-        per_kind[p["kind"]].append(len(mine))
+        if p.get("kind"):
+            per_kind[p["kind"]].append(len(mine))
         reds = [ci_done(r) for r in mine if verdict(r) == "red" and ci_done(r)]
         if reds:
             first_red.append(mins(c, min(reds)))
-        q = queued_at(p.get("timeline"), p.get("comments"))
-        if q is None:
-            no_queue += 1
-        else:
-            queue.append(mins(q, m))
+        q, n = queue_time(p.get("comments"), m)
+        if q is not None:
+            queue.append(q)
+            entries.append(n)
     for k, counts in per_kind.items():
         rows.setdefault(k, {"runs": 0})["runs_per_pr"] = {
             "prs": len(counts),
@@ -458,22 +564,29 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
         "with_red": len(first_red),
         "open_to_first_red": dist(first_red),
         "queue": dist(queue),
-        "queue_na": no_queue,
+        "queue_na": len(merged) - len(queue),
+        "queue_entries": sum(entries),
+        "requeued": sum(1 for n in entries if n > 1),
     }
 
-    # main's red stretches: its runs in the window, then the ones after it
-    # that close a stretch.
-    mains = [r for r in runs if r.get("event") == "push" and r.get("head_branch") == "main"]
+    # main's red stretches: its runs in the window, its last decided run
+    # before it (a stretch may have begun there), and the runs after it that
+    # close a stretch.
+    mains = [r for r in runs if is_main(r)] + list(data.get("main_before", []))
+    before = [r for r in mains if ts(r["created_at"]) < since and verdict(r) in ("green", "red")]
     mains = [r for r in mains if ts(r["created_at"]) >= since] + list(data.get("main_after", []))
-    stretches = [w for w in main_red(mains, until) if w["from"] and ts(w["from"]) < until]
+    if before:
+        mains.append(max(before, key=lambda r: r["created_at"]))
+    stretches = main_red(mains, since, until)
 
     green_pr = [r for r in window if r.get("event") == "pull_request" and verdict(r) == "green"]
     green = [r for r in window if verdict(r) == "green"]
-    return {
+    others = {f: [r for r in data["other"].get(f, []) if not r.get("unread")] for f, _ in OTHER}
+    out = {
         "repo": REPO,
         "since": iso(since),
         "until": iso(until),
-        "classifier": "files",
+        "classifier": "files, by ci.yml's lanes",
         "rows": rows,
         "red_runs": red_runs,
         "failing_jobs": dict(sorted(failing.items(), key=lambda kv: (-kv[1], natural(kv[0])))),
@@ -484,8 +597,15 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
         },
         "shards": shard_stats(green_pr),
         "jobs": job_stats(green),
-        "workflows": {name: workflow_runs(data["other"].get(f, []), since, until) for f, name in OTHER},
+        "workflows": {name: workflow_runs(others[f], since, until) for f, name in OTHER},
     }
+    unread_runs = sum(1 for r in data["ci"] if r.get("unread")) + sum(
+        1 for rs in data["other"].values() for r in rs if r.get("unread")
+    )
+    unread_prs = sum(1 for p in data["prs"] if "kind" in p and p["kind"] is None)
+    if unread_runs or unread_prs:
+        out["unread"] = {"runs": unread_runs, "prs": unread_prs}
+    return out
 
 
 def shard_stats(runs) -> dict:
@@ -504,9 +624,13 @@ def shard_stats(runs) -> dict:
     for n in sorted(groups):
         rs = groups[n]
         times = [{k: mins(a, b) for k, (a, b) in s.items()} for s in rs]
+        each = {}
+        for k in range(1, n + 1):
+            xs = [t[k] for t in times]
+            each[str(k)] = {"median": rnd(pct(xs, 0.5)), "max": rnd(max(xs))}
         out[str(n)] = {
             "runs": len(rs),
-            "shard": {str(k): {"median": rnd(pct([t[k] for t in times], 0.5)), "max": rnd(max(t[k] for t in times))} for k in range(1, n + 1)},
+            "shard": each,
             "all": dist(x for t in times for x in t.values()),
             "spread": dist(max(t.values()) - min(t.values()) for t in times),
             "total": dist(sum(t.values()) for t in times),
@@ -528,23 +652,29 @@ def job_stats(runs) -> dict:
             times[fold(j["name"])].append(mins(a, b))
             if j["name"].startswith("Coverage"):
                 cov.append((a, b))
-        if any(j.get("name") == "Coverage build" and ran(j) for j in first_attempt(r.get("jobs"))) and cov:
+        built = any(j.get("name") == "Coverage build" and ran(j) for j in first_attempt(r.get("jobs")))
+        if built and cov:
             times["Coverage, build to report"].append(mins(min(a for a, _ in cov), max(b for _, b in cov)))
     return {name: dist(times[name]) for name in sorted(times, key=natural)}
 
 
 def workflow_runs(runs, since, until) -> dict:
-    """A workflow's runs in the window: the red ones, the green ones that ran
-    more than one job (not only the job that decides there is nothing to
-    run), and the green ones' minutes from created to the last first-attempt
-    job done."""
+    """A workflow's runs in the window, each by its first attempt: the red
+    ones, the green ones that ran more than one job (not only the job that
+    decides there is nothing to run), and the green ones' minutes from
+    created to the last first-attempt job done."""
     rs = [r for r in runs if r.get("status") == "completed" and in_window(r, since, until)]
-    green = [r for r in rs if r.get("conclusion") == "success" and sum(1 for j in first_attempt(r.get("jobs")) if ran(j)) > 1]
-    red = [r for r in rs if r.get("conclusion") == "failure"]
+    green = [
+        r
+        for r in rs
+        if workflow_verdict(r) == "green" and sum(1 for j in first_attempt(r.get("jobs")) if ran(j)) > 1
+    ]
+    red = [r for r in rs if workflow_verdict(r) == "red"]
 
     def span(r):
         ends = [ts(j.get("completed_at")) for j in first_attempt(r.get("jobs")) if ran(j)]
-        return mins(ts(r["created_at"]), max(e for e in ends if e)) if any(ends) else None
+        ends = [e for e in ends if e]
+        return mins(ts(r["created_at"]), max(ends)) if ends else None
 
     return {
         "runs": len(green) + len(red),
@@ -572,22 +702,35 @@ def headline(s: dict) -> list:
             continue
         name = LABEL[k]
         if "wall" in r:
+            rate = None if r["red_rate"] is None else round(100 * r["red_rate"], 1)
             out += [
                 (f"rows.{k}.wall.median", f"{name}: CI wall time, median", r["wall"]["median"], "min"),
                 (f"rows.{k}.wall.p90", f"{name}: CI wall time, p90", r["wall"]["p90"], "min"),
-                (f"rows.{k}.red_rate", f"{name}: red runs", None if r["red_rate"] is None else round(100 * r["red_rate"], 1), "%"),
-                (f"rows.{k}.wait_per_run.median", f"{name}: runner wait per run, median", r["wait_per_run"]["median"], "min"),
-                (f"rows.{k}.longest_wait.median", f"{name}: longest job wait per run, median", r["longest_wait"]["median"], "min"),
+                (f"rows.{k}.red_rate", f"{name}: red runs", rate, "%"),
+                (
+                    f"rows.{k}.wait_per_run.median",
+                    f"{name}: required jobs' runner wait per run, median",
+                    r["wait_per_run"]["median"],
+                    "min",
+                ),
+                (
+                    f"rows.{k}.longest_wait.median",
+                    f"{name}: longest required-job wait per run, median",
+                    r["longest_wait"]["median"],
+                    "min",
+                ),
             ]
         if "runs_per_pr" in r:
-            out.append((f"rows.{k}.runs_per_pr.median", f"{name}: runs per merged PR, median", r["runs_per_pr"]["median"], ""))
+            out.append(
+                (f"rows.{k}.runs_per_pr.median", f"{name}: runs per merged PR, median", r["runs_per_pr"]["median"], "")
+            )
     p = s["prs"]
     out += [
         ("prs.per_day", "PRs merged a day", p["per_day"], ""),
         ("prs.open_to_merge.median", "Open to merge, median", p["open_to_merge"]["median"], "min"),
         ("prs.open_to_merge.p90", "Open to merge, p90", p["open_to_merge"]["p90"], "min"),
         ("prs.open_to_first_red.median", "Open to first red, median", p["open_to_first_red"]["median"], "min"),
-        ("prs.queue.median", "Queue to merge, median", p["queue"]["median"], "min"),
+        ("prs.queue.median", "In the queue, entered to merged, median", p["queue"]["median"], "min"),
         ("main_red.minutes", "main red, minutes in all", s["main_red"]["minutes"], "min"),
     ]
     n = widest(s["shards"])
@@ -613,8 +756,17 @@ def compare(base: dict, now: dict) -> list:
     for k in keys:
         label, unit = (n.get(k) or b.get(k))[0], (n.get(k) or b.get(k))[2]
         bv, nv = (b.get(k) or (None, None, None))[1], (n.get(k) or (None, None, None))[1]
-        delta = round(nv - bv, 2) if isinstance(bv, (int, float)) and isinstance(nv, (int, float)) else None
-        out.append({"key": k, "label": label, "unit": unit, "base": bv, "now": nv, "change": delta})
+        numbers = isinstance(bv, (int, float)) and isinstance(nv, (int, float))
+        out.append(
+            {
+                "key": k,
+                "label": label,
+                "unit": unit,
+                "base": bv,
+                "now": nv,
+                "change": round(nv - bv, 2) if numbers else None,
+            }
+        )
     return out
 
 
@@ -648,19 +800,29 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
     w = L.append
     w(f"## CI health, {window_text(s['since'], s['until'])}")
     w("")
+    if s.get("stopped"):
+        u = s.get("unread", {})
+        w(
+            f"**Stopped at GitHub's rate limit** ({s['stopped']}): the jobs of {u.get('runs', 0)} run(s) and "
+            f"the files of {u.get('prs', 0)} PR(s) were not read, and what follows leaves them out. What was "
+            "read is in the cache, so the next run goes on from there."
+        )
+        w("")
     w(
         "*`scripts/ci_stats.py`: `ci.yml` runs created in the window, the PRs merged in it, minutes "
-        "unless marked. A run's verdict and wall time are its first attempt's `CI` job (a queue batch's "
-        "`Full gate`, the check the queue merges on).*"
+        "unless marked. A run's verdict and wall time are its first attempt's `CI` job (a queue "
+        "batch's `Full gate`, the check the queue merges on). Runner waits are the required jobs' "
+        "unless marked.*"
     )
     w("")
     w("### By kind of PR (the fast lane), the queue, and main")
     w("")
     w(
-        "| Kind | Runs | Green | Red | Cancelled | Red rate | CI wall, median / p90 | Runner wait per run, median / p90 "
-        "| Longest job wait, median | Job wait, median (s) | Merged PRs | Runs per PR, median / mean |"
+        "| Kind | Runs | Green | Red | Cancelled | Red rate | CI wall, median / p90 "
+        "| Runner wait per run, median / p90 | Longest job wait, median | Longest wait of all jobs, median "
+        "| Job wait, median (s) | Merged PRs | Runs per PR, median / mean |"
     )
-    w("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    w("| --- |" + " ---: |" * 12)
     for k in ROWS:
         r = s["rows"].get(k)
         if not r:
@@ -669,6 +831,7 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
         cells = [LABEL[k], num(r.get("runs", 0))]
         if "wall" in r:
             rate = "n/a" if r["red_rate"] is None else f"{100 * r['red_rate']:.0f}%"
+            job_wait = r["job_wait"]["median"]
             cells += [
                 num(r["green"]),
                 num(r["red"]),
@@ -677,16 +840,23 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
                 pair(r["wall"]),
                 pair(r["wait_per_run"]),
                 num(r["longest_wait"]["median"]),
-                num(None if r["job_wait"]["median"] is None else 60 * r["job_wait"]["median"], 0),
+                num(r["longest_wait_all"]["median"]),
+                num(None if job_wait is None else 60 * job_wait, 0),
             ]
         else:
-            cells += ["0", "0", "0", "n/a", "n/a", "n/a", "n/a", "n/a"]
+            cells += ["0", "0", "0", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a"]
         cells += [num(rp["prs"]) if rp else "", f"{num(rp['median'])} / {num(rp['mean'], 2)}" if rp else ""]
         w("| " + " | ".join(cells) + " |")
+    notes = []
     reruns = sum(r.get("reruns", 0) for r in s["rows"].values())
     if reruns:
+        notes.append(f"Re-run by hand: {reruns} run(s), each counted by its first attempt.")
+    idle = s["rows"].get("main", {}).get("no_verdict", 0)
+    if idle:
+        notes.append(f"On main, {idle} run(s) ran nothing (main had moved past them) and have no verdict.")
+    if notes:
         w("")
-        w(f"Re-run by hand: {reruns} run(s). Each is counted by its first attempt.")
+        w(" ".join(notes))
     w("")
     w("### Red runs, and the job that failed")
     w("")
@@ -703,12 +873,15 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
     p = s["prs"]
     w("### Pull requests merged")
     w("")
-    w("| Merged | A day | Open to merge, median / p90 | With a red run | Open to first red, median / p90 | Queue to merge, median / p90 |")
-    w("| ---: | ---: | ---: | ---: | ---: | ---: |")
+    w(
+        "| Merged | A day | Open to merge, median / p90 | With a red run | Open to first red, median / p90 "
+        "| In the queue, entered to merged, median / p90 | Times entered | Entered more than once |"
+    )
+    w("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     q = pair(p["queue"]) + (f" (n/a for {p['queue_na']})" if p["queue_na"] else "")
     w(
         f"| {p['merged']} | {num(p['per_day'], 2)} | {pair(p['open_to_merge'])} | {p['with_red']} "
-        f"| {pair(p['open_to_first_red'])} | {q} |"
+        f"| {pair(p['open_to_first_red'])} | {q} | {p['queue_entries']} | {p['requeued']} |"
     )
     w("")
     w("### main")
@@ -720,7 +893,8 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
         w(f"Red {len(st)} time(s), {num(s['main_red']['minutes'])} minutes in all:")
         for x in st:
             end = f"green at {x['to']} (run {x['green_run']})" if x["to"] else "still red at the window's end"
-            w(f"- from {x['from']}, {num(x['minutes'])} min, {end}; red runs {', '.join(map(str, x['red_runs']))}")
+            start = f"from {x['from']}" + (" (red since before the window)" if x.get("clipped") else "")
+            w(f"- {start}, {num(x['minutes'])} min, {end}; red runs {', '.join(map(str, x['red_runs']))}")
     w("")
     w("### Browser shards, on green PR and queue runs that ran every shard")
     w("")
@@ -728,7 +902,8 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
         w("No green PR or queue run ran the whole browser tier.")
     for n, g in sorted(s["shards"].items(), key=lambda kv: -kv[1]["runs"]):
         w(
-            f"**{n} shard{'s' if n != '1' else ''}**, {g['runs']} run(s). A shard: median {num(g['all']['median'])}, max {num(g['all']['max'])}. "
+            f"**{n} shard{'s' if n != '1' else ''}**, {g['runs']} run(s). "
+            f"A shard: median {num(g['all']['median'])}, max {num(g['all']['max'])}. "
             f"Spread (slowest minus fastest): median {num(g['spread']['median'])}, max {num(g['spread']['max'])}. "
             f"First start to last end: median {num(g['wall']['median'])}, p90 {num(g['wall']['p90'])}. "
             f"Runner-minutes a run: median {num(g['total']['median'])}."
@@ -747,7 +922,10 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
         w(f"| {name} | {d['n']} | {num(d['median'])} | {num(d['p90'])} | {num(d['max'])} |")
     for name, d in s["workflows"].items():
         g = d["wall_green"]
-        w(f"| {name} (a green run, created to done; {d['red']} red) | {g['n']} | {num(g['median'])} | {num(g['p90'])} | {num(g['max'])} |")
+        w(
+            f"| {name} (a green run, created to done; {d['red']} red) "
+            f"| {g['n']} | {num(g['median'])} | {num(g['p90'])} | {num(g['max'])} |"
+        )
     if cmp is not None:
         w("")
         w(f"### Against {base_name or 'the base'}")
@@ -768,9 +946,30 @@ class ApiError(RuntimeError):
     pass
 
 
+class RateLimited(ApiError):
+    """GitHub's rate limit: nothing more can be read for now."""
+
+
+def limited(stderr: str) -> bool:
+    """Whether a refusal is the rate limit: an HTTP 429, or an HTTP 403 that
+    says so or that comes with the limit at 0 (`gh api rate_limit` costs
+    nothing against it)."""
+    if "HTTP 429" in stderr:
+        return True
+    if "HTTP 403" not in stderr:
+        return False
+    if re.search(r"rate limit", stderr, re.I):
+        return True
+    p = subprocess.run(
+        ["gh", "api", "rate_limit", "-q", ".resources.core.remaining"], capture_output=True, text=True
+    )
+    return p.returncode == 0 and p.stdout.strip() == "0"
+
+
 def gh(url: str, paginate: bool, tries: int = 3) -> str:
     """`gh api` GET of one URL, every page when paginate. A server error
-    (HTTP 5xx: GitHub's, not the request's) is asked again, twice at most."""
+    (HTTP 5xx: GitHub's, not the request's) is asked again, twice at most;
+    the rate limit raises RateLimited."""
     cmd = ["gh", "api", "-X", "GET", "-H", "Accept: application/vnd.github+json"]
     if paginate:
         cmd.append("--paginate")
@@ -778,8 +977,11 @@ def gh(url: str, paginate: bool, tries: int = 3) -> str:
         p = subprocess.run(cmd + [url], capture_output=True, text=True)
         if p.returncode == 0:
             return p.stdout
+        error = f"gh api {url}: {p.stderr.strip() or p.returncode}"
+        if limited(p.stderr):
+            raise RateLimited(error)
         if attempt == tries or not re.search(r"HTTP 5\d\d", p.stderr):
-            raise ApiError(f"gh api {url}: {p.stderr.strip() or p.returncode}")
+            raise ApiError(error)
         time.sleep(2 * attempt)
     raise AssertionError("unreachable")
 
@@ -798,23 +1000,31 @@ def decode_all(text: str) -> list:
 
 
 class GitHub:
-    """GET requests to the repository's API, kept on disk when asked to."""
+    """GET requests to the repository's API, kept on disk when asked to.
+    Once the rate limit is reached (`stopped`), every request after it is
+    refused here without being sent."""
 
     def __init__(self, repo: str = REPO, cache: str = CACHE, fetch=gh):
         self.repo, self.cache, self.fetch = repo, cache, fetch
         self.fetched = self.reused = 0
+        self.stopped = None
         self.lock = threading.Lock()
 
     def url(self, path: str, params: dict | None = None) -> str:
         q = urllib.parse.urlencode(params or {}, safe=":.")
         return f"repos/{self.repo}/{path}" + (f"?{q}" if q else "")
 
-    def get(self, path: str, params: dict | None = None, key: str | None = None, paginate: bool = False, keep: bool = False):
+    def file(self, url: str) -> str:
+        return os.path.join(self.cache, hashlib.sha256(url.encode()).hexdigest() + ".json")
+
+    def get(
+        self, path: str, params: dict | None = None, key: str | None = None, paginate: bool = False, keep: bool = False
+    ):
         """The response, its pages joined: a list from `key` (or from array
         pages), else the one object. keep: read it from the cache, or write
         it there, as it can no longer change."""
         url = self.url(path, params)
-        file = os.path.join(self.cache, hashlib.sha256(url.encode()).hexdigest() + ".json")
+        file = self.file(url)
         if keep and os.path.exists(file):
             with open(file) as f:
                 saved = json.load(f)
@@ -822,7 +1032,14 @@ class GitHub:
                 with self.lock:
                     self.reused += 1
                 return saved["data"]
-        pages = decode_all(self.fetch(url, paginate))
+        if self.stopped:
+            raise RateLimited(self.stopped)
+        try:
+            pages = decode_all(self.fetch(url, paginate))
+        except RateLimited as e:
+            with self.lock:
+                self.stopped = self.stopped or str(e)
+            raise
         with self.lock:
             self.fetched += 1
         if key is not None:
@@ -841,9 +1058,11 @@ class GitHub:
 
     def get_or_none(self, *args, **kwargs):
         """The response, or None when the API refuses it (a token without
-        the scope, say): the number it feeds is then n/a."""
+        the scope, say, or the rate limit): the number it feeds is then n/a."""
         try:
             return self.get(*args, **kwargs)
+        except RateLimited:
+            return None
         except ApiError as e:
             print(f"ci_stats: {e}", file=sys.stderr)
             return None
@@ -851,7 +1070,7 @@ class GitHub:
 
 def list_runs(api: GitHub, workflow: str, start: dt.datetime, end: dt.datetime, **filters) -> list:
     """A workflow's runs created in [start, end), a day per query (the
-    filtered list stops at 1,000)."""
+    filtered list stops at 1,000), each run once."""
     seen = {}
     t = start
     while t < end:
@@ -865,7 +1084,8 @@ def list_runs(api: GitHub, workflow: str, start: dt.datetime, end: dt.datetime, 
 
 def list_prs(api: GitHub, since: dt.datetime) -> list:
     """Every PR updated since a day before `since`: one that ran or merged
-    in the window was updated in it."""
+    in the window was updated in it. Newest first, a page at a time, until a
+    short page or one that ends before then."""
     out = []
     for page in range(1, 100):
         params = {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100, "page": page}
@@ -886,8 +1106,39 @@ def list_prs(api: GitHub, since: dt.datetime) -> list:
     ]
 
 
+def jobs_of(api: GitHub, run) -> None:
+    """Read the run's jobs into it, kept once the run has completed; at the
+    rate limit, mark it `unread`."""
+    try:
+        run["jobs"] = api.get(
+            f"actions/runs/{run['id']}/jobs",
+            {"filter": "all", "per_page": 100},
+            key="jobs",
+            paginate=True,
+            keep=run.get("status") == "completed",
+        )
+    except RateLimited:
+        run["unread"] = True
+
+
+def main_before(api: GitHub, since: dt.datetime) -> list:
+    """main's last run before `since` that has a verdict (a red stretch may
+    have begun there), with its jobs; none when there is none."""
+    params = {"branch": "main", "event": "push", "created": f"<{iso(since)}", "per_page": 20}
+    for r in api.get("actions/workflows/ci.yml/runs", params, key="workflow_runs"):
+        if r.get("status") != "completed":
+            continue
+        jobs_of(api, r)
+        if r.get("unread"):
+            return []
+        if verdict(r) in ("green", "red"):
+            return [r]
+    return []
+
+
 def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetime, workers: int = 8) -> dict:
-    """Everything `measure` reads, from the API."""
+    """Everything `measure` reads, from the API. At the rate limit, what
+    could not be read is marked (a run `unread`, a PR's kind None)."""
     end = min(until, now)
     prs = list_prs(api, since)
     merged = [p for p in prs if p["merged_at"] and since <= ts(p["merged_at"]) < until]
@@ -895,16 +1146,13 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
     ci = list_runs(api, "ci.yml", start, end)
     after = list_runs(api, "ci.yml", end, min(end + 3 * DAY, now), branch="main", event="push") if end < now else []
     other = {f: list_runs(api, f, since, end) for f, _ in OTHER}
-
-    def jobs_of(r):
-        r["jobs"] = api.get(
-            f"actions/runs/{r['id']}/jobs", {"filter": "all", "per_page": 100}, key="jobs", paginate=True, keep=r.get("status") == "completed"
-        )
+    before = main_before(api, since)
 
     # Only what a number reads, as a nightly's token has 1,000 requests an
     # hour: the jobs of the window's runs and of the merged PRs' earlier
-    # ones, the other workflows' green runs, and the files of the PRs those
-    # runs belong to.
+    # ones; of the other workflows' runs, the green ones and those re-run
+    # (whose first attempt the final conclusion does not tell); and the
+    # files of the PRs those runs belong to.
     branches = by_branch(prs)
     in_merged = {p["number"] for p in merged}
     wanted = {p["number"]: p for p in merged}
@@ -917,44 +1165,69 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
                 wanted[p["number"]] = p
         elif p is not None and p["number"] in in_merged:
             need.append(r)
-    need += [r for rs in other.values() for r in rs if r.get("conclusion") == "success"]
+    need += [
+        r
+        for rs in other.values()
+        for r in rs
+        if r.get("conclusion") == "success" or r.get("run_attempt", 1) > 1
+    ]
 
     def files_of(p):
         closed = p["closed_at"] is not None
-        files = api.get(f"pulls/{p['number']}/files", {"per_page": 100}, paginate=True, keep=closed)
+        try:
+            files = api.get(f"pulls/{p['number']}/files", {"per_page": 100}, paginate=True, keep=closed)
+        except RateLimited:
+            p["kind"] = None
+            return
         p["kind"] = classify(f["filename"] for f in files)
         if p["number"] in in_merged:
-            p["timeline"] = api.get_or_none(f"issues/{p['number']}/timeline", {"per_page": 100}, paginate=True, keep=closed)
-            p["comments"] = api.get_or_none(f"issues/{p['number']}/comments", {"per_page": 100}, paginate=True, keep=closed)
+            p["comments"] = api.get_or_none(
+                f"issues/{p['number']}/comments", {"per_page": 100}, paginate=True, keep=closed
+            )
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(jobs_of, need))
+        list(pool.map(lambda r: jobs_of(api, r), need))
         list(pool.map(files_of, list(wanted.values())))
     for p in prs:
         p.setdefault("kind", "docs")
-    return {"ci": ci, "main_after": after, "prs": prs, "other": other}
+    return {"ci": ci, "main_before": before, "main_after": after, "prs": prs, "other": other}
 
 
 # ─── the command ─────────────────────────────────────────────────────────────
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv=None, now: dt.datetime | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--since", help="the window's first day or time (default: 7 days ago)")
-    ap.add_argument("--until", help="its last day (included) or time (default: now)")
+    ap.add_argument("--until", help="its last day (included) or time (default: now; never later than now)")
     ap.add_argument("--format", choices=("md", "json"), default="md")
     ap.add_argument("--compare", metavar="BASE.json", help="a saved --format json run to compare the headlines with")
     args = ap.parse_args(argv)
 
-    now = dt.datetime.now(UTC).replace(microsecond=0)
-    until = parse_when(args.until, end=True) if args.until else now
+    now = now or dt.datetime.now(UTC).replace(microsecond=0)
+    until = min(parse_when(args.until, end=True), now) if args.until else now
     since = parse_when(args.since) if args.since else until - 7 * DAY
     if since >= until:
         ap.error("--since must come before --until")
 
     api = GitHub()
-    stats = measure(collect(api, since, until, now), since, until)
+    try:
+        data = collect(api, since, until, now)
+    except RateLimited as e:
+        print(f"## CI health, {window_text(iso(since), iso(until))}\n")
+        print(
+            f"**Stopped at GitHub's rate limit** ({e}) after {api.fetched} request(s), before the "
+            "lists of runs and PRs were read, so there is nothing to report. What was read is in the "
+            "cache, so the next run goes on from there."
+        )
+        return 0
+    stats = measure(data, since, until)
     stats["generated"] = iso(now)
+    if api.stopped:
+        stats["stopped"] = api.stopped
+        stats.setdefault("unread", {"runs": 0, "prs": 0})
     print(f"ci_stats: {api.fetched} requests, {api.reused} from {os.path.relpath(CACHE, ROOT)}/", file=sys.stderr)
 
     cmp = None

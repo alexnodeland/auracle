@@ -312,7 +312,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   fifteen-week cycle aims to cover it all), and a surviving mutant files
   one too
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
-- **CI's health is measured:** `python3 scripts/ci_stats.py` reads the last 7 days against the budgets in [`architecture/testing.md` § Budgets](architecture/testing.md#budgets).
+- **CI's health is measured:** `python3 scripts/ci_stats.py` reports the
+  last 7 days of CI, by lane and kind of PR, and `--compare` sets each
+  headline against the week before #177's wave 0. The budgets are in
+  [`architecture/testing.md` § Budgets](architecture/testing.md#budgets).
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table
 gets the PR, and the PR's branch deletes itself on GitHub (the repository

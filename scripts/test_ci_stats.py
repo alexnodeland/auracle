@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
-"""ci_stats.py's tests: the kind of PR, the quantiles, a run's verdict, main's
-red stretches, the queue time, the whole measurement on a small week, the
-queue's lane, the comparison with a saved run, and the cache.
+"""ci_stats.py's tests: the kind of PR, the quantiles, a run's verdict and
+its runner waits, main's red stretches, the time in Mergify's queue, the
+whole measurement on a small week, the queue's lane, the comparison with a
+saved run, the cache, the other workflows, the window's end, the rate limit,
+and `collect` against a fake API.
 
     python3 scripts/test_ci_stats.py      (run by `make dev-check`)
 
 No test reaches the network: the runs, jobs and PRs are small dicts written
-here, and the cache's cases hand `GitHub` a fetch that counts its calls.
+here, and the cache's and `collect`'s cases hand `GitHub` a fetch that
+answers from them and counts its calls.
 Python 3 standard library only.
 """
 
+import contextlib
 import datetime as dt
+import io
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 import types
 import unittest
+import urllib.parse
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +51,9 @@ def job(name, created, started, done, conclusion="success", attempt=1):
     }
 
 
-def run(rid, created, jobs, branch="feature", event="pull_request", conclusion="success", attempt=1, status="completed"):
+def run(
+    rid, created, jobs, branch="feature", event="pull_request", conclusion="success", attempt=1, status="completed"
+):
     return {
         "id": rid,
         "created_at": at(created),
@@ -89,7 +98,7 @@ def red_run(rid, created, minutes=10, failed="Browser (2/2)", branch="feature", 
     )
 
 
-def pr(number, branch, created, merged, kind="rust", timeline=None, comments=None):
+def pr(number, branch, created, merged, kind="rust", comments=None):
     return {
         "number": number,
         "title": f"PR {number}",
@@ -98,29 +107,58 @@ def pr(number, branch, created, merged, kind="rust", timeline=None, comments=Non
         "closed_at": at(merged) if merged is not None else None,
         "merged_at": at(merged) if merged is not None else None,
         "kind": kind,
-        "timeline": timeline,
         "comments": comments,
     }
 
 
-class Classify(unittest.TestCase):
-    def test_rust_wins_over_every_other_kind(self):
-        self.assertEqual(S.classify(["docs/a.md", "apps/web/main.js", ".github/workflows/ci.yml", "crates/x/src/lib.rs"]), "rust")
-        self.assertEqual(S.classify(["Cargo.lock"]), "rust")
-        self.assertEqual(S.classify(["rust-toolchain.toml"]), "rust")
+def payload(state, queued, created):
+    """One of Mergify's status comments, as it writes them (#193's, with its
+    times moved): its payload, an HTML comment, says when the PR entered the
+    queue, to the microsecond."""
+    data = {
+        "version": 1,
+        "state": state,
+        "queue_rule_name": "default",
+        "queued_at": (BASE + dt.timedelta(minutes=queued, microseconds=627454)).isoformat(),
+        "estimated_time_of_merge": None,
+        "speculative_check_pr": None,
+        "required_conditions": [],
+    }
+    body = (
+        "<!---\nDO NOT EDIT\n-*- Mergify Payload -*-\n"
+        + json.dumps(data)
+        + "\n-*- Mergify Payload End -*-\n-->\n\n# Merge Queue Status\n\n"
+        + "- ✅ **Entered queue** · Rule: `default` · triggered by @alexnodeland with the `@mergifyio queue` command\n"
+    )
+    return {"body": body, "user": {"login": "mergify[bot]", "type": "Bot"}, "created_at": at(created)}
 
-    def test_ci_wins_over_web(self):
+
+class Classify(unittest.TestCase):
+    """The kind of PR is the lane ci.yml's `changes` job picks, in its order."""
+
+    def test_a_workflow_or_an_action_is_ci_whatever_else_changed(self):
+        self.assertEqual(S.classify([".github/workflows/ci.yml", "crates/x/src/lib.rs", "apps/web/main.js"]), "ci")
         self.assertEqual(S.classify(["tests/web/shard.mjs", ".github/actions/browser-shard/action.yml"]), "ci")
-        self.assertEqual(S.classify(["Makefile"]), "ci")
-        self.assertEqual(S.classify([".mergify.yml"]), "ci")
-        self.assertEqual(S.classify(["scripts/ci_stats.py"]), "ci")
+        # Beside docs or the app, a CI file still makes the PR a CI PR.
+        self.assertEqual(S.classify(["docs/process.md", ".github/workflows/flake-hunt.yml"]), "ci")
+
+    def test_what_can_change_the_build_is_rust(self):
+        for f in ["crates/x/src/lib.rs", "Cargo.lock", "rust-toolchain.toml", "Makefile", "scripts/setup.sh"]:
+            self.assertEqual(S.classify([f]), "rust", f)
+        self.assertEqual(S.classify(["scripts/coverage_gate.py"]), "rust")
+        self.assertEqual(S.classify(["scripts/test_coverage_gate.py"]), "rust")
+        self.assertEqual(S.classify(["apps/web/main.js", "crates/x/src/lib.rs"]), "rust")
 
     def test_web_is_the_app_or_its_specs(self):
         self.assertEqual(S.classify(["apps/web/main.js", "CHANGELOG.md"]), "web")
         self.assertEqual(S.classify(["tests/web/package-lock.json"]), "web")
+        self.assertEqual(S.classify(["tests/web/AGENTS.md"]), "docs")
 
-    def test_anything_else_is_docs_only(self):
-        self.assertEqual(S.classify(["docs/process.md", "www/docs/src/a.md", "README.md", ".claude/skills/ship/SKILL.md"]), "docs")
+    def test_anything_else_is_docs_and_other(self):
+        files = ["docs/process.md", "www/docs/src/a.md", "README.md", ".claude/skills/ship/SKILL.md"]
+        self.assertEqual(S.classify(files), "docs")
+        for f in ["scripts/ci_stats.py", ".mergify.yml", "changelog.d/topic.md", ".github/dependabot.yml"]:
+            self.assertEqual(S.classify([f]), "docs", f)
         self.assertEqual(S.classify([]), "docs")
         # A path that only contains a kind's prefix is not that kind.
         self.assertEqual(S.classify(["docs/crates/notes.md", "www/apps/web/x.md"]), "docs")
@@ -154,7 +192,8 @@ class Window(unittest.TestCase):
         self.assertEqual(S.iso(S.parse_when("2026-10-05T08:50:02Z", end=True)), "2026-10-05T08:50:02Z")
 
     def test_the_window_reads_both_days_in(self):
-        self.assertEqual(S.window_text("2026-09-28T00:00:00Z", "2026-10-06T00:00:00Z"), "2026-09-28 to 2026-10-05 (UTC, both days in)")
+        text = S.window_text("2026-09-28T00:00:00Z", "2026-10-06T00:00:00Z")
+        self.assertEqual(text, "2026-09-28 to 2026-10-05 (UTC, both days in)")
 
 
 class Verdict(unittest.TestCase):
@@ -198,14 +237,48 @@ class Verdict(unittest.TestCase):
     def test_a_run_in_flight_has_none(self):
         self.assertIsNone(S.verdict(run(5, 0, [], status="in_progress", conclusion=None)))
 
-    def test_waits_count_jobs_that_got_a_runner(self):
+    def test_a_superseded_run_on_main_has_none(self):
+        # main had moved past it: every job skipped but What changed, and CI
+        # green on nothing.
+        jobs = [job("What changed", 0, 0, 1), job("CI", 1, 1, 2)]
+        jobs.append(dict(job("Site", 1, 1, 1), conclusion="skipped", runner_name=""))
+        self.assertIsNone(S.verdict(run(6, 0, jobs, event="push", branch="main")))
+        # A PR whose change reaches no job (a changelog entry) is still green.
+        self.assertEqual(S.verdict(run(7, 0, jobs)), "green")
+        # Cancelled before anything began: cancelled, not idle.
+        stopped = [job("What changed", 0, 0, 1, "cancelled"), job("CI", 1, 1, 2, "failure")]
+        stopped.append(dict(job("Lint", 1, 1, 1), conclusion="cancelled", runner_name=""))
+        stopped_run = run(9, 0, stopped, event="push", branch="main", conclusion="cancelled")
+        self.assertEqual(S.verdict(stopped_run), "cancelled")
+        # And main reusing the queue's verdict still builds the site: green.
+        built = jobs[:2] + [job("Site", 1, 1, 3)]
+        self.assertEqual(S.verdict(run(8, 0, built, event="push", branch="main")), "green")
+
+
+class Waits(unittest.TestCase):
+    def test_the_jobs_the_answer_waits_for_and_all_of_them(self):
         r = green_run(6, 0, wait=3)
-        r["jobs"].append({"name": "Site", "conclusion": "skipped", "run_attempt": 1, "runner_name": "", "created_at": at(0), "started_at": at(9), "completed_at": at(9)})
-        self.assertEqual(S.waits(r), [3, 0])
+        r["jobs"].append(dict(job("Site", 0, 9, 9), conclusion="skipped", runner_name=""))
+        r["jobs"].append(job("Browser report", 0, 7, 8))
+        r["jobs"].append(job("Deploy to Pages", 10, 12, 13))
+        # Required: the test job; not CI itself, the report or the deploy.
+        self.assertEqual(S.waits(r), [3])
+        self.assertEqual(sorted(S.waits(r, required=False)), [0, 2, 3, 7])
+
+    def test_on_a_queue_run_the_full_gate_waits_for_ci_and_the_report(self):
+        r = queue_run(9, 0, 12)
+        r["jobs"].append(job("Browser report", 0, 4, 11))
+        r["jobs"][-2]["started_at"] = at(11)  # Full gate waited a minute
+        self.assertEqual(sorted(S.waits(r)), [0, 1, 1, 4])
+        self.assertEqual(sorted(S.waits(r, required=False)), [0, 1, 1, 1, 4])
 
 
 class MainRed(unittest.TestCase):
     UNTIL = BASE + dt.timedelta(days=1)
+
+    def stretches(self, runs, before=()):
+        data = {"ci": runs, "main_before": list(before), "main_after": [], "prs": [], "other": {}}
+        return S.measure(data, BASE, self.UNTIL)["main_red"]["stretches"]
 
     def test_consecutive_reds_are_one_stretch_until_the_next_green(self):
         runs = [
@@ -215,14 +288,14 @@ class MainRed(unittest.TestCase):
             green_run(4, 60, minutes=15, event="push", branch="main"),
             green_run(5, 90, event="push", branch="main"),
         ]
-        [w] = S.main_red(runs, self.UNTIL)
+        [w] = S.main_red(runs, BASE, self.UNTIL)
         self.assertEqual((w["from"], w["to"]), (at(30), at(75)))
         self.assertEqual(w["minutes"], 45)
-        self.assertEqual((w["red_runs"], w["green_run"]), ([2, 3], 4))
+        self.assertEqual((w["red_runs"], w["green_run"], w["clipped"]), ([2, 3], 4, False))
 
     def test_a_red_never_followed_by_green_is_measured_to_the_end(self):
         runs = [green_run(1, 0, event="push", branch="main"), red_run(2, 1380, event="push", branch="main")]
-        [w] = S.main_red(runs, self.UNTIL)
+        [w] = S.main_red(runs, BASE, self.UNTIL)
         self.assertIsNone(w["to"])
         self.assertEqual(w["minutes"], 50)
 
@@ -230,8 +303,36 @@ class MainRed(unittest.TestCase):
         cancelled = run(3, 30, [], event="push", branch="main", conclusion="cancelled")
         cancelled["jobs"] = None
         runs = [red_run(2, 0, event="push", branch="main"), cancelled, green_run(4, 60, event="push", branch="main")]
-        [w] = S.main_red(runs, self.UNTIL)
+        [w] = S.main_red(runs, BASE, self.UNTIL)
         self.assertEqual(w["green_run"], 4)
+
+    def test_a_superseded_run_does_not_split_a_stretch(self):
+        idle = run(5, 200, [job("What changed", 200, 200, 201), job("CI", 201, 201, 202)], event="push", branch="main")
+        runs = [
+            red_run(4, 100, event="push", branch="main"),
+            idle,
+            red_run(6, 203, event="push", branch="main"),
+            green_run(7, 300, event="push", branch="main"),
+        ]
+        [w] = self.stretches(runs)
+        self.assertEqual((w["from"], w["to"], w["minutes"], w["red_runs"]), (at(110), at(310), 200, [4, 6]))
+
+    def test_a_stretch_that_began_before_the_window_counts_from_its_start(self):
+        # Red since 23:00 the day before, green at 09:00.
+        red, green = red_run(1, -60, event="push", branch="main"), green_run(2, 530, event="push", branch="main")
+        for runs, before in (([red, green], ()), ([green], [red])):
+            [w] = self.stretches(runs, before)
+            self.assertEqual((w["from"], w["to"], w["minutes"], w["clipped"]), (at(0), at(540), 540, True))
+        md = S.markdown(S.measure({"ci": [red, green], "main_after": [], "prs": [], "other": {}}, BASE, self.UNTIL))
+        self.assertIn("(red since before the window)", md)
+
+    def test_a_stretch_that_ended_before_the_window_is_not_counted(self):
+        runs = [
+            red_run(1, -200, event="push", branch="main"),
+            green_run(2, -100, event="push", branch="main"),
+            green_run(3, 60, event="push", branch="main"),
+        ]
+        self.assertEqual(self.stretches(runs), [])
 
     def test_a_run_after_the_window_closes_it_by_its_last_update(self):
         after = run(9, 2000, [], event="push", branch="main")
@@ -249,41 +350,42 @@ class MainRed(unittest.TestCase):
 
 
 class Queue(unittest.TestCase):
-    def test_the_queue_label(self):
-        timeline = [
-            {"event": "labeled", "label": {"name": "full-ci"}, "created_at": at(5)},
-            {"event": "labeled", "label": {"name": "queue"}, "created_at": at(10)},
-        ]
-        self.assertEqual(S.queued_at(timeline, []), BASE + dt.timedelta(minutes=10))
+    MERGED = BASE + dt.timedelta(minutes=60)
 
-    def test_the_command_and_the_first_of_both(self):
-        comments = [
-            {"body": "Looks good.", "user": {"type": "User"}, "created_at": at(2)},
-            {"body": "@Mergifyio queue", "user": {"type": "User"}, "created_at": at(7)},
-        ]
-        self.assertEqual(S.queued_at([], comments), BASE + dt.timedelta(minutes=7))
-        timeline = [{"event": "labeled", "label": {"name": "queue"}, "created_at": at(12)}]
-        self.assertEqual(S.queued_at(timeline, comments), BASE + dt.timedelta(minutes=7))
+    def test_from_entering_the_queue_to_the_merge(self):
+        minutes, entries = S.queue_time([payload("merged", 40, 41)], self.MERGED)
+        self.assertAlmostEqual(minutes, 20 - 0.627454 / 60)
+        self.assertEqual(entries, 1)
 
-    def test_what_is_not_the_command(self):
-        comments = [
-            {"body": "@mergifyio queue", "user": {"type": "Bot"}, "created_at": at(1)},
-            {"body": "Then comment `@mergifyio queue` on it.", "user": {"type": "User"}, "created_at": at(2)},
-            {"body": "@mergifyio queued?", "user": {"type": "User"}, "created_at": at(3)},
-        ]
-        self.assertIsNone(S.queued_at([], comments))
-        self.assertIsNone(S.queued_at(None, None))
+    def test_queued_twice_counts_from_the_last_entry(self):
+        # #193: entered, left on a conflict, entered again, merged.
+        comments = [payload("dequeued", 5, 6), payload("merged", 45, 46)]
+        minutes, entries = S.queue_time(comments, self.MERGED)
+        self.assertEqual((round(minutes), entries), (15, 2))
+        # An entry after the merge is no part of it.
+        minutes, entries = S.queue_time(comments + [payload("queued", 70, 70)], self.MERGED)
+        self.assertEqual((round(minutes), entries), (15, 2))
+
+    def test_the_command_and_the_label_are_not_the_entry(self):
+        # The process labels a PR and comments the command as it opens; the
+        # PR enters the queue only once its CI is green.
+        human = {"body": "@mergifyio queue", "user": {"login": "alexnodeland", "type": "User"}, "created_at": at(1)}
+        quoted = dict(payload("merged", 2, 3), user={"login": "someone", "type": "User"})
+        self.assertEqual(S.queue_time([human, quoted], self.MERGED), (None, 0))
+        self.assertEqual(S.queue_time(None, self.MERGED), (None, 0))
+        broken = dict(payload("merged", 2, 3))
+        broken["body"] = broken["body"].replace('"version": 1', '"version": ')
+        self.assertEqual(S.queue_time([broken], self.MERGED), (None, 0))
 
 
 def week():
     """Two merged PRs and main over one day: #1 (Rust) red once then green,
-    queued by its label; #2 (web) green on its one run, merged by hand; main
-    red once, then green."""
-    timeline = [{"event": "labeled", "label": {"name": "queue"}, "created_at": at(40)}]
+    in Mergify's queue from 00:40; #2 (web) green on its one run, merged by
+    hand; main red once, then green."""
     prs = [
-        pr(1, "rust-pr", 0, 60, "rust", timeline=timeline, comments=[]),
-        pr(2, "web-pr", 100, 130, "web", timeline=[], comments=[]),
-        pr(3, "old-pr", -3000, -2000, "docs", timeline=[], comments=[]),
+        pr(1, "rust-pr", 0, 60, "rust", comments=[payload("merged", 40, 41)]),
+        pr(2, "web-pr", 100, 130, "web", comments=[]),
+        pr(3, "old-pr", -3000, -2000, "docs", comments=[]),
     ]
 
     def shards(created, minutes):
@@ -295,7 +397,11 @@ def week():
     r3 = green_run(12, 101, minutes=12, wait=0, branch="web-pr")
     r3["jobs"] = shards(101, (5, 5, 9)) + r3["jobs"]
     stray = green_run(13, 200, branch="nobody")
-    mains = [green_run(20, 61, event="push", branch="main"), red_run(21, 131, event="push", branch="main"), green_run(22, 150, event="push", branch="main")]
+    mains = [
+        green_run(20, 61, event="push", branch="main"),
+        red_run(21, 131, event="push", branch="main"),
+        green_run(22, 150, event="push", branch="main"),
+    ]
     return {"ci": [r1, r2, r3, stray] + mains, "main_after": [], "prs": prs, "other": {}}
 
 
@@ -314,9 +420,11 @@ class Measure(unittest.TestCase):
         self.assertNotIn("docs", self.s["rows"])
 
     def test_runner_wait_is_summed_per_run(self):
-        # Run 11: its test job waited 2, its shards 1 each, CI 0.
-        self.assertEqual(self.s["rows"]["rust"]["longest_wait"]["max"], 2.0)
-        self.assertEqual(self.s["rows"]["rust"]["wait_per_run"]["max"], 5.0)
+        # Run 11: its test job waited 2, its shards 1 each; CI (0) is not one
+        # of the jobs it needs.
+        rust = self.s["rows"]["rust"]
+        self.assertEqual((rust["longest_wait"]["max"], rust["longest_wait_all"]["max"]), (2.0, 2.0))
+        self.assertEqual(rust["wait_per_run"]["max"], 5.0)
 
     def test_red_runs_name_the_job(self):
         reds = {r["run"]: r for r in self.s["red_runs"]}
@@ -331,6 +439,7 @@ class Measure(unittest.TestCase):
         self.assertEqual(p["open_to_merge"]["median"], 45.0)
         self.assertEqual((p["with_red"], p["open_to_first_red"]["median"]), (1, 12.0))
         self.assertEqual((p["queue"]["n"], p["queue"]["median"], p["queue_na"]), (1, 20.0, 1))
+        self.assertEqual((p["queue_entries"], p["requeued"]), (1, 0))
 
     def test_shards(self):
         g = self.s["shards"]["3"]
@@ -354,7 +463,10 @@ class Measure(unittest.TestCase):
 def queue_run(rid, created, gate_done, red=False, branch="mergify/merge-queue/0a1b2c"):
     """A run of the queue's full gate on its draft PR: two shards, `CI`, then
     `Full gate`, done at `gate_done`. Red, its second shard fails."""
-    jobs = [job(f"Browser ({k}/2)", created, created + 1, created + 9, "failure" if red and k == 2 else "success") for k in (1, 2)]
+    jobs = [
+        job(f"Browser ({k}/2)", created, created + 1, created + 9, "failure" if red and k == 2 else "success")
+        for k in (1, 2)
+    ]
     jobs.append(job("CI", created + 9, created + 9, created + 10, "failure" if red else "success"))
     jobs.append(job("Full gate", created + 10, created + 10, gate_done, "failure" if red else "success"))
     return run(rid, created, jobs, branch=branch, conclusion="failure" if red else "success")
@@ -414,7 +526,11 @@ class QueueLane(unittest.TestCase):
         cancelled = run(
             33,
             0,
-            [job("Browser (1/2)", 0, 1, 4, "cancelled"), job("CI", 4, 4, 5, "failure"), job("Full gate", 5, 5, 6, "failure")],
+            [
+                job("Browser (1/2)", 0, 1, 4, "cancelled"),
+                job("CI", 4, 4, 5, "failure"),
+                job("Full gate", 5, 5, 6, "failure"),
+            ],
             branch="mergify/merge-queue/0a1b2c",
             conclusion="cancelled",
         )
@@ -477,7 +593,8 @@ class Cache(unittest.TestCase):
     def test_a_kept_response_is_read_once(self):
         api = self.api('{"jobs": [{"id": 1}]}\n{"jobs": [{"id": 2}]}')
         for _ in range(2):
-            self.assertEqual(api.get("actions/runs/7/jobs", {"filter": "all"}, key="jobs", paginate=True, keep=True), [{"id": 1}, {"id": 2}])
+            got = api.get("actions/runs/7/jobs", {"filter": "all"}, key="jobs", paginate=True, keep=True)
+            self.assertEqual(got, [{"id": 1}, {"id": 2}])
         self.assertEqual(self.calls, [("repos/o/r/actions/runs/7/jobs?filter=all", True)])
         self.assertEqual((api.fetched, api.reused), (1, 1))
 
@@ -489,7 +606,7 @@ class Cache(unittest.TestCase):
         self.assertEqual(os.listdir(self.dir), [])
 
     def test_a_server_error_is_asked_again_and_a_refusal_is_not(self):
-        answers = [types.SimpleNamespace(returncode=1, stdout="", stderr="gh: Server Error (HTTP 502)"), types.SimpleNamespace(returncode=0, stdout="[]", stderr="")]
+        answers = [gh_answer(1, stderr="gh: Server Error (HTTP 502)"), gh_answer(0, stdout="[]")]
         with mock.patch.object(S.subprocess, "run", side_effect=answers) as run, mock.patch.object(S.time, "sleep"):
             self.assertEqual(S.gh("repos/o/r/pulls", False), "[]")
         self.assertEqual(run.call_count, 2)
@@ -515,6 +632,211 @@ class Cache(unittest.TestCase):
                 self.assertIsNone(api.get_or_none("issues/3/timeline"))
             finally:
                 sys.stderr = stderr
+
+
+class Workflows(unittest.TestCase):
+    """The Slow suite's and the Flake hunt's runs, judged by their first
+    attempt as CI's are."""
+
+    def test_a_run_re_run_green_counts_by_its_first_attempt(self):
+        jobs = [
+            job("Asked for", 0, 0, 1),
+            job("Slow browser (1/6)", 1, 2, 30, "failure"),
+            job("Asked for", 40, 40, 41, attempt=2),
+            job("Slow browser (1/6)", 41, 41, 70, attempt=2),
+        ]
+        rerun = run(1, 0, jobs, attempt=2)  # its final conclusion: success
+        self.assertEqual(S.workflow_verdict(rerun), "red")
+        green = run(2, 0, [job("Asked for", 0, 0, 1), job("Slow browser (1/6)", 1, 2, 30)])
+        red_unread = run(3, 0, [], conclusion="failure")
+        red_unread["jobs"] = None
+        w = S.workflow_runs([rerun, green, red_unread], BASE, BASE + dt.timedelta(days=1))
+        self.assertEqual((w["green"], w["red"], w["wall_green"]["median"]), (1, 2, 30.0))
+
+
+class Until(unittest.TestCase):
+    def test_a_window_never_runs_past_now(self):
+        # "Now" is noon; main has been red since 11:00, and one PR merged.
+        now = BASE + dt.timedelta(hours=12)
+        seen = {}
+
+        def fake_collect(api, since, until, now_):
+            seen["until"] = until
+            return {
+                "ci": [red_run(2, 650, event="push", branch="main")],
+                "main_before": [],
+                "main_after": [],
+                "prs": [pr(1, "a", 0, 60, "docs", comments=[])],
+                "other": {},
+            }
+
+        out = io.StringIO()
+        with mock.patch.object(S, "collect", fake_collect), contextlib.redirect_stdout(out):
+            with contextlib.redirect_stderr(io.StringIO()):
+                S.main(["--since", "2026-10-01", "--until", "2026-10-01", "--format", "json"], now=now)
+        s = json.loads(out.getvalue())
+        self.assertEqual((seen["until"], s["until"]), (now, S.iso(now)))
+        self.assertEqual(s["main_red"]["stretches"][0]["minutes"], 60)
+        self.assertEqual(s["prs"]["per_day"], 2.0)
+
+
+def gh_answer(code, stderr="", stdout=""):
+    return types.SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+
+
+class RateLimit(unittest.TestCase):
+    def test_what_is_the_rate_limit(self):
+        self.assertTrue(S.limited("gh: Too Many Requests (HTTP 429)"))
+        self.assertTrue(S.limited("gh: API rate limit exceeded for installation ID 1. (HTTP 403)"))
+        self.assertFalse(S.limited("gh: Not Found (HTTP 404)"))
+        # A bare 403 asks the limit itself, which costs nothing against it.
+        with mock.patch.object(S.subprocess, "run", return_value=gh_answer(0, stdout="0\n")):
+            self.assertTrue(S.limited("gh: Forbidden (HTTP 403)"))
+        with mock.patch.object(S.subprocess, "run", return_value=gh_answer(0, stdout="4211\n")):
+            self.assertFalse(S.limited("gh: Resource not accessible by integration (HTTP 403)"))
+
+    def test_gh_raises_it_at_once(self):
+        answer = gh_answer(1, stderr="gh: API rate limit exceeded (HTTP 403)")
+        with mock.patch.object(S.subprocess, "run", return_value=answer) as call, mock.patch.object(S.time, "sleep"):
+            with self.assertRaises(S.RateLimited):
+                S.gh("repos/o/r/pulls", False)
+        self.assertEqual(call.call_count, 1)
+
+    def test_after_it_nothing_more_is_sent(self):
+        calls = []
+
+        def fetch(url, paginate):
+            calls.append(url)
+            raise S.RateLimited("HTTP 429")
+
+        with tempfile.TemporaryDirectory() as d:
+            api = S.GitHub(repo="o/r", cache=d, fetch=fetch)
+            for _ in range(3):
+                with self.assertRaises(S.RateLimited):
+                    api.get("pulls")
+            self.assertIsNone(api.get_or_none("issues/1/comments"))
+        self.assertEqual((len(calls), api.stopped), (1, "HTTP 429"))
+
+    def test_stopped_before_the_lists_says_so_and_no_traceback(self):
+        def fake_collect(api, since, until, now):
+            raise S.RateLimited("HTTP 429")
+
+        out = io.StringIO()
+        with mock.patch.object(S, "collect", fake_collect), contextlib.redirect_stdout(out):
+            code = S.main(["--since", "2026-10-01"], now=BASE + dt.timedelta(days=2))
+        self.assertEqual(code, 0)
+        self.assertIn("Stopped at GitHub's rate limit", out.getvalue())
+
+
+class Collect(unittest.TestCase):
+    """`collect` against a fake API: what it asks for, what it keeps, and
+    what it does at the rate limit."""
+
+    SINCE, UNTIL, NOW = BASE, BASE + dt.timedelta(days=2), BASE + dt.timedelta(days=3)
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.calls = []
+        self.limit_on = None
+        done = run(1, 30, [job("Lint", 30, 31, 35), job("CI", 35, 35, 36)], branch="a-pr")
+        flying = run(2, 40, [job("Lint", 40, 41, 45)], branch="a-pr", status="in_progress", conclusion=None)
+        old_red = red_run(3, -60, event="push", branch="main")
+        self.runs = {1: done, 2: flying, 3: old_red}
+        self.prs = [
+            {
+                "number": 7,
+                "title": "A PR",
+                "head": {"ref": "a-pr"},
+                "created_at": at(0),
+                "updated_at": at(100),
+                "closed_at": at(100),
+                "merged_at": at(100),
+            }
+        ]
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def listing(self, r):
+        return {k: v for k, v in r.items() if k != "jobs"}
+
+    def fetch(self, url, paginate):
+        self.calls.append(url)
+        path, _, query = url.partition("?")
+        q = urllib.parse.parse_qs(query)
+        if self.limit_on and self.limit_on in path:
+            raise S.RateLimited("HTTP 429")
+        if path.endswith("/pulls"):
+            return json.dumps(self.prs if q["page"] == ["1"] else [])
+        if path.endswith("/actions/workflows/ci.yml/runs"):
+            if q["created"][0].startswith("<"):
+                return json.dumps({"workflow_runs": [self.listing(self.runs[3])]})
+            # Every day's list answers with both runs: each must come out once.
+            return json.dumps({"workflow_runs": [self.listing(self.runs[1]), self.listing(self.runs[2])]})
+        if "/actions/workflows/" in path:
+            return json.dumps({"workflow_runs": []})
+        m = re.search(r"/actions/runs/(\d+)/jobs$", path)
+        if m:
+            return json.dumps({"jobs": self.runs[int(m.group(1))]["jobs"]})
+        if re.search(r"/pulls/7/files$", path):
+            return json.dumps([{"filename": "crates/x/src/lib.rs"}])
+        if re.search(r"/issues/7/comments$", path):
+            return json.dumps([payload("merged", 90, 91)])
+        raise AssertionError(f"unexpected {url}")
+
+    def collect(self):
+        self.api = S.GitHub(repo="o/r", cache=self.dir, fetch=self.fetch)
+        return S.collect(self.api, self.SINCE, self.UNTIL, self.NOW, workers=2)
+
+    def kept(self, rid):
+        url = self.api.url(f"actions/runs/{rid}/jobs", {"filter": "all", "per_page": 100})
+        return os.path.exists(self.api.file(url))
+
+    def test_each_run_once_and_only_finished_ones_kept(self):
+        data = self.collect()
+        self.assertEqual([r["id"] for r in data["ci"]], [1, 2])
+        # Two days of the window, and the one day between its end and now.
+        self.assertEqual(sum(1 for c in self.calls if "/workflows/ci.yml/runs" in c and "%3C" not in c), 2 + 1)
+        self.assertTrue(self.kept(1))
+        self.assertFalse(self.kept(2))
+        self.assertTrue(self.kept(3))
+        self.assertEqual([p["kind"] for p in data["prs"]], ["rust"])
+        # A second run reads what was kept, and asks again for the rest.
+        self.calls.clear()
+        self.collect()
+        self.assertFalse(any("/runs/1/jobs" in c or "/pulls/7/files" in c for c in self.calls))
+        self.assertTrue(any("/runs/2/jobs" in c for c in self.calls))
+
+    def test_main_before_the_window_and_the_queue(self):
+        s = S.measure(self.collect(), self.SINCE, self.UNTIL)
+        [w] = s["main_red"]["stretches"]
+        self.assertEqual((w["red_runs"], w["clipped"], w["to"]), ([3], True, None))
+        self.assertEqual((s["prs"]["queue"]["median"], s["rows"]["rust"]["runs"]), (10.0, 1))
+
+    def test_the_prs_stop_at_a_short_page_or_an_old_one(self):
+        api = S.GitHub(repo="o/r", cache=self.dir, fetch=self.fetch)
+        self.assertEqual([p["number"] for p in S.list_prs(api, self.SINCE)], [7])
+        self.assertEqual(sum(1 for c in self.calls if c.split("?")[0].endswith("/pulls")), 1)
+        # A full page that reaches back past the window's day before stops too.
+        self.calls.clear()
+        self.prs = [dict(self.prs[0], number=n, updated_at=at(-3000)) for n in range(100)]
+        self.assertEqual(len(S.list_prs(api, self.SINCE)), 100)
+        self.assertEqual(sum(1 for c in self.calls if c.split("?")[0].endswith("/pulls")), 1)
+        # A full page of recent ones reads the next.
+        self.calls.clear()
+        self.prs = [dict(self.prs[0], number=n, updated_at=at(100)) for n in range(100)]
+        S.list_prs(api, self.SINCE)
+        self.assertEqual(sum(1 for c in self.calls if c.split("?")[0].endswith("/pulls")), 2)
+
+    def test_at_the_rate_limit_what_was_read_is_reported(self):
+        self.limit_on = "/runs/1/jobs"
+        data = self.collect()
+        self.assertTrue(self.api.stopped)
+        s = S.measure(data, self.SINCE, self.UNTIL)
+        self.assertNotIn("rust", {k for k, r in s["rows"].items() if r.get("runs")})
+        self.assertGreaterEqual(s["unread"]["runs"], 1)
+        s["stopped"] = self.api.stopped
+        self.assertIn("**Stopped at GitHub's rate limit**", S.markdown(s))
 
 
 if __name__ == "__main__":
