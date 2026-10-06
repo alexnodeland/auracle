@@ -166,9 +166,10 @@ Findings come back ranked, and review is **one round**:
 
 CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)):
 
-- **The required check is `CI`.** It holds Lint, Web, Site, the Rust tests and
-  the browser tier, dealt to twelve runners by time, about eleven minutes. A
-  PR that changes only specs runs only those specs.
+- **The required check is `CI`.** It holds Lint, Web, Site, Browser smoke
+  (after Site), the Rust tests and the browser tier, dealt to twelve runners
+  by time, about eleven minutes. A PR that changes only specs runs only those
+  specs.
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or

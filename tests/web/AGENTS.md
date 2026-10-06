@@ -22,8 +22,8 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 - **`one_browser.sh`** queues the run behind any rehearsal, recording or other
   suite. Two browsers at once make both late, and a timing assertion then
   fails for the machine, not the app.
-- **`make smoke`** runs the pair the site job runs (`smoke.spec.js`,
-  `failure_flows.spec.js`), in seconds.
+- **`make smoke`** runs the pair CI's *Browser smoke* job runs after the
+  site build (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
   `AURACLE_TAP_LOG=1` prints it too.
@@ -43,6 +43,11 @@ The suite is about an hour and a half in one worker, so CI splits it
   PR labelled `full-ci`, and on no other PR. It does not block merging. A
   separate nightly flake hunt (`flake-hunt.yml`) runs the fast tier three
   times over.
+
+CI runs every browser job in Playwright's image
+(`mcr.microsoft.com/playwright:v<version>-noble`), at the `@playwright/test`
+version `package-lock.json` locks, so a bump of it moves CI's Chromium in the
+same PR with nothing else to edit.
 
 Run a tier locally the same way (after `make wasm`):
 

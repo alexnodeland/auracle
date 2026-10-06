@@ -1,0 +1,32 @@
+name: Playwright's version
+description: >
+  The exact @playwright/test version tests/web/package-lock.json locks: the
+  tag of the image every browser job runs in
+  (mcr.microsoft.com/playwright:v<version>-noble; see ./.github/actions/playwright).
+
+# Read from the lockfile, never written by hand, so a Dependabot bump of
+# @playwright/test moves the image in the same PR with no second edit, and the
+# image's browsers are always the ones that Playwright looks for. Each
+# workflow's engine job runs this once and passes the version on as a job
+# output (a job's `container` can read `needs`, not a step).
+
+outputs:
+  version:
+    description: "The locked version, such as 1.63.0"
+    value: ${{ steps.read.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # A missing or odd version fails here, by name, rather than as a pull of
+    # `vnull-noble` when the browser jobs start.
+    - id: read
+      shell: bash
+      run: |
+        v="$(jq -r '.packages["node_modules/@playwright/test"].version // empty' tests/web/package-lock.json)"
+        if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error file=tests/web/package-lock.json::No exact @playwright/test version in the lockfile (read '$v'). The browser jobs' image is tagged with it."
+          exit 1
+        fi
+        echo "Playwright $v: the browser jobs run in mcr.microsoft.com/playwright:v$v-noble"
+        echo "version=$v" >> "$GITHUB_OUTPUT"

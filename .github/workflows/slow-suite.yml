@@ -40,14 +40,15 @@ name: Slow suite
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners). A PR's whole `CI` at its widest is
-# twelve browser runners, the Site job and the two Rust test runners, 15,
-# and one more for the Browser report or a Lint or Web job still running:
+# twelve browser runners, the Site job (then the Browser smoke, in its
+# place) and the two Rust test runners, 15, and one more for the Browser
+# report or a Lint or Web job still running:
 # 16 + 4 = 20, the account's cap. But the push to main that starts this
 # workflow also starts main's own CI, which re-runs what the merged PR's run
 # did not cover (of the 20 runs on main before Oct 6, the whole browser tier
 # in 9, both Rust test jobs in 15, and Site in all 20, for the deploy). So a
 # PR pushed right after a merge can wait for runners until main's run is
-# done; the merge queue #177 plans keeps merges one at a time.
+# done; the merge queue (ADR-021) keeps merges one at a time.
 
 on:
   pull_request:
@@ -139,13 +140,20 @@ jobs:
           tool: nextest
       - run: make ${{ matrix.target }}
 
+  # The engine, this tier's timings and the image's tag (the Playwright
+  # version tests/web/package-lock.json locks), once for the run, as in
+  # ci.yml.
   engine:
     name: Engine for the browser
     needs: scope
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: playwright
+        uses: ./.github/actions/playwright-version
       - uses: ./.github/actions/web-engine
       - uses: ./.github/actions/browser-timings
         with:
@@ -160,6 +168,11 @@ jobs:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
     runs-on: ubuntu-24.04
+    # In Playwright's image, as ci.yml's browser job: no apt step and no
+    # browser download (.github/actions/playwright says why).
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
     # Playwright's global timeout, five minutes under the job's limit; the
     # shard interrupts the run a minute before it, so a shard that runs long
     # still reports its tests and the one it was running (ci.yml's browser

@@ -139,8 +139,8 @@ That list is what CI's `lint`, `web` and `test` jobs and its wasm32 build
 (the engine job, with warnings as errors) run, so "green locally" and "green
 in CI" are one claim. What CI runs that `make check` does
 not is the site build (`make site && make site-check`) with the browser smoke
-test inside it (`make smoke`), and the browser specs, because they need the
-wasm built and the first needs the pinned doc toolchain.
+test after it (`make smoke`'s two specs), and the browser specs, because they
+need the wasm built and the site needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
@@ -219,8 +219,9 @@ these properties explicitly.
 
 ## Verification beyond `make check`
 
-Two browser specs are automated under `make smoke` (CI's `site` job runs them
-against the wasm that job just built), in Playwright's Chromium.
+Two browser specs are automated under `make smoke` (CI's *Browser smoke* job
+runs them after the site build, against the engine the site ships), in
+Playwright's Chromium.
 `tests/web/smoke.spec.js` boots the instrument and requires **no console
 errors, a registered worklet, and an engine that reaches `playable`** — the
 whole of its claim, and the only gate that notices a backtick in the worklet
