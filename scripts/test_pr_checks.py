@@ -6,14 +6,18 @@ does to the issues it names.
     python3 scripts/test_pr_checks.py      (run by `make dev-check`)
 
 No test reaches the network: the GitHub API is a fake that holds issues,
-comments and parents in memory and records every write. The last case reads
-the real pull request template. Python 3 standard library only.
+comments and parents in memory and records every write, and `gh` never runs
+(the API wrapper's own tests hand it a stand-in for `subprocess.run`). The
+last case reads the real pull request template. Python 3 standard library
+only.
 """
 
 import contextlib
 import io
+import json
 import os
 import pathlib
+import subprocess
 import sys
 import unittest
 
@@ -391,6 +395,50 @@ class OnMerge(unittest.TestCase):
         P.on_merge(P.Pr(300, "t", "Closes #5\nRefs #177", "a"), fake, REPO, dry_run=True, sleep=slept.append, log=log.append)
         self.assertEqual((fake.writes, slept), ([], []))
         self.assertIn("#5: open: would close it", log)
+
+
+class GhApi(unittest.TestCase):
+    """`Api` reads gh's answer: JSON on success, the HTTP status from its
+    error line otherwise, so a missing issue is told from an API that is
+    down."""
+
+    def api(self, code, out="", err=""):
+        calls = []
+
+        def run(args, **kw):
+            calls.append((args, kw.get("input")))
+            return subprocess.CompletedProcess(args, code, out, err)
+
+        return P.Api(run), calls
+
+    def test_success_is_200_with_the_json(self):
+        api, calls = self.api(0, '{"number": 5, "state": "open"}')
+        self.assertEqual(api.get(f"repos/{REPO}/issues/5"), (200, {"number": 5, "state": "open"}))
+        self.assertEqual(calls[0][0], ["gh", "api", "--method", "GET", f"repos/{REPO}/issues/5"])
+
+    def test_a_missing_issue_is_404_and_a_failure_without_a_status_is_0(self):
+        api, _ = self.api(1, '{"message":"Not Found"}', "gh: Not Found (HTTP 404)\n")
+        self.assertEqual(api.get(f"repos/{REPO}/issues/9999")[0], 404)
+        api, _ = self.api(1, "", "error connecting to api.github.com\n")
+        self.assertEqual(api.get(f"repos/{REPO}/issues/5")[0], 0)
+
+    def test_a_write_sends_its_json_on_stdin(self):
+        api, calls = self.api(0, "{}")
+        api.post(f"repos/{REPO}/issues/5/comments", {"body": "hi"})
+        self.assertEqual(calls[0][0][-2:], ["--input", "-"])
+        self.assertEqual(calls[0][1], '{"body": "hi"}')
+
+    def test_a_list_is_read_page_by_page(self):
+        pages = [[{"n": i} for i in range(100)], [{"n": 100}]]
+        seen = []
+
+        def run(args, **kw):
+            seen.append(args[-1])
+            return subprocess.CompletedProcess(args, 0, json.dumps(pages[len(seen) - 1]), "")
+
+        status, items = P.Api(run).all(f"repos/{REPO}/issues/5/comments")
+        self.assertEqual((status, len(items)), (200, 101))
+        self.assertEqual(seen, [f"repos/{REPO}/issues/5/comments?per_page=100&page={k}" for k in (1, 2)])
 
 
 class TheRealTemplate(unittest.TestCase):
