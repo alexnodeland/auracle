@@ -40,7 +40,7 @@ test("a measurement nobody waits on gives way to a cable probe and finishes afte
   // PERFORM's own measurement of the sound it plays keeps the floor: the
   // probe waits for it.
   const at = w.post({ type: "cable_levels", token: 2 }, { during: { call: "memo_render", nth: 2 } });
-  const [own] = await w.send({ type: "perform_wire", req: 2, tree: await treeOf(w, 4), overrides: [] });
+  const [own] = await w.send({ type: "perform_wire", req: 2, tree: await treeOf(w, 5), overrides: [] });
   const waited = await w.reply("cable_levels", { where: { token: 2 }, after: at });
   assert.ok(own.data);
   assert.ok(own._n < waited._n, "PERFORM's own measurement gave way to the probe");
@@ -54,7 +54,7 @@ test("a measurement PERFORM left when it went out of sight is the player's again
   // A Take's measurement: PERFORM goes out of sight during its second render
   // (`retire`: it drops to `later`), comes back during its third (`promote`),
   // and Wander asks for a drift of the patch during its fourth.
-  const tree = await treeOf(w, 2);
+  const tree = await treeOf(w, 1);
   w.post({ type: "retire", reqs: [1] }, { during: { call: "memo_render", nth: 2 } });
   w.post({ type: "promote", kind: "perform_wire", req: 1 }, { during: { call: "memo_render", nth: 3 } });
   w.post({ type: "perform_drift", req: 2, tree, overrides: [], locks: [], steps: 12, sigma: 0.05 }, { during: { call: "memo_render", nth: 4 } });
@@ -68,7 +68,7 @@ test("a measurement PERFORM left when it went out of sight is the player's again
 
   // Left out of sight (no `promote`), it gives way to the drift: the case
   // coming back is for.
-  const other = await treeOf(w, 4);
+  const other = await treeOf(w, 5);
   const at = w.post({ type: "retire", reqs: [3] }, { during: { call: "memo_render", nth: 2 } });
   w.post({ type: "perform_drift", req: 4, tree: other, overrides: [], locks: [], steps: 12, sigma: 0.05 }, { during: { call: "memo_render", nth: 3 } });
   const [demoted] = await w.send({ type: "perform_wire", req: 3, tree: other, overrides: [] });
