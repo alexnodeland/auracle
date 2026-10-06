@@ -33,9 +33,10 @@ faces are self-hosted, KaTeX is vendored, and `make site-check` fails if a
 `<script src>` or `<link>` pointing off-origin reappears. Outbound *hyperlinks*
 are fine; the check is about subresources.
 
-**Screenshots are real and published 1:1.** The app has a 10px type floor, so a
-1440×900 frame scaled into a 750px column is unreadable. Frames are published
-at their captured size and detail figures are *crops*, never shrunken frames.
+**Screenshots are real and published 1:1.** The app's text is 11px at the
+smallest (9px in the rack, at zoom 1), so a 1440×900 frame scaled into a 750px
+column is unreadable. Frames are published at their captured size and detail
+figures are *crops*, never shrunken frames.
 See
 [SCREENSHOTS.md](./SCREENSHOTS.md).
 

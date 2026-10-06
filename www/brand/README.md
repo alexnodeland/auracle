@@ -231,13 +231,13 @@ move lowers the baseline in the same change, so the floor only goes down):
     python3 www/brand/tokens.py --where FILE    every counted literal in a file
     python3 www/brand/tokens.py --update        lower the baseline to today's counts
 
-`--check` lists the files not yet moved every time it runs. The app's
-stylesheet and scripts are at zero: where the scale has no step for a
-literal (a loop's period, a glyph sized to its button, a key that must light
-at once), the declaration says why with a trailing `token-exempt:` comment,
-which covers that declaration and no other. The landing page, the docs
-theme, the live figures, the brand page and its raster source, the 404 and
-the films have their counts in the baseline until each is moved.
+Every scanned file is at zero, so the baseline is empty and a new literal
+fails the check. Where the scale has no step for one (a loop's period, a
+glyph sized to its button, a key that must light at once, a lockup specimen
+at a set size, the geometry a raster is drawn at, inline code sized to its
+line), the declaration says why with a trailing `token-exempt:` comment,
+which covers that declaration and no other. `--check` names any file the
+baseline holds a count for every time it runs.
 
 ## The sound
 

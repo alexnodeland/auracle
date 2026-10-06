@@ -413,8 +413,8 @@ pre > code {
    books.
 
    That is a deliberate trade. These shots are captured at 1440×900 and the app
-   has a 10px type floor, so a full frame at 780px is 0.54× and its UI labels
-   are texture rather than text. The frames are here to show a reader the shape
+   sets text as small as 11px (9px in the rack), so a full frame at 780px is
+   0.54× and its UI labels are texture rather than text. The frames are here to show a reader the shape
    of a view, and the caption carries what the labels would have said; anything
    whose *detail* is the point is published as a crop, at the size it was
    cropped to. See www/SCREENSHOTS.md. */

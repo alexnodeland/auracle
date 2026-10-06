@@ -75,11 +75,13 @@ happens, not how long it moves), a `.font` on anything but a canvas
 context, lengths that are not one of the four kinds (widths, heights,
 offsets, shadows), and spacing in em.
 
-Today's surfaces predate the scale, so this is a ratchet, as the voice check
-is: the check fails when a file's count rises, when a file the baseline does
-not list has any, and when a count falls below the baseline (a move lowers
-the baseline in the same change, with `--update`), so the floor only goes
-down. `--check` lists the files not yet moved every time it runs.
+It is a ratchet, as the voice check is: the check fails when a file's count
+rises, when a file the baseline does not list has any, and when a count
+falls below the baseline (a move lowers the baseline in the same change,
+with `--update`), so the floor only goes down. The floor is zero: every
+scanned file is on the scale and the baseline is empty, so a new literal
+fails unless it says why. `--check` names any file the baseline holds a
+count for every time it runs.
 
 Python 3 standard library only.
 """
@@ -1186,7 +1188,10 @@ def main(argv: list[str]) -> int:
         if NOT_YET:
             print(f"  tokens: not yet checked: {', '.join(f for f, _ in NOT_YET)} (tokens.py NOT_YET)")
         total = sum(sum(r.values()) for r in now.values())
-        print(f"  tokens: sizes not yet moved onto the scale ({total} literals, {SIZES_BASELINE}): {', '.join(f'{rel} ({sum(r.values())})' for rel, r in now.items())}")
+        if now:
+            print(f"  tokens: sizes not yet moved onto the scale ({total} literals, {SIZES_BASELINE}): {', '.join(f'{rel} ({sum(r.values())})' for rel, r in now.items())}")
+        else:
+            print(f"  tokens: no literal size or duration the check counts in the {n} files, but those that say why")
     return 0
 
 
