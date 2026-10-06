@@ -13,23 +13,39 @@
 // back and nothing is recorded), and an unheard pass says it was not counted.
 //
 // The worker's replies are read through the fixture's tap, to know when a
-// spare has landed.
+// spare has landed. "As fast as the first" is the mechanism, not a time
+// (ADR-022): B holds the spare by the end of the press's own task, and the
+// press asked the engine to grow nothing. The milliseconds are a budget.
 const { test, expect, PERFORM_SEED } = require("./fixtures");
 
-/** Press the Offer/Next pad and return how long, in the page's own clock,
- *  until B holds an offer. */
+/** Press the Offer/Next pad. Returns `sync`: whether B held an offer by the
+ *  end of the press's own task; `asked`: how many offers the press asked the
+ *  engine to grow (the player's, not `bg`) before B held one; and `ms`, how
+ *  long that took in the page's own clock. */
 async function pressOffer(page) {
   return page.evaluate(async () => {
     const pad = document.querySelector(".pf-pad.primary");
+    const sent = window.__tap.sent;
+    const n0 = sent.length;
+    const asked = () => sent.slice(n0).filter((q) => q.type === "perform_offer" && !q.m.bg).length;
     const t0 = performance.now();
     pad.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1 }));
     pad.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1 }));
+    const sync = !!document.querySelector(".pf-offer.ready");
     for (;;) {
-      if (document.querySelector(".pf-offer.ready")) return performance.now() - t0;
-      if (performance.now() - t0 > 180_000) return Infinity;
+      if (document.querySelector(".pf-offer.ready")) return { sync, asked: asked(), ms: performance.now() - t0 };
+      if (performance.now() - t0 > 180_000) return { sync, asked: asked(), ms: Infinity };
       await new Promise((r) => setTimeout(r, 5));
     }
   });
+}
+
+/** A spare grown ahead was handed over: in the press's own task, with no
+ *  offer asked of the engine. The time it took is a budget. */
+function expectHandedOver(app, r, what) {
+  expect(r.sync, `${what}: B holds the spare by the end of the press's own task`).toBe(true);
+  expect(r.asked, `${what}: the press asked the engine to grow an offer`).toBe(0);
+  app.budget(`${what}: the press → B holds an offer`, r.ms, 300);
 }
 
 // PEEK held long enough for B to be heard: a second of it while a note sounds.
@@ -61,7 +77,7 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   // The first spare grows once the patch is steady and the hands are off.
   await expect.poll(() => spares(app), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(1);
   const first = await pressOffer(page);
-  expect(first, "the first offer is handed over").toBeLessThan(300);
+  expectHandedOver(app, first, "the first offer");
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
   const sub = await page.locator(".pf-pad.primary").evaluate((e) => getComputedStyle(e, "::after").content);
   expect(sub).toContain("passes on B");
@@ -72,8 +88,8 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   await expect.poll(() => spares(app), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(2);
   const p0 = await picks();
   const second = await pressOffer(page);
-  console.log(`offer → B: first ${first.toFixed(0)} ms, NEXT ${second.toFixed(0)} ms`);
-  expect(second, "NEXT hands over the spare grown while B was full").toBeLessThan(300);
+  console.log(`offer → B: first ${first.ms.toFixed(0)} ms, NEXT ${second.ms.toFixed(0)} ms`);
+  expectHandedOver(app, second, "NEXT, with the spare grown while B was full");
   const toast = page.locator(".toast", { hasText: "Passed on B. That counts as a pick for what you had." });
   await expect(toast).toBeVisible({ timeout: 5_000 });
   await expect(toast.locator(".toast-undo")).toHaveText("undo");

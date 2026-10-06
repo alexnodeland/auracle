@@ -72,6 +72,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [019](decisions/019-work-flows-through-issues-and-prs.md) | Work flows through issues and reviewed PRs, merged on a green check |
 | [020](decisions/020-merge-at-green-one-pr-in-ci.md) | Merge at green, one PR in CI at a time, quarantine an unrelated failure on sight (amends ADR-019's rule 5) |
 | [021](decisions/021-merges-go-through-mergifys-queue.md) | Merges go through Mergify's queue (amends ADR-020's rules 3 and 4) |
+| [022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md) | Time in a test: wait for the engine's reply, assert the app's own order, record the machine's speed as a budget; a slow runner may make a test slower, never wrong |
 
 ## Proposals
 

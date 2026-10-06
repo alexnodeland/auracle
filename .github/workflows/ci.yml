@@ -720,10 +720,14 @@ jobs:
   # the account's 20) a PR can wait for up to three; right after a merge,
   # main's own run takes runners too (slow-suite.yml says how much).
   #
-  # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
-  # the engine works). A failure that only appears here is still a finding
-  # about the app on a slower machine. It is fixed, or quarantined, never
-  # retried (docs/architecture/testing.md § Flakes).
+  # A slow runner may make a test slower, never wrong (ADR-022). A failure
+  # that only appears here is still a finding about the app when it is about
+  # correctness (a race the app loses, a state it never reaches): it is
+  # fixed, or quarantined, never retried (docs/architecture/testing.md
+  # § Flakes). How long something took is not asserted here: a spec records
+  # it as a budget (fixtures.js `budget`), the run's summary lists those over
+  # their limit, and the nightly Speed budgets job (flake-hunt.yml) judges
+  # them.
   browser:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]
@@ -774,7 +778,9 @@ jobs:
 
   # The runners' reports as one: an HTML report of every test, with the traces
   # of what failed, uploaded when a runner failed (the run's summary links
-  # it), and on main the times folded into the timings the next run deals by.
+  # it), the speed budgets recorded over their limit listed in the summary
+  # (ADR-022), and on main the times folded into the timings the next run
+  # deals by.
   # Not part of the `CI` check: it reports on the answer, it is not one.
   report:
     name: Browser report

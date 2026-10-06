@@ -68,8 +68,14 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   (`boot(page, { warmed })`) and collect `pageerror`.
 - Wait for states, never times: no `waitForTimeout` except a named pacing
   constant inside a gesture. Engine work is bounded by `offerBudget`
-  (`perform_budget.js`), not a guess. Give timing assertions 1.5 s or more of
-  slack, and accept the app being faster than when the test was written.
+  (`perform_budget.js`), not a guess. Accept the app being faster than when
+  the test was written.
+- Time is one of three kinds (ADR-022; `tests/web/AGENTS.md` says how): an
+  engine fact is a wait for the reply to your request; a promise about the
+  app's own timeline is order (the state in the gesture's own task, the tap's
+  log) or the app's marks (`app.marks`); how long something took is
+  `app.budget(name, ms, limit)`, recorded and never failed on the gate,
+  judged with `AURACLE_PERF=1`. Never `expect(ms).toBeLessThan(…)`.
 - No exact count of something a slow runner may legitimately do twice.
 - A test over about 40 s on CI is tagged `@slow` (`tests/web/AGENTS.md`).
 
@@ -77,8 +83,9 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
 
 Decide whether it is the app, the test, or the machine. "Flaky" is not a
 cause: read the error, check the build id, rerun the one spec once through the
-queue. A spec that fails only under load needs slack or a state wait, not a
-retry: there are no retries anywhere. A test that fails in CI only sometimes is
+queue. A spec that fails only under load needs a state wait, an order on the
+app's own clock, or its speed bound made a budget (ADR-022), not a retry:
+there are no retries anywhere. A test that fails in CI only sometimes is
 fixed, or quarantined while it is fixed: a `flake` issue, the `@quarantine`
 tag with a comment naming it, the issue labelled `quarantined`
 (`docs/process.md` § Flakes). The fix removes the tag.

@@ -16,7 +16,9 @@
 //   rightly did not exclude it, whenever its pair lands, and for the deal a
 //   waiting table puts up after three tries, which used to go up anyway.
 // - After clicking the EVOLVE tab, → picks.
-// - An open is not announced unless it kept the player waiting.
+// - An open is not announced unless it kept the player waiting: "Opened …"
+//   is said exactly when the app's own mark for the open says it waited over
+//   `OPEN_SAID_MS` (main.js), however quick or slow the machine made it.
 //
 // The engine worker is reached through the fixture's tap (fixtures.js): a
 // request held back for a moment (`app.delay`) stands in for an engine busy
@@ -207,6 +209,16 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
   // this is the deal a pick or ↻ waits for when none is waiting.
   await boot(page, app, { holdAhead: true });
   await toEvolve(page, app);
+  // The deal ahead is asked once the table's own two sounds are here, and
+  // answered empty at once (NO_AHEAD): waited for, both. A ↻ made while that
+  // answer is still on its way waits for it rather than asking for a deal of
+  // its own (main.js `dealAnother`), and the empty answer then ends the wait
+  // before the 300 ms the reason waits for.
+  await app.engine((timeout) => expect.poll(async () => {
+    const asked = (await app.sent(AHEAD)).length;
+    const answered = (await app.replies("duel", { where: { ahead: true }, injected: true })).length;
+    return asked > 0 && answered >= asked;
+  }, { timeout, message: "the deal ahead asked and answered" }).toBe(true), { ms: 30_000 });
   const n0 = await picks(page);
   const [a0, b0] = await cardIds(page);
   await app.delay(TABLE, 2_500);
@@ -426,26 +438,48 @@ test("after clicking EVOLVE's stop on the rail, → picks", async ({ page, app }
   expect(await picks(page)).toBe(n0 + 1);
 });
 
-// Quarantined (#186): its first half assumes an open on a CI runner is
-// quicker than OPEN_SAID_MS; on a slow runner it was not, and the app was
-// right to say "Opened …".
-test("opening a patch is not announced unless it kept you waiting", { tag: "@quarantine" }, async ({ page, app }) => {
+// main.js `OPEN_SAID_MS`: an open the player asked for that waited longer is
+// said when it lands.
+const OPEN_SAID_MS = 1_000;
+
+test("opening a patch is not announced unless it kept you waiting", async ({ page, app }) => {
   await boot(page, app);
   await toEvolve(page, app);
   await goLevel(page, "patch");
   const mark = await app.toastMark();
   const rows = page.locator("#bank-list .bank-item");
+  // Two opens as they come. Whether each kept the player waiting is the
+  // app's own mark (`patch-opened`, its `waited`), not a guess that a
+  // runner opens a patch within the second (#186). One that did is said by
+  // name before the next click: a later "Opened" replaces an earlier one.
+  const opens = [];
   for (const i of [1, 2]) {
     const id = Number(await rows.nth(i).getAttribute("data-id"));
+    const name = (await rows.nth(i).locator(".bi-name").textContent()).trim();
+    const at = await app.now();
     await rows.nth(i).locator(".bi-name").click();
     await app.engine((timeout) => page.waitForFunction((id) => window.__aur.wb.subjectId === id, id, { timeout }), { ms: 30_000 });
+    let opened = null;
+    await expect.poll(async () => (opened = (await app.marks("patch-opened", { after: at })).find((m) => m.detail?.name === name) || null), { message: `the app marked ${name}'s open` }).not.toBeNull();
+    const waited = opened.detail.waited;
+    opens.push({ name, waited });
+    if (waited > OPEN_SAID_MS + 1) await app.toast(`Opened ${name}.`, { since: mark });
+    // An open the app did not see asked for (no `openAsk`) marks no wait.
+    if (waited != null) app.budget(`opening ${name} from the bank`, waited, OPEN_SAID_MS);
   }
-  // Nothing is said of a quick open, however long one looks.
+  // Nothing else is said of an open, however long one looks; a quick one is
+  // not said at all. (The mark rounds what it waited; within a millisecond of
+  // the line, either is right.)
   await app.quiet();
   const said = await app.toasts(mark);
-  console.log(`toasts while opening: ${JSON.stringify(said)}`);
+  console.log(`opens: ${JSON.stringify(opens)}; toasts while opening: ${JSON.stringify(said)}`);
   for (const t of said) {
-    expect(t).not.toMatch(/on the bench|workbench|under your fingers|Opened/);
+    expect(t).not.toMatch(/on the bench|workbench|under your fingers/);
+    if (/Opened/.test(t)) expect(opens.some((o) => t === `Opened ${o.name}.` && o.waited >= OPEN_SAID_MS - 1), `"${t}" said of an open that waited ${JSON.stringify(opens)}`).toBe(true);
+  }
+  for (const o of opens) {
+    if (Math.abs(o.waited - OPEN_SAID_MS) <= 1) continue;
+    expect(said.includes(`Opened ${o.name}.`), `"Opened ${o.name}." is said exactly when its open waited over ${OPEN_SAID_MS} ms (it waited ${o.waited} ms)`).toBe(o.waited > OPEN_SAID_MS);
   }
   // An open that keeps the player waiting over a second is said when it
   // lands, by name: news, because the click showed nothing for a while.
@@ -453,9 +487,13 @@ test("opening a patch is not announced unless it kept you waiting", { tag: "@qua
   const slow = rows.nth(3);
   const name = (await slow.locator(".bi-name").textContent()).trim();
   const mark2 = await app.toastMark();
+  const at = await app.now();
   await slow.locator(".bi-name").click();
   // A sentence, so it ends in a period.
   await expect.poll(() => app.toasts(mark2), { timeout: 15_000 }).toContain(`Opened ${name}.`);
+  // …and the app's own mark agrees that it kept the player waiting.
+  const [opened] = (await app.marks("patch-opened", { after: at })).filter((m) => m.detail?.name === name);
+  expect(opened && opened.detail.waited, `the app marked ${name}'s open as waiting over ${OPEN_SAID_MS} ms`).toBeGreaterThan(OPEN_SAID_MS);
   await app.undelay();
 });
 

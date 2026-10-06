@@ -17,9 +17,11 @@
 // that runs out means an offer that is not coming, or one many times slower
 // than it was.
 //
-// What must not wait for an offer (a pick, a Keep, NEXT handing over a spare)
-// is held to its own tight bounds where it is tested; this budget is only for
-// waiting on the engine's growth.
+// What must not wait for an offer is not bounded by this budget, which is only
+// for waiting on the engine's growth: a pick and a Keep keep bounds of their
+// own from a measured step (perform_offer_latency.spec.js), and NEXT handing
+// over a spare is asserted by order (B holds it by the end of the press's own
+// task), its milliseconds a speed budget (fixtures.js `budget`, ADR-022).
 //
 // A spec reaches it as `app.offerBudget` (fixtures.js). The fixture's tap keeps
 // the engine worker (`window.__pbEngine`) and the tree of the last

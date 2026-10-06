@@ -18,12 +18,14 @@
 // - A preset row's face, on its way when the bank redraws (a play, a load),
 //   still lands, without a scroll.
 // - A face's render never goes ahead of a refit: with sixty of them queued
-//   (a list of presets scrolled through), a refit is answered at once.
+//   (a list of presets scrolled through), a refit is answered before most of
+//   them land (an order); within 6 s is a budget (ADR-022).
 //
 // Sessions are seeded (the films' own Math.random), so the pool is the same
 // run to run.
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
+const { budget } = require("./fixtures");
 const fs = require("fs");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
@@ -312,7 +314,7 @@ test("a refit is answered promptly while sixty face renders wait", async ({ page
     return { ms: got.at - sent.at, facesBefore };
   });
   expect(t.facesBefore, `${t.facesBefore} faces landed before the fit's answer`).toBeLessThan(40);
-  expect(t.ms, `the fit took ${Math.round(t.ms)} ms`).toBeLessThan(6000);
+  budget("a refit asked with sixty face renders queued → fitted", t.ms, 6000);
   expect(errors).toEqual([]);
 });
 

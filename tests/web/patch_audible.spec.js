@@ -38,7 +38,8 @@
 //   changed patch. The bench's buffer is the phrase rendered before the edit
 //   until the edit's reply replaces it, and a press in that window used to
 //   play the old wave.
-// - A ▶ waiting like that is lit (`.pending`) within 100 ms of the press, its
+// - A ▶ waiting like that is lit (`.pending`) before the edit's reply lands
+//   (within 100 ms of the press is a budget, ADR-022), its
 //   glyph keeps the playing ink while a phrase also plays, and a keyboard
 //   focus keeps its ring. It plays nothing when the edit lands if it was
 //   taken back: by a second press, by Space (which also stops a phrase
@@ -68,8 +69,9 @@
 // - Space in PERFORM and EVOLVE plays the sound as edited (the wave changed in
 //   PATCH), not the preset as saved, and waits like ▶ for an edit still at the
 //   engine when it is pressed. While it waits, the dock says so ("▶ waiting
-//   for the edit…" over the sound's name, in a polite live region) within
-//   100 ms of the press, whole and on screen, until the edit lands; outside
+//   for the edit…" over the sound's name, in a polite live region) from
+//   before the edit's reply lands (within 100 ms of the press, a budget),
+//   whole and on screen, until the edit lands; outside
 //   PATCH nothing did, and a first try appended it to the name, where the
 //   name's ellipsis hid it.
 //
@@ -899,7 +901,8 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
     expect(waits.onScreen, "on screen").toBe(true);
     expect(waits.clearOfKeys, "clear of the keybed").toBe(true);
     expect(waits.onTop, "and on top, so it is seen").toBe(true);
-    expect(waits.t - at.space, "within 100 ms of the press").toBeLessThan(100);
+    expect(waits.t, `the dock says Space in ${view} waits before the edit's reply lands`).toBeLessThan(landed);
+    app.budget(`Space in ${view} → the dock says it waits`, waits.t - at.space, 100);
     expect(done, "and stops saying it").toBeTruthy();
     expect(done.t, "once the edit has landed").toBeGreaterThanOrEqual(landed);
     expectWave(s, want, `Space in ${view}, pressed before the edit landed`);
@@ -914,25 +917,27 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
   await slow(app, { edit_param: 1000 });
   const play = page.locator("#rack-play");
 
-  // Lit within 100 ms of the press, and pressed again, taken back: nothing
-  // plays when the edit lands.
+  // Lit before the edit's reply lands, and pressed again, taken back:
+  // nothing plays when the edit lands.
   let n = await replies(app);
   await clickWave(page);
   await play.click();
   await expect(play).toHaveClass(/\bpending\b/);
   await expect(play).toHaveAttribute("aria-busy", "true");
-  const litMs = await page.evaluate(() => {
+  const lit = await page.evaluate(() => {
     const on = window.__pwPlaySaid.find((x) => x.t >= window.__pwAt.play && x.pending);
-    return on ? on.t - window.__pwAt.play : null;
+    return on ? { t: on.t, ms: on.t - window.__pwAt.play } : null;
   });
-  console.log(`[patch_audible] the waiting ▶ lit ${litMs == null ? "never" : Math.round(litMs) + " ms"} after the press`);
-  expect(litMs, "lit within 100 ms of the press").not.toBeNull();
-  expect(litMs, "lit within 100 ms of the press").toBeLessThan(100);
+  console.log(`[patch_audible] the waiting ▶ lit ${lit == null ? "never" : Math.round(lit.ms) + " ms"} after the press`);
+  expect(lit, "the waiting ▶ is lit").not.toBeNull();
+  app.budget("▶ pressed while the edit is at the engine → lit as waiting", lit.ms, 100);
   let t0 = await app.now();
   await play.click();
   await expect(play).not.toHaveClass(/\bpending\b/);
   await expect(play).not.toHaveAttribute("aria-busy", "true");
   await pastReply(app, n);
+  const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
+  expect(lit.t, "the waiting ▶ was lit before the edit's reply landed").toBeLessThan(landed);
   await app.quiet();
   expect(await playedSince(page, t0), "a ▶ taken back plays nothing when the edit lands").toBe(false);
   expect(await peakDb(page)).toBeLessThan(-80);

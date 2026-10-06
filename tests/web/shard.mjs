@@ -21,6 +21,9 @@
 //   node shard.mjs timings --out timings.json report.json [report.json ...]
 //       fold Playwright JSON reports into the timings file (tests the reports
 //       did not run keep the time they had)
+//   node shard.mjs budgets report.json
+//       list the speed budgets (ADR-022, fixtures.js `budget`) the report's
+//       runs recorded over their limit, and add them to the run's summary
 //
 // A test is weighed by its file and titles, so it keeps its time when lines
 // above it move; a test with no time yet (new, renamed, or no timings file at
@@ -254,10 +257,40 @@ function cmdTimings(opts) {
   return 0;
 }
 
+/** Every budget a run recorded over its limit (its annotation ends
+ *  "(over)"), each run of a test its own line: on the gate a budget is
+ *  recorded, not judged, so this is where a slow app or runner shows. */
+function cmdBudgets(opts) {
+  const over = [];
+  const walk = (suite, titles) => {
+    for (const spec of suite.specs || []) {
+      for (const t of spec.tests || []) {
+        for (const r of t.results || []) {
+          for (const a of r.annotations || []) {
+            if (a.type === "budget" && / \(over\)$/.test(a.description || "")) over.push(`- ${keyOf(spec.file, [...titles, spec.title])}: ${a.description}`);
+          }
+        }
+      }
+    }
+    for (const child of suite.suites || []) walk(child, [...titles, child.title]);
+  };
+  for (const path of opts._) {
+    if (existsSync(path)) for (const s of JSON.parse(readFileSync(path, "utf8")).suites || []) walk(s, []);
+  }
+  if (!over.length) {
+    console.log("budgets: none over its limit");
+    return 0;
+  }
+  const text = `### Speed budgets over their limit (ADR-022)\n\n${over.join("\n")}\n`;
+  console.log(text);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
+  return 0;
+}
+
 const { cmd, opts, pass } = parseArgs(process.argv.slice(2));
-const commands = { run: cmdRun, plan: cmdPlan, timings: cmdTimings };
+const commands = { run: cmdRun, plan: cmdPlan, timings: cmdTimings, budgets: cmdBudgets };
 if (!commands[cmd]) {
-  console.error("usage: node shard.mjs run|plan|timings … (see the header)");
+  console.error("usage: node shard.mjs run|plan|timings|budgets … (see the header)");
   process.exit(2);
 }
 try {

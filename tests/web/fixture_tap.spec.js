@@ -10,6 +10,8 @@
 //   `engine_error` naming it, injected; the request is still in `sent` and
 //   never reaches the engine. `once` fails the next one only; `fatal`, every
 //   one that matches.
+// - A speed budget (`app.budget`, ADR-022) is the test's annotation, and an
+//   over-budget one fails the test only under AURACLE_PERF=1.
 const { test, expect } = require("./fixtures");
 
 const ECHO = "self.onmessage = (e) => postMessage(e.data);";
@@ -69,4 +71,21 @@ test("a failed request is answered as the worker answers one it could not run", 
   await app.quiet();
   expect(await app.count("perform_wire"), "a failed request reached the engine").toBe(0);
   expect(await app.count("perform_offer"), "a failed request reached the engine").toBe(0);
+});
+
+test("a speed budget is recorded on the gate and judged only under AURACLE_PERF", async ({ app }, info) => {
+  // Under AURACLE_PERF=1 the budget over its limit fails this test, as it
+  // must: expected there.
+  test.fail(process.env.AURACLE_PERF === "1", "AURACLE_PERF judges a budget over its limit");
+  expect(app.budget("within", 40.4, 100), "a budget within its limit").toBe(true);
+  expect(app.budget("over", 150, 100), "a budget over its limit").toBe(false);
+  expect(app.budget("never seen", Infinity, 100), "a moment never seen is over").toBe(false);
+  expect(info.annotations.filter((a) => a.type === "budget").map((a) => a.description)).toEqual([
+    "within 40 ms of 100 ms",
+    "over 150 ms of 100 ms (over)",
+    "never seen Infinity ms of 100 ms (over)",
+  ]);
+  // Taken off again: the run's summary lists the budgets the app missed
+  // (shard.mjs budgets), and these were missed on purpose.
+  info.annotations.splice(0, info.annotations.length, ...info.annotations.filter((a) => a.type !== "budget"));
 });

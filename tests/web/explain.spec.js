@@ -116,6 +116,45 @@ async function lessonReply(app, where, timeout) {
   return found;
 }
 
+// The lesson's filter, turned `n` times with `key`, and the engine's reply
+// to the request for where it ends up. The lesson keeps one request out at a
+// time and asks for the latest cutoff when that one lands, so the first
+// request with a cutoff the page posts at or after the last key's own task
+// is the one for the slider's final position: found by its place in the
+// tap's log (`window.__tap.sent`), recorded as each key arrives, not by the
+// clock, and its reply by its token. The newest request's reply, read as it
+// landed, was on a slow runner the reply to an earlier key (#185).
+async function turnLesson(page, app, key, n, timeout) {
+  await page.evaluate(() => {
+    window.__xlKeys = [];
+    if (window.__xlKeysOn) return;
+    window.__xlKeysOn = true;
+    document.addEventListener("keydown", (e) => {
+      if (e.target && e.target.closest && e.target.closest(".xl-filter")) window.__xlKeys.push(window.__tap.sent.length);
+    }, { capture: true });
+  });
+  for (let i = 0; i < n; i++) await page.keyboard.press(key);
+  await expect.poll(() => page.evaluate(() => window.__xlKeys.length), { message: "every key reached the filter" }).toBe(n);
+  let found = null;
+  await app.engine(
+    (ms) =>
+      expect
+        .poll(async () => {
+          const req = await page.evaluate(() => {
+            const from = window.__xlKeys[window.__xlKeys.length - 1];
+            const q = window.__tap.sent.slice(from).find((s) => s.type === "explain_lesson" && s.m.cutoff != null);
+            return q ? q.m.token : null;
+          });
+          if (req == null) return false;
+          found = (await app.replies("explain_lesson", { where: { token: req } })).pop() || null;
+          return found != null;
+        }, { timeout: ms, message: "the lesson's reply for the filter where the keys left it" })
+        .toBe(true),
+    { ms: timeout },
+  );
+  return found;
+}
+
 test("each control on the panel opens its figure, by ?, by its chip, and from the next one's", async ({ page, app }) => {
   await boot(page, app);
   await openOnPerform(app, "Reese");
@@ -247,9 +286,7 @@ test("a figure says what the worker posted, and follows its control", async ({ p
   expect(second.req.turned).not.toEqual(first.req.turned);
 });
 
-// Quarantined (#185): on a slow runner the first cutoff reply after the 30
-// key presses can answer an early press, not the last one the slider shows.
-test("the lesson on filters is the sound in hand: another sound, another lesson", { tag: "@quarantine" }, async ({ page, app }) => {
+test("the lesson on filters is the sound in hand: another sound, another lesson", async ({ page, app }) => {
   await boot(page, app);
   const lessonOf = async (name) => {
     await openOnPerform(app, name);
@@ -271,9 +308,9 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
     // or a click away.
     await expect(page.locator(".xl.on .xl-panel")).toBeFocused();
     await filt.focus();
-    // Down from 12 kHz to about 400 Hz, a key at a time.
-    for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowLeft");
-    const f = await lessonReply(app, { cutoff: true }, 90_000);
+    // Down from 12 kHz to about 400 Hz, a key at a time, and the reply for
+    // where it ends up.
+    const f = await turnLesson(page, app, "ArrowLeft", 30, 90_000);
     const filtered = { bands: f.data.portrait.bands, facts: f.data.portrait.facts, cutoff_hz: f.data.cutoff_hz, response: f.data.response };
     const text = await filt.getAttribute("aria-valuetext");
     const want = await page.evaluate(async (hz) => (await import("/words.js")).cutoffWord(hz), filtered.cutoff_hz);

@@ -41,6 +41,7 @@
 // shown at once; a toast carrying an undo is never trimmed.
 const { test, expect } = require("@playwright/test");
 const { goLevel } = require("./shell");
+const { budget } = require("./fixtures");
 const fs = require("fs");
 const path = require("path");
 
@@ -68,6 +69,24 @@ const INIT = `(() => {
         counts[d.type] = (counts[d.type] || 0) + 1;
       }
     });
+    // A vote held at the worker's door while \`__pwHoldVotes\` is set: every
+    // \`record_duel\` but the one the test posts itself (\`b\` 4000000000),
+    // posted in order by \`__pwReleaseVotes\`.
+    const post = w.postMessage.bind(w);
+    const heldVotes = [];
+    w.postMessage = (m, t) => {
+      if (window.__pwHoldVotes && m && m.type === "record_duel" && m.b !== 4000000000) {
+        heldVotes.push([m, t]);
+        return;
+      }
+      return t ? post(m, t) : post(m);
+    };
+    window.__pwReleaseVotes = () => {
+      window.__pwHoldVotes = false;
+      const n = heldVotes.length;
+      for (const [m, t] of heldVotes.splice(0)) t ? post(m, t) : post(m);
+      return n;
+    };
     return w;
   }
   Wrapped.prototype = Orig.prototype;
@@ -305,18 +324,22 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
   const pair = await page.evaluate(() => window.__pwLast.duel.pair);
 
   // A real pick: counted toward the next refit at once, sent to the engine
-  // after the 7 s undo window.
-  const picked = Date.now();
+  // after the 7 s undo window. Its vote is held at the worker's door until the
+  // refusal below has landed, so the log has not seen it, however slow the
+  // machine (the refusal used to have to land inside the window, timed).
+  await page.evaluate(() => (window.__pwHoldVotes = true));
+  const picked = await page.evaluate(() => performance.now());
   await chooseA.click();
   expect(await pips.innerHTML()).not.toBe(pipsBefore);
 
   // The refusal, from the real engine and the real worker: a duel whose side
   // has left the pool. Main must undo what `choose()` did and say so. Posted
-  // right behind the pick's own `duel_pred`/`duel`, so it is answered well
-  // inside the undo window, before the real vote could reach the log.
+  // right behind the pick's own `duel_pred`/`duel`, so it is answered inside
+  // the undo window on any machine but the slowest; how long it took is a
+  // budget (ADR-022).
   await post(page, { type: "record_duel", a: pair[0], b: 4_000_000_000, choseA: true });
   await page.waitForFunction(() => window.__pwLast.status && window.__pwLast.status.recorded === false);
-  expect(Date.now() - picked, "the refusal must land inside the 7 s undo window for this to mean anything").toBeLessThan(6_000);
+  budget("a pick → the engine's refusal of another vote", (await page.evaluate(() => performance.now())) - picked, 6_000);
   const dropped = await page.evaluate(() => window.__pwLast.status);
   expect(dropped.pred).toBeNull(); // a forecast for an untaken vote is not scored
   expect(dropped.ratings).toBeNull(); // and the ratings it did not move are not posted
@@ -326,6 +349,8 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
   await sawToast(page, "was replaced, so the", 2_000); // urgent: shown at once
   await sawToast(page, "the pick wasn’t recorded", 2_000);
   await sawToast(page, "Picked "); // the pick's own toast carries the undo, so it is never trimmed
+  // The real vote goes on to the engine, as it would have.
+  await page.evaluate(() => window.__pwReleaseVotes());
 
   // Stars: a real optimistic rating on a bank row, then the reply the worker
   // posts when `record_stars` answers false, carrying `prev`. The lit star must

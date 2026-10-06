@@ -1,7 +1,8 @@
 name: Browser report
 description: >
   A run's browser runners merged: one HTML report (every test, the traces of
-  what failed) uploaded as `browser-report-<name>` when a runner failed, and on
+  what failed) uploaded as `browser-report-<name>` when a runner failed, the
+  speed budgets recorded over their limit listed in the run's summary, and on
   main the run's times folded into the tier's timings for the next run's deal.
 
 inputs:
@@ -47,6 +48,15 @@ runs:
           echo "no runner wrote a report"; exit 0
         fi
         npx playwright merge-reports --reporter html,json all-blobs
+
+    # The speed budgets (ADR-022) the runs recorded over their limit, in the
+    # run's summary: on the gate they are recorded, never judged.
+    - name: Budgets over their limit
+      shell: bash
+      run: |
+        cd tests/web
+        [ -f merged.json ] || exit 0
+        node shard.mjs budgets merged.json
 
     - id: upload
       if: inputs.failed == 'true'
