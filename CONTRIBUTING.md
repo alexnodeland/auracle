@@ -306,13 +306,27 @@ an alias for notes written before the rename).
    - `make site && make site-check` before pushing a docs change. CI runs both.
 4. Add or extend a **gate test** for new behavior. Property-style tests over
    random trees / synthetic users are preferred over mocks.
-5. CI must be green: `main` requires it, and nobody can merge past it. A PR
-   closes the issue it finishes (`Closes #N`); a small fix seen in passing may
-   stand alone.
+5. CI must be green: `main` requires it, and nobody can merge past it. So
+   must `PR checks`, before the merge queue takes the PR:
+   - **The title** is the squash commit's subject on `main`, so it starts
+     with a type, as a commit message does: `fix(web): a toast is never
+     dropped`, `tests: …`, `docs: …` ([Commit messages](#commit-messages)).
+   - **The body** names its issues, one per line: `Closes #N` for each issue
+     it finishes, with one keyword per issue (GitHub reads one issue per
+     keyword, so `Closes #1, #2` closes #1 only), and `Refs #N` for each it
+     advances. A small fix seen in passing may stand alone, and says why on
+     a line that starts `No issue:`.
+   - A change to `apps/web/`, `www/docs/src/` or `www/landing/` with no
+     entry in `changelog.d/` gets a warning there (item 3), not a failure.
+
+   Once the PR merges, the same workflow comments on each `Refs` issue,
+   closes any `Closes` issue GitHub didn't, and tells each closed issue's
+   parent issue how many of its sub-issues are closed.
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
-   label and queues it. When its CI is green it enters the queue, which runs the full gate
+   label and queues it. When its CI and `PR checks` are green it enters the
+   queue, which runs the full gate
    on it together with up to two other queued PRs, on top of `main`, and
    squash-merges each as `<title> (#<number>)`, with the PR's commit messages
    as the commit's body (the repository's squash setting), so write each
@@ -324,7 +338,10 @@ an alias for notes written before the rename).
 
 Conventional-commit style prefixes are used loosely (`feat:`, `fix:`, `docs:`,
 `refactor:`, `chore:`) with an imperative subject line and a body that explains
-*why*.
+*why*. A PR's title takes a prefix too, since it becomes its squash commit's
+subject: one of `feat`, `fix`, `docs`, `tests`, `test`, `ci`, `build`,
+`refactor`, `perf`, `chore`, `revert`, `style` or `release`, then an optional
+`(scope)` and `: `. `PR checks` fails a title without one.
 
 ## Cutting a release
 
@@ -370,7 +387,9 @@ The steps, in order:
    and prints the order it used. Then write the short paragraph under the new
    heading that says what this release *is*. This text becomes the release
    notes verbatim, so write it for someone who has never seen the repo.
-4. **Open a PR for 2 and 3 with the `release` and `queue` labels**, queue it
+4. **Open a PR for 2 and 3 with the `release` and `queue` labels**, titled
+   `release: X.Y.Z` and with its issue lines (`Refs #N` for an issue that
+   tracks the release, or `No issue: the X.Y.Z release`), queue it
    (`@mergifyio queue`, until the label alone does: `docs/process.md` § CI and
    merging), and wait for the queue to merge it. The operator creates the
    `release` label once.

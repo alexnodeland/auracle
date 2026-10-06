@@ -20,11 +20,11 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 5. Briefed | What the builder needs: scope, decisions, tests, docs, report | The issue body, or a brief it links | The operator |
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
-| 8. Proposed | A pull request that closes the issue, labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
-| 9. Checked | A green `CI` check on the PR (the fast lane), then the full gate green on the queue's batch | GitHub Actions | CI |
+| 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
+| 9. Checked | Green `CI` (the fast lane) and `PR checks` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
-| 12. Closed | The issue closed, the plan's progress updated, the worktree removed | | The operator |
+| 12. Closed | The issues it finishes closed, the ones it advances and their parents told; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
 
 Small fixes skip stages 2–4: an issue (or a failing test) is enough. Stages 2
 and 3 are for changes big enough to argue about first, as
@@ -156,20 +156,50 @@ Findings come back ranked, and review is **one round**:
 ## Pull requests
 
 - The operator pushes an agent's branch and opens the PR, in the merge queue:
-  `gh pr create --base main --head claude/<topic> --title "<what is true now>" --body-file <file> --label queue`,
+  `gh pr create --base main --head claude/<topic> --title "<type>(<scope>): <what is true now>" --body-file <file> --label queue`,
   then comments `@mergifyio queue` on it, which queues it until the label
   alone does ([CI and merging](#ci-and-merging)).
   A contributor opens theirs from their own branch or fork, and the
   maintainer adds the label and the comment once it is reviewed.
+- **The title** is the squash commit's subject on `main`, so it starts as a
+  commit's does (root `AGENTS.md` rule 8): a type (`feat`, `fix`, `docs`,
+  `tests`, `test`, `ci`, `build`, `refactor`, `perf`, `chore`, `revert`,
+  `style`, or `release` for a release PR), an optional `(scope)`, then
+  `: ` and what is true now: `fix(web): a toast that names a replaced sound
+  is never dropped`.
 - **The body** says what changed for a player or a contributor, why, how
   (the decisions a reviewer should look at), and what was checked (gates,
-  specs and their counts, the review and what it found). It closes the issues
-  it finishes (`Closes #N`). Most PRs have one; a Dependabot bump, or a small
-  fix seen in passing, may stand alone, and its body says why it is needed.
-  When an agent session made the PR, the body ends with the session's link
-  line. The body stays on the PR: the squash commit on `main` is
-  `<title> (#<n>)` with the PR's commit messages as its body (the
-  repository's squash setting), so each commit's why reaches `main`.
+  specs and their counts, the review and what it found). It names its
+  issues, one per line: `Closes #N` for each issue it finishes, one keyword
+  per issue, since GitHub reads one issue per keyword (`Closes #a, #b`
+  closes #a only); `Refs #N` for each it advances. Most PRs have one; a
+  small fix seen in passing may stand alone, and its body says why on a
+  line that starts `No issue:`. A Dependabot bump stands alone as it is.
+  When an agent session
+  made the PR, the body ends with the session's link line. The body stays on
+  the PR: the squash commit on `main` is `<title> (#<n>)` with the PR's
+  commit messages as its body (the repository's squash setting), so each
+  commit's why reaches `main`.
+- **`PR checks`** (`.github/workflows/pr-checks.yml`, its logic in
+  `scripts/pr_checks.py`) runs whenever a PR's title, body or commits
+  change, so a fixed body passes without a push. It fails a title with no
+  type, a closing keyword followed by a list, a body that names no issue
+  and has no `No issue:` line, an issue that doesn't exist or is a PR, and
+  a closed issue named with `Closes`; each failure says what to write. It
+  warns, and never fails, when `apps/web/`, `www/docs/src/` or
+  `www/landing/` changed with no entry in `changelog.d/`. A Dependabot PR's
+  title is checked and its links are not: its body is the upstream release
+  notes. `python3 scripts/pr_checks.py check --pr <n>` runs it by hand.
+- **On merge,** the same workflow's *Issues on merge* job comments on each
+  `Refs` issue with the PR that advanced it; closes each `Closes` issue
+  GitHub didn't close (it reads the issue again for up to a minute first,
+  since GitHub closes them a moment after the merge), with a comment saying
+  why; and tells the parent of each issue that closed (GitHub's sub-issues)
+  which closed, with which PR, and how many of its sub-issues are closed.
+  One comment per issue per PR: run again, it writes nothing twice. A PR
+  from a fork gets a read-only token there, so its issues are updated by
+  hand. `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what
+  it would do.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
 
 ## CI and merging
@@ -238,7 +268,11 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     repository in Mergify's dashboard, and that is the maintainer's to switch
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
-  - It enters the queue once its fast lane's `CI` is green.
+  - It enters the queue once its fast lane's `CI` and its `PR checks` are
+    green. The PRs numbered up to #216, opened before `PR checks` was on
+    `main`, need only `CI` (`.mergify.yml` says why); a PR opened after that
+    and before the workflow landed gets its first run from any edit to its
+    title or body, or a push.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
     at most three minutes for company. One batch is tested at a time.
@@ -320,9 +354,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   workflow writes it to its summary. The budgets are in
   [`architecture/testing.md` § Budgets](architecture/testing.md#budgets).
 
-After the merge: the issue closes (via `Closes #N`), the plan's progress table
-gets the PR, and the PR's branch deletes itself on GitHub (the repository
-deletes merged branches). Remove the worktree and the local branch:
+After the merge: the issues it finishes close (GitHub reads `Closes #N`, and
+`PR checks` closes any it missed), the ones it advances and their parents get a
+comment, the plan's progress table gets the PR, and the PR's branch deletes
+itself on GitHub (the repository deletes merged branches). Remove the worktree and the local branch:
 `git worktree remove ../auracle-wt-<topic>`, `git branch -D claude/<topic>`.
 
 ## Flakes

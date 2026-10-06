@@ -77,7 +77,12 @@ contributor guide; this file does not repeat it.
    edits to the first three.
 8. **Commits explain why.** Loose conventional prefixes (`feat:`, `fix(web):`,
    `docs:` …), an imperative subject, a body that says what was wrong and why
-   this is the fix. A user-visible change writes its changelog entry as
+   this is the fix. A PR's title is its squash commit's subject, so it
+   carries a prefix too, and its body names each issue it finishes as
+   `Closes #n`, one keyword per issue, and each it advances as `Refs #n` (or
+   says why on a `No issue:` line); the `PR checks` workflow checks both
+   ([`docs/process.md` § Pull requests](docs/process.md#pull-requests)).
+   A user-visible change writes its changelog entry as
    `changelog.d/<topic>.md`, not under `CHANGELOG.md`'s `[Unreleased]` (a
    release moves it there; [`changelog.d/README.md`](changelog.d/README.md)),
    written for someone who has never seen the repo.
@@ -87,9 +92,9 @@ contributor guide; this file does not repeat it.
    merges; the operator pushes it and opens the PR in the merge queue (a
    human contributor pushes their own branch). Every branch an agent builds
    is reviewed before its PR, and a PR merges through Mergify's queue: its
-   own `CI` is a fast lane that puts it in the queue, and the queue merges it
-   once the full gate is green on its batch, on top of `main` (`main`
-   requires `CI` of everyone;
+   own `CI` is a fast lane that, with `PR checks`, puts it in the queue, and
+   the queue merges it once the full gate is green on its batch, on top of
+   `main` (`main` requires `CI` of everyone;
    [ADR-021](docs/decisions/021-merges-go-through-mergifys-queue.md),
    [ADR-023](docs/decisions/023-the-gate-runs-in-the-queue.md)). A flaky test is fixed or
    quarantined with an issue, never retried. A new term, label or phrase that
