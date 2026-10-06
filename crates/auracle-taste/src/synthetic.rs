@@ -178,3 +178,6 @@ impl IdealPointUser {
 /// one alignment matches lenses by, so a gate scores recovery by the same
 /// angle the posterior's lenses were matched with.
 pub use crate::model::cosine;
+
+#[cfg(test)]
+mod tests;
