@@ -292,11 +292,13 @@ fn a_source_cannot_be_spliced_into_a_wire() {
 
 /// **A tree from outside is put in normal form once, and a tree already in
 /// it is left alone.** `normalize_tree` clamps a knob past its domain and
-/// folds each modulation term the grammar would fold, at the root and below
-/// it (a quantizer over nothing, a pair with an empty side, a one-parameter
-/// shaper's stray second parameter), counting each. The tree it gives is the
-/// one written in normal form by hand. Asked again it finds nothing and
-/// changes nothing, not even an identity.
+/// folds each modulation term the grammar would fold, at every level of a
+/// chain (a quantizer over nothing on the outer filter, a one-parameter
+/// shaper's stray second parameter on the inner one, a pair with an empty
+/// side on the oscillator), counting each: a fold at each level, so a count
+/// that took a level's folds away instead of adding them is wrong. The tree
+/// it gives is the one written in normal form by hand. Asked again it finds
+/// nothing and changes nothing, not even an identity.
 #[test]
 fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
     let lfo = || ModNode::Lfo {
@@ -312,21 +314,17 @@ fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
         mod_depth: 0.3,
         modulation,
     };
-    let tree = |root_slot: ModNode, a_slot: ModNode, b_slot: ModNode, attack: f64| {
-        let mut t = patch(AudioNode::Filter {
-            uid: Uid::NEW,
-            kind: FilterKind::SvfLp,
-            cutoff: 0.5,
-            resonance: 0.2,
-            mod_depth: 0.4,
-            modulation: root_slot,
-            input: Box::new(AudioNode::Mix {
-                uid: Uid::NEW,
-                balance: 0.5,
-                a: Box::new(vco(a_slot)),
-                b: Box::new(vco(b_slot)),
-            }),
-        });
+    let filter = |modulation: ModNode, input: AudioNode| AudioNode::Filter {
+        uid: Uid::NEW,
+        kind: FilterKind::SvfLp,
+        cutoff: 0.5,
+        resonance: 0.2,
+        mod_depth: 0.4,
+        modulation,
+        input: Box::new(input),
+    };
+    let tree = |outer: ModNode, inner: ModNode, source: ModNode, attack: f64| {
+        let mut t = patch(filter(outer, filter(inner, vco(source))));
         t.amp.attack = attack;
         t
     };
@@ -352,15 +350,15 @@ fn normalize_tree_folds_and_clamps_once_and_leaves_a_normal_tree_alone() {
     };
     let mut outside = tree(
         quantizer_over_nothing,
-        min_with_an_empty_side,
         hold(0.7),
+        min_with_an_empty_side,
         5.0,
     );
     outside.ensure_uids();
     assert!(!outside.domain_violations().is_empty(), "fixture");
 
     assert_eq!(normalize_tree(&mut outside), 4, "one knob and three slots");
-    let normal = tree(ModNode::None, lfo(), hold(0.0), PARAM_MAX);
+    let normal = tree(ModNode::None, hold(0.0), lfo(), PARAM_MAX);
     assert_eq!(outside, normal);
     assert!(validate_tree(&outside).is_ok());
 
