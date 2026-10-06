@@ -284,6 +284,12 @@ class TheSizesRatchet(unittest.TestCase):
 
     def test_a_count_that_falls_without_lowering_the_baseline_fails(self):
         with Tree() as t:
+            # A literal the baseline holds...
+            t.edit("www/404.html", lambda s: s.replace("padding: var(--s5);", "padding: 24px;", 1))
+            now, _ = T.size_counts()
+            T.write_size_baseline(T.updated_baseline(now, T.load_size_baseline(), allow_rise=True))
+            self.assertEqual(t.problems(), [])
+            # ...moved onto the scale, without lowering it.
             t.edit("www/404.html", lambda s: s.replace("padding: 24px;", "padding: var(--s5);", 1))
             got = t.problems()
             self.assertTrue(any(p.startswith("www/404.html") and "under the baseline" in p for p in got), got)

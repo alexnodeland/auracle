@@ -136,8 +136,10 @@
   --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
 
   /* brand: sizes only this surface uses */
-  --t-micro: 11px; /* mono captions, at the floor */
-  --s8: 72px;      /* between sections */
+  --t-headline: clamp(2rem, 4.4vw, 3.1rem); /* the page's headline, as the landing page's display line is its own (--t-display is the specimen's 52 px) */
+  --t-h2: clamp(1.4rem, 2.8vw, 1.95rem); /* a section's heading */
+  --t-micro: 11px;                /* mono captions, at the floor */
+  --s8: 72px;                     /* between sections */
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -147,7 +149,7 @@
 :root {
   --lift: inset 1px 1px 0 var(--white-07);
   --frame: 1180px;
-  --gutter: clamp(20px, 5vw, 56px);
+  --gutter: clamp(var(--s5), 5vw, var(--s7));
 
   color-scheme: dark;
 }
@@ -215,7 +217,7 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
 .desc {
   font-family: var(--font-mono);
   font-weight: 400;
-  font-size: 0.32em;
+  font-size: 0.32em; /* token-exempt: the lockup's construction, in em of the lockup's own size */
   letter-spacing: 0.2em;
   margin-inline-start: 0.2em;
   /* The stack centers it as a box; this centers its lines inside that box, so
@@ -251,12 +253,12 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
   color: var(--silk-mute); margin: 0 0 var(--s4);
 }
 .display {
-  font-size: clamp(2rem, 4.4vw, 3.1rem);
+  font-size: var(--t-headline);
   font-weight: 300; letter-spacing: -0.022em; line-height: 1.08;
   text-wrap: balance; margin: 0 0 var(--s4);
 }
 .h2 {
-  font-size: clamp(1.4rem, 2.8vw, 1.95rem);
+  font-size: var(--t-h2);
   font-weight: 300; letter-spacing: -0.014em;
   text-wrap: balance; margin: 0 0 var(--s4);
 }
@@ -264,7 +266,7 @@ p.t { max-width: 62ch; color: var(--silk-dim); margin: 0 0 var(--s4); }
 p.t strong { color: var(--silk); font-weight: 400; }
 p.t em { color: var(--silk); font-style: italic; }
 code {
-  font-family: var(--font-mono); font-size: 0.84em; color: var(--phos-a-dim);
+  font-family: var(--font-mono); font-size: 0.84em; /* token-exempt: inline code, sized to the line it sits in */ color: var(--phos-a-dim);
 }
 
 section { padding: var(--s8) 0; border-top: 1px solid var(--hairline); }
@@ -275,7 +277,7 @@ section:first-of-type { border-top: 0; }
   gap: var(--s7); flex-wrap: wrap;
   padding: var(--s8) var(--s6);
   background: var(--bezel); border: 1px solid var(--hairline);
-  border-radius: 4px; box-shadow: var(--lift);
+  border-radius: var(--r1); box-shadow: var(--lift);
   margin: var(--s5) 0 0;
 }
 .stage.paper { background: var(--paper-stock); border-color: var(--paper-stock-edge); }
@@ -295,7 +297,7 @@ section:first-of-type { border-top: 0; }
   display: flex; align-items: flex-end; gap: var(--s5);
   padding: var(--s4) var(--s5);
   background: var(--bezel); border: 1px solid var(--hairline);
-  border-radius: 4px; box-shadow: var(--lift);
+  border-radius: var(--r1); box-shadow: var(--lift);
   width: fit-content; max-width: 100%; overflow-x: auto;
   margin-top: var(--s5);
 }
@@ -312,7 +314,7 @@ section:first-of-type { border-top: 0; }
 }
 .versus > div {
   padding: var(--s7) var(--s5); background: var(--bezel);
-  border: 1px solid var(--hairline); border-radius: 4px; text-align: center;
+  border: 1px solid var(--hairline); border-radius: var(--r1); text-align: center;
 }
 .versus .verdict {
   font-family: var(--font-mono); font-size: var(--t-micro);
@@ -328,7 +330,7 @@ section:first-of-type { border-top: 0; }
 /* construction diagram */
 .constr {
   display: inline-block; padding: 1.28em; margin-top: var(--s5);
-  font-size: 40px;
+  font-size: 40px; /* token-exempt: a lockup specimen at a set size, not a step of the page's type */
   border: 1px dashed var(--phos-a-deep);
   background: var(--bezel); border-radius: 3px;
 }
@@ -344,10 +346,10 @@ section:first-of-type { border-top: 0; }
 .scroller { overflow-x: auto; }
 .spec {
   width: 100%; border-collapse: collapse; margin-top: var(--s5);
-  font-size: 0.9rem; max-width: 78ch;
+  font-size: var(--t-body); max-width: 78ch;
 }
 .spec th, .spec td {
-  text-align: left; padding: 10px var(--s4);
+  text-align: left; padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--hairline); vertical-align: baseline;
 }
 .spec th {
@@ -358,7 +360,7 @@ section:first-of-type { border-top: 0; }
 .spec td { color: var(--silk-dim); }
 .spec td:first-child { color: var(--silk); }
 .spec td.num {
-  font-family: var(--font-mono); font-size: 0.82rem;
+  font-family: var(--font-mono); font-size: var(--t-body);
   font-variant-numeric: tabular-nums; color: var(--phos-a-dim); white-space: nowrap;
 }
 
@@ -366,7 +368,7 @@ section:first-of-type { border-top: 0; }
 .iconset {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 1px; background: var(--hairline);
-  border: 1px solid var(--hairline); border-radius: 4px;
+  border: 1px solid var(--hairline); border-radius: var(--r1);
   overflow: hidden; margin-top: var(--s5);
 }
 .iconset > div {
@@ -381,22 +383,22 @@ section:first-of-type { border-top: 0; }
   font-family: var(--font-mono); font-size: var(--t-micro);
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a-dim);
 }
-.iconset .use { font-size: 0.86rem; color: var(--silk-dim); line-height: 1.5; }
+.iconset .use { font-size: var(--t-body); color: var(--silk-dim); line-height: 1.5; }
 
 /* icons taking their surroundings' color, demonstrated */
 .tints { display: flex; gap: var(--s4); flex-wrap: wrap; margin-top: var(--s5); }
 .tint {
   display: flex; align-items: center; gap: var(--s3);
-  padding: 10px var(--s4);
+  padding: var(--s3) var(--s4);
   border: 1px solid var(--hairline); border-radius: 3px;
-  font-size: 0.86rem; letter-spacing: 0.04em;
+  font-size: var(--t-body); letter-spacing: 0.04em;
 }
 .tint .ui-icon { width: 20px; height: 20px; color: inherit; }
 .tint.rest { color: var(--silk-dim); }
 .tint.here { color: var(--phos-b); border-color: var(--phos-b-dim); }
 .tint.go { color: var(--phos-a); border-color: var(--phos-a-deep); }
 .tint.busy { color: var(--silk); }
-.tint.busy .ui-icon { animation: spin 1.1s linear infinite; }
+.tint.busy .ui-icon { animation: spin 1.1s linear infinite; } /* token-exempt: a loop's period, not a transition */
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .tint.busy .ui-icon { animation: none; }
@@ -450,7 +452,7 @@ section:first-of-type { border-top: 0; }
 .dont {
   padding: var(--s6) var(--s4) var(--s4);
   background: var(--bezel); border: 1px solid var(--led-red-30);
-  border-radius: 4px; display: flex; flex-direction: column;
+  border-radius: var(--r1); display: flex; flex-direction: column;
   align-items: center; gap: var(--s5); text-align: center;
 }
 .dont .why {
@@ -465,7 +467,7 @@ section:first-of-type { border-top: 0; }
 
 @media (max-width: 780px) {
   .versus { grid-template-columns: minmax(0, 1fr); }
-  .constr { font-size: 28px; }
+  .constr { font-size: 28px; } /* token-exempt: a lockup specimen at a set size, not a step of the page's type */
 }
 </style>
 </head>
@@ -518,7 +520,7 @@ section:first-of-type { border-top: 0; }
 
 <header class="bar">
   <div class="wrap bar-in">
-    <a class="lk" href="../" style="font-size:1.02rem"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></a>
+    <a class="lk" href="../" style="font-size:var(--t-body)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></a>
     <span class="bar-note"><a href="../">Back to the site</a></span>
   </div>
 </header>
@@ -587,11 +589,11 @@ section:first-of-type { border-top: 0; }
 
     <div class="versus">
       <div class="no">
-        <span class="lk lk-lg" style="font-size:34px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACL<b>E</b></span></span>
+        <span class="lk lk-lg" style="font-size:34px /* token-exempt: a lockup specimen at a set size, not a step of the page's type */"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACL<b>E</b></span></span>
         <p class="verdict">Two lamps &middot; neither one live<br>the amber pulls right, off the mark</p>
       </div>
       <div class="yes">
-        <span class="lk lk-lg" style="font-size:34px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk lk-lg" style="font-size:34px /* token-exempt: a lockup specimen at a set size, not a step of the page's type */"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <p class="verdict">One lamp &middot; the mark holds it<br>color lands in exactly one place</p>
       </div>
     </div>
@@ -610,14 +612,14 @@ section:first-of-type { border-top: 0; }
 
     <div class="stage">
       <div class="cell">
-        <span class="lk lk-xl" style="font-size:52px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk lk-xl" style="font-size:var(--t-display)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <span class="cap"><b>Primary &middot; horizontal</b>README, site bar, docs header, slides</span>
       </div>
     </div>
 
     <div class="stage">
       <div class="cell">
-        <span class="lk-stack" style="font-size:44px">
+        <span class="lk-stack" style="font-size:44px /* token-exempt: a lockup specimen at a set size, not a step of the page's type */">
           <svg class="glyph"><use href="#mark"/></svg>
           <span class="wm">AURACLE</span>
           <span class="desc">A synthesizer that grows toward you</span>
@@ -632,7 +634,7 @@ section:first-of-type { border-top: 0; }
         <span class="cap"><b>Mark alone</b>favicon, avatar, app icon</span>
       </div>
       <div class="cell">
-        <span class="lk lk-lg" style="font-size:34px"><span class="wm">AURACLE<i class="lamp-live" style="display:inline-block;width:0.26em;height:0.26em;margin-left:0.45em;vertical-align:middle;border-radius:50%;background:var(--phos-b)"></i></span></span>
+        <span class="lk lk-lg" style="font-size:34px /* token-exempt: a lockup specimen at a set size, not a step of the page's type */"><span class="wm">AURACLE<i class="lamp-live" style="display:inline-block;width:0.26em;height:0.26em;margin-left:0.45em;vertical-align:middle;border-radius:50%;background:var(--phos-b)"></i></span></span>
         <span class="cap"><b>Logotype alone &middot; lamp live</b>the app only, where the lamp means something</span>
       </div>
     </div>
@@ -643,7 +645,7 @@ section:first-of-type { border-top: 0; }
     <h2 class="h2">Clear space is one mark-height. Everything else scales from the cap.</h2>
 
     <div class="constr">
-      <span class="constr-inner"><span class="lk lk-xl" style="font-size:40px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span></span>
+      <span class="constr-inner"><span class="lk lk-xl" style="font-size:40px /* token-exempt: a lockup specimen at a set size, not a step of the page's type */"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span></span>
     </div>
     <p class="constr-note"><b>Amber</b> &middot; the lockup's own bounding box<br>
     Dashed &middot; the minimum clear space, one mark-height on all four sides:
@@ -792,19 +794,19 @@ section:first-of-type { border-top: 0; }
     <h2 class="h2">Four ways to break it.</h2>
     <div class="donts">
       <div class="dont d-tint">
-        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk" style="font-size:var(--t-title)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <p class="why">Do not re-tint the mark. Two phosphors, no third.</p>
       </div>
       <div class="dont d-squash">
-        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk" style="font-size:var(--t-title)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <p class="why">Do not squash or stretch. Set the tracking instead.</p>
       </div>
       <div class="dont d-face">
-        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk" style="font-size:var(--t-title)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <p class="why">Do not reset the logotype. It is Jost 500, always.</p>
       </div>
       <div class="dont d-crowd">
-        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="lk" style="font-size:var(--t-title)"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
         <p class="why">Do not crowd the mark. One mark-height, minimum.</p>
       </div>
     </div>

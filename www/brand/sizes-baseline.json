@@ -1,18 +1,4 @@
 {
-  "www/404.html": {
-    "font": 5,
-    "space": 7
-  },
-  "www/brand/index.html": {
-    "font": 23,
-    "radius": 5,
-    "space": 4,
-    "time": 1
-  },
-  "www/brand/render.html": {
-    "font": 5,
-    "space": 4
-  },
   "www/theme/css/variables.css": {
     "space": 1
   },

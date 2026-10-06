@@ -113,6 +113,9 @@
     --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
     --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
     --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+    /* 404: sizes only this surface uses */
+    --t-h1: clamp(1.7rem, 5vw, 2.4rem); /* the page's one line */
   }
   @media (prefers-reduced-motion: reduce) {
     :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -129,7 +132,7 @@
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 24px;
+    padding: var(--s5);
     color: var(--silk);
     font-family: var(--font-silk);
     font-weight: 300;
@@ -144,7 +147,7 @@
     display: inline-flex;
     align-items: center;
     gap: .62em;
-    font-size: 1rem;
+    font-size: var(--t-body);
     font-weight: 500;
     letter-spacing: .145em;
     color: var(--silk);
@@ -152,21 +155,21 @@
   }
   .mark svg { width: 1.28em; height: 1.28em; flex: none; transform: translateY(-.035em); }
   .code {
-    margin: 28px 0 10px;
+    margin: var(--s6) 0 var(--s3);
     /* Its own stack, not --font-mono: this page loads no faces, so the
        fallbacks are what shows, and these are the ones it has always had. */
     font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-    font-size: .7rem;
+    font-size: var(--t-label);
     letter-spacing: .16em;
     text-transform: uppercase;
     color: var(--silk-mute);
   }
-  h1 { margin: 0 0 14px; font-size: clamp(1.7rem, 5vw, 2.4rem); font-weight: 300; letter-spacing: -.015em; }
-  p { margin: 0 0 22px; color: var(--silk-dim); }
-  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  h1 { margin: 0 0 var(--s4); font-size: var(--t-h1); font-weight: 300; letter-spacing: -.015em; }
+  p { margin: 0 0 var(--s5); color: var(--silk-dim); }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s3); }
   a.go { color: var(--phos-a); text-decoration-color: var(--phos-a-deep); text-underline-offset: .18em; }
   a.go:hover { text-decoration-color: currentColor; }
-  .hint { margin-top: 26px; font-size: .82rem; color: var(--silk-mute); }
+  .hint { margin-top: var(--s5); font-size: var(--t-body); color: var(--silk-mute); }
 </style>
 </head>
 <body>

@@ -151,8 +151,10 @@
   --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
 
   /* brand: sizes only this surface uses */
-  --t-micro: 11px; /* mono captions, at the floor */
-  --s8: 72px;      /* between sections */
+  --t-headline: clamp(2rem, 4.4vw, 3.1rem); /* the page's headline, as the landing page's display line is its own (--t-display is the specimen's 52 px) */
+  --t-h2: clamp(1.4rem, 2.8vw, 1.95rem); /* a section's heading */
+  --t-micro: 11px;                /* mono captions, at the floor */
+  --s8: 72px;                     /* between sections */
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -170,40 +172,40 @@ body { margin: 0; background: var(--steel); font-family: var(--font-silk); -webk
 
 #banner {
   width: 1440px; height: 360px; background: var(--rack);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; /* token-exempt: lockup.png's geometry, drawn at this size for the README */
 }
 /* Both lines carry a start margin of one letter-space. letter-spacing is
    applied after the *final* letter too, so a centered line's ink sits half a
    letter-space left of true center; a start margin of one full space puts it
    back. It goes on the lockup rather than on .wm, or it would open the
    specified 0.62em gap between the mark and the word. */
-#banner .lk { font-size: 88px; margin-inline-start: .095em; }
+#banner .lk { font-size: 88px; /* token-exempt: lockup.png's geometry, drawn at this size for the README */ margin-inline-start: .095em; }
 #banner .tag {
-  font-family: var(--font-mono); font-size: 22px; letter-spacing: .24em;
+  font-family: var(--font-mono); font-size: 22px; /* token-exempt: lockup.png's geometry, drawn at this size for the README */ letter-spacing: .24em;
   margin-inline-start: .24em;
   text-transform: uppercase; color: var(--silk-mute);
 }
 
 #og {
   width: 1200px; height: 630px; background: var(--rack);
-  padding: 88px 92px; display: flex; flex-direction: column;
+  padding: 88px 92px; /* token-exempt: og.png's geometry, drawn at this size for the 1200 by 630 card */ display: flex; flex-direction: column;
   position: relative; overflow: hidden;
 }
 /* One flourish: the mark's own rings at poster scale, bled off the right
    edge. The aura, not a decoration borrowed from somewhere else. */
 #og .halo { position: absolute; right: -250px; top: 50%; transform: translateY(-50%); width: 760px; height: 760px; }
 #og .head { position: relative; z-index: 1; }
-#og .head .lk { font-size: 40px; }
+#og .head .lk { font-size: 40px; } /* token-exempt: og.png's geometry, drawn at this size for the 1200 by 630 card */
 /* The line: the tagline as the display, the descriptor under it in plain
    Jost, as the landing page's hero sets them. */
 #og .display {
   position: relative; z-index: 1; margin: auto 0 0; max-width: 15ch;
-  font-size: 76px; font-weight: 300; letter-spacing: -.022em; line-height: 1.06; color: var(--silk);
+  font-size: 76px; /* token-exempt: og.png's geometry, drawn at this size for the 1200 by 630 card */ font-weight: 300; letter-spacing: -.022em; line-height: 1.06; color: var(--silk);
 }
 #og .display b { font-weight: 300; color: var(--phos-a); }
 #og .desc {
-  position: relative; z-index: 1; margin: 30px 0 0; max-width: 36ch;
-  font-size: 27px; font-weight: 300; line-height: 1.4; color: var(--silk-dim);
+  position: relative; z-index: 1; margin: 30px 0 0; /* token-exempt: og.png's geometry, drawn at this size for the 1200 by 630 card */ max-width: 36ch;
+  font-size: 27px; /* token-exempt: og.png's geometry, drawn at this size for the 1200 by 630 card */ font-weight: 300; line-height: 1.4; color: var(--silk-dim);
 }
 </style>
 </head>
