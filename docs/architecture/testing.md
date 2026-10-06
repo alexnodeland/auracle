@@ -355,28 +355,33 @@ survive*, naming its part.
 two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a
 load of 17 to 76, with the timeout at 3 times the unmutated time (it is 5
 now: `.cargo/mutants.toml` says why); the run at `cf61f48`, after taste's
-PR (#198), at 5.
+PR (#198), at 5, and so the runs at `47a0d4f` and `315bbb7`, before and
+after #207's tests.
 
 | Run | Mutants | Wall time | Caught | Survived | Timed out | Unviable | A mutant, on average |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `auracle-taste` at `315bbb7`, whole, with #207's tests | 607 | 22 min | 575 | 6 | 0 | 26 | 3.8 s to build, 0.5 s of tests (of a 4.3 s suite) |
+| `auracle-taste` at `47a0d4f`, whole | 631 | 23 min | 520 | 85 | 0 | 26 | 3.0 s to build, 1.3 s of tests (of a 4.3 s suite) |
 | `auracle-taste` at `cf61f48`, whole | 619 | 18 min | 506 | 87 | 0 | 26 | 2.3 s to build, 1.1 s of tests (of a 4.7 s suite) |
 | `auracle-taste` at `db2103f`, whole | 622 | 29.4 min | 428 | 166 | 2 | 26 | 3.1 s to build, 2.5 s of tests (of a 4.7 s suite) |
 | `auracle-session` at `db2103f`, 1 in 100 (round robin) | 21 | 10.3 min | 11 | 7 | 0 | 3 | 13 s to build, 37 s of tests (of a 46 s suite) |
 
 Taste's survivors at `cf61f48`, by file: `model.rs` 53, `synthetic.rs` 21,
-`standardize.rs` 8, `observe.rs` 5. A caught mutant costs little: nextest
-stops at the first failing test (`--max-fail=1:immediate`), so at `db2103f`
-taste's took 1.1 s of their 4.7 s suite and session's 16 s of 46. A
-survivor runs every test (taste's 6.3 s, session's 86 s), so the cost falls
-as survivors are killed: taste's mutants took 2.5 s of tests each at
-`db2103f` and 1.1 s at `cf61f48`, with half as many survivors (and a
-lighter load). Each crate's fast tier alone, on the same machine under like load,
+`standardize.rs` 8, `observe.rs` 5; at `47a0d4f`, after #231, 51, 21, 8 and
+5; with #207's tests, `model.rs` 3 and `standardize.rs` 3, each answered
+there. A caught mutant costs little: nextest stops at the first failing
+test (`--max-fail=1:immediate`), so at `db2103f` taste's took 1.1 s of
+their 4.7 s suite and session's 16 s of 46. A survivor runs every test
+(taste's 6.3 s, session's 86 s), so the cost falls as survivors are
+killed: taste's mutants took 2.5 s of tests each at `db2103f`, 1.1 s at
+`cf61f48`, with half as many survivors (and a lighter load), and 0.5 s
+with six. Each crate's fast tier alone, on the same machine under like load,
 took: taste 9 s, grammar 1 s, features 38 s, wasm 40 s, session 64 s;
 rebuilding a crate's tests after a change, 3 to 11 s. Two of taste's
 mutants timed out at `db2103f` (`synthetic.rs:54` and `:55`, in
 `SyntheticUser::stars`), at the 20 s floor over a 4.7 s suite; why is not
 known. At `cf61f48`, with #198's tests and a 24 s limit, both finished in
-4 s and survived.
+4 s and survived; #207's tests catch both.
 
 **On a runner**, estimated, not yet measured. CI's Test job, before
 Coverage took its place (ADR-023), spent about eleven minutes of a runner's

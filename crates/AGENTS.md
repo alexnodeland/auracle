@@ -278,12 +278,15 @@ every test of `auracle-taste` still passed. It is one of three things:
 
 **Review treats a survivor in changed code as a finding**, as it does an
 uncovered changed line: killed, or answered with why it can't be. The
-crates don't start clean: on `main` at `cf61f48`, with taste's PR (#198)
+crates didn't start clean: on `main` at `cf61f48`, with taste's PR (#198)
 merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
 unviable). Taste's and features' PRs merged before this check existed, so
-a follow-up issue tracks their survivors; each crate's PR still to come in
-#181 kills or answers its own. The PR job becomes required once they are
-done.
+a follow-up issue took their survivors (#207). Taste's are done: each is
+killed by a test, or answered there with why it can't be (six: five that
+no well-formed input tells from the code, and one that, at an exact tie,
+picks the other of two correct resamples). Features' are still to be measured, and
+each crate's PR still to come in #181 kills or answers its own. The PR
+job becomes required once they are done.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
 part of neither `CI` lane, the PR's fast lane or the queue's full gate, and
