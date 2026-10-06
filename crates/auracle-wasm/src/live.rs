@@ -476,10 +476,19 @@ fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
         .collect()
 }
 
+/// Where a patch swap is. The tree being swapped in lives in the stages
+/// that need it, so a rebuild always has a patch to build.
 enum Stage {
     Run,
-    FadeOut,
-    Rebuild { built: Vec<Voice> },
+    /// Fading the old voices out, with `tree` to swap in once silent.
+    FadeOut {
+        tree: PatchTree,
+    },
+    /// Silent: compiling `tree`, one voice a quantum, into `built`.
+    Rebuild {
+        tree: PatchTree,
+        built: Vec<Voice>,
+    },
     FadeIn,
 }
 
@@ -503,7 +512,6 @@ pub struct LivePoly {
     param_slots: Vec<ParamSlot>,
     stage: Stage,
     gain: f32,
-    pending: Option<PatchTree>,
     out_buf: Vec<f32>,
     event: u32,
     last_error: String,
@@ -680,21 +688,21 @@ impl Meter {
     /// Move whatever the observer has finished into [`Self::levels`].
     fn drain(&mut self) {
         for update in self.observer.drain_updates() {
-            let ObservableValue::Level {
+            // Only levels are subscribed; anything else is not a tap's.
+            if let ObservableValue::Level {
                 node_id,
                 port_id,
                 rms_db,
                 ..
             } = update
-            else {
-                continue;
-            };
-            if let Some(i) = self
-                .ports
-                .iter()
-                .position(|(n, p)| *p == port_id && *n == node_id)
             {
-                self.levels[i] = rms_db as f32;
+                if let Some(i) = self
+                    .ports
+                    .iter()
+                    .position(|(n, p)| *p == port_id && *n == node_id)
+                {
+                    self.levels[i] = rms_db as f32;
+                }
             }
         }
     }
@@ -874,11 +882,14 @@ fn tick_voice(
     }
 }
 
+#[wasm_bindgen]
 impl LivePoly {
-    /// [`LivePoly::new`] with its error as a `String`: what the host's
-    /// constructor wraps, and what [`render_take`] calls (natively too, where
-    /// a `JsValue` cannot be made).
-    fn from_json(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
+    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON, or say
+    /// why not. The error is a `String`, which wasm-bindgen throws as a JS
+    /// string (the host reads it with `String(err)`), and which
+    /// [`render_take`] and the native tests read as it is.
+    #[wasm_bindgen(constructor)]
+    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
         let tree: PatchTree = serde_json::from_str(tree_json).map_err(|e| e.to_string())?;
         let n = n_voices.max(1);
         let input = Arc::new(AudioInputStream::new(
@@ -911,7 +922,6 @@ impl LivePoly {
             param_slots,
             stage: Stage::Run,
             gain: 1.0,
-            pending: None,
             out_buf: Vec::new(),
             event: EVENT_NONE,
             last_error: String::new(),
@@ -958,15 +968,6 @@ impl LivePoly {
             p.rebuild_sync_lanes();
             p
         })
-    }
-}
-
-#[wasm_bindgen]
-impl LivePoly {
-    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON.
-    #[wasm_bindgen(constructor)]
-    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, JsValue> {
-        LivePoly::from_json(tree_json, sample_rate, n_voices).map_err(|e| JsValue::from_str(&e))
     }
 
     /// Find every `steps` module's transport and rate handles in the current
@@ -1127,7 +1128,7 @@ impl LivePoly {
     /// Read once after [`Self::set_meter`] rather than per quantum — this
     /// allocates, and the order is fixed until the next patch swap.
     pub fn meter_keys(&self) -> String {
-        serde_json::to_string(&self.meter.keys).unwrap_or_else(|_| "[]".into())
+        crate::json_or(&self.meter.keys, "[]")
     }
 
     /// Pointer to the RMS dB per tap, in [`Self::meter_keys`] order.
@@ -1204,13 +1205,15 @@ impl LivePoly {
         let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return false;
         };
-        self.pending = Some(tree);
-        match self.stage {
+        self.stage = match self.stage {
             // Already silent/rebuilding: restart the rebuild with the newer
             // tree (coalesces rapid structural edits).
-            Stage::Rebuild { .. } => self.stage = Stage::Rebuild { built: Vec::new() },
-            _ => self.stage = Stage::FadeOut,
-        }
+            Stage::Rebuild { .. } => Stage::Rebuild {
+                tree,
+                built: Vec::new(),
+            },
+            _ => Stage::FadeOut { tree },
+        };
         true
     }
 
@@ -1768,7 +1771,7 @@ impl LivePoly {
             10f64.powf(MAKEUP_MIN_DB / 20.0),
             10f64.powf(MAKEUP_MAX_DB / 20.0),
         ) as f32;
-        if self.pending.is_some() {
+        if matches!(self.stage, Stage::FadeOut { .. } | Stage::Rebuild { .. }) {
             self.pending_makeup = Some(g);
         } else {
             self.makeup = g;
@@ -1926,136 +1929,139 @@ impl LivePoly {
         if self.sync_on {
             self.beats += frames as f64 * self.bpm / (60.0 * self.sample_rate);
         }
-        let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
-        if rebuilding {
-            // Silent: compile exactly one voice per quantum. Overruns here
-            // can drop a quantum of *silence* — inaudible.
-            let Stage::Rebuild { built } = std::mem::replace(&mut self.stage, Stage::FadeIn) else {
-                unreachable!()
-            };
-            let mut built = built;
-            if let Some(tree) = self.pending.clone() {
-                // A patch that listens (or tracks) is built one voice longer:
-                // the last is its open voice (`set_open`), which leads a
-                // tracked patch's other voices, so it alone is no follower.
-                let tracked = has_track(&tree.root);
-                let extra = tree.listens() || tracked;
-                let follow = tracked && built.len() < self.n_voices;
-                match build_voice(&tree, self.sample_rate, &self.input, follow) {
-                    Ok(v) => {
-                        built.push(v);
-                        if built.len() >= self.n_voices + usize::from(extra) {
-                            let open = if extra { built.pop() } else { None };
-                            // The open voice's envelope is carried like a held
-                            // note's, so a swap does not re-attack the input.
-                            let open_phase = self
-                                .open
-                                .as_ref()
-                                .filter(|v| v.note.is_some())
-                                .map(|v| v.voice.env_phase());
-                            // Where every sounding note's amp envelope had got
-                            // to, read off the *outgoing* voices while they are
-                            // still here. This is the whole of the envelope
-                            // carry: re-pressing a held note on a fresh voice
-                            // restarts its ADSR from zero, so a sustained pad
-                            // re-swelled on every structural edit — the edit
-                            // was audible as an event in its own right rather
-                            // than as a change to the sound.
-                            let carry: Vec<(u8, f64)> = self
-                                .voices
-                                .iter()
-                                .filter_map(|v| Some((v.note?, v.voice.env_phase())))
-                                .collect();
-                            self.voices = built;
-                            self.pending = None;
-                            // New voices, new handles: the smoothers indexed
-                            // the old table, and the table is remade from the
-                            // voices that exist now. This is the one place
-                            // outside `new` that allocates for parameters,
-                            // and it is inside the swap that already compiles.
-                            self.open = open;
-                            self.lead = Lead::build(&self.voices, self.open.as_ref());
-                            self.smoothers.clear();
-                            self.param_slots = intern_params(&self.voices, self.open.as_ref());
-                            self.rebuild_sync_lanes();
-                            // New patch, new node ids, and a new set of module
-                            // keys. Re-taking the subscriptions here is what
-                            // keeps a stale `NodeId` from resolving against a
-                            // slotmap that never issued it.
-                            if let Some(v) = self.voices.first() {
-                                let voice = &v.voice;
-                                self.meter.resubscribe(voice);
-                            }
-                            if let Some(g) = self.pending_makeup.take() {
-                                self.makeup = g;
-                            }
-                            if self.arp_on {
-                                // The scheduler re-presses on its next step.
-                                self.arp_note = None;
-                            } else {
-                                for i in 0..self.held.len() {
-                                    let (n, v) = self.held[i];
-                                    self.press(n, v);
-                                }
-                                // Gates are up and no falling edge was ever
-                                // presented, so nothing needs re-gating — the
-                                // new envelopes are simply fast-forwarded to
-                                // where the old ones were. A note that was
-                                // *not* held (a release tail) is not carried:
-                                // its voice was reallocated, and a tail cannot
-                                // survive a rewire anyway.
-                                for v in &mut self.voices {
-                                    let Some(note) = v.note else { continue };
-                                    let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note)
-                                    else {
-                                        continue;
-                                    };
-                                    v.voice.seed_env_phase(*phase);
-                                }
-                            }
-                            // The new patch's open voice, if it has one and the
-                            // host wants it; a patch with none has nothing to
-                            // hold (the old one went with the old voices).
-                            self.sync_open();
-                            if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
-                                if v.note.is_some() {
-                                    v.voice.seed_env_phase(phase);
-                                }
-                            }
-                            self.event = EVENT_PATCHED;
-                            self.stage = Stage::FadeIn;
-                        } else {
-                            self.stage = Stage::Rebuild { built };
-                        }
-                    }
-                    Err(e) => {
-                        // Keep the old voices; report and fade back in.
-                        self.last_error = e;
-                        self.event = EVENT_PATCH_ERROR;
-                        self.pending = None;
-                        self.pending_makeup = None;
-                        self.stage = Stage::FadeIn;
-                    }
-                }
-            }
-            self.emit_silence(frames);
-            return;
-        }
-        match self.stage {
+        match std::mem::replace(&mut self.stage, Stage::Run) {
             Stage::Run => self.render_into(frames, 0),
-            Stage::FadeOut => {
+            Stage::FadeOut { tree } => {
                 self.render_into(frames, -1);
-                if self.gain <= 0.0 {
-                    self.stage = Stage::Rebuild { built: Vec::new() };
-                }
+                self.stage = if self.gain <= 0.0 {
+                    Stage::Rebuild {
+                        tree,
+                        built: Vec::new(),
+                    }
+                } else {
+                    Stage::FadeOut { tree }
+                };
+            }
+            Stage::Rebuild { tree, built } => {
+                // Silent: compile exactly one voice per quantum. Overruns
+                // here can drop a quantum of *silence* — inaudible.
+                self.rebuild_one(tree, built);
+                self.emit_silence(frames);
             }
             Stage::FadeIn => {
                 self.render_into(frames, 1);
-                if self.gain >= 1.0 {
-                    self.stage = Stage::Run;
-                }
+                self.stage = if self.gain >= 1.0 {
+                    Stage::Run
+                } else {
+                    Stage::FadeIn
+                };
             }
-            Stage::Rebuild { .. } => unreachable!(),
+        }
+    }
+
+    /// One quantum of a swap's rebuild: compile the next voice of `tree`
+    /// onto `built`, and once there are enough, put them in place of the
+    /// old ones and fade in. A tree that does not compile keeps the old
+    /// voices, says why, and fades them back in.
+    fn rebuild_one(&mut self, tree: PatchTree, mut built: Vec<Voice>) {
+        // A patch that listens (or tracks) is built one voice longer: the
+        // last is its open voice (`set_open`), which leads a tracked patch's
+        // other voices, so it alone is no follower.
+        let tracked = has_track(&tree.root);
+        let extra = tree.listens() || tracked;
+        let follow = tracked && built.len() < self.n_voices;
+        match build_voice(&tree, self.sample_rate, &self.input, follow) {
+            Err(e) => {
+                // Keep the old voices; report and fade back in.
+                self.last_error = e;
+                self.event = EVENT_PATCH_ERROR;
+                self.pending_makeup = None;
+                self.stage = Stage::FadeIn;
+            }
+            Ok(v) => {
+                built.push(v);
+                if built.len() < self.n_voices + usize::from(extra) {
+                    self.stage = Stage::Rebuild { tree, built };
+                    return;
+                }
+                let open = if extra { built.pop() } else { None };
+                // The open voice's envelope is carried like a held
+                // note's, so a swap does not re-attack the input.
+                let open_phase = self
+                    .open
+                    .as_ref()
+                    .filter(|v| v.note.is_some())
+                    .map(|v| v.voice.env_phase());
+                // Where every sounding note's amp envelope had got
+                // to, read off the *outgoing* voices while they are
+                // still here. This is the whole of the envelope
+                // carry: re-pressing a held note on a fresh voice
+                // restarts its ADSR from zero, so a sustained pad
+                // re-swelled on every structural edit — the edit
+                // was audible as an event in its own right rather
+                // than as a change to the sound.
+                let carry: Vec<(u8, f64)> = self
+                    .voices
+                    .iter()
+                    .filter_map(|v| Some((v.note?, v.voice.env_phase())))
+                    .collect();
+                self.voices = built;
+                // New voices, new handles: the smoothers indexed
+                // the old table, and the table is remade from the
+                // voices that exist now. This is the one place
+                // outside `new` that allocates for parameters,
+                // and it is inside the swap that already compiles.
+                self.open = open;
+                self.lead = Lead::build(&self.voices, self.open.as_ref());
+                self.smoothers.clear();
+                self.param_slots = intern_params(&self.voices, self.open.as_ref());
+                self.rebuild_sync_lanes();
+                // New patch, new node ids, and a new set of module
+                // keys. Re-taking the subscriptions here is what
+                // keeps a stale `NodeId` from resolving against a
+                // slotmap that never issued it.
+                if let Some(v) = self.voices.first() {
+                    let voice = &v.voice;
+                    self.meter.resubscribe(voice);
+                }
+                if let Some(g) = self.pending_makeup.take() {
+                    self.makeup = g;
+                }
+                if self.arp_on {
+                    // The scheduler re-presses on its next step.
+                    self.arp_note = None;
+                } else {
+                    for i in 0..self.held.len() {
+                        let (n, v) = self.held[i];
+                        self.press(n, v);
+                    }
+                    // Gates are up and no falling edge was ever
+                    // presented, so nothing needs re-gating — the
+                    // new envelopes are simply fast-forwarded to
+                    // where the old ones were. A note that was
+                    // *not* held (a release tail) is not carried:
+                    // its voice was reallocated, and a tail cannot
+                    // survive a rewire anyway.
+                    for v in &mut self.voices {
+                        let Some(note) = v.note else { continue };
+                        let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note) else {
+                            continue;
+                        };
+                        v.voice.seed_env_phase(*phase);
+                    }
+                }
+                // The new patch's open voice, if it has one and the
+                // host wants it; a patch with none has nothing to
+                // hold (the old one went with the old voices).
+                self.sync_open();
+                if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
+                    if v.note.is_some() {
+                        v.voice.seed_env_phase(phase);
+                    }
+                }
+                self.event = EVENT_PATCHED;
+                self.stage = Stage::FadeIn;
+            }
         }
     }
 
@@ -2256,7 +2262,7 @@ pub fn render_take(
     channels: usize,
     sample_rate: f64,
 ) -> String {
-    let Ok(mut poly) = LivePoly::from_json(tree_json, sample_rate, 1) else {
+    let Ok(mut poly) = LivePoly::new(tree_json, sample_rate, 1) else {
         return String::new();
     };
     poly.set_leveler(false);

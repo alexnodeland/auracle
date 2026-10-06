@@ -528,6 +528,120 @@ fn a_held_pad_keeps_its_envelope_across_a_patch_swap() {
     );
 }
 
+/// A held pad, on four voices with the leveler off, past its attack: the
+/// level a swap's tests measure against.
+fn steady_pad(makeup: f64) -> LivePoly {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&pad_json(), 44_100.0, 4).unwrap();
+    poly.set_leveler(false);
+    poly.set_makeup(makeup);
+    poly.note_on(60, 1.0);
+    for _ in 0..400 {
+        let _ = poly.process(128);
+    }
+    poly
+}
+
+/// The loudest sample over the next `quanta` quanta, and how many of them
+/// ended a swap (`EVENT_PATCHED`) or failed one (`EVENT_PATCH_ERROR`).
+fn swap_quanta(poly: &mut LivePoly, quanta: usize) -> (f32, usize, usize) {
+    let (mut loud, mut patched, mut failed) = (0.0f32, 0, 0);
+    for _ in 0..quanta {
+        loud = loud.max(peak(&poly.process(128)));
+        match poly.poll_event() {
+            EVENT_PATCHED => patched += 1,
+            EVENT_PATCH_ERROR => failed += 1,
+            _ => {}
+        }
+    }
+    (loud, patched, failed)
+}
+
+/// **A patch that does not compile keeps the voices playing.** It parses,
+/// so `set_patch` takes it and the swap fades out; the rebuild fails, says
+/// why (`EVENT_PATCH_ERROR`, `last_error`), and fades the old voices back
+/// in, the held note at the level it had, and the makeup sent with the
+/// failed patch is dropped with it.
+#[test]
+fn a_patch_that_does_not_compile_keeps_the_voices_playing() {
+    let mut poly = steady_pad(0.5);
+    let (before, _, _) = swap_quanta(&mut poly, 16);
+    assert_eq!(poly.last_error(), "", "no error before one");
+    let deep = serde_json::to_string(&crate::tests::too_deep()).unwrap();
+    assert!(poly.set_patch(&deep), "it parses, so the swap begins");
+    poly.set_makeup(1.0);
+    let (_, patched, failed) = swap_quanta(&mut poly, 60);
+    assert_eq!((patched, failed), (0, 1), "one failed swap");
+    assert!(
+        poly.last_error().contains("nests"),
+        "the reason is the compiler's: {}",
+        poly.last_error()
+    );
+    let (after, _, _) = swap_quanta(&mut poly, 16);
+    assert!(
+        (after - before).abs() < before * 0.05,
+        "the old voices came back at {after} against {before}, at the old makeup"
+    );
+}
+
+/// **An instrument that cannot be built says why**, as the host shows it
+/// (`String(err)`): text that is not a patch, and a patch the compiler
+/// refuses. Natively the reason is the same `String`.
+#[test]
+fn an_instrument_that_cannot_be_built_says_why() {
+    let unread = LivePoly::new("not json", 44_100.0, 4).err().unwrap();
+    assert!(unread.contains("expected"), "serde's reason: {unread}");
+    let deep = serde_json::to_string(&crate::tests::too_deep()).unwrap();
+    let refused = LivePoly::new(&deep, 44_100.0, 4).err().unwrap();
+    assert!(
+        refused.contains("nests"),
+        "the compiler's reason: {refused}"
+    );
+}
+
+/// **Rapid swaps coalesce.** A swap sent while the last one is rebuilding
+/// restarts the rebuild with the newer patch: one swap lands, and it is the
+/// newest (its filter's cutoff is a live knob; the pad has none).
+#[test]
+fn a_swap_sent_during_a_rebuild_lands_instead_of_it() {
+    let mut poly = steady_pad(0.5);
+    assert!(!poly.set_param("node#cut", 0.5), "the pad has no filter");
+    assert!(poly.set_patch(&pad_json()));
+    // Into the rebuild's silence: four voices take four quanta.
+    let mut quanta = 0;
+    while peak(&poly.process(128)) > 0.0 {
+        quanta += 1;
+        assert!(quanta < 60, "the swap never fell silent");
+    }
+    assert_eq!(poly.poll_event(), EVENT_NONE, "one voice of four is built");
+    assert!(poly.set_patch(&plucked_json()));
+    let (_, patched, failed) = swap_quanta(&mut poly, 60);
+    assert_eq!((patched, failed), (1, 0), "one swap landed");
+    assert!(poly.set_param("node#cut", 0.5), "the newest patch landed");
+}
+
+/// **A makeup sent with a swap waits for it.** The outgoing patch fades out
+/// at its own level, and the new one plays at the new makeup.
+#[test]
+fn a_makeup_sent_with_a_swap_waits_for_it() {
+    let mut poly = steady_pad(0.25);
+    let (before, _, _) = swap_quanta(&mut poly, 16);
+    assert!(poly.set_patch(&pad_json()));
+    poly.set_makeup(0.5);
+    let fading = peak(&poly.process(128));
+    assert!(
+        fading <= before * 1.01,
+        "the outgoing patch was heard at the new makeup: {fading} against {before}"
+    );
+    let (_, patched, _) = swap_quanta(&mut poly, 60);
+    assert_eq!(patched, 1);
+    let (after, _, _) = swap_quanta(&mut poly, 16);
+    assert!(
+        (after / before - 2.0).abs() < 0.1,
+        "the new patch plays at twice the makeup: {after} against {before}"
+    );
+}
+
 /// Below sustain the envelope is unambiguously still in Attack, and the
 /// seeder has to leave it there rather than parking it on the sustain
 /// shelf: a note swapped 30 ms into a 1 s attack must keep rising.
