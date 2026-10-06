@@ -7,7 +7,9 @@
 // ? card, the scope panel, the picture panel and TASTE's selected point; and
 // with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY), a press closes
 // the nearer only. And XY goes from an axis's drop-down too, where the focus
-// stays after a choice.
+// stays after a choice. A step that reads the view never presses in a
+// drop-down: the shell leaves the view up for a press there (`typing`), so
+// the view would stay whatever the closer did.
 const { test, expect, modelView, openKeys, bankTab } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
@@ -64,11 +66,15 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
   await expect(page.locator("#help")).toBeVisible();
   await escCloses(() => expect(page.locator("#help")).toBeHidden(), "the ? card");
 
-  // The scope panel and the picture panel, from ⋯.
-  for (const [item, panel] of [["#scope-btn", "#scope-panel"], ["#image-btn", "#image-panel"]]) {
+  // The scope panel and the picture panel, from ⋯. Each opens with the focus
+  // on its first drop-down; Shift+Tab takes it back to the panel's ×, which
+  // is not a field, so the press is the panel's to spend.
+  for (const [item, panel, close] of [["#scope-btn", "#scope-panel", "#scope-close"], ["#image-btn", "#image-panel", "#image-close"]]) {
     await page.locator("#ovf-btn").click();
     await page.locator(item).click();
     await expect(page.locator(panel)).toBeVisible();
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.locator(close)).toBeFocused();
     await escCloses(() => expect(page.locator(panel)).toBeHidden(), panel);
   }
 
