@@ -1462,10 +1462,9 @@ impl Engine {
         self.audio_lru.retain(|x| *x != id && live.contains(x));
         self.audio_lru.push_back(id);
         let cap = self.cfg.audio_cache.max(1);
-        while self.audio_lru.len() > cap {
-            let Some(evicted) = self.audio_lru.pop_front() else {
-                break;
-            };
+        let past = self.audio_lru.len().saturating_sub(cap);
+        let evicted: Vec<u64> = self.audio_lru.drain(..past).collect();
+        for evicted in evicted {
             if let Some(i) = self.find(evicted) {
                 self.pool[i].render = None;
             }
@@ -1579,16 +1578,14 @@ impl Engine {
     /// `fill_seed` — and so does any chunking of `max_new`, because the cursor
     /// lives in the engine rather than in a loop variable.
     pub fn fill_pool_step<R: Rng>(&mut self, rng: &mut R, max_new: usize) -> usize {
-        self.ensure_fill_seed(rng);
+        let base = self.ensure_fill_seed(rng);
         let mut added = 0;
         while added < max_new
             && self.pool.len() < self.cfg.pool_size
             && self.draw_cursor < self.cfg.max_draws as u64
         {
             let index = self.draw_cursor;
-            let Some(tree) = self.draw_at(index) else {
-                break;
-            };
+            let tree = self.draw_from(base, index);
             self.consume_draw(index);
             if self.pool.iter().any(|c| c.tree == tree) {
                 continue;
@@ -1664,9 +1661,14 @@ impl Engine {
     /// This is what makes a lost farm job re-issuable with no retained state:
     /// the job *is* its index.
     pub fn draw_at(&self, index: u64) -> Option<PatchTree> {
-        let base = self.fill_seed?;
+        Some(self.draw_from(self.fill_seed?, index))
+    }
+
+    /// Draw `index` of the stream based at `base`: [`Engine::draw_at`] for a
+    /// caller that already holds the started stream's seed.
+    fn draw_from(&self, base: u64, index: u64) -> PatchTree {
         let mut sub = StdRng::seed_from_u64(draw_seed(base, index));
-        Some(self.prior.sample_with_rng(&mut sub))
+        self.prior.sample_with_rng(&mut sub)
     }
 
     /// Hand out up to `n` unrendered draws for off-engine featurization.
@@ -1682,9 +1684,9 @@ impl Engine {
     /// [`Engine::set_fill_seed`]); yields nothing otherwise.
     pub fn fill_draw(&mut self, n: usize) -> Vec<Draw> {
         let mut out = Vec::new();
-        if self.fill_seed.is_none() {
+        let Some(base) = self.fill_seed else {
             return out;
-        }
+        };
         let need = self.cfg.pool_size.saturating_sub(self.pool.len());
         if need == 0 {
             return out;
@@ -1702,9 +1704,7 @@ impl Engine {
                 break;
             }
             let index = self.issue_cursor;
-            let Some(tree) = self.draw_at(index) else {
-                break;
-            };
+            let tree = self.draw_from(base, index);
             let dup = self.pool.iter().any(|c| c.tree == tree);
             self.issue_cursor = index + 1;
             out.push(Draw { index, tree, dup });
@@ -1776,10 +1776,8 @@ impl Engine {
                 if !tree.listens() {
                     return pre;
                 }
-                // A duplicate lands nowhere, so there is nothing to measure.
-                if self.pool.iter().any(|c| c.tree == tree) {
-                    return None;
-                }
+                // A duplicate is measured too, and lands nowhere: the caller
+                // passes over a draw the pool already holds.
                 self.measure_draw(tree)
             }
         }
@@ -3610,14 +3608,17 @@ impl Engine {
         let t = (self.cfg.duel_temperature * j_sd).max(1e-9);
         let max_j = best.iter().map(|x| x.2).fold(f64::NEG_INFINITY, f64::max);
         let total: f64 = best.iter().map(|x| ((x.2 - max_j) / t).exp()).sum();
+        // The draw lands on the pair where the running sum reaches it; the
+        // last pair takes what rounding leaves past the end.
         let mut r = rng.gen::<f64>() * total;
-        for &(ci, cj, j, info) in &best {
-            r -= ((j - max_j) / t).exp();
-            if r <= 0.0 {
-                return (cands[ci], cands[cj], info);
-            }
-        }
-        let &(ci, cj, _, info) = best.last().expect("at least one pair");
+        let &(ci, cj, _, info) = best
+            .iter()
+            .find(|&&(_, _, j, _)| {
+                r -= ((j - max_j) / t).exp();
+                r <= 0.0
+            })
+            .or(best.last())
+            .expect("at least one pair");
         (cands[ci], cands[cj], info)
     }
 
