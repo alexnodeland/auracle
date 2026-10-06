@@ -18,9 +18,10 @@ name: PR checks
 #   GitHub didn't close it, and each parent of an issue that closed told,
 #   with its count of sub-issues closed. In the other open issues' bodies,
 #   each task box that names an issue that closed is ticked once every
-#   issue it names is closed (an edit of the body: `issues: write`), and
-#   that issue's comment lists the boxes. Each line it writes is marked, so
-#   a run again adds only what an earlier run left out, and nothing twice.
+#   issue it names is closed as completed (an edit of the body:
+#   `issues: write`), and that issue's comment has a line for each box.
+#   Each line it writes is marked, so a run again adds only what an earlier
+#   run left out, and nothing twice.
 #
 # Neither runs on the merge queue's draft PRs (branches under
 # mergify/merge-queue/: .mergify.yml), whose titles and bodies are Mergify's.
@@ -91,7 +92,8 @@ jobs:
       && !startsWith(github.head_ref, 'mergify/merge-queue/')
     runs-on: ubuntu-24.04
     # Up to a minute of waiting for GitHub to close what the PR closes, and a
-    # few calls per issue (a search and a read or two for the boxes).
+    # few calls per issue: a search, and for each body it ticks boxes in, a
+    # read, a write and a read 5 seconds later, up to three times.
     timeout-minutes: 5
     permissions:
       contents: read

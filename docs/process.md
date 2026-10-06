@@ -207,17 +207,22 @@ Findings come back ranked, and review is **one round**:
   (GitHub's sub-issues) which closed, with which PR, and how many of its
   sub-issues are closed. In the other open issues (an umbrella's
   checklist), it ticks each box that names an issue that closed, once
-  every issue the box names is closed: a box naming `#130 + #153` waits
-  for both. A PR a box names is not an issue to wait for, and a box in
-  code or an HTML comment, or one that names another repository's issue,
-  is left. It changes only the `[ ]`, and only on a line still as it was
-  read: it reads the body again just before the write. A merge into
-  another branch (a PR stacked on another) closes nothing, as GitHub's own
-  closing keywords don't. It writes one comment per issue, each line in it
-  marked (the boxes it ticked are a line of their own): run again (a red
-  run is a read or a write that failed), it posts only the lines missing,
-  and nothing twice. A PR from a fork gets a read-only token there, so its
-  issues are updated by hand.
+  every issue the box names is closed as completed: a box naming
+  `#130 + #153` waits for both. So a box names only the issues whose
+  closing finishes it; a step beyond them (a setting, a rule) gets a box
+  of its own. A PR a box names is not an issue to wait for. A box in code,
+  in an HTML comment or in a quote is left, and so is one that names
+  another repository's issue, or an issue closed as not planned or as a
+  duplicate. It changes only the `[ ]`, and only on a line still as it was
+  read: it reads the body again just before the write, and again a few
+  seconds after it, to tick again a box another merge's run put back (a
+  queue batch merges its PRs seconds apart). A merge into another branch
+  (a PR stacked on another) closes nothing, as GitHub's own closing
+  keywords don't. It writes one comment per issue, each line in it marked
+  (each box it ticked is a line of its own, quoted in code so no one is
+  notified again): run again (a red run is a read or a write that failed),
+  it posts only the lines missing, and nothing twice. A PR from a fork gets
+  a read-only token there, so its issues are updated by hand.
   `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what it
   would do.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
@@ -375,13 +380,15 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 After the merge: the issues it finishes close (GitHub reads `Closes #N`, and
 `PR checks` closes any it missed), the ones it advances and their parents get a
 comment, the boxes in other open issues that name what closed are ticked once
-every issue each names is closed, the plan's progress table gets the PR, and
-the PR's branch deletes itself on GitHub (the repository deletes merged
-branches). Tick by hand only a box the job leaves: one that names no issue
-(only PRs, or nothing), one that names another repository's issue, one whose
-issue closed without a merge, or one the run's log says changed as it was
-read (no later merge comes back for it). Remove the worktree and the local
-branch: `git worktree remove ../auracle-wt-<topic>`,
+every issue each names is closed as completed, the plan's progress table gets
+the PR, and the PR's branch deletes itself on GitHub (the repository deletes
+merged branches). Tick by hand only a box the job leaves, since no later merge
+comes back for it: one that names no issue (only PRs, or nothing); one that
+names another repository's issue, or an issue closed as not planned or as a
+duplicate; one whose issue closed without a merge; one the search missed
+(added in the minute before the merge, so the run's log says nothing of it);
+and one the run's log says changed as it was read. Remove the worktree and
+the local branch: `git worktree remove ../auracle-wt-<topic>`,
 `git branch -D claude/<topic>`.
 
 ## Flakes

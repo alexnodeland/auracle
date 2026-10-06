@@ -164,7 +164,7 @@ session's link line last. Once it merges, `PR checks` comments on each
 `Refs` issue, closes any `Closes` issue GitHub missed, tells each closed
 issue's parent how many of its sub-issues are closed, and ticks the boxes in
 other open issues that name what closed (once every issue a box names is
-closed).
+closed as completed).
 
 A PR that changes what the slow tests cover also gets the `full-ci` label
 (`gh -R alexnodeland/auracle pr edit <n> --add-label full-ci`): the *Slow
@@ -323,23 +323,25 @@ The merge's *Issues on merge* job (`pr-checks.yml`) commented on each
 `Refs` issue, closed any `Closes` issue GitHub missed, told each closed
 issue's parent, and ticked the boxes in other open issues (an umbrella's
 checklist) that name an issue that closed, once every issue each names is
-closed. Don't tick those by hand. Its run's log says what it did to each,
-and why a box naming a closed issue was left (another still open, a line
-changed since it read it); a red run is a read or a write that failed. Read
-it, and once the cause has passed (GitHub's API answering again), run the
-job again: each line it writes is marked, so it posts only what the red run
-left out.
+closed as completed. Don't tick those by hand. Its run's log says what it
+did to each, and why a box naming a closed issue was left (another still
+open, or closed as not planned; a line changed since it read it); a red run
+is a read or a write that failed. Read it, and once the cause has passed
+(GitHub's API answering again), run the job again: each line it writes is
+marked, so it ticks and posts only what the red run left out.
 
 ```bash
 gh -R alexnodeland/auracle run list --workflow pr-checks.yml --branch claude/<topic> --json databaseId,conclusion,event,displayTitle
 gh -R alexnodeland/auracle run rerun <run> --failed
 ```
 
-What it can't do, do by hand. Tick a box it leaves: one that names no issue
-(only PRs, or nothing), one that names another repository's issue, one whose
-issue closed without a merge, or one the run's log says changed as it was
-read (no later merge comes back for it). Update the plan's progress table
-(the task's issue and PR) when the PR did not.
+What it can't do, do by hand. Tick a box it leaves, since no later merge
+comes back for it: one that names no issue (only PRs, or nothing); one that
+names another repository's issue, or an issue closed as not planned or as a
+duplicate; one whose issue closed without a merge; one the search missed
+(added in the minute before the merge, so the run's log says nothing of it);
+and one the run's log says changed as it was read. Update the plan's
+progress table (the task's issue and PR) when the PR did not.
 
 ## Status
 
