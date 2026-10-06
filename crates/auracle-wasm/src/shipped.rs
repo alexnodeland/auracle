@@ -150,32 +150,34 @@ pub fn session(e: &WasmEngine) -> &auracle_session::Engine {
 }
 
 /// Run `job` over `items` on up to `threads` threads, results in item order.
+///
+/// Each result is set once, into a slot of its own: there is no lock, so
+/// nothing to poison. A job that panics panics the scope, and so the caller.
 #[cfg(not(target_arch = "wasm32"))]
-fn par_map<T: Sync, U: Send>(items: &[T], threads: usize, job: impl Fn(&T) -> U + Sync) -> Vec<U> {
+fn par_map<T: Sync, U: Send + Sync>(
+    items: &[T],
+    threads: usize,
+    job: impl Fn(&T) -> U + Sync,
+) -> Vec<U> {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::OnceLock;
     let threads = threads.clamp(1, items.len().max(1));
     if threads == 1 {
         return items.iter().map(job).collect();
     }
     let next = AtomicUsize::new(0);
-    let out: Vec<Mutex<Option<U>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    let out: Vec<OnceLock<U>> = items.iter().map(|_| OnceLock::new()).collect();
     std::thread::scope(|s| {
         for _ in 0..threads {
             s.spawn(|| loop {
                 let i = next.fetch_add(1, Ordering::Relaxed);
                 let Some(item) = items.get(i) else { break };
-                let u = job(item);
-                *out[i].lock().unwrap_or_else(|p| p.into_inner()) = Some(u);
+                let _ = out[i].set(job(item));
             });
         }
     });
     out.into_iter()
-        .map(|m| {
-            m.into_inner()
-                .unwrap_or_else(|p| p.into_inner())
-                .expect("every item ran")
-        })
+        .map(|slot| slot.into_inner().expect("every item ran"))
         .collect()
 }
 
@@ -200,12 +202,12 @@ pub fn boot(threads: usize) -> WasmEngine {
         if draws.is_empty() {
             break;
         }
+        // A draw marked `dup` is rendered too: the mark is a courtesy that
+        // spares the farm a render, and `absorb_prior` refuses a duplicate
+        // itself, so the pool is the same (and the shipped seed's fill
+        // deals none).
         let done = par_map(&draws, threads, |d| {
-            if d.dup {
-                None
-            } else {
-                PreFeaturized::render(d.tree.clone(), &spec, false).ok()
-            }
+            PreFeaturized::render(d.tree.clone(), &spec, false).ok()
         });
         for (d, pre) in draws.iter().zip(done) {
             e.engine.absorb_prior(d.index, pre);
@@ -249,6 +251,11 @@ fn tree_digest(tree_json: &str) -> String {
 /// [`auracle_grammar::rng`]); in the pool only, the renders or the features.
 #[wasm_bindgen]
 pub fn boot_probe() -> String {
+    probe().to_string()
+}
+
+/// [`boot_probe`]'s reply, as a value.
+fn probe() -> serde_json::Value {
     let mut e = WasmEngine::new(SEED, PROBE_POOL);
     let _ = e.fill_draw(0); // starts the stream, takes nothing from it
     let draws: Vec<String> = (0..PROBE_DRAWS)
@@ -283,7 +290,6 @@ pub fn boot_probe() -> String {
             "spread": serde_json::from_str::<serde_json::Value>(&e.phi_scale()).unwrap_or_default(),
         },
     })
-    .to_string()
 }
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
@@ -343,13 +349,10 @@ fn first_difference(
 /// within [`TOLERANCE`], everything else exactly. Native only.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn boot_probe_difference(pinned: &str) -> String {
-    let (Ok(was), Ok(now)) = (
-        serde_json::from_str::<serde_json::Value>(pinned),
-        serde_json::from_str::<serde_json::Value>(&boot_probe()),
-    ) else {
+    let Ok(was) = serde_json::from_str::<serde_json::Value>(pinned) else {
         return "the pinned probe is not JSON".into();
     };
-    first_difference(&was, &now, "probe").unwrap_or_default()
+    first_difference(&was, &probe(), "probe").unwrap_or_default()
 }
 
 /// Render `trees` into `e`'s memo on `threads` threads, so the serial calls

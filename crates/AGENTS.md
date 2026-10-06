@@ -200,8 +200,9 @@ PR that brought one to 100% (auracle-features):
 `auracle-session` routes its one lock, the taste map's remembered axes,
 through one helper, `Engine::drawn_axes`, which
 `a_panic_that_poisons_the_maps_memory_costs_nothing` poisons on purpose.
-The other site is `auracle-wasm/src/shipped.rs`; its crate's coverage PR
-applies the rule.
+A lock no panic can poison is better gone: `auracle-wasm/src/shipped.rs`'s
+parallel map held one only to store each result, and now sets each into a
+slot of its own (`OnceLock`).
 
 **An error no tree reaches records its fault, and the build returns it.**
 A step that only a mistake in the engine's own code can make fail (a
