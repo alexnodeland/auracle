@@ -12,6 +12,10 @@ name: Flake hunt
 #
 # Its own workflow, not a job in the Slow suite, so its hour never holds that
 # workflow's queue on main.
+#
+# Beside it, the speed budgets (ADR-022): the gate records each as an
+# annotation and never fails on one; here they are judged, once a night, on
+# main, and the ones over their limit file an issue of their own.
 
 on:
   schedule:
@@ -47,12 +51,12 @@ jobs:
   # The gate's twelve shards, each run three times over: about twenty
   # minutes a shard, so the job limit leaves room for a slow runner. Four at a
   # time (`max-parallel`), in three rounds of about twenty minutes: it runs at
-  # night beside Search health, which holds three runners for hours, so the
-  # two hold seven of the account's 20 and leave a PR's `CI` (16 at its
-  # widest) nearly all it needs. At eight wide the hunt would be over sooner
-  # but hold eleven, and a PR pushed then would wait for runners. The Slow
-  # suite's nightly run (04:23 UTC, about twenty minutes) is over before this
-  # one starts (05:41 UTC).
+  # night beside Search health, which holds three runners for hours, and the
+  # speed budgets' two, so together they hold nine of the account's 20 and
+  # leave a PR's `CI` (16 at its widest) nearly all it needs. At eight wide
+  # the hunt would be over sooner but hold thirteen, and a PR pushed then
+  # would wait for runners. The Slow suite's nightly run (04:23 UTC, about
+  # twenty minutes) is over before this one starts (05:41 UTC).
   hunt:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
@@ -98,6 +102,85 @@ jobs:
           shard: ${{ matrix.shard }}
           index: ${{ strategy.job-index }}
           args: --grep-invert "@slow|@quarantine" --repeat-each=3
+
+  # The speed budgets, judged (AURACLE_PERF=1): every spec file that records
+  # one (`budget(` in it), each test once, its @slow ones too, seeded as on
+  # the gate. At a fixed AURACLE_CPU_THROTTLE of 1, the runner as it is: at 2
+  # the fixture's slowed worker.js would replace a spec's own (patch_audible's
+  # slowed engine, #166), and those budgets would measure something else.
+  # Each shard's summary names its CPU, the runners differ by about two times.
+  perf:
+    name: Speed budgets (${{ matrix.shard }})
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - name: The specs that record a budget
+        id: files
+        run: echo "files=$(cd tests/web && grep -lE '\bbudget\(' *.spec.js | sed 's|^|/|' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/browser-shard
+        env:
+          AURACLE_PERF: "1"
+          AURACLE_CPU_THROTTLE: "1"
+        with:
+          tier: fast
+          name: perf
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          files: ${{ steps.files.outputs.files }}
+          args: --grep-invert "@quarantine"
+
+  perf-report:
+    name: Speed budgets report
+    needs: perf
+    if: ${{ !cancelled() && needs.perf.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: perf
+          failed: ${{ needs.perf.result == 'failure' }}
+
+  perf-file:
+    name: File the budgets over their limit
+    needs: perf
+    if: always() && github.event_name == 'schedule' && needs.perf.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
+        with:
+          title: Speed budgets over their limit
+          results: ${{ toJSON(needs) }}
+          advice: >-
+            Each budget is how long something took against the limit the app
+            was built to (ADR-022). The gate records them and never fails on
+            one; this run judged them on main, and the run's summary lists each
+            one over its limit, with the CPU each shard ran on. Read whether the
+            app got slower or the runner was slow. A failure there that is not
+            a budget is the Flake hunt's to find.
 
   # Which tests failed, and on which of their three runs, in one report.
   report:

@@ -159,6 +159,29 @@ runs. No retries anywhere
   hangs fails the test rather than taking the shard's remaining time. When the app gets faster, a spec that expected to see
   an intermediate state may miss it: accept either state rather than slowing
   the app down. A timeout under about 1.5 s is a flake waiting to happen.
+- **Time is one of three kinds**
+  ([ADR-022](../../docs/decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)):
+  a slow runner may make a test slower, never wrong.
+  - *An engine fact:* wait for the reply that answers your request (the
+    reply carrying its token, the request sent after the gesture), through
+    `app.reply` or `app.engine`, not for a time.
+  - *A promise about the app's own timeline:* assert it on the app's clock.
+    Read the state in the gesture's own task, inside the `page.evaluate` that
+    makes it, before its first `await` (the pair swapped by the click, the
+    offer handed over by the press); assert order through the tap (no `duel`
+    request between the click and the cards changing, the sign up before the
+    edit's reply landed: `app.log`, `app.sent`, `app.replies`); read the
+    app's own marks (`app.marks("patch-opened")`, each with its `detail`).
+    `page.clock` fast-forwards a main-thread window, in a spec that needs it
+    only: it fakes `performance.now` and `requestAnimationFrame` too, which
+    the tap and the rack's tweens read.
+  - *A measurement of the machine's speed* ("within 300 ms") is a budget,
+    never an `expect`: `app.budget(name, ms, limit)`, or `budget` from
+    `./fixtures` in a spec not on the fixture yet. It records `budget: <name>
+    <ms> ms of <limit> ms` on the test (the merged report shows it, and the
+    run's summary lists those over) and never fails the gate;
+    `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does (at
+    `AURACLE_CPU_THROTTLE=1`).
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its

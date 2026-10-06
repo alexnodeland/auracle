@@ -47,6 +47,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine), then Browser smoke (`make smoke`'s two specs, against the same engine); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); the same tests instrumented for coverage (built once, run on three runners, then one report: [Coverage](#coverage)); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
+| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 
 **How long.** The fast tier's browser tests are about seventy-five minutes
 of test time in one worker (284 tests at `42bd322`, each a fresh boot), so
@@ -73,7 +74,9 @@ in `tests/web` prints a split without running it.
 end, a failed or cancelled job's included; the *Browser report* job merges a
 run's into one HTML report, every test with the traces of what failed,
 uploaded when a runner failed and linked from the run's summary
-(`npx playwright show-report <dir>` opens it). On main it also folds the
+(`npx playwright show-report <dir>` opens it). The summary also lists every
+speed budget a test recorded over its limit (`shard.mjs budgets`), which the
+gate records and never fails on. On main it also folds the
 run's times into the timings the next run deals by. A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
@@ -265,7 +268,7 @@ from it ([Rules](#rules)).
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
-| `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not |
+| `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1` |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off in the guide pill |
 | `guide_pill.spec.js` | The guide pill (Plan-008 C1) shows one step at a time, bottom left of the stage under PERFORM's well and on PERFORM only, ticks each off as it happens (a note, a turn, an offer), says what the loop was and goes; × stops it across a reload (`auracle-guide`); the first steps' old ticks (`auracle-perform-steps`) carry over and the old key goes |
@@ -348,8 +351,17 @@ from it ([Rules](#rules)).
   1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.
-- **Timing assertions need slack** on a loaded machine (1.5 s or more), and a
-  spec should accept the app being faster than when it was written.
+- **Time in a test is one of three kinds**
+  ([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)):
+  an engine fact is a wait for the reply that answers the request; a promise
+  about the app's own timeline is asserted on its clock (the state in the
+  gesture's own task, order through the tap, the app's marks, `page.clock`,
+  `AudioContext` time); a measurement of the machine's speed is a budget
+  (`tests/web/fixtures.js` `budget`, `app.budget`). A budget is recorded as
+  the test's annotation (`budget: <name> <ms> ms of <limit> ms`) and never
+  fails the gate; with `AURACLE_PERF=1` it is judged, as the nightly *Speed
+  budgets* job does. A wait that remains keeps 1.5 s or more of slack, and a
+  spec accepts the app being faster than when it was written.
 - **A wait on PERFORM's engine growth uses `offerBudget`**
   (`tests/web/perform_budget.js`): an offer, a drift, or work queued ahead of
   one is renders, about a quarter of a second each on a 16-core M3 Max and 1.5 to

@@ -725,7 +725,9 @@ jobs:
   # correctness (a race the app loses, a state it never reaches): it is
   # fixed, or quarantined, never retried (docs/architecture/testing.md
   # § Flakes). How long something took is not asserted here: a spec records
-  # it as a budget, and the budgets are judged elsewhere.
+  # it as a budget (fixtures.js `budget`), the run's summary lists those over
+  # their limit, and the nightly Speed budgets job (flake-hunt.yml) judges
+  # them.
   browser:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]

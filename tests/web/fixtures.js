@@ -51,10 +51,17 @@
 // (an offer, a drift) is bounded by `app.offerBudget()` (perform_budget.js).
 // The one fixed wait is `app.quiet()`: QUIET_MS for "nothing happens", where
 // the check is that something does not occur.
+//
+// Time (ADR-022). How long something took is never a gate assertion: it is a
+// budget, `budget(name, ms, limit)` (`app.budget` on the fixture), recorded as
+// the test's annotation and judged only with AURACLE_PERF=1. What the app
+// promises about its own timeline is asserted as order (the state read in the
+// gesture's own task, the requests and replies in `app.log`) or by its own
+// marks (`app.marks`).
 const base = require("@playwright/test");
 const { expect } = base;
 const shell = require("./shell");
-const budget = require("./perform_budget");
+const performBudget = require("./perform_budget");
 
 /** A wait on the engine that `offerBudget` does not bound: boot, the pool
  *  filling, a fit, a deal, a generation's reply. The longest of these on a CI
@@ -73,6 +80,26 @@ const engineExtension = new WeakMap();
 /** "Nothing happens": long enough for a loaded machine to have done the wrong
  *  thing (testing.md § Rules: timing needs 1.5 s of slack). */
 const QUIET_MS = 1_500;
+/** Speed budgets are judged (ADR-022): AURACLE_PERF=1, as the nightly *Speed
+ *  budgets* job runs the specs that hold one. Without it a budget is
+ *  recorded and never fails. */
+const PERF = process.env.AURACLE_PERF === "1";
+
+/** A measurement of the machine's speed against the limit the app was built
+ *  to (ADR-022's third kind): how long something took, in ms. Recorded as the
+ *  test's annotation `budget` ("<name> <measured> ms of <limit> ms", with
+ *  "(over)" when it is), which the run's merged report shows. With
+ *  AURACLE_PERF=1 it is judged too, as a soft assertion, so a test's every
+ *  budget is measured. A measurement that is not a number (a loop that gave
+ *  up, a moment never seen) is over. True when it is within its limit.
+ *  Any spec may call it, on the fixture or not (`require("./fixtures")`). */
+function budget(name, measured, limit) {
+  const ok = Number.isFinite(measured) && measured <= limit;
+  const shown = Number.isFinite(measured) ? Math.round(measured) : String(measured);
+  base.test.info().annotations.push({ type: "budget", description: `${name} ${shown} ms of ${limit} ms${ok ? "" : " (over)"}` });
+  if (PERF) expect.soft(Number.isFinite(measured) ? measured : Infinity, `budget: ${name}`).toBeLessThanOrEqual(limit);
+  return ok;
+}
 /** The seed every spec boots with unless it says otherwise, twice: as the
  *  engine's random seed (`?seed=`, apps/web/main.js `seedOverride`) and as
  *  the page's own Math.random (`RANDOM`, seeded as the films seed it). With
@@ -367,7 +394,7 @@ class App {
     const throttle = Number(process.env.AURACLE_CPU_THROTTLE || 0);
     const rate = Math.max(slowEngine || 0, throttle > 1 ? throttle : 0);
     if (busy || rate > 1) {
-      const prefix = (busy ? BUSY : "") + (rate > 1 ? budget.SLOW_ENGINE(rate) : "");
+      const prefix = (busy ? BUSY : "") + (rate > 1 ? performBudget.SLOW_ENGINE(rate) : "");
       await page.route(/\/worker\.js(\?|$)/, async (route) => {
         const resp = await route.fetch();
         await route.fulfill({ response: resp, body: prefix + (await resp.text()), contentType: "text/javascript" });
@@ -424,7 +451,22 @@ class App {
   /** How long PERFORM's engine may take to grow an offer or a drift here
    *  (perform_budget.js); the test's timeout grows by one budget per wait. */
   offerBudget(opts) {
-    return budget.offerBudget(this.page, opts);
+    return performBudget.offerBudget(this.page, opts);
+  }
+
+  /** A speed budget (ADR-022): `budget` above, for this test. */
+  budget(name, measured, limit) {
+    return budget(name, measured, limit);
+  }
+
+  /** The app's own timing marks named `name` (main.js `mark`, a
+   *  `performance.mark("auracle:<name>")`) made after `after` (the page's
+   *  clock), oldest first: { t, detail }. */
+  marks(name, { after = -Infinity } = {}) {
+    return this.page.evaluate(
+      ([n, t]) => performance.getEntriesByName(`auracle:${n}`).filter((e) => e.startTime > t).map((e) => ({ t: e.startTime, detail: e.detail ?? null })),
+      [name, after === -Infinity ? -1e15 : after],
+    );
   }
 
   /** The page's clock, to mark a moment and ask for what came after it. */
@@ -834,4 +876,4 @@ const test = base.test.extend({
 
 });
 
-module.exports = { test, expect, openApp, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };
+module.exports = { test, expect, openApp, budget, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };
