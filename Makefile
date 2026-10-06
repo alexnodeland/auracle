@@ -174,9 +174,27 @@ sound:
 ## flake routing passes its tests: which issue a failed test is said on
 ## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue);
 ## and so do the timings the browser runners are dealt by (tests/web/shard.mjs
-## timings)
+## timings). With COVERAGE=1, what the unit tests ran of apps/web as well, as
+## an lcov in target/js-cov/web.lcov
 web-check: js-check spec-lint
-	node --test apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	$(JS_COV_MKDIR)
+	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs .github/actions/file-issue/file-issue.test.mjs
+
+# COVERAGE=1: Node's own coverage of the lines of apps/web that web-check's
+# unit tests and worker-test run (apps/web/tests and the generated pkg/ left
+# out), written as an lcov per suite in JS_COV_DIR beside the usual output (the
+# spec reporter, named because a second reporter replaces the default). CI's
+# Web and Worker protocol jobs ask for it and upload the lcov to Codecov, a
+# view only: the browser specs, which run most of apps/web, are not measured
+# (docs/architecture/testing.md § Coverage). Off by default, so the local gates
+# run as they always have. Needs Node 22.5 or later (CI's is 22: .node-version).
+JS_COV_DIR := target/js-cov
+NODE_COV = $(if $(COVERAGE),--experimental-test-coverage \
+	--test-coverage-include='apps/web/**' \
+	--test-coverage-exclude='apps/web/tests/**' --test-coverage-exclude='apps/web/pkg/**' \
+	--test-reporter=spec --test-reporter-destination=stdout \
+	--test-reporter=lcov --test-reporter-destination=$(JS_COV_DIR)/$(1).lcov)
+JS_COV_MKDIR = $(if $(COVERAGE),@mkdir -p $(JS_COV_DIR))
 
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no
@@ -242,9 +260,11 @@ smoke-tools:
 ## run as it is in a Node worker thread over the built engine, with no page,
 ## for what it answers and in what order (its lanes). Needs `make wasm` first.
 ## Its four files run side by side on any machine (CI's job limit counts on it).
+## With COVERAGE=1, what they ran of apps/web as well, in target/js-cov/worker.lcov
 worker-test:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine in apps/web/pkg: run `make wasm` first\n'; exit 1; }
-	node --test --test-concurrency=4 tests/worker/*.test.mjs
+	$(JS_COV_MKDIR)
+	node --test --test-concurrency=4 $(call NODE_COV,worker) tests/worker/*.test.mjs
 
 ## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower
