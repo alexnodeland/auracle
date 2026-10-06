@@ -66,3 +66,24 @@ fn attenuation_the_loudness_target_asked_for_is_not_charged_to_the_ceiling() {
         "loudness attenuation was charged to the peak ceiling"
     );
 }
+
+/// **Less than one 400 ms gating block has no loudness**, and normalization
+/// leaves it as it was rather than guessing: the same `None` the absolute
+/// gate gives silence. That holds at a rate too low to fit a block of even
+/// one sample too, where the blocks could not be cut at all.
+#[test]
+fn less_than_one_gating_block_has_no_loudness() {
+    let sr = 44_100.0;
+    let short: Vec<f64> = peaky(0.3, 0.3, sr)[..(0.3 * sr) as usize].to_vec();
+    assert_eq!(integrated_lufs(&short, sr), None);
+    let mut y = short.clone();
+    assert!(normalize_to(&mut y, sr, -18.0).is_none());
+    assert_eq!(
+        y, short,
+        "normalization touched a buffer it could not measure"
+    );
+    assert_eq!(integrated_lufs(&short, 1.0), None);
+    // One block's worth is enough.
+    let block = peaky(0.3, 0.3, sr)[..(0.4 * sr) as usize].to_vec();
+    assert!(integrated_lufs(&block, sr).is_some());
+}
