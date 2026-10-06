@@ -339,6 +339,17 @@ class TheSizesRatchet(unittest.TestCase):
         finally:
             T.CONSUMERS = consumers
 
+    def test_the_frames_type_is_the_scales_ratio_continued(self):
+        # A film's text is set in pixels of its frame, on the type scale's
+        # ratio past the page's steps: --t-frame-n is step n.
+        src = T.load()
+        frame = {n: t["value"] for n, t in src["surfaces"]["stage"]["sizes"].items() if n.startswith("t-frame-")}
+        self.assertTrue(frame)
+        base, ratio = int(src["type"]["tokens"][src["type"]["base"]]["value"][:-2]), src["type"]["ratio"]
+        for name, value in frame.items():
+            step = int(name.rsplit("-", 1)[1])
+            self.assertEqual(value, f"{round(base * ratio**step)}px", name)
+
     def test_every_block_carries_the_reduced_motion_rule(self):
         for c in T.CONSUMERS:
             block = T.BLOCK_RE.search(source(c["file"])).group(0)

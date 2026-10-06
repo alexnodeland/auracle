@@ -155,7 +155,7 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
         let chap = null;
         if (p.chapter) {
           chap = place(el("div", { class: "eyebrow" }, layer, p.chapter), { x: F.x, y: F.y - 44 });
-          chap.style.fontSize = "20px";
+          chap.style.fontSize = "var(--t-frame-3)";
         }
         const cap = captions ? textBlock(layer, { x: 960, y: 1048, w: 1700, cls: "voice", size: 34, align: "center", ax: 0.5, ay: 0.5 }) : null;
         const lines = stage.tl.lines.filter((l) => l.beat === p.beat);

@@ -68,7 +68,7 @@ function sceneHook({ stage, beat, line }) {
       const A = duelCard(under, svg, { x: 190, y: 250, w: 700, h: 430, side: "A", name: "Low Lantern", wave: voiceWave({ f: 1.4, bright: 0.15, seed: 3 }) });
       const B = duelCard(under, svg, { x: 1030, y: 250, w: 700, h: 430, side: "B", name: "Tin Rain", wave: voiceWave({ f: 2.6, bright: 0.8, seed: 4 }) });
       const box = place(el("div", {}, over), { x: 960, y: 170, w: 900, h: 76, ax: 0.5 });
-      Object.assign(box.style, { border: `1.5px solid ${ink("--hairline")}`, borderRadius: "10px", background: ink("--frame-glow"), fontFamily: "Newsreader", fontStyle: "italic", fontSize: "34px", color: ink("--silk-mute"), padding: "14px 24px" });
+      Object.assign(box.style, { border: `1.5px solid ${ink("--hairline")}`, borderRadius: "var(--r2)", background: ink("--frame-glow"), fontFamily: "Newsreader", fontStyle: "italic", fontSize: "var(--t-frame-6)", color: ink("--silk-mute"), padding: "var(--s4) var(--s5)" });
       box.textContent = "describe the sound you want…";
       const strike = place(el("div", {}, over), { x: 960 - 440, y: 208, h: 3, w: 0 });
       strike.style.background = ink("--silk-dim");
@@ -108,7 +108,7 @@ function sceneHears({ stage, beat, line }) {
       const scr = place(el("div", { class: "screen" }, under), { x: 160, y: 150, w: 520, h: 200 });
       const lbl = el("div", { class: "mono" }, under, "Tin Rain · the standard phrase");
       place(lbl, { x: 172, y: 160 });
-      Object.assign(lbl.style, { fontSize: "17px", color: ink("--phos-a-dim"), zIndex: 2 });
+      Object.assign(lbl.style, { fontSize: "var(--t-frame-2)", color: ink("--phos-a-dim"), zIndex: 2 });
       const tr = scope(svg, { x: 180, y: 190, w: 480, h: 140, width: 3, wave: voiceWave({ f: 2.6, bright: 0.8, seed: 4 }) });
       const bars = phiBars(svg, over, { x: 820, y: 140, w: 940, h: 250, values: PHI_B });
       const tag18 = place(el("div", { class: "pill a" }, over, "18 · the sound"), { x: 1290, y: 520, ax: 0.5 });
@@ -169,7 +169,7 @@ function sceneEvidence({ stage, beat, line }) {
       const fb = phiBars(svg, over, { x: 150, y: 420, w: 520, h: 150, labels: false, values: PHI_B });
       const la = place(el("div", { class: "mono" }, over, "A  Low Lantern"), { x: 150, y: 140 });
       const lb = place(el("div", { class: "mono" }, over, "B  Tin Rain"), { x: 150, y: 390 });
-      for (const q of [la, lb]) Object.assign(q.style, { fontSize: "20px", color: ink("--silk-dim") });
+      for (const q of [la, lb]) Object.assign(q.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-dim") });
       const verdict = place(el("div", { class: "pill b" }, over, "you picked B over A"), { x: 410, y: 640, ax: 0.5 });
       // Right: the space of tastes. Axes: brightness (x) and motion (y).
       const O = [1300, 450];
@@ -178,7 +178,7 @@ function sceneEvidence({ stage, beat, line }) {
       el("line", { x1: O[0], y1: O[1] - 330, x2: O[0], y2: O[1] + 330, stroke: ink("--hairline"), "stroke-width": 2 }, axes);
       const ax1 = place(el("div", { class: "mono" }, over, "brighter →"), { x: O[0] + 380, y: O[1] + 14, ax: 1 });
       const ax2 = place(el("div", { class: "mono" }, over, "↑ more motion"), { x: O[0] + 12, y: O[1] - 330 });
-      for (const q of [ax1, ax2]) Object.assign(q.style, { fontSize: "18px", color: ink("--silk-mute") });
+      for (const q of [ax1, ax2]) Object.assign(q.style, { fontSize: "var(--t-frame-2)", color: ink("--silk-mute") });
       const cloud = tasteCloud(svg, { cx: O[0], cy: O[1], r: 300, n: 110, seed: 8 });
       // The picks: each one's preferred direction (b − a), in this plane.
       const picks = [
@@ -273,10 +273,10 @@ function sceneLenses({ stage, beat, line }) {
       });
       const n1 = place(el("div", { class: "voice" }, over, "dark drones"), { x: 560, y: 690, ax: 0.5 });
       const n2 = place(el("div", { class: "voice" }, over, "bright plucks"), { x: 1360, y: 630, ax: 0.5 });
-      for (const q of [n1, n2]) Object.assign(q.style, { fontSize: "40px", color: ink("--silk-dim") });
+      for (const q of [n1, n2]) Object.assign(q.style, { fontSize: "var(--t-frame-7)", color: ink("--silk-dim") });
       const formula = place(el("div", { class: "mono" }, over, ""), { x: 960, y: 130, ax: 0.5, ay: 0.5 });
       formula.innerHTML = `u(x) = max<sub>k</sub> θ<sub>k</sub> · φ(x)`;
-      Object.assign(formula.style, { fontSize: "44px", color: ink("--phos-b"), textShadow: `0 0 20px ${inkA("--phos-b", 0.4)}` });
+      Object.assign(formula.style, { fontSize: "var(--t-frame-7)", color: ink("--phos-b"), textShadow: `0 0 20px ${inkA("--phos-b", 0.4)}` });
       const v1 = voiceLine(over, "And taste isn't one direction. You can love *dark drones* and *bright plucks*.");
       const v2 = voiceLine(over, "So the model keeps _several lenses_, and a sound only has to please _one_ of them.");
       const tLove = wordTime(l1, "love");
@@ -320,10 +320,10 @@ function sceneForecast({ stage, beat, line }) {
       const A = duelCard(under, svg, { x: 250, y: 330, w: 600, h: 360, side: "A", name: "Soft Engine", wave: voiceWave({ f: 1.5, bright: 0.3, seed: 31 }) });
       const B = duelCard(under, svg, { x: 1070, y: 330, w: 600, h: 360, side: "B", name: "Pale Wire", wave: voiceWave({ f: 2.3, bright: 0.65, seed: 32 }) });
       const note = place(el("div", {}, over), { x: 960, y: 190, ax: 0.5, ay: 0.5 });
-      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "36px", color: ink("--phos-b"), textShadow: `0 0 20px ${inkA("--phos-b", 0.45)}`, border: `1.5px dashed ${ink("--phos-b-dim")}`, borderRadius: "10px", padding: "14px 30px" });
+      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "var(--t-frame-6)", color: ink("--phos-b"), textShadow: `0 0 20px ${inkA("--phos-b", 0.45)}`, border: `1.5px dashed ${ink("--phos-b-dim")}`, borderRadius: "var(--r2)", padding: "var(--s4) var(--s6)" });
       note.textContent = "forecast: B, 64%";
       const shot = place(el("img", { src: "../../../landing/assets/screens/taste-trust.webp" }, over), { x: 960, y: 520, w: 1100, ax: 0.5, ay: 0.5 });
-      Object.assign(shot.style, { borderRadius: "12px", boxShadow: `0 0 0 1px ${ink("--hairline")}, 0 40px 90px ${inkA("--black", 0.7)}` });
+      Object.assign(shot.style, { borderRadius: "var(--r3)", boxShadow: `0 0 0 1px ${ink("--hairline")}, 0 40px 90px ${inkA("--black", 0.7)}` });
       const v1 = voiceLine(over, "Before every duel, it _writes down a forecast_. Afterwards, it checks.");
       const v2 = voiceLine(over, "The TRUST view shows how honest those forecasts have been, even when the answer is: _no better than a coin flip, yet_.", { size: 46 });
       const tWrites = wordTime(l1, "writes");
@@ -378,13 +378,13 @@ function sceneSearch({ stage, beat, line }) {
       el("circle", { cx: attractor[0], cy: attractor[1], r: 10, fill: ink("--phos-b") }, aG);
       const gram = place(el("div", { class: "plate" }, under), { x: 90, y: 330, w: 220, h: 300 });
       const gl = el("div", { class: "silk" }, gram, "GRAMMAR");
-      Object.assign(gl.style, { position: "absolute", left: "20px", top: "18px", fontSize: "18px" });
+      Object.assign(gl.style, { position: "absolute", left: "20px", top: "18px", fontSize: "var(--t-frame-2)" });
       const gtxt = el("div", { class: "mono" }, gram, "source\n → shape\n → filter\n → space\n ~ mod");
-      Object.assign(gtxt.style, { position: "absolute", left: "20px", top: "60px", fontSize: "18px", whiteSpace: "pre", color: ink("--phos-a-dim"), lineHeight: "1.6" });
+      Object.assign(gtxt.style, { position: "absolute", left: "20px", top: "60px", fontSize: "var(--t-frame-2)", whiteSpace: "pre", color: ink("--phos-a-dim"), lineHeight: "1.6" });
       const counter = place(el("div", { class: "mono" }, over, ""), { x: 1450, y: 640, ax: 0.5 });
-      Object.assign(counter.style, { fontSize: "30px", color: ink("--phos-b") });
+      Object.assign(counter.style, { fontSize: "var(--t-frame-5)", color: ink("--phos-b") });
       const sub = place(el("div", { class: "mono" }, over, "heard silently, scored against your taste"), { x: 1450, y: 690, ax: 0.5 });
-      Object.assign(sub.style, { fontSize: "18px", color: ink("--silk-dim") });
+      Object.assign(sub.style, { fontSize: "var(--t-frame-2)", color: ink("--silk-dim") });
       const out = [0, 1].map((i) => {
         const d = place(el("div", { class: "pill a" }, over, i ? "B  Night Bloom" : "A  Wide Ember"), { x: 1740, y: 430 + i * 100, ax: 0.5, ay: 0.5 });
         return d;
@@ -436,7 +436,7 @@ function sceneReading({ stage, beat, line }) {
       const { over } = stack(layer);
       const shots = ["taste-map", "taste-styles", "taste-directions"].map((n, i) => {
         const img = place(el("img", { src: `../../../landing/assets/screens/${n}.webp` }, over), { x: 960, y: 480, w: 1200, ax: 0.5, ay: 0.5 });
-        Object.assign(img.style, { borderRadius: "12px", boxShadow: `0 0 0 1px ${ink("--hairline")}, 0 40px 90px ${inkA("--black", 0.7)}` });
+        Object.assign(img.style, { borderRadius: "var(--r3)", boxShadow: `0 0 0 1px ${ink("--hairline")}, 0 40px 90px ${inkA("--black", 0.7)}` });
         return img;
       });
       const cap = ["a map of every patch you've heard", "the styles it found", "each direction, with its uncertainty"];
@@ -499,17 +499,18 @@ function sceneOutro({ stage, beat, line }) {
     build(layer) {
       const { svg, over } = stack(layer);
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "96px";
+      lock.style.fontSize = "var(--t-frame-11)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 96;
-      const gap = 0.62 * 96;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       const mk = mark(svg, { cx: left + markPx / 2, cy: 430, size: markPx });
       place(lock, { x: left + markPx + gap, y: 430, ay: 0.5 });
       const v1 = voiceLine(over, "Your taste, _learned in the open_. And it never leaves your browser.", { y: 620, size: 56 });
       const fine = place(el("div", { class: "mono" }, over, "the model and your picks stay on your machine"), { x: 960, y: 720, ax: 0.5 });
-      Object.assign(fine.style, { fontSize: "22px", color: ink("--silk-mute"), letterSpacing: "0.06em" });
+      Object.assign(fine.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-mute"), letterSpacing: "0.06em" });
       return (tl, t) => {
         const u = ramp(t, b.t0 - 0.2, b.t0 + 0.7, E.out4);
         mk.update({ tile: u, outer: u, inner: ramp(t, b.t0 - 0.3, b.t0 + 0.4), core: E.outBack(ramp(t, b.t0 - 0.3, b.t0 + 0.2, E.lin)) });

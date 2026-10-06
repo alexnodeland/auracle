@@ -159,6 +159,20 @@
   --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
   --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
   --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+  /* stage: sizes only this surface uses */
+  --t-frame-1: 14px;   /* 12 × 1.2¹: a label inside a drawn instrument: a knob's, a key's, a cell's */
+  --t-frame-2: 17px;   /* 12 × 1.2²: a plate's line, a readout, an axis */
+  --t-frame-3: 21px;   /* 12 × 1.2³: an eyebrow, a pill, a legend, the small print */
+  --t-frame-4: 25px;   /* 12 × 1.2⁴: a card's line, a term, a module's name */
+  --t-frame-5: 30px;   /* 12 × 1.2⁵: a counter, an address, a score */
+  --t-frame-6: 36px;   /* 12 × 1.2⁶: a note, a prior, the model's words */
+  --t-frame-7: 43px;   /* 12 × 1.2⁷: a burned-in caption, a formula, a figure's big number */
+  --t-frame-8: 52px;   /* 12 × 1.2⁸: a headline number */
+  --t-frame-9: 62px;   /* 12 × 1.2⁹: a frequency, set large */
+  --t-frame-11: 89px;  /* 12 × 1.2¹¹: the lockup that ends a film */
+  --t-frame-12: 107px; /* 12 × 1.2¹²: the launch film's closing lockup */
+  --t-frame-14: 154px; /* 12 × 1.2¹⁴: the launch film's opening lockup */
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -255,7 +269,7 @@ body { overflow: hidden; }
 }
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: var(--t-frame-3);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--phos-a-dim);
@@ -294,13 +308,13 @@ body { overflow: hidden; }
   position: absolute;
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--r2);
   box-shadow: inset 1px 1px 0 var(--white-07), 0 18px 50px var(--black-55);
 }
 .screen {
   position: absolute;
   background: var(--bezel);
-  border-radius: 6px;
+  border-radius: var(--r2);
   box-shadow: inset 0 0 0 1px var(--black), inset 0 2px 14px var(--black-90);
   overflow: hidden;
 }
@@ -335,13 +349,13 @@ body { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-  gap: 10px;
-  padding: 10px 22px;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
   border-radius: 999px;
   border: 1px solid var(--hairline);
   background: var(--panel);
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: var(--t-frame-3);
   letter-spacing: 0.08em;
   color: var(--silk-dim);
 }
@@ -355,11 +369,11 @@ body { overflow: hidden; }
   bottom: 64px;
   transform: translateX(-50%);
   max-width: 1400px;
-  padding: 10px 22px;
+  padding: var(--s3) var(--s5);
   background: var(--bezel-78);
-  border-radius: 6px;
+  border-radius: var(--r2);
   font-family: var(--font-silk);
-  font-size: 40px;
+  font-size: var(--t-frame-7);
   line-height: 1.25;
   text-align: center;
   color: var(--silk);
@@ -371,11 +385,11 @@ body { overflow: hidden; }
   position: fixed;
   right: 12px;
   bottom: 12px;
-  font: 12px var(--font-mono);
+  font: var(--t-value) var(--font-mono);
   color: var(--silk-dim);
   background: var(--black-60);
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r2);
   z-index: 10;
 }
 .capture #hud { display: none; }

@@ -178,7 +178,7 @@ function sceneOutro(stage, beat) {
       const sub = textBlock(over, { x: 960, y: 628, w: 1400, cls: "voice", size: 58, align: "center", ax: 0.5, ay: 0.5, text: "what it learned about you" });
       const guide = el("div", { class: "pill a" }, over, "the guide  ·  views  ›  EVOLVE");
       place(guide, { x: 960, y: 772, ax: 0.5, ay: 0.5 });
-      Object.assign(guide.style, { fontSize: "26px", padding: "14px 30px" });
+      Object.assign(guide.style, { fontSize: "var(--t-frame-4)", padding: "var(--s4) var(--s6)" });
       // The mark, small, above: the posterior contracting onto one taste.
       const mk = mark(svg, { cx: 960, cy: 300, size: 76 });
       const black = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });

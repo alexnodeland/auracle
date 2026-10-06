@@ -117,15 +117,18 @@ rasters), the 404, and the film stage. It holds:
   | `radius` | `--r1` 4 px (a row, a chip), `--r2` 8 (a button, a pad, a card), `--r3` 14 (the well, a sheet). A circle is `50%` and a pill `999px`. |
   | `motion` | `--d-press` 90 ms, `--d-state` 180 ms, `--d-move` 320 ms; `--e-settle` (arriving and coming to rest) and `--e-swap` (one thing giving way to another). Under `prefers-reduced-motion` every duration is 0 ms. A loop's period is none of these. |
 
-- **each surface's own sizes**: the rack's type tier in the app
-  (`--t-rack-*`, drawn through its camera and sized at zoom 1), the landing
-  page's display tier, prose size and wide steps (`--s8`, `--s9`), the
-  headings of the brand page and the 404, and the docs' prose and headings
-  (`--t-prose`, `--t-h1`, `--t-h3`). The docs' sizes go in their
-  stylesheet's `:root`, which both themes share: a consumer whose families'
-  rule holds no palette names the surface whose sizes it writes (`sizes` in
-  `tokens.py`). A surface may restate a shared size for itself, with a note
-  that says why (the landing page reads its prose at `1rem`).
+- **each surface's own sizes**: the rack's type tier in the app (`--t-rack-*`,
+  drawn through its camera and sized at zoom 1), the landing page's display
+  tier, prose size and wide steps (`--s8`, `--s9`), the headings of the brand
+  page and the 404, the docs' prose and headings (`--t-prose`, `--t-h1`,
+  `--t-h3`), and the film stage's frame tier: a film's text is set in pixels
+  of its 1920 × 1080 frame, on the type scale's ratio continued past the
+  page's steps (`--t-frame-n` is step n, 12 × 1.2ⁿ rounded, which
+  `test_tokens.py` holds). The docs' sizes go in their stylesheet's `:root`,
+  which both themes share: a consumer whose families' rule holds no palette
+  names the surface whose sizes it writes (`sizes` in `tokens.py`). A surface
+  may restate a shared size for itself, with a note that says why (the landing
+  page reads its prose at `1rem`).
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS
 beside it.

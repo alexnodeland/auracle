@@ -14,7 +14,7 @@ const F = { x: 120, y: 70, w: 1680, h: 945 };
 function scrim(layer, alpha) {
   const d = place(el("div", {}, layer), { x: F.x, y: F.y, w: F.w, h: F.h });
   Object.assign(d.style, {
-    borderRadius: "14px",
+    borderRadius: "var(--r3)",
     background: `radial-gradient(90% 80% at 50% 46%, ${inkA("--rack", alpha)} 0%, ${inkA("--bezel", Math.min(1, alpha + 0.08))} 100%)`,
   });
   return d;
@@ -97,7 +97,7 @@ function endCard(stage, b, l6) {
       const { lock, wm, mk } = lockup(layer, svg, { cy: 440, size: 96 });
       const url = el("div", { class: "pill a" }, layer, "auracle.alexnodeland.com  ▸");
       place(url, { x: 960, y: 590, ax: 0.5, ay: 0.5 });
-      Object.assign(url.style, { fontSize: "28px", padding: "14px 32px" });
+      Object.assign(url.style, { fontSize: "var(--t-frame-5)", padding: "var(--s4) var(--s6)" });
       const note = textBlock(layer, { x: 960, y: 672, w: 1400, cls: "mono", size: 21, align: "center", ax: 0.5, ay: 0.5 });
       Object.assign(note.style, { letterSpacing: "0.14em", textTransform: "uppercase", color: ink("--silk-mute") });
       note.textContent = "the instrument · the guide · a film for each view";

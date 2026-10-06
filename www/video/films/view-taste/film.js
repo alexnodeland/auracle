@@ -286,7 +286,7 @@ function outroCard(stage, b) {
       go.innerHTML = `go play, and keep picking in <span class="gb">EVOLVE</span>`;
       const guide = el("div", { class: "pill b" }, layer, "the guide  ›  the four views  ›  TASTE");
       place(guide, { x: 960, y: 738, ax: 0.5, ay: 0.5 });
-      Object.assign(guide.style, { fontSize: "26px", padding: "14px 30px" });
+      Object.assign(guide.style, { fontSize: "var(--t-frame-4)", padding: "var(--s4) var(--s6)" });
       const url = textBlock(layer, { x: 960, y: 800, w: 1200, cls: "mono", size: 22, align: "center", ax: 0.5, ay: 0.5 });
       url.textContent = "auracle.alexnodeland.com/docs";
       const svg = svgLayer(layer);

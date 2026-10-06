@@ -229,10 +229,10 @@ export function cable(parent, { p0, p1, sag = 80, color = "a", width = 5 }) {
 export function plate(layer, svg, { x, y, w = 250, h = 190, name, kind = "", knobs = 2, color = "a", seed = 1 }) {
   const div = place(el("div", { class: "plate" }, layer), { x, y, w, h });
   const title = el("div", { class: "silk" }, div, name);
-  Object.assign(title.style, { position: "absolute", left: "18px", top: "14px", fontSize: "19px", letterSpacing: "0.16em" });
+  Object.assign(title.style, { position: "absolute", left: "18px", top: "14px", fontSize: "var(--t-frame-3)", letterSpacing: "0.16em" });
   if (kind) {
     const k = el("div", { class: "mono" }, div, kind);
-    Object.assign(k.style, { position: "absolute", right: "16px", top: "16px", fontSize: "14px", color: ink("--silk-mute") });
+    Object.assign(k.style, { position: "absolute", right: "16px", top: "16px", fontSize: "var(--t-frame-1)", color: ink("--silk-mute") });
   }
   for (const [sx, sy] of [[8, 8], [w - 20, 8], [8, h - 20], [w - 20, h - 20]]) {
     const s = el("i", { class: "screw" }, div);
@@ -523,12 +523,12 @@ export function duelCard(under, svg, { x, y, w = 620, h = 400, side = "A", name 
   const div = place(el("div", { class: "plate" }, under), { x, y, w, h });
   const badge = el("div", {}, div, side);
   Object.assign(badge.style, {
-    position: "absolute", left: "22px", top: "20px", width: "46px", height: "46px", borderRadius: "8px",
+    position: "absolute", left: "22px", top: "20px", width: "46px", height: "46px", borderRadius: "var(--r2)",
     border: `1.5px solid ${ink("--phos-a-deep")}`, display: "grid", placeItems: "center",
-    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "26px", color: ink("--phos-a"),
+    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "var(--t-frame-4)", color: ink("--phos-a"),
   });
   const nm = el("div", { class: "mono" }, div, name);
-  Object.assign(nm.style, { position: "absolute", left: "86px", top: "28px", fontSize: "26px", color: ink("--silk"), letterSpacing: "0.02em" });
+  Object.assign(nm.style, { position: "absolute", left: "86px", top: "28px", fontSize: "var(--t-frame-4)", color: ink("--silk"), letterSpacing: "0.02em" });
   const scr = el("div", { class: "screen" }, div);
   Object.assign(scr.style, { left: "22px", top: "86px", width: `${w - 44}px`, height: `${h - 190}px` });
   const hear = el("div", { class: "pill" }, div, `▶  hear ${side}`);
@@ -538,7 +538,7 @@ export function duelCard(under, svg, { x, y, w = 620, h = 400, side = "A", name 
   const tr = scope(svg, { x: x + 40, y: y + 100, w: w - 80, h: h - 218, width: 3, points: 300, wave: wave || voiceWave({ seed: side.charCodeAt(0) }), color });
   const check = el("div", {}, div, "✓");
   Object.assign(check.style, {
-    position: "absolute", right: "22px", top: "16px", fontSize: "40px", color: ink("--phos-a"),
+    position: "absolute", right: "22px", top: "16px", fontSize: "var(--t-frame-7)", color: ink("--phos-a"),
     textShadow: `0 0 18px ${inkA("--phos-a", 0.6)}`, opacity: 0,
   });
   return {
@@ -575,9 +575,9 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     Object.assign(s.style, { left: `${sx}px`, top: `${sy}px` });
   }
   const title = el("div", { class: "silk" }, div, "PERFORM");
-  Object.assign(title.style, { position: "absolute", left: "40px", top: "30px", fontSize: "22px", letterSpacing: "0.2em" });
+  Object.assign(title.style, { position: "absolute", left: "40px", top: "30px", fontSize: "var(--t-frame-3)", letterSpacing: "0.2em" });
   const nm = el("div", { class: "mono" }, div, name);
-  Object.assign(nm.style, { position: "absolute", left: "200px", top: "31px", fontSize: "22px", color: ink("--silk-dim") });
+  Object.assign(nm.style, { position: "absolute", left: "200px", top: "31px", fontSize: "var(--t-frame-3)", color: ink("--silk-dim") });
   // Screens.
   const sA = { x: x + 40, y: y + 82, w: 560, h: 200 };
   const sB = { x: x + w - 600, y: y + 82, w: 560, h: 200 };
@@ -586,7 +586,7 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     place(d, { x: s.x, y: s.y, w: s.w, h: s.h });
     const l = el("div", { class: "mono" }, under, lbl);
     place(l, { x: s.x + 12, y: s.y + 10 });
-    Object.assign(l.style, { fontSize: "17px", color: cls === "a" ? ink("--phos-a-dim") : ink("--phos-b-dim"), zIndex: 2 });
+    Object.assign(l.style, { fontSize: "var(--t-frame-2)", color: cls === "a" ? ink("--phos-a-dim") : ink("--phos-b-dim"), zIndex: 2 });
   }
   const trA = scope(svg, { x: sA.x + 24, y: sA.y + 40, w: sA.w - 48, h: sA.h - 60, width: 3, color: "a", points: 320 });
   const trB = scope(svg, { x: sB.x + 24, y: sB.y + 40, w: sB.w - 48, h: sB.h - 60, width: 3, color: "b", points: 320 });
@@ -598,11 +598,11 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     const py0 = y + 92 + Math.floor(i / 3) * 96;
     const d = place(el("div", {}, under), { x: px0, y: py0, w: 100, h: 84 });
     Object.assign(d.style, {
-      borderRadius: "10px", border: `1px solid ${ink("--hairline")}`,
+      borderRadius: "var(--r2)", border: `1px solid ${ink("--hairline")}`,
       background: `linear-gradient(180deg,${ink("--knob-body")},${ink("--pad-lo")})`,
       boxShadow: `inset 1px 1px 0 ${inkA("--white", 0.08)}, 0 6px 14px ${inkA("--black", 0.5)}`,
-      display: "grid", placeItems: "end center", paddingBottom: "12px",
-      fontFamily: "Jost", fontWeight: 500, fontSize: "15px", letterSpacing: "0.16em", color: ink("--silk-dim"),
+      display: "grid", placeItems: "end center", paddingBottom: "var(--s3)",
+      fontFamily: "Jost", fontWeight: 500, fontSize: "var(--t-frame-1)", letterSpacing: "0.16em", color: ink("--silk-dim"),
     });
     d.textContent = p.toUpperCase();
     pads[p.toLowerCase()] = { d, pos: [px0 + 50, py0 + 42] };
@@ -622,14 +622,14 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
   const hy = y + 590;
   const hoodLbl = el("div", { class: "mono" }, over, "under the hood");
   place(hoodLbl, { x: x + 40, y: hy - 12 });
-  Object.assign(hoodLbl.style, { fontSize: "17px", color: ink("--silk-mute"), letterSpacing: "0.08em" });
+  Object.assign(hoodLbl.style, { fontSize: "var(--t-frame-2)", color: ink("--silk-mute"), letterSpacing: "0.08em" });
   const strip = hood.map((n, i) => {
     const cx = x + 330 + i * 150;
     const k = knob(svg, { cx, cy: hy, r: 20, color: "a" });
     k.set(0.4);
     const t = el("div", { class: "mono" }, over, n);
     place(t, { x: cx + 32, y: hy - 12 });
-    Object.assign(t.style, { fontSize: "16px", color: ink("--silk-dim") });
+    Object.assign(t.style, { fontSize: "var(--t-frame-2)", color: ink("--silk-dim") });
     return { k, cx, cy: hy, v: 0.4, t };
   });
   return { div, nm, trA, trB, sA, sB, pads, knobs, strip, h, y, x, w };
@@ -670,7 +670,7 @@ export function phiBars(parent, over, { x, y, w = 900, h = 260, color = "a", lab
     ? values.map((_, i) => {
         const t = el("div", { class: "mono" }, over, PHI_AUDIO[i] || "");
         place(t, { x: x + i * bw + bw / 2, y: y + h + 16, ax: 0.5 });
-        Object.assign(t.style, { fontSize: "13px", color: ink("--silk-mute"), writingMode: "vertical-rl", transform: "rotate(180deg)", transformOrigin: "50% 0" });
+        Object.assign(t.style, { fontSize: "var(--t-frame-1)", color: ink("--silk-mute"), writingMode: "vertical-rl", transform: "rotate(180deg)", transformOrigin: "50% 0" });
         return t;
       })
     : [];
