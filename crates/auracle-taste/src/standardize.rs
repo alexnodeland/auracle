@@ -151,9 +151,6 @@ impl Standardizer {
         for j in 0..d {
             col.clear();
             col.extend(rows.iter().map(|r| r[j]).filter(|x| x.is_finite()));
-            if col.is_empty() {
-                continue; // mean 0 / σ 1: no usable evidence on this axis
-            }
             // `col` stays in **row order** and the quantiles come off a copy.
             // Floating-point addition is not associative, so summing the sorted
             // column would move the mean by a ULP on clean data — and the whole
@@ -179,10 +176,12 @@ impl Standardizer {
                     }
                 }
             }
-            // Finite by construction for any real column, but a column of
-            // ±1e308s overflows the moments to ±∞ — and `serde_json` writes a
-            // non-finite float as `null`, which the profile then cannot load.
-            // The degenerate case is the honest one here too.
+            // Finite for any real column, but a column of ±1e308s overflows
+            // the moments to ±∞ — and `serde_json` writes a non-finite float
+            // as `null`, which the profile then cannot load. A column with no
+            // finite cell at all has NaN moments (0/0) and lands here too:
+            // mean 0 / σ 1, no usable evidence on this axis. The degenerate
+            // case is the honest one for both.
             if !m.is_finite() || !s.is_finite() {
                 continue;
             }

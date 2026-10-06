@@ -800,10 +800,9 @@ impl TastePosterior {
     /// every other stochastic step in this engine is seeded and reproducible
     /// and this one has no reason not to be.
     pub fn resampled(&self) -> TastePosterior {
+        // With no draws the loop below never runs, and this is the empty
+        // posterior it was given.
         let n = self.samples.len();
-        if n == 0 {
-            return self.clone();
-        }
         let step = 1.0 / n as f64;
         let mut u = 0.5 * step;
         let mut cum = 0.0;
@@ -847,10 +846,8 @@ impl TastePosterior {
         session: usize,
         absent: &[usize],
     ) -> TastePosterior {
+        // With no draws every vector below is empty, and so is the result.
         let n = self.samples.len();
-        if n == 0 {
-            return self.clone();
-        }
         let ll: Vec<f64> = self
             .samples
             .iter()
