@@ -160,14 +160,18 @@ test("a preset's controls are live within a second of its click", async ({ page 
   await goLevel(page, "perform");
   await bankTab(page, "presets");
   for (const name of ["Acid Line", "Bell Jar", "Glass Pad"]) {
-    const row = page.locator(".bank-item", { hasText: name }).first();
-    await row.scrollIntoViewIfNeeded();
+    await expect(page.locator(".bank-item", { hasText: name }).first()).toBeAttached();
     const [ms, named, steps, insert, liveAtName, how] = await page.evaluate(
       async ([name, js, watch]) => {
         window.__want = name;
         window.__named = null;
         eval(watch);
         const el = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === name);
+        // Into view as a player's click finds it, in the click's own task: the
+        // bank is rebuilt by every reply that carries the views (an open's
+        // insert, its bench), and a row scrolled to from the test, a turn
+        // earlier, could be gone by the time it was scrolled.
+        el.scrollIntoView({ block: "nearest" });
         const t0 = performance.now();
         const from = window.__steps.length;
         el.click();
