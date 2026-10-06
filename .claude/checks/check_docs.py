@@ -16,7 +16,28 @@ FILES = sorted(
     | set(glob.glob(".claude/README.md"))
 )
 SKIP = ("node_modules/", "target/", ".claude/worktrees/", "www/video/out/")
-FILES = [f for f in FILES if not f.startswith(SKIP) and not any(s in f for s in SKIP)]
+
+
+def in_other_checkout(path):
+    """Whether a path lies in a checkout inside this one: a directory between
+    here and it holds a .git. A branch's worktree lives at
+    .claude/worktrees/<topic> (docs/process.md § Building), with its own copy
+    of every file here. `**` never enters a directory whose name starts with
+    a dot, so the globs don't reach it, and SKIP names it too; this leaves out
+    a worktree or a clone placed anywhere else in the tree."""
+    d = os.path.dirname(path)
+    while d:
+        if os.path.exists(os.path.join(d, ".git")):
+            return True
+        d = os.path.dirname(d)
+    return False
+
+
+def checked(path):
+    return not path.startswith(SKIP) and not any(s in path for s in SKIP) and not in_other_checkout(path)
+
+
+FILES = [f for f in FILES if checked(f)]
 
 LINK = re.compile(r"\]\(([^)#\s]+)(#[^)\s]*)?\)")
 
@@ -71,7 +92,7 @@ for f in FILES:
 # `\theta` and `\top` into a TAB and "heta", and KaTeX renders the rest.
 CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f]")
 for f in sorted(glob.glob("www/**/*.md", recursive=True)):
-    if f.startswith(SKIP) or any(s in f for s in SKIP):
+    if not checked(f):
         continue
     for i, line in enumerate(open(f, encoding="utf-8"), 1):
         m = CONTROL.search(line)

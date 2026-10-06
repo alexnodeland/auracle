@@ -94,7 +94,8 @@ install-hooks:
 	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
 
 ## dev-check: the tooling around the code stays sound: the agent docs'
-## links, anchors and frontmatter, the constants the books quote by name, the
+## links, anchors and frontmatter (this checkout's, never a worktree's inside
+## it, and the check's own tests), the constants the books quote by name, the
 ## design tokens (every generated block current, no color written outside
 ## www/brand/tokens.json, no token redefined after its block, each file's
 ## count of literal sizes and durations at www/brand/sizes-baseline.json, and
@@ -124,6 +125,7 @@ dev-check: $(DEV_CHECKS)
 
 dev-docs:
 	@python3 .claude/checks/check_docs.py
+	@python3 .claude/checks/test_check_docs.py
 dev-names:
 	@python3 www/checknames.py
 dev-tokens:
