@@ -149,8 +149,9 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
   `cargo test` without `--release`, `--profile` or `--doc`, or
-  `cargo nextest run` without `--cargo-profile`, refused on any crate, and
-  `playwright test` refused outside `one_browser.sh`.
+  `cargo nextest run` or `list` without `--cargo-profile`, `--release` or
+  `--archive-file`, refused on any crate, and `playwright test` refused
+  outside `one_browser.sh`.
 
 ## Where to go deeper
 
