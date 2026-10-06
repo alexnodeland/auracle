@@ -1061,10 +1061,15 @@ fn unison_detune_is_wide_and_non_uniform() {
     );
 }
 
-/// Chaos: random notes, knob writes (real and junk addresses), and
-/// patch swaps — output must stay finite forever, no panics.
+/// Chaos: random notes, knob writes (real and junk addresses), patch swaps
+/// (to patches that listen and track too), and every other call the
+/// worklet makes on the render thread (sync, the transport, touch, the
+/// meter, the open voice, RECORD's gate, the input written and cleared),
+/// with garbage among the arguments — output must stay finite forever, no
+/// panics. A panic in any of them poisons the worklet's `LivePoly`.
 #[test]
 fn live_stress_survives_chaos() {
+    quiver::rng::seed(7);
     let mut rng = StdRng::seed_from_u64(0xC405);
     let mut poly = LivePoly::new(&tree_json(&mut rng), 44_100.0, 4).unwrap();
     let sites = [
@@ -1079,9 +1084,24 @@ fn live_stress_survives_chaos() {
         "bogus#x",
         "",
     ];
+    let patches = [input_patch(), tracked_patch(), capture_patch()];
     for i in 0..600 {
-        match rng.gen_range(0..10) {
+        match rng.gen_range(0..18) {
             0 | 1 => poly.note_on(rng.gen_range(36..85), rng.gen_range(0.0..1.2)),
+            2 => poly.note_off(rng.gen_range(36..85)),
+            3 => {
+                let _ = poly.set_param(
+                    sites[rng.gen_range(0..sites.len())],
+                    rng.gen_range(-1.0..2.0),
+                );
+            }
+            4 if i % 37 == 0 => {
+                let _ = poly.set_patch(&tree_json(&mut rng));
+            }
+            4 if i % 41 == 0 => {
+                let _ = poly.set_patch(&patches[rng.gen_range(0..patches.len())]);
+            }
+            5 if i % 97 == 0 => poly.all_off(),
             6 => poly.set_bend(rng.gen_range(-30.0..30.0)),
             7 if i % 11 == 0 => poly.set_arp(
                 rng.gen_bool(0.5),
@@ -1097,19 +1117,39 @@ fn live_stress_survives_chaos() {
                 poly.set_glide(rng.gen_range(-0.5..1.5));
                 poly.set_makeup(rng.gen_range(0.0..10.0));
             }
-            2 => poly.note_off(rng.gen_range(36..85)),
-            3 => {
-                let _ = poly.set_param(
-                    sites[rng.gen_range(0..sites.len())],
-                    rng.gen_range(-1.0..2.0),
+            9 => poly.set_sync(rng.gen_bool(0.5)),
+            10 => poly.set_transport_beats(rng.gen_range(-8.0..64.0)),
+            11 if i % 7 == 0 => poly.restart_transport(),
+            12 => {
+                let site = sites[rng.gen_range(0..sites.len())];
+                let json = format!(
+                    "[[\"{site}\", {}, {}]]",
+                    rng.gen_range(-1.0..1.0),
+                    rng.gen::<f64>()
                 );
+                let _ = poly.set_touch(&json, rng.gen_range(-0.5..1.5));
+                poly.set_touch_base(rng.gen_range(0..3), rng.gen_range(-1.0..2.0));
             }
-            4 if i % 37 == 0 => {
-                let _ = poly.set_patch(&tree_json(&mut rng));
+            13 => {
+                let _ = poly.set_meter(rng.gen_bool(0.5));
             }
-            5 if i % 97 == 0 => poly.all_off(),
+            14 => poly.set_open(rng.gen_bool(0.5)),
+            15 => {
+                let _ = poly.set_record("node", rng.gen_bool(0.5));
+            }
+            16 if i % 5 == 0 => poly.clear_input(),
+            17 => poly.set_leveler(rng.gen_bool(0.5)),
             _ => {}
         }
+        // The worklet writes the input before every quantum, any channel
+        // count it is handed.
+        let frames = rng.gen_range(0..=poly.input_capacity() + 64);
+        let at = poly.input_ptr();
+        let buf = unsafe { std::slice::from_raw_parts_mut(at, LIVE_INPUT_FRAMES * 2) };
+        for x in buf.iter_mut() {
+            *x = rng.gen_range(-1.0..1.0);
+        }
+        poly.write_input(frames, rng.gen_range(0..4));
         let out = poly.process(128);
         assert!(
             out.iter().all(|s| s.is_finite() && s.abs() <= 1.5),
