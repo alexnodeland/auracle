@@ -22,7 +22,7 @@
 // page's markup and styles, the suite's config and the engine, run each
 // view's sample: a few specs per view that go through it end to end.
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, realpathSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -80,8 +80,11 @@ export const NO_VIEW = ["fixture_tap", "boot_agrees"];
 export const ENGINE_SPECS = ["boot_agrees"];
 
 // main.js's sections, by their headings, and the views each draws. The first
-// rule a heading matches wins, so the narrow rules come first. A heading no
-// rule matches (the state, the worker protocol, boot) reaches every view.
+// rule a heading matches wins, so the narrow rules come first, and a word a
+// broader heading holds is anchored (`flow` alone is in "overflow menu"):
+// every alternative must win a heading of main.js, or changed.test.mjs
+// fails. A heading no rule matches (the state, the worker protocol, boot)
+// reaches every view.
 export const SECTIONS = [
   // The rack's engine facts are drawn on PATCH; the fourth names PERFORM's controls.
   [/PERFORM controls turn a knob/, ["patch", "perform"]],
@@ -94,7 +97,7 @@ export const SECTIONS = [
   [/^the model view/, ["shell"]],
   [/taste|TASTE|^profile$/, ["taste"]],
   [
-    /^undo\/redo|workbench|bench|^layout$|freeform|FREEFORM|^touch$|readout flash|cable|flow|mod-slot|MOTION|focus retention|CANVAS|level of detail|silkscreen|fits and moves|minimap|pointer and wheel|plate|auto-pan|frame changed|structural edits|^locks|tree rewrites|sockets|SOCKETS|structure menu|destructive verbs|floating menu|knob geometry|rack keyboard|MODULE TABLE|patch-tree|held modules|NODE BANK|AUDITION|catalog|CONNECTION GRAMMAR|PICK-MODE|wire drawing|SCOPE|scope|IMAGE EXPORT|^selection$|^fonts$|style inlining|PNG tEXt|^an open reaches the voices/,
+    /^undo\/redo|workbench|bench|^layout$|freeform|FREEFORM|^touch$|readout flash|cable|differential flow|flow animation|mod-slot|MOTION|focus retention|CANVAS|level of detail|silkscreen|fits and moves|minimap|pointer and wheel|plate|auto-pan|frame changed|structural edits|^locks|tree rewrites|sockets|SOCKETS|structure menu|destructive verbs|floating menu|knob geometry|rack keyboard|MODULE TABLE|patch-tree|held modules|NODE BANK|AUDITION|catalog|CONNECTION GRAMMAR|PICK-MODE|wire drawing|SCOPE|scope|IMAGE EXPORT|^selection$|^fonts$|style inlining|PNG tEXt|^an open reaches the voices/,
     ["patch"],
   ],
   [/^the levels$|toast|^next step$|job slot|^help overlay$|^overflow menu$|engine failing/, ["shell"]],
@@ -283,4 +286,7 @@ function main(argv) {
   for (const s of got.specs) console.log(s);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main(process.argv.slice(2));
+// Run as a script, not imported (changed.test.mjs): Node gives
+// import.meta.url as the file's real path, so argv's path is resolved too,
+// or a run through a symbolic link would select nothing and say nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main(process.argv.slice(2));

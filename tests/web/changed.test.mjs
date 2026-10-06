@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODULES, VIEWS, NO_VIEW, ENGINE_SPECS, EVERYWHERE, headings, hunks, sectionsTouched, viewsOf, select } from "./changed.mjs";
+import { MODULES, VIEWS, NO_VIEW, ENGINE_SPECS, EVERYWHERE, SECTIONS, headings, hunks, sectionsTouched, viewsOf, select } from "./changed.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -94,6 +94,8 @@ test("main.js's headings name their views, the narrow rules before the broad", (
   assert.deepEqual(viewsOf("what a generation changed (Plan-008 C2b, the third engine fact)"), ["patch"]);
   assert.deepEqual(viewsOf("what a generation does: its seeds, and what it may replace"), ["evolve"]);
   assert.deepEqual(viewsOf("duel flow"), ["evolve"]);
+  assert.deepEqual(viewsOf("differential flow"), ["patch"]);
+  assert.deepEqual(viewsOf("overflow menu"), ["shell"]);
   assert.equal(viewsOf("worker protocol"), null);
 });
 
@@ -164,4 +166,21 @@ test("the real main.js's headings are read: some name a view, and some reach eve
   const hs = headings(readFileSync(join(ROOT, "apps/web/main.js"), "utf8"));
   assert.ok(hs.length > 50, `${hs.length} headings`);
   assert.ok(hs.some((h) => viewsOf(h.title) === null) && hs.some((h) => viewsOf(h.title)?.includes("patch")));
+});
+
+test("every alternative of every section rule wins a heading of the real main.js", () => {
+  // An alternative that only matches headings an earlier rule wins sends
+  // them nowhere it says: PATCH's `flow` once took the shell's "overflow
+  // menu". A rule for a heading main.js no longer has is as wrong.
+  const titles = headings(readFileSync(join(ROOT, "apps/web/main.js"), "utf8")).map((h) => h.title);
+  const first = (t) => SECTIONS.findIndex(([re]) => re.test(t));
+  const dead = [];
+  SECTIONS.forEach(([re], i) => {
+    assert.ok(!/[()]/.test(re.source), `rule ${i} has a group, which splitting at | would cut: ${re.source}`);
+    for (const alt of re.source.split("|")) {
+      const one = new RegExp(alt, re.flags);
+      if (!titles.some((t) => first(t) === i && one.test(t))) dead.push(`rule ${i}: /${alt}/`);
+    }
+  });
+  assert.deepEqual(dead, [], "a rule above it takes every heading these match, or main.js has none: anchor it, move it, or drop it");
 });
