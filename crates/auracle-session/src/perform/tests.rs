@@ -1,12 +1,22 @@
 use super::*;
-use auracle_features::featurize;
 use auracle_grammar::preset_bank;
 
+/// A standardizer fitted on the whole preset bank: the units a test reads
+/// in σ (`REACH_FLOOR`, `MONO_TOL`, a graft's hair). 62 renders, so a test
+/// whose assertion does not read the units fits on
+/// [`preset_standardizer_in`] with a step instead.
 fn preset_standardizer(spec: &PhraseSpec) -> Standardizer {
+    preset_standardizer_in(spec, &RenderMemo::default(), 1)
+}
+
+/// A standardizer fitted on every `step`-th preset, measured through `memo`
+/// (so a test that measures the same presets again pays for them once).
+fn preset_standardizer_in(spec: &PhraseSpec, memo: &RenderMemo, step: usize) -> Standardizer {
     let rows: Vec<Vec<f64>> = preset_bank()
         .iter()
-        .filter_map(|p| featurize(&p.tree, spec).ok())
-        .map(|v| v.features.phi())
+        .step_by(step)
+        .filter_map(|p| featurize_memo(&p.tree, spec, memo, false).ok())
+        .map(|(cf, _)| cf.features.phi())
         .collect();
     Standardizer::fit(&rows)
 }
@@ -145,10 +155,13 @@ fn purity_keeps_the_six_and_extends_to_the_palette() {
 #[test]
 fn grafts_are_transparent_and_do_not_stack() {
     let spec = PhraseSpec::default();
-    let std = preset_standardizer(&spec);
+    // The hair is in the whole bank's σ; the presets sampled below are
+    // measured once, for the fit and for the comparison.
+    let memo = RenderMemo::default();
+    let std = preset_standardizer_in(&spec, &memo, 1);
     let n_audio = AudioFeatures::NAMES.len();
     let z = |t: &PatchTree| {
-        let v = featurize(t, &spec).expect("grafted patch vets");
+        let (v, _) = featurize_memo(t, &spec, &memo, false).expect("grafted patch vets");
         std.transform(&v.features.phi())[..n_audio].to_vec()
     };
     let bright = CONTROLS.iter().position(|c| c.name == "Bright").unwrap();
@@ -330,7 +343,9 @@ fn drift_is_local_and_follows_sigma() {
 #[test]
 fn a_tilt_adds_its_aim_and_costs_no_render() {
     let spec = PhraseSpec::default();
-    let std = Arc::new(preset_standardizer(&spec));
+    // An identity in any units: eight presets fit it (its own memo, so the
+    // render count below starts from nothing).
+    let std = Arc::new(preset_standardizer_in(&spec, &RenderMemo::default(), 8));
     let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
     let memo = RenderMemo::default();
     let inner = VetOnlyFitness {
@@ -714,19 +729,17 @@ fn a_stepped_walk_is_the_walk() {
     assert!(again > 0, "no aimed offer walked twice");
 }
 
-/// The target a job walks is the one it began on: the engine's
-/// standardizer taken away between two of its steps (a refit, or a new
-/// session, while a spare grows) leaves it where it was.
+/// The target a job walks is the one it began on: picks that reweight the
+/// posterior between two of its steps (the player answers while a spare
+/// grows), and then the engine's standardizer taken away (a refit, or a
+/// new session), leave it where it was. The picks do move the target a new
+/// job would walk, or this would compare nothing.
 #[test]
 fn a_job_keeps_the_target_it_began_on() {
-    use crate::engine::{Engine, SessionConfig};
+    use crate::testkit::{contrary_picks, taught};
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    let mut engine = Engine::new(
-        auracle_grammar::PatchGrammarPrior::default(),
-        SessionConfig::default(),
-    );
-    engine.standardizer = Some(Arc::new(preset_standardizer(&engine.cfg.phrase)));
+    let mut engine = taught(0x70B);
     let grit = CONTROLS.iter().position(|c| c.name == "Grit").unwrap();
     let p = preset_bank()
         .into_iter()
@@ -747,6 +760,18 @@ fn a_job_keeps_the_target_it_began_on() {
         .unwrap();
     let mut r = StdRng::seed_from_u64(9);
     assert!(job.step(&mut r, 1));
+    contrary_picks(&mut engine, 4);
+    let moved = engine.offer_aimed(
+        &mut StdRng::seed_from_u64(9),
+        &p.tree,
+        &[],
+        4,
+        grit,
+        1.0,
+        1.0,
+        2,
+    );
+    assert_ne!(moved, want, "the picks moved nothing a walk can see");
     engine.standardizer = None;
     while job.step(&mut r, 2) {}
     assert_eq!(job.finish(), want);
