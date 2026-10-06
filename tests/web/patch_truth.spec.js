@@ -85,9 +85,7 @@ async function dragUp(page, k, dy, steps = 8) {
   await page.mouse.up();
 }
 
-// Quarantined (#176): quiet within a fixed 3 s of the unplug, while the
-// model's guess and a cable probe hold the engine (CI: -14.5 dB at 3 s).
-test("an unplugged socket goes quiet under a held note, and its plate still reads EMPTY", { tag: "@quarantine" }, async ({ page, app }) => {
+test("an unplugged socket goes quiet under a held note, and its plate still reads EMPTY", async ({ page, app }) => {
   await app.boot();
   // Glass Pad is a chorus over a filter over one supersaw: the supersaw's
   // socket is the only thing it can hear, as in the film.
@@ -99,18 +97,23 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   await expect.poll(() => livePeakDb(page), { timeout: 20_000, message: "the held note sounds" }).toBeGreaterThan(-40);
 
   await page.locator(`#rack-svg g.mod-group[data-key="${key}"] .mod-menu-btn`).first().click();
+  const t0 = await app.now();
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^set aside/ }).first().click();
-  const t0 = Date.now();
-  // Quiet promptly. (A saw never goes quiet at all, so the margin here is
-  // for a loaded machine, not for the behaviour.)
+  // The new tree reaches the voices as the engine takes the edit (its early
+  // `tree_json`), which waits for the render the engine is in: the open's
+  // probe or a measurement, 2 to 3 s on a slow CI runner (#176). An
+  // engine wait; the swap is timed from there.
+  const early = await app.reply("tree_json", { where: { edited: "restore" }, after: t0, timeout: 30_000 });
+  // Quiet promptly once the voices have the tree. (A saw never goes quiet at
+  // all, so the margin here is for a loaded machine, not for the behaviour.)
   await expect.poll(() => livePeakDb(page), { timeout: 3_000, intervals: [100] }).toBeLessThan(-60);
-  const quietAfterMs = Date.now() - t0;
+  const quietAfterMs = Math.round((await app.now()) - early._at);
   // …and stays quiet once the swap has rebuilt the voices with the note
   // still held: the stand-in used to fade back in here.
   await settled(app);
   for (let i = 0; i < 4; i++) expect(await livePeakDb(page)).toBeLessThan(-60);
   await page.keyboard.up("a");
-  console.log(`[patch_truth] quiet ${quietAfterMs} ms after the unplug`);
+  console.log(`[patch_truth] quiet ${quietAfterMs} ms after the unplug's tree reached the page, ${Math.round(early._at - t0)} ms after the click`);
 
   // The plate says so, and so does the patch under it.
   const mod = await page.evaluate((k) => window.__aur.wb.rack.modules.find((m) => m.key === k), key);
