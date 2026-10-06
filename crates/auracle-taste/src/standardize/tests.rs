@@ -109,11 +109,42 @@ fn winsor_k_covers_the_sizes_this_runs_at() {
 /// A non-finite cell is dropped from its column rather than turning the
 /// whole coordinate into NaN — which is what it used to do, silently, for
 /// every patch in the pool.
+///
+/// Dropped, and nothing else: the column keeps the moments of its finite
+/// cells. Finite moments alone would not say so, because a column whose
+/// moments went NaN falls back to the degenerate (0, 1), which is finite and
+/// dead; that is the regression this checks for, and it fails here.
 #[test]
 fn a_non_finite_cell_does_not_poison_its_column() {
-    let sz = Standardizer::fit(&col(&[0.2, f64::NAN, 0.8, 0.5]));
-    assert!(sz.mean[0].is_finite() && sz.std[0].is_finite());
-    assert!(sz.transform(&[0.5])[0].is_finite());
+    let sz = Standardizer::fit(&col(&[
+        0.2,
+        f64::NAN,
+        0.8,
+        f64::INFINITY,
+        0.5,
+        f64::NEG_INFINITY,
+    ]));
+    // The plain moments of [0.2, 0.8, 0.5]: mean 0.5, σ √0.06.
+    assert!((sz.mean[0] - 0.5).abs() < 1e-12, "mean {}", sz.mean[0]);
+    assert!(
+        (sz.std[0] - 0.06f64.sqrt()).abs() < 1e-12,
+        "σ {}",
+        sz.std[0]
+    );
+    // …so the coordinate still orders the patches it was measured on.
+    assert!(sz.transform(&[0.8])[0] > sz.transform(&[0.2])[0]);
+
+    // A column with no finite cell at all has no evidence to standardize
+    // by: it is the degenerate (0, 1), which leaves a value as it is, and a
+    // finite column beside it is fitted as usual.
+    let rows = vec![
+        vec![f64::NAN, 1.0],
+        vec![f64::INFINITY, 3.0],
+        vec![f64::NEG_INFINITY, 5.0],
+    ];
+    let sz = Standardizer::fit(&rows);
+    assert_eq!((sz.mean[0], sz.std[0]), (0.0, 1.0));
+    assert_eq!(sz.transform(&[0.7, 3.0]), vec![0.7, 0.0]);
 }
 
 /// A column whose moments overflow falls back to (0, 1) rather than
