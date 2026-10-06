@@ -2579,33 +2579,6 @@ fn explanation_decomposes_utility_exactly() {
     }
 }
 
-/// Patches get names a musician could say out loud, and no two rows in
-/// the bank share one.
-#[test]
-fn patches_get_unique_musical_names() {
-    let mut rng = StdRng::seed_from_u64(0x9A3);
-    let cfg = SessionConfig {
-        pool_size: 32,
-        ..fast()
-    };
-    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-    engine.begin_session();
-    engine.fill_pool(&mut rng);
-
-    let names = engine.display_names();
-    assert_eq!(names.len(), engine.pool.len());
-    let unique: std::collections::HashSet<&String> = names.values().collect();
-    assert_eq!(unique.len(), names.len(), "names collide: {names:?}");
-    for n in names.values() {
-        assert!(n.split(' ').count() >= 2, "not a <character> <role>: {n}");
-        assert!(n.chars().next().unwrap().is_uppercase());
-    }
-    // A user-given name always wins over the generated one.
-    let id = engine.pool[0].id;
-    engine.set_name(id, "My Bass");
-    assert_eq!(engine.display_names()[&id], "My Bass");
-}
-
 /// Names must **spread**, not merely be unique after numbering.
 ///
 /// The failure this guards was measured in the running app: 13 of 40 bank
@@ -2614,6 +2587,10 @@ fn patches_get_unique_musical_names() {
 /// numeral suffix guarantees no matter how degenerate the generator is.
 /// Concentration is the property with product meaning, so concentration is
 /// what gets asserted.
+///
+/// The names are also ones a musician could say out loud (a character and
+/// a role, capitalized), no two rows share one, and a name the player gives
+/// wins over the generated one.
 #[test]
 fn names_spread_across_the_pool() {
     let mut rng = StdRng::seed_from_u64(0x9A3);
@@ -2667,6 +2644,13 @@ fn names_spread_across_the_pool() {
         "only {} distinct names over {n} patches: {counts:?}",
         counts.len()
     );
+    for v in names.values() {
+        assert!(v.split(' ').count() >= 2, "not a <character> <role>: {v}");
+        assert!(v.starts_with(char::is_uppercase), "not capitalized: {v}");
+    }
+    let id = engine.pool[0].id;
+    engine.set_name(id, "My Bass");
+    assert_eq!(engine.display_names()[&id], "My Bass");
 }
 
 /// Names must **collapse** when the patches really are alike.
