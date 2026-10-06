@@ -336,9 +336,6 @@
     },
     "auracle/no-read-after-action": {
       "count": 1
-    },
-    "playwright/no-conditional-in-test": {
-      "count": 1
     }
   },
   "patch_camera.spec.js": {
