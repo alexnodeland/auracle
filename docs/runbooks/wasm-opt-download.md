@@ -18,6 +18,12 @@ downloader does not read the proxy's CA settings that `curl` and cargo use, so
 behind a TLS-terminating proxy (a cloud agent session, a corporate network) the
 download fails. Nothing is wrong with the build.
 
+By then `wasm-pack` has already written the new, unoptimized engine into
+`apps/web/pkg`. `make wasm` marked `pkg/build.json` unfinished before it
+started, so the browser specs, rehearsals, recordings and `make pkg-reuse`
+refuse that engine (the session-start hook says so too) until a `make wasm`
+finishes.
+
 ## What to do
 
 Do **not** set `wasm-opt = false`: the release binary would be larger and

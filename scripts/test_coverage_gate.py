@@ -65,6 +65,21 @@ def test_env():
     return env
 
 
+_NO_USER_CONFIG = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+
+
+def setUpModule():
+    """The script's own git runs in these scratch repositories too, so it
+    reads no system or global config either: a global core.fsmonitor would
+    start a daemon in each, which outlives the test and can hold up a later
+    git there (it held one of the pre-commit hook's runs for minutes)."""
+    _NO_USER_CONFIG.start()
+
+
+def tearDownModule():
+    _NO_USER_CONFIG.stop()
+
+
 class Tree(unittest.TestCase):
     """A throwaway repository root with a crates/ directory."""
 
@@ -525,6 +540,24 @@ class NoOtherRepository(Tree):
 
     def floors_file(self, data):
         self.write(C.BASELINE, C.write_floors(data))
+
+
+class OwnEnv(Tree):
+    """What the script's git is given of the caller's environment: never a
+    variable that names a repository, always which config files to read."""
+
+    def test_which_config_to_read_reaches_git_and_no_repository_does(self):
+        cfg = self.write("global.gitconfig", "[user]\n\tname = global-sentinel\n")
+        self.git("init", "-q", "-b", "main")
+        hook = {"GIT_CONFIG_GLOBAL": cfg, "GIT_DIR": "/nonexistent/.git", "GIT_INDEX_FILE": "/nonexistent/index"}
+        with mock.patch.dict(os.environ, hook):
+            env = C.own_env()
+            name = C.git(["config", "user.name"], self.root, check=False).strip()
+        self.assertEqual(name, "global-sentinel")
+        self.assertEqual(env["GIT_CONFIG_GLOBAL"], cfg)
+        self.assertEqual(env["GIT_CONFIG_NOSYSTEM"], "1")
+        self.assertNotIn("GIT_DIR", env)
+        self.assertNotIn("GIT_INDEX_FILE", env)
 
 
 class Parsing(unittest.TestCase):

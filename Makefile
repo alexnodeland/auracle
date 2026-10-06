@@ -59,7 +59,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
-        wasm wasm-prebuilt wasm-stamp perform-wirings serve doc bundle clean \
+        wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -110,9 +110,9 @@ install-hooks:
 ## issues), the Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), and the tests of the coverage gate's, the mutation
-## report's, CI stats' and the release's scripts (scripts/test_release.py:
-## the version the titles call for, the bump, what a tag owes, the list of
-## what merged by type)
+## report's, CI stats', the engine stamp's and the release's scripts
+## (scripts/test_release.py: the version the titles call for, the bump, what
+## a tag owes, the list of what merged by type)
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
 ## atomically), so they are prerequisites that `make -j` runs side by side; a
@@ -120,7 +120,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-release
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-wasm-pkg dev-release
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -158,6 +158,9 @@ dev-mutants:
 	@python3 scripts/test_mutants_report.py
 dev-ci-stats:
 	@python3 scripts/test_ci_stats.py
+dev-wasm-pkg:
+	@python3 scripts/test_wasm_pkg.py
+
 dev-release:
 	@python3 scripts/test_release.py
 
@@ -178,11 +181,12 @@ sound:
 ## flake routing passes its tests: which issue a failed test is said on
 ## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue);
 ## and so do the timings the browser runners are dealt by (tests/web/shard.mjs
-## timings). With COVERAGE=1, what the unit tests ran of apps/web as well, as
-## an lcov in target/js-cov/web.lcov
+## timings) and `make browser-changed`'s selection (tests/web/changed.test.mjs).
+## With COVERAGE=1, what the unit tests ran of apps/web as well, as an lcov in
+## target/js-cov/web.lcov
 web-check: js-check spec-lint
 	$(JS_COV_MKDIR)
-	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 # COVERAGE=1: Node's own coverage of the lines of apps/web that web-check's
 # unit tests and worker-test run (apps/web/tests and the generated pkg/ left
@@ -251,7 +255,7 @@ wasm-check:
 # The two specs are tests/web/package.json's `smoke` script, which CI's
 # Browser smoke job (ci.yml) runs too: name a spec there, not here.
 smoke:
-	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(RELEASE_ENGINE)
 	cd tests/web && npm ci --no-audit --no-fund && npm run --silent smoke
 
 ## smoke-tools: Playwright's Chromium, once, on a workstation (which usually
@@ -505,29 +509,50 @@ mutants-command:
 # is BROWSER_PORT when set, else AURACLE_TEST_PORT when the environment sets
 # it (a branch's worktree is given one; docs/process.md § The machine), else
 # 8690.
-# Needs `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
+# Needs the release engine (`make wasm`, or `make pkg-reuse` in a worktree
+# that changed no Rust; a `make wasm-dev` build is refused) and Playwright's
+# Chromium (`make smoke-tools` once).
 BROWSER_PORT ?= $(or $(AURACLE_TEST_PORT),8690)
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
 ## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~75 min serially)
 browser-fast:
-	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(RELEASE_ENGINE)
 	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
 
 ## browser-changed: the specs your change reaches against BASE (origin/main):
-## changed specs, the specs of a changed helper or app module (tests/web/changed.mjs)
+## changed specs, the specs of a changed helper or app module, for main.js
+## the specs of the views its changed sections draw, and for worker.js, the
+## page or the engine each view's sample (tests/web/changed.mjs --views).
+## REPEAT=n runs the spec files the branch adds or edits n times each, first,
+## and the rest once (the ship skill's REPEAT=3 before a push)
 BASE ?= origin/main
+REPEAT ?= 1
+# Two runs when REPEAT is more than 1: the repeat is the burn-in of what the
+# branch wrote (#177 §1.1), not of every spec a main.js change reaches,
+# which can be most of the tier. The repeated run goes first, and a failure
+# stops there, so its test-results/ is the one left to read.
 browser-changed:
-	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	@specs="$$(cd tests/web && node changed.mjs $(BASE))"; \
+	@case "$(REPEAT)" in ''|*[!0-9]*|0) printf '  REPEAT is how many times each spec the branch adds or edits runs (1, 3 …), not "%s"\n' "$(REPEAT)"; exit 2;; esac
+	$(RELEASE_ENGINE)
+	@specs="$$(cd tests/web && node changed.mjs --views $(BASE))" || exit $$?; \
 	if [ -z "$$specs" ]; then printf '  no spec to run for this change\n'; exit 0; fi; \
-	printf '  %s\n' $$specs; \
-	$(PLAYWRIGHT) $$specs --reporter=line
+	again=""; \
+	if [ "$(REPEAT)" != 1 ]; then again="$$(cd tests/web && node changed.mjs --touched $(BASE))" || exit $$?; fi; \
+	once=""; for s in $$specs; do case " $$(echo $$again) " in *" $$s "*) ;; *) once="$$once $$s";; esac; done; \
+	printf '  spec files: %s\n' "$$(printf '%s\n' $$specs | wc -l | tr -d ' ')"; \
+	if [ -n "$$again" ]; then printf '  %s times each, the ones this branch adds or edits:\n' "$(REPEAT)"; printf '    %s\n' $$again; fi; \
+	if [ -n "$$once" ] && [ "$(REPEAT)" != 1 ]; then \
+	  if [ -n "$$again" ]; then printf '  once each, the ones it reaches:\n'; else printf '  once each (the branch adds or edits no spec, so nothing repeats):\n'; fi; \
+	fi; \
+	if [ -n "$$once" ]; then printf '    %s\n' $$once; fi; \
+	( if [ -n "$$again" ]; then $(PLAYWRIGHT) $$(printf '/%s ' $$again) --repeat-each=$(REPEAT) --reporter=line; fi ) && \
+	( if [ -n "$$once" ]; then $(PLAYWRIGHT) $$(printf '/%s ' $$once) --reporter=line; fi )
 
 ## browser-slow: browser specs tagged @slow or @quarantine, CI's slow tier (~35 min serially)
 browser-slow:
-	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(RELEASE_ENGINE)
 	$(PLAYWRIGHT) --grep "@slow|@quarantine" --reporter=line
 
 fmt:
@@ -612,10 +637,50 @@ revalidate: phi-stats norm-peak climb search-check
 	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n'
 	@printf '  a φ change also owes `make perform-wirings` (the shipped preset wirings)\n\n'
 
-## wasm: build the web app's engine into apps/web/pkg, and stamp the build
+# The engine's two builds, and what pkg/build.json says of them
+# (scripts/wasm_pkg.py): which build it is, and what it was made from (a
+# hash of the Rust it reads and the command below), so another checkout can
+# take it instead of building the same one (`make pkg-reuse`). Each marks
+# pkg/ unfinished before it starts (`begin`): wasm-pack writes the engine
+# before wasm-opt runs, and a build that stops there would otherwise leave
+# it under the last build's stamp. The inputs are hashed again once it is
+# done, and kept only if the Rust didn't change while it built.
+WASM_PKG := python3 scripts/wasm_pkg.py
+WASM_PACK := wasm-pack build crates/auracle-wasm --target web --out-dir ../../apps/web/pkg
+WASM_RELEASE := $(WASM_RUSTFLAGS) $(WASM_PACK) --release
+# test-fast's codegen (Cargo.toml: release's opt-level, no LTO, 16 codegen
+# units) into its own target directory, incremental, and no wasm-opt.
+WASM_DEV := CARGO_INCREMENTAL=1 $(WASM_RUSTFLAGS) $(WASM_PACK) --profile test-fast --no-opt
+# The browser targets' first line: a release build is in pkg/, or they stop
+# and say what to run.
+RELEASE_ENGINE := @$(WASM_PKG) check
+
+## wasm: build the web app's engine into apps/web/pkg (the release build: fat
+## LTO, wasm-opt; what CI, the browser specs and the films run on), and stamp it
 wasm:
-	$(RUSTUP_NOTE)$(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
-	@$(MAKE) --no-print-directory wasm-stamp
+	@src="$$($(WASM_PKG) source --recipe '$(WASM_RELEASE)')"; \
+	printf '%s\n' '$(WASM_RELEASE)'; \
+	$(WASM_PKG) begin && \
+	$(RUSTUP_NOTE)$(WASM_RELEASE) && \
+	$(WASM_PKG) stamp --profile release --source "$$src" --recipe '$(WASM_RELEASE)' $(WEB_STAMPED)
+
+## wasm-dev: a quick engine build, for trying an engine edit in the browser
+## (`make serve`) in seconds rather than a minute: no LTO, no wasm-opt,
+## incremental. Stamped `dev`, which the browser targets, the specs and the
+## films refuse: `make wasm` before them
+wasm-dev:
+	@src="$$($(WASM_PKG) source --recipe '$(WASM_DEV)')"; \
+	printf '%s\n' '$(WASM_DEV)'; \
+	$(WASM_PKG) begin && \
+	$(RUSTUP_NOTE)$(WASM_DEV) && \
+	$(WASM_PKG) stamp --profile dev --source "$$src" --recipe '$(WASM_DEV)' $(WEB_STAMPED)
+
+## pkg-reuse: in a worktree, take the main checkout's release engine instead
+## of building it again (about a second, not a minute), when it was built from
+## this worktree's Rust and the same build command; otherwise it says so, and
+## `make wasm` builds it. PKG_FROM=<dir> takes another checkout's
+pkg-reuse:
+	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED)
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
 # hash over the engine and the app scripts, so the same bytes get the same URL
@@ -631,9 +696,10 @@ wasm-prebuilt:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  WASM_PREBUILT=1 but apps/web/pkg has no engine\n'; exit 1; }
 	@$(MAKE) --no-print-directory wasm-stamp
 
+# The same engine against new app scripts (a JS-only change, CI's cached
+# engine on a new commit): its profile and source stay as they were.
 wasm-stamp:
-	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
-	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
+	@$(WASM_PKG) stamp $(WEB_STAMPED)
 
 ## perform-wirings: measure PERFORM's wiring of every preset natively, the way
 ## the worker does, into apps/web/perform-wirings.json (a few minutes; commit

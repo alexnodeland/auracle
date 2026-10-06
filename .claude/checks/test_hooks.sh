@@ -54,5 +54,21 @@ if [ -x "$nm/.bin/eslint" ] && [ -d "$nm/eslint-plugin-playwright" ] && [ -d "$n
   expect 0 "a clean new spec" post-edit-check.sh "$(edit "$lint/ok.spec.js")"
 fi
 expect 0 "session start"         session-start.sh '{}'
+# The session-start report names a dev build of the engine, or an unfinished
+# one, and only those.
+says() { # says <name> <pattern> <yes|no>: what session-start.sh prints in a tree of its own
+  runs=$((runs + 1))
+  out="$(CLAUDE_PROJECT_DIR="$tmp/proj" bash "$H/session-start.sh" </dev/null 2>/dev/null)"
+  if printf '%s' "$out" | grep -q "$2"; then got=yes; else got=no; fi
+  if [ "$got" != "$3" ]; then echo "  FAIL: $1 (said: ${out:-nothing})"; fails=$((fails + 1)); fi
+}
+mkdir -p "$tmp/proj/apps/web/pkg" && : > "$tmp/proj/apps/web/pkg/auracle_wasm_bg.wasm"
+printf '{"build": "0123456789abcdef", "profile": "dev"}' > "$tmp/proj/apps/web/pkg/build.json"
+says "a dev build is reported"        "is a dev build" yes
+printf '{"build": "0123456789abcdef", "profile": "release"}' > "$tmp/proj/apps/web/pkg/build.json"
+says "a release build is not"         "is a dev build" no
+says "nor called unfinished"          "unfinished" no
+printf '{"profile": "unfinished"}' > "$tmp/proj/apps/web/pkg/build.json"
+says "an unfinished build is reported" "is an unfinished build" yes
 echo "  hooks: $runs cases, $fails failure(s)"
 [ "$fails" = 0 ]
