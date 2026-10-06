@@ -15,8 +15,9 @@
 //   keeps, so the label's x is the same with it and without.
 // - The track replays the moments the page kept of what the engine posted,
 //   after a reload too; SOUND and TASTE show what the prototype's do;
-//   pointing at a weight shades the small map by the posted z; the bars
-//   move to the styles posted after each pick; REPLAY steps through them.
+//   pointing at a weight (or Tab to it) names its feature on the small
+//   map's legend, the map shaded by the posted z; the bars move to the
+//   styles posted after each pick; REPLAY steps through them.
 //
 // The engine's replies are read through the fixture's tap (fixtures.js), and a
 // reply the engine would post is handed to main.js with `app.inject`.
@@ -498,36 +499,53 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   await expect.poll(async () => Math.abs((await green()) - sound), { timeout: 5_000 }).toBeLessThanOrEqual(3);
 });
 
-// Quarantined (#173): one pixel read of a map that may still be redrawing,
-// against a fixed 60-level gap (CI read 196 against 136).
-test("pointing at a weight shades the small map by each sound's z on that feature, as the engine posted it", { tag: "@quarantine" }, async ({ page, app }) => {
+// Pointing at a weight (or Tab to it) shades the small map by each sound's z
+// on that feature, as the engine posted it (`views.features`,
+// `WasmEngine::pool_features`). How each dot is shaded is taste-geom's
+// `poolShades` and `shadeOf`, pinned in taste-geom.test.mjs; this checks the
+// wiring. The legend turns to *dots: <feature>* only while the feature pointed
+// at is one the engine posted a z for, and names it. No pixel is read (#173):
+// the map redraws as the pool and the fit move on, a dot's centre pixel can be
+// its edge, and a gap between the brightest dots and the dimmest is set by the
+// pool's z, not by the app (CI read 196 against 136).
+/** A string as a pattern's source that matches it and nothing else. */
+const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+test("pointing at a weight, or Tab to it, names its feature on the small map's legend, and leaving puts the arrow's legend back", async ({ page, app }) => {
   await boot(app);
   await openView(page, "learning");
-  const first = page.locator("#md-bars .md-row").first();
-  await first.hover();
-  await expect(page.locator("#md-maplegend")).toHaveText(/^dots: /);
-  const shade = await page.evaluate(async () => {
-    const geom = await import("/taste-geom.js");
-    const v = window.__tap.facts.views;
-    const style = v.styles.map((s, k) => ({ ...s, k })).filter((s) => s.share >= 0.02).sort((a, b) => b.share - a.share)[0];
-    const name = [...style.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))[0].name;
-    const cv = document.getElementById("md-map-cv");
-    const W = Math.max(160, cv.parentElement.clientWidth), H = Math.max(120, cv.parentElement.clientHeight);
-    const pos = geom.miniLayout(v.map.points.filter((p) => p.id != null), W, H, 28);
-    const zi = v.features.names.indexOf(name);
-    const z = new Map(v.features.rows.map((r) => [r.id, r.z[zi]]));
-    const subject = window.__aur && window.__aur.wb ? window.__aur.wb.subjectId : null;
-    const ids = [...pos.keys()].filter((id) => id !== subject && z.has(id)).sort((a, b) => z.get(b) - z.get(a));
-    const d = window.devicePixelRatio || 1;
-    const ctx = cv.getContext("2d");
-    const alpha = (id) => ctx.getImageData(Math.round(pos.get(id).x * d), Math.round(pos.get(id).y * d), 1, 1).data[3];
-    const hi = ids.slice(0, 3).map(alpha), lo = ids.slice(-3).map(alpha);
-    return { hi, lo, zi };
-  });
-  expect(shade.zi).toBeGreaterThanOrEqual(0);
-  expect(Math.min(...shade.hi), `the highest z drawn brightest (${shade.hi} against ${shade.lo})`).toBeGreaterThan(Math.max(...shade.lo) + 60);
+  const legend = page.locator("#md-maplegend");
+  const map = page.locator("#md-map-cv");
+  // Fitted (the warm start waits for the fit), so the arrow's legend, its
+  // share free to move with a views post.
+  const arrow = "the arrow: liking rises · explains \\d+%";
+  await expect(legend).toHaveText(new RegExp(`^${arrow}$`));
+  await expect(map).toHaveAttribute("aria-label", new RegExp(`\\. ${arrow}\\.$`));
+  // Two weights, each found by its feature, so a styles post that sorts the
+  // rows again moves neither.
+  await expect(page.locator("#md-bars .md-row").nth(1)).toBeVisible();
+  const [a, b] = (await page.locator("#md-bars .md-row .md-tech").allTextContents()).slice(0, 2);
+  const row = (tech) => page.locator("#md-bars .md-row").filter({ has: page.locator(".md-tech", { hasText: new RegExp(`^${literal(tech)}$`) }) });
+  const wa = await row(a).locator(".md-word").textContent();
+  const wb = await row(b).locator(".md-word").textContent();
+
+  // Pointed at: its feature, on the legend and in what the map says aloud.
+  await row(a).hover();
+  await expect(legend).toHaveText(`dots: ${wa}`);
+  await expect(map).toHaveAttribute("aria-label", new RegExp(`\\. ${literal(`dots: ${wa}`)}\\.$`));
+  // Another weight: its feature.
+  await row(b).hover();
+  await expect(legend).toHaveText(`dots: ${wb}`);
+  // Left: the arrow's legend again.
   await page.mouse.move(1, 1);
-  await expect(page.locator("#md-maplegend")).toHaveText(/^(the arrow|no direction)/);
+  await expect(legend).toHaveText(new RegExp(`^${arrow}$`));
+  await expect(map).toHaveAttribute("aria-label", new RegExp(`\\. ${arrow}\\.$`));
+
+  // Tab to a weight and away: the same.
+  await row(a).focus();
+  await expect(legend).toHaveText(`dots: ${wa}`);
+  await row(a).blur();
+  await expect(legend).toHaveText(new RegExp(`^${arrow}$`));
 });
 
 /** Each bar's weight as LEARNING shows it, by feature (two weights equal at
