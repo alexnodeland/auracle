@@ -52,7 +52,9 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page, app }
   await page.locator("#warm-go").click();
 
   await app.engine((timeout) => expect(page.locator("#duel-count")).toHaveText("18", { timeout }), { ms: 60_000 });
-  await expect(page.locator(".toast", { hasText: "is gone" })).toHaveCount(0);
+  // Every toast said, not only those still up: one that came and went is
+  // in the tap's list.
+  expect((await app.toasts()).filter((t) => /is gone/.test(t)), "a pick was refused as gone").toEqual([]);
 
   // PERFORM names what is playing.
   await goLevel(page, "perform");
