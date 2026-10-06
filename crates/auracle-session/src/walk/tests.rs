@@ -457,3 +457,32 @@ fn a_walk_result_reads_as_its_child_or_its_reason() {
     assert_eq!(stale.walk(), Err(RefineOutcome::Stale));
     assert_eq!(result(None, None).walk(), Err(RefineOutcome::NoMove));
 }
+
+/// A walk cannot start from a patch the grammar's prior gives no mass (a
+/// filter stack past the depth ceiling, as an older build could save): it
+/// says so as `OutsideSupport` rather than as a walk that did not move.
+#[test]
+fn a_walk_cannot_start_outside_the_priors_support() {
+    let mut deep = auracle_grammar::presets().remove(0).1;
+    while deep.root.depth() < auracle_grammar::mutate::MAX_DEPTH + 2 {
+        deep.root = AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: FilterKind::SvfLp,
+            cutoff: 0.6,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(deep.root),
+            modulation: ModNode::None,
+        };
+    }
+    let begun = WalkRun::begin(
+        PatchGrammarPrior::default(),
+        1.0,
+        RefineKeep::Last,
+        Flat,
+        &deep,
+        &HashSet::new(),
+        4,
+    );
+    assert_eq!(begun.err(), Some(RefineOutcome::OutsideSupport));
+}
