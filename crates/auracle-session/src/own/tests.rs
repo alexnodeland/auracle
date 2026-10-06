@@ -1,58 +1,10 @@
 use super::*;
+use crate::testkit::taught;
 use crate::{run_walk, SessionConfig};
 use auracle_features::{file::recording_stimuli, render::render_phrase, AudioFeatures};
 use auracle_grammar::{preset_bank, PatchGrammarPrior};
-use auracle_taste::SyntheticUser;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-
-/// The listener the generation tests teach (the crate's `ground_truth`).
-fn listener() -> SyntheticUser {
-    let names = Features::phi_names();
-    let mut theta = vec![0.0; names.len()];
-    let mut set = |name: &str, w: f64| {
-        let i = names
-            .iter()
-            .position(|n| n.split(':').next() == Some(name))
-            .unwrap();
-        theta[i] = w;
-    };
-    set("centroid_mean", 2.0);
-    set("flatness_mean", -1.5);
-    set("attack_s", -1.5);
-    set("bass_fraction", 1.0);
-    set("n_filter", 0.8);
-    set("tail_ratio", 0.6);
-    SyntheticUser {
-        theta,
-        tau: 0.0,
-        cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
-    }
-}
-
-/// A pool of 16, 30 duels taught, one fit: the generation tests' engine.
-fn taught(seed: u64) -> Engine {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let cfg = SessionConfig {
-        pool_size: 16,
-        refine_steps: 12,
-        refine_seeds: 5,
-        mcmc_samples: 6_000,
-        mcmc_warmup: 2_000,
-        ..Default::default()
-    };
-    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-    engine.begin_session();
-    engine.fill_pool(&mut rng);
-    let user = listener();
-    for _ in 0..30 {
-        let (a, b) = engine.next_duel(&mut rng).unwrap();
-        let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-        engine.record_duel(a, b, chose_a);
-    }
-    engine.fit_posterior(&mut rng);
-    engine
-}
 
 /// A preset recorded on the melody and measured as a file.
 fn recording(name: &str) -> FileFeatures {
