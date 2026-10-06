@@ -13,18 +13,19 @@
 //   node flakes.mjs check
 //       every test tagged @quarantine names its issue that way (`make
 //       spec-lint` runs it)
-//   node flakes.mjs quarantined report.json [--outcome failure]
+//   node flakes.mjs quarantined report.json [--open issues.json] [--outcome failure]
 //       the Slow suite's quarantine job (slow-suite.yml): each issue with the
 //       quarantined tests of its that failed, one comment's worth, as
 //       `issues=<json>` in GITHUB_OUTPUT, and as `unowned=<n>` the failures
-//       no issue owns (a test naming none, a test cut short, an error outside
-//       any test, or a run that failed with no failed test in its report):
-//       those are not a known flake, and the job turns the suite red on them
+//       no issue owns (a test naming none, a test naming an issue that is
+//       not open, a test cut short, an error outside any test, or a run that
+//       failed with no failed test in its report): those are not a known
+//       flake, and the job turns the suite red on them
 //   node flakes.mjs hunt report.json [--open issues.json] [--listed list.json] [--outcome failure]
 //       the nightly Flake hunt (flake-hunt.yml): each test that failed, with
-//       the `Flaky:` issue it goes to (the one its annotation names, else an
-//       open one titled for it, `gh issue list --json number,title`, else a
-//       title to open one under), as `flaky=<json>`; and `unexplained=true`
+//       the `Flaky:` issue it goes to (the open one its annotation names,
+//       else an open one titled for it, else a title to open one under), as
+//       `flaky=<json>`; and `unexplained=true`
 //       when the run failed in a way no test accounts for: an error outside
 //       any test, a test cut short, a test the hunt was dealt that no runner
 //       reported (`--listed`, the hunt's tests as `playwright test --list
@@ -34,6 +35,11 @@
 //       failing in one night, which is one thing wrong with main or the
 //       machines rather than that many flakes (those are listed in the run's
 //       summary, and no issue is filed for each)
+//
+// `--open`: the open issues, `gh issue list --state open --json
+// number,title`. A closed issue owns no failure: a comment there would
+// reach no one. Left out (the list could not be read), every issue an
+// annotation names is taken to be open, and no title is matched.
 //
 // The report is Playwright's JSON, a run's blobs merged (`npx playwright
 // merge-reports --reporter json`). A test's repeats (`--repeat-each`) are one
@@ -142,10 +148,15 @@ export function titledFor(issueTitle, t) {
   return start.length > 0 && t.title.startsWith(start);
 }
 
+/** The open issues' numbers, or null when they could not be read. */
+const openNumbers = (open) => (open ? new Set(open.map((i) => Number(i.number))) : null);
+
 /** The Slow suite's quarantine job: each issue with its quarantined tests
- *  that failed, and what no issue owns. */
-export function quarantined(report) {
+ *  that failed, and what no issue owns. `open`: the open issues, [{ number
+ *  }], or null to take every issue named as open. */
+export function quarantined(report, open = null) {
   const tests = testsIn(report);
+  const isOpen = openNumbers(open);
   const owned = new Map();
   const unowned = [];
   for (const t of tests) {
@@ -153,6 +164,7 @@ export function quarantined(report) {
     if (!t.failed) continue;
     if (!t.tags.includes("quarantine")) unowned.push(`${t.file}:${t.line} '${t.title}' failed and is not quarantined`);
     else if (t.issue == null) unowned.push(`${t.file}:${t.line} '${t.title}' failed and names no issue`);
+    else if (isOpen && !isOpen.has(t.issue)) unowned.push(`${t.file}:${t.line} '${t.title}' failed and names #${t.issue}, which is not open`);
     else owned.set(t.issue, [...(owned.get(t.issue) || []), t]);
   }
   for (const e of report.errors || []) unowned.push(`an error outside any test: ${plain(e.message).split("\n")[0]}`);
@@ -175,14 +187,18 @@ export function lost(report, listing) {
 
 /** The nightly hunt: each failed test with the issue it goes to (`issue`,
  *  or "" for a new one under `title`), and whether the run failed in a way
- *  no test accounts for. `open`: the open issues, [{ number, title }].
- *  `listing`: the tests the hunt was dealt, or null to leave that
- *  unchecked. */
-export function hunt(report, open = [], listing = null) {
+ *  no test accounts for. `open`: the open issues, [{ number, title }], or
+ *  null when they could not be read (an annotation's issue is then taken as
+ *  open, and no title is matched); an annotation naming a closed issue is
+ *  passed over. `listing`: the tests the hunt was dealt, or null to leave
+ *  that unchecked. */
+export function hunt(report, open = null, listing = null) {
   const tests = testsIn(report);
+  const isOpen = openNumbers(open);
   const flaky = tests.filter((t) => t.failed > 0).map((t) => {
-    const titled = open.filter((i) => titledFor(i.title, t)).sort((a, b) => a.number - b.number)[0];
-    return { issue: t.issue ?? (titled ? titled.number : ""), title: flakyTitle(t), failed: failedSaid(t), detail: detailOf([t]) };
+    const named = t.issue != null && (!isOpen || isOpen.has(t.issue)) ? t.issue : null;
+    const titled = (open || []).filter((i) => titledFor(i.title, t)).sort((a, b) => a.number - b.number)[0];
+    return { issue: named ?? (titled ? titled.number : ""), title: flakyTitle(t), failed: failedSaid(t), detail: detailOf([t]) };
   });
   const many = flaky.length > MANY;
   const never = listing ? lost(report, listing) : [];
@@ -219,6 +235,8 @@ function summary(text) {
 }
 
 const readReport = (path) => (path && existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null);
+/** `--open`'s issues, or null when it was left out (not read). */
+const readOpen = (opts) => readReport(opts.open);
 
 function cmdCheck() {
   // --pass-with-no-tests: with nothing quarantined, there is nothing to name.
@@ -243,7 +261,8 @@ function cmdCheck() {
 
 function cmdQuarantined(opts) {
   const report = readReport(opts._[0]);
-  const q = report ? quarantined(report) : { issues: [], unowned: [], failed: 0 };
+  const open = readOpen(opts);
+  const q = report ? quarantined(report, open) : { issues: [], unowned: [], failed: 0 };
   const unowned = [...q.unowned];
   if (opts.outcome === "failure" && !q.failed && !unowned.length) {
     unowned.push(report ? "the run failed, and its report names no failed test" : "the run failed and left no report");
@@ -254,6 +273,7 @@ function cmdQuarantined(opts) {
     summary(`### Quarantined tests that failed\n\n${q.issues.map((i) => `- #${i.issue}: ${i.failed}`).join("\n")}\n\nEach is said on its own issue (on main), and none turns this run red.\n`);
   }
   if (unowned.length) summary(`### Not a known flake\n\n${unowned.map((u) => `- ${u}`).join("\n")}\n`);
+  if (!open && q.issues.length) summary("The open issues could not be read, so each issue named was taken to be open.\n");
   return 0;
 }
 
@@ -262,7 +282,7 @@ const LOST_SAID = 20;
 
 function cmdHunt(opts) {
   const report = readReport(opts._[0]);
-  const open = opts.open && existsSync(opts.open) ? JSON.parse(readFileSync(opts.open, "utf8")) : [];
+  const open = readOpen(opts);
   // Asked for and not there: the listing could not be made, so a runner
   // lost would not show.
   const unlisted = opts.listed != null && !existsSync(opts.listed);
@@ -281,6 +301,7 @@ function cmdHunt(opts) {
     summary(`### Never ran: ${h.lost.length} of the ${testsIn(listing).length} tests the hunt was dealt\n\nNo runner's report holds them: a runner was lost, or a step before its run failed.\n\n${named.join("\n")}\n`);
   }
   if (unlisted) summary("### The hunt's tests could not be listed\n\nSo a runner lost would not show here.\n");
+  if (!open && h.flaky.length) summary("The open issues could not be read: each test's annotated issue was taken to be open, and no issue was found by its title.\n");
   return 0;
 }
 

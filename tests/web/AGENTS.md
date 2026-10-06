@@ -110,8 +110,9 @@ test("…", { tag: "@quarantine", annotation: { type: "issue", description: "#N"
 
 It leaves the gate for the slow tier, where it still runs, in a job of its
 own: a failure there is said on that issue (`flakes.mjs`) and never turns the
-*Slow suite* red. `make spec-lint` fails a quarantined test that names no
-issue (`node flakes.mjs check`). No retries anywhere
+*Slow suite* red while the issue is open. `make spec-lint` fails a
+quarantined test that names no issue (`node flakes.mjs check`); a closed
+issue is caught only when the test fails, and then the suite goes red. No retries anywhere
 ([`testing.md` § Flakes](../../docs/architecture/testing.md#flakes)).
 
 ## Writing a spec

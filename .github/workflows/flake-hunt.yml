@@ -230,11 +230,13 @@ jobs:
           name: hunt
           failed: ${{ needs.hunt.result == 'failure' }}
           timings: ${{ github.ref == 'refs/heads/main' && 'fast' || '' }}
-      # The open issues, for a flake's issue opened by hand under its title.
-      # Without them, a test with no open issue of the hunt's own gets a new
-      # one. And the tests the hunt was dealt, listed as its runners list
-      # them (no browser): one in no runner's report never ran. A listing
-      # that fails is said, and files the run.
+      # The open issues: a flake's issue opened by hand is found by its
+      # title, and an issue a test names that is closed is passed over.
+      # Unread, the issue a test names is taken as open and no title is
+      # matched, so a test with no issue of its own gets a new one. And the
+      # tests the hunt was dealt, listed as its runners list them (no
+      # browser): one in no runner's report never ran. A listing that fails
+      # is said, and files the run.
       - name: Which issue each failed test goes to
         id: who
         env:
@@ -242,9 +244,14 @@ jobs:
           OUTCOME: ${{ needs.hunt.result }}
         run: |
           cd tests/web
-          gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json || echo '[]' > open-issues.json
+          open=()
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json; then
+            open=(--open open-issues.json)
+          else
+            echo "::warning::The open issues could not be listed: each failed test goes to the issue it names, or a new one."
+          fi
           npx playwright test --list --reporter=json --pass-with-no-tests ${{ env.HUNT_TESTS }} > listed.json || rm -f listed.json
-          node flakes.mjs hunt merged.json --open open-issues.json --listed listed.json --outcome "$OUTCOME"
+          node flakes.mjs hunt merged.json "${open[@]}" --listed listed.json --outcome "$OUTCOME"
 
   # Each test that failed, on its own issue: a comment on the one open for it,
   # or a new `Flaky:` issue (labelled flake). Two at a time.

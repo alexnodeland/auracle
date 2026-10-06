@@ -102,6 +102,20 @@ test("a failure no issue owns is not a known flake: a test naming none, one not 
   ]);
 });
 
+test("a quarantined test that names a closed issue is no known flake: its failure would be said to no one", () => {
+  const r = report([
+    spec("closed", 1, [failed("x")], { tags: ["quarantine"], annotations: [issue(60)] }),
+    spec("open", 2, [failed("y")], { tags: ["quarantine"], annotations: [issue(61)] }),
+  ]);
+  const q = quarantined(r, [{ number: 61, title: "Flaky: taste_learning 'open'" }]);
+  assert.deepEqual(q.issues.map((i) => i.issue), [61]);
+  assert.deepEqual(q.unowned, ["taste_learning.spec.js:1 'closed' failed and names #60, which is not open"]);
+  // The open issues unread: each issue named is taken as open, so a
+  // listing that failed never turns the suite red by itself.
+  const unread = quarantined(r, null);
+  assert.deepEqual([unread.issues.map((i) => i.issue), unread.unowned], [[60, 61], []]);
+});
+
 test("a test's repeats are one test: inside a file and inside a describe, where each repeat is a spec of its own", () => {
   const inner = (r) => ({ title: "inner", file: "taste_learning.spec.js", line: 7, tags: [], tests: [{ annotations: [], expectedStatus: "passed", results: [r] }] });
   const tests = testsIn(report(
@@ -145,10 +159,24 @@ test("the hunt comments on the issue a test names, else on its open Flaky: issue
     spec("new", 3, [failed("c")]),
   ]);
   const open = [
+    { number: 40, title: "taste_learning: a test that names this issue" },
     { number: 41, title: "Flaky: taste_learning 'titled by hand…' (seen once)" },
     { number: 42, title: "Flaky: taste_learning 'named'" },
   ];
   assert.deepEqual(hunt(r, open).flaky.map((f) => f.issue), [40, 41, ""]);
+});
+
+test("the hunt passes over a closed issue a test names: its open Flaky: issue, else a new one", () => {
+  const r = report([
+    spec("named, closed, titled", 1, [failed("a")], { annotations: [issue(30)] }),
+    spec("named, closed", 2, [failed("b")], { annotations: [issue(31)] }),
+  ]);
+  const open = [{ number: 50, title: "Flaky: taste_learning 'named, closed, titled'" }];
+  assert.deepEqual(hunt(r, open).flaky.map((f) => f.issue), [50, ""]);
+  // The open issues unread: the issues named are taken as open, and no
+  // title is matched.
+  assert.deepEqual(hunt(r, null).flaky.map((f) => f.issue), [30, 31]);
+  assert.deepEqual(hunt(report([spec("x", 3, [failed("c")])]), null).flaky.map((f) => f.issue), [""]);
 });
 
 test("a hunt that failed in a way no test accounts for says so", () => {
@@ -209,7 +237,7 @@ test("the check names each quarantined test that names no issue, and why", () =>
 // The steps the workflows run: their outputs are what the comments and
 // issues are made from, and `unowned` and `unexplained` are what turn a run
 // red or file an issue of its own. `files`: a JSON file for each option
-// (`--listed`), or `undefined` for one asked for and not there.
+// (`--listed`, `--open`), or `undefined` for one asked for and not there.
 function step(cmd, r, outcome, files = {}) {
   const dir = mkdtempSync(join(tmpdir(), "flakes-"));
   const out = join(dir, "out");
@@ -230,6 +258,14 @@ test("the quarantine job's step: a quarantined failure becomes a comment on its 
   const out = quarantinedStep(report([spec(SHADE, 503, [failed("boom")], { tags: ["quarantine"], annotations: [issue(173)] })]), "failure");
   assert.equal(out.unowned, 0);
   assert.deepEqual(out.issues.map((i) => i.issue), [173]);
+});
+
+test("the quarantine job's step: a failure that names a closed issue turns the suite red, and the open issues unread leave it to the issue named", () => {
+  const r = report([spec(SHADE, 503, [failed("boom")], { tags: ["quarantine"], annotations: [issue(173)] })]);
+  assert.deepEqual(quarantinedStep(r, "failure", { open: [{ number: 5, title: "Slow suite failing on main" }] }), { issues: [], unowned: 1 });
+  assert.equal(quarantinedStep(r, "failure", { open: [{ number: 173, title: "Flaky: taste_learning 'pointing…'" }] }).unowned, 0);
+  const unread = quarantinedStep(r, "failure");
+  assert.deepEqual([unread.issues.map((i) => i.issue), unread.unowned], [[173], 0]);
 });
 
 test("the quarantine job's step: a failed run with no failed test in its report, or no report, is unowned", () => {

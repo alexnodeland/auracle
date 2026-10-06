@@ -390,8 +390,10 @@ how long something took is a budget, not a gate assertion.
    description: "#N" } }` (`make spec-lint` fails a quarantined test that
    names none), and label the issue `quarantined`. It leaves the gate and
    runs in the *Slow suite*'s job for quarantined tests, where a failure is a
-   comment on its issue and never turns the suite red. The PR that fixes it
-   removes the tag and its annotation and closes the issue.
+   comment on its issue and never turns the suite red while the issue is
+   open. The PR that fixes it removes the tag and its annotation and closes
+   the issue; an issue closed with the tag still on its test owns nothing,
+   and that test's next failure turns the suite red.
 4. **On a PR, an unrelated failure is quarantined on sight**, on its own run
    or in the queue's run that dequeued it. The failure qualifies when all
    three hold:

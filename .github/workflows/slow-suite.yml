@@ -38,11 +38,12 @@ name: Slow suite
 #   already open, so a regression that merged on the fast tier is found
 #   within one merge or one night. A quarantined test's failure is not one:
 #   it is said on the test's own issue, and the run stays green, so that
-#   issue means a new regression and nothing else. Latest only: a run in progress finishes,
-#   and of the pushes that land meanwhile only the newest waits, since its
-#   run covers everything before it. A batch from the merge queue lands as
-#   two or three merges seconds apart; a run whose commit main has already
-#   moved past runs nothing (the `scope` job).
+#   issue means a new regression (or a quarantined test whose issue was
+#   closed, which owns no failure). Latest only: a run in progress
+#   finishes, and of the pushes that land meanwhile only the newest waits,
+#   since its run covers everything before it. A batch from the merge queue
+#   lands as two or three merges seconds apart; a run whose commit main has
+#   already moved past runs nothing (the `scope` job).
 # - on demand (Actions → Slow suite → Run workflow), in full.
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
@@ -277,15 +278,19 @@ jobs:
 
   # A quarantined run that failed: one report of it (linked from the run's
   # summary, traces and all), and which issue each failed test is said on
-  # (tests/web/flakes.mjs). A failure no issue owns (a test naming none, one
-  # cut short, an error outside the tests, a failed run with no failed test)
-  # is not a known flake: this job fails on it, and the run is red.
+  # (tests/web/flakes.mjs). A failure no issue owns (a test naming none or a
+  # closed issue, one cut short, an error outside the tests, a failed run
+  # with no failed test) is not a known flake: this job fails on it, and the
+  # run is red.
   report-quarantine:
     name: Quarantined browser report
     needs: quarantine
     if: ${{ !cancelled() && needs.quarantine.outputs.outcome == 'failure' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
     outputs:
       issues: ${{ steps.who.outputs.issues }}
     steps:
@@ -294,9 +299,22 @@ jobs:
         with:
           name: quarantine
           failed: "true"
+      # The open issues: a comment on a closed one would reach no one. Unread
+      # (gh failed), each issue named is taken as open, so a hiccup here
+      # never turns the run red by itself.
       - name: Which issue each failure is said on
         id: who
-        run: cd tests/web && node flakes.mjs quarantined merged.json --outcome failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd tests/web
+          open=()
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json; then
+            open=(--open open-issues.json)
+          else
+            echo "::warning::The open issues could not be listed: each failure is said on the issue it names."
+          fi
+          node flakes.mjs quarantined merged.json "${open[@]}" --outcome failure
       - name: What no issue owns
         if: steps.who.outputs.unowned != '0'
         run: |

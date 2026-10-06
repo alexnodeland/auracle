@@ -263,19 +263,19 @@ covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
 failure there opens an issue titled *Slow suite failing on main*, or comments
 on the open one. A quarantined test's failure is not one: it is said on that
 test's own issue, and the run stays green, so the issue means a new
-regression ([Flakes](#flakes)). On demand from the Actions tab. On a PR, only when the PR
-carries the `full-ci` label: adding it starts a run, and every push to the
-labelled PR runs it again; a PR without it runs nothing there. Add it to a
-PR that changes what the slow tests cover, the paths the workflow used to run
-a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
+regression, or a quarantined test whose issue was closed
+([Flakes](#flakes)). On demand from the Actions tab. On a PR, only when the
+PR carries the `full-ci` label: adding it starts a run, and every push to
+the labelled PR runs it again; a PR without it runs nothing there. Add it to
+a PR that changes what the slow tests cover, the paths the workflow used to
+run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
 `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
 `apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
 `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
 `tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or
 `package-lock.json`; or a spec file that holds an `@slow` or `@quarantine`
 test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
-offers. Otherwise the push to `main` is where a slow
-test catches it.
+offers. Otherwise the push to `main` is where a slow test catches it.
 
 **Runners.** The account runs at most 20 jobs at once.
 - **The queue's run** at its widest holds about 18: twelve browser runners,
@@ -505,8 +505,9 @@ from it ([Rules](#rules)).
   gate and runs in the *Slow suite*'s job for quarantined tests, so it is
   still run and still seen. A failure there is a comment on that issue (the
   test, its runs, the run), and the job stays green: only a failure no issue
-  owns (a test cut short, an error outside the tests) turns the run red. So
-  *Slow suite failing on main* means a new regression and nothing else.
+  owns (a test cut short, an error outside the tests, a test whose issue is
+  closed) turns the run red. So *Slow suite failing on main* means a new
+  regression, or a quarantine left behind when its issue closed.
   Remove the tag and its annotation in the PR that fixes it.
 
 ## What each browser spec pins
