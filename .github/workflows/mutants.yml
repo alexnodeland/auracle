@@ -12,18 +12,24 @@ name: Mutants
 # Two ways in:
 #
 # - pull_request: the mutants in the code the PR changed (`make mutants
-#   DIFF=1`'s, against the merge base), stopped at a time cap. It is not
-#   required: it is its own workflow, so it never fails `CI` (in either
-#   lane) or the queue's `Full gate`. Review treats each survivor it reports
-#   as a finding. The job is
-#   red when a mutant survived. It runs on every PR, with no `paths:`
-#   filter, and passes at once when no Rust in crates/ changed, and on the
-#   merge queue's draft PRs (branches under mergify/merge-queue/), whose
-#   code each PR's own run has judged. A workflow a filter skips leaves a
-#   required check waiting forever, and a job skipped by its `if` sits on
-#   the PR as skipped; this way the check always runs and reports, at about
-#   a runner-minute a batch, and making it required, once the crates are
-#   clean, is a change to the ruleset alone.
+#   DIFF=1`'s, against the merge base), stopped at a time cap. Its job's
+#   check, `Mutants in the changed code`, is required: Mergify's queue
+#   conditions (.mergify.yml) keep a PR out of the merge queue until it is
+#   green, beside `CI` and `PR checks` (#181). Not `main`'s ruleset; and it
+#   is a workflow of its own, so it never fails `CI` (in either lane) or the
+#   queue's `Full gate`. The job is red when a mutant of the changed code
+#   survived, or when the run broke (the unmutated tests failed, or
+#   cargo-mutants did). A survivor is killed with a test that asserts what
+#   the code does, or, when no behavior can show it, excluded in
+#   .cargo/mutants.toml with its reason. A timeout is reported and passes,
+#   and a run the cap stopped before it judged a mutant passes with a
+#   warning: no PR is held by time alone. It runs on every PR, with no
+#   `paths:` filter, and passes at once when no Rust in crates/ changed, and
+#   on the merge queue's draft PRs (branches under mergify/merge-queue/),
+#   whose code each PR's own run has judged. A workflow a filter skips
+#   leaves a required check waiting forever, and a job skipped by its `if`
+#   sits on the PR as skipped, which is not a success; this way the check
+#   always runs and reports, at about a runner-minute a batch.
 # - schedule (weekly) and workflow_dispatch: one part of the workspace, four
 #   shards two runners at a time, the parts taken in turn so that a cycle
 #   aims to cover the workspace (the `plan` job says why it is not all of it
@@ -102,8 +108,12 @@ jobs:
   # On the merge queue's draft PR (a branch under mergify/merge-queue/), it
   # passes at once: each PR in the batch was judged on its own run, and
   # judging the batch again would hold a runner for up to forty minutes.
-  # It still runs, so a required check reports there instead of sitting
-  # as skipped.
+  # Nothing reads it there (Mergify requires it of each PR's own head, in
+  # its queue conditions, and merges a batch on `Full gate` alone); it still
+  # runs, so the draft PR shows it green rather than skipped.
+  #
+  # The name is the check .mergify.yml's queue conditions require: a change
+  # to it is a change to both files.
   changed:
     name: Mutants in the changed code
     if: github.event_name == 'pull_request'
