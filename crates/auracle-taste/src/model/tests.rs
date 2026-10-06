@@ -88,11 +88,20 @@ fn a_named_group_at_rho_zero_is_the_flat_program() {
     assert!(fit(&on) != draws, "a group at ρ = 0.25 changed nothing");
 }
 
-/// The site counts the docs quote are the live φ's. `model.rs` quotes 226
-/// sites as shipped (K = 5, one session) and 231 with the brightness group;
-/// the reference (`taste/likelihoods.md`, `taste/posterior.md`) quotes
-/// 49 + S at K = 1 and 225 + S at K = 5. All of them assume d = 44, so a
-/// change to φ fails here until they are updated.
+/// The site counts the docs quote are the live φ's. Every one assumes
+/// d = 44, so a change to φ fails here until they are all updated:
+/// - 49 + S at K = 1 and 225 + S at K = 5, with the sweeps per site they
+///   buy (~44 at K = 5, ~200 at K = 1, over 10 000 steps): the reference's
+///   `taste/likelihoods.md`, `taste/posterior.md`, `design/open-questions.md`
+///   and `design/directions.md`;
+/// - 226 as shipped (K = 5, one session) and 231 with the brightness group:
+///   `SiteAddrs`'s doc in `model.rs`, and the ~226 `BTreeMap` entries per
+///   trace in `TasteModel::fit`'s;
+/// - 50 and 226 at the two operating points in `examples/fit_bench.rs`'s
+///   doc;
+/// - 50 and 226, and 138 for a cap at K = 3 (so lenses 4 and 5 cost 88):
+///   `SessionConfig::k_styles`, `SessionConfig::mcmc_samples` and
+///   `StyleShareRecord` in auracle-session's `engine.rs`.
 #[test]
 fn the_site_counts_the_docs_quote_are_the_live_phis() {
     let d = auracle_features::Features::phi_names().len();
@@ -104,10 +113,11 @@ fn the_site_counts_the_docs_quote_are_the_live_phis() {
         }
         SiteAddrs::new(&cfg, sessions).site_count()
     };
-    let docs = "φ moved: update the site counts quoted in model.rs and the reference";
+    let docs = "φ moved: update the site counts the docs quote (this test's doc lists them)";
     assert_eq!(sites(1, 1, false), 49 + 1, "{docs}");
+    // 225 + S, the 226 model.rs quotes.
     assert_eq!(sites(5, 1, false), 225 + 1, "{docs}");
-    assert_eq!(sites(5, 1, false), 226, "{docs}");
+    assert_eq!(sites(3, 1, false), 138, "{docs}");
     // One latent mean per style for the group, and no other new site.
     assert_eq!(sites(5, 1, true), 231, "{docs}");
 }

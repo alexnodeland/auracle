@@ -9,8 +9,8 @@
 //!
 //! | point | K | n_obs | sites (`dK + S + (n_stars−1) + KG`) |
 //! |---|---|---|---|
-//! | first fit  | 1 | 6   | 33  |
-//! | mature fit | 5 | 100 | 141 |
+//! | first fit  | 1 | 6   | 50  |
+//! | mature fit | 5 | 100 | 226 |
 //!
 //! It fits over synthetic standardized φ (no rendering, no grammar), so it
 //! measures the fit and nothing else, and it is fast enough to run between
