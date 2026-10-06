@@ -172,9 +172,11 @@ sound:
 ## web-check: every web module parses (js-check), the pure-logic modules'
 ## unit tests pass, the browser specs pass their lint (spec-lint), and CI's
 ## flake routing passes its tests: which issue a failed test is said on
-## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue)
+## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue);
+## and so do the timings the browser runners are dealt by (tests/web/shard.mjs
+## timings)
 web-check: js-check spec-lint
-	node --test apps/web/tests/*.test.mjs tests/web/flakes.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no
