@@ -14,6 +14,7 @@ Python 3 standard library only.
 import concurrent.futures
 import contextlib
 import io
+import json
 import os
 import re
 import shutil
@@ -162,6 +163,13 @@ class TheCheck(unittest.TestCase):
             for rel in planted:
                 self.assertTrue(any(p.startswith(rel + ":") and "a colour outside the tokens" in p for p in got), (rel, got))
 
+    def test_the_not_yet_files_are_named_and_not_scanned(self):
+        scanned = {rel for rel, _ in T.scanned_files()}
+        for rel, why in T.NOT_YET:
+            self.assertTrue(os.path.exists(os.path.join(T.ROOT, rel)), rel)
+            self.assertNotIn(rel, scanned)
+            self.assertTrue(why, rel)
+
     def test_a_file_on_not_yet_is_not_scanned(self):
         saved = T.NOT_YET
         T.NOT_YET = [("www/viz/viz.css", "a decision it waits on")]
@@ -172,10 +180,15 @@ class TheCheck(unittest.TestCase):
 
     def test_a_figure_reading_a_token_one_of_its_pages_lacks_fails_the_check(self):
         # The figures are loaded under Rack, under Paper and on the landing
-        # page: a tile filled with a token Paper lacks is filled with nothing
-        # there.
+        # page: a tile filled with a token Paper lacks turns black there (an
+        # SVG fill falls back to the one it inherits).
+        def drop_paper_phos_a(s):
+            src = json.loads(s)
+            del src["surfaces"]["docs-paper"]["alpha"]["phos-a"]
+            return json.dumps(src, indent=2, ensure_ascii=False) + "\n"
+
         with Tree() as t:
-            t.edit(T.SOURCE, lambda s: s.replace('"white": [70],\n        "phos-a": [10],\n', '"white": [70],\n', 1))
+            t.edit(T.SOURCE, drop_paper_phos_a)
             with contextlib.redirect_stdout(io.StringIO()):
                 T.generate(check=False)
             got = t.problems()
