@@ -1159,3 +1159,57 @@ fn mixture_captures_bimodal_taste() {
         "style recovery too weak: cos_a={ca:.2} cos_b={cb:.2}"
     );
 }
+
+/// A file of this process's own, so that test runs in several worktrees at
+/// once never read each other's half-written files.
+fn scratch_file(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("auracle-taste-{}-{name}", std::process::id()))
+}
+
+/// A posterior round-trips through its file bit for bit: its config, its
+/// draws and its importance weights. One saved before importance weights
+/// existed, under a config from before recency and fused groups, loads as
+/// the uniformly weighted posterior it was.
+#[test]
+fn a_posterior_round_trips_through_its_file() {
+    let mut rng = StdRng::seed_from_u64(0x5AFE);
+    let user = ground_truth();
+    let mut log = ObservationLog::new();
+    for _ in 0..20 {
+        let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+        log.push(user.observe_duel(&mut rng, a, b, 0));
+    }
+    let mut cfg = TasteConfig::mixture(D, 2);
+    cfg.recency_half_life = Some(150.0);
+    let vote = Feedback::Duel {
+        a: random_phi(&mut rng),
+        b: random_phi(&mut rng),
+        chose_a: true,
+    };
+    let p = TasteModel::new(cfg)
+        .fit(&mut rng, &FitSet::as_is(&log), 1_000, 500)
+        .reweighted(&vote, 0);
+
+    let path = scratch_file("posterior.json");
+    p.save(&path).unwrap();
+    let back = TastePosterior::load(&path);
+    std::fs::remove_file(&path).unwrap();
+    let back = back.unwrap();
+    assert_eq!(back.cfg, p.cfg);
+    assert_eq!(back.samples, p.samples);
+    assert_eq!(back.weights, p.weights);
+
+    let old = r#"{"cfg":{"n_features":2,"k_styles":1,"n_stars":3,"theta_prior_std":null},
+        "samples":[{"theta":[[0.5,-1.0]],"tau":[0.1],"cuts":[-1.0,1.0]},
+                   {"theta":[[1.5,0.0]],"tau":[0.2],"cuts":[-1.0,1.0]}]}"#;
+    let old: TastePosterior = serde_json::from_str(old).unwrap();
+    assert_eq!(
+        old.cfg,
+        TasteConfig {
+            n_stars: 3,
+            ..TasteConfig::linear(2)
+        }
+    );
+    assert_eq!(old.ess(), 2.0);
+    assert_eq!(old.theta_mean(0), vec![1.0, -0.5]);
+}
