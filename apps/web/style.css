@@ -1441,7 +1441,7 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   pointer-events: none;
   z-index: 2;
 }
-.rail.travelling .rail-stop[aria-current="location"] {
+.rail.traveling .rail-stop[aria-current="location"] {
   color: var(--silk-mute);
   border-color: var(--plate-edge);
   background: var(--panel);
@@ -3876,7 +3876,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   color: var(--silk);
 }
 /* Physical distance is the point: `delete` is not one more row in the list,
-   and a hand travelling to it should have to notice that it did. */
+   and a hand traveling to it should have to notice that it did. */
 .ctx-menu .cm-item.cm-sep {
   margin-top: var(--s2);
   padding-top: var(--s2);

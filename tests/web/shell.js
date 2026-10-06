@@ -20,7 +20,7 @@ async function goLevel(page, level) {
  *  one level on, the rail's puck home, and no face in flight. */
 async function landed(page) {
   await expect(page.locator("section.view.on")).toHaveCount(1);
-  await expect(page.locator("#rail")).not.toHaveClass(/\btravelling\b/);
+  await expect(page.locator("#rail")).not.toHaveClass(/\btraveling\b/);
   await expect(page.locator(".zoom-face.on")).toHaveCount(0);
 }
 

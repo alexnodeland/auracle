@@ -497,7 +497,7 @@ export function createShell(host = {}) {
 
   // The rail's puck: a light that travels from the stop you left to the one
   // you reach, turning the corner at PERFORM on the way to or from EVOLVE
-  // (levels.js `railPath`), while the stops are dimmed (`.travelling`). A
+  // (levels.js `railPath`), while the stops are dimmed (`.traveling`). A
   // pinch leans it toward the level it would reach. Made the first time it
   // moves; under reduced motion it never does.
   let puck = null;
@@ -524,14 +524,14 @@ export function createShell(host = {}) {
     for (const an of puck.getAnimations()) an.cancel();
     const frames = pts.map(([x, y], i) => ({ transform: `translate(${x}px, ${y}px)`, opacity: 1, offset: i / (pts.length - 1) }));
     frames[0].opacity = 0;
-    rail.classList.add("travelling");
+    rail.classList.add("traveling");
     puck.animate(frames, { duration: len, easing: easing("--e-swap"), fill: "forwards" });
   }
   /** The move landed: the stop it reached lights again, and the puck fades
    *  into it. */
   function puckRest() {
     if (!rail) return;
-    rail.classList.remove("travelling");
+    rail.classList.remove("traveling");
     if (!puck) return;
     const len = ms("--d-state");
     const at = puck.getAnimations();
