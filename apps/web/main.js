@@ -185,6 +185,11 @@ const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}
 // deal goes up, waits as the next pair or is dealt again. Created with what
 // it reads of the table where the next pair is dealt ahead, below.
 const { createDealer } = await import(`./deal.js?v=${BUILD}`);
+// What the address asks of a boot, `?farm=N` and `?seed=N` (params.js,
+// tests/params.test.mjs).
+const bootParams = await import(`./params.js?v=${BUILD}`);
+// The warm start's nine cards, one per family (warm.js, tests/warm.test.mjs).
+const { warmSample } = await import(`./warm.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -23284,41 +23289,12 @@ function openWarmStart() {
 }
 let warmPending = false;
 
-// Nine cards, drawn one per family, however big the library gets.
-//
-// This screen used to render a card for *every* preset and `warm-go` loaded
-// every one of them — which was survivable at nine and is not at twenty-eight:
-// a first-run screen you have to scroll, and 58% of a 48-slot pool spent
-// before the user has expressed a single preference. Library size and grid
-// size are now independent.
-//
-// Stratified rather than uniform on purpose. An unstratified sample of nine
-// from a library that is deliberately unevenly weighted (five basses, three
-// perc) keeps landing in the same corner, and a cold start taught from one
-// corner is the exact bias this screen exists to remove. One per family first,
-// then fill from what is left, so the first thirty seconds *span* the space.
-function warmSample(rows) {
-  const byCat = new Map();
-  for (const r of rows) {
-    if (!byCat.has(r.category)) byCat.set(r.category, []);
-    byCat.get(r.category).push(r);
-  }
-  const pick = (xs) => xs[Math.floor(Math.random() * xs.length)];
-  const chosen = [];
-  const taken = new Set();
-  for (const [, xs] of byCat) {
-    const r = pick(xs);
-    chosen.push(r);
-    taken.add(r.index);
-  }
-  const rest = rows.filter((r) => !taken.has(r.index)).sort(() => Math.random() - 0.5);
-  while (chosen.length < 9 && rest.length) chosen.push(rest.pop());
-  // Back into library order so the grid reads as a shelf, not a shuffle.
-  return chosen.slice(0, 9).sort((a, b) => a.index - b.index);
-}
-
+// Nine cards, drawn one per family, however big the library gets: warm.js
+// (`warmSample`, tests/warm.test.mjs), handed Math.random. The cards are one
+// of the page's own draws that stay random (params.js `seedOverride`), there
+// against position bias.
 function renderWarmStart(all) {
-  const rows = warmSample(all);
+  const rows = warmSample(all, Math.random);
   warmRows = rows;
   const grid = $("warm-grid");
   grid.innerHTML = "";
@@ -23798,34 +23774,17 @@ function farmWidth() {
   return n < 2 ? 0 : n;
 }
 
-/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null. */
+/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null
+ *  (params.js, tests/params.test.mjs). */
 function farmOverride() {
-  const override =
-    new URLSearchParams(location.search).get("farm") ??
-    localStorage.getItem("auracle-renderers");
-  if (override != null && override !== "") {
-    const n = Number(override);
-    if (Number.isFinite(n)) return Math.max(0, Math.min(8, Math.floor(n)));
-  }
-  return null;
+  return bootParams.farmOverride(location.search, () => localStorage.getItem("auracle-renderers"));
 }
 
-/** `?seed=N`: the session's random seed, any whole number (taken modulo
- *  2^32, exactly, as the engine's u32), or null; anything else is said in
- *  the console and ignored. The engine draws its pool, its pairs, its walks and its fits from
- *  streams of this one number (ADR-001), so a fresh session with the same seed
- *  deals the same sounds: a session can be shared, or replayed. The page's
- *  own draws (which side of the table a sound stands on, the warm start's nine
- *  cards, the sides of the keep-as-new comparison) stay random: they are there
- *  against position bias. Read at boot, never saved. */
+/** `?seed=N`: the session's random seed, or null; anything else is said in
+ *  the console and ignored (params.js `seedOverride`, which says why the
+ *  page's own draws stay random). Read at boot, never saved. */
 function seedOverride() {
-  const raw = new URLSearchParams(location.search).get("seed");
-  if (raw == null) return null;
-  if (!/^\d+$/.test(raw)) {
-    console.warn(`[auracle] ?seed= takes a whole number, so "${raw}" is ignored and this session's random seed is its own.`);
-    return null;
-  }
-  return Number(BigInt(raw) % 4294967296n);
+  return bootParams.seedOverride(location.search);
 }
 
 /** Reload as a fresh start: Reset your taste and a booth's next visitor.

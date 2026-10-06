@@ -45,6 +45,8 @@ export const MODULES = {
   "apps/web/vessel.js": ["faces", "perform_stage"],
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],
+  "apps/web/params.js": ["session_seed"],
+  "apps/web/warm.js": ["first_run", "faces", "text_fits"],
   "apps/web/shell.js": ["shell_levels", "model_view", "guide_pill"],
   "apps/web/levels.js": ["shell_levels"],
   "apps/web/midi.js": ["midi_announced"],
