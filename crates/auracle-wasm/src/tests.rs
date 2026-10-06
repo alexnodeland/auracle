@@ -3249,3 +3249,87 @@ fn a_wiring_file_row_that_does_not_fit_is_skipped() {
     assert_eq!((read[0].index, read[0].name.as_str()), (0, bank[0].name));
     assert_eq!(read[0].audio, vec![2.0, -2.0], "z × std + mean");
 }
+
+/// **PERFORM answers what it cannot read with nothing, and a walk that
+/// cannot go with why.** A tree (or an offer) that does not parse is
+/// `null`, `[]` or false, each binding's nothing, and no walk is held for
+/// it; with no standardizer there is nothing to wire against. A tree past
+/// the prior's support (a knob out of its range) cannot begin a walk
+/// (`outside_support`); a drift with every live knob locked has nothing to
+/// move, and neither, said when its walk ends, has a one-step offer that
+/// may not touch a knob (`no_move`). The live knobs are the session's
+/// list; a graft is the tree with the one module that gives its control
+/// something to turn, or `no_graft`.
+#[test]
+fn perform_answers_what_it_cannot_read_or_move() {
+    let mut cold = WasmEngine::new(3, 6);
+    let base = presets()[0].1.clone();
+    let tree = serde_json::to_string(&base).unwrap();
+    assert_eq!(
+        cold.perform_wire(&tree, "[]", None),
+        "null",
+        "no standardizer"
+    );
+    assert_eq!(cold.perform_wire_known(&tree, "[]", "[]", None), "null");
+    for bad in ["{", "null"] {
+        assert_eq!(cold.perform_wire(bad, "[]", None), "null");
+        assert_eq!(cold.perform_wire_plan(bad, "[]", "[]", None), "[]");
+        assert_eq!(cold.perform_wire_known(bad, "[]", "[]", None), "null");
+        assert_eq!(cold.perform_graft(bad, "[]", 0), "null");
+        assert_eq!(cold.perform_apply(bad, "[]"), "null");
+        assert_eq!(cold.perform_knobs(bad), "[]");
+        assert_eq!(cold.perform_offer(bad, "[]", "[]", 4, None, None), "null");
+        assert_eq!(cold.perform_drift(bad, "[]", "[]", 4, 0.1), "null");
+        assert!(!cold.memo_render(bad));
+        assert!(!cold.memo_absorb(bad, "{}"));
+        assert!(!cold.perform_record(&tree, "[]", bad, true, u32::MAX));
+    }
+    assert!(cold.jobs.is_empty(), "a walk was held for nothing");
+
+    let mut engine = filled(3);
+    let sr = engine.sample_rate();
+    let knobs: Vec<(String, f64)> = serde_json::from_str(&engine.perform_knobs(&tree)).unwrap();
+    assert_eq!(knobs, auracle_session::perform::live_knobs(&base, sr));
+    let mut wild = base.clone();
+    wild.amp.sustain = 7.0;
+    let wild = serde_json::to_string(&wild).unwrap();
+    assert_eq!(
+        engine.perform_offer(&wild, "[]", "[]", 4, None, None),
+        r#"{"reason":"outside_support"}"#
+    );
+    let locks: Vec<&str> = knobs.iter().map(|(a, _)| a.as_str()).collect();
+    let locks = serde_json::to_string(&locks).unwrap();
+    assert_eq!(
+        engine.perform_drift(&tree, "[]", &locks, 4, 0.1),
+        r#"{"reason":"no_move"}"#
+    );
+    let begun: serde_json::Value =
+        serde_json::from_str(&engine.perform_offer_begin(&tree, "[]", &locks, 1, None, None))
+            .unwrap();
+    let job = begun["job"].as_u64().expect("the offer begins") as u32;
+    while engine.perform_job_step(job, 1) {}
+    assert_eq!(engine.perform_job_finish(job), r#"{"reason":"no_move"}"#);
+
+    let bright = engine.perform_graft(&tree, "[]", 0);
+    let grafted: serde_json::Value = serde_json::from_str(&bright).unwrap();
+    let grown: PatchTree = serde_json::from_value(grafted["tree"].clone()).unwrap();
+    assert_eq!(
+        grafted.as_object().unwrap().len(),
+        1,
+        "a graft is its tree: {bright:.80}"
+    );
+    assert_eq!(
+        grown.root.size(),
+        base.root.size() + 1,
+        "one module grafted"
+    );
+    assert!(bright.starts_with(&format!(
+        "{{\"tree\":{}",
+        serde_json::to_string(&grown).unwrap()
+    )));
+    let none = auracle_session::perform::CONTROLS.len() as u32;
+    assert_eq!(
+        engine.perform_graft(&tree, "[]", none),
+        r#"{"reason":"no_graft"}"#
+    );
+}
