@@ -305,7 +305,7 @@ class OnMerge(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual([(w[0], w[1]) for w in fake.writes], [("comment", 177), ("comment", 178)])
         self.assertIn("Advanced by #300, merged: ci: two speeds", fake.writes[0][2])
-        self.assertIn("<!-- pr-checks: merged #300 -->", fake.writes[0][2])
+        self.assertIn("<!-- pr-checks: advanced by #300 -->", fake.writes[0][2])
         code, log, _ = merge("Refs #177, #178", fake)
         self.assertEqual((code, len(fake.writes)), (0, 2))
         self.assertIn("#177: commented already", log)
@@ -365,6 +365,30 @@ class OnMerge(unittest.TestCase):
         self.assertIn("Advanced by #300", comment[2])
         self.assertIn("#216 closed with #300", comment[2])
         self.assertIn("1 of 1 sub-issues", comment[2])
+
+    def test_a_run_again_posts_the_line_a_failed_run_left_out_and_only_that(self):
+        # #216 closed with this PR, and its parent #177 is also a `Refs`
+        # issue: one comment would carry both lines. The parent's sub-issues
+        # can't be read on the first run, so only the `Refs` line is posted.
+        subs = f"repos/{REPO}/issues/177/sub_issues"
+        fake = Fake({177: {}, 216: {"parent": 177, "state": "closed"}}, fail={subs})
+        code, _, _ = merge("Closes #216\nRefs #177", fake)
+        self.assertEqual(code, 1)
+        (first,) = [w[2] for w in fake.writes if w[1] == 177]
+        self.assertIn("Advanced by #300", first)
+        self.assertNotIn("sub-issues are closed", first)
+        # Run again once the read works: the parent's line is posted, alone.
+        fake.fail.discard(subs)
+        code, _, _ = merge("Closes #216\nRefs #177", fake)
+        self.assertEqual(code, 0)
+        second = [w[2] for w in fake.writes if w[1] == 177][1]
+        self.assertIn("#216 closed with #300. 1 of 1 sub-issues are closed.", second)
+        self.assertNotIn("Advanced by", second)
+        self.assertIn("<!-- pr-checks: sub-issues #300 -->", second)
+        # And a third run has nothing left to say.
+        code, log, _ = merge("Closes #216\nRefs #177", fake)
+        self.assertEqual((code, len([w for w in fake.writes if w[1] == 177])), (0, 2))
+        self.assertIn("#177: commented already", log)
 
     def test_a_parent_in_another_repository_is_not_told(self):
         fake = Fake({9: {"repo": "someone/else"}, 5: {"parent": 9, "state": "closed"}})

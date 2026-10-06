@@ -16,7 +16,8 @@ name: PR checks
 # - `Issues on merge`, once a PR merges into main: a comment on each issue
 #   it advanced (`Refs #n`), each issue it finishes (`Closes #n`) closed if
 #   GitHub didn't close it, and each parent of an issue that closed told,
-#   with its count of sub-issues closed. A run again writes nothing twice.
+#   with its count of sub-issues closed. Each line it writes is marked, so a
+#   run again adds only what an earlier run left out, and nothing twice.
 #
 # Neither runs on the merge queue's draft PRs (branches under
 # mergify/merge-queue/: .mergify.yml), whose titles and bodies are Mergify's.

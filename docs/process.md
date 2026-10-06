@@ -197,11 +197,13 @@ Findings come back ranked, and review is **one round**:
   comment saying why; and tells the parent of each issue that closed
   (GitHub's sub-issues) which closed, with which PR, and how many of its
   sub-issues are closed. A merge into another branch (a PR stacked on
-  another) closes nothing, as GitHub's own closing keywords don't.
-  One comment per issue per PR: run again, it writes nothing twice. A PR
-  from a fork gets a read-only token there, so its issues are updated by
-  hand. `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what
-  it would do.
+  another) closes nothing, as GitHub's own closing keywords don't. It
+  writes one comment per issue, each line in it marked: run again (a red
+  run is a read or a write that failed), it posts only the lines missing,
+  and nothing twice. A PR from a fork gets a read-only token there, so its
+  issues are updated by hand.
+  `python3 scripts/pr_checks.py merged --pr <n> --dry-run` says what it
+  would do.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
 
 ## CI and merging

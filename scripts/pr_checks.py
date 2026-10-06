@@ -40,10 +40,11 @@ failure: whether a change is noticeable is a judgment the script can't make.
 close is closed here, with a comment saying why; each issue that closed and
 has a parent (GitHub's sub-issues) is counted on the parent, with how many of
 its sub-issues are closed; each `Refs` issue gets a comment naming the PR. One
-comment per issue per PR, found again by its marker, so a run again writes
-nothing twice. GitHub closes linked issues a moment after the merge, so an
-issue still open is read again for up to POLLS * EVERY seconds before it is
-closed here.
+comment per issue per PR, each of its lines carrying a marker of its own, so a
+run again adds only what an earlier run left out: a line a failed run couldn't
+write is posted, and none is posted twice. GitHub closes linked issues a moment
+after the merge, so an issue still open is read again for up to POLLS * EVERY
+seconds before it is closed here.
 
 The GitHub API is read and written through `gh api` (GH_TOKEN in CI).
 Python 3 standard library only.
@@ -94,6 +95,9 @@ STATEMENT = re.compile(
 )
 NO_ISSUE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?no issue:[ \t]*(?P<why>.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE)
 
+# Each line the merge job writes carries a marker naming what it says and the
+# PR: `closed by` (the job closed the issue), `advanced by` (a `Refs` line),
+# `sub-issues` (a parent's count of them closed).
 MARK = "<!-- pr-checks: {what} #{pr} -->"
 POLLS = 6
 EVERY = 10  # seconds
@@ -322,23 +326,27 @@ def on_merge(
     or a write failed."""
     failed = False
 
-    def say(n: int, text: str, what: str) -> None:
-        """Comment `text` on #n once: a comment of this run's with the same
-        marker is found again."""
+    def say(n: int, lines: list[tuple[str, str]]) -> None:
+        """Comment on #n each of `lines` (what, text) that no comment there
+        has yet, in one comment: each line's marker is found again, so a run
+        again posts only the lines an earlier run didn't."""
         nonlocal failed
-        mark = MARK.format(what=what, pr=pr.number)
         status, comments = api.all(f"repos/{repo}/issues/{n}/comments")
         if status != 200:
             log(f"#{n}: comments couldn't be read (HTTP {status}): not commented")
             failed = True
             return
-        if any(mark in (c.get("body") or "") for c in comments):
+        said = "\n".join(c.get("body") or "" for c in comments)
+        new = [(what, text) for what, text in lines if MARK.format(what=what, pr=pr.number) not in said]
+        if not new:
             log(f"#{n}: commented already")
             return
+        text = "\n\n".join(t for _, t in new)
         if dry_run:
             log(f"#{n}: would comment: {text}")
             return
-        status, _ = api.post(f"repos/{repo}/issues/{n}/comments", {"body": f"{text}\n\n{mark}"})
+        marks = "\n".join(MARK.format(what=what, pr=pr.number) for what, _ in new)
+        status, _ = api.post(f"repos/{repo}/issues/{n}/comments", {"body": f"{text}\n\n{marks}"})
         log(f"#{n}: commented: {text}" if status in (200, 201) else f"#{n}: the comment failed (HTTP {status})")
         failed = failed or status not in (200, 201)
 
@@ -404,10 +412,14 @@ def on_merge(
         closed.append(n)
         say(
             n,
-            f"#{pr.number} merged and names this issue with `Closes`, but it was still open "
-            f"{polls * EVERY} seconds later, so it is closed here. GitHub closes one issue per keyword: "
-            "`Closes #a, #b` closes #a only.",
-            "closed by",
+            [
+                (
+                    "closed by",
+                    f"#{pr.number} merged and names this issue with `Closes`, but it was still open "
+                    f"{polls * EVERY} seconds later, so it is closed here. GitHub closes one issue per keyword: "
+                    "`Closes #a, #b` closes #a only.",
+                )
+            ],
         )
 
     # Each parent of an issue that closed, with the issues of its that did.
@@ -425,7 +437,7 @@ def on_merge(
             continue
         parents.setdefault(parent["number"], []).append(n)
 
-    lines: dict[int, list[str]] = {}
+    lines: dict[int, list[tuple[str, str]]] = {}
     for p, children in parents.items():
         status, subs = api.all(f"repos/{repo}/issues/{p}/sub_issues")
         if status != 200:
@@ -434,7 +446,7 @@ def on_merge(
             continue
         done = sum(1 for s in subs if s.get("state") == "closed" or s.get("number") in closed)
         named = ", ".join(f"#{c}" for c in children[:-1]) + (" and " if len(children) > 1 else "") + f"#{children[-1]}"
-        lines.setdefault(p, []).append(f"{named} closed with #{pr.number}. {done} of {len(subs)} sub-issues are closed.")
+        lines.setdefault(p, []).append(("sub-issues", f"{named} closed with #{pr.number}. {done} of {len(subs)} sub-issues are closed."))
     for n in links.refs:
         if n in links.closes:
             continue
@@ -442,9 +454,9 @@ def on_merge(
         if not is_issue(n, status, issue):
             failed = failed or status not in (200, 404, 410)
             continue
-        lines.setdefault(n, []).insert(0, f"Advanced by #{pr.number}, merged: {pr.title}")
+        lines.setdefault(n, []).insert(0, ("advanced by", f"Advanced by #{pr.number}, merged: {pr.title}"))
     for n, said in lines.items():
-        say(n, "\n\n".join(said), "merged")
+        say(n, said)
     return 1 if failed else 0
 
 

@@ -320,10 +320,13 @@ gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes
 The merge's *Issues on merge* job (`pr-checks.yml`) commented on each
 `Refs` issue, closed any `Closes` issue GitHub missed, and told each closed
 issue's parent. Its run's log says what it did to each; a red run is a read
-or a write that failed, so read it and do by hand what it couldn't:
+or a write that failed. Read it, and once the cause has passed (GitHub's
+API answering again), run the job again: each line it writes is marked, so
+it posts only what the red run left out. What it can't do, do by hand:
 
 ```bash
 gh -R alexnodeland/auracle run list --workflow pr-checks.yml --branch claude/<topic> --json databaseId,conclusion,event,displayTitle
+gh -R alexnodeland/auracle run rerun <run> --failed
 ```
 
 Update the plan's progress table (the task's issue and PR) when the PR did not.
