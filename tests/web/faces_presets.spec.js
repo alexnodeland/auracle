@@ -152,8 +152,13 @@ test("a sound opened while preset faces wait to render is not kept waiting behin
   await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "edit_begin" }, { after: opened })).length, { timeout }).toBe(1), { ms: 30_000 });
   const [begin] = await app.sent({ type: "edit_begin" }, { after: opened });
   const benched = await app.replyTo(begin);
-  // Each waited at most for the face render running when it arrived.
-  expect((await landed(load._at, loaded._at)).length, "faces rendered between the open and its answer").toBeLessThanOrEqual(1);
+  // Each waited at most for the face render running when it arrived. A face
+  // is counted when it reaches main, so the open's window can hold one more:
+  // a face the worker posted just before the open reached it, still on its
+  // way to main when the open was sent (the click lands at any point in a
+  // render). The bench open is sent once the open's first answer is in, and
+  // every face posted before that answer reaches main ahead of it.
+  expect((await landed(load._at, loaded._at)).length, "faces landing between the open and its answer").toBeLessThanOrEqual(2);
   expect((await landed(begin._at, benched._at)).length, "faces rendered between the bench open and its answer").toBeLessThanOrEqual(1);
   // And the faces were waiting when it was answered (so the open went ahead
   // of them, and this is not a lane that had emptied), and go on landing
