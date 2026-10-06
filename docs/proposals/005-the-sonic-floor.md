@@ -203,7 +203,8 @@ floored draws sit 0.29–0.31σ lower on `n_noise`, `flatness_mean`,
   its outcome, and the farm and serial paths build the same pool
   ([ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
   `crates/auracle-wasm/tests/boot_agrees.rs` pins what the shipped seed deals,
-  natively and in wasm.
+  natively and in wasm. A seed must deal the same first bank whatever the
+  browser has cached, too.
 - **The app hands over at 8.** The pool is 40, the draw budget 400, and
   `fill_draw` over-issues by a quarter plus one.
 - **Hollow faces need a verdict on every sound**, children and offers
@@ -234,11 +235,32 @@ from.
 
 **C. Beside φ, as the face is.**
 - A `FloorReport` computed in `featurize_memo` from the same normalized
-  render, carried on `CachedFeatures` beside the face, with a serde default.
-  A row without it is measured again before the fill admits on it, so, as
-  with faces, no `RENDER_EPOCH` bump. No such row exists today: nothing
-  keeps rows across boots, and the farm sends its rows as whole
+  render, carried on `CachedFeatures` beside the face, with a serde default
+  as the face has. The farm sends its rows as whole
   `CachedFeatures` JSON, which carries a new field as it is.
+- **Rows kept across boots need a `RENDER_EPOCH` bump.** The farm keeps
+  every row it renders in IndexedDB (`auracle-renders`, up to 20,000 rows,
+  `farm.js`) and answers a later boot's draw from it without a render. The
+  store is cleared only when the render namespace changes. So after the
+  floor lands, a returning browser holds rows with no report, and a seeded
+  session (`?seed=`) draws exactly those patches again.
+  - Faces arrived without a bump because a missing face decides nothing: a
+    view completes it with a render when it needs one. A missing verdict
+    would decide what lands. Admitted unjudged, the same seed would deal a
+    different first bank depending on what the browser had cached. Measured
+    again on the engine worker, one after another, the boot would be slower
+    than a cold one.
+  - So the floor bumps `RENDER_EPOCH` to 4. The namespace moves, every kept
+    row is orphaned and cleared, and each browser's first boot after it
+    renders on the farm, as any cold boot does. The reference's rule for the
+    epoch is "when in doubt, bump: the cost is one cold boot"
+    ([persistence](../../www/reference/src/persistence.md)).
+  - Treating a stored row with no report as a miss in `farm.js` would also
+    work, but it would put a correctness rule in the farm, where today
+    correctness rests on the namespace alone (`farm.js`'s own comment).
+  - With the bump, no row without a report reaches the fill: a farm worker
+    whose binary computes another namespace refuses work, and a row stored
+    under another namespace is never a hit.
 - The model never reads it.
 - Every featurization carries it, so a child, an offer or an import has a
   verdict too: enough for hollow faces and for casting any patch.
@@ -354,6 +376,8 @@ For the maintainer to accept or amend.
 - **`auracle-features`**:
   - `src/floor.rs` and `floor/tests.rs`;
   - `CachedFeatures::floor`, filled in `featurize_memo` (`cache.rs`);
+  - `RENDER_EPOCH` 4, with its row in `cache.rs`'s table: a row without a
+    report must not reach the fill;
   - the exports in `lib.rs`;
   - a row for `floor.rs` in `crates/auracle-features/AGENTS.md`.
 - **`auracle-session`**:
@@ -366,10 +390,18 @@ For the maintainer to accept or amend.
 - **`auracle-wasm`**:
   - the verdict on each row the app reads;
   - `tests/boot_probe.json` regenerated (`UPDATE_BOOT_PROBE=1`);
-  - `apps/web/perform-wirings.json` re-measured.
-- **`apps/web`**: nothing for the floor itself. The fill's card ("listening to
-  40 sounds: you start as soon as the first 8 land") stays true. Hollow faces
-  come with RFC-006's views.
+  - `apps/web/perform-wirings.json` re-measured: the floored pool's
+    standardizer owes it, and the epoch's bump alone fails
+    `shipped_wirings` until it is.
+- **`apps/web`**: no code for the floor itself.
+  - `farm.js`: no change. Its store (`auracle-renders`) and the faces'
+    (`auracle-faces`, `worker.js`) are stamped with the namespace, so each
+    browser's first boot after the bump clears them and renders cold, once.
+    PERFORM re-measures the wirings it kept in the background, as after any
+    change of namespace.
+  - The fill's card ("listening to 40 sounds: you start as soon as the
+    first 8 land") stays true.
+  - Hollow faces come with RFC-006's views.
 - **The films**: `www/video/tools/shotgen.py` and
   [`films.md`](../architecture/films.md) say that what a session deals is
   cast; `www/brand/sound.json`'s shortlist criteria point at the floor.
@@ -378,6 +410,9 @@ For the maintainer to accept or amend.
     with the constants and this measurement, and a line in the design
     decisions;
   - `docs/architecture/system.md`'s pool step says what lands;
+  - the reference's [persistence](../../www/reference/src/persistence.md)
+    page quotes `RENDER_EPOCH` as 4, and its list of what bumps the epoch
+    gains a reading the fill admits on;
   - a changelog fragment, since a player hears the change.
   - If the app or the guide names the floor (to explain a hollow face, say),
     that word is drafted for `www/brand/voice.md` first.
@@ -407,8 +442,12 @@ For the maintainer to accept or amend.
     the floored arm's standardizer differs;
   - `make phi-stats` and `make norm-peak`, to show they did not move.
 - **`make perform-wirings`**, committed.
+- **Rows kept from before:** the namespace names the epoch, asserted beside
+  the assertion that it names the DSP (`a_stored_row_is_keyed_by_its_namespace`
+  in `auracle-wasm`), so a row stored without a report is never a hit.
 - **The boot, in the browser:** wall clock from `init` to `playable` and to
-  `filled`, before and after, on the test port.
+  `filled`, before and after, on the test port: cold, and again with the
+  store warm.
 - **A listen**, below.
 
 ## What a listen checks
