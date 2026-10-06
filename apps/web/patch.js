@@ -450,24 +450,29 @@ export function createPatch(host) {
       "aria-label": "Back to the guess for the output", title: "Back to the output’s guess · Esc",
       onclick: (ev) => { ev.stopPropagation(); clearHere(); },
     }, "✕");
-    // The line above the rack: GUESS · FILTER and the model's reason.
-    if (read) {
+    // The line above the rack: GUESS · FILTER and the model's reason, in
+    // its live region (`.gr-line`, kept), and the ✕ beside it, outside.
+    const line = read && read.querySelector(".gr-line");
+    if (read && line) {
       read.classList.toggle("here", !!here);
       if (g) {
-        read.replaceChildren(
+        line.replaceChildren(
           el("span", { class: "gr-chip", text: `guess · ${nameOfKind(g.kind)}` }),
           ...(here ? [el("span", { class: "gr-at", text: placeWords(g) })] : []),
           el("span", { class: "gr-why", text: W.guessLine(g, guess.data.against, host.niceName) }),
-          ...(here ? [back()] : []),
         );
         read.hidden = false;
       } else if (say) {
-        read.replaceChildren(el("span", { class: "gr-why", text: say }), ...(here ? [back()] : []));
+        line.replaceChildren(el("span", { class: "gr-why", text: say }));
         read.hidden = false;
       } else {
-        read.replaceChildren();
+        line.replaceChildren();
         read.hidden = true;
       }
+      // The live region itself stays in place (one moved is a new region,
+      // which a screen reader may not read): only the ✕ comes and goes.
+      read.querySelector(":scope > .gr-back")?.remove();
+      if (here && (g || say)) read.append(back());
     }
     drawRailMark(g);
     if (!svg) return;

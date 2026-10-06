@@ -6853,6 +6853,15 @@ html.xl-on .alarm { z-index: 62; }
   pointer-events: none;
 }
 .guess-read[hidden] { display: none; }
+/* The words, the live region: laid out as the line was before the ✕ moved
+   out of it. */
+.guess-read .gr-line {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
 .gr-chip {
   flex: none;
   font-family: var(--font-silk);
