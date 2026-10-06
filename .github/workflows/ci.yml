@@ -122,7 +122,10 @@ jobs:
           # Anything that can change what the compiler sees or how CI runs.
           # The Makefile and the workflows are in here deliberately: they define
           # every build, so a change to one is treated as touching everything.
-          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/(workflows|actions)/)'; then
+          # So is scripts/: the coverage gate, which only the Coverage jobs
+          # run on real numbers (its own tests run in Web's dev-check), and
+          # setup.sh. A change to either used to reach no job at all.
+          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|scripts/|\.github/(workflows|actions)/)'; then
             rust=true
           else
             rust=false
