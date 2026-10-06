@@ -30,6 +30,18 @@ expect 2 "unqueued playwright"   guard-bash.sh "$(bashc 'cd tests/web && npx pla
 expect 0 "queued playwright"     guard-bash.sh "$(bashc 'AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test')"
 printf 'const a = ;\n' > "$tmp/bad.js";  expect 2 "broken JS"   post-edit-check.sh "$(edit "$tmp/bad.js")"
 printf 'const a = 1;\n' > "$tmp/ok.js";  expect 0 "valid JS"    post-edit-check.sh "$(edit "$tmp/ok.js")"
+# An ES module outside apps/web (the films' stage): a plain node --check
+# passes a broken one, so the hook reads it as a module.
+printf 'export const a = 1;\nconst b = ;\n' > "$tmp/bad-module.js"; expect 2 "broken ES module" post-edit-check.sh "$(edit "$tmp/bad-module.js")"
+printf 'import { a } from "./ok.js";\nexport const b = a;\n' > "$tmp/module.js"; expect 0 "valid ES module" post-edit-check.sh "$(edit "$tmp/module.js")"
+# A saved workflow gets the workflow check, not node --check (which passes
+# anything with an `export` in it, and refuses its top-level return as a
+# module): a sound one passes, and one that reads the clock is refused.
+mkdir -p "$tmp/.claude/workflows"
+cp "$root/.claude/workflows/ship-issues.js" "$tmp/.claude/workflows/ship-issues.js"
+expect 0 "a sound workflow" post-edit-check.sh "$(edit "$tmp/.claude/workflows/ship-issues.js")"
+printf '\nconst stamp = Date.now()\n' >> "$tmp/.claude/workflows/ship-issues.js"
+expect 2 "a workflow that reads the clock" post-edit-check.sh "$(edit "$tmp/.claude/workflows/ship-issues.js")"
 printf '{"a":1,}' > "$tmp/bad.json";     expect 2 "broken JSON" post-edit-check.sh "$(edit "$tmp/bad.json")"
 printf 'def f(:\n' > "$tmp/bad.py";      expect 2 "broken Python" post-edit-check.sh "$(edit "$tmp/bad.py")"
 if command -v rustfmt >/dev/null; then

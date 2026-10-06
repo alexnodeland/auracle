@@ -109,8 +109,11 @@ install-hooks:
 ## title, its issue links, the changelog's warning, what a merge does to the
 ## issues), the Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
-## when it exists), and the tests of the coverage gate's, the mutation
-## report's and CI stats' scripts
+## when it exists), the tests of the coverage gate's, the mutation
+## report's and CI stats' scripts, and the operator's (dev-ops): the saved
+## Claude Code workflows (.claude/workflows/), each run dry on stubbed agents
+## by scripts/ops/check_workflows.mjs, that check's own tests, and the tests
+## and syntax of scripts/ops/
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
 ## atomically), so they are prerequisites that `make -j` runs side by side; a
@@ -118,7 +121,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-ops
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -143,8 +146,12 @@ dev-pr-checks:
 	@python3 scripts/test_pr_checks.py
 dev-hooks:
 	@bash .claude/checks/test_hooks.sh
+# The stage's scripts are ES modules: `node --check` on a .js with an
+# `import` or `export` in it passes whatever follows (Node hands the file to
+# its module loader, which --check never runs), so they are read as modules.
 dev-syntax:
-	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
+	@for f in www/video/tools/*.mjs; do node --check $$f || exit 1; done
+	@for f in www/video/stage/*.js; do node --check --input-type=module < $$f || { printf '  in %s\n' $$f; exit 1; }; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
 	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
 	@printf '  film tools and hooks: syntax OK\n'
@@ -156,6 +163,11 @@ dev-mutants:
 	@python3 scripts/test_mutants_report.py
 dev-ci-stats:
 	@python3 scripts/test_ci_stats.py
+dev-ops:
+	@node scripts/ops/check_workflows.mjs
+	@node --test --test-reporter=dot scripts/ops/check_workflows.test.mjs
+	@for f in scripts/ops/test_*.py; do python3 $$f || exit 1; done
+	@for f in scripts/ops/*.sh; do bash -n $$f || exit 1; done
 
 ## tokens: write the colors, font families, type scale, spacing, radii and
 ## motion in www/brand/tokens.json into every surface's stylesheet (the
@@ -206,7 +218,9 @@ WEB_JS := $(wildcard apps/web/*.js)
 ## the edit site (CONTRIBUTING § Sharp edges). Parsed as the ES modules they
 ## are: `node --check file.js` reads a .js as CommonJS first and let a name
 ## declared twice inside a function (a SyntaxError the browser refuses the
-## whole module for) pass as "parse OK".
+## whole module for) pass as "parse OK". The saved workflows in
+## .claude/workflows/ are not modules (a body with a top-level return): make
+## dev-check runs them dry instead (dev-ops).
 js-check:
 	@command -v node >/dev/null || { \
 		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
