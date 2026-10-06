@@ -90,6 +90,7 @@ jobs:
       reuse_lint: ${{ steps.reuse.outputs.lint }}
       reuse_web: ${{ steps.reuse.outputs.web }}
       reuse_test: ${{ steps.reuse.outputs.test }}
+      reuse_coverage: ${{ steps.reuse.outputs.coverage }}
       reuse_browser: ${{ steps.reuse.outputs.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -211,14 +212,14 @@ jobs:
           fi
           gh run download "$art" --repo "$REPO" -n "verified-tree-$tree" -D verified
           cat verified/verified.json
-          # Lint and the Rust tests hold for the compiler they ran on: reused
-          # only while rust-toolchain.toml pins that release. The record
-          # keeps what `rustc --version` prints after "rustc", so its first
-          # word is the release ("1.99.0 (b940084d7 2026-09-28)").
+          # Lint, the Rust tests and their coverage hold for the compiler they
+          # ran on: reused only while rust-toolchain.toml pins that release.
+          # The record keeps what `rustc --version` prints after "rustc", so
+          # its first word is the release ("1.99.0 (b940084d7 2026-09-28)").
           pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
           echo "rustc: recorded '$recorded', pinned '$pinned'"
-          for job in lint web test; do
+          for job in lint web test coverage; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
             if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
             if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
@@ -361,6 +362,138 @@ jobs:
       - name: Doctests
         if: matrix.partition == '1/2'
         run: cargo test --doc --workspace --profile test-fast
+
+  # Coverage: the same fast tier, instrumented by cargo-llvm-cov, then each
+  # crate's line and function coverage against its floor
+  # (crates/coverage-baseline.json, which only rises) and every line the PR
+  # adds or changes in crates/ that no test ran (scripts/coverage_gate.py;
+  # docs/architecture/testing.md § Coverage). Three jobs, the way
+  # cargo-llvm-cov merges runs made on several machines: one build into a
+  # nextest archive, three runners that each run a slice of it and keep
+  # their profiles, and one report that reads them all against the archive.
+  #
+  # Instrumented, the tier takes about 1.2 times its plain time (measured
+  # locally, Oct 5: 1,257 test-seconds against 1,029), so about 2,700
+  # test-seconds here, about twelve minutes on one runner. On three, with
+  # the build and the report around them, about nine (an estimate until a
+  # run measures it), inside the browser tier's path. It runs beside Test,
+  # which runs the same tests uninstrumented; folding Test into it is the
+  # follow-up once a run here has measured it.
+  coverage-build:
+    name: Coverage build
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # llvm-tools only here, not in rust-toolchain.toml: every Rust job
+      # installs from the file, and the component is 41 MB.
+      - name: Install Rust (rust-toolchain.toml) and llvm-tools
+        run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The version the Makefile's LLVM_COV_VERSION names (0.7 and later
+      # instrument only the workspace's crates; 0.6 took thirteen times as long).
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-llvm-cov@0.9.1,nextest
+      - run: make coverage-archive COV_ARCHIVE=coverage.tar.zst
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-archive
+          path: coverage.tar.zst
+          retention-days: 3
+          if-no-files-found: error
+          # Already zstd.
+          compression-level: 0
+
+  coverage:
+    name: Coverage (${{ matrix.partition }})
+    needs: [changes, coverage-build]
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: ["1/3", "2/3", "3/3"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (rust-toolchain.toml) and llvm-tools
+        run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
+      # Nothing is compiled here, and nothing is fetched: the archive holds
+      # the binaries and the metadata nextest needs (no Rust cache either).
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-llvm-cov@0.9.1,nextest
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-archive
+      - run: make coverage-run COV_ARCHIVE=coverage.tar.zst NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-profiles-${{ strategy.job-index }}
+          path: target/llvm-cov-target/*.profraw
+          retention-days: 3
+          if-no-files-found: error
+
+  # The report: the floors, the changed lines, and the HTML report (an
+  # artifact). Its tables and every uncovered changed line, linked, are in
+  # the run's summary.
+  coverage-report:
+    name: Coverage
+    needs: [changes, coverage]
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base has to be reachable to diff against it.
+          fetch-depth: 0
+      # llvm-profdata and llvm-cov come from the pinned compiler's
+      # llvm-tools, so they read what that compiler wrote. Nothing is compiled.
+      - name: Install Rust (rust-toolchain.toml) and llvm-tools
+        run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-llvm-cov@0.9.1,nextest
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-archive
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-profiles-*
+          path: profiles
+      # The binaries where `report --nextest-archive-file` reads them, and
+      # every runner's profiles beside them. A profile is named for its
+      # process id, which two runners can share, so each keeps its runner's
+      # artifact name in front.
+      - name: Gather the binaries and the runners' profiles
+        run: |
+          set -euo pipefail
+          mkdir -p target/llvm-cov-target
+          tar --zstd -xf coverage.tar.zst -C target/llvm-cov-target
+          for dir in profiles/*/; do
+            run="$(basename "$dir")"
+            for f in "$dir"*.profraw; do mv "$f" "target/llvm-cov-target/$run-$(basename "$f")"; done
+          done
+          echo "$(find target/llvm-cov-target -maxdepth 1 -name '*.profraw' | wc -l) profiles from $(find profiles -mindepth 1 -maxdepth 1 -type d | wc -l) runners"
+      - run: >-
+          make coverage-report COV_ARCHIVE=coverage.tar.zst
+          BASE=origin/${{ github.base_ref || 'main' }}
+          COV_MARKDOWN="$GITHUB_STEP_SUMMARY"
+          COV_LINK="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}"
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: target/llvm-cov/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # No separate wasm32 check: when Rust changed, the cache key of the engine
   # job below (crates/**, Cargo.*, the Makefile) misses and it runs
@@ -656,7 +789,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, test, site, smoke, engine, browser]
+    needs: [changes, lint, web, test, coverage-build, coverage, coverage-report, site, smoke, engine, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -698,7 +831,7 @@ jobs:
             if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
           fi
           jq -n --arg tree "$tree" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
-            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, test: $r.test.result, site: $r.site.result, browser: $browser}}' \
+            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, test: $r.test.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
             > verified.json
           cat verified.json
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
