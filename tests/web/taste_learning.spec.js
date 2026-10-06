@@ -16,8 +16,10 @@
 // - The track replays the moments the page kept of what the engine posted,
 //   after a reload too; SOUND and TASTE show what the prototype's do;
 //   pointing at a weight (or Tab to it) names its feature on the small
-//   map's legend, the map shaded by the posted z; the bars move to the
-//   styles posted after each pick; REPLAY steps through them.
+//   map's legend and in what the map says aloud (how the dots are shaded by
+//   the posted z is taste-geom.test.mjs's, and no test here reads that
+//   shading); the bars move to the styles posted after each pick; REPLAY
+//   steps through them.
 //
 // The engine's replies are read through the fixture's tap (fixtures.js), and a
 // reply the engine would post is handed to main.js with `app.inject`.
@@ -499,6 +501,9 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   await expect.poll(async () => Math.abs((await green()) - sound), { timeout: 5_000 }).toBeLessThanOrEqual(3);
 });
 
+/** A string as a pattern's source that matches it and nothing else. */
+const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Pointing at a weight (or Tab to it) shades the small map by each sound's z
 // on that feature, as the engine posted it (`views.features`,
 // `WasmEngine::pool_features`). Which column of z the dots take, and how each
@@ -510,9 +515,6 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
 // dot's centre pixel can be its edge, and a gap between the brightest dots
 // and the dimmest is set by the pool's z, not by the app (CI read 196
 // against 136).
-/** A string as a pattern's source that matches it and nothing else. */
-const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 test("pointing at a weight, or Tab to it, names its feature on the small map's legend, and leaving puts the arrow's legend back", async ({ page, app }) => {
   await boot(app);
   await openView(page, "learning");

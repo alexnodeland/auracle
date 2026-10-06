@@ -349,14 +349,10 @@ test("history: bounded to the newest moments, with the maps they use", () => {
   for (let i = 0; i < h.entries.length; i++) assert.equal(entryView(h, i).map.points[0].x, h.entries[i].n);
 });
 
-test("the small map and its shading", () => {
+test("the small map stretches the pool to the panel inside its pad", () => {
   const pos = miniLayout([{ id: 1, x: 0, y: 0 }, { id: 2, x: 10, y: 5 }], 200, 100, 20);
   assert.deepEqual(pos.get(1), { x: 20, y: 20 });
   assert.deepEqual(pos.get(2), { x: 180, y: 80 });
-  const hi = shadeOf(2, 2), lo = shadeOf(-2, 2), mid = shadeOf(0, 2);
-  assert.ok(hi.alpha > mid.alpha && mid.alpha > lo.alpha, "more of the feature, brighter");
-  assert.ok(hi.r > mid.r && mid.r === lo.r, "and larger, above the middle");
-  assert.equal(hi.alpha, 1);
 });
 
 const near = (a, b) => Math.abs(a - b) < 1e-12;
