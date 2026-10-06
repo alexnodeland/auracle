@@ -56,7 +56,13 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   await drag(page, bright, -150);
   expect(Number(await bright.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
 
-  // Every angle the pointer is drawn at, from here on.
+  // Where the pointer is drawn before the Keep, and every angle it is drawn
+  // at from here on.
+  const from = await page.evaluate(() => {
+    const turn = document.querySelector('.pf-knob[data-i="0"] .pf-k-ptr');
+    const m = /rotate\((-?[\d.]+)\)/.exec(turn.getAttribute("transform") || "");
+    return m ? Number(m[1]) : NaN;
+  });
   await page.evaluate(() => {
     const turn = document.querySelector('.pf-knob[data-i="0"] .pf-k-ptr');
     window.__angles = [];
@@ -71,12 +77,19 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   // The glide has landed: the pointer is drawn at 12 o'clock.
   await expect.poll(() => page.evaluate(() => (window.__angles.length ? window.__angles[window.__angles.length - 1][1] : NaN))).toBe(0);
   const angles = await page.evaluate(() => window.__angles);
-  const moving = angles.filter(([, a]) => Math.abs(a) > 0.5);
-  expect(moving.length, "the pointer passed through angles between where it was and 12 o'clock").toBeGreaterThan(2);
+  // A glide, not a jump: drawn at least once strictly between where it was
+  // and 12 o'clock, and only ever coming home. How many frames it is drawn in
+  // is the frame rate's, and how long it took a budget (ADR-022): the glide
+  // is --d-state (180 ms) on the page's clock.
+  expect(Math.abs(from), "the pointer was turned away from 12 o'clock before the Keep").toBeGreaterThan(0.5);
+  const between = angles.filter(([, a]) => Math.sign(a) === Math.sign(from) && Math.abs(a) > 0.5 && Math.abs(a) < Math.abs(from) - 0.5);
+  expect(between.length, "the pointer passed through an angle between where it was and 12 o'clock").toBeGreaterThan(0);
+  const away = angles.map(([, a]) => Math.abs(a));
+  expect(away.every((a, i) => i === 0 || a <= away[i - 1] + 0.5), `the pointer only came home: ${away.map((a) => a.toFixed(1)).join(", ")}`).toBe(true);
   expect(angles[angles.length - 1][1]).toBe(0);
   const took = angles[angles.length - 1][0] - angles[0][0];
-  console.log(`re-centre glide: ${angles.length} frames over ${took.toFixed(0)} ms`);
-  expect(took).toBeLessThan(600);
+  console.log(`re-centre glide: ${angles.length} frames over ${took.toFixed(0)} ms, from ${from.toFixed(1)}°`);
+  app.budget("the re-centre glide, first frame → 12 o'clock", took, 600);
   await expect(bright.locator(".pf-k-ghost")).toHaveClass(/\bfade\b/);
 
   // Turned again after the Keep; the Keep's re-check (the knobs had travelled
