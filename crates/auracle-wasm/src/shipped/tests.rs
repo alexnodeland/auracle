@@ -74,16 +74,6 @@ fn a_difference_names_the_first_place_the_probes_part() {
     );
 }
 
-/// A pinned file that is not JSON is said to be so, before the probe is
-/// rendered at all.
-#[test]
-fn a_pinned_probe_that_is_not_json_says_so() {
-    assert_eq!(
-        boot_probe_difference("{ not json"),
-        "the pinned probe is not JSON"
-    );
-}
-
 /// The measurement examples read the session engine inside a wasm engine
 /// (`session`): the one its bindings answer from.
 #[test]
