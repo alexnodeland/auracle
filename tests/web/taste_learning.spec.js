@@ -465,14 +465,30 @@ test("each sound on the map is drawn as its face: taller than it is wide, in the
   }, { timeout: 30_000 }).toBeGreaterThanOrEqual(8);
 });
 
-/** The faces of `ids` have reached main: a `faces` reply naming each. Until
- *  its face lands the map draws a sound as a dot (main.js `drawMapFace`). An
- *  engine wait: a face not rendered yet is rendered in the worker's faces
- *  lane, after everything else. */
-function facesLanded(page, app, ids) {
-  const landed = () => page.evaluate((want) => want.every((id) =>
-    window.__tap.replies.some((r) => r.type === "faces" && (r.d.items || []).some((it) => it.id === id))), ids);
-  return app.engine((timeout) => expect.poll(landed, { timeout, message: `the faces of sounds ${ids.join(", ")}` }).toBe(true));
+/** The map draws each of `ids` as its face, not as a dot. main.js
+ *  `drawMapFace` draws a sound's face once main has two things: the face (a
+ *  `faces` reply naming its id) and the bank's statistics, which `faceRestat`
+ *  takes over the faces of the pool's rows that have landed, and only once
+ *  there are FACE_MIN_BANK of them (faces.js `bankStats`). Until then the map
+ *  draws a dot. So: an engine wait until the `faces` replies name both ids
+ *  and FACE_MIN_BANK of the pool's in all (a face not rendered yet comes
+ *  later, from the worker's faces lane, as news with no request number), then
+ *  one frame. `faceRestat` runs in a frame `facesChanged` asks for when the
+ *  reply is handled, and the tap and main hear a reply in the same task, so
+ *  that frame was asked for before this one and runs first. */
+async function facesDrawn(page, app, ids) {
+  const landed = () => page.evaluate(async (want) => {
+    const { FACE_MIN_BANK } = await import("/faces.js");
+    const pool = new Set((window.__tap.facts.ranked || []).map((r) => r.id));
+    const have = new Set();
+    for (const r of window.__tap.replies) {
+      if (r.type !== "faces") continue;
+      for (const it of r.d.items || []) if (pool.has(it.id)) have.add(it.id);
+    }
+    return want.every((id) => have.has(id)) && have.size >= FACE_MIN_BANK;
+  }, ids);
+  await app.engine((timeout) => expect.poll(landed, { timeout, message: `the faces of sounds ${ids.join(", ")}, and the bank's` }).toBe(true));
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done())));
 }
 
 /** How strongly TASTE draws each of `ids`' marks against SOUND, read off the
@@ -546,7 +562,9 @@ function dimming(page, ids) {
 // The SOUND it compares with is read in the same task as TASTE (#237): a
 // SOUND read once at the start and compared with later ones was of a dot
 // drawn while the sound's face was on its way (255), and every later read of
-// the face that replaced it (185), "70 against 3".
+// the face that replaced it (185), "70 against 3". And the read waits until
+// the map draws both marks as faces (`facesDrawn`): a dot is a fill and its
+// shadow, which do not scale as one image does.
 const DIM_TOLERANCE = 0.05;
 
 test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page, app }) => {
@@ -564,7 +582,7 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   const { ratings } = await app.facts();
   const rated = ratings.ranked.filter((r) => r.id !== inHand).sort((a, b) => a.mean - b.mean);
   const ids = [rated[0].id, rated[rated.length - 1].id];
-  await facesLanded(page, app, ids);
+  await facesDrawn(page, app, ids);
   const read = await dimming(page, ids);
   expect([read.taste, read.sound]).toEqual(["true", "false"]);
   const [least, most] = read.marks;
