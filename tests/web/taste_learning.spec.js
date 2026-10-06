@@ -543,10 +543,18 @@ test("pointing at a weight, or Tab to it, names its feature on the small map's l
   await expect(legend).toHaveText(new RegExp(`^${arrow}$`));
   await expect(map).toHaveAttribute("aria-label", new RegExp(`\\. ${arrow}\\.$`));
 
-  // Tab to a weight and away: the same.
+  // Focused: its feature. Tab from it reaches another weight (each is in the
+  // tab order), which names its own; that one found by focus, not by its
+  // place, since a styles post can sort the rows again. Left: the arrow's.
   await row(a).focus();
   await expect(legend).toHaveText(`dots: ${wa}`);
-  await row(a).blur();
+  await page.keyboard.press("Tab");
+  const tabbed = page.locator("#md-bars .md-row:focus");
+  await expect(tabbed).toHaveCount(1);
+  await expect(row(a)).not.toBeFocused();
+  const wt = await tabbed.locator(".md-word").textContent();
+  await expect(legend).toHaveText(`dots: ${wt}`);
+  await tabbed.blur();
   await expect(legend).toHaveText(new RegExp(`^${arrow}$`));
 });
 
