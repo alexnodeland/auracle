@@ -73,6 +73,70 @@ fn directions_are_unit_and_named_coordinates_exist() {
     );
 }
 
+/// **The palette is named as the page names it.** A control crosses the
+/// wasm boundary as its index into [`PALETTE`] (a wiring's `index`, an aimed
+/// offer's `control`, a graft's `k`), and the page names it back from its
+/// own table (`apps/web/words.js`'s `PALETTE`). The index is a wire format,
+/// so it is pinned here as a literal table, the same one
+/// `apps/web/tests/words.test.mjs` pins for the page, and the page's table
+/// is read and compared row for row: name, end words and family.
+#[test]
+fn the_palette_is_named_as_the_page_names_it() {
+    const WIRE: [(&str, &str, &str, &str); 18] = [
+        ("Bright", "dark", "bright", "Tone"),
+        ("Snap", "bloom", "snap", "Dynamics"),
+        ("Motion", "still", "restless", "Movement"),
+        ("Body", "thin", "full", "Weight"),
+        ("Grit", "smooth", "rough", "Character"),
+        ("Space", "close", "far", "Space"),
+        ("Warmth", "cold", "warm", "Tone"),
+        ("Air", "closed", "airy", "Tone"),
+        ("Thump", "light", "thumping", "Weight"),
+        ("Heft", "slight", "heavy", "Weight"),
+        ("Punch", "gentle", "punchy", "Dynamics"),
+        ("Round", "hard", "round", "Dynamics"),
+        ("Throb", "steady", "throbbing", "Movement"),
+        ("Sway", "fixed", "swaying", "Movement"),
+        ("Distance", "near", "distant", "Space"),
+        ("Haze", "clear", "hazy", "Space"),
+        ("Bite", "mild", "biting", "Character"),
+        ("Lo-fi", "clean", "worn", "Character"),
+    ];
+    let engine: Vec<_> = PALETTE
+        .iter()
+        .map(|c| (c.name, c.low, c.high, c.family))
+        .collect();
+    assert_eq!(engine, WIRE, "a palette index names another control");
+
+    // The page's table, field by field from each row's opening line.
+    let words = include_str!("../../../../apps/web/words.js");
+    let table = &words[words
+        .find("export const PALETTE = [")
+        .expect("words.js has PALETTE")..];
+    let table = &table[..table.find("\n];").expect("PALETTE ends")];
+    let field = |row: &str, key: &str| -> String {
+        let at = row.find(&format!("{key}: \"")).expect(key) + key.len() + 3;
+        row[at..at + row[at..].find('"').unwrap()].to_string()
+    };
+    let page: Vec<(String, String, String, String)> = table
+        .lines()
+        .filter(|l| l.trim_start().starts_with("{ name: "))
+        .map(|l| {
+            (
+                field(l, "name"),
+                field(l, "low"),
+                field(l, "high"),
+                field(l, "family"),
+            )
+        })
+        .collect();
+    let wire: Vec<(String, String, String, String)> = WIRE
+        .iter()
+        .map(|&(n, l, h, f)| (n.into(), l.into(), h.into(), f.into()))
+        .collect();
+    assert_eq!(page, wire, "the page names a palette index otherwise");
+}
+
 /// Purity generalizes without moving the six. For each of the six it is
 /// bit-for-bit the formula it always was (the cosine with its axis
 /// against the other five axes); for every palette control a move along
