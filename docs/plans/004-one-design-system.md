@@ -69,7 +69,8 @@ and printed key hints are built here; its other contracts stay in
      a film's ground; `www/brand/render.html` reads the brand page's tokens
      from a generated block. The live figures are held to the tokens, and
      the aliases of them, that every page loading them defines
-     (`ON_EVERY`). On the Rack theme nothing renders differently.
+     (`ON_EVERY`). On the Rack theme nothing renders differently on screen;
+     in print, a figure's frame takes each theme's `--silk-mute`.
    - *Still to do:* move the landing page, the docs theme, the live figures,
      the brand page and its raster source, the 404 and the films onto the
      scale (their counts are in the baseline, listed by every `--check`)

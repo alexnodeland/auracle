@@ -136,11 +136,14 @@ listed at the top of `tokens.py`. The live figures (`www/viz/`) have no block
 of their own: they paint with the tokens of the page they are on, the docs'
 Rack or Paper or the landing page, so a theme switch is a repaint.
 
-Scripts read the same tokens, because a canvas or an SVG attribute cannot use
-a custom property: `tok()` in the app's `main.js`, `ink()` in the landing
-page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
-(`www/video/stage/kit.js`), which every film uses. Each reads
-`getComputedStyle(document.documentElement)` once per name.
+Scripts read the same tokens through a helper: `tok()` in the app's
+`main.js`, `ink()` in the landing page's `hero.js`, and `ink()`/`inkA()`
+exported by the film kit (`www/video/stage/kit.js`), which every film uses.
+Each reads `getComputedStyle(document.documentElement)` once per name. A
+canvas needs the value, since it takes a color rather than a custom property,
+and so does a color a script mixes or fades (`inkA()`, the app's `inkMix()`).
+The live figures need no helper: they write tokens straight into their SVG
+attributes (`fill="var(--phos-a)"`), so a theme switch repaints them.
 
 The app's canvases read `--t-canvas` the same way (`canvasFont()` in
 `main.js`), and the rack reads its own tier.

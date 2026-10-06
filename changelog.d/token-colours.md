@@ -5,4 +5,6 @@
   Rack theme's bright green and amber, a mint and a peach under Paper's dark
   green and amber outlines. Each module is now shaded with the green or
   amber its outline and its name are drawn in, at the same strength. On the
-  Rack theme every figure looks as it did (#146).
+  Rack theme every figure looks as it did on screen. In print, on either
+  theme, a figure's frame is now drawn in that theme's own muted gray, a
+  little darker than before (#146).
