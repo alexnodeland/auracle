@@ -314,7 +314,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 - **CI's health is measured:** `python3 scripts/ci_stats.py` reports the
   last 7 days of CI, by lane and kind of PR, and `--compare` sets each
-  headline against the week before #177's wave 0. The budgets are in
+  headline against the week before #177's wave 0; the nightly *CI health*
+  workflow writes it to its summary. The budgets are in
   [`architecture/testing.md` § Budgets](architecture/testing.md#budgets).
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table

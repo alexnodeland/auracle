@@ -153,6 +153,10 @@ class Classify(unittest.TestCase):
         self.assertEqual(S.classify(["apps/web/main.js", "CHANGELOG.md"]), "web")
         self.assertEqual(S.classify(["tests/web/package-lock.json"]), "web")
         self.assertEqual(S.classify(["tests/web/AGENTS.md"]), "docs")
+        # The specs' lint is read by Web, not by a browser (ci.yml's `reach`).
+        lint = ["eslint.config.mjs", "eslint-suppressions.json", "eslint.test.mjs", "suppressions.mjs"]
+        self.assertEqual(S.classify([f"tests/web/{f}" for f in lint]), "docs")
+        self.assertEqual(S.classify(["tests/web/eslint.config.mjs", "tests/web/bank.spec.js"]), "web")
 
     def test_anything_else_is_docs_and_other(self):
         files = ["docs/process.md", "www/docs/src/a.md", "README.md", ".claude/skills/ship/SKILL.md"]
@@ -320,19 +324,31 @@ class MainRed(unittest.TestCase):
     def test_a_stretch_that_began_before_the_window_counts_from_its_start(self):
         # Red since 23:00 the day before, green at 09:00.
         red, green = red_run(1, -60, event="push", branch="main"), green_run(2, 530, event="push", branch="main")
-        for runs, before in (([red, green], ()), ([green], [red])):
-            [w] = self.stretches(runs, before)
-            self.assertEqual((w["from"], w["to"], w["minutes"], w["clipped"]), (at(0), at(540), 540, True))
-        md = S.markdown(S.measure({"ci": [red, green], "main_after": [], "prs": [], "other": {}}, BASE, self.UNTIL))
-        self.assertIn("(red since before the window)", md)
+        [w] = self.stretches([green], [red])
+        self.assertEqual((w["from"], w["to"], w["minutes"], w["clipped"]), (at(0), at(540), 540, True))
+        data = {"ci": [green], "main_before": [red], "main_after": [], "prs": [], "other": {}}
+        self.assertIn("(red since before the window)", S.markdown(S.measure(data, BASE, self.UNTIL)))
+
+    def test_only_main_before_says_how_main_stood_before_the_window(self):
+        # A merged PR opened before the window has collect list main's
+        # earlier runs into `ci` too, without their jobs. Their final
+        # conclusion lies: a red re-run green by hand, a run that ran nothing.
+        red = red_run(1, -60, event="push", branch="main")
+        red["run_attempt"], red["conclusion"] = 2, "success"
+        red["jobs"] += [dict(j, run_attempt=2, conclusion="success") for j in red_run(1, -30)["jobs"]]
+        listed = {k: v for k, v in red.items() if k != "jobs"}
+        idle = run(3, -10, [], event="push", branch="main")
+        del idle["jobs"]
+        green = green_run(2, 530, event="push", branch="main")
+        for ci in ([listed, green], [listed, idle, green]):
+            [w] = self.stretches(ci, [red])
+            self.assertEqual((w["from"], w["minutes"], w["red_runs"], w["clipped"]), (at(0), 540, [1], True))
+        # Without main_before, the listed copies say nothing.
+        self.assertEqual(self.stretches([listed, idle, green]), [])
 
     def test_a_stretch_that_ended_before_the_window_is_not_counted(self):
-        runs = [
-            red_run(1, -200, event="push", branch="main"),
-            green_run(2, -100, event="push", branch="main"),
-            green_run(3, 60, event="push", branch="main"),
-        ]
-        self.assertEqual(self.stretches(runs), [])
+        before = [green_run(2, -100, event="push", branch="main")]
+        self.assertEqual(self.stretches([green_run(3, 60, event="push", branch="main")], before), [])
 
     def test_a_run_after_the_window_closes_it_by_its_last_update(self):
         after = run(9, 2000, [], event="push", branch="main")
@@ -364,6 +380,14 @@ class Queue(unittest.TestCase):
         self.assertEqual((round(minutes), entries), (15, 2))
         # An entry after the merge is no part of it.
         minutes, entries = S.queue_time(comments + [payload("queued", 70, 70)], self.MERGED)
+        self.assertEqual((round(minutes), entries), (15, 2))
+
+    def test_merged_by_hand_after_leaving_the_queue_is_not_a_queue_time(self):
+        # Mergify's own figure is in its `merged` payload; a PR it dequeued and
+        # the operator then merged has none, though it entered once.
+        self.assertEqual(S.queue_time([payload("dequeued", 5, 6)], self.MERGED), (None, 1))
+        # Two entries, the second merged: Mergify's figure is the second's.
+        minutes, entries = S.queue_time([payload("merged", 45, 46), payload("dequeued", 5, 6)], self.MERGED)
         self.assertEqual((round(minutes), entries), (15, 2))
 
     def test_the_command_and_the_label_are_not_the_entry(self):
@@ -717,15 +741,53 @@ class RateLimit(unittest.TestCase):
             self.assertIsNone(api.get_or_none("issues/1/comments"))
         self.assertEqual((len(calls), api.stopped), (1, "HTTP 429"))
 
-    def test_stopped_before_the_lists_says_so_and_no_traceback(self):
-        def fake_collect(api, since, until, now):
-            raise S.RateLimited("HTTP 429")
-
-        out = io.StringIO()
+    def run_main(self, fake_collect, *argv):
+        out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(S, "collect", fake_collect), contextlib.redirect_stdout(out):
-            code = S.main(["--since", "2026-10-01"], now=BASE + dt.timedelta(days=2))
-        self.assertEqual(code, 0)
-        self.assertIn("Stopped at GitHub's rate limit", out.getvalue())
+            with contextlib.redirect_stderr(err):
+                code = S.main(["--since", "2026-10-01", *argv], now=BASE + dt.timedelta(days=2))
+        return code, out.getvalue(), err.getvalue()
+
+    @staticmethod
+    def stop_early(api, since, until, now):
+        raise S.RateLimited("HTTP 403 API rate limit exceeded")
+
+    @staticmethod
+    def stop_late(api, since, until, now):
+        api.stopped = "HTTP 403 API rate limit exceeded"
+        data = week()
+        data["ci"][0]["unread"] = True
+        return data
+
+    def test_stopped_before_the_lists_exits_red_with_nothing_but_the_stop(self):
+        code, out, err = self.run_main(self.stop_early)
+        self.assertEqual(code, S.STOPPED)
+        self.assertIn("Stopped at GitHub's rate limit", out)
+        self.assertIn("stopped at GitHub's rate limit", err)
+        code, out, err = self.run_main(self.stop_early, "--format", "json")
+        self.assertEqual((code, json.loads(out)), (S.STOPPED, {"stopped": "HTTP 403 API rate limit exceeded"}))
+        self.assertIn("stopped at GitHub's rate limit", err)
+
+    def test_stopped_part_way_reports_what_it_read_and_exits_red(self):
+        code, out, err = self.run_main(self.stop_late, "--format", "json")
+        s = json.loads(out)
+        self.assertEqual((code, s["stopped"], s["unread"]["runs"]), (S.STOPPED, "HTTP 403 API rate limit exceeded", 1))
+        self.assertIn("rows", s)
+        self.assertIn("left out", err)
+        code, out, err = self.run_main(self.stop_late)
+        self.assertEqual(code, S.STOPPED)
+        self.assertTrue(out.startswith("## CI health"))
+        self.assertIn("**Stopped at GitHub's rate limit**", out)
+
+    def test_compare_refuses_a_partial_run_or_markdown(self):
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in (("partial.json", json.dumps({"stopped": "HTTP 429"})), ("summary.md", "## CI health\n")):
+                path = os.path.join(d, name)
+                with open(path, "w") as f:
+                    f.write(text)
+                with contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as stop:
+                    self.run_main(self.stop_late, "--compare", path)
+                self.assertEqual(stop.exception.code, 2)
 
 
 class Collect(unittest.TestCase):
@@ -742,6 +804,9 @@ class Collect(unittest.TestCase):
         flying = run(2, 40, [job("Lint", 40, 41, 45)], branch="a-pr", status="in_progress", conclusion=None)
         old_red = red_run(3, -60, event="push", branch="main")
         self.runs = {1: done, 2: flying, 3: old_red}
+        # What each day's list of ci.yml runs answers with (every day: each
+        # must come out once), and the list of main's runs before the window.
+        self.listed, self.before = [1, 2], [3]
         self.prs = [
             {
                 "number": 7,
@@ -769,10 +834,8 @@ class Collect(unittest.TestCase):
         if path.endswith("/pulls"):
             return json.dumps(self.prs if q["page"] == ["1"] else [])
         if path.endswith("/actions/workflows/ci.yml/runs"):
-            if q["created"][0].startswith("<"):
-                return json.dumps({"workflow_runs": [self.listing(self.runs[3])]})
-            # Every day's list answers with both runs: each must come out once.
-            return json.dumps({"workflow_runs": [self.listing(self.runs[1]), self.listing(self.runs[2])]})
+            ids = self.before if q["created"][0].startswith("<") else self.listed
+            return json.dumps({"workflow_runs": [self.listing(self.runs[i]) for i in ids]})
         if "/actions/workflows/" in path:
             return json.dumps({"workflow_runs": []})
         m = re.search(r"/actions/runs/(\d+)/jobs$", path)
@@ -812,6 +875,32 @@ class Collect(unittest.TestCase):
         [w] = s["main_red"]["stretches"]
         self.assertEqual((w["red_runs"], w["clipped"], w["to"]), ([3], True, None))
         self.assertEqual((s["prs"]["queue"]["median"], s["rows"]["rust"]["runs"]), (10.0, 1))
+
+    def test_a_pr_opened_before_the_window_and_main_on_either_side(self):
+        # The PR opened 5 h before the window, so main's runs from then are
+        # listed too, without their jobs: a red re-run green by hand (3) and
+        # a run that ran nothing (4). main_before reads 4, then 3, by their
+        # jobs. After the window: red (5), green (6), green (7).
+        self.prs[0]["created_at"] = at(-300)
+        red = self.runs[3]
+        red["run_attempt"], red["conclusion"] = 2, "success"
+        red["jobs"] += [dict(j, run_attempt=2, conclusion="success") for j in red_run(3, -30)["jobs"]]
+        self.runs[4] = run(4, -10, [job("What changed", -10, -10, -9), job("CI", -9, -9, -8)], event="push", branch="main")
+        end = 2 * 1440
+        self.runs[5] = red_run(5, end + 10, event="push", branch="main")
+        self.runs[6] = green_run(6, end + 40, event="push", branch="main")
+        self.runs[7] = green_run(7, end + 80, event="push", branch="main")
+        self.listed, self.before = [1, 2, 3, 4, 5, 6, 7], [4, 3]
+        data = self.collect()
+        self.assertEqual([r["id"] for r in data["ci"]], [3, 4, 1, 2])
+        self.assertTrue(all("jobs" not in r for r in data["ci"] if r["id"] in (3, 4)))
+        self.assertEqual([r["id"] for r in data["main_before"]], [3])
+        self.assertEqual([r["id"] for r in data["main_after"]], [5, 6])
+        self.assertFalse(any("/runs/7/jobs" in c for c in self.calls))
+        s = S.measure(data, self.SINCE, self.UNTIL)
+        [w] = s["main_red"]["stretches"]
+        self.assertEqual((w["from"], w["clipped"], w["red_runs"], w["green_run"]), (at(0), True, [3, 5], 6))
+        self.assertEqual(w["to"], at(end + 50))
 
     def test_the_prs_stop_at_a_short_page_or_an_old_one(self):
         api = S.GitHub(repo="o/r", cache=self.dir, fetch=self.fetch)

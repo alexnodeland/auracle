@@ -546,7 +546,8 @@ shape of a run is what it was before the two lanes, the figure is the p90
 that `scripts/ci_stats.py` measured on green runs since #177's wave 0 merged
 (2026-10-06 02:31 to 09:00 UTC, every one of them finished). The two lanes'
 answers have no runs to measure yet, so their figure is the design's
-([*How long*](#ci-tiers) above), until the nightly measures them.
+([*How long*](#ci-tiers) above), until the nightly *CI health* run measures
+them.
 
 | Tier | Budget | From | Of |
 | --- | --- | --- | --- |
@@ -585,10 +586,12 @@ lands, each from a new measurement.
 runner waits, red runs and the job that failed, and runs per PR, by kind of
 PR for the fast lane, and the same for the queue's runs (*Queue batch*);
 open to merge, PRs merged a day, open to the first red, the time from
-entering Mergify's queue to the merge (from the entry Mergify records in its
-status comment on the PR) and how many times each PR entered, and how long
-`main` stayed red; each browser shard's time and their spread; and each
+entering Mergify's queue to the merge (Mergify's own figure, from its status
+comment on a PR it merged; n/a for a PR merged by hand) and how many times
+each PR entered, and how long `main` stayed red; each browser shard's time and their spread; and each
 job's time on green runs. `--format json` keeps a run, and `--compare` sets
 each headline against one: the week before wave 0 is
 [`docs/notes/ci-baseline-2026-10-05.json`](../notes/ci-baseline-2026-10-05.json).
-The nightly *Flake hunt* writes the last 7 days against it to its summary.
+The nightly *CI health* workflow (`ci-health.yml`, after the *Flake hunt*)
+writes the last 7 days against it to its run's summary; a run that stops at
+the API's rate limit writes what it read, says so, and goes red.

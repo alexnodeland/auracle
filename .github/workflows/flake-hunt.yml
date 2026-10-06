@@ -17,11 +17,9 @@ name: Flake hunt
 # annotation and never fails on one; here they are judged, once a night, on
 # main, and the ones over their limit file an issue of their own.
 #
-# And CI's own health over the last 7 days (scripts/ci_stats.py): how long a
-# PR waits for `CI` in each lane, how long its jobs wait for runners, how long
-# it then spends in the merge queue, how often a run goes red and on which
-# job, and how the browser shards spread, in the run's summary, each headline
-# against the week before #177's wave 0 (docs/notes/ci-baseline-2026-10-05.json).
+# CI's own health (scripts/ci_stats.py) is a workflow of its own,
+# ci-health.yml, after this one each night: a stop at the API's rate limit
+# there is a red CI health run, not a red hunt.
 
 on:
   schedule:
@@ -191,50 +189,6 @@ jobs:
             one over its limit, with the CPU each shard ran on. Read whether the
             app got slower or the runner was slow. A failure there that is not
             a budget is the Flake hunt's to find.
-
-  # CI's health (#177 § 7.1), read-only: GETs from the Actions and pull
-  # request APIs, the PRs' comments included (an issues endpoint, so
-  # `issues: read`). It needs no other job, so a red hunt still gets its
-  # numbers, and it holds one runner for a few minutes.
-  stats:
-    name: CI health
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      issues: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The answers that can no longer change (finished runs' jobs, closed
-      # PRs' files and comments), kept from one night to the next: read cold,
-      # a week is about 700 requests of the token's 1,000 an hour. Restored
-      # and saved apart, the save on `always()`, so a night that stops at the
-      # rate limit still keeps what it read, and the next goes on from there.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .cache/ci_stats
-          key: ci-stats-${{ github.run_id }}
-          restore-keys: ci-stats-
-      - name: The last 7 days, against the baseline
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          python3 scripts/ci_stats.py
-          --since "$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
-          --compare docs/notes/ci-baseline-2026-10-05.json
-          >> "$GITHUB_STEP_SUMMARY"
-      # A run three weeks old is in no window: 7 days, and 14 more for a
-      # merged PR's first runs.
-      - name: Forget what no window reads
-        if: always()
-        run: mkdir -p .cache/ci_stats && find .cache/ci_stats -type f -mtime +21 -delete
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always()
-        with:
-          path: .cache/ci_stats
-          key: ci-stats-${{ github.run_id }}
 
   # Which tests failed, and on which of their three runs, in one report.
   report:

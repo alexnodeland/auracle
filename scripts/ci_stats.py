@@ -18,7 +18,8 @@ uses gh's own login, or GH_TOKEN in CI. What can no longer change is kept
 under `.cache/ci_stats/` (gitignored), keyed by URL: the jobs of a completed
 run, and the files and comments of a closed PR. A second run over the same
 window fetches only the lists and what is still in flight. At GitHub's rate
-limit it stops, says so, and reports what it had read.
+limit it stops, reports what it had read (in JSON, with `stopped`), says so
+on stderr, and exits 3; `--compare` refuses such a run as a base.
 
 What it counts, with the definitions #177's numbers used:
 - A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job (on a
@@ -31,7 +32,8 @@ What it counts, with the definitions #177's numbers used:
   files: CI when it changes a workflow or an action (the fast lane runs the
   full gate), whatever else it changes; then Rust (crates/, Cargo.*,
   rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh); then
-  web (apps/web/ and tests/web/, their Markdown aside); and docs and other
+  web (apps/web/ and tests/web/, their Markdown and the specs' lint aside);
+  and docs and other
   (anything else: the site, docs/, .claude/, the other scripts,
   changelog.d/, .mergify.yml). The kinds are the same for runs from before
   ci.yml had these lanes, so a baseline compares like with like. A run
@@ -50,10 +52,11 @@ What it counts, with the definitions #177's numbers used:
   (its fast lane; the queue's batches are counted on their own row).
 - Open to merge, PRs merged a day, and open to the first red (that run's
   `CI` completed): over the PRs merged in the window.
-- In the queue: from when the PR last entered Mergify's queue to its merge,
-  read from the `queued_at` Mergify keeps in its status comment on the PR
-  (one comment for each time it entered); n/a when there is none (a merge by
-  hand). How many times each PR entered is counted too.
+- In the queue: from when the PR entered Mergify's queue to its merge, as
+  Mergify records it: the `queued_at` in the payload of its status comment
+  whose state is `merged` (a new comment each time the PR enters); n/a when
+  Mergify did not merge it (a merge by hand, after leaving the queue or
+  without it). How many times each PR entered is counted too.
 - main red: from a red run's `CI` completed on main to the next green run's
   `CI` completed on main. Consecutive reds are one stretch. A stretch that
   began before the window is counted from the window's start.
@@ -192,7 +195,12 @@ RUST = re.compile(
     r"^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain"
     r"|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)"
 )
-WEB = re.compile(r"^(apps/web/|tests/web/).*(?<!\.md)$")
+# The specs' lint (its config, its suppressions, its tests) is read by Web,
+# not by any browser: ci.yml's `reach` leaves it out.
+WEB = re.compile(
+    r"^(?!tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs)$)"
+    r"(apps/web/|tests/web/).*(?<!\.md)$"
+)
 
 
 def classify(files) -> str:
@@ -405,31 +413,36 @@ def row_of(run, branches) -> str | None:
 PAYLOAD = re.compile(r"-\*- Mergify Payload -\*-\s*(\{.*?\})\s*-\*- Mergify Payload End -\*-", re.S)
 
 
-def queue_entries(comments) -> list:
-    """Each time the PR entered Mergify's queue, oldest first: the
-    `queued_at` in the payload Mergify keeps, as an HTML comment, in each of
-    its status comments on the PR (a new one each time the PR enters)."""
-    times = set()
+def payloads(comments) -> list:
+    """The payloads Mergify keeps, as an HTML comment, in each of its status
+    comments on the PR (a new comment each time the PR enters the queue):
+    each says when the PR entered (`queued_at`) and how that went (`state`)."""
+    out = []
     for c in comments or []:
         if not (c.get("user") or {}).get("login", "").startswith("mergify"):
             continue
         for m in PAYLOAD.finditer(c.get("body") or ""):
             try:
-                t = ts(json.loads(m.group(1)).get("queued_at"))
-            except (ValueError, AttributeError):
+                data = json.loads(m.group(1))
+            except ValueError:
                 continue
-            if t is not None:
-                times.add(t)
-    return sorted(times)
+            if isinstance(data, dict) and ts(data.get("queued_at")) is not None:
+                out.append(data)
+    return out
 
 
 def queue_time(comments, merged_at: dt.datetime) -> tuple:
-    """(minutes from the last entry before the merge to the merge, how many
-    times the PR entered); (None, 0) when Mergify never queued it."""
-    entries = [t for t in queue_entries(comments) if t <= merged_at]
-    if not entries:
-        return None, 0
-    return mins(entries[-1], merged_at), len(entries)
+    """(minutes from entering the queue to the merge, how many times the PR
+    entered before it). The entry is Mergify's own figure, in the payload
+    whose state is `merged`; a PR Mergify did not merge (merged by hand,
+    after leaving the queue or without it) has none: (None, entries)."""
+    found = payloads(comments)
+    entries = {ts(p["queued_at"]) for p in found} - {None}
+    entries = [t for t in entries if t <= merged_at]
+    done = [ts(p["queued_at"]) for p in found if p.get("state") == "merged" and ts(p["queued_at"]) <= merged_at]
+    if not done:
+        return None, len(entries)
+    return mins(max(done), merged_at), len(entries)
 
 
 # ─── main's red stretches ────────────────────────────────────────────────────
@@ -477,8 +490,9 @@ def in_window(run, since, until) -> bool:
 def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
     """Every number, from what `collect` read (or a test wrote): `ci` (ci.yml
     runs, each with its `jobs`; one marked `unread` is left out),
-    `main_before` (main's last decided run before the window), `main_after`
-    (main's runs after it, without jobs, to close a red stretch), `prs` (each
+    `main_before` (main's last decided run before the window, with its
+    jobs), `main_after` (main's runs after it up to the first green, with
+    their jobs, to close a red stretch), `prs` (each
     with `kind`, None when its files could not be read, and `comments` when
     merged in the window) and `other` (each OTHER workflow's runs)."""
     branches = by_branch(data["prs"])
@@ -548,9 +562,9 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
         if reds:
             first_red.append(mins(c, min(reds)))
         q, n = queue_time(p.get("comments"), m)
+        entries.append(n)
         if q is not None:
             queue.append(q)
-            entries.append(n)
     for k, counts in per_kind.items():
         rows.setdefault(k, {"runs": 0})["runs_per_pr"] = {
             "prs": len(counts),
@@ -570,11 +584,14 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
     }
 
     # main's red stretches: its runs in the window, its last decided run
-    # before it (a stretch may have begun there), and the runs after it that
-    # close a stretch.
-    mains = [r for r in runs if is_main(r)] + list(data.get("main_before", []))
-    before = [r for r in mains if ts(r["created_at"]) < since and verdict(r) in ("green", "red")]
-    mains = [r for r in mains if ts(r["created_at"]) >= since] + list(data.get("main_after", []))
+    # before it (a stretch may have begun there) and the runs after it that
+    # close a stretch, both as `collect` read them, with their jobs. main's
+    # runs before the window in `ci` are listed copies whose jobs were not
+    # read, whose final conclusion a re-run or a superseded run would make
+    # green: they are not read here.
+    mains = [r for r in runs if is_main(r) and ts(r["created_at"]) >= since]
+    mains += [r for r in data.get("main_after", []) if not r.get("unread")]
+    before = [r for r in data.get("main_before", []) if verdict(r) in ("green", "red")]
     if before:
         mains.append(max(before, key=lambda r: r["created_at"]))
     stretches = main_red(mains, since, until)
@@ -1136,6 +1153,22 @@ def main_before(api: GitHub, since: dt.datetime) -> list:
     return []
 
 
+def main_after(api: GitHub, runs) -> list:
+    """main's runs after the window, with their jobs, up to the first green
+    one (the one that closes a stretch still red at the window's end)."""
+    out = []
+    for r in runs:
+        if r.get("status") != "completed":
+            continue
+        jobs_of(api, r)
+        if r.get("unread"):
+            break
+        out.append(r)
+        if verdict(r) == "green":
+            break
+    return out
+
+
 def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetime, workers: int = 8) -> dict:
     """Everything `measure` reads, from the API. At the rate limit, what
     could not be read is marked (a run `unread`, a PR's kind None)."""
@@ -1145,6 +1178,7 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
     start = max(min([since] + [ts(p["created_at"]) for p in merged]), since - LOOKBACK)
     ci = list_runs(api, "ci.yml", start, end)
     after = list_runs(api, "ci.yml", end, min(end + 3 * DAY, now), branch="main", event="push") if end < now else []
+    after = main_after(api, after)
     other = {f: list_runs(api, f, since, end) for f, _ in OTHER}
     before = main_before(api, since)
 
@@ -1196,6 +1230,24 @@ def collect(api: GitHub, since: dt.datetime, until: dt.datetime, now: dt.datetim
 # ─── the command ─────────────────────────────────────────────────────────────
 
 
+# The exit status of a run that stopped at the rate limit, after it wrote
+# what it had read: not a whole measurement, and not to be kept as a base.
+STOPPED = 3
+
+
+def load_base(ap, path: str) -> dict:
+    """A saved --format json run, whole: not Markdown, not one that stopped
+    at the rate limit."""
+    try:
+        with open(path) as f:
+            base = json.load(f)
+    except (OSError, ValueError) as e:
+        ap.error(f"--compare {path}: not a saved --format json run ({e})")
+    if not isinstance(base, dict) or base.get("stopped") or "rows" not in base:
+        ap.error(f"--compare {path}: a run that stopped at the rate limit, or not a run; not a base")
+    return base
+
+
 def main(argv=None, now: dt.datetime | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1211,18 +1263,24 @@ def main(argv=None, now: dt.datetime | None = None) -> int:
     since = parse_when(args.since) if args.since else until - 7 * DAY
     if since >= until:
         ap.error("--since must come before --until")
+    base = load_base(ap, args.compare) if args.compare else None
 
     api = GitHub()
     try:
         data = collect(api, since, until, now)
     except RateLimited as e:
-        print(f"## CI health, {window_text(iso(since), iso(until))}\n")
-        print(
-            f"**Stopped at GitHub's rate limit** ({e}) after {api.fetched} request(s), before the "
-            "lists of runs and PRs were read, so there is nothing to report. What was read is in the "
-            "cache, so the next run goes on from there."
-        )
-        return 0
+        print(f"ci_stats: stopped at GitHub's rate limit before the lists were read: {e}", file=sys.stderr)
+        if args.format == "json":
+            json.dump({"stopped": str(e)}, sys.stdout, indent=1)
+            sys.stdout.write("\n")
+        else:
+            print(f"## CI health, {window_text(iso(since), iso(until))}\n")
+            print(
+                f"**Stopped at GitHub's rate limit** ({e}) after {api.fetched} request(s), before the "
+                "lists of runs and PRs were read, so there is nothing to report. What was read is in the "
+                "cache, so the next run goes on from there."
+            )
+        return STOPPED
     stats = measure(data, since, until)
     stats["generated"] = iso(now)
     if api.stopped:
@@ -1230,10 +1288,7 @@ def main(argv=None, now: dt.datetime | None = None) -> int:
         stats.setdefault("unread", {"runs": 0, "prs": 0})
     print(f"ci_stats: {api.fetched} requests, {api.reused} from {os.path.relpath(CACHE, ROOT)}/", file=sys.stderr)
 
-    cmp = None
-    if args.compare:
-        with open(args.compare) as f:
-            cmp = compare(json.load(f), stats)
+    cmp = compare(base, stats) if base is not None else None
     if args.format == "json":
         if cmp is not None:
             stats["compare"] = {"base": args.compare, "headlines": cmp}
@@ -1241,6 +1296,14 @@ def main(argv=None, now: dt.datetime | None = None) -> int:
         sys.stdout.write("\n")
     else:
         sys.stdout.write(markdown(stats, cmp, args.compare))
+    if api.stopped:
+        u = stats["unread"]
+        print(
+            f"ci_stats: stopped at GitHub's rate limit ({api.stopped}); what was read is reported, and "
+            f"{u['runs']} run(s)' jobs and {u['prs']} PR(s)' files are left out. Exit {STOPPED}.",
+            file=sys.stderr,
+        )
+        return STOPPED
     return 0
 
 
