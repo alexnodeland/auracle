@@ -454,7 +454,8 @@ test("opening a patch is not announced unless it kept you waiting", async ({ pag
     const waited = opened.detail.waited;
     opens.push({ name, waited });
     if (waited > OPEN_SAID_MS + 1) await app.toast(`Opened ${name}.`, { since: mark });
-    app.budget(`opening ${name} from the bank`, waited, OPEN_SAID_MS);
+    // An open the app did not see asked for (no `openAsk`) marks no wait.
+    if (waited != null) app.budget(`opening ${name} from the bank`, waited, OPEN_SAID_MS);
   }
   // Nothing else is said of an open, however long one looks; a quick one is
   // not said at all. (The mark rounds what it waited; within a millisecond of

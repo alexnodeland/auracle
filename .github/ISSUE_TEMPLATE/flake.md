@@ -22,7 +22,8 @@ labels: flake, area:tests
 
 <!-- The cause, or the best-supported guess and what would confirm it: a
      wait on a time, an injected reply the engine overwrote, a count a slow
-     runner doubled, a bound with no slack, a real race in the app. -->
+     runner doubled, a speed bound asserted where a budget belongs (ADR-022),
+     a real race in the app. -->
 
 ## Fix
 

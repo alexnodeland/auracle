@@ -12,10 +12,12 @@ superseded_by: null
 
 ## Status
 
-Accepted by the maintainer on 2026-10-05 (#177). It amends one sentence that
-`.github/workflows/ci.yml` and `docs/architecture/testing.md` both held: "a
-failure that only appears on a slow runner is still a finding about the app".
-That stays true of correctness and is no longer true of speed.
+Accepted by the maintainer on 2026-10-05 (#177). It amends one rule, which
+`.github/workflows/ci.yml` stated as "A failure that only appears here is
+still a finding about the app on a slower machine" and
+`docs/architecture/testing.md` § Flakes as "A test that passes only
+sometimes is a finding about the app or the test". That stays true of
+correctness and is no longer true of speed.
 [ADR-019](019-work-flows-through-issues-and-prs.md)'s flake rules stand: no
 retries, and a flaky test is fixed or quarantined.
 
@@ -101,9 +103,13 @@ judged.
   and what that line asserts now.
 - The gate's report shows each budget as an annotation (`budget: <name>
   <measured> ms of <limit> ms`), so a slow run is visible without being red.
-- A budget is enforced only where the machine is held still: the nightly
-  job, at a fixed `AURACLE_CPU_THROTTLE`. Its issue is about speed, not
-  about a flaky test.
+- A budget is judged only by the nightly *Speed budgets* job, on main. It
+  runs at `AURACLE_CPU_THROTTLE=1`, no throttle at all: a throttle of 2
+  would replace a spec's own slowed engine worker (#166). So the machine is
+  not held still: the hosted runners differ in speed by about two times,
+  and a budget over its limit is read beside the CPU its shard ran on (in
+  the run's summary) before it is taken for a slower app. Its issue is about
+  speed, not about a flaky test.
 - `tests/web/AGENTS.md` says how to write each kind, and `testing.md`
   § Flakes and § Rules point here. A review finding "a spec that a slow
   runner can fail" (ADR-020) now means a correctness assertion with a
