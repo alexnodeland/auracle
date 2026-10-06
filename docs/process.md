@@ -126,9 +126,13 @@ in a plan's prose, a session's notes or a conversation.
   the session asks for a session link line, it is the message's last line and
   nothing follows it.
 - **The gates a builder runs** are the fast ones for what changed (the `check`
-  skill) and the specs it added or touched (`make browser-changed`), through
-  the browser queue on its own port. Not the full suite: the merge queue's
-  run of CI runs it twelve wide.
+  skill) and the specs the change reaches (`make browser-changed`: the specs
+  it added or touched, and for `main.js` or the engine, the views it
+  reaches), through the browser queue on its own port. Not the full suite:
+  the merge queue's run of CI runs it twelve wide. Before the push, the
+  operator runs the same, the spec files the branch adds or edits three
+  times each and the rest once (`make browser-changed REPEAT=3`, the `ship`
+  skill).
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
@@ -273,7 +277,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   (not the specs' lint or CI's flake routing, which no browser reads);
   Worker protocol (`make worker-test`) when the app, the engine or
   `tests/worker/` changed; and the browser specs the change reaches
-  (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
+  (`tests/web/changed.mjs`, as `make browser-changed` picks them before it
+  follows the views), on up to
   four runners. About five minutes for docs; up to about ten when Rust
   changed (Coverage sets the length) or an app module's specs run (`patch.js`
   reaches about 23 test-minutes, on four runners).
@@ -303,6 +308,14 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `make mutants DIFF=1` before review, so they are answered before the PR.
   On the queue's draft PRs it passes at once, since each PR's own run has
   judged their code.
+- **Codecov comments on the PR** when the PR's own run uploads coverage
+  (the Rust's, or the web units' or the worker-protocol tests'), each flag
+  the run didn't reach carried forward from `main`. It is a view,
+  not a gate: its statuses are informational and never block the queue,
+  and Coverage's own gate (`scripts/coverage_gate.py`) is what holds a
+  Rust change. Read its JavaScript numbers knowing that the browser specs
+  aren't measured
+  ([`architecture/testing.md` § Coverage](architecture/testing.md#coverage)).
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or

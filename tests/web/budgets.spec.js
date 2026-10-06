@@ -227,7 +227,7 @@ test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 
     // next deal and its renders (on a CI runner, behind a render of PERFORM's
     // measurement of the sound the app opened with). Nor is it a deal of the
     // table's own pair or of the pair just picked, which main refuses and
-    // deals again (`aheadUsable`).
+    // deals again (deal.js `usable`).
     await page.waitForFunction(() => {
       const n = window.__ahead.length - 1;
       const p = window.__ahead[n];

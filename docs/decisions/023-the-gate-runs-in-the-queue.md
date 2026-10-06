@@ -65,7 +65,8 @@ second has to be everything.
      no Browser smoke job there.
 2. **The queue checks batches on a draft PR** (`.mergify.yml`):
    - up to three queued PRs in one batch, which waits at most three minutes
-     for company; serial, one batch checked at a time;
+     for company (ten since 2026-10-06, when three left most batches with
+     one PR: `.mergify.yml` says why); serial, one batch checked at a time;
    - a PR enters on its fast lane's green `CI`;
    - the batch merges on `Full gate`, a check only the queue's run has. It is
      not `CI`, because Mergify takes a queue whose merge conditions match its
@@ -135,8 +136,10 @@ second has to be everything.
   hand. A conflict with `main` itself dequeues it at once.
 - **The fast lane is not the gate.** A builder still runs the specs a change
   reaches locally (`make browser-changed`), and a `main.js` change gets only
-  the smoke before the queue. A view-to-spec map for `main.js` would narrow
-  that gap (#177, wave 2).
+  the smoke in CI before the queue. Locally, a view-to-spec map narrows that
+  gap: `make browser-changed` runs the specs of the views a `main.js` change
+  draws, and each view's sample for the engine; before the push, with the
+  spec files the branch adds or edits three times each (#177).
 - **`main` reuses the queue's verdict on every batch's last merge.** The
   batch's earlier merges are never tested alone, as with any batch; their run
   runs nothing once `main` has moved past them. The browser tier's timings

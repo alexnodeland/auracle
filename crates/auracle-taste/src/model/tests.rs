@@ -1,6 +1,6 @@
 use super::*;
 use crate::observe::{Feedback, FitSet, Observation, ObservationLog};
-use crate::synthetic::{cosine, IdealPointUser, MixtureSyntheticUser, SyntheticUser};
+use crate::synthetic::{IdealPointUser, MixtureSyntheticUser, SyntheticUser};
 use crate::testkit::{ground_truth, random_phi, scratch_file, D};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -90,6 +90,24 @@ fn a_named_group_at_rho_zero_is_the_flat_program() {
         "a named group at ρ = 0 moved the fit"
     );
     assert!(fit(&on) != draws, "a group at ρ = 0.25 changed nothing");
+}
+
+/// A fused group that names a coordinate φ does not have (a config saved
+/// under a longer φ) is the group of the coordinates it does name: the
+/// same seed draws the same prior from either.
+#[test]
+fn a_fused_group_ignores_a_coordinate_phi_lacks() {
+    let mut cfg = TasteConfig::mixture(D, 2);
+    cfg.fused = vec![vec![0, 1]];
+    cfg.fused_rho = Some(0.5);
+    let past_the_end = TasteConfig {
+        fused: vec![vec![0, 1, D]],
+        ..cfg.clone()
+    };
+    let draw = |cfg: &TasteConfig| {
+        TasteModel::new(cfg.clone()).prior_sample(&mut StdRng::seed_from_u64(9), &FitSet::default())
+    };
+    assert_eq!(draw(&past_the_end), draw(&cfg));
 }
 
 /// The site counts the docs quote are the live φ's. Every one assumes
@@ -319,6 +337,15 @@ fn imputation_costs_confidence_on_keep_kill_but_not_on_duels() {
         (imputed - coin).abs() < (measured - coin).abs(),
         "the correction moved the verdict away from 0.5 instead of toward it"
     );
+    // By exactly as much as the module says: u − τ = 0.8, and the imputed
+    // axes add θ₀² + θ₁² = 4.5 of variance to u, so the log-odds are
+    // 0.8 / √(1 + 4.5·π/8).
+    let pulled = 0.8 / (1.0 + 4.5 * std::f64::consts::PI / 8.0).sqrt();
+    let by_hand = -(1.0 + (-pulled).exp()).ln();
+    assert!(
+        (imputed - by_hand).abs() < 1e-12,
+        "attenuated to {imputed}, not {by_hand}"
+    );
 
     // Imputing an axis this listener does not care about costs nothing:
     // its θ is zero, so it contributes no variance.
@@ -428,7 +455,8 @@ fn two_lens_draw(rng: &mut StdRng) -> TasteSample {
 /// the listener could have done, under the max-of-lenses utility: a duel's
 /// two outcomes are `σ(±(u_a − u_b))`, a keep and a kill `σ(±(u − τ))`,
 /// and the ratings of an ordinal scale sum to one. A rating past the top of
-/// the scale reads as the top, and a one-category scale is certain.
+/// the scale reads as the top, and a one-category scale is certain. The
+/// forecast a draw makes for a duel is the likelihood it scores the pick by.
 #[test]
 fn every_likelihood_is_a_distribution_over_its_outcomes() {
     let mut rng = StdRng::seed_from_u64(0x11C);
@@ -450,6 +478,13 @@ fn every_likelihood_is_a_distribution_over_its_outcomes() {
         let won = s.loglik(&duel(true), 0);
         assert!((won - ln_sigmoid(u(&a) - u(&b))).abs() < 1e-12);
         assert!((won.exp() + s.loglik(&duel(false), 0).exp() - 1.0).abs() < 1e-12);
+        let forecast = s.prob_prefers(&a, &b);
+        assert!(
+            (forecast - won.exp()).abs() < 1e-12,
+            "the draw forecasts {forecast} for a pick it scores at {}",
+            won.exp()
+        );
+        assert!((forecast + s.prob_prefers(&b, &a) - 1.0).abs() < 1e-12);
 
         let keep = |kept| Feedback::KeepKill { x: x.clone(), kept };
         let kept = s.loglik(&keep(true), 0);
@@ -545,6 +580,39 @@ fn old_votes_fade_by_the_half_life() {
     }
 }
 
+/// The star cutpoints are the transform of their raw sites the module doc
+/// gives: `c₁ = −2 + 1.5·raw₀`, and each next one `exp(−0.5 + 0.7·raw_j)`
+/// above the last, so they are ordered whatever the raws. Read off prior
+/// draws, against the raw values in the program's own trace.
+#[test]
+fn the_cutpoints_are_the_ordered_transform_of_their_raw_sites() {
+    let mut rng = StdRng::seed_from_u64(0xC075);
+    let model = TasteModel::new(TasteConfig::linear(2));
+    for _ in 0..20 {
+        let (s, trace) = run(
+            PriorHandler {
+                rng: &mut rng,
+                trace: Trace::default(),
+            },
+            model.model(&FitSet::default()),
+        );
+        let raw = |j: usize| trace.get_f64(&addr!("cut", j)).expect("a raw cut site");
+        let mut by_hand = vec![-2.0 + 1.5 * raw(0)];
+        for j in 1..model.cfg.n_stars - 1 {
+            by_hand.push(by_hand[j - 1] + (-0.5 + 0.7 * raw(j)).exp());
+        }
+        assert_eq!(s.cuts.len(), by_hand.len());
+        for (c, want) in s.cuts.iter().zip(&by_hand) {
+            assert!(
+                (c - want).abs() < 1e-12,
+                "cuts {:?}, not {by_hand:?}",
+                s.cuts
+            );
+        }
+        assert!(s.cuts.windows(2).all(|w| w[0] < w[1]), "{:?}", s.cuts);
+    }
+}
+
 /// Alignment to an external reference puts each lens at the index of the
 /// reference lens it most resembles — so a refit keeps a style's identity —
 /// and a reference with fewer lenses than K leaves the extra lens on the
@@ -614,6 +682,30 @@ fn aligned_to_keeps_lens_identities_across_fits() {
         one.aligned_to(std::slice::from_ref(&b)).samples,
         one.samples
     );
+}
+
+/// Cosine similarity is the cosine of the angle between two vectors: 1
+/// along, −1 against, 0 across, the same at any length (a millionth long as
+/// well as a million), and 0 against a zero vector, which has no direction,
+/// never NaN. Alignment matches lenses by it, and the gates score recovery
+/// with it.
+#[test]
+fn cosine_is_the_angle_at_any_length() {
+    let v = [3.0, -1.0, 0.0, 2.0];
+    let across = [1.0, 3.0, 5.0, 0.0];
+    let scaled = |s: f64, x: &[f64]| -> Vec<f64> { x.iter().map(|c| s * c).collect() };
+    for (s, t) in [(1.0, 1.0), (1e-6, 1e-6), (1e6, 1e-6), (1e6, 2.0)] {
+        let a = scaled(s, &v);
+        let along = cosine(&a, &scaled(t, &v));
+        let against = cosine(&a, &scaled(-t, &v));
+        let square = cosine(&a, &scaled(t, &across));
+        assert!(
+            (along - 1.0).abs() < 1e-12 && (against + 1.0).abs() < 1e-12 && square.abs() < 1e-12,
+            "at lengths {s} and {t}: along {along}, against {against}, across {square}"
+        );
+    }
+    assert_eq!(cosine(&[0.0; 4], &v), 0.0);
+    assert_eq!(cosine(&v, &[0.0; 4]), 0.0);
 }
 
 /// M3 gate 2: all three modalities condition one posterior; recovery
@@ -1001,11 +1093,9 @@ fn two_lovers_and_a_spent_hater() -> TastePosterior {
 /// draw that contradicts it least, so a stronger contradiction never moves
 /// it less than a weaker one, and a draw with no weight stays at none. That
 /// holds for any vote whose log-likelihood stays finite on the weighted
-/// draws, as a duel's does for any finite φ. A star rating between the
-/// lowest and the highest is the exception until #227: far below its lower
-/// cutpoint its log-likelihood underflows to −∞, a draw it underflows for
-/// loses all its weight, and once it underflows on every weighted draw the
-/// weights are kept instead.
+/// draws, as every vote's does for any finite φ
+/// (`every_vote_on_a_finite_phi_has_a_finite_likelihood`; a star rating's
+/// probe is `a_star_rating_far_below_its_cutpoint_updates_exactly_at_every_strength`).
 ///
 /// The exponentials are shifted by the best log-likelihood among the draws
 /// that carry weight. Shifted by the best of all draws, here the one with
@@ -1045,10 +1135,11 @@ fn the_update_is_exact_however_strong_the_contradiction() {
 /// the weights as they were: what the votes since the last fit taught the
 /// draws is kept, and the observation waits in the log for the next fit.
 /// Resetting them to uniform threw that away and claimed a full effective
-/// sample size besides. Here the vote is one on a φ that holds a NaN. A
-/// star rating between the lowest and the highest, far below its lower
-/// cutpoint on every weighted draw, reaches the same arm, until #227 gives
-/// it a finite likelihood there.
+/// sample size besides. Here the vote is one on a φ that holds a NaN, the
+/// only kind that gets there: every vote on a finite φ has a finite
+/// likelihood (`every_vote_on_a_finite_phi_has_a_finite_likelihood`). A
+/// star rating far below its lower cutpoint on every weighted draw used to
+/// get there too, its likelihood rounded to nothing (#227).
 ///
 /// The kept weights are a copy, not a computation, so they are compared
 /// exactly.
@@ -1070,6 +1161,226 @@ fn a_vote_with_no_finite_likelihood_keeps_the_previous_weights() {
         ..p.clone()
     };
     assert_eq!(older.reweighted(&unreadable, 0).weights, vec![1.0 / 3.0; 3]);
+}
+
+/// The log-probability of a rating between two cutpoints, for a utility
+/// `t ≥ 20` past the nearer of them, in a category `d` wide (both in units
+/// of the attenuated utility), from the series
+/// `ln P = −t + ln(1 − e^{−d}) − (1 + e^{−d})·e^{−t} + O(e^{−2t})`. Its first
+/// dropped term, `(1 + e^{−2d})·e^{−2t}/2`, is under 5e-18 at t ≥ 20, below
+/// one ulp of `|ln P| > 20` (3.6e-15), so this is exact in a double. It is
+/// the same on either side, since `σ(b) − σ(l) = σ(−l) − σ(−b)`. Checked
+/// against 80-digit decimal arithmetic at t from 20 to 10⁶ and d of 0.3,
+/// 1 and 1.5: within 1e-16 relative at every point.
+fn middle_rating_tail(t: f64, d: f64) -> f64 {
+    let q = (-d).exp();
+    -t + (-q).ln_1p() - (1.0 + q) * (-t).exp()
+}
+
+/// Relative error of `got` against `want`.
+fn rel_err(got: f64, want: f64) -> f64 {
+    ((got - want) / want).abs()
+}
+
+/// A rating between the lowest and the highest scores its exact
+/// log-probability however far its utility sits outside its two cutpoints,
+/// below the lower or above the upper. Far below, it tends to
+/// `a·(u − c_{k−1}) + ln(1 − e^{−d})`: finite, where it used to round to
+/// −∞ once `a·(c_{k−1} − u)` passed about 37, and lose digits from about
+/// 20 (#227). Pinned against [`middle_rating_tail`] out to 10⁶, past the
+/// smallest double's exponent (745) where every sigmoid in it has
+/// underflowed, and, up to 700, against the textbook difference taken on
+/// the side where it does not cancel, `ln(σ(−t) − σ(−t − d))`, whose
+/// relative error is a few ulps. For ratings 1 and 2 of three cutpoints
+/// (categories 1 and 1.5 wide), measured (`a = 1`) and with one weighted
+/// coordinate imputed (`a ≈ 0.62`, so `d` is 0.62 and 0.94, either side of
+/// ln 2). The tolerance, 1e-14 relative (about 45 ulps), is far above the
+/// few ulps both sides are good to and far below the 3.5e-10 the old form
+/// was off by at t = 20.
+#[test]
+fn a_middle_rating_far_outside_its_cutpoints_scores_its_exact_tail() {
+    // One lens: u is x[0] exactly, and coordinate 1, weighted 2, is
+    // imputed in the second pass, at the mean (0).
+    let mut theta = vec![0.0; D];
+    theta[0] = 1.0;
+    theta[1] = 2.0;
+    let s = TasteSample {
+        theta: vec![theta],
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.5],
+    };
+    let sigmoid = |v: f64| 1.0 / (1.0 + (-v).exp());
+    let imputed_scale = 1.0 / (1.0 + std::f64::consts::PI * 4.0 / 8.0).sqrt();
+    for (absent, a) in [(&[][..], 1.0), (&[1][..], imputed_scale)] {
+        for rating in [1u8, 2] {
+            let (lower, upper) = (s.cuts[rating as usize - 1], s.cuts[rating as usize]);
+            let d = a * (upper - lower);
+            for t in [
+                20.0, 30.0, 36.0, 37.0, 38.0, 40.0, 100.0, 700.0, 745.0, 800.0, 1e4, 1e6,
+            ] {
+                for below in [true, false] {
+                    let mut x = vec![0.0; D];
+                    x[0] = if below { lower - t / a } else { upper + t / a };
+                    // The distance the likelihood sees, rounding and all.
+                    let past = if below {
+                        a * (lower - x[0])
+                    } else {
+                        a * (x[0] - upper)
+                    };
+                    let want = middle_rating_tail(past, d);
+                    let got = s.loglik_with(&Feedback::Stars { x, rating }, 0, absent);
+                    let at = format!("rating {rating}, a = {a}, t = {t}, below = {below}");
+                    assert!(rel_err(got, want) < 1e-14, "{at}: {got} against {want}");
+                    if t <= 700.0 {
+                        let direct = (sigmoid(-past) - sigmoid(-past - d)).ln();
+                        assert!(
+                            rel_err(direct, want) < 1e-14,
+                            "{at}: {direct} against {want}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A rating between the lowest and the highest stays exact whatever the
+/// width of its category. Squeezed between two cutpoints `d` apart it is
+/// as unlikely as its width: `σ(b) − σ(l) = d·σ'(m)·(1 + O(d²))` with `m`
+/// the category's middle, so `ln P = ln d + ln σ(m) + ln σ(−m)` to within
+/// `d²/24`: 4e-16 at d = 1e-7, under one ulp of `|ln P| > 17`. Deep inside
+/// a wide one it is nearly certain, short by exactly the two tails it
+/// leaves: `ln P = ln(1 − σ(−b) − σ(l))`, which `ln_1p` takes without
+/// cancelling. Against 80-digit decimal arithmetic, the likelihood is
+/// within 2e-16 relative at every point here, and the old form lost the
+/// narrow category's width to rounding: 9e-10 of its log-probability at
+/// d = 1e-7, 2e-6 at d = 1e-10. The tolerance is 1e-14, as for the tails.
+#[test]
+fn a_middle_rating_is_exact_however_narrow_or_wide_its_category() {
+    let mut theta = vec![0.0; D];
+    theta[0] = 1.0;
+    let sigmoid = |v: f64| 1.0 / (1.0 + (-v).exp());
+    let ln_sigmoid = |v: f64| -(-v).exp().ln_1p();
+    let at = |cuts: Vec<f64>, u: f64| {
+        let s = TasteSample {
+            theta: vec![theta.clone()],
+            tau: vec![0.0],
+            cuts,
+        };
+        let mut x = vec![0.0; D];
+        x[0] = u;
+        s.loglik(&Feedback::Stars { x, rating: 1 }, 0)
+    };
+    for width in [1e-7, 1e-10] {
+        let cuts: Vec<f64> = vec![-1.0, -1.0 + width, 1.5];
+        let d = cuts[1] - cuts[0];
+        for u in [-6.0, -1.0, 0.0, 3.0] {
+            let m = (cuts[0] + cuts[1]) / 2.0 - u;
+            let want = d.ln() + ln_sigmoid(m) + ln_sigmoid(-m);
+            let got = at(cuts.clone(), u);
+            assert!(
+                rel_err(got, want) < 1e-14,
+                "width {width}, u = {u}: {got} against {want}"
+            );
+        }
+    }
+    for u in [-7.0, 0.0, 3.0] {
+        let cuts = vec![-25.0, 25.0];
+        let want = (-(sigmoid(u - cuts[1]) + sigmoid(cuts[0] - u))).ln_1p();
+        let got = at(cuts, u);
+        assert!(rel_err(got, want) < 1e-14, "u = {u}: {got} against {want}");
+    }
+}
+
+/// The probe of #227: a rating of 1 ever further below its lower cutpoint
+/// (−1) on the two weighted draws, which score `u = 50·x` and `40·x`. The
+/// update is exact at every strength, and a stronger vote never moves the
+/// weights less: the weight leaves the draw the vote contradicts more, by
+/// the ratio `(0.7 / 0.3)·e^{−10|x|}` (the log-likelihoods' next term,
+/// `(1 + e^{−1})·e^{−29}`, is under 4e-13 at the weakest), and the draw
+/// with no weight stays at none. Its log-likelihood used to lose digits
+/// (off by 0.22 on the first draw at x = −0.75) and then round to −∞: the
+/// weights collapsed to [0, 1, 0] at x = −0.8, and at x = −1, where both
+/// weighted draws rounded, were kept at [0.7, 0.3, 0] and armed nothing,
+/// where the exact update gives about [1.1e-4, 0.9999, 0].
+#[test]
+fn a_star_rating_far_below_its_cutpoint_updates_exactly_at_every_strength() {
+    let p = two_lovers_and_a_spent_hater();
+    let mut first = f64::INFINITY;
+    for x in [0.75, 0.8, 1.0, 2.0, 10.0, 30.0] {
+        let mut phi = vec![0.0; D];
+        phi[0] = -x;
+        let vote = Feedback::Stars { x: phi, rating: 1 };
+        let moved = p.reweighted(&vote, 0).weights;
+        let exact = (0.7 / 0.3) * (-10.0 * x).exp();
+        let ratio = moved[0] / moved[1] / exact;
+        assert!((ratio - 1.0).abs() < 1e-9, "x = −{x}: weights {moved:?}");
+        assert!(
+            (moved[0] + moved[1] - 1.0).abs() < 1e-12,
+            "x = −{x}: {moved:?}"
+        );
+        assert_eq!(moved[2], 0.0, "x = −{x}: weights {moved:?}");
+        assert!(moved[0] < first, "x = −{x}: weights {moved:?}");
+        first = moved[0];
+    }
+}
+
+/// Every vote on a finite φ has a finite log-likelihood under every draw,
+/// however far its utility sits from the keep/kill bar and the cutpoints:
+/// a duel, a keep and a cut, and every star rating. So the vote always
+/// moves the weights by the exact update, and only a vote on a φ that is
+/// not finite reaches the arm that keeps them (as
+/// `a_vote_with_no_finite_likelihood_keeps_the_previous_weights` shows).
+/// Swept over twenty random two-lens draws and random φ scaled up to 10⁶,
+/// which puts utilities thousands of units past every cutpoint, on both
+/// sides.
+#[test]
+fn every_vote_on_a_finite_phi_has_a_finite_likelihood() {
+    let mut rng = StdRng::seed_from_u64(0xF1417E);
+    let samples: Vec<TasteSample> = (0..20).map(|_| two_lens_draw(&mut rng)).collect();
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights: vec![1.0 / 20.0; 20],
+    };
+    for scale in [1.0, 30.0, 1e3, 1e6] {
+        for _ in 0..10 {
+            let mut phi = || -> Vec<f64> {
+                random_phi(&mut rng)
+                    .into_iter()
+                    .map(|v| v * scale)
+                    .collect()
+            };
+            let (a, b) = (phi(), phi());
+            let mut votes = vec![
+                Feedback::Duel {
+                    a: a.clone(),
+                    b,
+                    chose_a: true,
+                },
+                Feedback::KeepKill {
+                    x: a.clone(),
+                    kept: true,
+                },
+                Feedback::KeepKill {
+                    x: a.clone(),
+                    kept: false,
+                },
+            ];
+            let top = p.samples[0].cuts.len() as u8;
+            votes.extend((0..=top).map(|rating| Feedback::Stars {
+                x: a.clone(),
+                rating,
+            }));
+            for vote in &votes {
+                for s in &p.samples {
+                    let ll = s.loglik(vote, 0);
+                    assert!(ll.is_finite(), "scale {scale}: {ll} for {vote:?}");
+                }
+                assert_ne!(p.reweighted(vote, 0).weights, p.weights, "{vote:?}");
+            }
+        }
+    }
 }
 
 /// Every per-style summary is importance-weighted, as the crate's rule
@@ -1108,27 +1419,142 @@ fn per_style_summaries_are_importance_weighted() {
     );
     // No candidates: no claim.
     assert_eq!(p.style_share(&[]), vec![0.0, 0.0]);
+    // A candidate's utility is summarized by the same weights: along (1, 0)
+    // lens 0 scores 0 at 3/4 and 2 at 1/4, so 0.5 ± √0.75 (unweighted:
+    // 1 ± 1); the mixture scores the best lens, 1 and 2, so 1.25 ± √0.1875.
+    assert_eq!(p.utility(&[1.0, 0.0], 0), (0.5, 0.75f64.sqrt()));
+    assert_eq!(p.utility_mix(&[1.0, 0.0]), (1.25, 0.1875f64.sqrt()));
 
     // Alignment's second pass relabels every draw against the posterior's
     // mean lenses, and that mean is weighted too. Here the draw weighted 0.8
     // decides it: aligned to (1, 0, 0) and (0, 1, 0), lens 0's mean is
-    // (0.8, 0.21, −0.72); against an unweighted mean the second pass labels
-    // the draws differently and it would be (0.32, 0.45, −0.32).
+    // (0.63, −0.19, 0.21); against an unweighted mean the second pass labels
+    // the draws differently and it would be (0.79, 0, −0.86).
     let p = TastePosterior {
         cfg: TasteConfig::mixture(3, 2),
         samples: vec![
-            draw(vec![vec![0.2, 0.8, -0.2], vec![0.8, 0.5, -0.7]]),
-            draw(vec![vec![0.8, -1.0, -0.7], vec![0.3, -0.9, -0.2]]),
-            draw(vec![vec![-0.7, -0.1, 0.7], vec![0.8, -0.9, -0.9]]),
+            draw(vec![vec![0.8, 0.1, -1.0], vec![0.6, -0.1, 0.2]]),
+            draw(vec![vec![0.4, 0.3, 0.0], vec![0.8, -0.2, -0.2]]),
+            draw(vec![vec![0.7, -0.6, -0.4], vec![0.7, -0.9, 0.7]]),
         ],
         weights: vec![0.8, 0.1, 0.1],
     };
     let mean = p
         .aligned_to(&[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]])
         .theta_mean(0);
-    for (m, want) in mean.iter().zip([0.8, 0.21, -0.72]) {
+    for (m, want) in mean.iter().zip([0.63, -0.19, 0.21]) {
         assert!((m - want).abs() < 1e-12, "aligned lens 0 is {mean:?}");
     }
+}
+
+/// A posterior whose draws all agree (what resampling deals once one draw
+/// holds all the weight) reports no spread: the SD of every θ coordinate
+/// and of every utility is 0, up to rounding, and never NaN. The spread is
+/// taken about the weighted mean. The one-pass form, E[x²] − E[x]², is the
+/// same algebra but cancels here to a rounding error, as often negative (a
+/// NaN after the square root) as positive (about 1e-8 of the value).
+#[test]
+fn a_posterior_whose_draws_agree_has_no_spread() {
+    let mut rng = StdRng::seed_from_u64(0xA62E);
+    let samples: Vec<TasteSample> = (0..50).map(|_| two_lens_draw(&mut rng)).collect();
+    let mut weights = vec![0.0; samples.len()];
+    weights[17] = 1.0;
+    let the_one = samples[17].clone();
+    let agreed = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights,
+    }
+    .resampled();
+    assert!(agreed.samples.iter().all(|s| *s == the_one));
+    let none = |sd: f64| sd < 1e-12;
+    for k in 0..2 {
+        let sds = agreed.theta_std(k);
+        assert!(sds.iter().all(|&sd| none(sd)), "lens {k}: θ SDs {sds:?}");
+    }
+    for _ in 0..20 {
+        let phi = random_phi(&mut rng);
+        let sds = [
+            agreed.utility(&phi, 0).1,
+            agreed.utility(&phi, 1).1,
+            agreed.utility_mix(&phi).1,
+        ];
+        assert!(sds.iter().all(|&sd| none(sd)), "utility SDs {sds:?}");
+    }
+}
+
+/// Resampling deals each draw as many copies as its weight is worth among
+/// `n`, to within one (it is systematic: `⌊n·w⌋` or `⌈n·w⌉`), never a copy
+/// of a draw with no weight, in draw order, and weighs the copies uniformly.
+/// Swept over random weights, dense and sparse, over sizes from 1 to 40.
+/// A grid point exactly on the boundary between two draws goes to the
+/// earlier one, as the doc says. From weights with nothing left to keep
+/// (all zero, which only a posterior built by hand holds) it still deals
+/// `n` draws, and reads none past the last.
+#[test]
+fn resampling_copies_each_draw_by_its_weight() {
+    let mut rng = StdRng::seed_from_u64(0x5E5A);
+    let tagged = |n: usize| -> Vec<TasteSample> {
+        (0..n)
+            .map(|i| TasteSample {
+                theta: vec![vec![0.0]],
+                tau: vec![i as f64],
+                cuts: Vec::new(),
+            })
+            .collect()
+    };
+    let posterior = |samples: Vec<TasteSample>, weights: Vec<f64>| TastePosterior {
+        cfg: TasteConfig::linear(1),
+        samples,
+        weights,
+    };
+    for _ in 0..300 {
+        let n = rng.gen_range(1..=40u32) as usize;
+        let sparse = rng.gen_bool(0.5);
+        let raw: Vec<f64> = (0..n)
+            .map(|_| {
+                if sparse && rng.gen_bool(0.6) {
+                    0.0
+                } else {
+                    rng.gen::<f64>()
+                }
+            })
+            .collect();
+        let total: f64 = raw.iter().sum();
+        if total == 0.0 {
+            continue;
+        }
+        let w: Vec<f64> = raw.iter().map(|r| r / total).collect();
+        let re = posterior(tagged(n), w.clone()).resampled();
+        assert_eq!(re.weights, vec![1.0 / n as f64; n]);
+        let from: Vec<usize> = re.samples.iter().map(|s| s.tau[0] as usize).collect();
+        assert_eq!(from.len(), n);
+        assert!(from.windows(2).all(|p| p[0] <= p[1]), "{from:?}");
+        for (i, wi) in w.iter().enumerate() {
+            let copies = from.iter().filter(|&&f| f == i).count() as f64;
+            let worth = n as f64 * wi;
+            assert!(
+                (copies - worth).abs() < 1.0 + 1e-9 && (*wi > 0.0 || copies == 0.0),
+                "draw {i} of weight {wi} got {copies} of {n} copies: {from:?}"
+            );
+        }
+    }
+    // On a boundary, with weights in binary fractions so every sum is
+    // exact: at [¼, ¾] the grid point ¼ completes draw 0's weight, and at
+    // [⅛, ¼, ¼, ⅜] the points ⅛, ⅜ and ⅝ complete draws 0, 1 and 2. Each
+    // goes to the draw it completes. Given to the next draw instead, they
+    // would deal [1, 1] and [1, 2, 3, 3], which the sweep's rules also pass.
+    for (w, want) in [
+        (vec![0.25, 0.75], vec![0, 1]),
+        (vec![0.125, 0.25, 0.25, 0.375], vec![0, 1, 2, 3]),
+    ] {
+        let re = posterior(tagged(w.len()), w).resampled();
+        let from: Vec<usize> = re.samples.iter().map(|s| s.tau[0] as usize).collect();
+        assert_eq!(from, want);
+    }
+    let spent = posterior(tagged(5), vec![0.0; 5]).resampled();
+    assert_eq!(spent.samples.len(), 5);
+    assert_eq!(spent.weights, vec![0.2; 5]);
 }
 
 /// Between full refits the posterior is updated by importance
@@ -1269,6 +1695,28 @@ fn a_two_session_k2_fit_returns_finite_summaries() {
     assert!(m.is_finite() && s.is_finite());
     let r = posterior.responsibilities(&phi);
     assert!((r.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+}
+
+/// A fit keeps at most [`KEEP`] draws, whatever its budget, uniformly
+/// weighted: exactly `KEEP` from a budget that is a multiple of it (the
+/// shipped 10 000 keeps 500), and every draw of a budget under it. The
+/// thinning is what bounds the memory a posterior holds for the rest of the
+/// session. A budget just under twice `KEEP` used to be thinned by one, and
+/// kept nearly twice as many.
+#[test]
+fn a_fit_keeps_at_most_keep_draws() {
+    let mut rng = StdRng::seed_from_u64(0xEE9);
+    let model = TasteModel::new(TasteConfig::linear(2));
+    for (budget, kept) in [
+        (KEEP / 5, KEEP / 5),
+        (KEEP, KEEP),
+        (2 * KEEP - 1, KEEP),
+        (3 * KEEP, KEEP),
+    ] {
+        let p = model.fit(&mut rng, &FitSet::default(), budget, 10);
+        assert_eq!(p.samples.len(), kept, "a budget of {budget}");
+        assert_eq!(p.weights, vec![1.0 / kept as f64; kept]);
+    }
 }
 
 /// **The M6 mixture gate.** A user whose true taste is bimodal — utility

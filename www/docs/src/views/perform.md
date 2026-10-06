@@ -441,7 +441,7 @@ pulsing where it is.
 **XY**, in the well’s corner, puts two named controls under one finger: the
 well becomes the pad, with the face dimmed behind it, the axis drop-downs
 along its top and each control’s end words at its edges. **XY** again, or
-<kbd>Esc</kbd> inside it, puts the face back. It starts as BRIGHT across and
+<kbd>Esc</kbd>, puts the face back. It starts as BRIGHT across and
 MOTION up, and either axis can be any control on the panel.
 
 1. Choose an axis from its drop-down. The note keys play straight away after,

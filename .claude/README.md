@@ -69,8 +69,10 @@ agents too.
 ## Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 
 - **Session start** (`session-start.sh`): says when `apps/web/pkg` has no
-  built engine, or is older than the Rust it is built from (a `.rs` file under
-  `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`), in the checkout the
+  built engine, is older than the Rust it is built from (a `.rs` file under
+  `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`), or is a quick
+  `make wasm-dev` build or an unfinished one (a build that failed or was
+  stopped), which the browser specs and the films refuse, in the checkout the
   session's directory is in, a worktree's own when it is in one; and how many
   jobs wait in the browser queue and whether a film's `footage.mjs` is
   running. It never fails the session.

@@ -78,4 +78,19 @@ exclude_re = [
     # show. A hand-written `Display` (there is none today) would not be
     # excluded: its text is a message, which can reach the screen.
     '<impl (std::)?(fmt::)?Debug for ',
+    # `TastePosterior::aligned_to`'s shortcut, `k == 1 || self.samples
+    # .is_empty()`, with `&&`: a change no posterior it is given can show
+    # (#207). The shortcut only skips the search. Without it one lens
+    # searches its one permutation, the identity, and a posterior with no
+    # draws relabels none, so both come out as they went in. Only a draw
+    # whose lens count is not K could tell, and the engine aligns a fresh
+    # fit, whose draws hold K lenses each. The function's other mutants,
+    # the `==` beside this one included, are caught.
+    'crates/auracle-taste/src/model\.rs:\d+:\d+: replace \|\| with && in TastePosterior::aligned_to$',
+    # `log1mexp`'s change-over, `d > LN_2`, as `>=`: a change no input can
+    # show (#227). It differs only at d = LN_2 exactly, where both forms,
+    # `ln_1p(-exp(-d))` and `ln(-expm1(-d))`, return -LN_2 to the bit
+    # (e^-LN_2 rounds to 0.5, and expm1 to -0.5). The function's other
+    # mutants, `==` and `<` in the same place included, are caught.
+    'crates/auracle-taste/src/model\.rs:\d+:\d+: replace > with >= in log1mexp$',
 ]

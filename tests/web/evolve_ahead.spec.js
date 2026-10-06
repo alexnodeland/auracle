@@ -6,13 +6,17 @@
 // the next is dealt and both its sounds fetched; a pick or ↻ puts it up at
 // once, and the one after is dealt behind it. A pick taken back puts its pair
 // back, and the pair that replaced it is the next (or, when the table was
-// still waiting on a deal, that deal); a patch cut meanwhile is never put up.
+// still waiting on a deal, that deal), with the deal behind it, if one was
+// asked for, after it; a patch cut meanwhile is never put up.
 //
 // Pairs go up in the order the engine dealt them, whatever the timing. A pick
 // made while the next deal is still out (a generation holds deals behind the
 // seed being bred) used to ask for a second deal, keep the first answer as
 // "the next" and put the second up: the table ran P, R, Q instead of P, Q, R,
-// so when an answer landed changed what a seeded session showed.
+// so when an answer landed changed what a seeded session showed. A pick
+// taken back used to throw away the deal behind the pair it put back, when
+// that deal had been asked for, so how long that pair's sounds took changed
+// the pair after it (#211, the last tests here).
 //
 // "At once" is the app's own order, not a time (ADR-022): the cards show the
 // next pair, live, before the click's own task ends (`placePair` is
@@ -55,10 +59,9 @@ const soundsHeard = (app, pair) =>
   app.engine((timeout) => expect.poll(() => heardAll(app, pair), { timeout }).toBe(true), { ms: 60_000 });
 /** The `n`th pair dealt ahead (or a later one) is waiting with its sounds:
  *  it has landed, no deal is still out, and both sounds of the last one are
- *  here. Not just the `n`th landed: main drops an answer that lands while a
- *  pair already waits (a pick taken back makes the pair it brought up the
- *  next), and the pick after it asks for another, which a swap then waits
- *  for. Call it with no hold standing: a held reply is not counted. */
+ *  here. Not just the `n`th landed: an answer refused is dealt again, and a
+ *  swap with a deal still out waits for that deal. Call it with no hold
+ *  standing: a held reply is not counted. */
 async function aheadReady(app, n = 1) {
   await app.engine((timeout) => expect.poll(async () => {
     const pairs = await aheadPairs(app);
@@ -137,13 +140,14 @@ test("a pick puts the pair dealt ahead on the table at once, sounds and all", as
   app.budget("▶ SAMPLE on the pair dealt ahead → sounding", play.ms, 150);
   await page.locator("#play-a").click(); // stop it
 
-  // Taken back: the pick's pair returns, and the one it brought up waits.
+  // Taken back: the pick's pair returns, and the one it brought up waits,
+  // with the pair dealt behind it after it.
   await page.keyboard.press("Control+z");
   await expect.poll(async () => [...(await cardIds(page))].sort().join()).toBe([...before].sort().join());
   expectAtOnce(app, await pickAndTime(page, "#choose-b"), "a pick after ⌘Z");
   expect([...(await cardIds(page))].sort()).toEqual([...now].sort());
 
-  // ↻ swaps too, and the one after that is dealt behind it.
+  // ↻ swaps too: the pair dealt behind it, kept through the take-back.
   await aheadReady(app, 2);
   const skip = await pickAndTime(page, "#skip-duel");
   console.log(`another pair ↻: ${skip.ms.toFixed(0)} ms, in the click's task: ${skip.sync}`);
@@ -175,7 +179,7 @@ const key = (p) => [...p].sort((x, y) => x - y).join();
 // pool is still filling while these tests deal, so it depends on the
 // machine's speed: the same deal came back [3,6] on one CI run, [3,12] on
 // another and [3,7], the pair just put on the table, on a third. An answer
-// main may not put up (`aheadUsable`: the pair on the table, the pair just
+// main may not put up (deal.js `usable`: the pair on the table, the pair just
 // put away, the pick held in its undo window) is dealt again, one deal per
 // refused answer, by design. So "the pair dealt next" is the first answer
 // main may put up: the order holds, and a refused answer is skipped.
@@ -258,3 +262,91 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
   const sentForTable = (await deals(app, pickMark)).filter(([k, a]) => k === "sent" && !a).length;
   expect(sentForTable).toBe(0);
 });
+
+// A taken-back pick and the deal behind the pair it put back (#211). The
+// probe: a seeded session (engine and page, 20260928), the pool filled, then
+// pick, ⌘Z, pick, pick. P is on the table and Q waits as the next pair. The
+// first pick puts Q up, and the deal behind Q (R) is asked for once Q's two
+// sounds are here; ⌘Z puts P back with Q waiting again; the second pick puts
+// Q up; the third puts up the pair after Q. Whether R was drawn before ⌘Z
+// depends on how long Q's renders took, so the probe runs three ways: R
+// landed before ⌘Z, R still out at ⌘Z (its answer held), and R not asked for
+// before ⌘Z (Q's render replies held from the first deal ahead until after
+// ⌘Z, as a worker busy elsewhere would). A take-back used to throw R away
+// when it had been drawn, and the pair after Q was the next one dealt: the
+// same seed and the same gestures showed a different pair after Q. Now R is
+// kept as the pair after next, so the pair after Q is R in all three: the
+// first pair dealt after the first pick that may go up (deal.test.mjs holds
+// the same of every deal asked for, in both orders). The second gesture is a
+// pick, which holds P again; ↻ there holds none, and an R that is P itself
+// is then judged differently in different orders (deal.js says how).
+const PROBE_SEED = 20260928;
+const nothing = async () => {};
+/** Each order: what is held from boot (`hold`), what "P up and Q waiting"
+ *  waits for (`ready`), what is held from the first pick (`arm`), what has
+ *  happened to the deal behind Q by ⌘Z (`atUndo`), and whether it had been
+ *  asked for by then (`asked`; an answer refused is dealt again, so how many
+ *  were is not the point). */
+const ORDERS = [
+  {
+    name: "landed before ⌘Z",
+    hold: nothing,
+    ready: (app) => aheadReady(app),
+    arm: nothing,
+    atUndo: (app, mark) => app.reply("duel", { where: { ahead: true }, after: mark, timeout: 30_000 }),
+    asked: true,
+  },
+  {
+    name: "still out at ⌘Z",
+    hold: nothing,
+    ready: (app) => aheadReady(app),
+    arm: (app) => app.hold({ type: "duel" }, { from: AHEAD }),
+    atUndo: (app) => expect.poll(async () => (await app.held()).map((h) => h.type)).toContain("duel"),
+    asked: true,
+  },
+  {
+    name: "not asked for before ⌘Z",
+    hold: (app) => app.hold({ type: "render" }, { from: AHEAD }),
+    ready: (app) => app.reply("duel", { where: { ahead: true, pair: true } }),
+    arm: nothing,
+    atUndo: nothing,
+    asked: false,
+  },
+];
+for (const order of ORDERS) {
+  test(`a taken-back pick keeps the deal behind the pair it put back, so picking again shows the same pair after it however its renders were timed (the deal behind it ${order.name})`, async ({ page, app }) => {
+    await order.hold(app);
+    await app.boot({ seed: PROBE_SEED, random: PROBE_SEED });
+    await app.filled();
+    await goLevel(page, "evolve");
+    // P on the table, Q dealt ahead (and, but for the held order, its sounds
+    // here).
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
+    await order.ready(app);
+    const P = await tableKey(page);
+    const Q = key((await aheadPairs(app)).pop());
+    const mark = await app.now();
+
+    await order.arm(app);
+    await page.locator("#choose-a").click();
+    await expect.poll(() => tableKey(page)).toBe(Q);
+    await order.atUndo(app, mark);
+    const askedBeforeUndo = (await app.sent(AHEAD, { after: mark })).length;
+    await page.keyboard.press("Control+z");
+    await expect.poll(() => tableKey(page)).toBe(P);
+    await app.release();
+
+    await page.locator("#choose-a").click();
+    await expect.poll(() => tableKey(page)).toBe(Q);
+    await page.locator("#choose-a").click();
+    await app.engine((timeout) => expect.poll(() => tableKey(page), { timeout }).not.toBe(Q), { ms: 30_000 });
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
+    const afterQ = await tableKey(page);
+
+    const dealt = (await app.replies("duel", { after: mark, where: { pair: true } })).map((d) => d.pair);
+    const behindQ = dealt[firstUsable(dealt, [P, Q])];
+    console.log(`P ${P}, Q ${Q}; deals asked ahead before ⌘Z: ${askedBeforeUndo}; dealt after the first pick: ${JSON.stringify(dealt)}; after Q: ${afterQ}`);
+    expect(askedBeforeUndo > 0, "the deal behind Q was asked for before ⌘Z, or not, as this order says").toBe(order.asked);
+    expect(afterQ, "the pair after Q is not the deal behind Q").toBe(key(behindQ));
+  });
+}

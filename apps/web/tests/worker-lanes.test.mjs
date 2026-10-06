@@ -107,6 +107,35 @@ test("a face the player is looking at goes before a measurement nobody waits on,
   assert.match(lift("measure"), /idleOnly\(m\) && \(laterWaiting\(\) \|\| seenFaceWaiting\(lanes\)\)/);
 });
 
+test("a preset row's face renders after everything the player is waiting on, a background measurement too", () => {
+  const FACES = 3;
+  const idle = src.match(/^const idleOnly = .*$/m);
+  const next = (lanes) => new Function(
+    "SOON", "LATER", "FACES", "lanes", "floor", "blocked",
+    `${idle[0]}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
+  )(SOON, LATER, FACES, lanes, null, () => false);
+  // Every kind of long work queued at once, each in the lane `laneOf` gives it.
+  const msgs = [
+    { type: "face_render", name: "preset face" },
+    { type: "perform_wire", bg: true, name: "background measurement" },
+    { type: "cable_levels", name: "cable probe" },
+    { type: "guess", name: "guess" },
+    { type: "fit", name: "refit" },
+    { type: "perform_wire", name: "PERFORM's measurement" },
+    { type: "perform_offer", name: "pressed offer" },
+  ];
+  const laneWithFaces = new Function("NOW", "SOON", "LATER", "FACES", `${lift("laneOf")}\nreturn laneOf;`)(NOW, SOON, LATER, FACES);
+  const lanes = [[], [], [], []];
+  for (const m of msgs) lanes[laneWithFaces(m)].push(m);
+  // An open, a ▶ or an edit is `now`, served before any of these starts.
+  for (const type of ["load_preset", "edit_begin", "render", "edit_structure"]) assert.equal(laneWithFaces({ type }), NOW, type);
+  const order = [];
+  const take = next(lanes);
+  for (let m = take(); m; m = take()) order.push(m.name);
+  assert.equal(order.length, msgs.length);
+  assert.equal(order[order.length - 1], "preset face");
+});
+
 // A request the player makes while a long job holds the floor (the model's
 // guess, PERFORM's measurement) is served before that job's next render, so
 // it waits at most for the render in progress when it arrived: a wasm call

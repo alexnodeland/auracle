@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 pub struct Standardizer {
     /// Per-dimension means.
     pub mean: Vec<f64>,
-    /// Per-dimension standard deviations (floored to 1.0 where degenerate).
+    /// Per-dimension standard deviations: 1.0 where a column has no usable
+    /// scale, because its σ is under 1e-9 (it is degenerate) or its moments
+    /// are not finite (no finite cell, or an overflow).
     pub std: Vec<f64>,
 }
 
@@ -79,11 +81,26 @@ fn winsor_k(n: usize) -> usize {
     if n < WINSOR_MIN_ROWS {
         return 0;
     }
-    // `2k < n` by construction at n ≥ 10 for any tail under 0.5, but the cap
-    // is written down rather than reasoned about: `col[k]` and `col[n-1-k]`
-    // crossing would silently collapse the column onto one value.
-    (((n as f64) * WINSOR_TAIL).ceil() as usize).clamp(1, (n - 1) / 2)
+    // At most (n - 1) / 2, so the two quantiles the clip reads, `sorted[k]`
+    // and `sorted[n-1-k]`, never cross: the constants make it so for every
+    // n that gets here, and the assertion below checks them when this
+    // compiles.
+    (((n as f64) * WINSOR_TAIL).ceil() as usize).max(1)
 }
+
+// `winsor_k`'s k stays at most (n − 1)/2 for every n from `WINSOR_MIN_ROWS`
+// up, so the function needs no cap of its own: this checks it when the
+// crate builds. k = ⌈n·tail⌉ < n·tail + 1, so 2k + 1 < 2n·tail + 3, which
+// is at most n once n·(1 − 2·tail) ≥ 3. That grows with n, so it is
+// checked at the smallest n. (Rounding n·tail adds under half a row below
+// 2^52 rows, and both sides are whole numbers.) At 2% and ten rows it is
+// 9.6. Where the floor of one sets k, n ≥ 4 is enough, which a positive
+// tail and the same check imply. A tail or a minimum that breaks this
+// fails to build, rather than collapsing a column onto one value.
+const _: () = assert!(
+    WINSOR_TAIL > 0.0 && WINSOR_MIN_ROWS as f64 * (1.0 - 2.0 * WINSOR_TAIL) >= 3.0,
+    "winsor_k's k must stay at most (n - 1) / 2 from WINSOR_MIN_ROWS rows up"
+);
 
 /// Mean and (population) standard deviation of `col`, optionally with every
 /// value pulled into `[lo, hi]` first.

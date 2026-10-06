@@ -97,9 +97,14 @@ queue_rules:
     batch_size: 3
     # How long a batch that isn't full waits for another PR to join it,
     # counted from the first PR's entry into the queue; then it is tested as
-    # it is. The default is 30 seconds. Three minutes lets a PR pushed just
-    # after another join it, and a lone PR waits no longer than that.
-    batch_max_wait_time: 3 minutes
+    # it is. The default is 30 seconds. A PR enters once its own fast lane is
+    # green, so PRs pushed together reach the queue minutes apart. On
+    # 2026-10-06, with three minutes, 10 of 15 batches held one PR, and two
+    # pairs missed each other by 48 s and by 4.5 minutes. Ten minutes lets
+    # them meet. It delays only a PR that finds the queue empty, and a batch
+    # takes 15 to 25 minutes to check anyway; a PR that arrives while a batch
+    # is being checked waits for the next one either way.
+    batch_max_wait_time: 10 minutes
 
 merge_queue:
   # One batch at a time, on top of `main`: a second draft PR tested beside
