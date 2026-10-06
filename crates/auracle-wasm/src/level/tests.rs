@@ -203,3 +203,23 @@ fn live_makeup_is_the_loudness_makeup() {
         );
     }
 }
+
+/// An audition with no loudness to measure (silence, or shorter than the
+/// loudness meter's first block) has nothing to raise and nothing to limit:
+/// it plays exactly as stored.
+#[test]
+fn an_audition_with_no_loudness_to_measure_plays_as_stored() {
+    let silence = audition(vec![0.0; (0.5 * SR) as usize]);
+    assert_eq!(audition_pcm(&silence), silence.samples);
+    let blip = audition(swell().into_iter().take(1_000).map(|s| s * 0.01).collect());
+    assert!(integrated_lufs(
+        &blip
+            .samples
+            .iter()
+            .map(|s| f64::from(*s))
+            .collect::<Vec<_>>(),
+        SR
+    )
+    .is_none());
+    assert_eq!(audition_pcm(&blip), blip.samples);
+}
