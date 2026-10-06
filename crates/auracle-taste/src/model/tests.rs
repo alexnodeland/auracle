@@ -21,6 +21,10 @@ fn duels_recover_theta() {
     let model = TasteModel::new(TasteConfig::linear(D));
     let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
+    // Both bounds are far under the effect. Swept by the test audit over
+    // eleven other seeds (docs/notes/test-audit-2026-10, addendum A): cos
+    // 0.973 to 0.989 (this seed 0.972), held-out accuracy 0.903 to 0.953
+    // (this seed 0.933).
     let theta_hat = posterior.theta_mean(0);
     let cos = cosine(&theta_hat, &user.theta);
     assert!(cos > 0.85, "theta recovery cosine {cos} too low");
@@ -638,6 +642,9 @@ fn mixed_modalities_recover() {
     let model = TasteModel::new(TasteConfig::linear(D));
     let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
+    // Far under the effect: swept by the test audit over eleven other seeds
+    // (addendum A), cos ran 0.970 to 0.988 (this seed 0.993), and the τ
+    // sweep below saw 0.970 to 0.993 over its twenty.
     let cos = cosine(&posterior.theta_mean(0), &user.theta);
     assert!(cos > 0.85, "mixed-modality recovery cosine {cos} too low");
 
