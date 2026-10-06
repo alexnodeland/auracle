@@ -153,6 +153,29 @@ const line = (re) => {
   return m[0];
 };
 
+// A yield is one turn of the event loop, and several flows yield at once (the
+// lane's drain, the pump, a long job's breath). A timer one set before
+// another's long call fires right after that call, ahead of what arrived
+// during it, in Chromium as in Node: so the worker's `yieldToQueue` yields
+// again when its turn took longer than a turn. What "arrived during the call"
+// is here is a task set during it, as a message posted to the worker mid-call
+// is one.
+test("a yield another flow's long call ran through lets in what arrived during that call before it goes on", async () => {
+  const { yieldToQueue } = new Function(`${line(/^const YIELD_TURN_MS = .*$/m)}\n${lift("yieldToQueue")}\nreturn { yieldToQueue };`)();
+  const log = [];
+  // Another flow's turn comes first, and its call takes 60 ms…
+  setTimeout(() => {
+    const t = performance.now();
+    // …during which a request arrives.
+    setTimeout(() => log.push("the request that arrived during it"), 0);
+    while (performance.now() - t < 60) { /* a render */ }
+    log.push("the other flow's call");
+  }, 0);
+  await yieldToQueue();
+  log.push("this flow goes on");
+  assert.deepEqual(log, ["the other flow's call", "the request that arrived during it", "this flow goes on"]);
+});
+
 function floorJobs() {
   const log = [];
   const lanes = [[], [], [], []];
@@ -177,7 +200,7 @@ function floorJobs() {
   const fns = new Function(
     "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "answer", "runMessage", "schedulePump", "beginLongOp", "endLongOp",
     [
-      line(/^const yieldToQueue = .*$/m), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
+      line(/^const YIELD_TURN_MS = .*$/m), lift("yieldToQueue"), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
       line(/^const idleOnly = .*$/m), line(/^const laterWaiting = .*$/m), line(/^const bgWaits = .*$/m),
       lift("laneOf"), lift("blocked"), lift("seenFaceWaiting"), lift("isFatal"), lift("performReply"),
       lift("serveNow"), lift("breathe"), lift("holdFloor"), lift("guessRun"), lift("measure"),
@@ -190,7 +213,12 @@ function floorJobs() {
     // A reply to `m` from after an await (worker.js `answer`): its request's
     // number aside, a reply like any other.
     (m, msg) => log.push(`reply ${msg.type}`),
-    async (m) => log.push(`served ${m.type}`),
+    // A request served between the job's renders; one in the background
+    // (`bg`: a dealt pair's sound) is a render of its own.
+    async (m) => {
+      log.push(`served ${m.type}`);
+      if (m.bg) engine.memo_render(m.what);
+    },
     () => {},
     () => {},
     () => {},
@@ -219,6 +247,17 @@ test("an open while PERFORM's background measurement renders is answered before 
   w.during(2, { type: "edit_begin" });
   await w.measure({ type: "perform_wire", bg: true, req: 1, tree: "t" });
   assert.deepEqual(w.log, ["render p1", "render p2", "served edit_begin", "render p3", "reply perform_wired"]);
+});
+
+test("an open made while a background render runs between a measurement's renders is answered before the measurement's next", async () => {
+  const w = floorJobs();
+  w.owe("p1", "p2");
+  // A dealt pair's sound waiting in the background: the measurement's first
+  // breath serves it (render 2), and the open arrives during it.
+  w.lanes[NOW].push({ type: "render", bg: true, what: "the pair's sound" });
+  w.during(2, { type: "edit_begin" });
+  await w.measure({ type: "perform_wire", req: 1, tree: "t" });
+  assert.deepEqual(w.log, ["render p1", "served render", "render the pair's sound", "served edit_begin", "render p2", "reply perform_wired"]);
 });
 
 test("the guess gives way to long work the player asks for, at the front of later with what it spent", async () => {

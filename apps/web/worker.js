@@ -148,9 +148,22 @@ const PLAYABLE_AT = 8;
 // cosmetic — it is the mechanism, not a nicety.
 //
 // `requestIdleCallback` does not exist in Workers in any browser, so this is a
-// plain `setTimeout(0)`: one macrotask boundary, which is exactly enough to
-// let the queue drain between batches.
-const yieldToQueue = () => new Promise((resolve) => setTimeout(resolve, 0));
+// `setTimeout(0)`: one macrotask boundary. That lets in what arrived before it
+// only when nothing else ran meanwhile. Several flows yield at once (the
+// lane's drain, the pump, a long job's breath), and a timer set before
+// another flow's long call fires right after that call, ahead of a message
+// that arrived during it: in Chromium, with two loops yielding around 200 ms
+// of work each, a message waited for both loops' work (#221). So a yield that
+// took longer than a turn yields again, its timer set behind what arrived
+// meanwhile; twice at most, so a throttled timer cannot hold a flow up.
+const YIELD_TURN_MS = 20;
+async function yieldToQueue() {
+  for (let k = 0; k < 3; k++) {
+    const t = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (performance.now() - t < YIELD_TURN_MS) return;
+  }
+}
 
 // Call a nullary engine method that may not exist in the binary a stale
 // browser cache handed us (see this file's header). Reports whether it ran, so
@@ -2642,6 +2655,10 @@ const runnable = () =>
 // uninterruptible call, so before one starts, anything that arrived during
 // the last call is let in: a bank open clicked while the table's sounds were
 // rendering waits for the render already running, never the ones behind it.
+// And after one ends, before anything goes on: served at a long job's breath,
+// it was followed at once by the job's next piece, so an open made during it
+// waited for both (a dealt pair's sound between PERFORM's measurement's
+// renders).
 //
 // Background renders also give way to long work the player asked for that is
 // waiting to start (a pressed Offer, the first measurement of the patch in
@@ -2652,6 +2669,7 @@ const bgWaits = () => !floor && lanes[SOON].some((q) => q.type !== "breed_step" 
 async function serveNow() {
   while (lanes[NOW].length) {
     let i = lanes[NOW].findIndex((q) => !q.bg);
+    let background = false;
     if (i < 0) {
       if (bgWaits()) break;
       await yieldToQueue();
@@ -2659,9 +2677,11 @@ async function serveNow() {
       if (i < 0) {
         if (!lanes[NOW].length || bgWaits()) break;
         i = 0;
+        background = true;
       }
     }
     await runMessage(lanes[NOW].splice(i, 1)[0]);
+    if (background) await yieldToQueue();
   }
 }
 

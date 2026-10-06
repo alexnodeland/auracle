@@ -120,8 +120,10 @@ served within a lane (`laneOf` in `worker.js`):
 - **now**: the player's gestures and everything that must stay in order with
   them (edits, votes, opens, auditions, saves, logs). A render main asks for
   in the background (`render` with `bg`: the sounds of a pair just dealt)
-  waits here behind every gesture, and before one starts the worker lets in
-  anything that arrived during the last call (`serveNow`). It also lets
+  waits here behind every gesture, and before one starts, and again after it
+  ends, the worker lets in anything that arrived during the last call
+  (`serveNow`): served at a long job's breath, it was followed at once by the
+  job's next piece, and a request made during it waited for both. It also lets
   `soon` work waiting to start go first (not a serial generation's
   `breed_step`s), and runs between that job's pieces. A `now` render of the
   same id supersedes it.
@@ -156,6 +158,16 @@ PERFORM's measurement (`measure`, a render at a time), the model's guess and
 PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
 most one render, at a time; below).
 
+A yield (`yieldToQueue`, a `setTimeout(0)`) lets in what arrived before it
+only if nothing else ran meanwhile, and several flows yield at once: the
+lane's drain, the pump, a long job's breath. A timer set before another
+flow's long call fires right after that call, ahead of a message that arrived
+during it, in Chromium as in Node: with two loops yielding around 200 ms of
+work each, a message waited for both loops' work (#221). So a yield that took
+longer than a turn (`YIELD_TURN_MS`, 20 ms) yields again, its timer set
+behind what arrived meanwhile, at most twice, so a throttled timer cannot
+hold a flow up (`apps/web/tests/worker-lanes.test.mjs`).
+
 So a `now` request waits for the one call in progress when it arrives, then
 for the `now` requests queued ahead of it (first come, first served), and
 then runs. With the worker instrumented at `AURACLE_CPU_THROTTLE=4` on a
@@ -180,7 +192,10 @@ drag that made it (#174, #182), and an unplug's tree in the voices 2.2 to
 `apps/web/tests/worker-lanes.test.mjs`, which runs the worker's own
 `yieldToQueue`, `serveNow`, `breathe`, `holdFloor`, `guessRun` and
 `measure` over a stub engine: a request posted during a render is delivered
-at the job's next breath and answered before the next render. And end to
+at the job's next breath and answered before the next render, one posted
+during a background render served at a breath is answered before the job's
+next render, and a yield another flow's long call ran through lets in what
+arrived during that call first. And end to
 end by `tests/worker/lanes.test.mjs`, which runs `worker.js` itself over the
 built engine and posts the request while a given engine call runs: during
 PERFORM's measurement, the guess's renders and a spare offer's steps, the
