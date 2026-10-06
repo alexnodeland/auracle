@@ -25,10 +25,11 @@
 #
 # What it installs:
 #   base   the pinned Rust toolchain (rust-toolchain.toml: its components and
-#          the wasm32-unknown-unknown target), wasm-pack 0.15.0, cargo-nextest
-#          (the Rust test runner), the browser tests' npm packages and
-#          Playwright's Chromium, the git hooks, and the app's engine
-#          (make wasm)
+#          the wasm32-unknown-unknown target) and its llvm-tools component,
+#          wasm-pack 0.15.0, cargo-nextest (the Rust test runner),
+#          cargo-llvm-cov at the Makefile's LLVM_COV_VERSION (make coverage),
+#          the browser tests' npm packages and Playwright's Chromium, the git
+#          hooks, and the app's engine (make wasm)
 #   film   .venv-voice (the voice's pinned torch/kokoro/whisper set plus the
 #          film tools' numpy/scipy/pillow/imageio-ffmpeg; the film make
 #          targets use it), the Kokoro-82M and faster-whisper small.en models
@@ -74,6 +75,17 @@ if ! wasm-pack --version 2>/dev/null | grep -q '0\.15\.'; then
   cargo install wasm-pack --version 0.15.0 --locked
 fi
 cargo nextest --version >/dev/null 2>&1 || cargo install cargo-nextest --locked
+# `make coverage`: the pinned toolchain's llvm-tools (not in rust-toolchain.toml,
+# which every CI job installs, and which would carry 41 MB more to each), and
+# cargo-llvm-cov at the version the Makefile names, or later. An older one is
+# replaced: before 0.7 it instrumented every dependency, quiver's DSP loops
+# included, and the run took about thirteen times as long.
+rustup component add llvm-tools
+llvm_cov="$(sed -n 's/^LLVM_COV_VERSION := //p' Makefile)"
+have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }')"
+if [ -z "$have" ] || [ "$(printf '%s\n%s\n' "$llvm_cov" "$have" | sort -V | head -1)" != "$llvm_cov" ]; then
+  cargo install cargo-llvm-cov --version "$llvm_cov" --locked
+fi
 
 say "Node and the browser tests"
 want="$(cat .node-version)"

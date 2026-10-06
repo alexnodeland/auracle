@@ -54,6 +54,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
 .PHONY: setup film-setup web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
+        llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
@@ -112,7 +113,7 @@ install-hooks:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests dev-coverage
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -139,6 +140,8 @@ dev-syntax:
 	@printf '  film tools and hooks: syntax OK\n'
 dev-film-tests:
 	@for f in www/video/tools/test_*.py; do $(FILM_ENV) python3 $$f || exit 1; done
+dev-coverage:
+	@python3 scripts/test_coverage_gate.py
 
 ## tokens: write the colors, font families, type scale, spacing, radii and
 ## motion in www/brand/tokens.json into every surface's stylesheet (the
@@ -282,6 +285,89 @@ test-search-floor: nextest-installed
 ## test-slow-rest: the slow tier's Rust tests other than the search floor
 test-slow-rest: nextest-installed
 	$(NEXTEST) -E '$(SLOW_TESTS)' $(NEXTEST_ARGS)
+
+# ─── coverage ────────────────────────────────────────────────────────────────
+#
+# The fast tier's Rust tests, instrumented by cargo-llvm-cov with the pinned
+# compiler's llvm-tools: each crate's line and function coverage against its
+# floor in crates/coverage-baseline.json, and every line changed since BASE
+# that no test ran (scripts/coverage_gate.py; docs/architecture/testing.md
+# § Coverage). Native code only: what builds only for wasm32 is not measured,
+# nor are the examples, nor a file the report's default rule leaves out (one
+# under a `tests/` directory, or named `tests.rs`).
+#
+# cargo-llvm-cov 0.7 and later instrument the workspace's crates and nothing
+# else, so the run costs about a fifth more than the plain tier. 0.6
+# instrumented quiver's DSP loops too and took about thirteen times as long:
+# hence the version floor below, which CI pins exactly.
+#
+# In CI the run is split (ci.yml's Coverage jobs): `coverage-archive` builds
+# once into a nextest archive (COV_ARCHIVE), `coverage-run` runs one
+# partition of it on each runner (NEXTEST_ARGS='--partition slice:k/N'), and
+# `coverage-report` reads every runner's profiles against the archive.
+LLVM_COV_VERSION := 0.9.1
+COV := $(CARGO) llvm-cov
+COV_DIR := target/llvm-cov
+COV_SUMMARY := $(COV_DIR)/summary.json
+COV_LCOV := $(COV_DIR)/lcov.info
+COV_ARCHIVE ?=
+COV_FAST := -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))' --no-tests=fail
+COV_FROM = $(if $(COV_ARCHIVE),--nextest-archive-file $(COV_ARCHIVE),--profile test-fast)
+# CI appends the tables to the run's summary (COV_MARKDOWN) and links each
+# uncovered line (COV_LINK).
+COV_MD = $(if $(COV_MARKDOWN),--markdown $(COV_MARKDOWN))
+
+llvm-cov-installed:
+	@v="$$($(CARGO) llvm-cov --version 2>/dev/null | awk '{ print $$2 }')"; \
+	if [ -z "$$v" ] || [ "$$(printf '%s\n%s\n' "$(LLVM_COV_VERSION)" "$$v" | sort -V | head -1)" != "$(LLVM_COV_VERSION)" ]; then \
+		printf '  cargo-llvm-cov %s or later is needed (found: %s); run: cargo install cargo-llvm-cov --version %s --locked\n' \
+			"$(LLVM_COV_VERSION)" "$${v:-none}" "$(LLVM_COV_VERSION)"; exit 1; fi
+	@rustup component list --installed 2>/dev/null | grep -q '^llvm-tools' || { \
+		printf '  the llvm-tools component is missing; run: rustup component add llvm-tools\n'; exit 1; }
+
+## coverage: the fast tier's Rust tests, instrumented: each crate's line and
+## function coverage against its floor (crates/coverage-baseline.json), and
+## every line changed since BASE (origin/main) that no test ran. Writes
+## target/llvm-cov/html/index.html, lcov.info and summary.json there. Needs
+## cargo-llvm-cov and the llvm-tools component (`make setup`)
+coverage: coverage-run
+	@$(MAKE) --no-print-directory coverage-report
+
+# One instrumented run of the fast tier, profiles only: the whole tier from a
+# clean build, or with COV_ARCHIVE, the tests in that archive (one partition
+# of them, in CI).
+coverage-run: nextest-installed llvm-cov-installed
+ifeq ($(COV_ARCHIVE),)
+	$(COV) clean --workspace
+	$(COV) nextest --workspace --cargo-profile test-fast $(TEST_TARGETS) $(COV_FAST) --no-report $(NEXTEST_ARGS)
+else
+	mkdir -p target/llvm-cov-target
+	$(COV) nextest --archive-file $(COV_ARCHIVE) $(COV_FAST) --no-report $(NEXTEST_ARGS)
+endif
+
+# The fast tier's test binaries, instrumented, as a nextest archive (CI's
+# build for its coverage runners).
+coverage-archive: nextest-installed llvm-cov-installed
+	@test -n "$(COV_ARCHIVE)" || { printf '  name the archive: make coverage-archive COV_ARCHIVE=<file>.tar.zst\n'; exit 2; }
+	$(COV) clean --workspace
+	$(COV) nextest-archive --workspace --cargo-profile test-fast $(TEST_TARGETS) --archive-file $(COV_ARCHIVE)
+
+## coverage-report: the reports and the gate again, from the last run's
+## profiles (target/llvm-cov-target), without running the tests
+coverage-report: llvm-cov-installed
+	$(COV) report $(COV_FROM) --html
+	$(COV) report $(COV_FROM) --json --summary-only --output-path $(COV_SUMMARY)
+	$(COV) report $(COV_FROM) --lcov --output-path $(COV_LCOV)
+	@printf '  report: %s/html/index.html\n' $(COV_DIR)
+	@rc=0; \
+	python3 scripts/coverage_gate.py floors $(COV_SUMMARY) --base $(BASE) $(COV_MD) || rc=1; \
+	python3 scripts/coverage_gate.py diff $(COV_LCOV) --base $(BASE) $(COV_MD) $(if $(COV_LINK),--link $(COV_LINK)) || rc=1; \
+	exit $$rc
+
+## coverage-floors: raise each crate's floor to what the last `make coverage`
+## measured (never lowers one); commit crates/coverage-baseline.json
+coverage-floors:
+	python3 scripts/coverage_gate.py floors $(COV_SUMMARY) --raise
 
 # The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) or
 # `@quarantine` (testing.md § Flakes) runs in the slow tier, every other one in
