@@ -108,23 +108,37 @@ fn a_redraw_never_mirrors_the_map() {
     assert!(dot(&drawn, &next) > 0.9, "the redraw mirrored the map");
 }
 
-/// A near-degenerate spectrum must be *reported*, not silently returned as
-/// though it had settled. Two coordinates with identical variance and no
-/// covariance leave the second axis with nothing to converge toward.
+/// A near-tied spectrum is *reported*, not returned as though it had
+/// settled. Two coordinates of almost equal variance, with a covariance that
+/// turns the leading pair of axes half way between them, leave power
+/// iteration closing in by a factor of about 0.998 a step, so the first axis
+/// is still moving at the iteration cap and says so (the flag
+/// `TasteMap::converged` carries). An exact tie would not do: every vector
+/// in the tied plane is an axis, and the first step settles. The same rows
+/// with a clear gap between the two settle, and either way the second axis
+/// never carries more variance than the first.
 #[test]
-fn a_tied_spectrum_is_reported_rather_than_hidden() {
-    let rows: Vec<Vec<f64>> = (0..40)
-        .map(|i| {
-            let a = i as f64 - 19.5;
-            vec![a, if i % 2 == 0 { 1.0 } else { -1.0 }, 0.0]
-        })
-        .collect();
-    let mut centered = rows.clone();
-    mean_center(&mut centered);
-    let (ax1, var1, _) = leading_axis(&centered, None);
-    let (_, var2, _) = leading_axis(&centered, Some(&ax1));
-    // Whatever it reports, it must not lie about the ordering.
-    assert!(var1 >= var2);
+fn a_near_tied_spectrum_is_reported_rather_than_hidden() {
+    let rows = |eps: f64| -> Vec<Vec<f64>> {
+        let mut rows: Vec<Vec<f64>> = (0..40)
+            .map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / 40.0;
+                vec![t.cos(), t.sin() + eps * t.cos(), 0.0]
+            })
+            .collect();
+        mean_center(&mut rows);
+        rows
+    };
+    for (eps, settles) in [(1e-3, false), (0.5, true)] {
+        let centered = rows(eps);
+        let (ax1, var1, ok1) = leading_axis(&centered, None);
+        let (_, var2, _) = leading_axis(&centered, Some(&ax1));
+        assert_eq!(
+            ok1, settles,
+            "eps {eps}: the first axis reported converged = {ok1}"
+        );
+        assert!(var1 >= var2, "eps {eps}: {var1} < {var2}");
+    }
 }
 
 /// **The direction liking rises is the map's.** A plane is recovered
