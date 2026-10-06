@@ -1271,8 +1271,9 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
    in the pool, and its ▶ (■ while it sounds) stays up while it plays. The
    name keeps its x; its end passes under the word, as it passes under a pool
    row's actions. The selectors are the ones that show the actions
-   (`.bank-item .bi-acts`, above). */
-.preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing), :has(.bi-hear.pending)) .pb-in {
+   (`.bank-item .bi-acts`, above), less `.pending`, which a preset's ▶ never
+   carries (a preset row waits as `.loading`). */
+.preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in {
   right: calc(var(--s1) + 24px + var(--s4)); /* the ▶ (24 px) and its strip's fade */
   background: linear-gradient(to right, transparent, var(--row-ground) var(--s4));
 }
@@ -4161,7 +4162,7 @@ kbd { font-family: var(--font-mono); }
   .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
   .bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
   /* The ▶ is on its own line here, so IN POOL keeps the row's end. */
-  .preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing), :has(.bi-hear.pending)) .pb-in { right: var(--s1); background: none; }
+  .preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
 
   /* Law 2 — gesture ownership.
      The rack frame no longer scrolls: it is a camera, and the drag and the
