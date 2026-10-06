@@ -365,13 +365,18 @@ HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 def changed_lines(diff: str) -> dict[str, set[int]]:
-    """Each file's added or changed lines, from `git diff --unified=0`."""
+    """Each file's added or changed lines, from `git diff --unified=0
+    --dst-prefix=b/`. A new-side path without that prefix is an error, not a
+    file no one changed: misread, every path would be outside crates/ and
+    the check would pass on anything."""
     out: dict[str, set[int]] = defaultdict(set)
     path = None
     for line in diff.splitlines():
         if line.startswith("+++ "):
-            target = line[4:].strip()
-            path = None if target == "/dev/null" else re.sub(r"^b/", "", target)
+            target = line[4:].strip().strip('"')
+            if target != "/dev/null" and not target.startswith("b/"):
+                raise ValueError(f"git diff named a changed file without its b/ prefix: {line!r}")
+            path = None if target == "/dev/null" else target[2:]
         elif path and (m := HUNK.match(line)):
             start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
             out[path].update(range(start, start + n))
@@ -386,7 +391,12 @@ def changes_since(base: str, root: str = ROOT) -> tuple[str, dict[str, set[int]]
     """The merge base with `base`, and every line changed since it in the
     working tree, untracked files included."""
     mb = git(["merge-base", base, "HEAD"], root).strip()
-    diff = git(["diff", "--unified=0", "--no-color", "--no-ext-diff", "-M", mb, "--", "crates"], root)
+    # The prefixes named, so a config's diff.mnemonicPrefix (`w/`) or
+    # diff.noprefix cannot make every path unreadable and the check vacuous.
+    diff = git(
+        ["diff", "--unified=0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-M", mb, "--", "crates"],
+        root,
+    )
     changed = changed_lines(diff)
     for rel in git(["ls-files", "--others", "--exclude-standard", "--", "crates"], root).split("\n"):
         if rel and os.path.isfile(os.path.join(root, rel)):

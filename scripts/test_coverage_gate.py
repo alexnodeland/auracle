@@ -326,6 +326,22 @@ class Changed(Tree):
         self.assertEqual(code, 1)
         self.assertIn("crates/a/src/new.rs\n        1  pub fn n() {}", err)
 
+    def test_a_diff_config_that_renames_the_prefixes_still_finds_the_line(self):
+        # diff.mnemonicPrefix writes `+++ w/crates/…`, diff.noprefix
+        # `+++ crates/…`; read as written, either made the check pass on
+        # anything ("0 changed line(s)").
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.git("commit", "-q", "-am", "change")
+        f = self.lcov_file({"crates/a/src/lib.rs": ({1: 3, 2: 3, 3: 3, 5: 0}, {})})
+        for key in ("diff.mnemonicPrefix", "diff.noprefix"):
+            with self.subTest(key=key):
+                self.git("config", key, "true")
+                code, _, err = self.run_main("diff", f, "--base", "main")
+                self.git("config", "--unset", key)
+                self.assertEqual(code, 1)
+                self.assertIn("3 changed line(s) in crates/ since main", err)
+                self.assertIn("1 not covered", err)
+
     def test_files_the_run_did_not_measure_are_named_not_failed(self):
         self.write("crates/a/tests/it.rs", "#[test]\nfn t() {}\n")
         self.write("crates/a/Cargo.toml", "[package]\n")
@@ -392,6 +408,11 @@ class Parsing(unittest.TestCase):
             ]
         )
         self.assertEqual(C.changed_lines(diff), {"crates/a/src/x.rs": {3, 11, 12}})
+
+    def test_a_new_side_path_without_its_prefix_is_an_error_not_a_pass(self):
+        for target in ("+++ w/crates/a/src/x.rs", "+++ crates/a/src/x.rs"):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                C.changed_lines(f"--- a/crates/a/src/x.rs\n{target}\n@@ -3 +3 @@\n")
 
     def test_runs_group_consecutive_lines(self):
         self.assertEqual(C.runs([1, 2, 3, 7, 9, 10]), [(1, 3), (7, 7), (9, 10)])
