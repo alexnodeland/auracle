@@ -87,14 +87,16 @@ instrument, and belongs in its own commit.
 
 `tokens.json` is the one source of every color, font family, type size,
 spacing step, radius and motion on every surface: the app, the landing page,
-the docs theme, this brand page, the 404, and the film stage. It holds:
+the docs theme, this brand page (and `render.html`, the source of its
+rasters), the 404, and the film stage. It holds:
 
 - **the palettes**: the rack (the instrument's dark palette, in the tiers the
   app has always named: `rack`, `panel`, `hairline`, the plate and button
   faces, `silk`/`silk-dim`/`silk-mute`, the two phosphors with their `-dim`
   text tier and `-deep` stroke tier, `led-red`, and the few shades more than
-  one surface uses), and Paper, the docs' light theme; `black` and `white`,
-  for shadows and highlights only, go with both;
+  one surface uses), and Paper, the docs' light theme, whose `--bezel` is the
+  rack's on purpose: a film keeps its dark ground on Paper. `black` and
+  `white`, for shadows and highlights only, go with both;
 - **the font families**: `--font-silk`, `--font-mono`, `--font-voice` (the
   last is Newsreader italic, for the model's own words and nothing else);
 - **each surface's own named shades** (a value only that surface uses, such as
@@ -130,13 +132,18 @@ writes them into each consumer's stylesheet, between `/* tokens:begin … */`
 and `/* tokens:end */`. The blocks are committed, like the film blocks
 `publish.py` fills, so the app and the site still serve with no build step.
 Edit the JSON, never a block. The consumers, and which surface each reads, are
-listed at the top of `tokens.py`.
+listed at the top of `tokens.py`. The live figures (`www/viz/`) have no block
+of their own: they paint with the tokens of the page they are on, the docs'
+Rack or Paper or the landing page, so a theme switch is a repaint.
 
-Scripts read the same tokens, because a canvas or an SVG attribute cannot use
-a custom property: `tok()` in the app's `main.js`, `ink()` in the landing
-page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
-(`www/video/stage/kit.js`), which every film uses. Each reads
-`getComputedStyle(document.documentElement)` once per name.
+Scripts read the same tokens through a helper: `tok()` in the app's
+`main.js`, `ink()` in the landing page's `hero.js`, and `ink()`/`inkA()`
+exported by the film kit (`www/video/stage/kit.js`), which every film uses.
+Each reads `getComputedStyle(document.documentElement)` once per name. A
+canvas needs the value, since it takes a color rather than a custom property,
+and so does a color a script mixes or fades (`inkA()`, the app's `inkMix()`).
+The live figures need no helper: they write tokens straight into their SVG
+attributes (`fill="var(--phos-a)"`), so a theme switch repaints them.
 
 The app's canvases read `--t-canvas` the same way (`canvasFont()` in
 `main.js`), and the rack reads its own tier.
@@ -151,9 +158,12 @@ outside a block in any of these (the `SCANNED` list in `tokens.py`):
 
 - the app: `apps/web/*.css`, `*.js` and `index.html`;
 - the landing page: `www/landing/*.css`, `*.js` and `index.html`;
-- the docs theme: `www/theme/css/*.css`, `highlight.css` and `index.hbs`;
-- the brand page and the 404: `www/brand/*.html` (not `render.html`) and
-  `www/404.html`;
+- the docs theme: `www/theme/css/*.css`, `highlight.css`, `index.hbs` and
+  `fonts/auracle.css`;
+- the live figures: `www/viz/*.js` and `*.css`, as the docs' two themes and
+  the landing page, which all load them;
+- the brand page, the source of its rasters and the 404: `www/brand/*.html`
+  and `www/404.html`;
 - the films: `www/video/stage/*.css`, `*.js` and `*.html` (the stage, the kit,
   the poster), and every film's `film.js`, `cards.js` and `index.html`.
 
@@ -164,19 +174,21 @@ script's color property. `transparent`, `currentColor` and `inherit` pass,
 comments are not read, and a word like "green" in prose or a script's own
 names is not a color. It also fails when a script reads a token its surface
 does not define, when a stylesheet uses a token another surface owns, when a
-`theme-color` is not the rack, and when a hex quoted in prose
-(`<code>#0c0d10</code>`) is not a token's value.
+figure reads a name one of the pages that load it does not define (`ON_EVERY`
+in `tokens.py`), when a `theme-color` is not the rack, and when a hex quoted
+in prose (`<code>#0c0d10</code>`) is not a token's value.
 
-**Not checked yet** (`NOT_YET` in `tokens.py`, which `--check` lists every
-time it runs), each waiting on a token decision rather than a substitution:
+The figures' rules hold on the docs' Rack, the docs' Paper and the landing
+page at once, so every name they read must be on all three: a token in the
+page's block, and an alias such as `--fg`, `--code-bg` or `--mono-font` in the
+page's own stylesheet, in `:root` or in its theme's rule (`html.light` for
+Paper). On a page that lacks one, a tile's fill would turn black (an SVG
+`fill` falls back to the one it inherits) and the stage would lose its
+ground. A `var()` with a fallback of its own is held to the same rule.
 
-- `www/viz/viz.js` and `viz.css`, the live figures: the grammar figure fills
-  its tiles with the dark theme's phosphors as `rgba()` literals, which is
-  wrong on the docs' Paper theme, and their `var()` fallbacks are literals;
-- `www/theme/fonts/auracle.css`: a film's ground is `var(--bezel, #07080a)`,
-  and Paper defines no `--bezel`, so on Paper the literal is what shows;
-- `render.html`: a hand copy of seven tokens, with the marks work (Plan-004
-  task 3).
+A page that has to hold colors of its own while a token is decided goes on
+`NOT_YET` in `tokens.py`, with why; it is not scanned, and `--check` names it
+every time it runs. The list is empty.
 
 Never scanned: the marks (`*.svg`, assets a favicon slot reads without CSS)
 and `docs/notes/` (dated records). A new color is a token first: add it to
@@ -216,8 +228,9 @@ move lowers the baseline in the same change, so the floor only goes down):
 stylesheet and scripts are at zero: where the scale has no step for a
 literal (a loop's period, a glyph sized to its button, a key that must light
 at once), the declaration says why with a trailing `token-exempt:` comment,
-which covers that declaration and no other. The landing page, the brand page, the 404 and the films have their
-counts in the baseline until each is moved.
+which covers that declaration and no other. The landing page, the docs
+theme, the live figures, the brand page and its raster source, the 404 and
+the films have their counts in the baseline until each is moved.
 
 ## The sound
 
@@ -286,7 +299,8 @@ The PNGs are committed rather than built, so neither CI nor a contributor needs
 
 `lockup.png` and `og.png` set the logotype, so they come out of a browser with
 the real Jost outlines rather than out of an SVG renderer. Their source is
-`render.html`, and its comment says how to shoot them. They also carry the
+`render.html`, and its comment says how to shoot them; its colors are the
+brand page's tokens, generated into it by `make tokens`. They also carry the
 line, so a change to the tagline or the descriptor in `voice.md` re-renders
 them: edit `#banner` and `#og` in `render.html`, then shoot both again.
 

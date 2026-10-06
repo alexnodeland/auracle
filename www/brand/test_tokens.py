@@ -14,6 +14,7 @@ Python 3 standard library only.
 import concurrent.futures
 import contextlib
 import io
+import json
 import os
 import re
 import shutil
@@ -147,12 +148,82 @@ class TheCheck(unittest.TestCase):
             for rel in ("www/landing/index.html", "www/video/stage/poster.html", "www/theme/highlight.css"):
                 self.assertTrue(any(p.startswith(rel) for p in got), rel)
 
+    def test_the_figures_the_docs_layer_and_the_raster_source_are_scanned(self):
+        # The four files NOT_YET held until #146, each with the literal it held.
+        planted = {
+            "www/viz/viz.js": lambda s: s + "\nconst tint = 'rgba(142,240,177,.10)';\n",
+            "www/viz/viz.css": lambda s: s + "\n.viz-stage { border-color: #999; }\n",
+            "www/theme/fonts/auracle.css": lambda s: s + "\n.x { background: var(--bezel, #07080a); }\n",
+            "www/brand/render.html": lambda s: s.replace("</style>", "body { background: #333; }\n</style>", 1),
+        }
+        with Tree() as t:
+            for rel, fn in planted.items():
+                t.edit(rel, fn)
+            got = t.problems()
+            for rel in planted:
+                self.assertTrue(any(p.startswith(rel + ":") and "a colour outside the tokens" in p for p in got), (rel, got))
+
     def test_the_not_yet_files_are_named_and_not_scanned(self):
         scanned = {rel for rel, _ in T.scanned_files()}
         for rel, why in T.NOT_YET:
             self.assertTrue(os.path.exists(os.path.join(T.ROOT, rel)), rel)
             self.assertNotIn(rel, scanned)
-            self.assertTrue(why)
+            self.assertTrue(why, rel)
+
+    def test_a_file_on_not_yet_is_not_scanned(self):
+        saved = T.NOT_YET
+        T.NOT_YET = [("www/viz/viz.css", "a decision it waits on")]
+        try:
+            self.assertNotIn("www/viz/viz.css", {rel for rel, _ in T.scanned_files()})
+        finally:
+            T.NOT_YET = saved
+
+    def test_a_figure_reading_a_token_one_of_its_pages_lacks_fails_the_check(self):
+        # The figures are loaded under Rack, under Paper and on the landing
+        # page: a tile filled with a token Paper lacks turns black there (an
+        # SVG fill falls back to the one it inherits).
+        def drop_paper_phos_a(s):
+            src = json.loads(s)
+            del src["surfaces"]["docs-paper"]["alpha"]["phos-a"]
+            return json.dumps(src, indent=2, ensure_ascii=False) + "\n"
+
+        with Tree() as t:
+            t.edit(T.SOURCE, drop_paper_phos_a)
+            with contextlib.redirect_stdout(io.StringIO()):
+                T.generate(check=False)
+            got = t.problems()
+            self.assertTrue(any(p.startswith("www/viz/viz.js:") and "var(--phos-a-10) is not defined on docs-paper," in p for p in got), got)
+        with Tree() as t:
+            t.edit("www/viz/viz.css", lambda s: s + "\n.viz-x { background: var(--popup); }\n")
+            got = t.problems()
+            self.assertTrue(any(p.startswith("www/viz/viz.css:") and "var(--popup) is not defined on docs, landing," in p for p in got), got)
+
+    def test_a_figure_reading_an_alias_one_of_its_pages_lacks_fails_the_check(self):
+        # The stage's ground is `var(--code-bg)`, an alias each page defines
+        # beside its tokens; without it the landing page's stage has none.
+        with Tree() as t:
+            t.edit("www/landing/style.css", lambda s: re.sub(r"--code-bg\s*:[^;]*;", "", s, count=1))
+            got = t.problems()
+            self.assertTrue(
+                any(
+                    p.startswith("www/viz/viz.css:")
+                    and "var(--code-bg) is not defined on landing, which loads this file; define it in www/landing/style.css (:root)" in p
+                    for p in got
+                ),
+                got,
+            )
+        # Rack and Paper share a stylesheet: an alias Paper's rule lacks is
+        # missing on Paper alone, though Rack's rule defines it.
+        with Tree() as t:
+
+            def drop_paper_fg(s):
+                at = s.rindex("html.light {")  # the hand rule, not the generated block's
+                return s[:at] + re.sub(r"--fg\s*:[^;]*;", "", s[at:], count=1)
+
+            t.edit("www/theme/css/variables.css", drop_paper_fg)
+            got = [p for p in t.problems() if "var(--fg)" in p]
+            self.assertTrue(got, "no report of --fg")
+            self.assertTrue(all("is not defined on docs-paper, which loads this file; define it in www/theme/css/variables.css (html.light)" in p for p in got), got)
 
     def test_a_value_that_is_not_a_colour_is_reported_as_one(self):
         # Even when opacities are derived from it: a friendly line, not a traceback.
