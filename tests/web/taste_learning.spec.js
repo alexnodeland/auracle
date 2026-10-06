@@ -468,7 +468,7 @@ test("each sound on the map is drawn as its face: taller than it is wide, in the
 // Quarantined (#237): the SOUND baseline is one read of whichever sound is
 // liked least at that moment, compared with a later read that may be of
 // another sound or a settled frame (CI read 70 against 3 again).
-test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", { tag: "@quarantine" }, async ({ page, app }) => {
+test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", { tag: "@quarantine", annotation: { type: "issue", description: "#237" } }, async ({ page, app }) => {
   await boot(app);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");

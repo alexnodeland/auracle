@@ -19,8 +19,10 @@
 // would run every test in it on every runner. The files narrow the listing;
 // the run gets the selectors and the options only.
 //   node shard.mjs timings --out timings.json report.json [report.json ...]
-//       fold Playwright JSON reports into the timings file (tests the reports
-//       did not run keep the time they had)
+//       fold Playwright JSON reports into the timings file: a test's time is
+//       the median of its runs that passed (one on the gate, three in the
+//       nightly Flake hunt); a test the reports did not run, or ran and never
+//       passed, keeps the time it had
 //   node shard.mjs budgets report.json
 //       list the speed budgets (ADR-022, fixtures.js `budget`) the report's
 //       runs recorded over their limit, and add them to the run's summary
@@ -73,16 +75,18 @@ function parseArgs(argv) {
 const keyOf = (file, titles) => [file, ...titles].join(" › ");
 
 /** Every test in a Playwright JSON report (or `--list` output), as
- *  { key, file, line, durations }. */
+ *  { key, file, line, passed }: `passed`, the durations of its runs that
+ *  passed. */
 function testsIn(report) {
   const out = [];
   const walk = (suite, titles) => {
     if (titles.length) out.describes.push({ file: suite.file, line: suite.line, title: titles.join(" › ") });
     for (const spec of suite.specs || []) {
       const key = keyOf(spec.file, [...titles, spec.title]);
-      // An interrupted run's time is how far it got, not how long it takes.
-      const durations = (spec.tests || []).flatMap((t) => (t.results || []).filter((r) => r.status !== "interrupted").map((r) => r.duration));
-      out.push({ key, file: spec.file, line: spec.line, durations });
+      // A run that failed or was interrupted took as long as it got, not as
+      // long as the test takes.
+      const passed = (spec.tests || []).flatMap((t) => (t.results || []).filter((r) => r.status === "passed").map((r) => r.duration));
+      out.push({ key, file: spec.file, line: spec.line, passed });
     }
     for (const child of suite.suites || []) walk(child, [...titles, child.title]);
   };
@@ -234,7 +238,11 @@ function cmdPlan(opts, pass) {
 function cmdTimings(opts) {
   if (!opts.out) throw new Error("timings wants --out");
   const timings = readTimings(opts.out);
-  let folded = 0;
+  // A test's runs that passed, from every report (`--repeat-each` gives
+  // several, and inside a describe each repeat is a spec of its own). A
+  // failed run's time is how long it took to fail, not how long the test
+  // takes: a timeout's is the timeout.
+  const runs = new Map();
   for (const path of opts._) {
     // A runner that stopped before its tests wrote no report.
     if (!existsSync(path)) {
@@ -242,14 +250,17 @@ function cmdTimings(opts) {
       continue;
     }
     for (const t of testsIn(JSON.parse(readFileSync(path, "utf8")))) {
-      // A test's time is its last attempt's (a retry, or `--repeat-each`,
-      // gives several; the gate runs each once).
-      const d = t.durations.at(-1);
-      if (typeof d === "number" && d > 0) {
-        timings[t.key] = Math.round(d / 100) / 10;
-        folded++;
-      }
+      runs.set(t.key, [...(runs.get(t.key) || []), ...t.passed.filter((d) => typeof d === "number" && d > 0)]);
     }
+  }
+  let folded = 0;
+  for (const [key, ds] of runs) {
+    if (!ds.length) continue;
+    const sorted = [...ds].sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    timings[key] = Math.round(median / 100) / 10;
+    folded++;
   }
   const sorted = Object.fromEntries(Object.entries(timings).sort(([a], [b]) => (a < b ? -1 : 1)));
   writeFileSync(opts.out, `${JSON.stringify(sorted, null, 1)}\n`);

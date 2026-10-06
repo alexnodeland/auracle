@@ -19,8 +19,8 @@ this table.
 | Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
-| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below | Any JS |
-| Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
+| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
+| Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`); every test tagged `@quarantine` names its issue (`flakes.mjs check`, [Flakes](#flakes)) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
 | Worker protocol | `make worker-test` (after `make wasm`) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
@@ -104,8 +104,8 @@ the fast tier and the PR checks alone.
 | --- | --- | --- | --- |
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, and tells each closed issue's parent its count of sub-issues closed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
-| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
 
@@ -177,8 +177,9 @@ uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). The summary also lists every
 speed budget a test recorded over its limit (`shard.mjs budgets`), which the
 gate records and never fails on. In the merge queue's run and on main it
-also folds the run's times into the timings the next run deals by (*The
-timings come from the queue's run*, below). A runner that would
+also folds the run's times into the timings the next run deals by, each
+test's time from its runs that passed (*The timings come from the queue's
+run*, below). A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
@@ -235,11 +236,16 @@ run on main anyway: their caches are saved from main only, under a key that
 holds the compiler's release and the lockfile, so reused they would never be
 saved for a new compiler or a bumped dependency.
 
-**The timings come from the queue's run.** Main no longer runs the browser
-tier when it reuses the queue's verdict, so the queue run's *Browser report*
-folds its times into main's timings and keeps the file as an artifact, and
-main's *What changed* job saves it to the cache the next run deals from (a
-cache saved by a pull_request run is restored by that PR's runs only).
+**The timings come from the queue's run, and from the nightly hunt.** Main
+no longer runs the browser tier when it reuses the queue's verdict, so the
+queue run's *Browser report* folds its times into main's timings and keeps
+the file as an artifact, and main's *What changed* job saves it to the cache
+the next run deals from (a cache saved by a pull_request run is restored by
+that PR's runs only). The nightly *Flake hunt* runs the whole tier on main
+three times, and its report folds in each test's median of the runs that
+passed, so the timings stay current when main's pushes skip the tier
+(reused, or superseded by a newer push). A test that never passed keeps the
+time it had.
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every job runs on
@@ -255,19 +261,21 @@ tag of the browser jobs' image, so its bump is one PR).
 **When the slow tier runs.** On `main`, in full: the newest push (its run
 covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
 failure there opens an issue titled *Slow suite failing on main*, or comments
-on the open one. On demand from the Actions tab. On a PR, only when the PR
-carries the `full-ci` label: adding it starts a run, and every push to the
-labelled PR runs it again; a PR without it runs nothing there. Add it to a
-PR that changes what the slow tests cover, the paths the workflow used to run
-a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
+on the open one. A quarantined test's failure is not one: it is said on that
+test's own issue, and the run stays green, so the issue means a new
+regression, or a quarantined test whose issue was closed
+([Flakes](#flakes)). On demand from the Actions tab. On a PR, only when the
+PR carries the `full-ci` label: adding it starts a run, and every push to
+the labelled PR runs it again; a PR without it runs nothing there. Add it to
+a PR that changes what the slow tests cover, the paths the workflow used to
+run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
 `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
 `apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
 `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
 `tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or
 `package-lock.json`; or a spec file that holds an `@slow` or `@quarantine`
 test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
-offers. Otherwise the push to `main` is where a slow
-test catches it.
+offers. Otherwise the push to `main` is where a slow test catches it.
 
 **Runners.** The account runs at most 20 jobs at once.
 - **The queue's run** at its widest holds about 18: twelve browser runners,
@@ -281,7 +289,8 @@ test catches it.
   own reaches that. A docs PR holds two (Web, then the engine and Site), an
   app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
-  three browser runners), on `main`, latest only.
+  three browser runners; the quarantined tests' runner starts once all six
+  browser runners are done), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy: two.
 - ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
@@ -471,16 +480,35 @@ from it ([Rules](#rules)).
   (`tests/web/fixtures.js` `SEED`, the same pool and sides every run;
   PERFORM's specs `PERFORM_SEED`, whose first offer is a typical one), so a
   spec that only holds for one pool shows up here. A spec that names its own
-  `random:` seed keeps it in both. A failure files a *Flake hunt found a
-  flaky test* issue whose run links one report naming each failed test and
-  which of its runs failed.
+  `random:` seed keeps it in both. Each test that fails gets its own issue,
+  `Flaky: <file> '<test title>'`, or a comment on the one open for it
+  (`tests/web/flakes.mjs` finds it: the issue the test's annotation names,
+  or an open issue under that title, cut short with … as a hand-written one
+  may be). The comment names the test, how many of its three runs failed,
+  what the first line of each failure said and the machine it failed on (the
+  fixture's `runner` annotation), and the run, whose summary links one report
+  with the traces. Every test there passed the gate on that commit, so one
+  that failed all three runs is filed the same way: the hunt's seed differs
+  from the gate's. What no one test accounts for (the engine's build, a
+  runner cut short or lost, an error outside any test, or more than five
+  tests failing in one night) files *Flake hunt failing on main*, beside
+  the flakes the other runners found. A runner lost leaves no report, so
+  the report job lists the tests the hunt was dealt and counts any that no
+  runner reported.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   speed bound asserted where a budget belongs ([Rules](#rules)).
 - **Or quarantine it** while it is fixed: add `@quarantine` to the test's
-  tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) with a comment naming
-  the issue. It leaves the gate and runs in the *Slow suite*, so it is still
-  run and still seen. Remove the tag in the PR that fixes it.
+  tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) and name its issue
+  beside the tag, `annotation: { type: "issue", description: "#N" }`
+  (`make spec-lint` fails a quarantined test that names none). It leaves the
+  gate and runs in the *Slow suite*'s job for quarantined tests, so it is
+  still run and still seen. A failure there is a comment on that issue (the
+  test, its runs, the run), and the job stays green: only a failure no issue
+  owns (a test cut short, an error outside the tests, a test whose issue is
+  closed) turns the run red. So *Slow suite failing on main* means a new
+  regression, or a quarantine left behind when its issue closed.
+  Remove the tag and its annotation in the PR that fixes it.
 
 ## What each browser spec pins
 
@@ -510,7 +538,7 @@ from it ([Rules](#rules)).
 | `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation deals within 1 s; GENERATIONS and the next-step chip count a generation once a child has landed, not on a pick's status; PERFORM measures and a pressed Offer starts during a generation; stop ends with what's bred, retiring only at the finish; ⚡ leaves the engine free and its stop drops it; ⚡ and EVOLVE POOL take turns, each disabled with its reason while the other runs; the E and the job slot agree |
 | `evolve_from_new.spec.js` | A ⚡ child joins the bank's New group (*new · generation N*, tagged NEW) as a generation's children do, the next-step chip counts it, and its toast names the sound; a ⚡ that bred nothing never says "its parent" |
 | `bank_kept.spec.js` | A sound kept as new that rates lowest of everything a preset could replace (from the engine's own ratings, its original saved) stays when a preset opens on a full pool; the one replaced in its place is what the toast names; pointing at EVOLVE POOL never marks it *may be replaced*. Fails against an engine without the protection (`Candidate::unjudged`) |
-| `bank_lineage.spec.js` | Pointing at EVOLVE POOL marks the seeds and what may be replaced from the engine's `ratings`, and during a generation its own seeds (posted with its progress, checked against each walk's `seed`) and `retiring` as *will be replaced*; no mark (the unheard dot, NEW, seed, may be replaced) moves or narrows a row's name, measured; the unheard dot survives a reload and clears when heard; Compare shows a child beside its seed, the diff and both ratings, and plays both while both exist; a refused child buds beside its seed and is gone, and EVOLVE POOL names each walk's outcome; a generation's children land in New with their seed and what changed, and Replaced lists only the names its end replaced; Compare lists every change and scrolls, and opens with c from the bank; while ⚡ walks, its seed and the sound its child would replace are marked, and that is what it replaces; a ⚡ child that replaced nothing leaves Replaced as it was; the name's place and each mark word's fit are measured at 1440 and 1080 px; GENERATIONS counts a generation from its first child with no pick since it opened; a sound saved mid-run loses *will be replaced* and the one that will go instead gains it |
+| `bank_lineage.spec.js` | Pointing at EVOLVE POOL marks the seeds and what may be replaced from the engine's `ratings`, and during a generation its own seeds (posted with its progress) and `retiring` as *will be replaced*; no mark (the unheard dot, NEW, seed, may be replaced) moves or narrows a row's name, measured; the unheard dot survives a reload and clears when heard; Compare shows a child beside its seed, the diff and both ratings, and plays both while both exist; a refused child buds beside its seed and is gone, and EVOLVE POOL names each walk's outcome; a generation's children land in New with their seed and what changed, each budding from its seed's row (none with motion reduced), and Replaced and the end's toast name only what its end replaced (the generation's `refine` stalled and its replies injected, so every branch runs); Compare lists every change and scrolls, and opens with c from the bank; while ⚡ walks, its seed and the sound its child would replace are marked, and that is what it replaces; a ⚡ child that replaced nothing leaves Replaced as it was; the name's place and each mark word's fit are measured at 1440 and 1080 px; GENERATIONS counts a generation from its first child with no pick since it opened; a sound saved mid-run loses *will be replaced* and the one that will go instead gains it |
 | `faces.spec.js` | A face lands on every row, EVOLVE card, PATCH's header and teach strip, PERFORM's sound in hand and its offer (the offer's its own), and the warm start's cards; a cut redraws the bank's faces against the bank as it is now; a row's name has the same x and width with and without its face, uncut, on a desktop and a phone; the sound's card downloads at 1200 × 630 with its face, its name and its patch inside (PNG and SVG); after a reload every row draws the same face |
 | `budgets.spec.js` | The response-time budget: the timing marks exist; a preset's controls, and a warm-start pick's, are live in the task PERFORM names it, wired from the shipped file (the app's `perform-wired` mark); a pick puts the next pair up in its click's own task with no deal for the table asked for, and the duel's ▶ sounds in its own with no render asked for. The seconds are budgets, recorded and judged nightly: ≤ 1 s from the click or *teach it*, 0.3 s, 0.15 s |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes (in the well's XY mode), the status line |

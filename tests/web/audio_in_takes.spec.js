@@ -373,7 +373,7 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
 
 // Quarantined (#243): STOP is clicked after a fixed 1.2 s wait on a rack the
 // keep as new is redrawing; on a slow runner no take was sent.
-test("a recording goes on through a keep as new, and its take lands on the kept sound", { tag: "@quarantine" }, async ({ page }, info) => {
+test("a recording goes on through a keep as new, and its take lands on the kept sound", { tag: "@quarantine", annotation: { type: "issue", description: "#243" } }, async ({ page }, info) => {
   const errors = await boot(page, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
