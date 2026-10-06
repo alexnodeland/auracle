@@ -46,6 +46,7 @@ git diff --stat HEAD
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
 | `www/video/tools/**` | syntax (`node --check`, `py_compile`, `bash -n`) and a rehearsal of one shot that uses the tool |
 | A changelog entry (`changelog.d/*.md`) or `scripts/changelog.py` | `python3 scripts/changelog.py --check`, and `python3 scripts/test_changelog.py` for the script (both in `make dev-check`) |
+| `scripts/pr_checks.py`, `.github/PULL_REQUEST_TEMPLATE.md` | `python3 scripts/test_pr_checks.py` (in `make dev-check`; it reads the template too), and `python3 scripts/pr_checks.py check --pr <n>` on a real PR (`merged --pr <n> --dry-run` for the merge job) |
 | Any copy: app strings, the site, the guide, the reference, a film's lines or on-screen text, the README, the changelog and its entries in `changelog.d/` | `python3 www/checkwords.py` (or `make dev-check`); `make web-check` does not run it. A sweep that lowers a count runs `python3 www/checkwords.py --update` in the same change |
 
 ## 3. Before committing
