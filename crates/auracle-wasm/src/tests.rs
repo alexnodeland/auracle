@@ -2282,11 +2282,18 @@ fn import_and_knob_boundaries_refuse_what_they_used_to_pass() {
     assert!(engine.edit_param("amp#attack", 1.0, false));
     let t: auracle_grammar::PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
     assert_eq!(t.amp.attack, auracle_grammar::PARAM_MAX);
+}
 
+/// The numbers the app reads from the engine rather than restating them
+/// are the grammar's: the hand-edit ceilings, and the longest take a
+/// CAPTURE holds.
+#[test]
+fn the_budget_ceilings_are_the_grammars() {
     let b: serde_json::Value = serde_json::from_str(&budget_ceilings()).unwrap();
     assert_eq!(b["size"], auracle_grammar::mutate::MAX_SIZE);
     assert_eq!(b["depth"], auracle_grammar::mutate::MAX_DEPTH);
     assert_eq!(b["mod"], auracle_grammar::mutate::MAX_MOD_DEPTH);
+    assert_eq!(take_seconds(), auracle_grammar::TAKE_SECONDS);
 }
 
 /// Re-issue is stateless: the term at a draw index is recoverable from the
