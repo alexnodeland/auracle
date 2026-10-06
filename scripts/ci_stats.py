@@ -111,9 +111,10 @@ QUEUE_BRANCH = "mergify/merge-queue/"
 # The jobs that answer for a run, not jobs of their own: `CI`, which every
 # check needs, and `Full gate`, which a queue run's merge waits on.
 AGGREGATES = ("CI", "Full gate")
-# Jobs no answer waits for: the deploy after a green `CI` on main, and the
-# Slow suite's issue on a red one.
-NOT_NEEDED = ("Deploy to Pages", "Report a failure on main")
+# Jobs no answer waits for: the deploy after a green `CI` on main, main's
+# Codecov upload of the queue run's coverage, and the Slow suite's issue on a
+# red one.
+NOT_NEEDED = ("Deploy to Pages", "Codecov from the queue's run", "Report a failure on main")
 # The other workflows whose runs the budgets need.
 OTHER = (("slow-suite.yml", "Slow suite"), ("flake-hunt.yml", "Flake hunt"))
 # How far before --since a merged PR's runs are still read (runs per PR, and
