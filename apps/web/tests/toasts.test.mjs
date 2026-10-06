@@ -433,6 +433,30 @@ test("urgent: a refusal on its key interrupts a remark about the player's sounds
   assert.deepEqual(l.shown, [bred, refused, bred]);
 });
 
+// The same refusal, with "⚡ bred …" still waiting behind a pick's toast
+// rather than on screen: `dropReplaced` took it out of the queue, and it was
+// never shown at all.
+test("urgent: a refusal on its key leaves a waiting remark about the player's sounds in the queue; it is shown after the refusal and the toast it interrupted", (t) => {
+  const l = setup(t);
+  const pick = "Picked Glass Pad over Soft Wash.";
+  l.say(pick, { undo: () => {}, replace: "vote" });
+  l.wait(1000);
+  const bred = "⚡ bred Glass 2 from Glass Pad: it’s at the top of the pool, and your edits are still open. It replaced the lowest-rated sound it could: Tine.";
+  l.say(bred, { undo: () => {}, undoLabel: "open it", replace: "evolve-from", bank: true });
+  l.wait(1000);
+  const refused = "⚡ didn’t start: EVOLVE POOL is breeding a generation. Press ⚡ again when it finishes.";
+  l.say(refused, { urgent: true, replace: "evolve-from" });
+  assert.equal(l.onScreen(), refused);
+  assert.deepEqual(l.waiting(), [pick, bred]);
+  assert.deepEqual(l.removed, [pick]);
+  l.wait(REMARK);
+  assert.equal(l.onScreen(), pick);
+  l.wait(UNDO);
+  assert.equal(l.onScreen(), bred);
+  l.wait(NEVER);
+  assert.deepEqual(l.shown, [pick, refused, pick, bred]);
+});
+
 // "Opened the preset as … It replaced Tine." waits behind a pick's undo, and
 // three cuts follow (each an undo and a remark about the player's sounds).
 // The trim, finding no plain remark, cut the one nearest the front: the
