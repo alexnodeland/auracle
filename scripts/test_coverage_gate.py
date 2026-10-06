@@ -48,6 +48,19 @@ def summary(root, files):
     return {"data": [{"files": out, "totals": {}}], "type": "llvm.coverage.json.export"}
 
 
+# The environment every git command here runs in: none of git's own variables
+# (see Tree.git), no system or global config, and a test identity.
+TEST_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+TEST_ENV.update(
+    GIT_CONFIG_NOSYSTEM="1",
+    GIT_CONFIG_GLOBAL=os.devnull,
+    GIT_AUTHOR_NAME="t",
+    GIT_AUTHOR_EMAIL="t@example.com",
+    GIT_COMMITTER_NAME="t",
+    GIT_COMMITTER_EMAIL="t@example.com",
+)
+
+
 class Tree(unittest.TestCase):
     """A throwaway repository root with a crates/ directory."""
 
@@ -72,7 +85,21 @@ class Tree(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def git(self, *args):
-        subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True)
+        """git in the throwaway repository and nowhere else. A git hook (the
+        pre-commit hook runs these tests) sets GIT_DIR and GIT_INDEX_FILE to
+        the repository being committed, and git obeys them from any
+        directory: a test that inherited them once wrote its identity and
+        core.bare into the real repository's config. So none of git's own
+        variables reach these commands, the identity is given per command,
+        and every command but `init` first checks it is in the throwaway
+        repository."""
+        if args[0] != "init":
+            top = subprocess.run(
+                ["git", "-C", self.root, "rev-parse", "--absolute-git-dir"], env=TEST_ENV, capture_output=True, text=True
+            ).stdout.strip()
+            if os.path.realpath(top) != os.path.realpath(os.path.join(self.root, ".git")):
+                raise AssertionError(f"refusing to run git outside the test's own repository (found {top!r})")
+        subprocess.run(["git", "-C", self.root, *args], env=TEST_ENV, check=True, capture_output=True)
 
 
 class Paths(unittest.TestCase):
@@ -177,8 +204,6 @@ class Floors(Tree):
 
     def test_base_fails_a_floor_that_went_down_or_away(self):
         self.git("init", "-q", "-b", "main")
-        self.git("config", "user.email", "t@example.com")
-        self.git("config", "user.name", "t")
         self.floors({"a": {"lines": 90.0, "functions": 90.0}, "b": {"lines": 80.0, "functions": 80.0}})
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "floors")
@@ -191,8 +216,6 @@ class Floors(Tree):
 
     def test_base_passes_a_floor_that_rose(self):
         self.git("init", "-q", "-b", "main")
-        self.git("config", "user.email", "t@example.com")
-        self.git("config", "user.name", "t")
         self.floors({"a": {"lines": 90.0, "functions": 90.0}})
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "floors")
@@ -243,8 +266,6 @@ class Changed(Tree):
     def setUp(self):
         super().setUp()
         self.git("init", "-q", "-b", "main")
-        self.git("config", "user.email", "t@example.com")
-        self.git("config", "user.name", "t")
         self.write("crates/a/src/lib.rs", LIB_BEFORE)
         self.write("README.md", "x\n")
         self.git("add", "-A")

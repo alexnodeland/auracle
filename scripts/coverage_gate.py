@@ -235,8 +235,16 @@ def warn(text: str) -> None:
     print(text, file=sys.stderr)
 
 
+def own_env() -> dict[str, str]:
+    """The environment without git's own variables. A git hook runs with
+    GIT_DIR and GIT_INDEX_FILE set to the repository being committed, and a
+    git command given them works on that repository wherever it runs: the
+    repository is the one at `root`, and only it."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
 def git(args: list[str], root: str = ROOT, check: bool = True) -> str:
-    r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, env=own_env())
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout if r.returncode == 0 else ""
