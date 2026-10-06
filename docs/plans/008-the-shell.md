@@ -433,8 +433,8 @@ into C2a and C2b; round 2's decisions govern PATCH):
   drifting the way you went, rather than flying from or to a spot made up
   (the mock flew it in from beside the destination).
 - **Rapid moves.** A level key, a stop or a link lands the move in flight
-  and starts the next at once; the wheel and a pinch wait for it, as the
-  mock's `zoom` does. The mock's wheel "lockout" (`lastT = now + 500`) only
+  and starts the next at once; a step of the wheel or a pinch while one is
+  in flight moves nothing, as the mock's `zoom` has it. The mock's wheel "lockout" (`lastT = now + 500`) only
   delayed the count's reset; the app's is one: 500 ms after a move, the
   rest of the turn moves nothing (`wheelStep`).
 - **The rack.** ctrl and the wheel over `#rack-scroll` are its camera's

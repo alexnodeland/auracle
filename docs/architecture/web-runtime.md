@@ -86,8 +86,9 @@ unit-tested (`tests/levels.test.mjs`):
   40%) while the face flies on one fixed canvas over the page
   (`.zoom-face`, under the toasts), the header's name slides in the way the
   move went and a puck travels the rail's stops (`railPath`). Each move is
-  numbered: a move in flight is landed (`settle`) before the next starts, a
-  gesture's move waits for it instead, and `settle` leaves exactly one
+  numbered: a move in flight is landed (`settle`) before the next starts (a
+  wheel's or a pinch's step while one is in flight moves nothing), and
+  `settle` leaves exactly one
   section `.on` with no transform, fade or `inert` on any; a page running no
   frames lands it on a timer. Each animated move leaves the mark
   `level-landed` (`{from, to, dir, cut, flew}`, `flew` the box the face was

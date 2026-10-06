@@ -370,10 +370,10 @@ export function createShell(host = {}) {
     return `${(box.x + box.w / 2 - r.left).toFixed(1)}px ${(box.y + box.h / 2 - r.top).toFixed(1)}px`;
   }
 
-  /** One step along the axis, as ⌥↑/⌥↓, the wheel and a pinch take it: at
-   *  the end of the axis the rail nods toward the end it reached. A gesture
-   *  (the wheel, a pinch) leaves a move in flight to land rather than
-   *  cutting it short; a key never waits. */
+  /** One step along the axis, as the wheel and a pinch take it: at the end
+   *  of the axis the rail nods toward the end it reached. A gesture's step
+   *  while a move is in flight moves nothing (its momentum is not a second
+   *  move); a key, a stop or a link lands the move in flight and goes. */
   function zoom(dir, { gesture = false } = {}) {
     if (gesture && moving) return false;
     const next = step(cur, dir);
