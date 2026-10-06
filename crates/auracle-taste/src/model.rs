@@ -63,7 +63,8 @@ use crate::observe::{Feedback, FitSet};
 /// SD of the maximum of K iid standard normals, K = 1..=5. See the module doc.
 pub const MAX_NORMAL_SD: [f64; 5] = [1.000, 0.826, 0.748, 0.701, 0.669];
 
-/// Posterior draws retained from a fit, after thinning.
+/// Posterior draws retained from a fit, after thinning: at most this many,
+/// and exactly this many from a budget that is a multiple of it.
 ///
 /// The chain is thinned because single-site draws are heavily autocorrelated —
 /// 500 spread over the whole chain carry far more information than 500
@@ -318,8 +319,9 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 
 /// Numerically stable `log σ(x)`.
 fn log_sigmoid(x: f64) -> f64 {
-    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}).
-    -((-x).max(0.0) + (-(-x).abs()).exp().ln_1p())
+    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}), and
+    // |-x| = |x|: `-x.abs()` is -(|x|), the method before the sign.
+    -((-x).max(0.0) + (-x.abs()).exp().ln_1p())
 }
 
 fn sigmoid(x: f64) -> f64 {
@@ -690,8 +692,10 @@ impl TasteModel {
         // The stride is known before the chain runs, because the driver pushes
         // exactly `n_samples` draws — so asking it to retain only every
         // `stride`-th is the same subsequence `step_by` produced, without ever
-        // holding the other 95% live. See `KEEP`.
-        let stride = (n_samples / KEEP).max(1);
+        // holding the other 95% live. See `KEEP`. Rounded up, so at most
+        // `KEEP` are retained at any budget: rounded down, a budget just
+        // under twice `KEEP` kept every draw, nearly twice as many.
+        let stride = n_samples.div_ceil(KEEP).max(1);
         let samples: Vec<TasteSample> =
             adaptive_mcmc_chain_thinned(rng, model_fn, n_samples, n_warmup, stride)
                 .into_iter()
@@ -748,11 +752,24 @@ fn permutations(k: usize) -> Vec<Vec<usize>> {
     out
 }
 
-fn cosine(a: &[f64], b: &[f64]) -> f64 {
+/// Cosine similarity of two vectors: the cosine of the angle between them,
+/// whatever their lengths, and 0 when either is zero (it has no direction).
+/// Alignment matches lenses by it ([`TastePosterior::aligned_to`]), and the
+/// gates score θ recovery with it (`synthetic::cosine` is this function).
+///
+/// A zero vector is a test, not an epsilon. Adding 1e-12 to the
+/// denominator, as this did, bent the cosine of short vectors: two parallel
+/// vectors a millionth long scored 0.5.
+pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot / (na * nb + 1e-12)
+    let norms = na * nb;
+    if norms > 0.0 {
+        dot / norms
+    } else {
+        0.0
+    }
 }
 
 impl TastePosterior {
@@ -798,7 +815,10 @@ impl TastePosterior {
     ///
     /// Deterministic (systematic, offset ½N) rather than multinomial, because
     /// every other stochastic step in this engine is seeded and reproducible
-    /// and this one has no reason not to be.
+    /// and this one has no reason not to be. Copy `i` is the weights'
+    /// quantile at u = (i + ½)/N: the first draw whose cumulative weight
+    /// reaches u. So a u exactly on the boundary between two draws goes to
+    /// the earlier one, whose weight it completes.
     pub fn resampled(&self) -> TastePosterior {
         // With no draws the loop below never runs, and this is the empty
         // posterior it was given.
