@@ -394,7 +394,8 @@ class Queue(unittest.TestCase):
 
     def test_the_command_and_the_label_are_not_the_entry(self):
         # The process labels a PR and comments the command as it opens; the
-        # PR enters the queue only once its CI is green.
+        # PR enters the queue only once its CI, its PR checks and its
+        # Mutants in the changed code are green.
         human = {"body": "@mergifyio queue", "user": {"login": "alexnodeland", "type": "User"}, "created_at": at(1)}
         quoted = dict(payload("merged", 2, 3), user={"login": "someone", "type": "User"})
         self.assertEqual(S.queue_time([human, quoted], self.MERGED), (None, 0))

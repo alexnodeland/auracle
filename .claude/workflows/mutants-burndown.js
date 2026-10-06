@@ -1,7 +1,7 @@
 export const meta = {
   name: 'mutants-burndown',
   description: "Run cargo-mutants over one auracle crate, kill each surviving mutant with a behavior assertion (or show it equivalent and exclude it narrowly, with its reason), measure again, review and finalize the branch; the operator pushes",
-  whenToUse: "One crate's survivors (the weekly Mutants run's issue, or before the Mutants check becomes required), with a worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
+  whenToUse: "One crate's survivors (the issue Mutants weekly files, 'Mutants that survive', or a crate whose survivors keep PRs out of the queue), with a worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
   phases: [
     { title: 'Measure', detail: 'make mutants CRATE=<crate>, before and after, and the coverage floor' },
     { title: 'Kill', detail: 'one agent per file with survivors, one after another in the one worktree' },

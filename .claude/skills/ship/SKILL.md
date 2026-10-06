@@ -29,7 +29,7 @@ in zsh, this environment's shell):
 
 ```bash
 REPO=/absolute/path/to/auracle          # the main checkout
-WT="$REPO/../auracle-wt-<topic>"        # this task's worktree
+WT="$REPO/.claude/worktrees/<topic>"    # this task's worktree
 ```
 
 ## 1. The issue
@@ -55,20 +55,23 @@ edit the body to fill the template's sections.
 ## 2. A worktree and a branch
 
 ```bash
-git -C "$REPO" fetch -q origin
-git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
-(cd "$WT/tests/web" && npm ci --no-audit --no-fund)
+make -C "$REPO" worktree TOPIC=<topic>
+git -C "$REPO" merge -q --ff-only origin/main
 make -C "$WT" pkg-reuse || nice -n 10 make -C "$WT" wasm
 ```
 
-The third line installs `tests/web`'s packages in the new worktree
-(`node_modules` is per checkout): without them `make web-check` stops at the
-specs' lint, and the after-edit hook does not lint a spec. The last gives it
-an engine: the main checkout's release build, copied in about a second, when
-it was built from the same Rust (`make pkg-reuse` compares the two, and says
-why not when it can't); otherwise a build of its own (about a minute, more
-with every crate to compile). A builder that changes Rust builds again with
-`make wasm`.
+The first line fetches, makes `claude/<topic>` from `origin/main` at `$WT`,
+inside the main checkout where git ignores it, and installs `tests/web`'s
+packages there (`node_modules` is per checkout): without them
+`make web-check` stops at the specs' lint, and the after-edit hook does not
+lint a spec. The second keeps the main checkout on `main` and current: an
+agent in `$WT` also loads its root `AGENTS.md`, from an ancestor directory,
+and runs its hooks and settings; it follows its worktree's own `AGENTS.md`
+where the two differ. The last gives the worktree an engine: the main
+checkout's release build, copied in about a second, when it was built from
+the same Rust (`make pkg-reuse` compares the two, and says why not when it
+can't); otherwise a build of its own (about a minute, more with every crate
+to compile). A builder that changes Rust builds again with `make wasm`.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
@@ -180,10 +183,11 @@ The `@mergifyio queue` comment is the act of enqueueing, for now: the
 only once the maintainer switches on Merge Protections in Mergify's
 dashboard. Put the label on anyway; once Merge Protections is on, the label
 alone queues the PR and the comment is only for putting one back. The PR
-enters Mergify's merge queue once its own `CI`, the fast lane, and its
-`PR checks` are green; the queue runs the full gate on its batch and merges
-it (`process.md` § CI and merging). The title becomes the squash commit's
-subject, `<title> (#<n>)`, so it starts with a type as a commit does
+enters Mergify's merge queue once its own `CI`, the fast lane, its
+`PR checks` and its `Mutants in the changed code` are green;
+the queue runs the full gate on its batch and merges it (`process.md` § CI
+and merging). The title becomes the squash commit's subject,
+`<title> (#<n>)`, so it starts with a type as a commit does
 (`fix(web): …`, `tests: …`, `ci: …`); the commit's body is the PR's commit
 messages (the repository's squash setting), so each commit's why reaches
 `main`.
@@ -219,21 +223,27 @@ is green (`ship_pr.sh --full-ci`; `process.md` § CI and merging says why).
 ## 6. The merge, waited on by state
 
 The PR's own `CI` is the fast lane (a few minutes). Green, with its
-`PR checks` green too, the PR is in the queue, which tests it in a batch of
-up to three (a release PR alone) on a draft PR (the full gate, about twelve
-minutes, from a `mergify/merge-queue/` branch) and merges each PR of a green
-batch. Wait until it merges, its own `CI` or `PR checks` goes red, or it
-leaves the queue:
+`PR checks` and its `Mutants in the changed code` green too (a crate PR's
+*Mutants* run takes up to 40 minutes, any other PR's about one), the PR is
+in the queue, which tests it in a batch of up to three (a release PR alone)
+on a draft PR (the full gate, about twelve minutes, from a
+`mergify/merge-queue/` branch) and merges each PR of a green batch. Wait
+until it merges, one of those three goes red or ends neither green nor red,
+or it leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
-    def red($check): [.statusCheckRollup[] | select(.name == $check)]
+    def latest($check): [.statusCheckRollup[] | select(.name == $check)]
       | sort_by(.detailsUrl | capture("/runs/(?<run>[0-9]+)/job/(?<job>[0-9]+)") | [(.run | tonumber), (.job | tonumber)])
-      | last | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
+      | last;
+    def red($check): latest($check) | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
+    def stuck($check): latest($check) | .status == "COMPLETED" and .conclusion != "SUCCESS";
     if .state != "OPEN" then .state
     elif any(.labels[]; .name == "dequeued") then "dequeued"
     elif red("CI") then "CI red"
     elif red("PR checks") then "PR checks red"
+    elif red("Mutants in the changed code") then "Mutants red"
+    elif stuck("CI") or stuck("PR checks") or stuck("Mutants in the changed code") then "stuck"
     else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
 ```
 
@@ -262,7 +272,30 @@ Run the wait in the background; never sleep a fixed time and assume.
   the edit runs it again, and no push is needed. Start the wait again once
   `gh -R alexnodeland/auracle pr checks <n>` shows the new run of
   `PR checks` pending; started sooner, it finds only the red run and stops
-  at once. Green, the PR enters the queue by itself.
+  at once. Green, with `CI` and `Mutants in the changed code`, the PR
+  enters the queue by itself.
+- **`Mutants red`:** a mutant of the code the PR changed survived, or the
+  run broke; the PR never entered the queue. The run's summary names each
+  survivor (its line, its function, its change):
+  `gh -R alexnodeland/auracle run list --workflow mutants.yml --branch claude/<topic> --json databaseId,conclusion,headSha`,
+  then `gh -R alexnodeland/auracle run view <run> --log-failed`. The
+  builder kills each with a test that asserts what the code does, or, when
+  no behavior can show it, excludes it in `.cargo/mutants.toml` with its
+  reason (`crates/AGENTS.md` § Mutation testing); saying why in the PR body
+  does not turn it green. The push runs it again. A run whose unmutated
+  tests failed usually has a red `CI` beside it: read that first. A
+  timeout, or a run the 25-minute cap stopped before it judged a mutant,
+  passes; it never turns the job red. Then step 7.
+- **`stuck`:** the latest run of `CI`, `PR checks` or
+  `Mutants in the changed code` on the PR's head ended neither green nor
+  red (skipped or cancelled). Mergify takes a PR only once all three are
+  green, so it never entered the queue.
+  `gh -R alexnodeland/auracle pr checks <n>` says which. Run the PR's own
+  run of that workflow again:
+  `gh -R alexnodeland/auracle run list --workflow <ci.yml, pr-checks.yml or mutants.yml> --branch claude/<topic> --event pull_request --json databaseId,conclusion,headSha`,
+  then `gh -R alexnodeland/auracle run rerun <run>`. Start the wait again
+  once `gh -R alexnodeland/auracle pr checks <n>` shows the check pending;
+  started sooner, it stops at once.
 - **`dequeued`:** it left the queue without merging. Red in the queue (the
   full gate failed on its batch, and the split narrowed the failure to this
   PR), a conflict, or a run that was cancelled.
@@ -321,15 +354,16 @@ or dequeued (red on its own run, or red in the queue):
    ```
 
    The comment is safe either way: a PR whose own first run was red never
-   entered the queue, and enters by itself once `CI` is green. Then step 6
-   again.
+   entered the queue, and enters by itself once `CI`, `PR checks` and
+   `Mutants in the changed code` are green. Then step 6 again.
 
 **By hand, only when Mergify is down.** The PR's own `CI` is the fast lane,
 not the full gate, and the ruleset requires only that one, so nothing stops
 a merge by hand that skips the full gate: run it first. Up to date with
 `main` (if `main` moved, rebase it with the lease above), start a run by
 hand, which is the full gate, wait for it to finish, and merge only if it is
-green on the PR's head and the PR's own `CI` is too:
+green on the PR's head and the PR's own `CI`, `PR checks` and
+`Mutants in the changed code` are too:
 
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
@@ -350,11 +384,12 @@ else. A merge from outside the queue makes the queue start over on the new
 ## 8. Clean up
 
 The PR's branch deletes itself on GitHub when it merges. Remove the worktree
-and the local branch:
+and the local branch. `worktree-rm` refuses a branch whose commits no remote
+branch holds, so once `origin/claude/<topic>` is pruned (`git fetch --prune`)
+a merged branch needs `FORCE=1`:
 
 ```bash
-git -C "$REPO" worktree remove "$WT"
-git -C "$REPO" branch -D claude/<topic>
+make -C "$REPO" worktree-rm TOPIC=<topic>                    # removes $WT and deletes the branch it is on
 gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>", or by PR checks if GitHub missed it
 ```
 

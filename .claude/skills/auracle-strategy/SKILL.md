@@ -47,9 +47,9 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
   on their own port (ADR-010).
 - Descriptions stay true, and the app is fixed first (ADR-004).
 - Work flows through issues and reviewed PRs (ADR-019): agents commit in their
-  own worktree, the operator pushes and opens the PR in the merge queue, which
-  merges it once the full gate is green on its batch (ADR-021, ADR-023), a
-  flaky test
+  own worktree (`.claude/worktrees/<topic>`), the operator pushes and opens
+  the PR in the merge queue, which merges it once the full gate is green on
+  its batch (ADR-021, ADR-023), a flaky test
   is fixed or quarantined with an issue (never retried), and a new term, label
   or phrase that `voice.md`'s word table governs waits for the maintainer.
 

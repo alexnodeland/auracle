@@ -1,8 +1,12 @@
 name: Release
 
-# A release is one gesture: push a `vX.Y.Z` tag on the release PR's merge
-# commit. The release PR carries the `release` label, so the merge queue tests
-# it alone and merges it alone (.mergify.yml): the tagged commit's tree is
+# A release is published from its tag, `vX.Y.Z`, on the release PR's merge
+# commit. The Prepare release workflow (prepare-release.yml) makes the tag
+# when the release PR merges, and starts this workflow on it: a tag made with
+# a workflow's own token starts no workflow (GitHub's rule), and
+# `workflow_dispatch` is the exception. A tag pushed by hand starts it too.
+# The release PR carries the `release` label, so the merge queue tests it
+# alone and merges it alone (.mergify.yml): the tagged commit's tree is
 # exactly the tree the queue's full gate tested, and nothing here tests it
 # again. This workflow packages the prebuilt web instrument and publishes the
 # GitHub Release. The live site is NOT deployed from here: ci.yml's deploy job
@@ -14,9 +18,10 @@ on:
   push:
     tags:
       - "v[0-9]+.*"
+  # On a tag only: run on a branch, the first check below refuses it.
+  workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,39 +30,59 @@ jobs:
   release:
     name: Build & publish release bundle
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the release
+      pull-requests: read # the authors of the PRs its notes list
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tag before this one, and the titles merged between the two.
+          fetch-depth: 0
+          fetch-tags: true
 
       # Fail before spending six minutes on a build nobody can use. A tag whose
       # number disagrees with the workspace's is the classic release bug: the
       # asset says v0.3.0, every crate inside it says 0.2.0, and nothing
-      # downstream can tell which is true.
+      # downstream can tell which is true. So the workspace is at the tag's
+      # version everywhere it is written (Cargo.toml, the crates' path
+      # dependencies, Cargo.lock), CHANGELOG.md has its section, and
+      # changelog.d/ is empty: `scripts/changelog.py --release` moved every
+      # entry into that section, and one still there is a change this tag
+      # ships that its notes don't mention. The Prepare release workflow ran
+      # the same check before it tagged (scripts/release.py verify).
       - name: Check the tag against the workspace version and the changelog
+        run: python3 scripts/release.py verify "$GITHUB_REF_NAME"
+
+      # The changelog is the release notes. It is written by hand, per pass, in
+      # the project's own voice (ADR-013). The section is extracted by its
+      # heading, and under it goes every PR merged since the last release,
+      # grouped by its title's type, each with its author, then the link to
+      # the whole diff from the tag before (the next step), in place of
+      # `--generate-notes`' flat list of the same titles. Both run before the
+      # build: the list asks the API for its authors, and a refusal there
+      # should cost seconds, not the build.
+      - name: Extract the changelog section for this tag
         run: |
           TAG_VER="${GITHUB_REF_NAME#v}"
-          CARGO_VER="$(sed -n '/^\[workspace.package\]/,/^\[/p' Cargo.toml \
-            | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
-          if [ "$TAG_VER" != "$CARGO_VER" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match the workspace version $CARGO_VER — bump Cargo.toml or retag"
+          awk -v ver="$TAG_VER" '
+            $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          # The guard above proved the heading exists; this catches a section
+          # that exists but is empty.
+          if [ ! -s release-notes.md ]; then
+            echo "::error::the '## [$TAG_VER]' section in CHANGELOG.md is empty"
             exit 1
           fi
-          if ! grep -q "^## \[$TAG_VER\]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [$TAG_VER]' section — a release with no notes is not a release"
-            exit 1
-          fi
-          # `scripts/changelog.py --release` moved every entry waiting in
-          # changelog.d/ into that section. One still there is a change this
-          # tag ships that its notes don't mention: tag the release PR's
-          # merge commit, or fold the entry in first by running `--release`
-          # again with this version (CONTRIBUTING.md § Cutting a release).
-          left=""
-          for f in changelog.d/*.md; do
-            if [ -e "$f" ] && [ "$f" != changelog.d/README.md ]; then left="$left $f"; fi
-          done
-          if [ -n "$left" ]; then
-            echo "::error::changelog.d/ still holds entries that no release notes mention:$left"
-            exit 1
-          fi
+
+      - name: Under it, every PR merged since the last release, by type
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo; python3 scripts/release.py notes "$GITHUB_REF_NAME"; } >> release-notes.md
+          echo "--- release-notes.md ---"
+          cat release-notes.md
 
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
@@ -96,34 +121,12 @@ jobs:
           EOF
           (cd dist && zip -qr "$BUNDLE.zip" "$BUNDLE")
 
-      # The changelog is the release notes. It is written by hand, per pass, in
-      # the project's own voice — `--generate-notes` would replace that with a
-      # list of squashed PR titles, which is the same information with the
-      # reasoning removed. The section is extracted by its heading and the
-      # generated list is appended underneath as the commit-level detail.
-      - name: Extract the changelog section for this tag
-        run: |
-          TAG_VER="${GITHUB_REF_NAME#v}"
-          awk -v ver="$TAG_VER" '
-            $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
-            inside && /^## \[/ { exit }
-            inside { print }
-          ' CHANGELOG.md > release-notes.md
-          # The guard above proved the heading exists; this catches a section
-          # that exists but is empty.
-          if [ ! -s release-notes.md ]; then
-            echo "::error::the '## [$TAG_VER]' section in CHANGELOG.md is empty"
-            exit 1
-          fi
-          echo "--- release-notes.md ---"
-          cat release-notes.md
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/auracle-${GITHUB_REF_NAME}-web.zip" \
+            --verify-tag \
             --title "Auracle $GITHUB_REF_NAME" \
-            --notes-file release-notes.md \
-            --generate-notes
+            --notes-file release-notes.md

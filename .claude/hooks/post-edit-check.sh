@@ -5,10 +5,15 @@
 # Exit 2 sends stderr back to Claude; exit 0 is silent.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/_root.sh"
 file="$(python3 "$here/_input.py" file_path)"
 [ -n "$file" ] && [ -f "$file" ] || exit 0
-case "$file" in
-  */target/*|*/node_modules/*|*/apps/web/pkg/*) exit 0 ;;
+# Generated trees are skipped by their place in the file's own checkout, so a
+# worktree under .claude/worktrees/ is checked whatever its topic is called
+# (one named `target` is not cargo's output).
+root="$(checkout_root "$(dirname "$file")")"
+case "/${file#"$root"/}" in
+  /target/*|/apps/web/pkg/*|*/node_modules/*) exit 0 ;;
 esac
 fail() { printf '%s\n' "$@" >&2; exit 2; }
 case "$file" in
@@ -27,9 +32,10 @@ case "$file" in
     # --check never runs), and as a module it is refused for its return. So
     # it gets the workflow check make dev-check runs: meta a pure literal,
     # its phases, no clock, a dry run on stubbed agents. The file's own
-    # checkout's check, else this one's.
+    # checkout's check (a worktree's under .claude/worktrees/ too), else this
+    # one's.
     command -v node >/dev/null || exit 0
-    checker="${file%/.claude/workflows/*}/scripts/ops/check_workflows.mjs"
+    checker="$root/scripts/ops/check_workflows.mjs"
     [ -f "$checker" ] || checker="$here/../../scripts/ops/check_workflows.mjs"
     [ -f "$checker" ] || exit 0
     out=$(node "$checker" "$file" 2>&1) || fail "The workflow check failed for $file:" "$out"

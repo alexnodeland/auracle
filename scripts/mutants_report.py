@@ -250,9 +250,10 @@ def markdown_report(rep: Report, rows: dict[str, dict[str, int]], link: str | No
     survived = rep.all("survived")
     if survived:
         out += [
-            f"**Survived: {len(survived):,}.** No test failed on these changes. Review treats each as a "
-            "finding: kill it with a test that asserts what the code does, or say why no behavior can "
-            "show it (crates/AGENTS.md § Mutation testing).",
+            f"**Survived: {len(survived):,}.** No test failed on these changes. Kill each with a test "
+            "that asserts what the code does, or, when no behavior can show it, exclude it in "
+            "`.cargo/mutants.toml`'s `exclude_re` with its reason (crates/AGENTS.md § Mutation "
+            "testing). On a PR, a survivor keeps it out of the merge queue until then.",
             "",
             "| Where | Function | Change |",
             "| --- | --- | --- |",

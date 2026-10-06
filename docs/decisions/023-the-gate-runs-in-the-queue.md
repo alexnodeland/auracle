@@ -32,12 +32,16 @@ green, one review round, quarantine an unrelated failure on sight.
 Since #216, a PR enters the queue once its `PR checks` are green beside its
 fast lane, and its title carries a type
 ([`docs/process.md` § Pull requests](../process.md#pull-requests)). Since
-#260, a batch waits ten minutes for company, not three: on 2026-10-06, with
-three, ten of fifteen batches held one PR (`.mergify.yml` says why). Since
-#272, the view-to-spec map the consequences ask for is local:
-`make browser-changed` runs the specs of the views a `main.js` change draws;
-in CI such a change still gets only the smoke before the queue. The rest of
-this record is as accepted.
+#279, its `Mutants in the changed code` (`mutants.yml`) must be green too: a
+mutant of the Rust the PR changed that survives keeps it out of the queue
+([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
+Both are Mergify's queue conditions, not the ruleset's. Since #260, a batch
+waits ten minutes for company, not three: on 2026-10-06, with three, ten of
+fifteen batches held one PR (`.mergify.yml` says why). Since #272, the
+view-to-spec map the consequences ask for is local: `make browser-changed`
+runs the specs of the views a `main.js` change draws; in CI such a change
+still gets only the smoke before the queue. The rest of this record is as
+accepted.
 
 ## Context
 
