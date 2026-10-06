@@ -1296,7 +1296,9 @@ self.addEventListener("unhandledrejection", (ev) => {
 // the faces lane, below `later` (`face_render`), each answered as it lands,
 // or as failed. One render serves every slot that asked for its key while it
 // waited (a preset's row and that preset's pool row, or the bench, share a
-// render key): each asker is on the job (`asks`) and each is answered.
+// render key): each asker is on the job (`asks`) with its own source, the
+// render is made from the first that can still say what to render
+// (`faceFromAsks`), and each is answered.
 // `face_cancel` drops what is still waiting for a slot that left the view,
 // and says so. Every request is answered.
 const FACE_DB = "auracle-faces";
@@ -1452,10 +1454,12 @@ async function faceLookup(m) {
       faceMem.set(q.key, b);
       items.push({ ...faceTag(q), key: q.key, face: b });
     } else if (m.render) {
-      const asker = { ...faceTag(q), ...(q.seen ? { seen: true } : {}) };
+      // An asker keeps its own source (its id, tree or memo row), so the
+      // render can be made from another's if the first can't any more.
+      const asker = { ...q };
       const job = faceRendering.get(q.key);
       if (!job) {
-        const fresh = { type: "face_render", ...q, asks: [asker] };
+        const fresh = { type: "face_render", key: q.key, ...(q.seen ? { seen: true } : {}), asks: [asker] };
         faceRendering.set(q.key, fresh);
         if (q.seen) lanes[FACES].unshift(fresh);
         else lanes[FACES].push(fresh);
@@ -1504,6 +1508,23 @@ function faceCancel(m) {
   post({ type: "faces", items: [], pending: [], failed: [], cancelled });
 }
 
+// What a face's render is made from: its askers' own sources, in the order
+// they asked, until one gives the face or one has been rendered. A pool
+// member cut since it asked keys nothing now and is passed over, as is a
+// memo row the memo has let go (`face_of_key` never renders); a render that
+// gives nothing (a tree that does not vet) would give nothing to anyone else
+// on its key, so it is not made twice. Before, the render was made from the
+// first asker alone, and when that one had gone every other asker was
+// failed with it.
+function faceFromAsks(q) {
+  for (const a of q.asks || [q]) {
+    if (a.id != null && faceKeyOf(a) !== q.key) continue;
+    const b = faceNow(a, true);
+    if (b || !a.memo) return b;
+  }
+  return null;
+}
+
 // One render for a face nothing else had (the faces lane), answered to
 // everyone on it.
 function faceRender(q) {
@@ -1512,7 +1533,7 @@ function faceRender(q) {
   let b = faceMem.get(q.key) || null;
   if (!b) {
     try {
-      b = faceNow(q, true);
+      b = faceFromAsks(q);
     } catch (err) {
       news({ type: "faces", items: [], pending: [], failed: tags });
       throw err; // fatal: the engine is down, and says so once

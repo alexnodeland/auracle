@@ -680,7 +680,12 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   for the same key joins it rather than being queued again, so a preset's
   row, that preset's row in the pool and the bench (an unedited preset's
   tree is the preset's) are all answered by the one render (before #153 the
-  second was left unanswered).
+  second was left unanswered). Each asker keeps its own source (its id, tree
+  or memo row), and the render is made from the first, in the order they
+  asked, that can still say what to render (`faceFromAsks`): a pool member
+  cut since it asked (its `face_key` is empty) and a memo row the memo has
+  let go are passed over, and a render that gives nothing is not made again
+  for the others, whose key is the same.
   Rendering a pool member for its face does not make it resident, so it
   evicts no audition. A preset is asked by index (`preset_tree_json`), so its
   face does not insert it into the bank. Every request is answered; a
