@@ -1696,6 +1696,11 @@ fn may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving() {
     let before = engine.may_replace();
     assert_eq!(before.len(), walks - 2, "two empty places owe two fewer");
     assert_eq!(before[0], lowest);
+    // As many empty places as walks: the generation's children fill them,
+    // and nothing may be replaced.
+    engine.cfg.pool_size = engine.pool.len() + walks;
+    assert!(engine.may_replace().is_empty());
+    engine.cfg.pool_size = engine.pool.len() + 2;
 
     engine
         .refine_from_job(&mut StdRng::seed_from_u64(1), lowest, &[])
@@ -4181,4 +4186,376 @@ fn events_and_style_names_are_saved_as_given() {
     assert_eq!(saved.style_names, ["", "", "Glassy pads that never q"]);
     engine.set_style_name(2, "");
     assert_eq!(engine.export_state().style_names, ["", "", ""]);
+}
+
+/// **The serial generation and its stepped driver breed the farmed one.**
+/// `refine` walks every job here, one after another; `refine_begin` and
+/// `refine_seed` run the same jobs one parent at a time; the farm walks them
+/// anywhere and absorbs in order. From one taught engine and one stream the
+/// three end with the same pool and the same lineage. The stepped driver
+/// answers an unknown parent with `UnknownSeed`, and on an engine with no
+/// taste yet neither driver opens a generation.
+#[test]
+fn the_serial_generation_and_its_stepped_driver_breed_the_farmed_one() {
+    let mut twins = taught_n(0x5E7, 3);
+    for e in &mut twins {
+        e.cfg.refine_seeds = 2;
+    }
+    let (mut farmed, mut stepped, mut serial) = {
+        let mut it = twins.into_iter();
+        (it.next().unwrap(), it.next().unwrap(), it.next().unwrap())
+    };
+    let stream = || StdRng::seed_from_u64(0x5E8);
+
+    serial.refine(&mut stream());
+
+    let parents = stepped.refine_begin(&mut stream());
+    assert_eq!(parents.len(), 2);
+    assert_eq!(stepped.refine_seed(u64::MAX), None);
+    assert_eq!(stepped.last_refine(), RefineOutcome::UnknownSeed);
+    for p in parents {
+        stepped.refine_seed(p);
+    }
+
+    let (ctx, jobs) = farmed.refine_jobs(&mut stream()).expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        farmed.refine_absorb(r);
+    }
+    for e in [&serial, &stepped] {
+        assert_eq!(pool_of(e), pool_of(&farmed));
+        assert_eq!(lineage_of(e), lineage_of(&farmed));
+        assert_eq!(e.generation, farmed.generation);
+    }
+    assert!(
+        farmed
+            .lineage
+            .iter()
+            .any(|ev| ev.generation == farmed.generation),
+        "the generation bred nothing: nothing was compared"
+    );
+
+    let mut untaught = Engine::new(PatchGrammarPrior::default(), fast());
+    untaught.refine(&mut stream());
+    assert!(untaught.refine_begin(&mut stream()).is_empty());
+    assert_eq!(untaught.generation, 0, "a generation opened with no taste");
+}
+
+/// **An explanation reads a raw φ as it reads a member.** `explain_phi`
+/// standardizes a recording's raw φ and explains it exactly as `explain`
+/// explains a member with that φ, under the lens most responsible for it
+/// (here one of two). A φ of another width explains nothing, and neither
+/// does an engine with no standardizer.
+#[test]
+fn explain_phi_reads_a_raw_phi_as_explain_reads_a_member() {
+    let mut rng = StdRng::seed_from_u64(0xE4A);
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 10,
+            k_styles: 2,
+            ..fast()
+        },
+    );
+    assert!(
+        engine.explain_phi(&[0.0; 4]).is_none(),
+        "explained with no scale"
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut rng);
+    // OBS_PER_STYLE picks allow a second lens.
+    let user = ground_truth();
+    for _ in 0..OBS_PER_STYLE {
+        let (a, b) = engine.next_duel(&mut rng).unwrap();
+        let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+        engine.record_duel(a, b, chose_a);
+    }
+    engine.fit_posterior(&mut rng);
+    let c = &engine.pool[3];
+    let member = engine.explain(c.id).expect("a member explains");
+    let raw = engine
+        .explain_phi(&c.features.phi())
+        .expect("its φ explains");
+    assert_eq!(raw.id, 0);
+    assert_eq!((raw.style, raw.utility), (member.style, member.utility));
+    assert_eq!(raw.contributions.len(), member.contributions.len());
+    let p = engine.posterior.as_ref().unwrap();
+    let resp = p.responsibilities(&c.phi_std);
+    assert_eq!(resp.len(), 2);
+    assert_eq!(
+        resp[member.style],
+        resp.iter().cloned().fold(f64::MIN, f64::max)
+    );
+    assert!(engine.explain_phi(&[]).is_none(), "an empty φ explained");
+}
+
+/// **A member never standardized has no forecast and no explanation.** The
+/// engine standardizes every member it admits once it has a scale, so this
+/// state is built by hand here: the guards that keep an empty φ from scoring
+/// exactly zero (the bug class `insert_candidate` describes) answer `None`.
+#[test]
+fn a_member_never_standardized_is_neither_forecast_nor_explained() {
+    let mut engine = taught(0x5D0);
+    assert!(engine.predict_duel(0, 1).is_some());
+    engine.pool[0].phi_std.clear();
+    assert_eq!(engine.predict_duel(0, 1), None);
+    assert_eq!(engine.predict_duel(1, 0), None);
+    let id = engine.pool[0].id;
+    assert!(engine.explain(id).is_none());
+}
+
+/// **A ⚡ child that lands while a generation runs joins it.** It is
+/// stamped with that generation's number, and its seed, though it is the
+/// member the evictor takes first, is spared by the generation's finish. A
+/// walk result for another seed reads `Stale`, and one for a seed the pool
+/// no longer holds reads `UnknownSeed`; neither changes the pool.
+#[test]
+fn a_lightning_child_landing_mid_generation_joins_it_and_spares_its_seed() {
+    let mut engine = taught(0x7E0);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7E1))
+        .expect("taught");
+    let open = engine.generation;
+    let lowest = engine.pool[engine.ranked().last().unwrap().0].id;
+    let child = (0..16u64)
+        .find_map(|k| {
+            let (c, job) = engine
+                .refine_from_job(&mut StdRng::seed_from_u64(k), lowest, &[])
+                .expect("in the pool");
+            let r = run_walk(&c, &job, engine.memo());
+            engine.refine_from_absorb(lowest, r)
+        })
+        .expect("no ⚡ walk landed a child");
+    let ev = engine.lineage.last().unwrap();
+    assert_eq!((ev.child_id, ev.generation), (child, open));
+    assert_eq!(
+        engine.refine_progress(),
+        Some((0, jobs.len())),
+        "it absorbed a job"
+    );
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    assert!(
+        engine.find(lowest).is_some(),
+        "the finish retired the ⚡ seed"
+    );
+    assert_eq!(engine.generation, open, "the ⚡ child opened another");
+
+    let ids = |e: &Engine| e.pool.iter().map(|c| c.id).collect::<Vec<_>>();
+    let before = ids(&engine);
+    let stray = |parent_id| WalkResult {
+        generation: open,
+        index: 0,
+        parent_id,
+        child: Some(engine.pool[0].tree.clone()),
+        reason: None,
+        cached: None,
+    };
+    let (other, gone) = (stray(engine.pool[1].id), stray(u64::MAX));
+    assert_eq!(engine.refine_from_absorb(lowest, other), None);
+    assert_eq!(engine.last_refine(), RefineOutcome::Stale);
+    assert_eq!(engine.refine_from_absorb(u64::MAX, gone), None);
+    assert_eq!(engine.last_refine(), RefineOutcome::UnknownSeed);
+    assert_eq!(ids(&engine), before);
+}
+
+/// **A refit while a generation runs moves what it retires to the new
+/// scale.** Picks reweight the posterior and leave the generation judged
+/// under the one it opened with; a refit changes the scale itself, and the
+/// generation is then judged under the posterior as it stands, so what it
+/// would retire is the lowest the ranking now shows.
+#[test]
+fn a_refit_mid_generation_judges_what_it_retires_on_the_new_scale() {
+    let mut engine = taught(0x7E2);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7E3))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order)
+        .into_iter()
+        .take(jobs.len() - 1)
+    {
+        engine.refine_absorb(r);
+    }
+    let opened = engine.retiring();
+    assert!(
+        !opened.is_empty(),
+        "no child was admitted to make a place owed"
+    );
+    contrary_picks(&mut engine, 6);
+    assert_eq!(
+        engine.retiring(),
+        opened,
+        "picks moved what the generation retires"
+    );
+    engine.fit_posterior(&mut StdRng::seed_from_u64(0x7E4));
+    let lowest_now: Vec<u64> = engine
+        .ranked()
+        .iter()
+        .rev()
+        .map(|&(i, _, _)| &engine.pool[i])
+        .filter(|c| !c.kept())
+        .take(opened.len())
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(engine.retiring(), lowest_now);
+}
+
+/// **What lands nowhere is not counted.** An edit that changes nothing
+/// lands on its own original: no new sound, and no vote of the sound against
+/// itself, whatever the player said. A preset the pool already holds opens
+/// as that sound, under its id. A name for a sound the pool does not hold
+/// names nothing. An answer about a tree that does not vet, or given before
+/// the session has a scale, is not recorded.
+#[test]
+fn what_lands_nowhere_is_not_counted() {
+    let mut engine = taught(0x1A0);
+    let (id, tree) = (engine.pool[2].id, engine.pool[2].tree.clone());
+    let logged = engine.log.len();
+    let size = engine.pool.len();
+    let heard = EditOutcome::Heard { edited_won: true };
+    assert_eq!(engine.commit_edit(Some(id), tree.clone(), heard), None);
+    assert_eq!(engine.log.len(), logged, "a sound was compared with itself");
+    assert_eq!(
+        engine.commit_edit(Some(u64::MAX), tree.clone(), heard),
+        None
+    );
+    assert_eq!(engine.log.len(), logged, "a vote against a sound not held");
+    assert_eq!(engine.insert_preset(tree.clone(), "again"), Some(id));
+    assert_eq!(engine.pool.len(), size);
+    let names = engine.display_names();
+    engine.set_name(u64::MAX, "Nobody");
+    assert_eq!(engine.display_names(), names);
+
+    let silent = auracle_grammar::PatchTree {
+        amp: tree.amp.clone(),
+        root: auracle_grammar::AudioNode::Silence {
+            uid: auracle_grammar::Uid::NEW,
+        },
+    };
+    assert!(!engine.record_tree_duel(&silent, &tree, true, Provenance::PerformOffer));
+    assert_eq!(engine.log.len(), logged, "an answer about a silent tree");
+    let mut unscaled = Engine::new(PatchGrammarPrior::default(), fast());
+    assert!(!unscaled.record_tree_duel(&tree, &silent, true, Provenance::PerformOffer));
+    assert!(unscaled.log.is_empty());
+}
+
+/// **A session with nothing to fit fits nothing.** An empty engine has no
+/// scale to fit, now or on request; a fit with no evidence leaves no
+/// posterior; and a log none of whose rows the model can read (another
+/// feature set, with no standardizer to migrate it) fits nothing rather
+/// than fitting on nothing.
+#[test]
+fn a_session_with_nothing_to_fit_fits_nothing() {
+    let mut engine = Engine::new(PatchGrammarPrior::default(), fast());
+    engine.standardize_now();
+    engine.restandardize_if_untaught();
+    assert!(engine.standardizer.is_none());
+    engine.fit_posterior(&mut StdRng::seed_from_u64(1));
+    assert!(engine.posterior.is_none());
+    let names: Vec<String> = ["x", "y", "z"].map(String::from).to_vec();
+    engine.log.push(auracle_taste::Observation::tagged(
+        auracle_taste::Feedback::Duel {
+            a: vec![0.1; 3],
+            b: vec![0.2; 3],
+            chose_a: true,
+        },
+        0,
+        &names,
+        Provenance::Duel,
+    ));
+    engine.fit_posterior(&mut StdRng::seed_from_u64(1));
+    assert!(engine.standardizer.is_none() && engine.posterior.is_none());
+}
+
+/// **The proposal leans toward taste only once there is a taste, and only
+/// when asked to.** Untaught, or with `proposal_tilt` at zero, a walk's
+/// prior is the grammar's own (the same draws from the same stream); taught
+/// and tilted, it is not.
+#[test]
+fn the_proposal_leans_toward_taste_only_when_taught_and_asked() {
+    let draws = |p: &PatchGrammarPrior| -> Vec<String> {
+        let mut rng = StdRng::seed_from_u64(0xB1A);
+        (0..40)
+            .map(|_| p.sample_with_rng(&mut rng).to_sexpr())
+            .collect()
+    };
+    let plain = draws(&PatchGrammarPrior::default());
+    let untaught = Engine::new(PatchGrammarPrior::default(), fast());
+    assert_eq!(draws(&untaught.biased_prior()), plain);
+    let mut engine = taught(0xB1B);
+    assert_ne!(
+        draws(&engine.biased_prior()),
+        plain,
+        "the taste tilted nothing"
+    );
+    engine.cfg.proposal_tilt = 0.0;
+    assert_eq!(draws(&engine.biased_prior()), plain);
+}
+
+/// **A posterior with no draws deals as if it knew nothing.** A fit with a
+/// sampling budget of zero yields no draws; the choosing rules then deal a
+/// uniform pair, rather than reading a champion out of nothing.
+#[test]
+fn a_posterior_with_no_draws_deals_uniform_pairs() {
+    for acquisition in [Acquisition::Thompson, Acquisition::Bald] {
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 6,
+                mcmc_samples: 0,
+                duel_check_every: 0,
+                acquisition,
+                ..fast()
+            },
+        );
+        let mut rng = StdRng::seed_from_u64(0x0D0);
+        engine.fill_pool(&mut rng);
+        engine.record_duel(0, 1, true);
+        engine.fit_posterior(&mut rng);
+        assert!(engine.posterior.as_ref().unwrap().samples.is_empty());
+        let mut seen = HashSet::new();
+        for _ in 0..30 {
+            let d = engine.next_duel_full(&mut rng).expect("a pair");
+            assert_ne!(d.a, d.b);
+            assert_eq!(d.info_gain, 0.0, "{acquisition:?} gained from no draws");
+            seen.insert((d.a.min(d.b), d.a.max(d.b)));
+        }
+        assert!(seen.len() > 5, "{acquisition:?} dealt {} pairs", seen.len());
+    }
+}
+
+/// **A session saved mid-generation reloads over size and is trimmed.**
+/// Nothing leaves the pool until a generation ends, so a save made while one
+/// runs holds its children and the members they displace; the reload holds
+/// them all, and the next finish trims the pool back to its size, before any
+/// fit (there is no posterior yet: every member ranks alike), sparing what
+/// is saved.
+#[test]
+fn a_session_saved_mid_generation_reloads_over_size_and_is_trimmed() {
+    let mut engine = taught(0x0E5);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x0E6))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order)
+        .into_iter()
+        .take(jobs.len() - 1)
+    {
+        engine.refine_absorb(r);
+    }
+    let over = engine.pool.len() - engine.cfg.pool_size;
+    assert!(over > 0, "no child landed: the save is not over size");
+    let saved = engine.pool[0].id;
+    assert!(engine.set_pinned(saved, true));
+    let mut back = reload(&engine);
+    assert!(back.posterior.is_none());
+    assert_eq!(back.pool.len(), engine.pool.len());
+    let gone = back.refine_finish();
+    assert_eq!(gone.len(), over);
+    assert_eq!(back.pool.len(), back.cfg.pool_size);
+    assert!(back.find(saved).is_some(), "a saved sound was trimmed");
+    assert_eq!(back.retired(), &gone[..]);
 }
