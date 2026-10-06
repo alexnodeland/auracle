@@ -6,23 +6,26 @@
 //   PERFORM wired, patch opened. The film recorder writes them into every
 //   rehearsal's sidecar.
 // - A preset's controls are live the moment PERFORM names it (every preset
-//   ships measured), and within a second of its click. What stands between
-//   the click and PERFORM having the patch is the open itself: the preset's
-//   insert (one render, about 0.4 s on a quiet machine) and the bench. The
-//   budget is judged where the insert took the time it was set for (under
-//   0.5 s); on a machine loaded enough that one render takes longer, the
-//   miss is recorded as an annotation with the split, not failed, and
-//   "live the moment it lands" is still required.
-// - A warm-start pick's controls are live within a second of "teach it",
-//   judged the same way (its insert is the first thing the worker does).
-// - A pick puts the next pair up within 0.3 s, and its ▶ sounds within
-//   0.15 s: the next pair is dealt, and its sounds fetched, ahead.
+//   ships measured): in the same task, wired from the shipped file, with no
+//   measurement asked of the engine. And within a second of its click: what
+//   stands between the click and PERFORM having the patch is the open
+//   itself, the preset's insert (one render, about 0.4 s on a quiet machine)
+//   and the bench.
+// - A warm-start pick's controls are live the moment PERFORM names it, and
+//   within a second of "teach it" (its insert is the first thing the worker
+//   does).
+// - A pick puts the next pair up in the click's own task, with no deal
+//   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
+//   sounds fetched, ahead. Within 0.3 s and 0.15 s.
 //
-// Times are taken in the page's own clock, from the gesture's own task, so
-// Playwright's polling is not in them. The budgets are the spec's; a miss on
-// a loaded machine is a finding about the machine only if the log says so.
+// The order is asserted; the seconds are budgets (ADR-022, fixtures.js
+// `budget`): each recorded as the test's annotation, with the insert's share
+// in its name, and judged only with AURACLE_PERF=1, by the nightly Speed
+// budgets job. Times are taken in the page's own clock, from the gesture's
+// own task, so Playwright's polling is not in them.
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
+const { budget } = require("./fixtures");
 
 const INIT = ({ warmed }) => `(() => {
   const Orig = window.Worker;
@@ -37,6 +40,8 @@ const INIT = ({ warmed }) => `(() => {
   // Where an open's time goes: [what, t] for the load, its reply, the bench
   // open and the bench's reply.
   const steps = (window.__steps = []);
+  // Every request posted to the engine, in order: [type, ahead, bg].
+  window.__sent = [];
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     if (/worker\\.js/.test(String(url))) {
@@ -51,6 +56,7 @@ const INIT = ({ warmed }) => `(() => {
       });
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
+        if (m && typeof m.type === "string") window.__sent.push([m.type, !!m.ahead, !!m.bg]);
         if (m && (m.type === "load_preset" || m.type === "edit_begin" || m.type === "warm_start")) steps.push([m.type, performance.now()]);
         if (m && m.type === "duel_shown") {
           window.__shownBefore = window.__shown;
@@ -100,6 +106,27 @@ const LIVE = `() => {
     ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector('.pf-knob[data-i="' + i + '"]')?.classList.contains("unwired"));
 }`;
 
+// In the page, before the gesture: watch for the task in which PERFORM names
+// `window.__want`, and record in `window.__liveAtName` whether its controls
+// were live by the end of that same task (an observer's callback runs at the
+// end of the task that made the change).
+const WATCH_NAMING = `(() => {
+  window.__liveAtName = null;
+  const live = () => {
+    const n = document.querySelector(".pf-name");
+    return !!n && n.textContent === window.__want && !n.classList.contains("pending") &&
+      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
+      ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector('.pf-knob[data-i="' + i + '"]')?.classList.contains("unwired"));
+  };
+  const mo = new MutationObserver(() => {
+    const n = document.querySelector(".pf-name");
+    if (!n || n.textContent !== window.__want || n.classList.contains("pending")) return;
+    window.__liveAtName = live();
+    mo.disconnect();
+  });
+  mo.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+})()`;
+
 test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and a patch opened", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
@@ -129,10 +156,11 @@ test("a preset's controls are live within a second of its click", async ({ page 
   for (const name of ["Acid Line", "Bell Jar", "Glass Pad"]) {
     const row = page.locator(".bank-item", { hasText: name }).first();
     await row.scrollIntoViewIfNeeded();
-    const [ms, named, steps, insert] = await page.evaluate(
-      async ([name, js]) => {
+    const [ms, named, steps, insert, liveAtName, how] = await page.evaluate(
+      async ([name, js, watch]) => {
         window.__want = name;
         window.__named = null;
+        eval(watch);
         const el = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === name);
         const t0 = performance.now();
         const from = window.__steps.length;
@@ -140,16 +168,15 @@ test("a preset's controls are live within a second of its click", async ({ page 
         const ms = await eval(js);
         const s = window.__steps.slice(from);
         const at = (k) => (s.find(([x]) => x === k) || [])[1];
-        return [ms, window.__named - t0, s.map(([k, t]) => `${k} ${Math.round(t - t0)}`).join(", "), at("preset_loaded") - at("load_preset")];
+        const how = performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name)?.detail?.how ?? null;
+        return [ms, window.__named - t0, s.map(([k, t]) => `${k} ${Math.round(t - t0)}`).join(", "), at("preset_loaded") - at("load_preset"), window.__liveAtName, how];
       },
-      [name, until(LIVE)],
+      [name, until(LIVE), WATCH_NAMING],
     );
-    console.log(`${name}: click → named in PERFORM ${named.toFixed(0)} ms → controls live ${ms.toFixed(0)} ms (${steps})`);
-    expect(ms - named, `${name}'s controls live when it lands`).toBeLessThan(100);
-    if (insert < 500) expect(ms, `${name}'s controls, from the click`).toBeLessThan(1000);
-    else if (ms >= 1000) {
-      test.info().annotations.push({ type: "budget not judged", description: `${name}: its insert alone took ${Math.round(insert)} ms on this machine; click → live ${Math.round(ms)} ms` });
-    }
+    console.log(`${name}: click → named in PERFORM ${named.toFixed(0)} ms → controls live ${ms.toFixed(0)} ms (${steps}); live in the naming's task: ${liveAtName}; wired from ${how}`);
+    expect(liveAtName, `${name}'s controls are live in the task PERFORM names it`).toBe(true);
+    expect(how, `${name} is wired from the shipped file (the app's mark), not measured`).toBe("shipped");
+    budget(`${name}: the click → its controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
     await page.waitForTimeout(1500);
   }
   expect(errs).toEqual([]);
@@ -162,26 +189,26 @@ test("a warm-start pick's controls are live within a second of teach it", async 
   const cards = page.locator(".warm-cell .warm-item");
   for (const i of [0, 3, 6]) await cards.nth(i).click();
   const first = (await cards.nth(0).locator(".wi-name").textContent()).trim();
-  const [ms, named, insert] = await page.evaluate(
-    async ([name, js]) => {
+  const [ms, named, insert, liveAtName, how] = await page.evaluate(
+    async ([name, js, watch]) => {
       window.__want = name;
       window.__named = null;
+      eval(watch);
       const from = window.__steps.length;
       const t0 = performance.now();
       document.getElementById("warm-go").click();
       const ms = await eval(js);
       const s = window.__steps.slice(from);
       const at = (k) => (s.find(([x]) => x === k) || [])[1];
-      return [ms, window.__named - t0, at("warm_first") - at("warm_start")];
+      const how = performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name)?.detail?.how ?? null;
+      return [ms, window.__named - t0, at("warm_first") - at("warm_start"), window.__liveAtName, how];
     },
-    [first, until(LIVE)],
+    [first, until(LIVE), WATCH_NAMING],
   );
-  console.log(`teach it → ${first} named ${named.toFixed(0)} ms (its insert ${insert.toFixed(0)} ms) → controls live ${ms.toFixed(0)} ms`);
-  expect(ms - named, "its controls are live when it lands").toBeLessThan(100);
-  if (insert < 500) expect(ms, "teach it → controls live").toBeLessThan(1000);
-  else if (ms >= 1000) {
-    test.info().annotations.push({ type: "budget not judged", description: `the first pick's insert alone took ${Math.round(insert)} ms on this machine; teach it → live ${Math.round(ms)} ms` });
-  }
+  console.log(`teach it → ${first} named ${named.toFixed(0)} ms (its insert ${insert.toFixed(0)} ms) → controls live ${ms.toFixed(0)} ms; live in the naming's task: ${liveAtName}; wired from ${how}`);
+  expect(liveAtName, "its controls are live in the task PERFORM names it").toBe(true);
+  expect(how, "it is wired from the shipped file (the app's mark), not measured").toBe("shipped");
+  budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
   expect(errs).toEqual([]);
 });
 
@@ -211,25 +238,38 @@ test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 
       return p.every((id) => window.__rendered.has(id));
     }, null, { timeout: 60_000 });
     await page.waitForTimeout(500);
+    // In the click's own task, before anything else can run: the cards show
+    // another pair, live, and no deal for the table was asked for.
     const d = await page.evaluate(async ([side, js]) => {
       const ids = () => ["a", "b"].map((s) => document.querySelector(`#name-${s} .dn-id`)?.textContent).join();
       const before = ids();
       window.__cond = () => ids() !== before && !document.getElementById("choose-a").disabled;
+      const n0 = window.__sent.length;
       document.getElementById(`choose-${side}`).click();
-      return eval(js);
+      const sync = window.__cond();
+      const tableDeals = window.__sent.slice(n0).filter(([type, ahead]) => type === "duel" && !ahead).length;
+      return { sync, tableDeals, ms: await eval(js) };
     }, [i % 2 ? "b" : "a", until("window.__cond")]);
-    deals.push(d);
+    expect(d.sync, `pick ${i + 1}: the next pair went up in the click's own task`).toBe(true);
+    expect(d.tableDeals, `pick ${i + 1}: a deal for the table was asked for`).toBe(0);
+    deals.push(d.ms);
+    // ▶ sounds in its click's task, and asks for no render: its sound is here.
     const p = await page.evaluate(async (js) => {
       const b = document.getElementById("play-a");
       window.__cond = () => b.classList.contains("playing");
+      const n0 = window.__sent.length;
       b.click();
-      return eval(js);
+      const sync = window.__cond();
+      const renders = window.__sent.slice(n0).filter(([type]) => type === "render").length;
+      return { sync, renders, ms: await eval(js) };
     }, until("window.__cond"));
-    plays.push(p);
+    expect(p.sync, `▶ after pick ${i + 1} sounds in its click's own task`).toBe(true);
+    expect(p.renders, `▶ after pick ${i + 1} asked for a render: its sound was not here`).toBe(0);
+    plays.push(p.ms);
     await page.locator("#play-a").click(); // stop
   }
   console.log(`pick → next pair (ms): ${deals.map((x) => x.toFixed(0)).join(", ")}; ▶ → sounding (ms): ${plays.map((x) => x.toFixed(0)).join(", ")}`);
-  for (const d of deals) expect(d).toBeLessThan(300);
-  for (const p of plays) expect(p).toBeLessThan(150);
+  deals.forEach((ms, i) => budget(`pick ${i + 1} → the next pair on the table`, ms, 300));
+  plays.forEach((ms, i) => budget(`▶ after pick ${i + 1} → sounding`, ms, 150));
   expect(errs).toEqual([]);
 });
