@@ -4,7 +4,8 @@ How a change gets from an idea to `main` and the live site. This is the
 canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 [ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
-[ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md) amends it. The `ship` skill
+[ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md) and
+[ADR-021](decisions/021-merges-go-through-mergifys-queue.md) amend it. The `ship` skill
 (`.claude/skills/ship/`) walks one task through it with the exact commands.
 
 ## The lifecycle
@@ -18,9 +19,9 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 5. Briefed | What the builder needs: scope, decisions, tests, docs, report | The issue body, or a brief it links | The operator |
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
-| 8. Proposed | A pull request that closes the issue | GitHub PRs | The operator, or a contributor for their own branch |
+| 8. Proposed | A pull request that closes the issue, labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
 | 9. Checked | A green `CI` check | GitHub Actions | CI |
-| 10. Merged | One squash commit on `main` | `main` | The operator |
+| 10. Merged | One squash commit on `main`, once `CI` is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
 | 12. Closed | The issue closed, the plan's progress updated, the worktree removed | | The operator |
 
@@ -30,10 +31,11 @@ and 3 are for changes big enough to argue about first, as
 
 **The operator** is whoever coordinates the work: the maintainer, or a lead
 session acting for them. Agents commit on their branch; the operator pushes
-it, opens the PR, merges and cleans up. A human contributor pushes their own
-branch (or fork) and opens their own PR; the maintainer reviews and merges
-it. Either way there is one merge queue and one place where "is this ready?"
-is decided.
+it, opens the PR with the `queue` label, and cleans up once the merge queue
+has merged it. A human contributor pushes their own branch (or fork) and
+opens their own PR; the maintainer reviews it and puts it in the queue.
+Either way there is one merge queue and one place where "is this ready?" is
+decided.
 
 ## Issues
 
@@ -53,6 +55,9 @@ in a plan's prose, a session's notes or a conversation.
 - **CI:** `full-ci` on a PR asks the *Slow suite* to run on it in full
   (adding the label starts a run, and every push to the PR runs it again).
   Without it the *Slow suite* does not run on a PR at all.
+- **Merging:** `queue` on a PR puts it in the merge queue
+  ([CI and merging](#ci-and-merging)). `dequeued` is Mergify's, on a PR that
+  left the queue without merging.
 - **Milestones:** one per plan ("Plan-008: the shell", "Plan-005: the sound at
   the centre"), and one per standing stream of work ("Testing and CI",
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:
@@ -86,9 +91,10 @@ in a plan's prose, a session's notes or a conversation.
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
-- **Rebasing while building or in review** is only to resolve a conflict.
-  The one that matters is onto `main`, once the PR ahead has merged
-  ([CI and merging](#ci-and-merging)).
+- **Rebasing while building or in review** is only to resolve a conflict,
+  or to move a branch built on the one ahead onto `main` once that one has
+  merged ([CI and merging](#ci-and-merging)). The merge queue brings a PR up
+  to date with `main` itself.
 - **Descriptions stay true in the same change**
   ([ADR-004](decisions/004-descriptions-stay-true.md)): the guide, the
   reference, in-app copy, `CHANGELOG.md`, and the plan's as-built section.
@@ -142,16 +148,18 @@ Findings come back ranked, and review is **one round**:
 
 ## Pull requests
 
-- The operator pushes an agent's branch and opens the PR:
-  `gh pr create --base main --head claude/<topic> --title "<what is true now>" --body-file <file>`.
-  A contributor opens theirs from their own branch or fork.
+- The operator pushes an agent's branch and opens the PR, in the merge queue:
+  `gh pr create --base main --head claude/<topic> --title "<what is true now>" --body-file <file> --label queue`.
+  A contributor opens theirs from their own branch or fork, and the
+  maintainer adds the label once it is reviewed.
 - **The body** says what changed for a player or a contributor, why, how
   (the decisions a reviewer should look at), and what was checked (gates,
   specs and their counts, the review and what it found). It closes the issues
   it finishes (`Closes #N`). Most PRs have one; a Dependabot bump, or a small
   fix seen in passing, may stand alone, and its body says why it is needed.
   When an agent session made the PR, the body ends with the session's link
-  line.
+  line. The body becomes the squash commit's body on `main`, under the
+  subject `<title> (#<n>)`.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
 
 ## CI and merging
@@ -171,50 +179,67 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   `@quarantine` test; or a `main.js` change that reaches EVOLVE's
   generations or PERFORM's offers. It does not block merging; without it,
   the push to `main` is where a slow test catches the change.
-- **Wait on the run's state, never a fixed time:** poll until it completes,
-  then read its jobs.
-- **Merge on green only:** `gh pr merge <n> --squash --match-head-commit <sha>`,
-  so nothing pushed after the check is merged unchecked. Never merge red, and
-  never re-run a red check until it passes: a red check is read, then fixed
-  or quarantined ([Flakes](#flakes)).
+- **Wait on the state, never a fixed time:** poll until the run completes,
+  or the PR merges or leaves the queue, then read what happened.
+- **The merge queue merges**
+  ([ADR-021](decisions/021-merges-go-through-mergifys-queue.md)). Mergify's
+  queue, set up in `.mergify.yml`, is how a PR reaches `main`:
+  - A reviewed PR is opened with the `queue` label; adding it is the one act
+    of enqueueing. A `@mergifyio queue` comment does the same.
+  - It enters the queue once its `CI` is green. The queue takes one PR at a
+    time, in order, and checks it on its own branch.
+  - At the front, a PR that `main` moved under is rebased onto `main`, and
+    `CI` runs again on that head. A PR already on `main`'s tip merges on the
+    run it has.
+  - The queue squash-merges the head that passed, so nothing pushed after
+    the check merges unchecked. The commit is `<title> (#<n>)` with the PR's
+    body.
+- **A red `CI` takes the PR out of the queue, and nothing is retried.**
+  Mergify's automatic retries are off, and a red check is never re-run until
+  it passes.
+  - The PR gets the `dequeued` label; its *Mergify Merge Queue* check and the
+    queue's comment say why it left.
+  - A red run is read, then fixed or quarantined on the branch
+    ([Flakes](#flakes)). The queue may have rebased the branch, so the
+    worktree is reset to the branch on GitHub before the fix is committed.
+  - It goes back in with `@mergifyio queue` (the `queue` label stays on).
+    A run that was cancelled rather than failed goes back in as it is.
+  - A PR whose own first run is red never entered the queue: it enters once
+    a fix makes `CI` green.
 - **GitHub enforces it.** `main`'s ruleset requires the `CI` check, from
-  GitHub Actions, with no bypass for anyone, admins included. It does not
-  require the branch to be up to date with `main`; the rules below say when
-  a PR is rebased and when it merges behind. To merge anything else, the
-  maintainer edits the ruleset.
+  GitHub Actions, with no bypass for anyone, admins and the queue included.
+  It does not require the branch to be up to date with `main`; the queue
+  does that. To merge anything else, the maintainer edits the ruleset.
 - **Merge at green.** A PR whose `CI` is green and that has no blocking
-  finding merges then. Nothing is added to a green PR. A finding raised
-  after it, or an improvement seen in passing, becomes an issue or the next
-  PR ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
-- **One PR in CI at a time, unless their files don't meet.**
-  - The next PR in a line may be built on the branch of the one ahead. It is
-    pushed only once that one has merged, rebased onto `main` first:
-    `git rebase --onto origin/main <the one ahead's last head>`.
-  - Its first run then tests what it merges into, and `main`'s run reuses
-    that verdict.
-  - Don't push it stacked on the one ahead. A squash merge gives `main` one
-    new commit, and the branch behind, still carrying the old ones,
-    conflicts wherever both PRs changed the same lines (`CHANGELOG.md`'s
-    Unreleased section, nearly always). It then needs a new head and a
-    second run.
-  - Two PRs whose files don't meet may be in CI together, each based on
-    `main`.
-- **Behind `main`, when the files don't meet.** Say `main` moved since a PR's
-  run, and the PR has nothing ahead of it in the queue.
-  - If no PR merged since then touches the PR's files, it merges on its run.
-    `main`'s run then verifies the merged tree in full, and a failure there
-    is fixed forward before anything else merges.
-  - If the files meet, rebase it on `main`, push with
-    `--force-with-lease=<branch>:<the head you pushed>`, and merge at the new
-    head once its CI is green.
+  finding is in the queue then. Nothing is added to a green PR. A finding
+  raised after it, or an improvement seen in passing, becomes an issue or the
+  next PR ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
+- **A line of PRs.** The next PR in a line may be built on the branch of the
+  one ahead. It is pushed only once that one has merged, moved onto `main`
+  first: `git rebase --onto origin/main <the one ahead's last head>`. Don't
+  push it stacked on the one ahead: a squash merge gives `main` one new
+  commit, and the branch behind, still carrying the old ones, conflicts
+  wherever both PRs changed the same lines (`CHANGELOG.md`'s Unreleased
+  section, nearly always).
+- **A conflict with `main` takes a PR out of the queue.** Two PRs that both
+  edit the same lines (the top of `CHANGELOG.md`'s Unreleased section, most
+  often) can't both be rebased: the second leaves the queue. Rebase it on
+  `main` by hand, push with
+  `--force-with-lease=<branch>:<the head on GitHub>`, and queue it again.
+- **By hand, only when Mergify is down:**
+  `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)" --body "<the PR's body>"`,
+  at green, on a PR up to date with `main` (rebased and run again if `main`
+  moved). A merge from outside the queue makes it start over on the new
+  `main`.
 - **Linear:** one merge queue, at most two streams of work in flight and
   never two touching the same files.
-- **On `main`**, a job the merged PR already passed is not run again, but only
-  when the merged files are exactly the files the PR's run tested (the same
-  git tree): `main` did not move between the PR's run and its merge. The
-  site deploys from CI's own build once `CI` is green. `main`'s runs queue,
-  so each merge gets its own run. The *Slow suite* runs on every push to `main`
-  and nightly; the *Flake hunt* nightly. A failure there files an issue.
+- **On `main`**, a job the merged PR already passed is not run again when
+  the merged files are exactly the files the PR's run tested (the same git
+  tree). Through the queue they always are: it merges a PR only on a run
+  that tested it on `main`'s tip. The site deploys from CI's own build once
+  `CI` is green. `main`'s runs queue, so each merge gets its own run. The
+  *Slow suite* runs on every push to `main` and nightly; the *Flake hunt*
+  nightly. A failure there files an issue.
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table
 gets the PR, and the PR's branch deletes itself on GitHub (the repository
@@ -254,8 +279,9 @@ against `main` and files an issue when one fails.
 Dependabot opens one grouped PR a week for the actions and one for
 `tests/web`'s npm packages. They are handled like any PR, one at a time and
 behind the work in flight: their CI runs are cancelled while they would take
-runners from active work, then rebased (`@dependabot rebase`) and merged on
-green. A major version gets its release notes read before the merge.
+runners from active work, then rebased (`@dependabot rebase`) and given the
+`queue` label. A major version gets its release notes read before it is
+queued.
 
 ## Releases and publishing
 

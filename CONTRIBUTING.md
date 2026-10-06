@@ -270,6 +270,14 @@ an alias for notes written before the rename).
 5. CI must be green: `main` requires it, and nobody can merge past it. A PR
    closes the issue it finishes (`Closes #N`); a small fix seen in passing may
    stand alone.
+6. PRs merge through a merge queue
+   ([Mergify](https://docs.mergify.com/merge-queue/), set up in
+   `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
+   label. When its CI is green the queue brings it up to date with `main`,
+   runs CI again if `main` moved, and squash-merges it as
+   `<title> (#<number>)` with the PR's description as the commit's body. A
+   red run takes it out of the queue; a fix and `@mergifyio queue` put it
+   back.
 
 ### Commit messages
 
@@ -311,7 +319,8 @@ The steps, in order:
    *is*, and open a fresh empty `## [Unreleased]` above it. This text becomes
    the release notes verbatim, so write it for someone who has never seen the
    repo.
-4. **Open a PR for 2 and 3, merge it, wait for green.**
+4. **Open a PR for 2 and 3 with the `queue` label, and wait for the queue to
+   merge it and for `main` to go green.**
 5. **Tag and push:**
 
    ```bash
