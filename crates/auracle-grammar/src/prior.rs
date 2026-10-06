@@ -815,8 +815,10 @@ impl PatchGrammarPrior {
                     })
                 })
             }
+            // `MOD_PAIR`, the one index left: `kind` is a draw from the
+            // `#mod` categorical, `N_MODS` wide, and every other index has
+            // its arm above.
             _ => {
-                debug_assert_eq!(kind, MOD_PAIR, "#mod index out of range");
                 let k = key.clone();
                 let cfg = cfg.clone();
                 sample(addr!(k.clone(), "pairop"), uniform_cat(N_PAIR_OPS)).bind(move |o| {
