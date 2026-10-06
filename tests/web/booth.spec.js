@@ -30,4 +30,9 @@ test("attract plays in PERFORM, hands over on a key, and teaches nothing", async
   await expect(page.locator('.pf-blend[data-i="6"] input')).toHaveAttribute("aria-valuenow", "0.00");
   await expect(page.locator('.pf-knob[data-i="7"]')).toHaveAttribute("aria-valuenow", "0.00");
   expect(await page.locator("#duel-count").textContent()).toBe(picks);
+  // Nor was one on its way: no pick was sent to the engine, from EVOLVE's
+  // table or from PERFORM's offers (an answered offer reaches TAUGHT only on
+  // the engine's reply).
+  expect(await app.sentCount("record_duel"), "a pick sent from EVOLVE's table").toBe(0);
+  expect(await app.sentCount("perform_record"), "an offer's answer sent as a pick").toBe(0);
 });
