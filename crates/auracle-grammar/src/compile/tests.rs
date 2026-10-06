@@ -2322,3 +2322,95 @@ fn capture_plays_once_hold_and_loop() {
     assert_ne!(last, 0.0, "loop is still playing past the take's end");
     assert!(take.len() < 2_500);
 }
+
+// ---------- the voice's live surface ----------
+
+/// A voice holding a C4 with this amp envelope, nothing else in the way.
+fn enveloped(attack: f64, decay: f64, sustain: f64) -> CompiledVoice {
+    let tree = PatchTree {
+        amp: AmpEnv {
+            attack,
+            decay,
+            sustain,
+            release: 0.3,
+        },
+        root: sine_vco(),
+    };
+    let v = compile(&tree, SR).expect("compiles");
+    v.pitch.set(0.0);
+    v.gate.set(5.0);
+    v
+}
+
+/// **`env_phase` reads where the amp envelope is**: zero before the voice
+/// has ticked, rising through the attack, settling at the sustain level
+/// while the key is held, and falling once it is let go.
+#[test]
+fn the_envelope_phase_reads_where_the_amp_is() {
+    quiver::rng::seed(SEED);
+    let mut v = enveloped(0.2, 0.3, 0.6);
+    assert_eq!(v.env_phase(), 0.0);
+    let mut rising = Vec::new();
+    for _ in 0..(SR * 0.02) as usize {
+        v.patch.tick();
+        rising.push(v.env_phase());
+    }
+    assert!(rising.windows(2).all(|w| w[1] >= w[0]), "the attack fell");
+    for _ in 0..(SR * 3.0) as usize {
+        v.patch.tick();
+    }
+    assert!(
+        (v.env_phase() - 0.6).abs() < 0.01,
+        "held at {}",
+        v.env_phase()
+    );
+    v.gate.set(0.0);
+    for _ in 0..(SR * 0.2) as usize {
+        v.patch.tick();
+    }
+    assert!(v.env_phase() < 0.5, "released to {}", v.env_phase());
+}
+
+/// **A carried note resumes where it was.** `seed_env_phase` fast-forwards
+/// a held voice's envelope to the level asked: below the sustain level it
+/// stops on the attack there and goes on attacking at the patch's own rate;
+/// at or above it, it passes the peak and comes down to the level. The
+/// attack and decay knobs read as they did before, and a level of zero (a
+/// note with nothing to carry) seeds nothing.
+#[test]
+fn a_seeded_envelope_resumes_at_the_level_it_was() {
+    quiver::rng::seed(SEED);
+    let knobs = |v: &CompiledVoice| {
+        (
+            v.params["amp#attack"].value.get(),
+            v.params["amp#decay"].value.get(),
+        )
+    };
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    let before = knobs(&v);
+    assert!(v.seed_env_phase(0.3));
+    let seeded = v.env_phase();
+    assert!((0.3 - 1e-3..0.35).contains(&seeded), "seeded to {seeded}");
+    assert_eq!(knobs(&v), before, "the knobs were not put back");
+    v.patch.tick();
+    let next = v.env_phase();
+    assert!(
+        next > seeded && next - seeded < 0.01,
+        "the attack went on at {} a sample",
+        next - seeded
+    );
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    assert!(v.seed_env_phase(0.9));
+    let seeded = v.env_phase();
+    assert!((0.85..=0.9).contains(&seeded), "seeded to {seeded}");
+    for _ in 0..(SR * 0.05) as usize {
+        v.patch.tick();
+    }
+    assert!(v.env_phase() < seeded, "the decay did not go on");
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    assert!(!v.seed_env_phase(0.0));
+    assert_eq!(v.env_phase(), 0.0, "nothing to carry, and nothing moved");
+}

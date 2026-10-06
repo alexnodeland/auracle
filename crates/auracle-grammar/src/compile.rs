@@ -411,6 +411,16 @@ pub struct ParamHandle {
     pub map: ParamMap,
 }
 
+/// The voice's amp envelope: its ADSR and the three knobs that shape it,
+/// held so [`CompiledVoice::env_phase`] and [`CompiledVoice::seed_env_phase`]
+/// read and drive them without looking them up. Every compiled voice has one.
+struct AmpEnvelope {
+    adsr: NodeId,
+    attack: ParamHandle,
+    decay: ParamHandle,
+    sustain: ParamHandle,
+}
+
 impl ParamHandle {
     /// Write a knob value in the site's own units — 0..1 for a continuous
     /// knob, a category index for the two live categorical sites (see
@@ -479,6 +489,8 @@ pub struct CompiledVoice {
     /// the patch — a recompile the audio thread would have to be staged around.
     /// Metering here costs no recompile at all.
     pub taps: HashMap<String, (String, PortId)>,
+    /// The amp envelope ([`AmpEnvelope`]).
+    amp: AmpEnvelope,
 }
 
 /// A gate that stays high for at most [`TAKE_SECONDS`] after it rises: a
@@ -671,10 +683,8 @@ impl CompiledVoice {
     /// voice has ticked at least once and zero before that.
     pub fn env_phase(&self) -> f64 {
         self.patch
-            .get_node_id_by_name(AMP_ADSR)
-            .and_then(|n| self.patch.get_output_value(n, ADSR_ENV_PORT))
-            .map(|v| (v * 0.1).clamp(0.0, 1.0))
-            .unwrap_or(0.0)
+            .get_output_value(self.amp.adsr, ADSR_ENV_PORT)
+            .map_or(0.0, |v| (v * 0.1).clamp(0.0, 1.0))
     }
 
     /// Fast-forward this voice's amp envelope to `level` (0..1), with the gate
@@ -719,26 +729,19 @@ impl CompiledVoice {
     /// [R3]: the panel plan's §4 risk register.
     pub fn seed_env_phase(&mut self, level: f64) -> bool {
         let level = level.clamp(0.0, 1.0);
-        let Some(adsr) = self.patch.get_node_id_by_name(AMP_ADSR) else {
-            return false;
-        };
         // A percussive patch (sustain 0) whose note has already decayed has no
         // phase to carry, and neither has a note that never sounded.
         if level <= 0.0 {
             return false;
         }
-        let (Some(attack), Some(decay), Some(sustain)) = (
-            self.params.get("amp#attack").cloned(),
-            self.params.get("amp#decay").cloned(),
-            self.params.get("amp#sustain").cloned(),
-        ) else {
-            return false;
-        };
-        let sustain = sustain.value.get();
-        let (a0, d0) = (attack.value.get(), decay.value.get());
+        let adsr = self.amp.adsr;
+        let attack = Arc::clone(&self.amp.attack.value);
+        let decay = Arc::clone(&self.amp.decay.value);
+        let sustain = self.amp.sustain.value.get();
+        let (a0, d0) = (attack.get(), decay.get());
         // `ParamMap::Unit` on both, and quiver maps 0 V to its 1 ms floor.
-        attack.value.set(0.0);
-        decay.value.set(0.0);
+        attack.set(0.0);
+        decay.set(0.0);
 
         let peak = if level < sustain { level } else { 1.0 };
         for _ in 0..SEED_MAX_TICKS {
@@ -768,8 +771,8 @@ impl CompiledVoice {
             }
         }
 
-        attack.value.set(a0);
-        decay.value.set(d0);
+        attack.set(a0);
+        decay.set(d0);
         true
     }
 }
@@ -3554,7 +3557,7 @@ fn compile_voice(
     let audio_out = c.build(&tree.root, "node")?;
 
     // Mandatory voice stage: amp ADSR → VCA → limiter → stereo out.
-    let adsr = c.patch.add("voice:adsr", Adsr::new(sample_rate));
+    let adsr = c.patch.add(AMP_ADSR, Adsr::new(sample_rate));
     c.patch.connect(c.gate_out, adsr.in_("gate"))?;
     // A TRACK's gate opens the voice the way a key does. quiver sums every
     // cable into a port, and the envelope reads anything above 2.5 V as high,
@@ -3642,6 +3645,12 @@ fn compile_voice(
         );
     }
 
+    let amp = AmpEnvelope {
+        adsr: adsr.id(),
+        attack: c.params["amp#attack"].clone(),
+        decay: c.params["amp#decay"].clone(),
+        sustain: c.params["amp#sustain"].clone(),
+    };
     let params = std::mem::take(&mut c.params);
     let records = std::mem::take(&mut c.records);
     let track_feeds = std::mem::take(&mut c.track_feeds);
@@ -3684,6 +3693,7 @@ fn compile_voice(
         trackers,
         warnings,
         taps,
+        amp,
     })
 }
 
