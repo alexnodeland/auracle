@@ -732,7 +732,7 @@ def main(argv: list[str], root: pathlib.Path = ROOT, get: Callable[[str], Any] =
                 since, ref = last_tag(tags_merged(root, args.to)), args.to
             print(notes(titles_between(root, since, ref), since, get), end="")
             return 0
-    except Refused as e:
+    except (Refused, changelog.Refused) as e:
         for line in str(e).split("\n"):
             print(f"  {line}", file=sys.stderr)
         return 1

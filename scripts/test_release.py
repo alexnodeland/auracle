@@ -613,6 +613,15 @@ class TheHistory(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertIn("release: 0.3.0", out)
 
+    def test_a_changelog_it_cannot_read_is_refused_in_one_line(self):
+        with Tree(git=True) as t:
+            self.history(t)
+            t.write("CHANGELOG.md", t.text("CHANGELOG.md").replace("## [Unreleased]", "## Unreleased"))
+            t.commit("fix: f (#7)")
+            code, out, err = t.run("plan")
+            self.assertEqual((code, out), (1, ""))
+            self.assertEqual(err, "  CHANGELOG.md: 0 `## [Unreleased]` headings, not one\n")
+
     def test_notes_takes_a_tag_or_a_ref(self):
         with Tree(git=True) as t:
             self.history(t)
