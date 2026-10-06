@@ -1,11 +1,14 @@
-// Unit tests for levels.js: how the levels sit and how a key, a hash or a
-// saved name moves between them.
+// Unit tests for levels.js: how the levels sit, how a key, a hash or a
+// saved name moves between them, and the rules of the move itself (the
+// morph, the flight, the wheel and the pinch).
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LEVELS, ASIDE, HOME, BY_DIGIT, WHERE, ALL,
   isLevel, digitKey, dirOf, step, railPath, savedLevel, hashLevel, startLevel, levelForKey,
+  MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, flightEnds, easeInOut, flightAt,
+  WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, PINCH_IN, PINCH_OUT, pinchStep,
 } from "../levels.js";
 
 test("the axis runs out to in, with EVOLVE beside PERFORM", () => {
@@ -84,4 +87,124 @@ test("the start level: the hash, else the saved level, else PERFORM", () => {
   assert.equal(startLevel("", "play"), "patch");
   assert.equal(startLevel("#nope", "nope"), "perform");
   assert.equal(startLevel("", null), "perform");
+});
+
+test("every direction moves both sections, the arriving one from the other side", () => {
+  for (const d of ["in", "out", "left", "right"]) {
+    const [leave, arrive] = MORPH[d];
+    assert.equal(leave.length, 2);
+    assert.equal(arrive.length, 2);
+    // Each ends where it rests, or starts from it: nothing is left scaled.
+    assert.match(leave[0], /^(scale\(1\)|translateX\(0\))$/, d);
+    assert.match(arrive[1], /^(scale\(1\)|translateX\(0\))$/, d);
+  }
+  // In: what you leave grows past you, what you reach comes from small.
+  assert.deepEqual(MORPH.in, [["scale(1)", "scale(1.12)"], ["scale(0.86)", "scale(1)"]]);
+  // Out is in reversed; left and right mirror each other.
+  assert.deepEqual(MORPH.out, [["scale(1)", "scale(0.86)"], ["scale(1.12)", "scale(1)"]]);
+  assert.equal(MORPH.left[0][1], "translateX(14%)");
+  assert.equal(MORPH.right[0][1], "translateX(-14%)");
+  // The old one is gone before the new one is most of the way in.
+  assert.ok(MORPH_SHOWN < MORPH_GONE && MORPH_GONE < 1);
+  // The name: in rises from below, out drops from above, aside slides.
+  assert.deepEqual(WHERE_SLIDE.in, [0, 10]);
+  assert.deepEqual(WHERE_SLIDE.out, [0, -10]);
+  assert.ok(WHERE_SLIDE.left[0] < 0 && WHERE_SLIDE.right[0] > 0);
+});
+
+test("the face flies between the two places a level draws it, and makes up none", () => {
+  const a = { x: 100, y: 200, w: 60, h: 100 };
+  const b = { x: 700, y: 120, w: 30, h: 50 };
+  // Both ends: from one to the other, drawn whole.
+  assert.deepEqual(flightEnds(a, b, "in"), { from: a, to: b, fade: null });
+  // No place where it lands: it fades out, drifting the way you went, and
+  // smaller, centred on where it was.
+  const off = flightEnds(a, null, "left");
+  assert.equal(off.fade, "out");
+  assert.ok(off.to.x > a.x);
+  assert.equal(off.to.w, a.w * 0.8);
+  assert.equal(flightEnds(a, null, "right").to.x < a.x, true);
+  const stay = flightEnds(a, null, "out");
+  assert.equal(stay.to.x + stay.to.w / 2, a.x + a.w / 2);
+  assert.equal(stay.to.y + stay.to.h / 2, a.y + a.h / 2);
+  // No place it came from: it fades in where it lands, from nowhere made up.
+  assert.deepEqual(flightEnds(null, b, "out"), { from: b, to: b, fade: "in" });
+  // Neither, or a box with no size: nothing flies.
+  assert.equal(flightEnds(null, null, "in"), null);
+  assert.equal(flightEnds({ x: 0, y: 0, w: 0, h: 10 }, null, "in"), null);
+  assert.equal(flightEnds({ x: NaN, y: 0, w: 4, h: 10 }, undefined, "in"), null);
+});
+
+test("a flight starts at its start and lands exactly on its end", () => {
+  const f = flightEnds({ x: 0, y: 0, w: 10, h: 20 }, { x: 100, y: 50, w: 30, h: 60 }, "in");
+  assert.deepEqual(flightAt(f, 0), { box: { x: 0, y: 0, w: 10, h: 20 }, alpha: 1 });
+  assert.deepEqual(flightAt(f, 1), { box: { x: 100, y: 50, w: 30, h: 60 }, alpha: 1 });
+  assert.deepEqual(flightAt(f, 7), flightAt(f, 1)); // past the end it stays there
+  const mid = flightAt(f, 0.5).box;
+  assert.equal(mid.x, 50);
+  assert.equal(mid.h, 40);
+  // The curve: slow at both ends, symmetric.
+  assert.equal(easeInOut(0), 0);
+  assert.equal(easeInOut(1), 1);
+  assert.ok(easeInOut(0.1) < 0.1 && easeInOut(0.9) > 0.9);
+  assert.ok(Math.abs(easeInOut(0.3) + easeInOut(0.7) - 1) < 1e-12);
+  // Fading in, it grows from nothing to whole; fading out, the reverse.
+  const fin = flightEnds(null, { x: 1, y: 2, w: 3, h: 4 }, "in");
+  assert.equal(flightAt(fin, 0).alpha, 0);
+  assert.equal(flightAt(fin, 1).alpha, 1);
+  const fout = flightEnds({ x: 1, y: 2, w: 3, h: 4 }, null, "in");
+  assert.equal(flightAt(fout, 0).alpha, 1);
+  assert.equal(flightAt(fout, 1).alpha, 0);
+});
+
+test("the wheel moves a level once it has turned past the step, then rests for the rest of the turn", () => {
+  let st = {};
+  let r;
+  // A trackpad's small deltas add up; up is in.
+  for (let i = 0; i < 5; i++) {
+    r = wheelStep(st, -12, 1000 + i * 16);
+    st = r.st;
+    assert.equal(r.dir, null, `at ${-12 * (i + 1)}`);
+  }
+  r = wheelStep(st, -12, 1100);
+  assert.equal(r.dir, "in");
+  st = r.st;
+  // The turn's momentum after it moves nothing, however far, until the lock is over.
+  for (const t of [1110, 1300, 1100 + WHEEL_LOCK_MS - 1]) {
+    r = wheelStep(st, -400, t);
+    st = r.st;
+    assert.equal(r.dir, null, `at ${t}`);
+  }
+  // Then a turn down past the step is out.
+  r = wheelStep(st, 80, 1100 + WHEEL_LOCK_MS + 1);
+  assert.equal(r.dir, "out");
+  // A mouse wheel's notch (100 px) is one level.
+  assert.equal(wheelStep({}, -100, 0).dir, "in");
+  assert.equal(wheelStep({}, WHEEL_STEP, 0).dir, null);
+  // A pause starts the count again: two halves far apart are nothing.
+  st = wheelStep({}, -40, 0).st;
+  assert.equal(wheelStep(st, -40, WHEEL_IDLE_MS + 1).dir, null);
+  assert.equal(wheelStep(st, -40, WHEEL_IDLE_MS - 1).dir, "in");
+  // Back and forth cancels.
+  st = wheelStep({}, -60, 0).st;
+  assert.equal(wheelStep(st, 60, 10).st.acc, 0);
+  // A junk delta counts as nothing.
+  assert.equal(wheelStep({}, NaN, 0).st.acc, 0);
+});
+
+test("a pinch spread past 1.3 goes in, closed under 0.77 goes out, and leans on the way", () => {
+  assert.equal(pinchStep(PINCH_IN + 0.01).dir, "in");
+  assert.equal(pinchStep(PINCH_OUT - 0.01).dir, "out");
+  assert.equal(pinchStep(1).dir, null);
+  assert.deepEqual(pinchStep(1).lean, { dir: "in", t: 0 });
+  const half = pinchStep(1.15);
+  assert.equal(half.dir, null);
+  assert.equal(half.lean.dir, "in");
+  assert.ok(Math.abs(half.lean.t - 0.5) < 1e-9);
+  const closing = pinchStep(0.885);
+  assert.equal(closing.lean.dir, "out");
+  assert.ok(Math.abs(closing.lean.t - 0.5) < 1e-9);
+  assert.equal(pinchStep(PINCH_IN).lean.t, 1);
+  assert.deepEqual(pinchStep(0), { dir: null, lean: null });
+  assert.deepEqual(pinchStep(NaN), { dir: null, lean: null });
 });
