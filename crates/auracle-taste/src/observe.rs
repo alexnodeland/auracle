@@ -80,6 +80,14 @@ pub enum Provenance {
 }
 
 impl Provenance {
+    /// Every provenance, in declaration order.
+    pub const ALL: [Provenance; 4] = [
+        Provenance::Duel,
+        Provenance::HeardEdit,
+        Provenance::SelfReport,
+        Provenance::PerformOffer,
+    ];
+
     /// Stable wire/display name (`"duel"`, `"heard_edit"`, `"self_report"`,
     /// `"perform_offer"`).
     pub fn as_str(&self) -> &'static str {
