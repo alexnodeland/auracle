@@ -222,6 +222,29 @@ export function shadeOf(z, zmax) {
   return { v, alpha: 0.15 + 0.85 * (v * 0.5 + 0.5), r: 1.6 + 2.6 * Math.max(0, v) };
 }
 
+/** Each sound's z on one feature, from the table the engine posts with every
+ *  views post (`WasmEngine::pool_features`: `{names, rows: [{id, z}]}`, each
+ *  row's z in φ's order, the order of `names`): a Map from id to the z in the
+ *  column `name` heads. Null when no feature is named or the engine posted no
+ *  z for it: the small map is shaded, and its legend says "dots:", only when
+ *  this is not null. */
+export function zByFeature(features, name) {
+  const zi = name && features && Array.isArray(features.names) ? features.names.indexOf(name) : -1;
+  return zi >= 0 ? new Map(features.rows.map((row) => [row.id, row.z[zi]])) : null;
+}
+
+/** Every sound's mark on the small map while a weight is pointed at: each of
+ *  `ids` (the sounds drawn) by its z on that feature (`zOf`, a Map from id to
+ *  z as `WasmEngine::pool_features` posted it; a sound with none is drawn at
+ *  the middle), against the largest |z| among the sounds drawn, through
+ *  `shadeOf`. Returns a Map from id to its shade. */
+export function poolShades(ids, zOf) {
+  const list = [...ids];
+  const zAt = (id) => zOf.get(id) ?? 0;
+  const zmax = Math.max(1e-6, ...list.map((id) => Math.abs(zAt(id))));
+  return new Map(list.map((id) => [id, shadeOf(zAt(id), zmax)]));
+}
+
 /** How far each axis is pulled toward its ranks: about halfway, as the
  *  prototype does, so the crowded middle opens while every sound keeps its
  *  order along both axes (a monotone stretch, not a new map). */

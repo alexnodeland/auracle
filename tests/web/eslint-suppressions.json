@@ -644,9 +644,6 @@
     }
   },
   "taste_learning.spec.js": {
-    "auracle/no-aur-in-spec": {
-      "count": 2
-    },
     "playwright/no-conditional-in-test": {
       "count": 2
     },
