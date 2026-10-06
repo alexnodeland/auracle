@@ -51,3 +51,14 @@ fn the_shipped_seed_deals_the_pinned_pool() {
          `make perform-wirings`; if not, a draw now depends on something other than the seed"
     );
 }
+
+/// A pinned file that is not JSON is said to be so, before the probe is
+/// rendered at all. Here, beside the comparison itself, so the one build of
+/// `boot_probe_difference` the gate measures runs both of its answers.
+#[test]
+fn a_pinned_probe_that_is_not_json_says_so() {
+    assert_eq!(
+        boot_probe_difference("{ not json"),
+        "the pinned probe is not JSON"
+    );
+}

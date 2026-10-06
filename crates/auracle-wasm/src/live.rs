@@ -454,12 +454,12 @@ struct TouchSite {
 /// order is a property of the patch and not of `HashMap` iteration. Every
 /// voice is the same tree compiled, so voice 0's keys are everyone's keys;
 /// a voice missing one (which cannot happen) simply has no entry to write.
-/// The open voice ([`LivePoly::set_open`]), when the patch has one, is in the
-/// table too, so a knob turned while it sounds reaches it as it reaches a key.
+/// There is always a voice 0: `new` builds `n_voices.max(1)`, and a swap
+/// never fewer. The open voice ([`LivePoly::set_open`]), when the patch has
+/// one, is in the table too, so a knob turned while it sounds reaches it as
+/// it reaches a key.
 fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
-    let Some(first) = voices.first() else {
-        return Vec::new();
-    };
+    let first = &voices[0];
     let mut addrs: Vec<&String> = first.voice.params.keys().collect();
     addrs.sort();
     addrs
@@ -476,10 +476,19 @@ fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
         .collect()
 }
 
+/// Where a patch swap is. The tree being swapped in lives in the stages
+/// that need it, so a rebuild always has a patch to build.
 enum Stage {
     Run,
-    FadeOut,
-    Rebuild { built: Vec<Voice> },
+    /// Fading the old voices out, with `tree` to swap in once silent.
+    FadeOut {
+        tree: PatchTree,
+    },
+    /// Silent: compiling `tree`, one voice a quantum, into `built`.
+    Rebuild {
+        tree: PatchTree,
+        built: Vec<Voice>,
+    },
     FadeIn,
 }
 
@@ -503,7 +512,6 @@ pub struct LivePoly {
     param_slots: Vec<ParamSlot>,
     stage: Stage,
     gain: f32,
-    pending: Option<PatchTree>,
     out_buf: Vec<f32>,
     event: u32,
     last_error: String,
@@ -680,21 +688,21 @@ impl Meter {
     /// Move whatever the observer has finished into [`Self::levels`].
     fn drain(&mut self) {
         for update in self.observer.drain_updates() {
-            let ObservableValue::Level {
+            // Only levels are subscribed; anything else is not a tap's.
+            if let ObservableValue::Level {
                 node_id,
                 port_id,
                 rms_db,
                 ..
             } = update
-            else {
-                continue;
-            };
-            if let Some(i) = self
-                .ports
-                .iter()
-                .position(|(n, p)| *p == port_id && *n == node_id)
             {
-                self.levels[i] = rms_db as f32;
+                if let Some(i) = self
+                    .ports
+                    .iter()
+                    .position(|(n, p)| *p == port_id && *n == node_id)
+                {
+                    self.levels[i] = rms_db as f32;
+                }
             }
         }
     }
@@ -874,11 +882,14 @@ fn tick_voice(
     }
 }
 
+#[wasm_bindgen]
 impl LivePoly {
-    /// [`LivePoly::new`] with its error as a `String`: what the host's
-    /// constructor wraps, and what [`render_take`] calls (natively too, where
-    /// a `JsValue` cannot be made).
-    fn from_json(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
+    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON, or say
+    /// why not. The error is a `String`, which wasm-bindgen throws as a JS
+    /// string (the host reads it with `String(err)`), and which `render_take`
+    /// and the native tests read as it is.
+    #[wasm_bindgen(constructor)]
+    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
         let tree: PatchTree = serde_json::from_str(tree_json).map_err(|e| e.to_string())?;
         let n = n_voices.max(1);
         let input = Arc::new(AudioInputStream::new(
@@ -911,7 +922,6 @@ impl LivePoly {
             param_slots,
             stage: Stage::Run,
             gain: 1.0,
-            pending: None,
             out_buf: Vec::new(),
             event: EVENT_NONE,
             last_error: String::new(),
@@ -958,15 +968,6 @@ impl LivePoly {
             p.rebuild_sync_lanes();
             p
         })
-    }
-}
-
-#[wasm_bindgen]
-impl LivePoly {
-    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON.
-    #[wasm_bindgen(constructor)]
-    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, JsValue> {
-        LivePoly::from_json(tree_json, sample_rate, n_voices).map_err(|e| JsValue::from_str(&e))
     }
 
     /// Find every `steps` module's transport and rate handles in the current
@@ -1127,7 +1128,7 @@ impl LivePoly {
     /// Read once after [`Self::set_meter`] rather than per quantum — this
     /// allocates, and the order is fixed until the next patch swap.
     pub fn meter_keys(&self) -> String {
-        serde_json::to_string(&self.meter.keys).unwrap_or_else(|_| "[]".into())
+        crate::json_or(&self.meter.keys, "[]")
     }
 
     /// Pointer to the RMS dB per tap, in [`Self::meter_keys`] order.
@@ -1204,13 +1205,15 @@ impl LivePoly {
         let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return false;
         };
-        self.pending = Some(tree);
-        match self.stage {
+        self.stage = match self.stage {
             // Already silent/rebuilding: restart the rebuild with the newer
             // tree (coalesces rapid structural edits).
-            Stage::Rebuild { .. } => self.stage = Stage::Rebuild { built: Vec::new() },
-            _ => self.stage = Stage::FadeOut,
-        }
+            Stage::Rebuild { .. } => Stage::Rebuild {
+                tree,
+                built: Vec::new(),
+            },
+            _ => Stage::FadeOut { tree },
+        };
         true
     }
 
@@ -1314,7 +1317,7 @@ impl LivePoly {
         // voice running, so each new press found no silent voice and stole the
         // oldest there was — a held note — and the notes under the player's
         // hands dropped out while the trill played on.
-        let idx = self
+        let i = self
             .voices
             .iter()
             .position(|v| v.note == Some(note))
@@ -1327,68 +1330,68 @@ impl LivePoly {
                     .min_by_key(|(_, v)| v.released)
                     .map(|(i, _)| i)
             })
-            .or_else(|| {
+            .unwrap_or_else(|| {
+                // An instrument has a voice at least (`new` builds
+                // `n_voices.max(1)`), so this is the oldest of them.
                 self.voices
                     .iter()
                     .enumerate()
                     .min_by_key(|(_, v)| v.stamp)
-                    .map(|(i, _)| i)
+                    .map_or(0, |(i, _)| i)
             });
         // Is anything under the player's fingers right now? Asked *before* the
         // new voice is assigned, because it decides whether this press is one
         // note of a chord or one note of a line.
         let anything_held = self.voices.iter().any(|v| v.note.is_some());
-        if let Some(i) = idx {
-            let glide_on = self.glide > 0.0;
-            let bend = self.bend;
-            let v = &mut self.voices[i];
-            // Portamento is *per voice* (fingered): a voice that was already
-            // sounding slides from its own pitch, a fresh voice starts on
-            // target. A single global `last_pitch` would chain note→note
-            // through a chord and make it swoop in as a scramble.
-            //
-            // Per-voice alone, though, meant the control did nothing at all
-            // for the one thing portamento is for. Voice assignment prefers a
-            // *free* voice, so a melody played on a four-voice keybed rotates
-            // through voices that were never sounding: `was_sounding` is false
-            // for note after note, and every one of them starts dead on pitch.
-            // The glide fader moved a number that could not be heard unless
-            // you exceeded the polyphony and forced a steal.
-            //
-            // So a line glides too. A press with nothing else held is a line —
-            // it slides from the pitch of the note before it — and a press
-            // made while a key is still down is a chord, which still starts on
-            // target and keeps its attack clean. That is the same distinction
-            // the original comment was protecting; it just wasn't being made.
-            let was_sounding = v.running;
-            v.pitch_tgt = target;
-            v.pitch_cur = if glide_on && was_sounding {
-                v.pitch_cur
-            } else if glide_on && !anything_held && !first_press {
-                start
-            } else {
-                target
-            };
-            v.voice.pitch.set(v.pitch_cur + bend);
-            // Stealing a voice whose gate is still high needs a real rising
-            // edge, or the ADSR never re-enters Attack and the new note
-            // inherits the old note's envelope level.
-            if v.note.is_some() {
-                v.voice.gate.set(0.0);
-                v.regate_in = 1;
-            } else {
-                v.voice.gate.set(GATE_ON);
-                v.regate_in = 0;
-            }
-            v.note = Some(note);
-            v.stamp = stamp;
-            v.running = true;
-            v.silent_run = 0;
-            v.vel = Self::vel_gain(vel);
-            v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
-            v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
-            self.apply_touch(i, vel);
+        let glide_on = self.glide > 0.0;
+        let bend = self.bend;
+        let v = &mut self.voices[i];
+        // Portamento is *per voice* (fingered): a voice that was already
+        // sounding slides from its own pitch, a fresh voice starts on
+        // target. A single global `last_pitch` would chain note→note
+        // through a chord and make it swoop in as a scramble.
+        //
+        // Per-voice alone, though, meant the control did nothing at all
+        // for the one thing portamento is for. Voice assignment prefers a
+        // *free* voice, so a melody played on a four-voice keybed rotates
+        // through voices that were never sounding: `was_sounding` is false
+        // for note after note, and every one of them starts dead on pitch.
+        // The glide fader moved a number that could not be heard unless
+        // you exceeded the polyphony and forced a steal.
+        //
+        // So a line glides too. A press with nothing else held is a line —
+        // it slides from the pitch of the note before it — and a press
+        // made while a key is still down is a chord, which still starts on
+        // target and keeps its attack clean. That is the same distinction
+        // the original comment was protecting; it just wasn't being made.
+        let was_sounding = v.running;
+        v.pitch_tgt = target;
+        v.pitch_cur = if glide_on && was_sounding {
+            v.pitch_cur
+        } else if glide_on && !anything_held && !first_press {
+            start
+        } else {
+            target
+        };
+        v.voice.pitch.set(v.pitch_cur + bend);
+        // Stealing a voice whose gate is still high needs a real rising
+        // edge, or the ADSR never re-enters Attack and the new note
+        // inherits the old note's envelope level.
+        if v.note.is_some() {
+            v.voice.gate.set(0.0);
+            v.regate_in = 1;
+        } else {
+            v.voice.gate.set(GATE_ON);
+            v.regate_in = 0;
         }
+        v.note = Some(note);
+        v.stamp = stamp;
+        v.running = true;
+        v.silent_run = 0;
+        v.vel = Self::vel_gain(vel);
+        v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
+        v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+        self.apply_touch(i, vel);
     }
 
     fn release_voices(&mut self, note: u8) {
@@ -1561,15 +1564,12 @@ impl LivePoly {
     /// Slide the voice currently sounding `from` to pitch `to` without touching
     /// its gate. This is what makes a tied step tie: no falling edge, so the
     /// amp envelope keeps its place and (with glide up) the step portamentos.
-    /// Returns false if that voice was stolen out from under us.
-    fn arp_slide(&mut self, from: u8, to: u8, vel: f32) -> bool {
-        let Some(i) = self.voices.iter().position(|v| v.note == Some(from)) else {
-            return false;
-        };
+    /// `None` if no voice is sounding `from` (stolen out from under us).
+    fn arp_slide(&mut self, from: u8, to: u8, vel: f32) -> Option<()> {
         let target = (to as f64 - 60.0) / 12.0;
         let glide_on = self.glide > 0.0;
         let bend = self.bend;
-        let v = &mut self.voices[i];
+        let v = self.voices.iter_mut().find(|v| v.note == Some(from))?;
         v.pitch_tgt = target;
         if !glide_on {
             v.pitch_cur = target;
@@ -1578,7 +1578,7 @@ impl LivePoly {
         v.note = Some(to);
         v.vel = Self::vel_gain(vel);
         v.silent_run = 0;
-        true
+        Some(())
     }
 
     /// Advance the arpeggiator by `frames` samples. Step boundaries press the
@@ -1586,13 +1586,6 @@ impl LivePoly {
     /// across [`Self::arp_octaves`] octaves — held for `arp_gate` of the step.
     fn tick_arp(&mut self, frames: usize) {
         if !self.arp_on {
-            return;
-        }
-        if self.held.is_empty() {
-            if let Some(n) = self.arp_note.take() {
-                self.release_voices(n);
-            }
-            self.arp_base = None;
             return;
         }
         // Swing lengthens even steps and shortens the odd step that follows by
@@ -1610,7 +1603,8 @@ impl LivePoly {
         self.arp_phase = (self.arp_phase + frames as f64).min(f64::MAX);
         if let Some(n) = self.arp_note {
             // Release at the gate fraction — or immediately if the key this
-            // step came from was let go mid-step.
+            // step came from was let go mid-step (every key let go is that
+            // key too).
             let key_gone = self
                 .arp_base
                 .is_none_or(|b| !self.held.iter().any(|(h, _)| *h == b));
@@ -1620,7 +1614,9 @@ impl LivePoly {
                 self.arp_base = None;
             }
         }
-        if self.arp_phase < step_len {
+        // No chord, no step: the next key down fires the first one at once
+        // (`note_on`).
+        if self.held.is_empty() || self.arp_phase < step_len {
             return;
         }
         // Carry the overshoot. Steps fire on block boundaries, and resetting
@@ -1688,7 +1684,7 @@ impl LivePoly {
         match self.arp_note.filter(|_| tied) {
             // Tied: reuse the sounding voice so the gate never falls. If it was
             // stolen in the meantime, fall back to a normal press.
-            Some(prev) if self.arp_slide(prev, note, vel) => {}
+            Some(prev) if self.arp_slide(prev, note, vel).is_some() => {}
             _ => self.press(note, vel),
         }
         self.arp_note = Some(note);
@@ -1768,7 +1764,7 @@ impl LivePoly {
             10f64.powf(MAKEUP_MIN_DB / 20.0),
             10f64.powf(MAKEUP_MAX_DB / 20.0),
         ) as f32;
-        if self.pending.is_some() {
+        if matches!(self.stage, Stage::FadeOut { .. } | Stage::Rebuild { .. }) {
             self.pending_makeup = Some(g);
         } else {
             self.makeup = g;
@@ -1926,136 +1922,139 @@ impl LivePoly {
         if self.sync_on {
             self.beats += frames as f64 * self.bpm / (60.0 * self.sample_rate);
         }
-        let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
-        if rebuilding {
-            // Silent: compile exactly one voice per quantum. Overruns here
-            // can drop a quantum of *silence* — inaudible.
-            let Stage::Rebuild { built } = std::mem::replace(&mut self.stage, Stage::FadeIn) else {
-                unreachable!()
-            };
-            let mut built = built;
-            if let Some(tree) = self.pending.clone() {
-                // A patch that listens (or tracks) is built one voice longer:
-                // the last is its open voice (`set_open`), which leads a
-                // tracked patch's other voices, so it alone is no follower.
-                let tracked = has_track(&tree.root);
-                let extra = tree.listens() || tracked;
-                let follow = tracked && built.len() < self.n_voices;
-                match build_voice(&tree, self.sample_rate, &self.input, follow) {
-                    Ok(v) => {
-                        built.push(v);
-                        if built.len() >= self.n_voices + usize::from(extra) {
-                            let open = if extra { built.pop() } else { None };
-                            // The open voice's envelope is carried like a held
-                            // note's, so a swap does not re-attack the input.
-                            let open_phase = self
-                                .open
-                                .as_ref()
-                                .filter(|v| v.note.is_some())
-                                .map(|v| v.voice.env_phase());
-                            // Where every sounding note's amp envelope had got
-                            // to, read off the *outgoing* voices while they are
-                            // still here. This is the whole of the envelope
-                            // carry: re-pressing a held note on a fresh voice
-                            // restarts its ADSR from zero, so a sustained pad
-                            // re-swelled on every structural edit — the edit
-                            // was audible as an event in its own right rather
-                            // than as a change to the sound.
-                            let carry: Vec<(u8, f64)> = self
-                                .voices
-                                .iter()
-                                .filter_map(|v| Some((v.note?, v.voice.env_phase())))
-                                .collect();
-                            self.voices = built;
-                            self.pending = None;
-                            // New voices, new handles: the smoothers indexed
-                            // the old table, and the table is remade from the
-                            // voices that exist now. This is the one place
-                            // outside `new` that allocates for parameters,
-                            // and it is inside the swap that already compiles.
-                            self.open = open;
-                            self.lead = Lead::build(&self.voices, self.open.as_ref());
-                            self.smoothers.clear();
-                            self.param_slots = intern_params(&self.voices, self.open.as_ref());
-                            self.rebuild_sync_lanes();
-                            // New patch, new node ids, and a new set of module
-                            // keys. Re-taking the subscriptions here is what
-                            // keeps a stale `NodeId` from resolving against a
-                            // slotmap that never issued it.
-                            if let Some(v) = self.voices.first() {
-                                let voice = &v.voice;
-                                self.meter.resubscribe(voice);
-                            }
-                            if let Some(g) = self.pending_makeup.take() {
-                                self.makeup = g;
-                            }
-                            if self.arp_on {
-                                // The scheduler re-presses on its next step.
-                                self.arp_note = None;
-                            } else {
-                                for i in 0..self.held.len() {
-                                    let (n, v) = self.held[i];
-                                    self.press(n, v);
-                                }
-                                // Gates are up and no falling edge was ever
-                                // presented, so nothing needs re-gating — the
-                                // new envelopes are simply fast-forwarded to
-                                // where the old ones were. A note that was
-                                // *not* held (a release tail) is not carried:
-                                // its voice was reallocated, and a tail cannot
-                                // survive a rewire anyway.
-                                for v in &mut self.voices {
-                                    let Some(note) = v.note else { continue };
-                                    let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note)
-                                    else {
-                                        continue;
-                                    };
-                                    v.voice.seed_env_phase(*phase);
-                                }
-                            }
-                            // The new patch's open voice, if it has one and the
-                            // host wants it; a patch with none has nothing to
-                            // hold (the old one went with the old voices).
-                            self.sync_open();
-                            if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
-                                if v.note.is_some() {
-                                    v.voice.seed_env_phase(phase);
-                                }
-                            }
-                            self.event = EVENT_PATCHED;
-                            self.stage = Stage::FadeIn;
-                        } else {
-                            self.stage = Stage::Rebuild { built };
-                        }
-                    }
-                    Err(e) => {
-                        // Keep the old voices; report and fade back in.
-                        self.last_error = e;
-                        self.event = EVENT_PATCH_ERROR;
-                        self.pending = None;
-                        self.pending_makeup = None;
-                        self.stage = Stage::FadeIn;
-                    }
-                }
-            }
-            self.emit_silence(frames);
-            return;
-        }
-        match self.stage {
+        match std::mem::replace(&mut self.stage, Stage::Run) {
             Stage::Run => self.render_into(frames, 0),
-            Stage::FadeOut => {
+            Stage::FadeOut { tree } => {
                 self.render_into(frames, -1);
-                if self.gain <= 0.0 {
-                    self.stage = Stage::Rebuild { built: Vec::new() };
-                }
+                self.stage = if self.gain <= 0.0 {
+                    Stage::Rebuild {
+                        tree,
+                        built: Vec::new(),
+                    }
+                } else {
+                    Stage::FadeOut { tree }
+                };
+            }
+            Stage::Rebuild { tree, built } => {
+                // Silent: compile exactly one voice per quantum. Overruns
+                // here can drop a quantum of *silence* — inaudible.
+                self.rebuild_one(tree, built);
+                self.emit_silence(frames);
             }
             Stage::FadeIn => {
                 self.render_into(frames, 1);
-                if self.gain >= 1.0 {
-                    self.stage = Stage::Run;
-                }
+                self.stage = if self.gain >= 1.0 {
+                    Stage::Run
+                } else {
+                    Stage::FadeIn
+                };
             }
-            Stage::Rebuild { .. } => unreachable!(),
+        }
+    }
+
+    /// One quantum of a swap's rebuild: compile the next voice of `tree`
+    /// onto `built`, and once there are enough, put them in place of the
+    /// old ones and fade in. A tree that does not compile keeps the old
+    /// voices, says why, and fades them back in.
+    fn rebuild_one(&mut self, tree: PatchTree, mut built: Vec<Voice>) {
+        // A patch that listens (or tracks) is built one voice longer: the
+        // last is its open voice (`set_open`), which leads a tracked patch's
+        // other voices, so it alone is no follower.
+        let tracked = has_track(&tree.root);
+        let extra = tree.listens() || tracked;
+        let follow = tracked && built.len() < self.n_voices;
+        match build_voice(&tree, self.sample_rate, &self.input, follow) {
+            Err(e) => {
+                // Keep the old voices; report and fade back in.
+                self.last_error = e;
+                self.event = EVENT_PATCH_ERROR;
+                self.pending_makeup = None;
+                self.stage = Stage::FadeIn;
+            }
+            Ok(v) => {
+                built.push(v);
+                if built.len() < self.n_voices + usize::from(extra) {
+                    self.stage = Stage::Rebuild { tree, built };
+                    return;
+                }
+                let open = if extra { built.pop() } else { None };
+                // The open voice's envelope is carried like a held
+                // note's, so a swap does not re-attack the input.
+                let open_phase = self
+                    .open
+                    .as_ref()
+                    .filter(|v| v.note.is_some())
+                    .map(|v| v.voice.env_phase());
+                // Where every sounding note's amp envelope had got
+                // to, read off the *outgoing* voices while they are
+                // still here. This is the whole of the envelope
+                // carry: re-pressing a held note on a fresh voice
+                // restarts its ADSR from zero, so a sustained pad
+                // re-swelled on every structural edit — the edit
+                // was audible as an event in its own right rather
+                // than as a change to the sound.
+                let carry: Vec<(u8, f64)> = self
+                    .voices
+                    .iter()
+                    .filter_map(|v| Some((v.note?, v.voice.env_phase())))
+                    .collect();
+                self.voices = built;
+                // New voices, new handles: the smoothers indexed
+                // the old table, and the table is remade from the
+                // voices that exist now. This is the one place
+                // outside `new` that allocates for parameters,
+                // and it is inside the swap that already compiles.
+                self.open = open;
+                self.lead = Lead::build(&self.voices, self.open.as_ref());
+                self.smoothers.clear();
+                self.param_slots = intern_params(&self.voices, self.open.as_ref());
+                self.rebuild_sync_lanes();
+                // New patch, new node ids, and a new set of module
+                // keys. Re-taking the subscriptions here is what
+                // keeps a stale `NodeId` from resolving against a
+                // slotmap that never issued it.
+                if let Some(v) = self.voices.first() {
+                    let voice = &v.voice;
+                    self.meter.resubscribe(voice);
+                }
+                if let Some(g) = self.pending_makeup.take() {
+                    self.makeup = g;
+                }
+                if self.arp_on {
+                    // The scheduler re-presses on its next step.
+                    self.arp_note = None;
+                } else {
+                    for i in 0..self.held.len() {
+                        let (n, v) = self.held[i];
+                        self.press(n, v);
+                    }
+                    // Gates are up and no falling edge was ever
+                    // presented, so nothing needs re-gating — the
+                    // new envelopes are simply fast-forwarded to
+                    // where the old ones were. A note that was
+                    // *not* held (a release tail) is not carried:
+                    // its voice was reallocated, and a tail cannot
+                    // survive a rewire anyway.
+                    for v in &mut self.voices {
+                        let Some(note) = v.note else { continue };
+                        let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note) else {
+                            continue;
+                        };
+                        v.voice.seed_env_phase(*phase);
+                    }
+                }
+                // The new patch's open voice, if it has one and the
+                // host wants it; a patch with none has nothing to
+                // hold (the old one went with the old voices).
+                self.sync_open();
+                if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
+                    if v.note.is_some() {
+                        v.voice.seed_env_phase(phase);
+                    }
+                }
+                self.event = EVENT_PATCHED;
+                self.stage = Stage::FadeIn;
+            }
         }
     }
 
@@ -2256,7 +2255,7 @@ pub fn render_take(
     channels: usize,
     sample_rate: f64,
 ) -> String {
-    let Ok(mut poly) = LivePoly::from_json(tree_json, sample_rate, 1) else {
+    let Ok(mut poly) = LivePoly::new(tree_json, sample_rate, 1) else {
         return String::new();
     };
     poly.set_leveler(false);
@@ -2281,1682 +2280,4 @@ pub fn render_take(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use auracle_grammar::{PatchGrammarPrior, Uid};
-    use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
-
-    fn tree_json(rng: &mut StdRng) -> String {
-        serde_json::to_string(&PatchGrammarPrior::default().sample_with_rng(rng)).unwrap()
-    }
-
-    /// A plain saw → lowpass voice with a **percussive** amp envelope: fast
-    /// attack, medium decay, sustain 0. Once the decay has run the voice is
-    /// silent while its gate is still high, which makes an envelope retrigger
-    /// unmistakable — with one, a stolen voice speaks; without one, it cannot.
-    fn plucked_json() -> String {
-        use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-        serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.2,  // ≈6 ms
-                decay: 0.45,  // ≈63 ms
-                sustain: 0.0, // the whole point
-                release: 0.3, // ≈16 ms
-            },
-            root: AudioNode::Filter {
-                uid: Uid::NEW,
-                kind: FilterKind::SvfLp,
-                cutoff: 0.7,
-                resonance: 0.1,
-                mod_depth: 0.0,
-                input: Box::new(AudioNode::Vco {
-                    uid: Uid::NEW,
-                    wave: Waveform::Saw,
-                    octave: 0,
-                    detune: 0.5,
-                    mod_depth: 0.0,
-                    modulation: ModNode::None,
-                }),
-                modulation: ModNode::None,
-            },
-        })
-        .unwrap()
-    }
-
-    fn peak(buf: &[f32]) -> f32 {
-        buf.iter().fold(0.0f32, |m, s| m.max(s.abs()))
-    }
-
-    fn energy(buf: &[f32]) -> f64 {
-        buf.iter().map(|s| (*s as f64) * (*s as f64)).sum()
-    }
-
-    /// Native smoke: a prior patch plays a note (finite, audible), rings a
-    /// tail after release, and eventually parks its voices.
-    #[test]
-    fn live_poly_plays_and_parks() {
-        let mut rng = StdRng::seed_from_u64(0x11FE);
-        let json = tree_json(&mut rng);
-        let mut poly = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
-
-        poly.note_on(60, 1.0);
-        poly.note_on(64, 1.0);
-        let mut energy = 0.0f64;
-        for _ in 0..40 {
-            let out = poly.process(512);
-            assert!(out.iter().all(|s| s.is_finite()));
-            energy += out.iter().map(|s| (*s as f64) * (*s as f64)).sum::<f64>();
-        }
-        assert!(energy > 1e-6, "held notes produced silence");
-
-        poly.note_off(60);
-        poly.note_off(64);
-        for _ in 0..900 {
-            poly.process(512);
-            if poly.voices.iter().all(|v| !v.running) {
-                break;
-            }
-        }
-        assert!(
-            poly.voices.iter().all(|v| !v.running),
-            "voices never parked after release"
-        );
-    }
-
-    /// Live params: setting a knob mid-note ramps the sound smoothly to the
-    /// mapped target without resetting the voice, and junk/enum addresses
-    /// are refused.
-    #[test]
-    fn live_params_ramp_without_retrigger() {
-        let (_, tree) = auracle_grammar::presets()
-            .into_iter()
-            .find(|(n, _)| *n == "First Bass")
-            .expect("preset exists");
-        let json = serde_json::to_string(&tree).unwrap();
-        let mut a = LivePoly::new(&json, 44_100.0, 1).unwrap();
-        let mut b = LivePoly::new(&json, 44_100.0, 1).unwrap();
-        a.note_on(48, 1.0);
-        b.note_on(48, 1.0);
-        let _ = a.process(2048);
-        let _ = b.process(2048);
-        assert!(a.set_param("node#cut", 1.0), "cutoff handle missing");
-        assert!(
-            !a.set_param("node#wave", 0.5),
-            "enum sites must not be live"
-        );
-        // Ramp converges to the mapped target.
-        for _ in 0..64 {
-            let _ = a.process(128);
-        }
-        let cut = a.voices[0]
-            .voice
-            .params
-            .get("node#cut")
-            .unwrap()
-            .value
-            .get();
-        assert!((cut - 1.0).abs() < 1e-3, "smoother never converged: {cut}");
-        let out_a = a.process(4096);
-        let out_b = b.process(4096);
-        let diff: f64 = out_a
-            .iter()
-            .zip(&out_b)
-            .map(|(x, y)| ((x - y) as f64).abs())
-            .sum();
-        assert!(diff > 1e-3, "cutoff change was inaudible (diff {diff})");
-        let energy: f64 = out_a.iter().map(|s| (*s as f64).powi(2)).sum();
-        assert!(energy > 1e-8, "voice died on param change");
-    }
-
-    /// Patch swap: output fades (no hard discontinuity), the swap completes
-    /// with an event, and held notes are re-pressed on the new patch.
-    #[test]
-    fn patch_swap_is_gapless_for_held_notes() {
-        let mut rng = StdRng::seed_from_u64(0x5A5A);
-        let mut poly = LivePoly::new(&tree_json(&mut rng), 44_100.0, 4).unwrap();
-        poly.note_on(57, 1.0);
-        for _ in 0..20 {
-            let _ = poly.process(128);
-        }
-        assert!(poly.set_patch(&tree_json(&mut rng)));
-        assert!(!poly.set_patch("not json"));
-
-        // Drive through the whole transition, collecting the peak of every
-        // quantum. Click-freeness = the quanta bordering the silent rebuild
-        // gap are faded to (near) zero — the waveform never truncates hard.
-        let mut quanta: Vec<(f32, f32, f32)> = Vec::new(); // (peak, first, last)
-        let mut patched = false;
-        for _ in 0..200 {
-            let out = poly.process(128);
-            assert!(out.iter().all(|s| s.is_finite()));
-            let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
-            quanta.push((peak, out[0].abs(), out[out.len() - 2].abs()));
-            if poly.poll_event() == EVENT_PATCHED {
-                patched = true;
-            }
-        }
-        assert!(patched, "swap never completed");
-        let silent: Vec<usize> = (0..quanta.len()).filter(|&i| quanta[i].0 == 0.0).collect();
-        assert!(!silent.is_empty(), "no silent rebuild gap observed");
-        let (first, last) = (silent[0], *silent.last().unwrap());
-        if first > 0 {
-            // The final sample before the gap must have been faded to ~0.
-            assert!(
-                quanta[first - 1].2 < 0.02,
-                "hard cut into silence: boundary sample {}",
-                quanta[first - 1].2
-            );
-        }
-        if last + 1 < quanta.len() {
-            // The first sample after the gap starts from ~0 (fade-in).
-            assert!(
-                quanta[last + 1].1 < 0.02,
-                "hard jump out of silence: boundary sample {}",
-                quanta[last + 1].1
-            );
-        }
-        // The held note survived onto the new patch.
-        assert!(
-            poly.voices.iter().any(|v| v.note == Some(57)),
-            "held note lost across patch swap"
-        );
-    }
-
-    /// A pad with a long release, so a trill's let-go notes are still ringing
-    /// when the next note is pressed.
-    fn long_tail_json() -> String {
-        let mut tree: auracle_grammar::PatchTree = serde_json::from_str(&pad_json()).unwrap();
-        tree.amp.release = 0.85;
-        serde_json::to_string(&tree).unwrap()
-    }
-
-    /// Notes held under a trill stay held. Two keys down, and a fast trill on
-    /// two others: each trill note is let go with its release still ringing
-    /// when the next is pressed, so every voice is busy and each press has to
-    /// steal. It must steal a ringing tail, never a held note. By press age
-    /// alone it took the held notes first, and they dropped out under the
-    /// player's hands while the trill played on.
-    #[test]
-    fn held_notes_survive_a_trill_over_them() {
-        let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
-        poly.note_on(48, 1.0);
-        poly.note_on(52, 1.0);
-        poly.process(512);
-        let mut steals = 0;
-        for i in 0..48 {
-            let n = if i % 2 == 0 { 67 } else { 71 };
-            if poly.voices.iter().all(|v| v.running) {
-                steals += 1;
-            }
-            poly.note_on(n, 0.8);
-            poly.process(256);
-            poly.note_off(n);
-            poly.process(256);
-            let held: Vec<u8> = poly.voices.iter().filter_map(|v| v.note).collect();
-            assert!(
-                held.contains(&48) && held.contains(&52),
-                "press {i}: the trill stole a held note (held now {held:?})"
-            );
-        }
-        assert!(
-            steals > 0,
-            "the trill never filled the voices, so nothing was tested"
-        );
-    }
-
-    /// When every voice is under a finger, a new note still sounds: the oldest
-    /// held note gives way to it.
-    #[test]
-    fn a_note_past_the_polyphony_takes_the_oldest_held() {
-        let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
-        for n in [48, 52, 55, 59] {
-            poly.note_on(n, 1.0);
-            poly.process(64);
-        }
-        poly.note_on(62, 1.0);
-        let held: Vec<u8> = poly.voices.iter().filter_map(|v| v.note).collect();
-        assert!(held.contains(&62), "the new note did not sound: {held:?}");
-        assert!(
-            !held.contains(&48),
-            "a newer held note was stolen instead of the oldest: {held:?}"
-        );
-    }
-
-    /// A pad: slow attack (≈100 ms), full sustain, so the envelope's position
-    /// is legible in the output level and a restart is unmissable.
-    fn pad_json() -> String {
-        use auracle_grammar::term::{AmpEnv, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-        serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.5,
-                decay: 0.3,
-                sustain: 1.0,
-                release: 0.4,
-            },
-            root: AudioNode::Vco {
-                uid: Uid::NEW,
-                wave: Waveform::Saw,
-                octave: 0,
-                detune: 0.5,
-                mod_depth: 0.0,
-                modulation: ModNode::None,
-            },
-        })
-        .unwrap()
-    }
-
-    /// A tempo change changes speed, not position. Two minutes in at 120
-    /// BPM, a nudge to 121 used to throw every synced sequencer four 16ths
-    /// forward (position was elapsed samples × the current rate); integrated
-    /// beats move on by exactly one block's worth.
-    #[test]
-    fn a_tempo_change_does_not_jump_the_sequencers() {
-        let (_, tree) = auracle_grammar::presets()
-            .into_iter()
-            .find(|(n, _)| *n == "Loom")
-            .expect("Loom exists");
-        let json = serde_json::to_string(&tree).unwrap();
-        let mut p = LivePoly::new(&json, 48_000.0, 2).expect("compiles");
-        p.set_arp(false, 0, 4.0, 120.0, 0.5, 1, 0.0);
-        p.set_sync(true);
-        p.note_on(60, 0.8);
-        let slot = p.sync_lanes[0].sync_slot;
-        let pos = |p: &LivePoly| p.param_slots[slot].values[0].get();
-        for _ in 0..(120 * 48_000 / 128) {
-            p.process(128);
-        }
-        // Each nudge is one block of travel at most, and never backwards —
-        // including 140, where the snapped division itself changes.
-        for bpm in [121.0, 126.0, 140.0] {
-            let before = pos(&p);
-            p.set_arp(false, 0, 4.0, bpm, 0.5, 1, 0.0);
-            p.process(128);
-            let after = pos(&p);
-            assert!(
-                (0.0..0.2).contains(&(after - before)),
-                "{bpm} BPM moved the sequencer {before:.2} -> {after:.2}"
-            );
-        }
-    }
-
-    /// The arp keeps time: over a minute at 120 BPM in 16ths it fires 480
-    /// steps, not the ~470 it did when each step dropped its overshoot past
-    /// the block boundary.
-    #[test]
-    fn the_arp_does_not_drift() {
-        let json = serde_json::to_string(&auracle_grammar::presets()[0].1).unwrap();
-        let mut p = LivePoly::new(&json, 44_100.0, 2).expect("compiles");
-        p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
-        p.note_on(60, 0.8);
-        let blocks = 60 * 44_100 / 128;
-        for _ in 0..blocks {
-            p.process(128);
-        }
-        let steps = p.arp_step as i64;
-        assert!(
-            (steps - 480).abs() <= 1,
-            "arp fired {steps} steps in 60 s, want 480"
-        );
-    }
-
-    /// Tempo sync snaps a sequencer to the musical division nearest its own
-    /// rate: 3.7 steps/s at 120 BPM (2 beats/s) is 16ths, 4 steps/s.
-    #[test]
-    fn sync_snaps_to_the_nearest_division() {
-        use auracle_grammar::steps::{rate_hz, rate_site};
-        let x = snap_rate(rate_site(3.7), 120.0);
-        assert!((rate_hz(x) - 4.0).abs() < 1e-9, "{}", rate_hz(x));
-        // A slow patch goes to a slow division, not the nearest fast one.
-        let x = snap_rate(rate_site(0.9), 120.0);
-        assert!((rate_hz(x) - 1.0).abs() < 1e-9, "{}", rate_hz(x));
-        // Tempo changes move the division with it: at 90 BPM, 3.7 steps/s
-        // is nearer triplet 8ths (4.5) than straight 8ths (3), in octaves.
-        let x = snap_rate(rate_site(3.7), 90.0);
-        assert!((rate_hz(x) - 4.5).abs() < 1e-9, "{}", rate_hz(x));
-    }
-
-    /// With sync on, every voice's sequencer reads one transport, the first
-    /// key down restarts it, a gesture on the rate knob stays on the grid,
-    /// and sync off returns every sequencer to free-running at its own rate.
-    #[test]
-    fn sync_drives_every_voice_from_one_transport() {
-        use auracle_grammar::steps::{rate_hz, SYNC_FREE};
-        let (_, tree) = auracle_grammar::presets()
-            .into_iter()
-            .find(|(n, _)| *n == "Loom")
-            .expect("Loom exists");
-        let json = serde_json::to_string(&tree).unwrap();
-        let mut p = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
-        assert_eq!(p.sync_lanes.len(), 1, "Loom has one sequencer");
-        let lane = (p.sync_lanes[0].sync_slot, p.sync_lanes[0].rate_slot);
-        let free = p.sync_lanes[0].free;
-        p.set_arp(false, 0, 2.0, 120.0, 0.5, 1, 0.0);
-        p.set_sync(true);
-        p.process(128);
-        p.note_on(60, 0.8);
-        p.process(128);
-        let at = |p: &LivePoly| -> Vec<f64> {
-            p.param_slots[lane.0]
-                .values
-                .iter()
-                .map(|v| v.get())
-                .collect()
-        };
-        let first = at(&p);
-        assert!(
-            first.iter().all(|v| *v == first[0]),
-            "voices disagree: {first:?}"
-        );
-        assert_eq!(first[0], 0.0, "the first key down restarts the transport");
-        for _ in 0..100 {
-            p.process(128);
-        }
-        let later = at(&p);
-        let hz = rate_hz(snap_rate(free, 120.0));
-        let want = 100.0 * 128.0 * hz / 44_100.0;
-        assert!(
-            later.iter().all(|v| (v - want).abs() < 1e-9),
-            "{later:?} vs {want}"
-        );
-        // A drag of the rate knob moves the division, not off the grid.
-        let rate_addr = p.param_slots[lane.1].addr.clone();
-        assert!(p.set_param(&rate_addr, 0.93));
-        let r = rate_hz(p.param_slots[lane.1].values[0].get());
-        let beat = 2.0;
-        assert!(
-            SYNC_DIVISIONS.iter().any(|d| (r - beat * d).abs() < 1e-9),
-            "{r} is off the grid"
-        );
-        p.set_sync(false);
-        assert!(
-            at(&p).iter().all(|v| *v == SYNC_FREE),
-            "sync off must free-run"
-        );
-        assert!(
-            (p.param_slots[lane.1].values[0].get() - 0.93).abs() < 1e-12,
-            "free rate restored"
-        );
-    }
-
-    /// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
-    /// at different velocities leave their own voices' wired knob at
-    /// different values, in the direction asked, and a mezzo note leaves it
-    /// exactly where the knob is.
-    #[test]
-    fn velocity_touch_offsets_its_own_voice_only() {
-        use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-        let json = serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.01,
-                decay: 0.3,
-                sustain: 0.8,
-                release: 0.3,
-            },
-            root: AudioNode::Filter {
-                uid: Uid::NEW,
-                kind: FilterKind::Ladder,
-                cutoff: 0.5,
-                resonance: 0.3,
-                mod_depth: 0.0,
-                input: Box::new(AudioNode::Vco {
-                    uid: Uid::NEW,
-                    wave: Waveform::Saw,
-                    octave: 0,
-                    detune: 0.5,
-                    mod_depth: 0.0,
-                    modulation: ModNode::None,
-                }),
-                modulation: ModNode::None,
-            },
-        })
-        .unwrap();
-        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
-        let cut = |poly: &LivePoly, note: u8| {
-            let v = poly
-                .voices
-                .iter()
-                .find(|v| v.note == Some(note))
-                .expect("voice");
-            v.voice.params.get("node#cut").unwrap().value.get()
-        };
-        poly.note_on(60, 1.0);
-        poly.note_on(64, 0.2);
-        poly.note_on(67, TOUCH_MEZZO);
-        let (loud, soft, mezzo) = (cut(&poly, 60), cut(&poly, 64), cut(&poly, 67));
-        assert!(
-            loud > mezzo && mezzo > soft,
-            "loud {loud} mezzo {mezzo} soft {soft}"
-        );
-        let home = poly.voices[0]
-            .voice
-            .params
-            .get("node#cut")
-            .unwrap()
-            .map
-            .apply(0.5);
-        // Relative: velocity crosses an f32 on the way in (0.6 is not exact
-        // there), and the cutoff map is exponential, so the leftover is a few
-        // parts per million of the value rather than zero.
-        assert!(
-            (mezzo - home).abs() < 1e-5 * home.abs(),
-            "mezzo moved the knob"
-        );
-        // Off is off: no offsets on the next note.
-        assert!(poly.set_touch("[]", 1.0));
-        poly.note_on(72, 1.0);
-        assert!((cut(&poly, 72) - home).abs() < 1e-9);
-        // Bad input turns touch off rather than half-applying it.
-        assert!(!poly.set_touch("not json", 1.0));
-        assert!(poly.touch.is_empty());
-    }
-
-    /// **The envelope carry.** Swapping the patch under a held pad used to
-    /// re-press every held note on the new voices, which restarts their ADSRs
-    /// from zero — so every structural edit made the pad swell in again from
-    /// nothing, and the edit was audible as an event of its own rather than as
-    /// a change to the sound.
-    ///
-    /// The patch swapped in here is the *same* tree, so the only thing that can
-    /// move the level is the envelope. 23 ms of silence across the rebuild is
-    /// expected and accepted (R3); coming back at a fraction of the level is
-    /// not.
-    #[test]
-    fn a_held_pad_keeps_its_envelope_across_a_patch_swap() {
-        let json = pad_json();
-        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        poly.note_on(60, 1.0);
-        // ~1.2 s: past a 100 ms attack and its decay, sitting on sustain. The
-        // level is measured over 16 quanta, not one — a saw at 262 Hz does not
-        // fit a whole number of periods into 128 frames, so a single quantum's
-        // energy swings ±40% for reasons that have nothing to do with an
-        // envelope.
-        let mut warm: Vec<f64> = Vec::new();
-        for _ in 0..400 {
-            warm.push(energy(&poly.process(128)));
-        }
-        let mean = |w: &[f64]| w.iter().sum::<f64>() / w.len() as f64;
-        let before = mean(&warm[384..]);
-        assert!(before > 1.0e-4, "the pad never spoke: {before}");
-
-        assert!(poly.set_patch(&json));
-        let mut after: Vec<f64> = Vec::new();
-        let mut patched_at = None;
-        for i in 0..200 {
-            let e = energy(&poly.process(128));
-            after.push(e);
-            if poly.poll_event() == EVENT_PATCHED && patched_at.is_none() {
-                patched_at = Some(i);
-            }
-        }
-        let at: usize = patched_at.expect("swap never completed");
-        // Four quanta past the swap the ~6 ms fade-in is over. Without the
-        // carry the envelope is ~12 ms into a 100 ms exponential attack —
-        // about a tenth of the level it left with, climbing.
-        let resumed = mean(&after[at + 4..at + 20]);
-        assert!(
-            resumed > before * 0.85,
-            "the pad re-attacked: {resumed:.3e} against {before:.3e} before the \
-             swap ({:.1}% of it)",
-            100.0 * resumed / before
-        );
-        // …and it does not overshoot either, which is what parking a
-        // mid-envelope note on the sustain shelf would look like from here.
-        assert!(
-            mean(&after[at + 4..at + 20]) < before * 1.15,
-            "the level jumped after the swap: {resumed:.3e} against {before:.3e}"
-        );
-    }
-
-    /// Below sustain the envelope is unambiguously still in Attack, and the
-    /// seeder has to leave it there rather than parking it on the sustain
-    /// shelf: a note swapped 30 ms into a 1 s attack must keep rising.
-    #[test]
-    fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
-        use auracle_grammar::term::{AmpEnv, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-        let json = serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.75, // ≈1 s
-                decay: 0.3,
-                sustain: 1.0,
-                release: 0.4,
-            },
-            root: AudioNode::Vco {
-                uid: Uid::NEW,
-                wave: Waveform::Saw,
-                octave: 0,
-                detune: 0.5,
-                mod_depth: 0.0,
-                modulation: ModNode::None,
-            },
-        })
-        .unwrap();
-        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        poly.note_on(60, 1.0);
-        let mut before = 0.0;
-        for _ in 0..20 {
-            before = energy(&poly.process(128));
-        }
-        let phase_before = poly.voices[0].voice.env_phase();
-        assert!(
-            phase_before > 0.01 && phase_before < 0.3,
-            "the probe note is not mid-attack: {phase_before}"
-        );
-
-        assert!(poly.set_patch(&json));
-        let mut patched = false;
-        for _ in 0..60 {
-            let _ = poly.process(128);
-            patched |= poly.poll_event() == EVENT_PATCHED;
-        }
-        assert!(patched, "swap never completed");
-        let phase_after = poly.voices[0].voice.env_phase();
-        assert!(
-            phase_after > phase_before * 0.8 && phase_after < 0.5,
-            "a mid-attack note came back at {phase_after} from {phase_before} — \
-             either restarted or parked on the sustain shelf"
-        );
-        // It is still climbing, which is the half a level check cannot see.
-        for _ in 0..60 {
-            let _ = poly.process(128);
-        }
-        assert!(
-            poly.voices[0].voice.env_phase() > phase_after * 1.2,
-            "the envelope stopped rising after the swap"
-        );
-        let _ = before;
-    }
-
-    /// The two categorical sites that went live are reachable through the live
-    /// path at their *own* domain — an index, not a 0..1 knob — and neither
-    /// forces a recompile.
-    #[test]
-    fn table_and_oct_are_live_at_index_scale() {
-        use auracle_grammar::term::{AmpEnv, TableShape, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-        let tree = |root| PatchTree {
-            amp: AmpEnv {
-                attack: 0.1,
-                decay: 0.3,
-                sustain: 1.0,
-                release: 0.3,
-            },
-            root,
-        };
-        let wt = serde_json::to_string(&tree(AudioNode::Wavetable {
-            uid: Uid::NEW,
-            table: TableShape::Sine,
-            octave: 0,
-            morph: 0.0,
-            mod_depth: 0.0,
-            modulation: ModNode::None,
-        }))
-        .unwrap();
-        let mut poly = LivePoly::new(&wt, 44_100.0, 1).unwrap();
-        poly.note_on(60, 1.0);
-        for _ in 0..40 {
-            let _ = poly.process(128);
-        }
-        // Table 7 is the last of eight; the old blanket clamp to 0..1 would
-        // have written table 1.
-        assert!(poly.set_param("node#table", 7.0), "`table` has no handle");
-        for _ in 0..40 {
-            let _ = poly.process(128);
-        }
-        let cv = poly.voices[0].voice.params["node#table"].value.get();
-        assert!(
-            (cv - 1.0).abs() < 1.0e-3,
-            "table 7 should land on cv 1.0, not {cv}"
-        );
-
-        let vco = serde_json::to_string(&tree(AudioNode::Vco {
-            uid: Uid::NEW,
-            wave: Waveform::Saw,
-            octave: 0,
-            detune: 0.5,
-            mod_depth: 0.0,
-            modulation: ModNode::None,
-        }))
-        .unwrap();
-        let mut poly = LivePoly::new(&vco, 44_100.0, 1).unwrap();
-        poly.note_on(60, 1.0);
-        for _ in 0..40 {
-            let _ = poly.process(128);
-        }
-        // Index 4 is +2 octaves; the compiled octave is 0, so the trim is +2.
-        assert!(poly.set_param("node#oct", 4.0), "`oct` has no handle");
-        for _ in 0..60 {
-            let _ = poly.process(128);
-        }
-        let cv = poly.voices[0].voice.params["node#oct"].value.get();
-        assert!(
-            (cv - 2.0).abs() < 1.0e-3,
-            "oct +2 should land on a 2 V trim, not {cv}"
-        );
-        // No recompile was queued: the swap machinery never woke up.
-        assert!(
-            matches!(poly.stage, Stage::Run),
-            "a live index write started a patch swap"
-        );
-    }
-
-    /// The arpeggiator steps through a held chord on its own clock, and
-    /// velocity scales output level.
-    #[test]
-    fn arp_steps_and_velocity_scales() {
-        let (_, tree) = auracle_grammar::presets()
-            .into_iter()
-            .find(|(n, _)| *n == "First Bass")
-            .expect("preset exists");
-        let json = serde_json::to_string(&tree).unwrap();
-
-        // Velocity: same note, soft vs hard, soft must be quieter.
-        let energy_at = |vel: f64| {
-            let mut p = LivePoly::new(&json, 44_100.0, 1).unwrap();
-            p.note_on(60, vel);
-            (0..20)
-                .flat_map(|_| p.process(512))
-                .map(|s| (s as f64) * (s as f64))
-                .sum::<f64>()
-        };
-        let (soft, hard) = (energy_at(0.15), energy_at(1.0));
-        assert!(
-            soft < hard * 0.5,
-            "velocity had no effect: soft {soft}, hard {hard}"
-        );
-
-        // Arp: hold a triad with the arp on; distinct pitches must be
-        // pressed over time, and turning it off restores the chord.
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_arp(true, 0, 4.0, 240.0, 0.5, 1, 0.0); // 16ths at 240 BPM ≈ 16 steps/s
-        p.note_on(48, 1.0);
-        p.note_on(52, 1.0);
-        p.note_on(55, 1.0);
-        let mut seen = std::collections::HashSet::new();
-        for _ in 0..400 {
-            let out = p.process(128);
-            assert!(out.iter().all(|s| s.is_finite()));
-            for v in &p.voices {
-                if let Some(n) = v.note {
-                    seen.insert(n);
-                }
-            }
-        }
-        assert!(
-            seen.len() >= 3,
-            "arp never cycled the chord: pressed {seen:?}"
-        );
-        // At any instant the arp holds at most one gated note.
-        let gated = p.voices.iter().filter(|v| v.note.is_some()).count();
-        assert!(gated <= 1, "arp gated {gated} notes at once");
-        p.set_arp(false, 0, 4.0, 240.0, 0.5, 1, 0.0);
-        let gated: Vec<_> = p.voices.iter().filter_map(|v| v.note).collect();
-        assert_eq!(gated.len(), 3, "chord not re-pressed after arp off");
-    }
-
-    /// The master bus holds a full chord inside full scale. Four voices sum to
-    /// ~4× one voice, and before the master limiter existed a four-note chord
-    /// sat exactly on the rail — hard-clipped, and clipped again by the device
-    /// conversion because the old ceiling was above 1.0.
-    #[test]
-    fn chord_never_exceeds_full_scale() {
-        let mut rng = StdRng::seed_from_u64(0xC401);
-        for i in 0..8 {
-            let json = tree_json(&mut rng);
-            let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
-            for n in [48, 55, 60, 64] {
-                poly.note_on(n, 1.0);
-            }
-            let mut hottest = 0.0f32;
-            for _ in 0..60 {
-                let out = poly.process(512);
-                assert!(out.iter().all(|s| s.is_finite()), "patch {i}: non-finite");
-                hottest = hottest.max(peak(&out));
-            }
-            assert!(
-                hottest <= 1.0,
-                "patch {i}: four-note chord peaked at {hottest}"
-            );
-            // And it is limited, not clipped: the brickwall lands on the
-            // ceiling, so nothing should be sitting above it.
-            assert!(
-                hottest <= MASTER_CEILING + 1e-6,
-                "patch {i}: output ran past the ceiling into the clamp ({hottest})"
-            );
-        }
-    }
-
-    /// A stolen voice retriggers its amp envelope. On a percussive patch the
-    /// voice is silent at sustain 0 by the time it is stolen, so the fifth note
-    /// on a four-voice instrument is *only* audible if the ADSR sees a real
-    /// falling-then-rising gate edge.
-    #[test]
-    fn stolen_voice_retriggers_its_envelope() {
-        let json = plucked_json();
-        let mut poly = LivePoly::new(&json, 44_100.0, 1).unwrap();
-        poly.note_on(60, 1.0);
-        // Run past the decay: the note has fallen to sustain 0 and is silent
-        // even though its gate is still high.
-        for _ in 0..40 {
-            let _ = poly.process(512);
-        }
-        let decayed = energy(&poly.process(4096));
-        // Steal the (still-held) voice with a new note.
-        poly.note_on(67, 1.0);
-        let after_steal = energy(&poly.process(4096));
-        assert!(
-            after_steal > decayed * 100.0 && after_steal > 1e-4,
-            "stolen voice did not retrigger: {decayed:.3e} decayed vs \
-             {after_steal:.3e} after the steal"
-        );
-    }
-
-    /// The arp's new controls each do their documented thing: a short gate
-    /// shortens the note without moving the step clock, an octave range reaches
-    /// pitches nobody is holding, and swing makes consecutive steps unequal.
-    #[test]
-    fn arp_gate_octaves_and_swing() {
-        let json = plucked_json();
-        // Octave range: hold one key, span three octaves, collect the pitches
-        // the scheduler actually presses.
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_arp(true, 0, 4.0, 240.0, 0.5, 3, 0.0);
-        p.note_on(48, 1.0);
-        let mut seen = std::collections::HashSet::new();
-        for _ in 0..400 {
-            let _ = p.process(128);
-            if let Some(n) = p.arp_note {
-                seen.insert(n);
-            }
-        }
-        assert_eq!(
-            seen,
-            [48u8, 60, 72].into_iter().collect(),
-            "octave range did not transpose the pattern: {seen:?}"
-        );
-
-        // Gate length: staccato must sound for a smaller share of the step than
-        // legato, with the step clock itself unchanged.
-        let sounding_frac = |gate: f64| {
-            let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-            p.set_arp(true, 0, 2.0, 120.0, gate, 1, 0.0);
-            p.note_on(48, 1.0);
-            p.note_on(52, 1.0);
-            let (mut on, mut total) = (0, 0);
-            for _ in 0..600 {
-                let _ = p.process(128);
-                total += 1;
-                if p.arp_note.is_some() {
-                    on += 1;
-                }
-            }
-            on as f64 / total as f64
-        };
-        let (staccato, legato) = (sounding_frac(0.1), sounding_frac(0.9));
-        assert!(
-            staccato < legato * 0.5,
-            "gate length had no effect: {staccato:.2} staccato vs {legato:.2} legato"
-        );
-
-        // Swing: measure the sample distance between consecutive note-ons.
-        let step_gaps = |swing: f64| {
-            let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-            p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, swing);
-            p.note_on(48, 1.0);
-            p.note_on(52, 1.0);
-            let mut starts: Vec<usize> = Vec::new();
-            let mut prev = None;
-            for q in 0..1200 {
-                let _ = p.process(128);
-                if p.arp_note.is_some() && prev.is_none() {
-                    starts.push(q * 128);
-                }
-                prev = p.arp_note;
-            }
-            starts.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()
-        };
-        let straight = step_gaps(0.0);
-        let swung = step_gaps(0.6);
-        let spread = |g: &[usize]| {
-            let (lo, hi) = (g.iter().min().copied(), g.iter().max().copied());
-            hi.unwrap_or(0) as i64 - lo.unwrap_or(0) as i64
-        };
-        assert!(straight.len() > 3 && swung.len() > 3, "arp never stepped");
-        assert!(
-            spread(&swung) > spread(&straight) + 2000,
-            "swing did not stagger the steps: straight {straight:?}, swung {swung:?}"
-        );
-    }
-
-    /// Unison detune reaches supersaw width (±60 cents at full travel) and
-    /// spreads the voices non-uniformly.
-    #[test]
-    fn unison_detune_is_wide_and_non_uniform() {
-        let json = plucked_json();
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_unison(true, 1.0, 0.5);
-        p.note_on(60, 1.0);
-        let mut cents: Vec<f64> = p.voices.iter().map(|v| v.pitch_tgt * 1200.0).collect();
-        cents.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        assert!(
-            (cents[0] + 60.0).abs() < 1.0 && (cents[3] - 60.0).abs() < 1.0,
-            "unison spread is not ±60 cents: {cents:?}"
-        );
-        // Non-uniform: the inner pair sits far closer to centre than an even
-        // split across four voices (±20 c) would put it.
-        assert!(
-            cents[1].abs() < 15.0,
-            "detune curve is still linear: {cents:?}"
-        );
-    }
-
-    /// Chaos: random notes, knob writes (real and junk addresses), and
-    /// patch swaps — output must stay finite forever, no panics.
-    #[test]
-    fn live_stress_survives_chaos() {
-        let mut rng = StdRng::seed_from_u64(0xC405);
-        let mut poly = LivePoly::new(&tree_json(&mut rng), 44_100.0, 4).unwrap();
-        let sites = [
-            "node#cut",
-            "node#res",
-            "node#fb",
-            "node#time",
-            "amp#attack",
-            "amp#sustain",
-            "node/0#cut",
-            "node/0/1#bal",
-            "bogus#x",
-            "",
-        ];
-        for i in 0..600 {
-            match rng.gen_range(0..10) {
-                0 | 1 => poly.note_on(rng.gen_range(36..85), rng.gen_range(0.0..1.2)),
-                6 => poly.set_bend(rng.gen_range(-30.0..30.0)),
-                7 if i % 11 == 0 => poly.set_arp(
-                    rng.gen_bool(0.5),
-                    rng.gen_range(0..5),
-                    rng.gen_range(0.25..9.0),
-                    rng.gen_range(20.0..400.0),
-                    rng.gen_range(-0.5..1.5),
-                    rng.gen_range(0..7),
-                    rng.gen_range(-0.5..1.5),
-                ),
-                8 if i % 13 == 0 => {
-                    poly.set_unison(rng.gen_bool(0.5), rng.gen(), rng.gen());
-                    poly.set_glide(rng.gen_range(-0.5..1.5));
-                    poly.set_makeup(rng.gen_range(0.0..10.0));
-                }
-                2 => poly.note_off(rng.gen_range(36..85)),
-                3 => {
-                    let _ = poly.set_param(
-                        sites[rng.gen_range(0..sites.len())],
-                        rng.gen_range(-1.0..2.0),
-                    );
-                }
-                4 if i % 37 == 0 => {
-                    let _ = poly.set_patch(&tree_json(&mut rng));
-                }
-                5 if i % 97 == 0 => poly.all_off(),
-                _ => {}
-            }
-            let out = poly.process(128);
-            assert!(
-                out.iter().all(|s| s.is_finite() && s.abs() <= 1.5),
-                "iteration {i}: bad sample"
-            );
-            let _ = poly.poll_event();
-        }
-    }
-
-    /// Glide has to be audible on the thing portamento is *for*: a melody.
-    /// Voice assignment prefers a free voice, so a line rotates through voices
-    /// that were never sounding — with per-voice-only portamento every note of
-    /// a tune started dead on pitch and the fader did nothing you could hear.
-    #[test]
-    fn glide_slides_a_line_but_not_a_chord() {
-        let json = plucked_json();
-
-        // A line: press, release, press. The second note starts an octave
-        // below its target and slides up.
-        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_glide(0.5);
-        p.note_on(60, 1.0);
-        let _ = p.process(256);
-        p.note_off(60);
-        let _ = p.process(256);
-        p.note_on(72, 1.0);
-        let v = p.voices.iter().find(|v| v.note == Some(72)).unwrap();
-        assert!(
-            (v.pitch_tgt - 1.0).abs() < 1.0e-9,
-            "second note should target C6: {}",
-            v.pitch_tgt
-        );
-        assert!(
-            v.pitch_cur < 0.1,
-            "second note of a line must start back at the first note, not on \
-             pitch (pitch_cur={})",
-            v.pitch_cur
-        );
-
-        // ...and it actually arrives.
-        let _ = p.process(44_100 * 4);
-        let v = p.voices.iter().find(|v| v.note == Some(72)).unwrap();
-        assert!(
-            (v.pitch_cur - 1.0).abs() < 1.0e-3,
-            "glide never reached its target: {}",
-            v.pitch_cur
-        );
-
-        // A chord: the second note is pressed while the first is still held,
-        // so it speaks on pitch. Portamento must not scramble a chord.
-        let mut q = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        q.set_glide(0.5);
-        q.note_on(60, 1.0);
-        let _ = q.process(64);
-        q.note_on(64, 1.0);
-        let v = q.voices.iter().find(|v| v.note == Some(64)).unwrap();
-        assert!(
-            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
-            "a chord tone must start on pitch: cur={} tgt={}",
-            v.pitch_cur,
-            v.pitch_tgt
-        );
-
-        // The very first note of the session has nothing to glide from.
-        let mut r = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        r.set_glide(1.0);
-        r.note_on(48, 1.0);
-        let v = r.voices.iter().find(|v| v.note == Some(48)).unwrap();
-        assert!(
-            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
-            "the first note ever played swooped in from C4: {}",
-            v.pitch_cur
-        );
-
-        // Glide off: nothing slides, however the line is played.
-        let mut o = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        o.note_on(60, 1.0);
-        let _ = o.process(256);
-        o.note_off(60);
-        let _ = o.process(256);
-        o.note_on(72, 1.0);
-        let v = o.voices.iter().find(|v| v.note == Some(72)).unwrap();
-        assert!(
-            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
-            "glide is off; this must start on pitch: {}",
-            v.pitch_cur
-        );
-    }
-
-    /// The meter reads a real level off a real interior port, and reads the
-    /// mixer's two branches *apart* when the balance is hard over.
-    ///
-    /// The second half is what makes this a measurement rather than a smoke
-    /// test. A crossfader at balance 0 passes branch `a` and mutes branch `b`
-    /// downstream — but both sources are still oscillating, so a meter reading
-    /// each module's own output must show both alive. What must differ is the
-    /// *mix* against its quiet branch. Estimating levels from the term (what
-    /// the rack did before this) gets that right by construction; the point
-    /// here is that measuring gets it right too, from the audio.
-    #[test]
-    fn meter_reads_levels_off_interior_ports() {
-        use auracle_grammar::term::{AmpEnv, Waveform};
-        use auracle_grammar::{AudioNode, ModNode, PatchTree};
-
-        let json = serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.1,
-                decay: 0.3,
-                sustain: 1.0,
-                release: 0.3,
-            },
-            root: AudioNode::Mix {
-                uid: Uid::NEW,
-                balance: 0.0, // hard over to `a`
-                a: Box::new(AudioNode::Vco {
-                    uid: Uid::NEW,
-                    wave: Waveform::Saw,
-                    octave: 0,
-                    detune: 0.5,
-                    mod_depth: 0.0,
-                    modulation: ModNode::None,
-                }),
-                b: Box::new(AudioNode::Vco {
-                    uid: Uid::NEW,
-                    wave: Waveform::Saw,
-                    octave: 0,
-                    detune: 0.5,
-                    mod_depth: 0.0,
-                    modulation: ModNode::None,
-                }),
-            },
-        })
-        .unwrap();
-
-        let mut poly = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
-        assert_eq!(poly.meter_len(), 0, "metering must be off until asked for");
-
-        let n = poly.set_meter(true);
-        assert_eq!(n, 3, "one tap per term node: the mix and its two sources");
-        let keys: Vec<String> = serde_json::from_str(&poly.meter_keys()).unwrap();
-        assert_eq!(keys, vec!["node", "node/0", "node/1"]);
-
-        poly.note_on(60, 1.0);
-        // Long enough for the 128-sample level buffers to fill several times.
-        for _ in 0..16 {
-            let _ = poly.process(512);
-        }
-
-        let db = poly.meter.levels.clone();
-        assert!(db.iter().all(|d| d.is_finite()), "levels went non-finite");
-        for (k, d) in keys.iter().zip(&db) {
-            assert!(*d > -120.0, "tap `{k}` never read a level ({d} dB)");
-        }
-
-        // Both oscillators are running, whatever the crossfader does with them.
-        let a = db[keys.iter().position(|k| k == "node/0").unwrap()];
-        let b = db[keys.iter().position(|k| k == "node/1").unwrap()];
-        assert!(a > -60.0 && b > -60.0, "a source read silent: {a}, {b} dB");
-
-        // Off again clears the subscriptions and the buffer with them.
-        assert_eq!(poly.set_meter(false), 0);
-        assert_eq!(poly.meter_len(), 0);
-    }
-
-    /// `plucked_json`'s saw → lowpass at full sustain: a held note settles at
-    /// one level and stays there.
-    fn sustained_json() -> String {
-        let mut tree: PatchTree = serde_json::from_str(&plucked_json()).unwrap();
-        tree.amp.sustain = 0.999;
-        serde_json::to_string(&tree).unwrap()
-    }
-
-    /// Hold C4 on a fresh four-voice instrument for `secs`; the mono mix.
-    fn held(json: &str, makeup: f64, leveler: bool, secs: f64) -> Vec<f64> {
-        quiver::rng::seed(7);
-        let mut poly = LivePoly::new(json, 44_100.0, 4).expect("compiles");
-        poly.set_leveler(leveler);
-        poly.set_makeup(makeup);
-        poly.note_on(60, 1.0);
-        let quanta = (secs * 44_100.0 / 128.0) as usize;
-        (0..quanta)
-            .flat_map(|_| poly.process(128))
-            .collect::<Vec<f32>>()
-            .chunks_exact(2)
-            .map(|f| (f64::from(f[0]) + f64::from(f[1])) * 0.5)
-            .collect()
-    }
-
-    /// **The swell, held down.** A note whose makeup carries it far past the
-    /// target — what a makeup fitted on the phrase does to a patch that keeps
-    /// rising after the phrase's 1.8 s note ends — settles at the leveler's
-    /// ceiling instead of at the brickwall.
-    #[test]
-    fn a_held_note_past_the_ceiling_settles_at_it() {
-        use auracle_features::{integrated_lufs, TARGET_LUFS};
-        let json = sustained_json();
-        let settled = |leveler: bool| {
-            let mono = held(&json, 10f64.powf(30.0 / 20.0), leveler, 6.0);
-            integrated_lufs(&mono[mono.len() - 88_200..], 44_100.0).expect("not silent")
-        };
-        let ceiling = TARGET_LUFS + LEVELER_OVER_TARGET_LU;
-        let (on, off) = (settled(true), settled(false));
-        assert!(
-            off > ceiling + 4.0,
-            "the fixture never gets past the ceiling ({off:.1} LUFS), so it tests nothing"
-        );
-        assert!(
-            (on - ceiling).abs() < 1.0,
-            "held at {on:.1} LUFS, ceiling {ceiling} (unlevelled: {off:.1})"
-        );
-    }
-
-    /// Below its ceiling the leveler is not there at all: the same note with it
-    /// on and off is the same samples.
-    #[test]
-    fn a_note_under_the_leveler_ceiling_is_untouched() {
-        let json = sustained_json();
-        let (on, off) = (held(&json, 0.1, true, 2.0), held(&json, 0.1, false, 2.0));
-        assert!(on.iter().any(|s| s.abs() > 1e-3), "the note is silent");
-        assert_eq!(on, off);
-    }
-
-    /// The leveler's K-weighting is a copy of `auracle_features::loudness`'s,
-    /// and has to stay one: its ceiling is a loudness the audition target is
-    /// stated in. A steady three-tone signal reads the same through both.
-    #[test]
-    fn the_leveler_reads_the_loudness_the_audition_was_normalized_in() {
-        use auracle_features::integrated_lufs;
-        let sr = 48_000.0;
-        let x: Vec<f64> = (0..(3.0 * sr) as usize)
-            .map(|i| {
-                let t = std::f64::consts::TAU * i as f64 / sr;
-                0.3 * (60.0 * t).sin() + 0.2 * (1_000.0 * t).sin() + 0.1 * (6_000.0 * t).sin()
-            })
-            .collect();
-        let mut lv = Leveler::new(sr);
-        for s in &x {
-            lv.tick(*s as f32, *s as f32);
-        }
-        let ours = -0.691 + 10.0 * lv.energy.log10();
-        let theirs = integrated_lufs(&x, sr).expect("not silent");
-        assert!(
-            (ours - theirs).abs() < 0.05,
-            "leveler reads {ours:.3} LUFS, the featurizer {theirs:.3}"
-        );
-    }
-
-    /// A patch that is its input through the voice stage.
-    fn input_patch() -> String {
-        use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel};
-        serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: auracle_grammar::PARAM_MAX,
-                release: 0.0,
-            },
-            root: AudioNode::AudioIn {
-                uid: Uid::NEW,
-                input: 0,
-                gain: auracle_grammar::INPUT_GAIN_UNITY,
-                channel: InputChannel::Left,
-            },
-        })
-        .unwrap()
-    }
-
-    /// Write one quantum of input (a tone on the left, the right silent) and
-    /// render it.
-    fn quantum_with_input(poly: &mut LivePoly, t0: usize, write: bool) -> f32 {
-        const Q: usize = 128;
-        if write {
-            let at = poly.input_ptr();
-            // The worklet's side of the contract: write wasm memory directly.
-            let buf = unsafe { std::slice::from_raw_parts_mut(at, Q * 2) };
-            for f in 0..Q {
-                let x = ((t0 + f) as f32 * 330.0 / 44_100.0 * std::f32::consts::TAU).sin();
-                buf[f * 2] = 0.5 * x;
-                buf[f * 2 + 1] = 0.0;
-            }
-            poly.write_input(Q, 2);
-        }
-        let out = poly.process(Q);
-        out.iter().fold(0.0f32, |m, s| m.max(s.abs()))
-    }
-
-    /// **The live voice hears its input.** An AUDIO IN patch played from the
-    /// keys plays the quantum written into it, every held voice reads the same
-    /// block (the cursor stream fans one capture out), and a quantum with no
-    /// write is silent: quiver never repeats a block, so a stalled capture
-    /// falls silent rather than looping.
-    #[test]
-    fn the_live_voice_hears_its_input() {
-        let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
-        assert!(poly.input_capacity() >= 128);
-        poly.set_leveler(false);
-        poly.note_on(60, 1.0);
-        let mut heard = 0.0f32;
-        for q in 0..40 {
-            heard = heard.max(quantum_with_input(&mut poly, q * 128, true));
-        }
-        assert!(heard > 0.05, "the input is heard ({heard})");
-        // The input's DC blocker rings down for a few quanta after the last
-        // write; past that, a replayed block would still be at full level.
-        for q in 40..48 {
-            quantum_with_input(&mut poly, q * 128, false);
-        }
-        let mut quiet = 0.0f32;
-        for q in 48..56 {
-            quiet = quiet.max(quantum_with_input(&mut poly, q * 128, false));
-        }
-        assert!(
-            quiet < heard / 100.0,
-            "a quantum with no input written replayed one ({quiet} against {heard})"
-        );
-
-        // Two held voices read the same block: twice the one voice.
-        let mut one = LivePoly::new(&input_patch(), 44_100.0, 4).unwrap();
-        let mut two = LivePoly::new(&input_patch(), 44_100.0, 4).unwrap();
-        for p in [&mut one, &mut two] {
-            p.set_leveler(false);
-            p.note_on(60, 1.0);
-        }
-        two.note_on(67, 1.0);
-        let (mut a, mut b) = (0.0f32, 0.0f32);
-        for q in 0..40 {
-            a = a.max(quantum_with_input(&mut one, q * 128, true));
-            b = b.max(quantum_with_input(&mut two, q * 128, true));
-        }
-        assert!(
-            b > 1.5 * a,
-            "the second voice did not hear the block: one voice {a}, two voices {b}"
-        );
-    }
-
-    /// The loudest sample over `quanta` quanta of input, starting at quantum
-    /// `from`.
-    fn loudest_with_input(poly: &mut LivePoly, from: usize, quanta: usize) -> f32 {
-        (from..from + quanta).fold(0.0f32, |m, q| {
-            m.max(quantum_with_input(poly, q * 128, true))
-        })
-    }
-
-    /// **A patch that listens sounds with no key down while it is held open.**
-    /// Closed, the amp envelope keeps the input out however loud it is. Open,
-    /// the open voice plays it through the whole patch; no key, chord or
-    /// `all_off` takes it; a knob reaches it; a swap keeps it open; and
-    /// closing it lets it ring out and park.
-    #[test]
-    fn the_open_voice_plays_the_input_with_no_key() {
-        let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
-        poly.set_leveler(false);
-        let closed = loudest_with_input(&mut poly, 0, 20);
-        assert!(closed < 1.0e-6, "no key and not open, yet heard ({closed})");
-        assert!(!poly.open_sounding());
-
-        poly.set_open(true);
-        let open = loudest_with_input(&mut poly, 20, 40);
-        assert!(open > 0.05, "held open, the input is heard ({open})");
-        assert!(poly.open_sounding());
-
-        // Five keys on four voices, then everything released: the open voice
-        // is not one of the four, so it is still sounding, and still heard.
-        for n in [62, 64, 67, 71, 74] {
-            poly.note_on(n, 1.0);
-        }
-        loudest_with_input(&mut poly, 60, 10);
-        poly.all_off();
-        loudest_with_input(&mut poly, 70, 60);
-        assert!(
-            poly.open_sounding(),
-            "a key or all_off closed the open voice"
-        );
-        let after_keys = loudest_with_input(&mut poly, 130, 20);
-        assert!(
-            (after_keys - open).abs() < open * 0.05,
-            "the open voice alone after the keys: {after_keys} against {open}"
-        );
-
-        // A knob reaches it: the input's gain down to its floor (−24 dB).
-        assert!(poly.set_param("node#gain", 0.0));
-        loudest_with_input(&mut poly, 150, 40);
-        let turned = loudest_with_input(&mut poly, 190, 20);
-        assert!(
-            turned < open / 8.0,
-            "the gain knob did not reach the open voice: {turned} against {open}"
-        );
-        assert!(poly.set_param("node#gain", auracle_grammar::INPUT_GAIN_UNITY));
-        loudest_with_input(&mut poly, 210, 40);
-
-        // A swap to the same patch keeps it open and heard.
-        assert!(poly.set_patch(&input_patch()));
-        loudest_with_input(&mut poly, 250, 40);
-        let swapped = loudest_with_input(&mut poly, 290, 20);
-        assert!(
-            swapped > open * 0.9,
-            "the open voice did not survive a swap: {swapped} against {open}"
-        );
-
-        // Closed: it rings out and parks.
-        poly.set_open(false);
-        loudest_with_input(&mut poly, 310, 80);
-        assert!(!poly.open_sounding(), "a closed open voice never parked");
-        let shut = loudest_with_input(&mut poly, 390, 10);
-        assert!(shut < 1.0e-6, "closed, yet heard ({shut})");
-    }
-
-    /// **A patch that does not listen has no open voice.** Holding it open
-    /// plays nothing (no drone from a patch with no input), and a swap to a
-    /// patch that listens opens one, which a swap away lets go.
-    #[test]
-    fn only_a_patch_that_listens_is_held_open() {
-        let mut poly = LivePoly::new(&pad_json(), 44_100.0, 4).expect("compiles");
-        poly.set_leveler(false);
-        poly.set_open(true);
-        let drone = loudest_with_input(&mut poly, 0, 40);
-        assert!(
-            drone < 1.0e-6,
-            "a patch with no input droned when held open ({drone})"
-        );
-        assert!(!poly.open_sounding());
-
-        assert!(poly.set_patch(&input_patch()));
-        loudest_with_input(&mut poly, 40, 40);
-        let heard = loudest_with_input(&mut poly, 80, 20);
-        assert!(
-            heard > 0.05,
-            "a swap to a patch that listens did not open it ({heard})"
-        );
-
-        assert!(poly.set_patch(&pad_json()));
-        loudest_with_input(&mut poly, 100, 120);
-        assert!(
-            !poly.open_sounding(),
-            "a swap away left the open voice sounding"
-        );
-        let quiet = loudest_with_input(&mut poly, 220, 10);
-        assert!(quiet < 1.0e-6, "the pad droned after the swap ({quiet})");
-    }
-
-    /// A patch a TRACK plays: a sine VCO played by the pitch of input 1.
-    fn tracked_patch() -> String {
-        use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel, PitchBand, Waveform};
-        use auracle_grammar::ModNode;
-        serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: auracle_grammar::PARAM_MAX,
-                release: 0.05,
-            },
-            root: AudioNode::Track {
-                uid: Uid::NEW,
-                band: PitchBand::Mid,
-                sensitivity: auracle_grammar::TRACK_SENSITIVITY_DEFAULT,
-                dynamics: 0.0,
-                input: Box::new(AudioNode::Vco {
-                    uid: Uid::NEW,
-                    wave: Waveform::Sine,
-                    octave: 0,
-                    detune: 0.5,
-                    mod_depth: 0.0,
-                    modulation: ModNode::None,
-                }),
-                listen: Box::new(AudioNode::AudioIn {
-                    uid: Uid::NEW,
-                    input: 0,
-                    gain: auracle_grammar::INPUT_GAIN_UNITY,
-                    channel: InputChannel::Left,
-                }),
-            },
-        })
-        .unwrap()
-    }
-
-    /// **A tracked patch has one tracked voice, and the keys do not stack
-    /// on it.** Monitored, the open voice leads: it tracks the input and
-    /// sounds while the input does, with no key down. The keys' voices
-    /// follow it and stop with their keys: once four keys are let go and
-    /// their tails have died, the output is the lead's alone again. (Before
-    /// the lead, each key's voice tracked the input itself and its tracker's
-    /// gate held its amp open after the key was let go, so the voices stayed
-    /// and the level stood at five voices'.)
-    #[test]
-    fn a_tracked_patch_has_one_tracked_voice_and_the_keys_do_not_stack() {
-        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-        poly.set_leveler(false);
-        // Well under the master ceiling, so five voices read as five.
-        poly.set_makeup(0.06);
-        poly.set_open(true);
-        loudest_with_input(&mut poly, 0, 120);
-        let alone = loudest_with_input(&mut poly, 120, 40);
-        assert!(
-            alone > 0.02,
-            "the tracked voice is silent with the input sounding ({alone})"
-        );
-        for n in [60, 64, 67, 71] {
-            poly.note_on(n, 1.0);
-        }
-        loudest_with_input(&mut poly, 160, 20);
-        let chord = loudest_with_input(&mut poly, 180, 20);
-        assert!(
-            chord > alone * 1.5,
-            "the keys add nothing over the lead: {chord} against {alone}"
-        );
-        for n in [60, 64, 67, 71] {
-            poly.note_off(n);
-        }
-        loudest_with_input(&mut poly, 200, 200);
-        let after = loudest_with_input(&mut poly, 400, 40);
-        assert!(
-            after < alone * 1.2,
-            "the keys' voices stayed after their keys: {after} against the lead's {alone}"
-        );
-        assert!(
-            poly.voices.iter().all(|v| !v.running),
-            "a released key's voice is still running"
-        );
-        // Unmonitored, the worklet writes no input (and clears it), so the
-        // lead's tracker lets go, and it rings out and parks.
-        poly.set_open(false);
-        poly.clear_input();
-        let mut unmonitored = 0.0f32;
-        for q in 440..640 {
-            unmonitored = quantum_with_input(&mut poly, q * 128, false);
-        }
-        assert!(!poly.open_sounding(), "the lead still sounds unmonitored");
-        assert!(
-            unmonitored < 1.0e-6,
-            "still sounding unmonitored ({unmonitored})"
-        );
-    }
-
-    /// One quantum's left channel, the input (330 Hz) written first.
-    fn left_with_input(poly: &mut LivePoly, from: usize, quanta: usize) -> Vec<f32> {
-        let mut x = Vec::with_capacity(quanta * 128);
-        for q in from..from + quanta {
-            quantum_with_input(poly, q * 128, true);
-            // `quantum_with_input` rendered into `out_buf`; read it back.
-            x.extend(poly.out_buf[..256].chunks(2).map(|lr| lr[0]));
-        }
-        x
-    }
-
-    /// The magnitude of `x` at `hz` (one DFT bin, Hann-windowed), at 44.1 kHz.
-    fn level_at(x: &[f32], hz: f64) -> f64 {
-        let n = x.len() as f64;
-        let (mut re, mut im) = (0.0f64, 0.0f64);
-        for (i, s) in x.iter().enumerate() {
-            let w = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n).cos();
-            let ph = std::f64::consts::TAU * hz * i as f64 / 44_100.0;
-            re += w * *s as f64 * ph.cos();
-            im -= w * *s as f64 * ph.sin();
-        }
-        (re * re + im * im).sqrt() / n
-    }
-
-    /// The keys held over a tracked patch: C4, D4 and G4 (none near 330 Hz).
-    const CHORD: [u8; 3] = [60, 62, 67];
-
-    /// Every held key's voice is fed the lead's tracked pitch and gate: the
-    /// input's 330 Hz (log2(330 / C4) V), not its own key.
-    fn assert_followers_fed(poly: &LivePoly, when: &str) {
-        let want = (330.0f64 / 261.625_565).log2();
-        let held: Vec<&Voice> = poly.voices.iter().filter(|v| v.note.is_some()).collect();
-        assert_eq!(held.len(), CHORD.len(), "{when}: the chord's voices");
-        for v in held {
-            let feed = v
-                .voice
-                .track_feeds
-                .values()
-                .next()
-                .expect("a follower has a feed");
-            let (voct, gate) = (feed.voct.get(), feed.gate.get());
-            assert!(
-                (voct - want).abs() < 0.03 && gate >= 2.5,
-                "{when}: key {:?}'s voice is fed {voct:.3} V, gate {gate:.1}, not the input's {want:.3} V",
-                v.note
-            );
-        }
-    }
-
-    /// The chord's pitches are absent from the output and the input's is
-    /// there: every key plays the tracked note.
-    fn assert_plays_the_input(x: &[f32], when: &str) {
-        let at = level_at(x, 330.0);
-        assert!(
-            at > 1.0e-3,
-            "{when}: nothing at the input's 330 Hz ({at:.2e})"
-        );
-        for n in CHORD {
-            let hz = 440.0 * 2f64.powf((n as f64 - 69.0) / 12.0);
-            let own = level_at(x, hz);
-            assert!(
-                own < 0.02 * at,
-                "{when}: key {n} plays its own {hz:.1} Hz ({own:.2e} against {at:.2e} at 330 Hz)"
-            );
-        }
-    }
-
-    /// **A chord under TRACK plays the input's pitch.** Monitored, the open
-    /// voice leads and hands its tracked pitch to every key's voice frame by
-    /// frame (`Tracks::Follow`): each is fed 330 Hz, and the output has the
-    /// input's pitch and none of the keys' own (C4, D4, G4). Without the feed
-    /// a key's voice is never given a pitch or a gate.
-    #[test]
-    fn a_chord_under_track_plays_the_inputs_pitch() {
-        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-        poly.set_leveler(false);
-        poly.set_makeup(0.06);
-        poly.set_open(true);
-        loudest_with_input(&mut poly, 0, 120);
-        for n in CHORD {
-            poly.note_on(n, 1.0);
-        }
-        loudest_with_input(&mut poly, 120, 40);
-        assert_followers_fed(&poly, "held");
-        let x = left_with_input(&mut poly, 160, 64);
-        assert_plays_the_input(&x, "held");
-    }
-
-    /// **A tracked, monitored patch swaps with keys held.** The new patch's
-    /// open voice leads again, the held keys are re-pressed as followers of
-    /// it, and they still play the input's pitch, not their own; let go,
-    /// they stop, and the lead alone sounds.
-    #[test]
-    fn a_tracked_patch_swaps_with_keys_held_and_they_still_follow() {
-        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
-        poly.set_leveler(false);
-        poly.set_makeup(0.06);
-        poly.set_open(true);
-        loudest_with_input(&mut poly, 0, 120);
-        for n in CHORD {
-            poly.note_on(n, 1.0);
-        }
-        loudest_with_input(&mut poly, 120, 40);
-        // The same patch with a saw for the sine: a structural swap.
-        let swapped = tracked_patch().replace("\"Sine\"", "\"Saw\"");
-        assert_ne!(swapped, tracked_patch());
-        assert!(poly.set_patch(&swapped));
-        loudest_with_input(&mut poly, 160, 120);
-        assert!(poly.open_sounding(), "the swap closed the lead");
-        assert_followers_fed(&poly, "after the swap");
-        let x = left_with_input(&mut poly, 280, 64);
-        assert_plays_the_input(&x, "after the swap");
-        let alone_after = {
-            for n in CHORD {
-                poly.note_off(n);
-            }
-            loudest_with_input(&mut poly, 344, 200);
-            loudest_with_input(&mut poly, 544, 40)
-        };
-        assert!(alone_after > 0.0, "the lead fell silent with the keys");
-        assert!(
-            poly.voices.iter().all(|v| !v.running),
-            "a released key's voice is still running after the swap"
-        );
-    }
-
-    /// **A take rendered off the audio thread is the one recording live
-    /// makes.** The same input, recorded by a live voice quantum by quantum
-    /// and handed to `render_take` as one buffer, gives the same take, bit
-    /// for bit; a key with no CAPTURE renders none.
-    #[test]
-    fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
-        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
-        let tree = serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: auracle_grammar::PARAM_MAX,
-                release: 0.0,
-            },
-            root: AudioNode::Capture {
-                uid: Uid::NEW,
-                play: CaptureMode::Once,
-                input: Box::new(AudioNode::AudioIn {
-                    uid: Uid::NEW,
-                    input: 0,
-                    gain: auracle_grammar::INPUT_GAIN_UNITY,
-                    channel: InputChannel::Left,
-                }),
-                take: auracle_grammar::Take::empty(),
-            },
-        })
-        .unwrap();
-        // Live: a key held at C4, the gate raised, 100 quanta of the tone.
-        let mut live = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
-        live.set_leveler(false);
-        live.note_on(OPEN_NOTE, 1.0);
-        assert!(live.set_record("node", true));
-        let mut input = Vec::new();
-        for q in 0..100 {
-            quantum_with_input(&mut live, q * 128, true);
-            input.extend_from_slice(&live.input_buf[..256]);
-        }
-        live.set_record("node", false);
-        let recorded = live.take_json("node");
-        // Off the audio thread, from the same input.
-        let rendered = render_take(&tree, "node", &input, 2, 44_100.0);
-        assert!(!rendered.is_empty(), "no take rendered");
-        assert_eq!(rendered, recorded, "the rendered take is not the live one");
-        assert_eq!(render_take(&tree, "node/9", &input, 2, 44_100.0), "");
-        assert_eq!(render_take("not a tree", "node", &input, 2, 44_100.0), "");
-    }
-
-    /// **A CAPTURE records what is patched into it and reads it back.** With
-    /// a key held on one voice, the record gate raised records the input;
-    /// dropped, the take reads back as its saved JSON, as long as it ran, and
-    /// not silent. A key with no capture records nothing.
-    #[test]
-    fn a_capture_records_and_reads_back_its_take() {
-        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
-        let tree = serde_json::to_string(&PatchTree {
-            amp: AmpEnv {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: auracle_grammar::PARAM_MAX,
-                release: 0.0,
-            },
-            root: AudioNode::Capture {
-                uid: Uid::NEW,
-                play: CaptureMode::Once,
-                input: Box::new(AudioNode::AudioIn {
-                    uid: Uid::NEW,
-                    input: 0,
-                    gain: auracle_grammar::INPUT_GAIN_UNITY,
-                    channel: InputChannel::Left,
-                }),
-                take: auracle_grammar::Take::empty(),
-            },
-        })
-        .unwrap();
-        let mut poly = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
-        assert!(
-            !poly.set_record("node/9", true),
-            "a capture where there is none"
-        );
-        poly.note_on(60, 1.0);
-        assert!(poly.set_record("node", true));
-        loudest_with_input(&mut poly, 0, 100);
-        assert!(poly.set_record("node", false));
-        let json = poly.take_json("node");
-        let take: auracle_grammar::Take = serde_json::from_str(&json).expect("a take");
-        assert!(take.unreadable().is_none(), "{json:.80}");
-        let want = 100 * 128;
-        assert!(
-            take.len() + 256 >= want && take.len() <= want,
-            "the take is {} samples, the press {want}",
-            take.len()
-        );
-        let peak = take.samples().iter().fold(0.0f32, |m, x| m.max(x.abs()));
-        assert!(peak > 0.05, "the take is silent ({peak})");
-        assert_eq!(poly.take_json("node/9"), "");
-    }
-}
+mod tests;
