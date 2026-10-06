@@ -13,11 +13,15 @@ It prints, per crate, how many mutants were listed and tested and how each
 ended, then every survivor (a mutant no test failed on) and every mutant
 stopped at the time limit, each as file:line, function and change. A run
 stopped before its end (CI's time cap) is said to be, with how far it got:
-cargo-mutants writes each mutant's outcome as it goes.
+cargo-mutants writes each mutant's outcome as it goes. A DIR that is not
+there, or that lists mutants and holds no outcomes, is reported as missing,
+and the others are reported all the same. One that lists no mutant (a
+shard with none to test, where cargo-mutants writes no outcomes) is empty,
+not missing.
 
 It exits 1 when a mutant survived, when a run's unmutated tests failed (so
-nothing it says about mutants holds), or when a DIR has no outcomes; else 0.
-A timeout is reported and does not fail: a mutant that hangs the tests is
+nothing it says about mutants holds), or when a DIR is missing; else 0. A
+timeout is reported and does not fail: a mutant that hangs the tests is
 one they would not pass.
 
 The issue body is the counts and the survivors grouped by file, cut to fit
@@ -71,6 +75,8 @@ class Run:
     mutants: dict[str, list[Mutant]] = field(default_factory=lambda: defaultdict(list))
     # Unexpected outcomes, as cargo-mutants named them.
     other: list[str] = field(default_factory=list)
+    # Why the directory holds no run to read, when it holds none.
+    missing: str | None = None
 
 
 def mutant_of(m: dict) -> Mutant:
@@ -85,26 +91,52 @@ def mutant_of(m: dict) -> Mutant:
     return Mutant(m.get("package", "?"), m["file"], m["span"]["start"]["line"], fn, change)
 
 
+def read_json(path: str):
+    """The file's JSON, or None when it is not there."""
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+
 def read_run(path: str) -> Run:
-    """Raises OSError or ValueError when the directory holds no run."""
+    """One directory's run. A directory with nothing to read comes back
+    `missing`, with why; one whose files cannot be parsed, too."""
     run = Run(path)
-    with open(os.path.join(path, "mutants.json")) as f:
-        for m in json.load(f):
-            run.listed[m.get("package", "?")] += 1
-    with open(os.path.join(path, "outcomes.json")) as f:
-        outcomes = json.load(f)
+    try:
+        listed = read_json(os.path.join(path, "mutants.json"))
+        outcomes = read_json(os.path.join(path, "outcomes.json"))
+    except (OSError, ValueError) as e:
+        run.missing = f"unreadable: {e}"
+        return run
+    if listed is None:
+        run.missing = "no mutants.json: the run did not start, or its files never came"
+        return run
+    for m in listed:
+        run.listed[m.get("package", "?")] += 1
+    if outcomes is None:
+        if listed:
+            run.missing = f"listed {len(listed):,} mutants and left no outcomes: it ended before its first"
+        else:
+            # cargo-mutants writes no outcomes when it has nothing to test.
+            run.finished = True
+        return run
     run.finished = outcomes.get("end_time") is not None
-    for o in outcomes.get("outcomes", []):
-        scenario = o.get("scenario")
-        if scenario == "Baseline":
-            run.baseline = o.get("summary")
-            continue
-        m = mutant_of(scenario["Mutant"])
-        kind = SUMMARY.get(o.get("summary"))
-        if kind is None:
-            run.other.append(f"{m.where()}: {m.change} ({o.get('summary')})")
-            continue
-        run.mutants[kind].append(m)
+    try:
+        for o in outcomes.get("outcomes", []):
+            scenario = o.get("scenario")
+            if scenario == "Baseline":
+                run.baseline = o.get("summary")
+                continue
+            m = mutant_of(scenario["Mutant"])
+            kind = SUMMARY.get(o.get("summary"))
+            if kind is None:
+                run.other.append(f"{m.where()}: {m.change} ({o.get('summary')})")
+                continue
+            run.mutants[kind].append(m)
+    except (KeyError, TypeError, AttributeError) as e:
+        run.missing = f"outcomes.json is not in the shape cargo-mutants 27.1 writes ({e!r})"
     return run
 
 
@@ -135,13 +167,15 @@ class Report:
         """Why nothing a run says about mutants holds, for each such run."""
         out = []
         for r in self.runs:
+            if r.missing:
+                out.append(f"{r.path}: missing, {r.missing}")
             if r.baseline is not None and r.baseline != "Success":
                 out.append(f"{r.path}: the unmutated tests did not pass ({r.baseline}), so no mutant was judged")
             out += [f"{r.path}: {o}" for o in r.other]
         return out
 
     def unfinished(self) -> list[Run]:
-        return [r for r in self.runs if not r.finished]
+        return [r for r in self.runs if not r.finished and not r.missing]
 
     def failed(self) -> bool:
         return bool(self.all("survived")) or bool(self.broken())
@@ -240,7 +274,8 @@ def issue_body(rep: Report, rows: dict[str, dict[str, int]], link: str | None, b
     head.append("")
     if rep.unfinished():
         head += ["Some shards stopped before their end; their untested mutants are not counted.", ""]
-    head += [f"- {b}" for b in rep.broken()]
+    if rep.broken():
+        head += [*(f"- {b}" for b in rep.broken()), ""]
     body = "\n".join(head) + "\n"
     by_file: dict[str, list[Mutant]] = defaultdict(list)
     for m in rep.all("survived"):
@@ -270,11 +305,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--link", help="link each mutant as LINK/path#Lnn")
     p.add_argument("--issue", help="write the weekly issue's body to this file")
     a = p.parse_args(argv)
-    try:
-        rep = Report([read_run(d) for d in a.dirs])
-    except (OSError, ValueError, KeyError) as e:
-        print(f"  mutants: no run to read: {e}", file=sys.stderr)
-        return 1
+    rep = Report([read_run(d) for d in a.dirs])
     rows = rep.per_crate()
     sys.stdout.write(text_report(rep, rows))
     if a.markdown:

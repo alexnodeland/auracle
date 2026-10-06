@@ -55,7 +55,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         js-check wasm-check smoke smoke-tools \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
-        mutants-installed mutants \
+        mutants-installed mutants-diff mutants mutants-command \
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
@@ -404,17 +404,24 @@ coverage-floors:
 #
 # Results go to mutants.out/ (missed.txt lists the survivors, timeout.txt
 # the mutants stopped at the time limit, outcomes.json all of it, log/ each
-# mutant's build and tests). Exit 0: no survivor and no timeout; 3: a
-# timeout, whether or not one survived; 2: a survivor; 4: the unmutated tests
-# failed. MUTANTS_JOBS mutants at a time, each in its own copy of the tree
-# (its first build is from clean); MUTANTS_ARGS for any other option (CI's
-# `--in-place`, `--shard k/N`).
+# mutant's build and tests). make exits 2 for any failing recipe, whatever
+# the cause, so the recipe says cargo-mutants' own code when it fails (2: a
+# survivor; 3: a timeout, and maybe survivors too; 4: the unmutated tests
+# failed; others: the run broke) and `scripts/mutants_report.py` says what
+# it found. CI runs `make -s mutants-command`'s command itself, under its
+# own time limit, to read that code. MUTANTS_JOBS mutants at a time, each
+# in its own copy of the tree (its first build is from clean); MUTANTS_ARGS
+# for any other option (CI's `--in-place`, `--shard k/N`). At nice 10, as
+# perform-wirings is: it holds every core for as long as it runs.
 MUTANTS_VERSION := 27.1.0
 MUTANTS_JOBS ?= 2
 MUTANTS_ARGS ?=
 # Empty MUTANTS_JOBS passes no --jobs, which `--in-place` refuses.
 MUTANTS_J = $(if $(MUTANTS_JOBS),--jobs $(MUTANTS_JOBS))
 MUTANTS_DIFF := target/mutants.diff
+MUTANTS_CMD = $(CARGO) mutants $(if $(CRATE),--package $(CRATE),--workspace) \
+	$(if $(DIFF),--in-diff $(MUTANTS_DIFF)) $(MUTANTS_J) $(MUTANTS_ARGS) \
+	-- -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))'
 
 mutants-installed:
 	@v="$$($(CARGO) mutants --version 2>/dev/null | awk '{ print $$2 }')"; \
@@ -422,22 +429,32 @@ mutants-installed:
 		printf '  cargo-mutants %s is needed (found: %s); run: cargo install --locked cargo-mutants@%s\n' \
 			"$(MUTANTS_VERSION)" "$${v:-none}" "$(MUTANTS_VERSION)"; exit 1; fi
 
+# DIFF=1's diff: the Rust in crates/ changed since the merge base with BASE,
+# to the working tree (so uncommitted changes count). Empty when none did.
+mutants-diff:
+	@git rev-parse --verify --quiet "$(BASE)^{commit}" >/dev/null || { \
+		printf '  %s is not here to diff against: run `git fetch origin` first (or name another BASE=)\n' "$(BASE)"; exit 1; }
+	@mkdir -p target
+	@git diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
+
 ## mutants: mutation testing against the fast tier: `make mutants CRATE=auracle-taste`
 ## for one crate, `make mutants DIFF=1` for the code changed since BASE
 ## (origin/main), uncommitted changes included; both together for one crate's
 ## changes; neither for the workspace (a day or two; CI's weekly run takes a part). Survivors
 ## in mutants.out/missed.txt. Long: on a shared machine, `nice -n 19 make mutants …`
-mutants: nextest-installed mutants-installed
-ifneq ($(DIFF),)
-	@mkdir -p target
-	@git diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
-	@if [ ! -s $(MUTANTS_DIFF) ]; then printf '  no Rust in crates/ changed since %s: nothing to mutate\n' "$(BASE)"; exit 0; fi; \
-	$(CARGO) mutants $(if $(CRATE),--package $(CRATE),--workspace) --in-diff $(MUTANTS_DIFF) \
-		$(MUTANTS_J) $(MUTANTS_ARGS) -- -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))'
-else
-	$(CARGO) mutants $(if $(CRATE),--package $(CRATE),--workspace) \
-		$(MUTANTS_J) $(MUTANTS_ARGS) -- -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))'
-endif
+mutants: nextest-installed mutants-installed $(if $(DIFF),mutants-diff)
+	@if [ -n "$(DIFF)" ] && [ ! -s $(MUTANTS_DIFF) ]; then \
+		printf '  no Rust in crates/ changed since %s: nothing to mutate\n' "$(BASE)"; exit 0; fi; \
+	printf '%s\n' "$(MUTANTS_CMD)"; \
+	nice -n 10 $(MUTANTS_CMD) || { rc=$$?; \
+		printf '  cargo-mutants exited %s (2: a survivor; 3: a timeout, maybe survivors too; 4: the unmutated tests failed): python3 scripts/mutants_report.py mutants.out\n' $$rc; \
+		exit $$rc; }
+
+# The command `make mutants` runs, printed for CI to run under its own time
+# limit and read cargo-mutants' exit code, which make's own 2 would hide.
+# With DIFF=1, `make mutants-diff` first.
+mutants-command:
+	@printf '%s\n' "$(MUTANTS_CMD)"
 
 # The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) or
 # `@quarantine` (testing.md § Flakes) runs in the slow tier, every other one in

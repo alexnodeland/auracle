@@ -158,7 +158,54 @@ class Runs(unittest.TestCase):
     def test_a_directory_with_no_run_fails(self):
         code, out = self.main(os.path.join(self.tmp, "nothing"))
         self.assertEqual(code, 1)
-        self.assertIn("no run to read", out)
+        self.assertIn("nothing: missing, no mutants.json", out)
+
+    def write_listed_only(self, name, listed):
+        """A mutants.out with its list and no outcomes, as cargo-mutants
+        leaves one that stopped before its first outcome, or that had
+        nothing to test."""
+        d = os.path.join(self.tmp, name)
+        os.makedirs(d)
+        with open(os.path.join(d, "mutants.json"), "w") as f:
+            json.dump(listed, f)
+        return d
+
+    def test_a_shard_with_no_outcomes_is_missing_and_the_others_still_report(self):
+        good = self.run_dir("shard-0", [LOGLIK, SIGMOID], [BASELINE_OK, outcome(LOGLIK, "MissedMutant"), outcome(SIGMOID, "CaughtMutant")])
+        lost = self.write_listed_only("shard-1", [CUT, WALK])
+        gone = os.path.join(self.tmp, "shard-2")
+        md, issue = os.path.join(self.tmp, "summary.md"), os.path.join(self.tmp, "issue.md")
+        code, out = self.main(good, lost, gone, "--markdown", md, "--issue", issue)
+        self.assertEqual(code, 1)
+        self.assertIn("shard-1: missing, listed 2 mutants and left no outcomes", out)
+        self.assertIn("shard-2: missing, no mutants.json", out)
+        # The good shard's survivor is in the summary and the issue all the same.
+        self.assertIn("model.rs:298", self.read(md))
+        body = self.read(issue)
+        self.assertIn("- 298 `TasteSample::loglik`: `replace TasteSample::loglik -> f64 with 0.0`", body)
+        self.assertIn("shard-1: missing", body)
+        # A missing shard is not "stopped before its end": it never began.
+        self.assertNotIn("stopped before its end", out)
+        # Its listed mutants are counted as listed and untested.
+        self.assertIn("| **All** | 4 | 2 |", self.read(md))
+
+    def test_a_shard_with_nothing_to_test_is_empty_not_missing(self):
+        empty = self.write_listed_only("shard-0", [])
+        good = self.run_dir("shard-1", [CUT], [BASELINE_OK, outcome(CUT, "CaughtMutant")])
+        issue = os.path.join(self.tmp, "issue.md")
+        code, out = self.main(empty, good, "--issue", issue)
+        self.assertEqual(code, 0)
+        self.assertNotIn("missing", out)
+        self.assertNotIn("stopped before its end", out)
+        self.assertIn("| **All** | 1 | 0 | 0 |", self.read(issue))
+
+    def test_an_outcome_in_another_shape_marks_its_run_missing_not_the_report_broken(self):
+        bad = self.run_dir("shard-0", [LOGLIK], [BASELINE_OK, {"scenario": {"Mutant": {"name": "x"}}, "summary": "MissedMutant"}])
+        good = self.run_dir("shard-1", [CUT], [BASELINE_OK, outcome(CUT, "MissedMutant")])
+        code, out = self.main(bad, good)
+        self.assertEqual(code, 1)
+        self.assertIn("shard-0: missing, outcomes.json is not in the shape", out)
+        self.assertIn("lib.rs:40", out)
 
     def test_a_run_stopped_at_its_cap_says_so_and_judges_what_it_reached(self):
         d = self.run_dir("one", [LOGLIK, SIGMOID, CUT], [BASELINE_OK, outcome(LOGLIK, "CaughtMutant")], finished=False)
