@@ -11,6 +11,11 @@
 //   `ready`, since the operator ships every `ready` item.
 // - review-pr: every finding is put to a refuter of its own, so none is lost
 //   with another's refutation.
+// - every workflow: each stage runs on the model its table below gives (opus
+//   for the hard stages, sonnet for the easy ones), an operator's override
+//   (`models`, and a ship-issues item's `model`) reaches that stage and no
+//   other, a bad one throws before any agent is spent, and every prompt for
+//   substantive work tells its agent to use the advisor.
 //
 //     node --test scripts/ops/workflows.test.mjs
 
@@ -150,4 +155,152 @@ test('review-pr: findings that share a place each get a refuter, and none is los
   const one = await dryRun(load('review-pr'), { pr: 250 }, 'lean', undefined, { answer: answer('C') })
   assert.deepEqual(one.result.findings.map(f => f.summary), ['B', 'A', 'D'])
   assert.deepEqual(one.result.refuted.map(f => f.summary), ['C'])
+})
+
+// ─── the model of each stage ────────────────────────────────────────────────
+
+// Each workflow's stages: the pattern of the labels of its agents, and the
+// model it runs on by default (the maintainer's rule, AGENTS.md § Tooling:
+// opus for building, fixing and judging; sonnet for measuring, re-checking,
+// finalizing and listing). A new stage or label is a row here, or the test of
+// labels below fails.
+const STAGES = {
+  'ship-issues': [
+    ['build', /^build /, 'opus'],
+    ['review', /^review /, 'opus'],
+    ['fix', /^fix /, 'opus'],
+    ['verify', /^verify /, 'sonnet'],
+    ['finalize', /^finalize /, 'sonnet'],
+  ],
+  'fix-flake': [
+    ['diagnose', /^diagnose /, 'opus'],
+    ['fix', /^fix /, 'opus'],
+    ['prove', /^prove /, 'sonnet'],
+    ['review', /^review /, 'opus'],
+    ['verify', /^verify /, 'sonnet'],
+    ['finalize', /^finalize /, 'sonnet'],
+  ],
+  'mutants-burndown': [
+    ['measure', /^measure /, 'sonnet'],
+    ['kill', /^kill /, 'opus'],
+    ['review', /^review /, 'opus'],
+    ['fix', /^fix /, 'opus'],
+    ['verify', /^verify /, 'sonnet'],
+    ['finalize', /^finalize /, 'sonnet'],
+  ],
+  'review-pr': [
+    ['correctness', /^review correctness$/, 'opus'],
+    ['descriptions', /^review descriptions$/, 'sonnet'],
+    ['tests', /^review tests$/, 'opus'],
+    ['voice', /^review voice$/, 'sonnet'],
+    ['process', /^review process$/, 'sonnet'],
+    ['refute', /^refute /, 'opus'],
+  ],
+  'triage-backlog': [
+    ['list', /^list open issues$/, 'sonnet'],
+    ['read', /^triage #/, 'sonnet'],
+    ['plan', /^plan waves$/, 'opus'],
+  ],
+}
+// The labels whose prompts need no advisor line: a pure listing, and a run
+// that only counts mutants.
+const NO_ADVISOR = [/^list open issues$/, /^measure #\d+$/]
+const other = m => (m === 'opus' ? 'sonnet' : 'opus')
+
+// A run on rich scripted agents (every array one element long, every boolean
+// false: each stage runs, the fix and re-check rounds included). Returns the
+// model and the prompt of each agent by label, and the run's error, if any.
+async function stages(name, args) {
+  const prompts = {}
+  const answer = (opts, prompt) => { prompts[opts.label] = prompt; return sample(opts.schema, 'rich') }
+  const r = await dryRun(load(name), structuredClone(args), 'rich', undefined, { answer })
+  const models = Object.fromEntries(r.labels.map((l, i) => [l, r.models[i]]))
+  return { models, prompts, labels: r.labels, error: r.error, calls: r.calls, stageErrors: r.stageErrors }
+}
+const stageOf = (name, label) => {
+  const hit = STAGES[name].filter(([, re]) => re.test(label))
+  assert.equal(hit.length, 1, `${name}: the label "${label}" is in ${hit.length} stage(s) of STAGES`)
+  return hit[0][0]
+}
+// The sample that reaches every stage: triage-backlog's first lists the issues.
+const sampleOf = name => SAMPLES[name][0]
+
+for (const name of Object.keys(STAGES)) {
+  test(`${name}: each stage runs on the model its table gives`, async () => {
+    const { models, error, stageErrors } = await stages(name, sampleOf(name))
+    assert.equal(error, null, error && error.stack)
+    assert.deepEqual(stageErrors, [])
+    const seen = {}
+    for (const [label, model] of Object.entries(models)) (seen[stageOf(name, label)] ??= new Set()).add(model)
+    for (const [stage, , want] of STAGES[name]) {
+      assert.deepEqual([...(seen[stage] || [])], [want], `${name}: ${stage} runs on ${want}`)
+    }
+  })
+
+  test(`${name}: models overrides one stage and no other`, async () => {
+    const base = (await stages(name, sampleOf(name))).models
+    for (const [stage, , want] of STAGES[name]) {
+      const { models, error } = await stages(name, { ...sampleOf(name), models: { [stage]: other(want) } })
+      assert.equal(error, null, error && error.stack)
+      assert.deepEqual(Object.keys(models), Object.keys(base))
+      for (const [label, model] of Object.entries(models)) {
+        const mine = stageOf(name, label) === stage
+        assert.equal(model, mine ? other(want) : base[label], `${name}: models.${stage} = ${other(want)}, and ${label} runs on ${model}`)
+      }
+    }
+  })
+
+  test(`${name}: a bad models throws before any agent is spent`, async () => {
+    const [first] = STAGES[name][0]
+    for (const [bad, what] of [
+      [{ nowhere: 'opus' }, /models\.nowhere is not a (stage|lens or refute)/],
+      [{ [first]: 'haiku' }, new RegExp(`models\\.${first} is 'opus' or 'sonnet'`)],
+      [{ [first]: undefined, [STAGES[name][1][0]]: 5 }, /models\.\w+ is 'opus' or 'sonnet'/],
+      ['opus', /models is an object/],
+      [['opus'], /models is an object/],
+      [null, /models is an object/],
+    ]) {
+      const { error, calls } = await stages(name, { ...sampleOf(name), models: bad })
+      assert.match(String(error && error.message), what, JSON.stringify(bad))
+      assert.equal(calls, 0, `${JSON.stringify(bad)}: an agent was spent`)
+    }
+  })
+
+  test(`${name}: each prompt for substantive work names the advisor`, async () => {
+    const { prompts, error } = await stages(name, sampleOf(name))
+    assert.equal(error, null, error && error.stack)
+    assert.ok(Object.keys(prompts).length >= 2)
+    for (const [label, prompt] of Object.entries(prompts)) {
+      const needs = !NO_ADVISOR.some(re => re.test(label))
+      assert.equal(/If an advisor tool is available, call it before you commit to an approach, when you are stuck or going in circles, and before you report done\./.test(prompt), needs, `${name}: ${label}${needs ? ' has no advisor line' : ' is a listing or a count, and has one'}`)
+    }
+  })
+}
+
+test('ship-issues: an item sets the model of its build and fix stages, and no other', async () => {
+  const [item] = SAMPLES['ship-issues'][0].items
+  const run = args => stages('ship-issues', { items: [item], ...args })
+  const labels = ['build #300', 'review #300', 'fix #300', 'verify #300', 'fix #300 r2', 'verify #300 r2', 'finalize #300']
+  const mine = { 'build #300': 'sonnet', 'fix #300': 'sonnet', 'fix #300 r2': 'sonnet' }
+  const defaults = { 'build #300': 'opus', 'review #300': 'opus', 'fix #300': 'opus', 'verify #300': 'sonnet', 'fix #300 r2': 'opus', 'verify #300 r2': 'sonnet', 'finalize #300': 'sonnet' }
+
+  const base = await run({})
+  assert.deepEqual(base.labels, labels)
+  assert.deepEqual(base.models, defaults)
+  const sonnet = await run({ items: [{ ...item, model: 'sonnet' }] })
+  assert.deepEqual(sonnet.models, { ...defaults, ...mine })
+  // An item's model wins over models.build and models.fix; models still sets the stages an item does not.
+  const opus = await run({ items: [{ ...item, model: 'opus' }], models: { build: 'sonnet', fix: 'sonnet', review: 'sonnet', finalize: 'opus' } })
+  assert.deepEqual(opus.models, { ...defaults, 'review #300': 'sonnet', 'finalize #300': 'opus' }, 'an item model wins over models.build and models.fix, and only there')
+  // Two items, each on its own.
+  const second = { ...item, issue: 301, closes: [301], branch: 'claude/b', worktree: '/tmp/auracle/.claude/worktrees/b', port: 8802, model: 'sonnet' }
+  const both = await run({ items: [item, second] })
+  assert.equal(both.models['build #300'], 'opus')
+  assert.equal(both.models['build #301'], 'sonnet')
+  assert.equal(both.models['review #301'], 'opus')
+  for (const bad of ['haiku', 5, null]) {
+    const r = await run({ items: [{ ...item, model: bad }] })
+    assert.match(String(r.error && r.error.message), /#300: model is 'opus' or 'sonnet'/, String(bad))
+    assert.equal(r.calls, 0)
+  }
 })

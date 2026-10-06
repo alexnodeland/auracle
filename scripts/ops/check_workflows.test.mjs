@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkSource, impurities, codeOnly, sample, schemaProblems, dryRun, compile, metaText, DIR, SAMPLES } from './check_workflows.mjs'
+import { checkSource, impurities, codeOnly, agentCalls, sample, schemaProblems, dryRun, compile, metaText, DIR, SAMPLES } from './check_workflows.mjs'
 
 const META = `export const meta = {
   name: 'demo',
@@ -19,7 +19,7 @@ const META = `export const meta = {
 const SCHEMA = `{ type: 'object', properties: { head: { type: 'string' }, ok: { type: 'boolean' }, items: { type: 'array', items: { type: 'string' } } }, required: ['head', 'ok', 'items'] }`
 const BODY = `
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
-const r = await agent(\`Build \${args.what}.\`, { label: 'build', phase: 'Build', schema: ${SCHEMA} })
+const r = await agent(\`Build \${args.what}.\`, { label: 'build', phase: 'Build', model: 'sonnet', schema: ${SCHEMA} })
 return { head: r ? r.head : null }
 `
 const ARGS = [{ what: 'it' }]
@@ -94,7 +94,7 @@ test('no clock, no dice and nothing of Node', async () => {
 test('the words in a prompt or a comment are not calls', async () => {
   const src = META + `// Date.now() throws in a workflow
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
-const r = await agent('Read docs/process.md; never call Date.now() or Math.random(): process the list.', { label: 'build', phase: 'Build' })
+const r = await agent('Read docs/process.md; never call Date.now() or Math.random(): process the list.', { label: 'build', phase: 'Build', model: 'sonnet' })
 return { r }
 `
   assert.deepEqual(await check(src), [])
@@ -112,7 +112,7 @@ test('a stage that throws on data its schema allows fails the check', async () =
   // `rich` fills the array; this stage throws on it, which the tool would hide as a null.
   const src = META + `
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
-const out = await pipeline([1], () => agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} }), r => r.items[0].toUpperCase().missing.call())
+const out = await pipeline([1], () => agent('Build it.', { label: 'build', phase: 'Build', model: 'opus', schema: ${SCHEMA} }), r => r.items[0].toUpperCase().missing.call())
 return out
 `
   const problems = await check(src)
@@ -122,7 +122,7 @@ return out
 test('a null from a dead agent may drop an item, but the run must return', async () => {
   const drops = META + `
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
-const out = await pipeline([1], () => agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} }), r => r.head)
+const out = await pipeline([1], () => agent('Build it.', { label: 'build', phase: 'Build', model: 'opus', schema: ${SCHEMA} }), r => r.head)
 return out
 `
   assert.deepEqual(await check(drops), [])
@@ -137,7 +137,7 @@ test('a stage that gives null ends its item, as in the tool', async () => {
   const src = META + `
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
 let later = 0
-const out = await pipeline([1], async () => { await agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} }); return null }, prev => { later++; return prev.head })
+const out = await pipeline([1], async () => { await agent('Build it.', { label: 'build', phase: 'Build', model: 'opus', schema: ${SCHEMA} }); return null }, prev => { later++; return prev.head })
 return { out, later }
 `
   assert.deepEqual(await check(src), [])
@@ -150,9 +150,9 @@ test('one agent dead mid-run: a stage or a run that throws on its null is caught
   // throws before the second agent is called); not with only the second dead.
   const src = META + `
 if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
-const a = await agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} })
+const a = await agent('Build it.', { label: 'build', phase: 'Build', model: 'opus', schema: ${SCHEMA} })
 if (!a) return { head: null }
-const b = await agent('Build it again.', { label: 'build again', phase: 'Build', schema: ${SCHEMA} })
+const b = await agent('Build it again.', { label: 'build again', phase: 'Build', model: 'opus', schema: ${SCHEMA} })
 return { head: a.head + b.head }
 `
   const problems = await check(src)
@@ -177,6 +177,41 @@ test("an agent call's options are the tool's", async () => {
   assert.ok(unlabelled.some(p => /has no label/.test(p)), unlabelled.join('\n'))
 })
 
+test('an agent call with no model, or a model that is not opus or sonnet, is caught', async () => {
+  // Read from the source: the line of the call. Run: the label and the value.
+  const none = await check(META + BODY.replace("model: 'sonnet', ", ''))
+  assert.ok(none.some(p => /^line 8: this agent\(\) call passes no `model`/.test(p)), none.join('\n'))
+  assert.ok(none.some(p => /agent build: no model/.test(p)), none.join('\n'))
+  const bad = await check(META + BODY.replace("model: 'sonnet'", "model: 'gpt-5'"))
+  assert.ok(bad.some(p => /agent build: model "gpt-5" is not one of opus, sonnet/.test(p)), bad.join('\n'))
+  // A model computed from args is a value to the run, and the source names it.
+  assert.deepEqual(await check(META + BODY.replace("model: 'sonnet'", "model: args.model || 'opus'"), [{ what: 'it' }, { what: 'it', model: 'sonnet' }]), [])
+  // A call no sample reaches is still found: the source check has no sample.
+  const dark = META + BODY.replace('return {', "if (args.never) await agent('Never.', { label: 'never', phase: 'Build' })\nreturn {")
+  const unreached = await check(dark)
+  assert.ok(unreached.some(p => /^line 9: this agent\(\) call passes no `model`/.test(p)), unreached.join('\n'))
+  assert.ok(!unreached.some(p => /agent never/.test(p)), 'no sample runs it, so only the source check sees it')
+})
+
+test("agent calls are found in the code, at the file's line", () => {
+  const src = `// agent('a comment')
+const a = await agent('the word agent(x) in a string', { label: 'one', model: 'opus' })
+const b = \`prompt: agent(y) and \${await agent('in a template', { model: 'sonnet' })}\`
+const c = x.agent(1) + myagent(2) + agentType(3)
+`
+  assert.deepEqual(agentCalls(src).map(c => c.line), [2, 3])
+  assert.ok(agentCalls(src).every(c => /\bmodel\s*:/.test(c.call)))
+  // codeOnly keeps every character where it was, whatever it blanks.
+  const awkward = "const re = /a\\/b[/]/g; const s = 'it\\'s'; // note\n/* a\nb */ const t = `x\n${`y ${1}`}z`\n"
+  assert.equal(codeOnly(awkward).length, awkward.length)
+  assert.deepEqual([...codeOnly(awkward)].flatMap((c, i) => (c === '\n' ? [i] : [])), [...awkward].flatMap((c, i) => (c === '\n' ? [i] : [])))
+  for (const f of readdirSync(DIR).filter(f => f.endsWith('.js'))) {
+    const text = readFileSync(join(DIR, f), 'utf8')
+    assert.equal(codeOnly(text).length, text.length, f)
+    assert.ok(agentCalls(text).length >= 2, `${f}: its agent() calls are found`)
+  }
+})
+
 test('a schema the tool would refuse is caught', async () => {
   assert.deepEqual(schemaProblems({ type: 'object', properties: { a: { type: 'string' } }, required: ['a'] }), [])
   assert.match(schemaProblems({ type: 'array', items: {} }).join(), /at its root/)
@@ -193,7 +228,7 @@ test('sample data fits its schema, rich and lean', () => {
 
 test('args passed as a string throw before any agent is spent', async () => {
   const lax = META + `
-const r = await agent(\`Build \${String(args).length}.\`, { label: 'build', phase: 'Build' })
+const r = await agent(\`Build \${String(args).length}.\`, { label: 'build', phase: 'Build', model: 'sonnet' })
 return { r }
 `
   const problems = await check(lax)
