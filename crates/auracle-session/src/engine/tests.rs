@@ -4405,7 +4405,8 @@ fn a_refit_mid_generation_judges_what_it_retires_on_the_new_scale() {
 
 /// **What lands nowhere is not counted.** An edit that changes nothing
 /// lands on its own original: no new sound, and no vote of the sound against
-/// itself, whatever the player said. A preset the pool already holds opens
+/// itself, whatever the player said; nor against a sound not held, nor when
+/// nothing was said. A preset the pool already holds opens
 /// as that sound, under its id. A name for a sound the pool does not hold
 /// names nothing. An answer about a tree that does not vet, or given before
 /// the session has a scale, is not recorded.
@@ -4423,6 +4424,11 @@ fn what_lands_nowhere_is_not_counted() {
         None
     );
     assert_eq!(engine.log.len(), logged, "a vote against a sound not held");
+    assert_eq!(
+        engine.commit_edit(None, tree.clone(), EditOutcome::Untold),
+        None
+    );
+    assert_eq!(engine.log.len(), logged, "a vote nobody told");
     assert_eq!(engine.insert_preset(tree.clone(), "again"), Some(id));
     assert_eq!(engine.pool.len(), size);
     let names = engine.display_names();
