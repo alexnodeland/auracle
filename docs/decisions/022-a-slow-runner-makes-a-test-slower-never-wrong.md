@@ -21,6 +21,12 @@ correctness and is no longer true of speed.
 [ADR-019](019-work-flows-through-issues-and-prs.md)'s flake rules stand: no
 retries, and a flaky test is fixed or quarantined.
 
+Amended by [ADR-025](025-every-interaction-answers-at-once.md) on 2026-10-06:
+a speed budget is judged on a slow profile (the engine and the farm slowed 4
+times, two renderers, the page throttled), not at `AURACLE_CPU_THROTTLE=1`,
+from when #299 builds it. The three kinds of timing assertion, and "a slow
+runner may make a test slower, never wrong", stand.
+
 ## Context
 
 About a third of PR runs went red, each time on one browser test, and nearly
