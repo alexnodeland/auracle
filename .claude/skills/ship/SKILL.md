@@ -87,6 +87,8 @@ to ask:
 - the rules: commit only, never push or open a PR; small commits; `Refs #<n>`
   in commit messages; no hand-written attribution (`Co-Authored-By`, model
   names); the session link line last, when the session asks for one;
+- the advisor: if an advisor tool is available, call it before committing to
+  an approach, when stuck or going in circles, and before reporting done;
 - the gates: the `check` skill's set for what changes, the specs it adds or
   touches through `one_browser.sh` on its port (`make browser-changed`), no
   full suite;
@@ -97,14 +99,23 @@ to ask:
 - the report: head SHA, gates and spec counts, the before → after table,
   meaning changes to specs, voice drafts, anything left open.
 
+**Choose the model.** Opus is the agents' default. Pick Opus or Sonnet 5.5 for
+this task by how hard it looks, and set it as the Agent tool's `model`. Sonnet
+suits a task whose issue says exactly what to change and whose gates prove it:
+a rename, a docs table, a mechanical move. Opus suits design, a bug whose cause
+is not known yet, and anything a reviewer will have to think hard about. When
+in doubt, Opus. [`.claude/README.md`](../../README.md#choosing-the-model) has
+examples of each.
+
 Hand it to the area's agent (`web-engineer`, `engine-engineer`,
-`docs-writer`, `film-producer`) with the worktree path and the port.
+`docs-writer`, `film-producer`) with the worktree path, the port and the model.
 
 ## 4. Review before the PR
 
 When the builder reports, run the quick gates in `$WT`, then hand the branch to
-the `reviewer` agent: the diff (`git -C "$WT" log origin/main..HEAD`), the
-brief, and what to hunt for.
+the `reviewer` agent (Opus, its default; a re-check of fixed findings can run
+on Sonnet): the diff (`git -C "$WT" log origin/main..HEAD`), the brief, and
+what to hunt for.
 
 One round. Send the findings back to the builder (the same agent, so it
 keeps its context), and have only the **blocking** fixes looked at again:
