@@ -1923,8 +1923,8 @@ fn arp_notes(p: &mut LivePoly, quanta: usize) -> Vec<u8> {
     let mut prev = None;
     for _ in 0..quanta {
         let _ = p.process(128);
-        if p.arp_note.is_some() && p.arp_note != prev {
-            notes.push(p.arp_note.unwrap());
+        if let Some(n) = p.arp_note.filter(|_| p.arp_note != prev) {
+            notes.push(n);
         }
         prev = p.arp_note;
     }
