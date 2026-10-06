@@ -105,7 +105,8 @@ fn facts_read_phi_in_its_units() {
 /// **A rest is a gap, not a level.** The held note's tracks are `null`
 /// where its frames are silent, and its onset curve is the first note's
 /// alone: past the second onset it reads nothing, not the next note. A render
-/// that never sounds draws every spectrum at the floor and no track at all.
+/// that never sounds draws every spectrum at the floor and no track at all,
+/// and one with no notes draws its spectrum and no held note.
 #[test]
 fn a_rest_is_a_gap_and_silence_is_the_floor() {
     let sr = 44_100.0;
@@ -150,6 +151,17 @@ fn a_rest_is_a_gap_and_silence_is_the_floor() {
         "the onset curve went on past its note: {:?}",
         &p.onset[past..]
     );
+
+    // With no notes at all (a sound measured without a phrase), the spectrum
+    // is still drawn, and there is no held note to draw.
+    let unscored = RenderedPhrase {
+        spans: Vec::new(),
+        ..r.clone()
+    };
+    let u = portrait(&unscored, &crate::audio::audio_features(&unscored));
+    assert!(u.bands.contains(&0.0), "{:?}", u.bands);
+    assert!(u.held.iter().all(|d| *d == FLOOR_DB));
+    assert!(u.bright.is_empty() && u.loud.is_empty() && u.notes.is_empty());
 
     let silent = RenderedPhrase {
         samples: vec![0.0; at(1.0)],
