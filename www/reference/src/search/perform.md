@@ -924,9 +924,11 @@ drawn as a guess, the rule LEARNING’s weights and PATCH’s worth chips use.
 Before the first fit there is no posterior and `perform_lean` answers `null`:
 nothing is drawn.
 
-The lean is taken at the tree PERFORM measures, with no overrides: the render
-its measurement made first, so it costs a few dot products per draw and no
-render. A control turned since is not part of it, and it is asked again when
+The lean is taken at the tree PERFORM measures, with no overrides. That
+tree's render is in the engine's memo once PERFORM has measured it (the
+measurement renders it first) or the bench has opened it, and then the lean
+is a few dot products per draw; a tree not in the memo costs one render, as
+▶ does. A control turned since is not part of it, and it is asked again when
 the view comes up, the sound or the panel changes, and the posterior moves (a
 refit, or a pick’s reweighting), never per frame.
 

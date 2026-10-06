@@ -113,7 +113,9 @@ the scope and picture panels and TASTE's selected point among them). Main does t
 - **PERFORM**: `perform.modelViewChanged(on)`. Each control carries its
   lean, which way your taste leans along it at the sound in hand: the
   worker's `perform_lean` (`Engine::lean`, in `now`), asked of the tree
-  PERFORM measures with no overrides (a memo hit) for the panel's set, and
+  PERFORM measures with no overrides (a memo hit once PERFORM has measured
+  it or the bench has opened it; otherwise one render, as ▶ costs) for the
+  panel's set, and
   answered `{lean: [{index, name, mean, std}]}`, the posterior slope of the
   utility along each control's direction through the lens that claims the
   sound, or `lean: null` before the first fit. `paintLean` draws it on the

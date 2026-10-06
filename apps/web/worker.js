@@ -3667,8 +3667,9 @@ async function dispatch(m) {
     // sound in hand, for the model view (`Engine::lean`): `lean` is
     // `[{index, name, mean, std}]` for the `controls` named (palette
     // indices; the six without), or null before the first fit. Asked of the
-    // tree PERFORM measures, whose render is in the memo, so it is a few dot
-    // products over the posterior's draws and is answered in `now`.
+    // tree PERFORM measures, whose render is in the memo once PERFORM has
+    // measured it or the bench has opened it, so it is a few dot products over
+    // the posterior's draws (one render otherwise, as ▶ costs): `now`.
     case "perform_lean":
       performReply(m, "perform_leaned", "lean", false, () =>
         JSON.parse(engine.perform_lean(

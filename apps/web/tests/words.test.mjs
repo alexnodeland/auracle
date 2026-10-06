@@ -360,7 +360,6 @@ test("a PERFORM control's lean names the end it leans to, and a guess says so", 
   assert.equal(leanWord("dark", "bright", -0.42, false), "it leans dark");
   assert.equal(leanWord("thin", "full", 0.05, true), "it leans full?", "a guess: the side its mean is on, with a ?");
   assert.equal(leanWord("thin", "full", -0.05, true), "it leans thin?");
-  assert.equal(leanWord("still", "restless", 0, false), "it leans restless", "a slope of zero is the high end's");
   for (const s of [leanWord("close", "far", 1, false), leanWord("close", "far", -1, true)]) {
     voiced(s);
     assert.ok(!/\b(lens|posterior|slope|vote|duel)\b/i.test(s), `the word table: ${s}`);

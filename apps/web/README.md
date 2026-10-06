@@ -15,8 +15,9 @@ in, LEARNING past TASTE, EVOLVE beside PERFORM. The rail's stops go there, as
 do ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 (ADR-017). It opens at PERFORM, or at the level in
 the address's hash, or the one you were at last. Holding ⌥ (or MODEL in the
 menu bar) shows **the model view**: the bank's guesses and the pool in the
-order the model rates it, TASTE's side of its toggle, and EVOLVE's guess for
-the pair before you pick. The whole session **autosaves to IndexedDB**
+order the model rates it, TASTE's side of its toggle, EVOLVE's guess for the
+pair before you pick, what it makes of the patch in PATCH, and which way your
+taste leans along each of PERFORM's controls. The whole session **autosaves to IndexedDB**
 (bank, names, taste history, settings) and restores on reload.
 
 The sidebar is **three banks**, not one list with filters: **pool** (the

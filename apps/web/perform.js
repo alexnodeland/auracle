@@ -775,7 +775,8 @@ export function createPerform(host) {
   }
   // What the lean in hand was asked for: the sound (its patch and its tree
   // as it stands, the tree PERFORM measures, whose render is in the
-  // engine's memo), the posterior, and the panel's set.
+  // engine's memo once measured or opened on the bench), the posterior, and
+  // the panel's set.
   const leanKey = () => `${state.gen}|${state.leanRev}|${setOf(state.panel).join(",")}|${state.cur ? state.cur.json : ""}`;
   // Ask the engine for the lean, when the model view is up over PERFORM and
   // the one in hand is not for this sound, posterior and panel: when the
