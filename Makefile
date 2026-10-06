@@ -1,6 +1,5 @@
 # Auracle development targets. `make check` is the CI gate.
 
-CARGO := cargo
 # The browser tests and the films run on the Node in .node-version, the one CI
 # runs. When fnm has it, it goes first on every recipe's PATH, whatever the
 # shell's node is (Playwright 1.56's browser install hangs on Node 26). First,
@@ -9,9 +8,24 @@ NODE_BIN := $(shell fnm exec --using="$$(cat .node-version)" sh -c 'dirname "$$(
 ifneq ($(NODE_BIN),)
 export PATH := $(NODE_BIN):$(PATH)
 endif
-# Homebrew's rustc shadows rustup's and lacks the wasm std — always prefer
-# ~/.cargo/bin for wasm builds and checks.
-WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
+# Every cargo, rustc, rustfmt and wasm-pack call runs rustup's proxies, which
+# build with the toolchain rust-toolchain.toml pins (and install it on first
+# use). Homebrew's cargo, first on PATH on a Mac that has both, ignores the
+# file. Both halves below are needed, each measured on such a Mac:
+# - CARGO names rustup's cargo by its path. make (3.81) runs a recipe line
+#   with no shell syntax itself and finds the program on the PATH it started
+#   with, not the one exported here: a bare `cargo test` ran Homebrew's cargo.
+# - rustup's directory also goes first on every recipe's PATH. Even rustup's
+#   cargo compiles with the first `rustc` on PATH (Homebrew's 1.96.1, when it
+#   came first), and wasm-pack runs `cargo` by name.
+CARGO_BIN := $(or $(CARGO_HOME),$(HOME)/.cargo)/bin
+ifneq ($(wildcard $(CARGO_BIN)/cargo),)
+CARGO := $(CARGO_BIN)/cargo
+export PATH := $(CARGO_BIN):$(PATH)
+else
+CARGO := cargo
+$(warning no rustup in $(CARGO_BIN): using the cargo on PATH, which ignores rust-toolchain.toml)
+endif
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
 FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
@@ -162,8 +176,8 @@ js-check:
 ## boundary), with warnings as errors as CI's wasm32 build has them
 wasm-check:
 	@rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$$' || { \
-		printf '  the wasm32 target is missing — run: rustup target add wasm32-unknown-unknown\n'; exit 1; }
-	$(WASM_PATH) RUSTFLAGS="$(RUSTFLAGS) -Dwarnings" $(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
+		printf '  the wasm32 target is missing — run: rustup toolchain install (it reads rust-toolchain.toml)\n'; exit 1; }
+	RUSTFLAGS="$(RUSTFLAGS) -Dwarnings" $(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
 
 ## smoke: boot the instrument in a real browser against the built wasm and
 ## require a clean console and a registered worklet, then provoke the failure
@@ -359,7 +373,7 @@ revalidate: phi-stats norm-peak climb search-check
 
 ## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
-	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+	$(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
 	@$(MAKE) --no-print-directory wasm-stamp
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content

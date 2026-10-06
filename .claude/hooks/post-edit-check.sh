@@ -12,8 +12,12 @@ esac
 fail() { printf '%s\n' "$@" >&2; exit 2; }
 case "$file" in
   *.rs)
-    command -v rustfmt >/dev/null || exit 0
-    out=$(rustfmt --edition 2021 "$file" 2>&1) || fail "rustfmt could not parse $file:" "$out"
+    # rustup's rustfmt, run from the file's directory so rustup finds the
+    # toolchain rust-toolchain.toml pins, as `make fmt` does; a Homebrew
+    # rustfmt first on PATH would format with another release.
+    rustfmt="${CARGO_HOME:-$HOME/.cargo}/bin/rustfmt"
+    [ -x "$rustfmt" ] || rustfmt="$(command -v rustfmt)" || exit 0
+    out=$(cd "$(dirname "$file")" && "$rustfmt" --edition 2021 "$file" 2>&1) || fail "rustfmt could not parse $file:" "$out"
     ;;
   *.js|*.mjs|*.cjs)
     command -v node >/dev/null || exit 0

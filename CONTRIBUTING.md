@@ -34,7 +34,8 @@ Be respectful and constructive.
    uncommented patch.
 2. **Install [rustup](https://rustup.rs/) and Node 22** (the version in
    `.node-version`; fnm or nvm pick it up), then run **`make setup`**
-   (`scripts/setup.sh`): it adds the wasm32 target, `wasm-pack` and
+   (`scripts/setup.sh`): it installs the Rust release `rust-toolchain.toml`
+   pins (with rustfmt, clippy and the wasm32 target), `wasm-pack` and
    `cargo-nextest`, installs the browser tests' packages and Chromium, turns on
    the git hooks and builds the app's engine. It is idempotent; run it again
    after pulling. For the films, **`make film-setup`** also builds
@@ -97,8 +98,13 @@ project subpath or from a `file://` copy.
 
 - **Tests run in release mode.** The grammar/features/session suites render
   real audio sample-by-sample; debug DSP is ~20× slower.
-- **Wasm builds need rustup's toolchain.** A Homebrew rustc earlier in PATH
-  lacks the wasm32 std; `make wasm` prefixes `~/.cargo/bin` for you.
+- **One Rust compiler, rustup's.** `rust-toolchain.toml` pins the release
+  CI builds with, and rustup's proxies read it; a Homebrew cargo or rustc
+  does not (and lacks the wasm32 std). Every `make` target puts
+  `~/.cargo/bin` first on its PATH, and both formatting hooks run rustup's
+  rustfmt. A bare `cargo` in a shell with Homebrew first on PATH runs
+  Homebrew's: go through `make`, or put `~/.cargo/bin` first. A new Rust
+  release arrives in a PR of its own that changes the file.
 - **The dev server sends `Cache-Control: no-store`** and the app version-stamps
   its worker/wasm URLs. Both are needed; the browser's heuristic cache ignores
   late `no-store` on already-cached module workers.
@@ -123,7 +129,7 @@ Every change must pass `make check`:
    hooks against the inputs they must block and pass, and the syntax of every
    film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
-   (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
+   (`make wasm-check`; the pinned toolchain brings the target)
 6. `cargo test --workspace --profile test-fast` — release-grade codegen
    without release's shipping flags; see the profile's comment in `Cargo.toml`
 

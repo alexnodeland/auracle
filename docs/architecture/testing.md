@@ -94,13 +94,15 @@ and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. A run on
 main is not cancelled by the next push; GitHub keeps one waiting run, so when
 three merges land inside one run's length the middle one is covered by the
-newest. Lint and the Rust tests are reused only while Rust's stable release
-is the one they ran on (the record keeps `rustc --version`).
+newest. Lint and the Rust tests are reused only while `rust-toolchain.toml`
+still pins the release they ran on (the record keeps `rustc --version`).
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every job runs on
 `ubuntu-24.04`, not `ubuntu-latest`, so a new runner image arrives in a PR of
-its own. Every action is pinned to
+its own, and every Rust job builds with the compiler `rust-toolchain.toml`
+pins (`rustup toolchain install`), as `make` does locally, so a new Rust
+release does too. Every action is pinned to
 a commit SHA with its version in a comment; Dependabot
 (`.github/dependabot.yml`) opens one grouped PR a week for the actions and
 one for `tests/web`'s npm packages.

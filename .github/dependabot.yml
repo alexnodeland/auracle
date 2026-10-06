@@ -4,9 +4,9 @@
 # trailing comment (`uses: actions/checkout@<sha> # v7.0.1`): a tag can be moved
 # to other code, a SHA cannot. Dependabot reads the comment and opens a PR that
 # moves both. One grouped PR a week per ecosystem, so updates arrive as one
-# reviewable change rather than a dozen. dtolnay/rust-toolchain has no
-# releases: it is pinned to the head of its `stable` branch, passed
-# `toolchain: stable`, and moved by hand.
+# reviewable change rather than a dozen. The Rust compiler is not an action:
+# rust-toolchain.toml pins it, every job installs it with rustup, and it is
+# moved by hand, a PR of its own.
 version: 2
 updates:
   - package-ecosystem: github-actions

@@ -203,16 +203,15 @@ jobs:
           gh run download "$art" --repo "$REPO" -n "verified-tree-$tree" -D verified
           cat verified/verified.json
           # Lint and the Rust tests hold for the compiler they ran on: reused
-          # only while stable is still that release (the lint job pins none).
-          # Read whole, then parsed: awk stopping at its match would close the
-          # pipe on curl mid-write, which pipefail turns into a failed step.
-          channel="$(curl -sSf https://static.rust-lang.org/dist/channel-rust-stable.toml)"
-          stable="$(awk '/^\[pkg\.rustc\]/{f=1} f && /^version = /{gsub(/^version = "|"$/, ""); print; exit}' <<<"$channel")"
+          # only while rust-toolchain.toml pins that release. The record
+          # keeps what `rustc --version` prints after "rustc", so its first
+          # word is the release ("1.99.0 (b940084d7 2026-09-28)").
+          pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
-          echo "rustc: recorded '$recorded', stable now '$stable'"
+          echo "rustc: recorded '$recorded', pinned '$pinned'"
           for job in lint web test; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
-            if [ "$job" != web ] && [ "$recorded" != "$stable" ]; then continue; fi
+            if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
             if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
           done
           [ "$(jq -r .ran.browser verified/verified.json)" = full ] && echo "browser=true" >> "$GITHUB_OUTPUT"
@@ -245,10 +244,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
+      # Every Rust job builds with the one compiler rust-toolchain.toml pins,
+      # as `make` does locally: given no toolchain, rustup installs the file's,
+      # with its components and the wasm32 target (rustup 1.28 and later; the
+      # runner image has 1.29.1). Not dtolnay/rust-toolchain, which does not
+      # read the file. A new stable then changes nothing here until a PR
+      # bumps the file.
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -320,9 +323,8 @@ jobs:
         partition: ["1/2", "2/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
       # One cache for every test job, here and in slow-suite.yml, saved from
       # main by this job only.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -383,9 +385,8 @@ jobs:
           name: web-engine
           path: apps/web/pkg
 
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
