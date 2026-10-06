@@ -566,11 +566,14 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
   are level S-curves (`wirePathD`); a cable into a module placed behind its
-  source by hand takes a right-angle run below both instead. The run is
-  chosen where the plates come to rest: the rack's motion
-  (`startRackMotion`) hands `wirePathD` the layout at rest beside each
-  frame's, so a cable stays a curve while a slide takes its end past its
-  source (the amp out from under an insert, or back on ⌘Z; #228). A
+  source by hand takes a right-angle run below both instead. The rack's
+  motion (`startRackMotion`) redraws every cable on each frame. A cable
+  fading in with the change takes the run it will rest in, so it stays a
+  curve while a slide takes its end past its source (the amp out from
+  under an insert, or back on ⌘Z; #228). A cable already on the rack takes
+  its run from that frame's positions, so it keeps the right-angle run
+  while its module is still behind its source (switching a layout by hand
+  to chain). A
   two-input module's input labels sit outside the plate (`addJack`'s
   `outside`), and plain `in`/`out` are not printed (they stay the jacks'
   accessible names).

@@ -24,6 +24,12 @@
 //   fading in where it rests), and for the frames the amp was behind that
 //   module the cable used to take the right-angle run of a module placed
 //   behind its source, then jump to the curve as the amp came out (#228).
+//   That cable is new with the change and fades in as the amp slides.
+// - A cable already on the rack is never a curve drawn backwards. With the
+//   amp dragged by hand behind every module, its cable runs below the plates;
+//   switching the layout to chain slides the amp back out to the end of the
+//   row, and the cable keeps that run while the amp is behind its source,
+//   then curves.
 //
 // The frames are the page's own: an observer on the rack (installed before
 // boot) samples it as each build lands, in the task that drew it and set its
@@ -40,8 +46,10 @@ const { openPreset, rackAtRest } = require("./patch_page");
  *  that replaced the rack's plates (`built`), one for every animation frame
  *  after it while the rack is moving, and one for the first frame on which
  *  it is not (`rest`): the departing copies on the rack (`.rack-exit`), the
- *  amp's centre in rack units and its opacity, and whether the cable into
- *  the amp is a curve (` C `) or a routed path. Moving is any of: a build
+ *  amp's centre in rack units and its opacity, whether the cable into the
+ *  amp is a curve (` C `) or a routed path, and where that cable leaves its
+ *  source's out jack and lands in the amp's in jack (`ends`: the x of its
+ *  path's first point and of its last, in rack units). Moving is any of: a build
  *  just landed, a departing copy, a plate under a moving transform, an
  *  animation that ends (an arrival's fade). */
 function recordRack() {
@@ -72,6 +80,8 @@ function recordRack() {
     if (rest && !moving) return false;
     moving = !rest;
     const cable = svg.querySelector('path.wire.audio[data-to="amp"]');
+    const d = cable ? cable.getAttribute("d") : "";
+    const n = (d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
     frames.push({
       built,
       rest,
@@ -80,7 +90,8 @@ function recordRack() {
       exit,
       amp: centre(amp),
       ampOpacity: Number(getComputedStyle(amp).opacity),
-      curve: cable ? / C /.test(cable.getAttribute("d")) : null,
+      curve: cable ? / C /.test(d) : null,
+      ends: n.length >= 4 ? { out: n[0], in: n[n.length - 2] } : null,
     });
     return !rest;
   };
@@ -229,4 +240,48 @@ test("within one sound the rack still moves, the cable into the amp a curve all 
   const back = motionOf(await takeFrames(page), rackOf("Reese", 6));
   expect(back[0].exit, "the empty socket fading out as BACK TO lands").toBeGreaterThan(0);
   expectSlid(back, emptyAgain, await ampAt(page), "BACK TO Reese");
+});
+
+test("a cable already on the rack is never a curve drawn backwards: switching a layout by hand to chain, the cable into an amp put behind its source runs below the plates until the amp is out ahead", async ({ page, app }) => {
+  await page.addInitScript(recordRack);
+  await app.boot();
+  await openPreset(app, "Reese");
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="freeform"]').click();
+  await expect(page.locator("#rack-layout")).toHaveText(/^by hand/);
+  await rackAtRest(page);
+
+  // The amp, picked up by its plate's lower edge (clear of its knobs, as
+  // patch_canvas drags the mix) and put down under the first module of the
+  // row, behind every module in it.
+  const boxes = await page.locator("#rack-svg .rack-plates g[data-key] .mod-plate").evaluateAll((ps) => ps.map((p) => {
+    const r = p.getBoundingClientRect();
+    return { x: r.x, bottom: r.bottom };
+  }));
+  const plate = await page.locator('#rack-svg .rack-plates g[data-kind="amp"] .mod-plate').boundingBox();
+  const left = Math.min(...boxes.map((b) => b.x));
+  const below = Math.max(...boxes.map((b) => b.bottom));
+  await page.mouse.move(plate.x + 10, plate.y + plate.height - 6);
+  await page.mouse.down();
+  await page.mouse.move(left + 10, below + 30 + plate.height, { steps: 8 });
+  await expect(page.locator("#rack-scroll")).toHaveClass(/\bmoving-plate\b/);
+  await page.mouse.up();
+  await rackAtRest(page);
+  // At rest the cable into it runs out, down below both plates, back and up
+  // into the amp: a right-angle run, not a curve.
+  await expect(page.locator('#rack-svg path.wire.audio[data-to="amp"]')).not.toHaveAttribute("d", / C /);
+  await takeFrames(page);
+
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="chain"]').click();
+  await expect(page.locator("#rack-layout")).toHaveText(/^chain/);
+  await rackAtRest(page);
+  const motion = motionOf(await takeFrames(page), rackOf("Reese", 6));
+  const name = "by hand → chain";
+  // The amp starts from behind its source and ends at the end of the row.
+  expect(motion[0].ends.in, `${name}: the amp's in jack as the switch lands, against its source's out jack`).toBeLessThan(motion[0].ends.out);
+  expect(motion[0].curve, `${name}: whether the cable into the amp is a curve as the switch lands`).toBe(false);
+  expect(motion[motion.length - 1].curve, `${name}: whether the cable into the amp is a curve at rest`).toBe(true);
+  // On no frame between is it a curve with its in end behind its out end.
+  expect(motion.filter((f) => f.curve && f.ends.in < f.ends.out).map((f) => f.ends), `${name}: the frames on which the cable into the amp is a curve drawn backwards`).toEqual([]);
 });
