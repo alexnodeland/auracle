@@ -123,28 +123,8 @@ impl quiver::introspection::ModuleIntrospection for Refuses {
 /// such input or parameter at all.
 #[test]
 fn a_pin_that_cannot_take_says_why() {
-    let mut patch = Patch::new(SR);
-    let gate = patch.add(
-        "io:gate",
-        ExternalInput::gate(Arc::new(AtomicF64::new(0.0))),
-    );
-    let pitch = patch.add(
-        "io:pitch",
-        ExternalInput::voct(Arc::new(AtomicF64::new(0.0))),
-    );
-    let mut c = Compiler {
-        patch,
-        pitch_out: pitch.out("out"),
-        gate_out: gate.out("out"),
-        params: HashMap::new(),
-        taps: Vec::new(),
-        input: None,
-        track_gates: Vec::new(),
-        records: HashMap::new(),
-        follow: false,
-        track_feeds: HashMap::new(),
-        pins: Vec::new(),
-    };
+    let level = || Arc::new(AtomicF64::new(0.0));
+    let mut c = Compiler::new(SR, &level(), &level(), None, false);
     let adsr = c.patch.add("t:adsr", Adsr::new(SR));
     c.constant(0.5, adsr.id(), "sustain")
         .expect("an unpatched control input takes a pin");

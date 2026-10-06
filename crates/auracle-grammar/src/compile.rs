@@ -1311,6 +1311,38 @@ struct Compiler {
 }
 
 impl Compiler {
+    /// A compiler with nothing built yet: an empty patch, wired in
+    /// [`ValidationMode::Warn`] (the crate docs say why), whose key pitch and
+    /// gate are read from `pitch` and `gate` through the `io:pitch` and
+    /// `io:gate` inputs, and whose AUDIO INs read `input`. `follow` builds a
+    /// follower ([`compile_follower`]).
+    fn new(
+        sample_rate: f64,
+        pitch: &Arc<AtomicF64>,
+        gate: &Arc<AtomicF64>,
+        input: Option<Arc<AudioInputStream>>,
+        follow: bool,
+    ) -> Self {
+        let mut patch = Patch::new(sample_rate);
+        patch.set_validation_mode(ValidationMode::Warn);
+        let pitch_in = patch.add("io:pitch", ExternalInput::voct(Arc::clone(pitch)));
+        let gate_in = patch.add("io:gate", ExternalInput::gate(Arc::clone(gate)));
+        Compiler {
+            patch,
+            pitch_out: pitch_in.out("out"),
+            gate_out: gate_in.out("out"),
+            params: HashMap::new(),
+            taps: Vec::new(),
+            input,
+            track_gates: Vec::new(),
+            records: HashMap::new(),
+            follow,
+            track_feeds: HashMap::new(),
+            #[cfg(test)]
+            pins: Vec::new(),
+        }
+    }
+
     /// Pin the control input `port` on `node` to a constant `value`. Used only
     /// for fixed wiring decisions; user knobs go through [`Self::knob`].
     ///
@@ -3504,28 +3536,9 @@ fn compile_voice(
             "patch nests {nesting} levels deep; the compiler stops at {COMPILE_MAX_NESTING}"
         )));
     }
-    let mut patch = Patch::new(sample_rate);
-    patch.set_validation_mode(ValidationMode::Warn);
-
     let pitch = Arc::new(AtomicF64::new(0.0));
     let gate = Arc::new(AtomicF64::new(0.0));
-    let pitch_in = patch.add("io:pitch", ExternalInput::voct(Arc::clone(&pitch)));
-    let gate_in = patch.add("io:gate", ExternalInput::gate(Arc::clone(&gate)));
-
-    let mut c = Compiler {
-        patch,
-        pitch_out: pitch_in.out("out"),
-        gate_out: gate_in.out("out"),
-        params: HashMap::new(),
-        taps: Vec::new(),
-        input: input.cloned(),
-        track_gates: Vec::new(),
-        records: HashMap::new(),
-        follow,
-        track_feeds: HashMap::new(),
-        #[cfg(test)]
-        pins: Vec::new(),
-    };
+    let mut c = Compiler::new(sample_rate, &pitch, &gate, input.cloned(), follow);
 
     // The evolved tree.
     let audio_out = c.build(&tree.root, "node")?;
