@@ -134,15 +134,19 @@ fn a_pinned_patch_survives_eviction_pressure() {
     let doomed = engine.pool[worst].id;
     assert!(engine.set_pinned(doomed, true), "the pin was refused");
 
+    // One more than the pool holds: every unpinned place turns over.
     let mut inserted = 0;
-    for (name, tree) in auracle_grammar::presets() {
+    for (name, tree) in auracle_grammar::presets()
+        .into_iter()
+        .take(engine.cfg.pool_size + 1)
+    {
         if engine.insert_preset(tree, name).is_some() {
             inserted += 1;
         }
     }
     assert!(
-        inserted >= 4,
-        "only {inserted} insertions — not enough to force eviction"
+        inserted > engine.cfg.pool_size,
+        "only {inserted} insertions — not enough to turn the pool over"
     );
     assert_eq!(engine.pool.len(), 8, "pool grew past its cap");
     assert!(
