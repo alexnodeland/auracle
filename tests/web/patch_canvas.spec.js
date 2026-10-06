@@ -283,11 +283,10 @@ test("the amp's envelope figure follows its knobs", async ({ page, app }) => {
 });
 
 // Read once the open's motion is over (`openPreset` waits for the rack at
-// rest), when the cables on the rack are Reese's own: the sound before's
-// have faded out with its plates. On the way the amp, the one plate kept
-// from the sound before, slides from where that sound had it to Reese's;
-// from a sound narrower than Reese it passes Reese's last module, and for
-// those frames the cable into it is routed around the plates.
+// rest), when the cables on the rack are Reese's own. Reese shares no module
+// with the sound before, so it fades up whole, its amp in its own place;
+// patch_motion.spec.js reads the cable into the amp on every frame of the
+// way from First Bass to Reese (#165).
 test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page, app }) => {
   await app.boot();
   await openPreset(app, "Reese");
