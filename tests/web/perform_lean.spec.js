@@ -53,7 +53,6 @@ test("before the first fit, the model view over PERFORM asks for each control's 
 });
 
 test("under the model view each of PERFORM's controls carries its lean, a guess drawn as one, asked again when a pick moves the posterior, and gone at rest", async ({ page, app }) => {
-  test.setTimeout(150_000);
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
   await app.warmStart();
   await app.openOnPerform("Glass Pad", { reach: false });
@@ -108,7 +107,10 @@ test("under the model view each of PERFORM's controls carries its lean, a guess 
   await app.quiet();
   expect(await app.sentCount("perform_lean"), "the lean was asked again with nothing changed").toBe(asked);
 
-  // A pick moves the posterior (a rating reweights it): asked again.
+  // A pick moves the posterior (a rating reweights it): asked again, and the
+  // new answer drawn. Bright is pinned the other way from here on, so its
+  // words change only once the new reply is on the dial.
+  await app.amend({ type: "perform_leaned" }, { "lean.0.mean": -0.6 });
   await bankTab(page, "pool");
   const t1 = await app.now();
   await page.locator("#bank-list").focus();
@@ -117,7 +119,8 @@ test("under the model view each of PERFORM's controls carries its lean, a guess 
   await app.reply("status", { where: (r) => !!r.ratings, after: t1, timeout: 30_000 });
   const again = await leanAfter(app, t1);
   expect(again.reply.lean.map((l) => l.index)).toEqual(SIX);
-  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans bright");
+  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans dark");
+  expect(await dot(0), "toward dark, the dial's left").toBeLessThan(0);
 
   // At rest, none of it: the arcs and words go, the captions come back.
   await modelView(page, false);
