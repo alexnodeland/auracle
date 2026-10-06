@@ -1143,8 +1143,8 @@ An empty answer (the engine deals `null` when fewer than two sounds in the
 pool are standardized and not cut, `deal_duel_except`) is nothing to put up.
 With the table waiting and no other deal out, the dealer calls `nothing`:
 `main.js`'s `nothingToDeal` keeps the picks, ▶ and ↻ disabled and the cards
-dimmed, and says *Nothing to deal. The pool has fewer than two sounds you
-haven’t cut.* in their reason slot at once. The dealer asks again
+dimmed, and says *Nothing to pair. Fewer than two sounds are left to deal.*
+in their reason slot at once. The dealer asks again
 (`soundsBack`) when a sound may have come back: a cut taken back, or new
 views (the pool changed), and the `filled` handler's deal for an empty table
 does the same. With a pair on the table, an empty answer leaves nothing

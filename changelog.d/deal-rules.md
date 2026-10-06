@@ -1,13 +1,13 @@
 ### Fixed: EVOLVE says when there is no pair left to deal
 
 - **When fewer than two sounds in the pool are left uncut, EVOLVE says
-  there is nothing to deal.** Picking or pressing **ANOTHER PAIR** with
-  every other sound cut used to bring the buttons back live over the pair
-  just put away, with no pair behind them and no reason given. Now the
-  cards stay dimmed with **▶ PLAY**, **PICK A**, **PICK B** and **ANOTHER
-  PAIR** off, and say *Nothing to deal. The pool has fewer than two sounds
-  you haven’t cut.* They deal again by themselves when you take a cut back
-  or the pool changes (`evolve_truth.spec.js`, `deal.test.mjs`, #195).
+  there is nothing to pair.** Cutting a sound on the table when it and the
+  other were the last two left uncut used to bring the buttons back live
+  with no pair behind them and no reason given. Now the cards stay dimmed
+  with **▶ PLAY**, **PICK A**, **PICK B** and **ANOTHER PAIR** off, and say
+  *Nothing to pair. Fewer than two sounds are left to deal.* They deal
+  again by themselves when you take a cut back or the pool changes
+  (`evolve_truth.spec.js`, `deal.test.mjs`, #195).
 
 ### Fixed: a pick taken back doesn't change the pairs after it
 

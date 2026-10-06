@@ -6961,12 +6961,12 @@ function setDuelControlsEnabled(on) {
 // sound may have come back (deal.js `soundsBack`: a cut taken back, or the
 // pool changed). It used to put up nothing as if it were a pair, and the
 // buttons came back live over the pair just put away (#195).
-const NOTHING_TO_DEAL = "Nothing to deal. The pool has fewer than two sounds you haven’t cut.";
+const NOTHING_TO_PAIR = "Nothing to pair. Fewer than two sounds are left to deal.";
 function nothingToDeal() {
   duelMeta = null;
   dealing = false;
   setDuelControlsEnabled(false);
-  sayDealing(NOTHING_TO_DEAL);
+  sayDealing(NOTHING_TO_PAIR);
   retireForecast();
   clearPairGuess();
   renderPlayDuel();

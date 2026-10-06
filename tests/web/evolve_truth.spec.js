@@ -257,9 +257,9 @@ test("another pair leaves no live-looking buttons while it deals, and says why w
 // What the dealer does with an empty answer is deal.test.mjs's; this is the
 // wiring: the cards, their buttons, the words, and the deal asked for again
 // when a cut is taken back.
-const NOTHING_TO_DEAL = "Nothing to deal. The pool has fewer than two sounds you haven’t cut.";
+const NOTHING_TO_PAIR = "Nothing to pair. Fewer than two sounds are left to deal.";
 
-test("a deal that comes back empty leaves the table off and says there is nothing to deal", async ({ page, app }) => {
+test("a deal that comes back empty leaves the table off and says there is nothing to pair", async ({ page, app }) => {
   await app.stall(AHEAD);
   await boot(page, app);
   await toEvolve(page, app);
@@ -271,15 +271,15 @@ test("a deal that comes back empty leaves the table off and says there is nothin
   await app.inject({ type: "duel", pair: null, meta: null, ahead: true, re: asked.rid });
 
   const why = page.locator("#duel-a .deal-why");
-  await expect(why).toHaveText(NOTHING_TO_DEAL);
+  await expect(why).toHaveText(NOTHING_TO_PAIR);
   await expect(why).toBeVisible();
-  await expect(page.locator("#duel-b .deal-why")).toHaveText(NOTHING_TO_DEAL);
+  await expect(page.locator("#duel-b .deal-why")).toHaveText(NOTHING_TO_PAIR);
   for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
   await expect(page.locator("#duel-a")).toHaveClass(/\bdealing\b/);
   // It stays so: no button comes back live, and no deal is asked for.
   await app.quiet();
   for (const id of DUEL_CONTROLS) await expect(page.locator(id)).toBeDisabled();
-  await expect(why).toHaveText(NOTHING_TO_DEAL);
+  await expect(why).toHaveText(NOTHING_TO_PAIR);
   expect(await app.sentCount("duel"), "a deal was asked for with nothing come back").toBe(deals);
 
   // A sound comes back (a cut taken back), and the engine can deal again:

@@ -105,8 +105,8 @@ longer says why on the cards, for example *dealing: the engine is breeding
 
 When fewer than two sounds in the pool are left uncut, there is no pair to
 deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B** and
-**ANOTHER PAIR** off, and say *Nothing to deal. The pool has fewer than two sounds you
-haven’t cut.* They deal again by themselves when a cut is taken back or the
+**ANOTHER PAIR** off, and say *Nothing to pair. Fewer than two sounds are
+left to deal.* They deal again by themselves when a cut is taken back or the
 pool changes.
 ```
 
