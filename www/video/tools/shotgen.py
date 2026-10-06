@@ -32,7 +32,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sound_defaults  # noqa: E402
 
-# The pairs the engine deals ahead (main.js requestAhead), watched passively:
+# The pairs the engine deals ahead (deal.js dealAhead), watched passively:
 # an extra "message" listener on each worker, so the app's own handlers see the
 # same messages in the same order. REDEAL waits on it. It draws nothing from
 # Math.random, so it changes no session.

@@ -3261,8 +3261,8 @@ export function createPerform(host) {
 
   // ---------- the well's modes ----------
   // The face (at rest), the XY pad or How it works, one at a time. The
-  // face stays drawn, dimmed, behind the other two. Esc inside the well, or
-  // the mode's own button again, puts the face back.
+  // face stays drawn, dimmed, behind the other two. Esc while PERFORM shows,
+  // or the mode's own button again, puts the face back.
   let wellMode = "face";
   const xyBtn = el("button", "pf-xy-btn util-btn", "XY");
   xyBtn.type = "button";
@@ -3289,8 +3289,18 @@ export function createPerform(host) {
       (was === "xy" ? xyBtn : whyBtn).focus({ preventScroll: true });
     }
   }
-  well.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || wellMode === "face") return;
+  // Esc puts the face back while PERFORM shows, wherever the focus is (a
+  // press on HOW IT WORKS leaves none: Space plays everywhere, ADR-016; an
+  // axis's drop-down keeps it after a choice), unless something nearer took
+  // the press first (`defaultPrevented`: a menu, a dialog, a bank row's ★; a
+  // text field keeps its own Esc). A closed drop-down has no Esc of its own,
+  // so it is not a text field here. Putting the face back is the press spent
+  // (`preventDefault`): the model view, which takes Esc last on the window,
+  // waits for the next one.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || wellMode === "face" || !state.visible || e.defaultPrevented) return;
+    if (e.target?.closest?.("input:not([type=range]), textarea, [contenteditable]")) return;
+    e.preventDefault();
     setWellMode("face");
   });
   // A click on the sound plays it, as Space does (the specimen's well), and

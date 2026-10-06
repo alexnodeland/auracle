@@ -63,7 +63,8 @@ use crate::observe::{Feedback, FitSet};
 /// SD of the maximum of K iid standard normals, K = 1..=5. See the module doc.
 pub const MAX_NORMAL_SD: [f64; 5] = [1.000, 0.826, 0.748, 0.701, 0.669];
 
-/// Posterior draws retained from a fit, after thinning.
+/// Posterior draws retained from a fit, after thinning: at most this many,
+/// and exactly this many from a budget that is a multiple of it.
 ///
 /// The chain is thinned because single-site draws are heavily autocorrelated —
 /// 500 spread over the whole chain carry far more information than 500
@@ -318,12 +319,27 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 
 /// Numerically stable `log σ(x)`.
 fn log_sigmoid(x: f64) -> f64 {
-    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}).
-    -((-x).max(0.0) + (-(-x).abs()).exp().ln_1p())
+    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}), and
+    // |-x| = |x|: `-x.abs()` is -(|x|), the method before the sign.
+    -((-x).max(0.0) + (-x.abs()).exp().ln_1p())
 }
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
+}
+
+/// `ln(1 − e^{−d})` for `d ≥ 0`, accurate to a few ulps at every `d`
+/// (Mächler, *Accurately computing log(1 − exp(−|a|))*, 2012). Near 0,
+/// `e^{−d}` rounds toward 1 and `ln_1p(−e^{−d})` loses the digits that make
+/// up `d`, which `exp_m1` keeps; far from 0, `1 − e^{−d}` rounds toward 1
+/// and `ln` loses the tail, which `ln_1p` keeps. The two are equally good
+/// at ln 2, where they change over. At `d = 0` it is −∞.
+fn log1mexp(d: f64) -> f64 {
+    if d > std::f64::consts::LN_2 {
+        (-(-d).exp()).ln_1p()
+    } else {
+        (-(-d).exp_m1()).ln()
+    }
 }
 
 /// Log-likelihood of one standardized observation under the max-of-experts
@@ -397,22 +413,32 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
             let k = *rating as usize;
             let n_cats = s.cuts.len() + 1;
             let k = k.min(n_cats - 1);
-            // Cumulative logit: P(y=k) = σ(a·(c_{k+1}−u)) − σ(a·(c_k−u)),
-            // with c_0 = −∞ and c_{n} = +∞ — computed in log space, so a
-            // rating far from `u` scores its real (very negative) log-prob
-            // rather than the `ln(1e-12) = −27.6` floor the subtraction of two
-            // near-equal sigmoids used to bottom out at.
+            // Cumulative logit: P(y=k) = σ(a·(c_k−u)) − σ(a·(c_{k−1}−u)),
+            // with `cuts` 0-based, c_{−1} = −∞ and c_{n−1} = +∞, computed in
+            // log space, so a rating far from `u` scores its real (very
+            // negative) log-prob rather than the `ln(1e-12) = −27.6` floor
+            // the subtraction of two near-equal sigmoids used to bottom out
+            // at.
             match (k == 0, k == n_cats - 1) {
                 (true, true) => 0.0,
                 (true, false) => log_sigmoid(a * (s.cuts[k] - u)),
                 (false, true) => log_sigmoid(-a * (s.cuts[k - 1] - u)),
                 (false, false) => {
-                    let hi = log_sigmoid(a * (s.cuts[k] - u));
-                    let lo = log_sigmoid(a * (s.cuts[k - 1] - u));
-                    // ln(σ_hi − σ_lo) = ln σ_hi + ln(1 − σ_lo/σ_hi); the ratio
-                    // is < 1 because the cuts are ordered, so `ln_1p` of a
-                    // negative argument is the stable form.
-                    hi + (-(lo - hi).exp()).ln_1p()
+                    // With b = a·(c_k − u) above l = a·(c_{k−1} − u),
+                    // σ(b) − σ(l) = σ(b)·σ(−l)·(1 − e^{−(b−l)}) exactly, so
+                    // ln P is three terms of one sign, none of them a
+                    // difference of near-equal numbers: exact to a few ulps
+                    // wherever `u` sits. The width b − l is taken from the
+                    // cuts, so it does not round with `u`. Far below the
+                    // lower cut this tends to a·(u − c_{k−1}) + ln(1 − e^{−d}),
+                    // far above the upper one to a·(c_k − u) + ln(1 − e^{−d}).
+                    // Written as ln σ(b) + ln(1 − σ(l)/σ(b)), as it was, the
+                    // ratio rounded to 1 once `u` sat about 37 below the
+                    // lower cut, and the result was −∞ where the true value
+                    // is finite (#227).
+                    log_sigmoid(a * (s.cuts[k] - u))
+                        + log_sigmoid(-a * (s.cuts[k - 1] - u))
+                        + log1mexp(a * (s.cuts[k] - s.cuts[k - 1]))
                 }
             }
         }
@@ -690,8 +716,10 @@ impl TasteModel {
         // The stride is known before the chain runs, because the driver pushes
         // exactly `n_samples` draws — so asking it to retain only every
         // `stride`-th is the same subsequence `step_by` produced, without ever
-        // holding the other 95% live. See `KEEP`.
-        let stride = (n_samples / KEEP).max(1);
+        // holding the other 95% live. See `KEEP`. Rounded up, so at most
+        // `KEEP` are retained at any budget: rounded down, a budget just
+        // under twice `KEEP` kept every draw, nearly twice as many.
+        let stride = n_samples.div_ceil(KEEP).max(1);
         let samples: Vec<TasteSample> =
             adaptive_mcmc_chain_thinned(rng, model_fn, n_samples, n_warmup, stride)
                 .into_iter()
@@ -748,11 +776,24 @@ fn permutations(k: usize) -> Vec<Vec<usize>> {
     out
 }
 
-fn cosine(a: &[f64], b: &[f64]) -> f64 {
+/// Cosine similarity of two vectors: the cosine of the angle between them,
+/// whatever their lengths, and 0 when either is zero (it has no direction).
+/// Alignment matches lenses by it ([`TastePosterior::aligned_to`]), and the
+/// gates score θ recovery with it (`synthetic::cosine` is this function).
+///
+/// A zero vector is a test, not an epsilon. Adding 1e-12 to the
+/// denominator, as this did, bent the cosine of short vectors: two parallel
+/// vectors a millionth long scored 0.5.
+pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot / (na * nb + 1e-12)
+    let norms = na * nb;
+    if norms > 0.0 {
+        dot / norms
+    } else {
+        0.0
+    }
 }
 
 impl TastePosterior {
@@ -798,7 +839,10 @@ impl TastePosterior {
     ///
     /// Deterministic (systematic, offset ½N) rather than multinomial, because
     /// every other stochastic step in this engine is seeded and reproducible
-    /// and this one has no reason not to be.
+    /// and this one has no reason not to be. Copy `i` is the weights'
+    /// quantile at u = (i + ½)/N: the first draw whose cumulative weight
+    /// reaches u. So a u exactly on the boundary between two draws goes to
+    /// the earlier one, whose weight it completes.
     pub fn resampled(&self) -> TastePosterior {
         // With no draws the loop below never runs, and this is the empty
         // posterior it was given.
@@ -837,23 +881,18 @@ impl TastePosterior {
     /// the products cannot all underflow, and the weight moves to the draw
     /// that contradicts the vote least. A strong enough contradiction
     /// collapses the effective sample size, which is the caller's signal to
-    /// resample and refit. A duel, a keep/kill vote and a star rating at
-    /// either end of the scale have a finite log-likelihood for any finite φ.
-    /// A star rating in between does not, until #227 is fixed: once a draw's
-    /// utility is about 37 below the lower cutpoint, its log-likelihood
-    /// underflows to −∞ where the true value is finite, and that draw loses
-    /// all its weight. So for such a vote a stronger contradiction can move
-    /// the weights less than a weaker one.
+    /// resample and refit. Every vote on a finite φ has a finite
+    /// log-likelihood under every draw: a duel, a keep/kill vote, and a star
+    /// rating however far its utility sits from the cutpoints. So a stronger
+    /// contradiction never moves the weights less than a weaker one.
     ///
     /// When a weighted draw's log-likelihood is NaN, or every one is −∞,
     /// there is nothing to update by, and the weights are kept as they were.
-    /// A vote on a φ that holds a NaN does the first, and that star rating,
-    /// far enough below its cutpoint on every weighted draw, the second.
-    /// Keeping the weights is a choice, not the exact update: for the star
-    /// rating the exact update would move them to the draw that contradicts
-    /// it least. It keeps what the votes since the last fit gathered, and the
-    /// observation waits in the caller's log for the next fit. The effective
-    /// sample size is unchanged.
+    /// Only a vote on a φ that is not finite gets there, such as one that
+    /// holds a NaN, which gives every draw a NaN. Keeping the weights keeps
+    /// what the votes since the last fit gathered, and the observation waits
+    /// in the caller's log for the next fit. The effective sample size is
+    /// unchanged.
     pub fn reweighted(&self, feedback: &Feedback, session: usize) -> TastePosterior {
         self.reweighted_with(feedback, session, &[])
     }
@@ -881,8 +920,8 @@ impl TastePosterior {
         // weight before exponentiating. That draw's product is then its own
         // weight, so however firmly the vote rules out every weighted draw,
         // the sum cannot underflow and the update stays exact, as long as
-        // that best log-likelihood is finite (#227 is a vote where it is
-        // not). A draw with no weight takes no part, in the shift or in the
+        // that best log-likelihood is finite, which it is for every vote on
+        // a finite φ. A draw with no weight takes no part, in the shift or in the
         // products. In the shift, one that scored best pushed every product
         // under the smallest double, and the update was skipped; in the
         // products, 0 · e^(ll − m) is 0 · ∞ = NaN once it scores far enough
@@ -903,12 +942,13 @@ impl TastePosterior {
                 *wi /= sum;
             }
         } else {
-            // Nothing to update by: a weighted draw's log-likelihood is NaN
-            // (a vote on a φ that holds a NaN gives every draw NaN), or every
-            // one is −∞, so the shift is too and ll − m is NaN (a middle star
-            // rating far below its lower cutpoint underflows there, #227).
-            // Keep the previous weights, a choice rather than the exact
-            // update, one per draw (a posterior persisted before reweighting
+            // Nothing to update by: a weighted draw's log-likelihood is NaN,
+            // or every one is −∞, so the shift is too and ll − m is NaN. Only
+            // a vote on a φ that is not finite does either (one that holds a
+            // NaN gives every draw NaN): on a finite φ every vote's
+            // log-likelihood is finite, a middle star rating's too however
+            // far below its lower cutpoint (#227). Keep the previous
+            // weights, one per draw (a posterior persisted before reweighting
             // existed stores none, which reads as uniform); the observation
             // waits in the log for the next fit. Resetting to uniform here,
             // as this used to, threw away the evidence gathered since the

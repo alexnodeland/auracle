@@ -141,7 +141,8 @@ fn legacy_logs_still_load() {
 /// "this vote says nothing about that axis".
 ///
 /// Every modality re-projects, and each row says which coordinates it
-/// imputed: the likelihood attenuates a keep or a rating by them.
+/// imputed: the likelihood attenuates a keep or a rating by them. Only the
+/// rows recorded under a feature set fit a standardizer for it.
 #[test]
 fn observations_reproject_by_name() {
     let names = |n: &[&str]| -> Vec<String> { n.iter().map(|s| s.to_string()).collect() };
@@ -180,6 +181,9 @@ fn observations_reproject_by_name() {
     };
     let fit = FitSet::build(&log, &names_now, &sz);
     assert_eq!(fit.len(), 3);
+    assert!(!fit.is_empty());
+    // Sessions 0 and 1: two keep/kill thresholds for the model to fit.
+    assert_eq!(fit.n_sessions(), 2);
     // noisy: (1−2)/1, warm: absent ⇒ 0, bright: (10−5)/5.
     assert_eq!(
         fit.rows[0],
@@ -215,7 +219,13 @@ fn observations_reproject_by_name() {
         )
     );
     assert_eq!(fit.absent, vec![vec![1], vec![0], vec![0, 1]]);
-    assert_eq!(log.raw_rows(&names_then).len(), 2, "raw rows are fittable");
+    // A standardizer for one feature set is fitted on the rows recorded
+    // under it, and on no other: the duel's two candidates, not the keep's
+    // or the rating's, whose units are another set's.
+    assert_eq!(
+        log.raw_rows(&names_then),
+        vec![vec![10.0, 1.0], vec![0.0, 3.0]]
+    );
 }
 
 /// A legacy log has no names and holds z-scores already: it is read

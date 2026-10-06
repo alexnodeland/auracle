@@ -255,12 +255,20 @@ def warn(text: str) -> None:
     print(text, file=sys.stderr)
 
 
+# Which config files git reads, kept through own_env: they name no
+# repository. A caller that says "no global config" (the tests' scratch
+# repositories, so no fsmonitor daemon starts in each and outlives it) is
+# heard.
+CONFIG_VARS = ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_SYSTEM")
+
+
 def own_env() -> dict[str, str]:
     """The environment without git's own variables. A git hook runs with
     GIT_DIR and GIT_INDEX_FILE set to the repository being committed, and a
     git command given them works on that repository wherever it runs: the
-    repository is the one at `root`, and only it."""
-    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    repository is the one at `root`, and only it. Which config files to read
+    (CONFIG_VARS) is kept."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_") or k in CONFIG_VARS}
 
 
 def git(args: list[str], root: str = ROOT, check: bool = True) -> str:

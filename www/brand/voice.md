@@ -474,6 +474,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **what each generation did** | EVOLVE's disclosure under EVOLVE POOL, opening the lineage's spark and log | history, log (as a label) |
 | **frozen** | Wander's state while a tap (or Enter) holds it still: its ring lit, this word under it and as its value | paused (that is hands on), held, stopped |
 | **Nothing to keep: this sound is home.** / **Nothing to go back to: this sound is home.** | ↵ or ⇧⌫ pressed with the sound at home: the refusal, said at once | No changes, Already saved |
+| **Nothing to pair. Fewer than two sounds are left to deal.** | EVOLVE's cards when the engine has no pair to deal, every other sound in the pool cut: the refusal, said at once on both cards, with their buttons off | |
 | **B · ‹aim›** (B · GRITTIER) | B's label for an offer a control asked for: B and the aim word of the way it was turned | B (grittier), target |
 | **offered · hold B to peek** / **hold Peek to hear it** (touch) | B's line under its face: it is an offer, and how to hear it | press and hold, preview |
 | **depth** | ARRANGE's slider beside Velocity plays: how far velocity reaches | amount, intensity, sensitivity |

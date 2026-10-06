@@ -90,10 +90,12 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
 ## Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 
 - **Session start** (`session-start.sh`): says when `apps/web/pkg` has no
-  built engine, or is older than the Rust it is built from (a `.rs` file under
-  `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`); and how many jobs wait
-  in the browser queue and whether a film's `footage.mjs` is running. It never
-  fails the session.
+  built engine, is older than the Rust it is built from (a `.rs` file under
+  `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`), or is a quick
+  `make wasm-dev` build or an unfinished one (a build that failed or was
+  stopped), which the browser specs and the films refuse; and
+  how many jobs wait in the browser queue and whether a film's `footage.mjs`
+  is running. It never fails the session.
 - **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):
   refuses a hand edit under any of the five generated paths, saying what
   writes each: `apps/web/pkg/` (`make wasm`), `site/` (`make site`), `target/`

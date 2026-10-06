@@ -90,7 +90,11 @@ timer starts in the same capture listener as the level keys, under the same
 rules (a text field and a modal dialog keep ⌥), and any other keydown while it
 counts cancels it, so ⌥↑ never flashes the view; a level key while ⌥ holds the
 view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
-(Esc any view; it goes on to close what it closes). Main does the rest in
+(Esc any view, held or tapped, once nothing nearer took the press: the shell
+hears Esc last, on the window in the bubble phase, and leaves a press a
+closer used, which says so with `preventDefault` or stops it on its way; at
+every level, a bank row's ★, PATCH's chain, PERFORM's well modes, the ? card,
+the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
 - **The bank** redraws through `flipBank`: under the view, once fitted, the
@@ -529,9 +533,10 @@ sheet on touch, whose sliders write through `sendEdit` and the one ordered
 lane, holding `knobDragging` while a finger is down so no knob is rebuilt
 under it. It reaches main.js only through the host it is handed, and main
 calls it back at a handful of points: `onWorker` (its three replies),
-`benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
-`committed`, and `shown`/`hidden`. A new patch opens the catalog and leaving
-it closes it (`host.openCatalog`/`closeCatalog`); the sheet's figure is the
+`benchLanded`, `rackBuilt`, `platesMoving` (each frame of the rack's motion)
+and `platesMoved`, `rejected`, `refit`, `committed`, and `shown`/`hidden`. A
+new patch opens the catalog and leaving it closes it
+(`host.openCatalog`/`closeCatalog`); the sheet's figure is the
 bench's face (`host.paintFace`, captioned from `host.benchState`), and AUDIO
 IN's and CAPTURE's lane buttons are in the sheet as buttons that press the
 lane's own on the rack, so there is one of each.
@@ -561,9 +566,24 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   `value`), the names and head settings print larger, as compact draws them
   (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
-  are level S-curves (`wirePathD`); a two-input module's input labels sit
-  outside the plate (`addJack`'s `outside`), and plain `in`/`out` are not
-  printed (they stay the jacks' accessible names).
+  are level S-curves (`wirePathD`); a cable into a module placed behind its
+  source by hand takes a right-angle run below both instead. The rack's
+  motion (`startRackMotion`) redraws every cable on each frame. A cable
+  fading in with the change takes the run it will rest in, so it stays a
+  curve while a slide takes its end past its source (the amp out from
+  under an insert, or back on ⌘Z; #228). A cable already on the rack takes
+  its run from that frame's positions, so it keeps the right-angle run
+  while its module is still behind its source (switching a layout by hand
+  to chain). What sits on a cable moves with it on each frame: a modulation
+  cable's words (`placeCableWords`) and an audio cable's level mark (patch.js
+  `platesMoving`, one attribute per mark, the marks kept by their cables'
+  records). The marks are drawn again as the motion ends (`platesMoved`),
+  which places the guess too: the guess is placed as the build lands and
+  again then, not between. A plate dragged by hand carries the words and
+  the marks (and the guess) as it goes (`movePlateTo`). A two-input
+  module's input labels sit outside the plate (`addJack`'s
+  `outside`), and plain `in`/`out` are not printed (they stay the jacks'
+  accessible names).
 
 - **The head** is `renderSubject`: the cap's family (a preset's category, only
   while unedited), the name, and the subtitle the rack counts (patch.js
@@ -619,10 +639,16 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for
-  `openStructMenu`. Esc closes one thing a press: a menu, a handoff or the
-  touch sheet spends it (the sheet stops the event in patch.js), then the
-  selection, then the catalog (`escBusy` holds a new patch's Esc while either
-  is up). The global Home/End focus the first and last plate only with the
+  `openStructMenu`. Esc closes one thing a press. Whatever floats spends
+  it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
+  pop-up, the ⋯ menu, the scope or picture panel, the bank tour, KEYS ⋯, a
+  context menu; main's Esc chain closes all that are open together, and
+  the two panels and the context menu hear Esc nowhere else), and so does
+  the touch sheet (it stops the event in patch.js); then the first of
+  `escSteps` that is open: the layout menu, the shelf, TEACH, the evolve
+  menu, the selection, then the catalog. `escBusy` reads both lists, so a
+  new patch's Esc waits while anything on them is open, and the two cannot
+  drift. The global Home/End focus the first and last plate only with the
   focus on the canvas or nowhere, and never under a modal (`modalUp`);
   ⇧Home is `fitAll`.
 - **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
@@ -672,6 +698,16 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   refit, a guess or a cable probe always goes first, and blocked until boot
   has finished (`blocked`: half a second each, they would slow the fill);
   each is answered as it lands, or in `failed` (a tree that does not vet).
+  One render per key: a job carries every asker (`asks`), and a later asker
+  for the same key joins it rather than being queued again, so a preset's
+  row, that preset's row in the pool and the bench (an unedited preset's
+  tree is the preset's) are all answered by the one render (before #153 the
+  second was left unanswered). Each asker keeps its own source (its id, tree
+  or memo row), and the render is made from the first, in the order they
+  asked, that can still say what to render (`faceFromAsks`): a pool member
+  cut since it asked (its `face_key` is empty) and a memo row the memo has
+  let go are passed over, and a render that gives nothing is not made again
+  for the others, whose key is the same.
   Rendering a pool member for its face does not make it resident, so it
   evicts no audition. A preset is asked by index (`preset_tree_json`), so its
   face does not insert it into the bank. Every request is answered; a
@@ -680,7 +716,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   PATCH's "without this module" outline (Plan-008 C2b) asks the same way, by
   tree, with `seen` on its entry: the patch the structure menu's verb would
   leave without the selected module (`withoutTree`), rendered for its face at
-  the front of the faces lane (moved there if it was already waiting) and
+  the front of the faces lane (moved there, with everyone on it, if it was
+  already waiting) and
   ahead of a measurement nobody is waiting on (`seenFaceWaiting`, in
   `nextLong` and in `measure`'s breaths). It still waits for `soon` work, the
   rest of `later` (the guess, the cable probe, a refit) and PERFORM's own
@@ -688,8 +725,10 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
 - **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
   that left the view (a preset row scrolled past, the PRESETS tab left, or
   PATCH's selection moved on before its "without" face was rendered) is
-  dropped from the faces lane and from waiting lookups, and answered as `faces`
-  with `cancelled`; main asks again when the slot comes back into view.
+  taken off the render it waits on and out of waiting lookups, and answered
+  as `faces` with `cancelled`; a render is dropped once nobody is left on it,
+  so another slot waiting on the same key still gets its face. Main asks
+  again when the slot comes back into view.
 - **After a `render`**, the worker posts the buffer first; the face, if main
   hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
   stored audition (not the PCM main is sent: `audition_pcm` limits). No face
@@ -1093,40 +1132,77 @@ used to (`prefetch_render`), and a preset clicked just after a reload waited
 out four renders before it opened. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
 cuts and replacements made since, and against the pair just put away
-(`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a
+(`usable`). Only with nothing waiting does a pick wait for a deal, and a
 deal already out (asked for ahead) is the one it waits for: no second deal
 is asked for.
 
-Every deal's reply goes through `onDealt`, whichever request asked for it:
-the first to land while the table waits goes up, any other waits as the next
-pair. The worker answers deals in the order they were asked, so pairs go up
-in the order they were dealt whatever the timing (a seeded session shows the
-same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
-`dealsOut` counts deals not yet answered. A taken-back pick (`retractVote`)
-puts its pair back on the table, and which pair is next depends on what went
-up in its place. If a pair did (the one dealt ahead, or a deal that landed
-inside the undo window), that pair waits as the next one when `aheadUsable`
-allows, since the player has seen it. Then the deal asked for behind it, if
-one was, is thrown away unseen: overwritten if it has landed, dropped by
-`onDealt` when it lands, because a pair already waits. The pair after it is
-dealt when it goes up. When `aheadUsable` refuses it (as when it is the
-pick's own pair, put up again by a pool too small to deal another), nothing
-is thrown away: a deal behind it that has landed stays the next pair, and
-one still out becomes it. If nothing went up, the deal the table was waiting
-on lands with the pair back on the table and becomes the next pair. A
-retraction asks for a deal only when no pair waits and none is out. With the
-table waiting, an answer that may not go up is dealt again, and after three
-tries goes up anyway, so a pool too small to deal anything else cannot leave
-the cards dimmed. An answer holding a cut sound is the exception: it is
-always dealt again (`holdsCut`). That ends, because each deal excludes the
-cuts made before it was asked for, so only a cut made while a deal is out
-brings one back. `placePair` is the one place a pair goes up: anything owed
-to a pair being shown belongs there.
+The rules are `apps/web/deal.js` (`createDealer`), unit-tested in
+`apps/web/tests/deal.test.mjs` against a scripted engine. `main.js` hands the
+dealer the table, the pick held in its undo window, the cuts and the ids
+gone from the pool, and gets back the requests, the pair to put up and the
+sounds to fetch.
+
+Every deal's reply goes through the dealer's `dealt`, whichever request
+asked for it: the first to land while the table waits goes up, any other
+waits as the next pair. The worker answers deals in the order they were
+asked, so pairs go up in the order they were dealt whatever the timing (a
+seeded session shows the same pairs,
+[ADR-001](../decisions/001-one-random-stream-per-consumer.md)). The dealer's
+`out` counts deals not yet answered. A taken-back pick (`retractVote`, then
+the dealer's `retract`) puts its pair back on the table, and which pair is
+next depends on what went up in its place. If a pair did (the one dealt
+ahead, or a deal that landed inside the undo window), that pair waits as the
+next one when `usable` allows, since the player has seen it. The deal asked
+for behind it, if one was, is kept as the pair after next: as it is if it
+has landed, and when it lands (`dealt`) if it is still out. When the pair
+before it goes up again (`placed`), it is offered as the next pair and
+judged then, against that table, as a deal landing then would be, with the
+refusals already counted behind that pair carried over. When none was asked
+for, the pair after is dealt when the pair before it goes up. When `usable`
+refuses the displaced pair (as when it is the pick's own pair, put up again
+by a pool too small to deal another), nothing changes: a deal behind it that
+has landed stays the next pair, and one still out becomes it. If nothing
+went up, the deal the table was waiting on lands with the pair back on the
+table and becomes the next pair. A retraction asks for a deal only when no
+pair waits and none is out. With the table waiting, an answer that may not
+go up is dealt again, and after three tries goes up anyway, so a pool too
+small to deal anything else cannot leave the cards dimmed. An answer
+holding a cut sound is the exception: it is always dealt again
+(`holdsCut`). That ends, because each deal excludes the cuts made before it
+was asked for, so only a cut made while a deal is out brings one back.
+`placePair` is the one place a pair goes up: anything owed to a pair being
+shown belongs there.
+
+Whether the deal behind the displaced pair had been asked for by ⌘Z depends
+on how soon that pair's sounds arrived (the pair after the table's is dealt
+only once they are here). It used to be thrown away when it had been, and
+the pair after was then the next deal in the engine's stream, so a seeded
+session's pairs after a take-back depended on render timing (#211). Now,
+when the player picks again, the deals asked for and the pairs that go up
+are the same either way, given the same answers from the engine. ↻ after
+⌘Z is the exception, since it holds no pick: a deal behind the displaced
+pair that is the pick's own pair is refused in one order (it landed while
+the pick was held, and the refusal is carried over) and goes up in the
+other (it landed after ⌘Z, and is judged with nothing held). Nor are the
+engine's answers always the same: a deal drawn while the pool fills, or on
+the other side of a cut, is drawn over other sounds.
+
+An empty answer (the engine deals `null` when fewer than two sounds in the
+pool are standardized and not cut, `deal_duel_except`) is nothing to put up.
+With the table waiting and no other deal out, the dealer calls `nothing`:
+`main.js`'s `nothingToDeal` keeps the pair's buttons disabled (the picks,
+▶, ↻ and the cards' corners, ⇄ circuit and ↓ patch: `DUEL_CONTROLS`, off
+whenever the table has no pair) and the cards dimmed, and says *Nothing to
+pair. Fewer than two sounds are left to deal.* in their reason slot at
+once. The dealer asks again (`soundsBack`) when a sound may have come back:
+a cut taken back, or new views (the pool changed), and the `filled`
+handler's deal for an empty table does the same. With a pair on the table,
+an empty answer leaves nothing waiting.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
-unseen (the engine re-dealt the pair on the table, a side was cut or
-replaced, a retraction put the old pair back) moves neither the check-probe
+unseen (the engine dealt the pair on the table, the one just put away or the
+pick held again, or a side was cut or replaced) moves neither the check-probe
 cadence nor the repeat and exposure penalties: under a choosing rule the
 unbiased probes stay one in `duel_check_every` of the pairs the player saw.
 

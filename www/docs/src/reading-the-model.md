@@ -113,8 +113,10 @@ Two things follow:
 Hold <kbd>⌥</kbd> (Alt off Apple platforms) for a moment, at any level, and
 what the model believes comes up over it; let go and it goes. Press and hold
 **MODEL** in the menu bar for the same, or tap it to keep the view up until
-you tap it again or press <kbd>Esc</kbd> (in PATCH, with nothing nearer to close); a tapped
-view is still up after a reload. Its light is lit while the view is
+you tap it again or press <kbd>Esc</kbd> with nothing nearer to close: a press
+closes the nearest thing first (a menu, a panel, PERFORM’s XY, a sound’s card
+on TASTE’s map, the module you selected in PATCH), and the view goes on the
+press after. A tapped view is still up after a reload. Its light is lit while the view is
 up, and a tag under the menu bar says what it is reading from: *what it
 believes, from 18 picks*, or *still guessing · 4 more picks and it fits*
 before its first fit. A key pressed while you hold <kbd>⌥</kbd> (a level key

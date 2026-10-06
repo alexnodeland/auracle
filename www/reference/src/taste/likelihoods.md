@@ -80,22 +80,39 @@ match (k == 0, k == n_cats - 1) {
     (true, false)  => log_sigmoid(a * (s.cuts[k] - u)),
     (false, true)  => log_sigmoid(-a * (s.cuts[k - 1] - u)),
     (false, false) => {
-        let hi = log_sigmoid(a * (s.cuts[k] - u));
-        let lo = log_sigmoid(a * (s.cuts[k - 1] - u));
-        hi + (-(lo - hi).exp()).ln_1p()
+        log_sigmoid(a * (s.cuts[k] - u))
+            + log_sigmoid(-a * (s.cuts[k - 1] - u))
+            + log1mexp(a * (s.cuts[k] - s.cuts[k - 1]))
     }
 }
 ```
 
+The factor $a$ is 1 unless some of the observation’s coordinates were imputed
+([below](#imputed-coordinates)). A rating between the lowest and the highest
+rests on an identity: with $b = a(c_k - u)$ above $l = a(c_{k-1} - u)$,
+$\sigma(b) - \sigma(l) = \sigma(b)\,\sigma(-l)\,(1 - e^{-(b - l)})$, so
+
+$$\log P(y = k) = \log\sigma\big(a(c_k - u)\big) + \log\sigma\big(a(u - c_{k-1})\big) + \log\big(1 - e^{-a(c_k - c_{k-1})}\big)$$
+
+Three terms of one sign, none of them a difference of near-equal numbers, so
+the log-probability is exact to a few rounding errors wherever $u$ sits.
+`log1mexp` is the standard accurate $\log(1 - e^{-d})$
+([Mächler 2012](../bibliography.md#numerics)): `ln_1p(-exp(-d))` above
+$d = \ln 2$ and `ln(-expm1(-d))` below it, so even a category squeezed nearly
+shut scores its width. Far below the lower cutpoint the log-probability tends
+to $a(u - c_{k-1}) + \log(1 - e^{-a(c_k - c_{k-1})})$, and far above the upper
+one to $a(c_k - u)$ plus the same constant
+(`a_middle_rating_far_outside_its_cutpoints_scores_its_exact_tail` in
+`auracle-taste` pins both tails against a series, to $10^{-14}$, out to a
+utility $10^6$ past the cutpoint).
+
 Subtracting two near-equal sigmoids used to bottom out at a floor of
-$\ln 10^{-12} \approx -27.6$; in log space a rating far from $u$ scores its
-real log-probability, except in one tail until #227 is fixed. For a rating
-between the lowest and the highest, once $a(c_{k-1} - u)$ passes about 37,
-`(lo - hi).exp()` rounds to 1 and the result is $-\infty$ where the true value
-is finite
-([what reweighting does then](posterior.md#however-strong-the-contradiction)).
-The factor $a$ is 1 unless some of the observation’s
-coordinates were imputed ([below](#imputed-coordinates)).
+$\ln 10^{-12} \approx -27.6$. The first log-space form,
+$\log\sigma(b) + \log(1 - \sigma(l)/\sigma(b))$, lifted the floor but not the
+tail: once $a(c_{k-1} - u)$ passed about 37 the ratio rounded to 1 and the
+result was $-\infty$ where the true value is finite, so a strong enough rating
+could move the weights less than a weaker one (#227;
+[reweighting now](posterior.md#however-strong-the-contradiction)).
 
 This treats ★★★ as **“between two cutpoints”** rather than as the number 3,
 which is the point. A rating is an ordinal judgment, and modeling it as a

@@ -76,6 +76,7 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)
 make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
+make wasm-dev       # a quick engine build for trying a Rust change by hand (the browser specs refuse it)
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
 make worker-test    # the engine worker in Node against pkg/, no page: its replies and lanes
@@ -184,7 +185,11 @@ coverage falls below its floor in `crates/coverage-baseline.json`, and every
 line the change adds or changes in `crates/` is run by a fast-tier test that
 checks what it does. `make coverage` runs the same locally, with the HTML
 report in `target/llvm-cov/html/`
-([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)).
+([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)). When your
+PR's run measures Rust or the app's Node tests, Codecov also comments on it
+with the coverage: the Rust's, and what those Node tests run of `apps/web`
+(not the browser specs, which it can't see). It is there to read, and never
+blocks a merge.
 
 Coverage says a test ran a line, not that it checked it. `make mutants
 DIFF=1` changes the code you changed one small way at a time (a `<` made
@@ -292,7 +297,9 @@ an alias for notes written before the rename).
    is CI's Lint, Web and Rust jobs. CI also runs the site and the browser
    specs: on your PR only the specs it reaches, and in the merge queue all of
    them, twelve runners wide. Locally, run the specs your change reaches
-   (`make browser-changed`). If you
+   (`make browser-changed`; for `main.js`, the specs of the views your change
+   touched), and before you push, again, with each spec file you added or
+   edited three times (`make browser-changed REPEAT=3`). If you
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it

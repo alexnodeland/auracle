@@ -58,11 +58,17 @@ edit the body to fill the template's sections.
 git -C "$REPO" fetch -q origin
 git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
 (cd "$WT/tests/web" && npm ci --no-audit --no-fund)
+make -C "$WT" pkg-reuse || nice -n 10 make -C "$WT" wasm
 ```
 
-The last line installs `tests/web`'s packages in the new worktree
+The third line installs `tests/web`'s packages in the new worktree
 (`node_modules` is per checkout): without them `make web-check` stops at the
-specs' lint, and the after-edit hook does not lint a spec.
+specs' lint, and the after-edit hook does not lint a spec. The last gives it
+an engine: the main checkout's release build, copied in about a second, when
+it was built from the same Rust (`make pkg-reuse` compares the two, and says
+why not when it can't); otherwise a build of its own (about a minute, more
+with every crate to compile). A builder that changes Rust builds again with
+`make wasm`.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
@@ -128,6 +134,29 @@ New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
 
 ## 5. The PR, in the merge queue
+
+First the specs the branch reaches, through the browser queue on its port,
+on the release engine (`make pkg-reuse` or `make wasm` first when the
+builder's last build was `make wasm-dev`, which this refuses): the spec
+files it adds or edits three times each, then the rest once.
+
+```bash
+AURACLE_TEST_PORT=<port> make -C "$WT" browser-changed REPEAT=3
+```
+
+It runs what CI's fast lane would run, and for `main.js`, `worker.js`, the
+page or the engine, the specs of the views the change reaches, which the
+fast lane doesn't (`tests/web/AGENTS.md`). It prints the spec files first,
+in two lists. The repeat is the burn-in of the specs the branch wrote (no
+burn-in runs in CI); the specs a change only reaches run once, since a
+`main.js` change across several views reaches most of the tier. By CI's
+timings the engine's sample is about nine minutes and PATCH's specs about
+thirty, and a change to most of `main.js`'s views about the whole fast
+tier, seventy-five: run it in the background and wait on it. A failure in a
+spec the branch adds, edits or reaches goes back to the builder as a
+blocking finding (step 4), never to a re-run, unless it is unrelated
+(`process.md` § Flakes, step 4: then one commit quarantines it with its
+`flake` issue). Green, push:
 
 ```bash
 git -C "$WT" push -q -u origin claude/<topic>
@@ -266,9 +295,9 @@ or dequeued (red on its own run, or red in the queue):
 
 2. **Fix it on the branch.** The app or the test is fixed there (by the
    builder). Red in the queue, the fix is checked by the fast lane first and
-   the full gate again in the queue; run the specs it touches locally
-   (`make browser-changed`), since a `main.js` change's fast lane runs the
-   smoke only. A red test the PR doesn't touch, for a cause outside it
+   the full gate again in the queue; run the specs it reaches locally
+   (`make browser-changed REPEAT=3`), since a `main.js` change's fast lane
+   runs the smoke only. A red test the PR doesn't touch, for a cause outside it
    (`process.md` § Flakes, step 4), gets one commit that quarantines it with
    its `flake` issue; don't root-cause it here. Never re-run a red check
    until it passes. A run that was cancelled rather than failed needs no

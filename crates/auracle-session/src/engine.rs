@@ -39,7 +39,9 @@ use auracle_features::{
 };
 use auracle_grammar::prior::N_OPS;
 use auracle_grammar::rng::gen_index;
-use auracle_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree, Take};
+use auracle_grammar::{
+    normalize_tree, tree_diff, validate_tree, DiffEntry, PatchGrammarPrior, PatchTree, Take,
+};
 use auracle_taste::{
     Feedback, FitSet, Observation, ObservationLog, Provenance, Standardizer, TasteConfig,
     TasteModel, TastePosterior,
@@ -3187,6 +3189,52 @@ impl Engine {
         Some(child_id)
     }
 
+    /// Import a shared patch file's tree into the bank under `name`: a hand
+    /// edit with no original and nothing told about it. Returns the new id,
+    /// or `None` when the tree is over the ceilings, the bank already holds
+    /// it (which sound, [`Engine::bank_twin_of`] says), or it does not vet.
+    ///
+    /// A shared file is untrusted input by definition, and the pictures
+    /// already in circulation carry whatever the build that wrote them had
+    /// on the bench: a knob at `1e30`, or a quantizer over nothing that an
+    /// older build grafted verbatim. So the tree is put in normal form on
+    /// the way in ([`normalize_tree`]), and an imported patch cannot bring
+    /// back a fault the session has been mended of. Left unfolded, such a
+    /// term was rewritten by every later edit, and the guess, finding that
+    /// each module it could add also took the folded one away, said the
+    /// patch was full. Folded before `commit_edit`'s duplicate check, so a
+    /// file whose normal form the bank holds is that sound, not a new one.
+    ///
+    /// The same split as `finish()`: the term repaired, the ceilings
+    /// refused. `commit_edit` always lands a hand edit, so without the check
+    /// a depth-40 tree from a shared file went straight into the pool,
+    /// evicted a member, and put its out-of-range φ into the log on the
+    /// next vote.
+    pub fn import_patch(&mut self, mut tree: PatchTree, name: &str) -> Option<u64> {
+        normalize_tree(&mut tree);
+        validate_tree(&tree).ok()?;
+        let id = self.commit_edit(None, tree, EditOutcome::Untold)?;
+        self.set_name(id, name);
+        Some(id)
+    }
+
+    /// The bank's sound a shared patch file already is: the member whose
+    /// tree is the file's normal form, compared as [`Engine::import_patch`]
+    /// compares it, or `None`. It says which of an import's `None`s is not a
+    /// refusal: a file the bank holds is that sound, and the app opens it,
+    /// where one that does not vet, or is over the ceilings, is refused.
+    ///
+    /// Put in normal form first, as the import does. Compared as written, a
+    /// file holding a term the import folds (a quantizer over nothing from an
+    /// older build) or a knob it clamps is no member's twin, though the
+    /// import found one, and the app called the file one that failed the
+    /// safety vet.
+    pub fn bank_twin_of(&self, tree: &PatchTree) -> Option<u64> {
+        let mut tree = tree.clone();
+        normalize_tree(&mut tree);
+        self.pool.iter().find(|c| c.tree == tree).map(|c| c.id)
+    }
+
     /// How many sounds kept as new may be protected at once
     /// ([`Candidate::unjudged`]): a quarter of the pool, as many as may be
     /// saved ([`Engine::pin_cap`]), and apart from that budget.
@@ -4253,28 +4301,36 @@ impl Engine {
         self.shown_candidates.clear();
         self.dealt_unshown.clear();
         self.bound_events();
-        // Every saved term, repaired on the way in. This is the *only* place a
-        // tree written by an older build enters the engine, and a bank entry
-        // carrying a knob outside its range would otherwise be quarantined by
-        // the featurizer a few lines later and silently disappear from the
-        // player's bank — losing four patches to fix a bug in one number.
-        // Repair keeps the patch and loses only the corruption, which is the
-        // standing rule for saved state: migration, never deletion.
+        // Every saved term, put in normal form on the way in
+        // ([`normalize_tree`]). This is the *only* place a tree written by an
+        // older build enters the engine, and a bank entry carrying a knob
+        // outside its range would otherwise be quarantined by the featurizer
+        // a few lines later and silently disappear from the player's bank —
+        // losing four patches to fix a bug in one number. Repair keeps the
+        // patch and loses only the corruption, which is the standing rule for
+        // saved state: migration, never deletion.
+        //
+        // A modulation term the grammar would fold (a quantizer over nothing,
+        // from a fragment an older build grafted verbatim) is folded here too,
+        // or every later edit would quietly rewrite it. It plays as its folded
+        // form does, so the sound is the same, and it is not counted: the
+        // repair report says what can change what the player hears or what
+        // their taste was fitted on, and a fold changes neither.
         //
         // A CAPTURE whose saved take could not be read is the same rule: the
         // sound came back whole with that take empty (`Take`'s loader never
         // fails the term). Whether it is *repaired* or *held* depends on
         // whether it still renders, which the caller finds out: one that lands
         // in the pool counts as repaired (`absorb_bank_entry`), one that does
-        // not is held (`finish_restore`). Kept as loaded, before the clamp,
-        // which rebuilds a term it mends and so forgets which take was
-        // unreadable, and whose rebuild would drop the take's saved text.
+        // not is held (`finish_restore`). Kept as loaded, before the normal
+        // form, whose clamp rebuilds a term it mends and so forgets which take
+        // was unreadable, and whose rebuild would drop the take's saved text.
         self.held.clear();
         self.pending_held.clear();
         let mut bank = state.bank;
         for entry in &mut bank {
             let lost = (entry.tree.lost_takes() > 0).then(|| entry.clone());
-            let clamped = entry.tree.clamp_domains() > 0;
+            let clamped = normalize_tree(&mut entry.tree).clamped > 0;
             if clamped {
                 self.repaired_terms += 1;
             }
@@ -4376,7 +4432,10 @@ impl Engine {
     /// a session written by a build that has this gate, except that a term
     /// counts as repaired when a CAPTURE's saved take could not be read (it
     /// loads empty; see `auracle_grammar::Take`), which a file damaged after
-    /// it was written can cause under any build.
+    /// it was written can cause under any build. A modulation term folded on
+    /// the way in is not counted (`auracle_grammar::Normalized`): it plays as
+    /// it did, and a session written before the fold reached every way in can
+    /// hold one.
     ///
     /// Reported rather than logged because the frontend is the only thing that
     /// can tell the player their profile was mended, and a silent repair of the
@@ -4497,8 +4556,9 @@ impl Engine {
     /// Bring a held sound back with a readable take in place of the one that
     /// could not be read: the take goes on its first unreadable CAPTURE (any
     /// other unreadable take is cleared), and the sound is measured as a new
-    /// one and joins the pool under its own id, name and origin. If it still
-    /// does not vet it stays held. Returns its id.
+    /// one and joins the pool under its own id, name and origin, in normal
+    /// form (a held sound is kept as it was loaded, so this is its way in).
+    /// If it still does not vet it stays held. Returns its id.
     pub fn readmit_held(&mut self, id: u64, take: Take) -> Result<u64, ReadmitError> {
         let at = self
             .held
@@ -4512,7 +4572,7 @@ impl Engine {
         if !entry.tree.replace_lost_take(&take) {
             return Err(ReadmitError::NothingToReplace);
         }
-        entry.tree.clamp_domains();
+        normalize_tree(&mut entry.tree);
         let want_audio = self.wants_admitted_audio();
         let (cached, audition) =
             featurize_memo(&entry.tree, &self.cfg.phrase, &self.memo, want_audio)

@@ -9,6 +9,9 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; shift
+# The release engine, or no rehearsal: footage.mjs refuses a quick build
+# (make wasm-dev) too, but into the log, under an old rehearsal's summary.
+python3 "$ROOT/scripts/wasm_pkg.py" check || exit 1
 mkdir -p "$ROOT/www/video/out/$F"
 log="$ROOT/www/video/out/$F/dry.log"
 cd "$ROOT"

@@ -107,8 +107,8 @@ const named = () => ['a', 'b'].every((s) => { const t = nameOf(s); return t && !
 const pairIds = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => e.textContent).join();
 const tableIds = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\D/g, '')));
 const samePair = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));
-// The app deals the next pair while one is on the table (main.js
-// requestAhead), once the table's two sounds are in, and a pick or a skip puts
+// The app deals the next pair while one is on the table (deal.js
+// dealAhead), once the table's two sounds are in, and a pick or a skip puts
 // that pair up at once. A pick made while that deal is still on its way races
 // it: the next two pairs can then come up in either order, and the session
 // would differ from take to take. So the listener answers only once the pair
