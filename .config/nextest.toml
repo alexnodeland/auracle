@@ -41,6 +41,12 @@ path = "junit.xml"
 # their run, and declared at five they would hold the slots idle through the
 # rest, in CI's fast tier too.
 #
+# They also run first (`priority`). nextest starts tests in order and
+# starts nothing new while the next one waits for its slots, so a test that
+# takes the whole pool, met midway, left the pool draining around it: the
+# search floor started after 340 others and ran alone, at a load average of
+# 70 to 140. First, it starts while the pool is empty.
+#
 # These overrides are the default profile's, so the ci profile has them too.
 
 # The search floor: sixteen seeds, a thread each. Its own limit, since on a
@@ -49,21 +55,25 @@ path = "junit.xml"
 [[profile.default.overrides]]
 filter = 'test(=engine::tests::refinement_improves_pool)'
 threads-required = "num-test-threads"
+priority = 100
 slow-timeout = { period = "60s", terminate-after = 20 }
 
 # A thread per core (`available_parallelism`).
 [[profile.default.overrides]]
 filter = 'test(=file::tests::the_mask_is_what_survives_a_recording) | test(=shipped_preset_wirings_measure_the_same_today)'
 threads-required = "num-test-threads"
+priority = 100
 
 # A thread for each seed, preset or session.
 [[profile.default.overrides]]
 filter = 'test(=engine::tests::closed_loop_learns_synthetic_taste)'
 threads-required = 5
+priority = 100
 
 [[profile.default.overrides]]
 filter = 'test(=perform::tests::named_controls_move_the_sound_they_name)'
 threads-required = 4
+priority = 100
 
 [[profile.default.overrides]]
 filter = """
@@ -72,3 +82,4 @@ test(=engine::tests::closed_loop_learns_motion_rate)
 | test(=walk::tests::a_tilted_walk_carries_and_hears_the_takes)
 """
 threads-required = 3
+priority = 100
