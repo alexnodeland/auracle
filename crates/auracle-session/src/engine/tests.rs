@@ -3908,3 +3908,277 @@ fn a_repeated_id_never_drops_a_held_sound() {
         2
     );
 }
+
+// ---- the engine's edges: what each guard and fallback promises ----
+
+/// **A refinement's outcome crosses to the app by its spelling** (the
+/// worker posts `last_refine().as_str()`, the bank says why a child did not
+/// land), so the spellings are a wire format: pinned here as a literal
+/// table, the same as serde's, and serde's own list of the outcomes the
+/// type declares is the table's, so a new outcome cannot go unspelled.
+#[test]
+fn refine_outcomes_are_spelled_on_the_wire_as_pinned() {
+    const WIRE: [(RefineOutcome, &str); 9] = [
+        (RefineOutcome::Idle, "idle"),
+        (RefineOutcome::Injected, "injected"),
+        (RefineOutcome::NoTaste, "no_taste"),
+        (RefineOutcome::UnknownSeed, "unknown_seed"),
+        (RefineOutcome::OutsideSupport, "outside_support"),
+        (RefineOutcome::NoMove, "no_move"),
+        (RefineOutcome::Duplicate, "duplicate"),
+        (RefineOutcome::NotAdmitted, "not_admitted"),
+        (RefineOutcome::Stale, "stale"),
+    ];
+    for (outcome, spelled) in WIRE {
+        assert_eq!(outcome.as_str(), spelled);
+        assert_eq!(serde_json::to_value(outcome).unwrap(), spelled);
+        let back: RefineOutcome = serde_json::from_value(spelled.into()).unwrap();
+        assert_eq!(back, outcome);
+    }
+    let refusal = serde_json::from_value::<RefineOutcome>("no such outcome".into())
+        .unwrap_err()
+        .to_string();
+    let declared: Vec<&str> = refusal
+        .split("expected one of ")
+        .nth(1)
+        .expect("serde lists the outcomes")
+        .split('`')
+        .filter(|s| !s.trim().is_empty() && s.trim() != ",")
+        .collect();
+    assert_eq!(
+        declared,
+        WIRE.map(|(_, s)| s),
+        "an outcome not in the table"
+    );
+}
+
+/// The tilt's numeric edges. `shrink` keeps a coefficient's sign and
+/// scales it by how sure the posterior is of it: all of it with no spread,
+/// half when the spread equals it, almost none when it is mostly noise, and
+/// none for a mean of zero (with no 0/0 when the spread is zero too).
+/// `tilt_weights` over weights that are all zero returns zeros rather than
+/// dividing by their sum.
+#[test]
+fn a_tilt_shrinks_by_its_uncertainty_and_survives_zero_weights() {
+    assert_eq!(shrink(0.0, 1.0), 0.0);
+    assert_eq!(shrink(0.0, 0.0), 0.0);
+    assert!((shrink(0.8, 0.0) - 0.8).abs() < 1e-12);
+    assert!((shrink(0.8, 0.8) - 0.4).abs() < 1e-12);
+    assert!((shrink(-0.8, 0.8) + 0.4).abs() < 1e-12);
+    assert!(shrink(0.1, 100.0).abs() < 1e-3);
+    assert_eq!(tilt_weights(&[0.0, 0.0], &[1.0, -1.0], 2.0), vec![0.0, 0.0]);
+}
+
+/// **A fill that runs out of draws keeps what it has, standardized.** With
+/// a draw budget smaller than the pool, the fill stops when the budget is
+/// spent, short of the pool's size, and still fits the standardizer on the
+/// members it holds (φ is never left raw) and names them. The stream is
+/// pinned before it starts and not after; the farm's `fill_draw` hands out
+/// nothing before the stream starts and nothing past the budget.
+#[test]
+fn a_fill_that_runs_out_of_draws_keeps_what_it_has_standardized() {
+    let cfg = SessionConfig {
+        pool_size: 12,
+        max_draws: 6,
+        ..fast()
+    };
+    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+    assert_eq!(engine.fill_seed(), None);
+    assert!(
+        engine.fill_draw(4).is_empty(),
+        "a stream never started drew"
+    );
+    engine.set_fill_seed(0xF111);
+    engine.fill_pool(&mut StdRng::seed_from_u64(1));
+    engine.set_fill_seed(7);
+    assert_eq!(engine.fill_seed(), Some(0xF111), "a started stream moved");
+    assert_eq!(engine.draw_cursor(), 6, "the budget was not spent");
+    let n = engine.pool.len();
+    assert!(n > 0 && n < 12, "{n} members from 6 draws");
+    let rows: Vec<Vec<f64>> = engine.pool.iter().map(|c| c.features.phi()).collect();
+    let sz = auracle_taste::Standardizer::fit(&rows);
+    for c in &engine.pool {
+        assert_eq!(c.phi_std, sz.transform(&c.features.phi()), "φ left raw");
+    }
+    assert_eq!(engine.display_names().len(), n, "a member went unnamed");
+
+    let mut farm = Engine::new(PatchGrammarPrior::default(), cfg);
+    farm.set_fill_seed(0xF111);
+    let issued: Vec<u64> = farm.fill_draw(100).iter().map(|d| d.index).collect();
+    assert_eq!(issued, (0..6).collect::<Vec<u64>>());
+    assert!(farm.fill_draw(100).is_empty(), "issued past the budget");
+}
+
+/// **A draw the pool already holds spends its index and lands nowhere.**
+/// The fold names draws by index, so a duplicate still consumes one and the
+/// pool keeps a single copy: a session restored with the stream's first
+/// sound in it, filled from the same stream, ends with the very sounds a
+/// fresh fill does. The session was saved before any standardizer (its
+/// profile has none), and the restore fits one on the bank it restored.
+#[test]
+fn a_draw_the_pool_already_holds_spends_its_index_and_lands_nowhere() {
+    let cfg = SessionConfig {
+        pool_size: 6,
+        ..fast()
+    };
+    let mut fresh = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+    fresh.set_fill_seed(0xD0B);
+    fresh.fill_pool(&mut StdRng::seed_from_u64(2));
+    let first = fresh.pool[0].tree.clone();
+
+    let mut state = Engine::new(PatchGrammarPrior::default(), cfg.clone()).export_state();
+    assert!(state.profile.standardizer.is_none());
+    state.bank.push(BankEntry {
+        id: 100,
+        tree: first.clone(),
+        origin: Origin::Prior,
+        name: None,
+        pinned: false,
+        auto_name: None,
+        unjudged: false,
+    });
+    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+    assert_eq!(engine.import_state(state), 1);
+    let phi = engine.pool[0].features.phi();
+    let sz = auracle_taste::Standardizer::fit(std::slice::from_ref(&phi));
+    assert_eq!(engine.pool[0].phi_std, sz.transform(&phi), "restored raw");
+
+    engine.set_fill_seed(0xD0B);
+    engine.fill_pool(&mut StdRng::seed_from_u64(2));
+    let trees = |e: &Engine| -> Vec<String> {
+        let mut t: Vec<String> = e.pool.iter().map(|c| c.tree.to_sexpr()).collect();
+        t.sort();
+        t
+    };
+    assert_eq!(trees(&engine), trees(&fresh), "not the fresh fill's sounds");
+    assert_eq!(engine.draw_cursor(), fresh.draw_cursor());
+    assert!(engine.find(100).is_some());
+}
+
+/// **The audition is the render φ was measured on, whatever the policy.**
+/// An eager pool keeps a buffer from admission, rendering it then when the
+/// memo knew the sound's features but not its audio, and hands that buffer
+/// back. A lazy pool takes a buffer the memo already holds rather than
+/// rendering again, and hands back the same one after. A member's content
+/// address is its tree's render key.
+#[test]
+fn every_policy_hands_back_the_render_phi_was_measured_on() {
+    let tree = auracle_grammar::presets()[0].1.clone();
+    let for_policy = |render_policy| {
+        let mut e = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 2,
+                render_policy,
+                ..fast()
+            },
+        );
+        e.fill_pool(&mut StdRng::seed_from_u64(0xA0D));
+        e.cfg.pool_size += 1;
+        e
+    };
+
+    let mut eager = for_policy(RenderPolicy::Eager);
+    let (cf, audio) = featurize_memo(&tree, &eager.cfg.phrase, eager.memo(), false).unwrap();
+    assert!(audio.is_none(), "the memo was given audio");
+    let id = eager.insert_preset(tree.clone(), "eager").unwrap();
+    assert_eq!(eager.key_of(id), Some(cf.key.as_str()));
+    assert_eq!(eager.key_of(u64::MAX), None);
+    let want = render_playback(&tree, &eager.cfg.phrase, cf.features.gain_db).unwrap();
+    let got = eager.render_of(id).expect("eager keeps a buffer");
+    assert_eq!(
+        got.samples, want.samples,
+        "admission rendered something else"
+    );
+    assert!(Arc::ptr_eq(&got, &eager.render_of(id).unwrap()));
+
+    let mut lazy = for_policy(RenderPolicy::Lazy);
+    let (_, held) = featurize_memo(&tree, &lazy.cfg.phrase, lazy.memo(), true).unwrap();
+    let held = held.expect("the memo keeps audio asked for");
+    let id = lazy.insert_preset(tree.clone(), "lazy").unwrap();
+    let first = lazy.render_of(id).expect("a lazy render");
+    assert!(Arc::ptr_eq(&first, &held), "rendered what the memo held");
+    assert!(Arc::ptr_eq(&first, &lazy.render_of(id).unwrap()));
+}
+
+/// **Picks between fits reweight the posterior and ask for a refit.**
+/// Before any fit there is no effective sample size, and a refit is due as
+/// soon as there is a vote; straight after a fit every draw counts and none
+/// is due; picks that collapse the weights resample them and make a refit
+/// due. With between-fit updates off, a pick reaches the log and leaves the
+/// posterior as it was.
+#[test]
+fn picks_between_fits_reweight_and_ask_for_a_refit() {
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 8,
+            ..fast()
+        },
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut StdRng::seed_from_u64(0xE55));
+    assert_eq!(engine.posterior_ess(), None);
+    assert!(!engine.needs_refit(), "a refit due with nothing to fit");
+    engine.record_duel(0, 1, true);
+    assert!(engine.needs_refit(), "a vote no posterior has seen");
+    for (a, b) in [(2, 3), (4, 5), (6, 7), (1, 6)] {
+        engine.record_duel(a, b, true);
+    }
+    let mut off = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            sis_between_fits: false,
+            ..engine.cfg.clone()
+        },
+    );
+    off.set_memo(engine.memo().clone());
+    off.import_state(engine.export_state());
+    engine.fit_posterior(&mut StdRng::seed_from_u64(1));
+    let n = engine.posterior.as_ref().unwrap().samples.len() as f64;
+    assert!((engine.posterior_ess().unwrap() - n).abs() < 1e-6 * n);
+    assert!(!engine.needs_refit(), "a refit due straight after one");
+    contrary_picks(&mut engine, 1);
+    assert!(
+        engine.posterior_ess().unwrap() < n,
+        "a pick moved no weight"
+    );
+    let mut picks = 1;
+    while !engine.needs_refit() && picks < 40 {
+        contrary_picks(&mut engine, 1);
+        picks += 1;
+    }
+    assert!(
+        engine.needs_refit(),
+        "{picks} contrary picks never collapsed the weights"
+    );
+
+    off.fit_posterior(&mut StdRng::seed_from_u64(1));
+    let fitted = Arc::clone(off.posterior.as_ref().unwrap());
+    let logged = off.log.len();
+    contrary_picks(&mut off, 3);
+    assert!(Arc::ptr_eq(&fitted, off.posterior.as_ref().unwrap()));
+    assert_eq!(off.log.len(), logged + 3, "the picks were not logged");
+}
+
+/// **An implicit event and a style's name are saved as given.** A point
+/// event records its kind, id and value, with no detail and no φ. A style
+/// is named by its aligned index, trimmed and cut to 24 characters, and an
+/// empty name clears it; an index past the sixteen lenses names nothing.
+#[test]
+fn events_and_style_names_are_saved_as_given() {
+    let mut engine = Engine::new(PatchGrammarPrior::default(), fast());
+    engine.log_event("play", 7, 3.0);
+    engine.set_style_name(2, "  Glassy pads that never quite settle  ");
+    engine.set_style_name(16, "past the lenses");
+    let saved = engine.export_state();
+    let e = &saved.events[0];
+    assert_eq!(
+        (e.kind.as_str(), e.id, e.value, e.detail.as_str()),
+        ("play", 7, 3.0, "")
+    );
+    assert!(e.phi_before.is_empty() && e.phi_after.is_empty());
+    assert_eq!(saved.style_names, ["", "", "Glassy pads that never q"]);
+    engine.set_style_name(2, "");
+    assert_eq!(engine.export_state().style_names, ["", "", ""]);
+}
