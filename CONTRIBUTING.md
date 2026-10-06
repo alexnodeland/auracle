@@ -138,19 +138,24 @@ Every change must pass `make check`:
    flags (see the profile's comment in `Cargo.toml`), and no build of the
    examples, which no test runs and step 2 already compiles
 
-That list is what CI's `lint`, `web` and `test` jobs and its wasm32 build
-(the engine job, with warnings as errors) run, so "green locally" and "green
-in CI" are one claim. What CI runs that `make check` does
+That list is what CI's Lint, Web and Doctests jobs, its Rust tests (run
+instrumented, as Coverage) and its wasm32 build (the engine job, with
+warnings as errors) run, so "green locally" and "green in CI" are one
+claim. What CI runs that `make check` does
 not is the site build (`make site && make site-check`) with the browser smoke
 test after it (`make smoke`'s two specs), and the browser specs, because they
 need the wasm built and the site needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
-The **fast tier** is the required `CI` check, about eleven minutes: the jobs
-above, the Rust tests except the slow ones, the same tests instrumented for
-coverage, and every browser spec not tagged `@slow` or `@quarantine`, dealt
-to twelve runners by time. A PR may merge on it alone. The **slow tier**
+The **fast tier** is the required `CI` check: the jobs above, the Rust tests
+except the slow ones (instrumented, for coverage), and every browser spec not
+tagged `@slow` or `@quarantine`, dealt to twelve runners by time, about
+twelve minutes. It runs in two lanes. Your PR's own run is the fast lane,
+the part of it your change reaches, in about five minutes (nine when Rust
+changed); green, it puts the PR in the merge queue. The merge queue's run is
+the full gate, on your PR together with up to two others queued beside it,
+on top of `main`, and it is what merges them. A PR may merge on the fast tier alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on every push to `main` and nightly, where a failure opens an issue; on a PR
@@ -231,8 +236,9 @@ these properties explicitly.
 ## Verification beyond `make check`
 
 Two browser specs are automated under `make smoke` (CI's *Browser smoke* job
-runs them after the site build, against the engine the site ships), in
-Playwright's Chromium.
+runs them after the site build, against the engine the site ships, on a PR
+that changes the app or the engine; the merge queue's browser tier runs them
+with every other spec), in Playwright's Chromium.
 `tests/web/smoke.spec.js` boots the instrument and requires **no console
 errors, a registered worklet, and an engine that reaches `playable`** — the
 whole of its claim, and the only gate that notices a backtick in the worklet
@@ -264,8 +270,10 @@ an alias for notes written before the rename).
 
 1. Keep PRs focused; separate refactors from behavior changes.
 2. Run `make check` locally before you push your branch and open the PR: it
-   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, twelve runners wide;
-   locally, run the specs your change reaches (`make browser-changed`). If you
+   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser
+   specs: on your PR only the specs it reaches, and in the merge queue all of
+   them, twelve runners wide. Locally, run the specs your change reaches
+   (`make browser-changed`). If you
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it
@@ -288,11 +296,12 @@ an alias for notes written before the rename).
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
-   label. When its CI is green the queue brings it up to date with `main`,
-   runs CI again if `main` moved, and squash-merges it as
-   `<title> (#<number>)` with the PR's description as the commit's body. A
-   red run takes it out of the queue; a fix and `@mergifyio queue` put it
-   back.
+   label. When its CI is green it enters the queue, which runs the full gate
+   on it together with up to two other queued PRs, on top of `main`, and
+   squash-merges each as `<title> (#<number>)` with the PR's description as
+   the commit's body. A PR green on its own run can be red there: the queue
+   then finds the PR at fault and takes it out, with a comment saying why; a
+   fix and `@mergifyio queue` put it back.
 
 ### Commit messages
 

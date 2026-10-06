@@ -4,8 +4,9 @@ How a change gets from an idea to `main` and the live site. This is the
 canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 [ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
-[ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md) and
-[ADR-021](decisions/021-merges-go-through-mergifys-queue.md) amend it. The `ship` skill
+[ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md),
+[ADR-021](decisions/021-merges-go-through-mergifys-queue.md) and
+[ADR-023](decisions/023-the-gate-runs-in-the-queue.md) amend it. The `ship` skill
 (`.claude/skills/ship/`) walks one task through it with the exact commands.
 
 ## The lifecycle
@@ -20,8 +21,8 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
 | 8. Proposed | A pull request that closes the issue, labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
-| 9. Checked | A green `CI` check | GitHub Actions | CI |
-| 10. Merged | One squash commit on `main`, once `CI` is green on top of `main` | `main` | The merge queue (Mergify) |
+| 9. Checked | A green `CI` check on the PR (the fast lane), then the full gate green on the queue's batch | GitHub Actions | CI |
+| 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
 | 12. Closed | The issue closed, the plan's progress updated, the worktree removed | | The operator |
 
@@ -87,14 +88,15 @@ in a plan's prose, a session's notes or a conversation.
   nothing follows it.
 - **The gates a builder runs** are the fast ones for what changed (the `check`
   skill) and the specs it added or touched (`make browser-changed`), through
-  the browser queue on its own port. Not the full suite: CI runs it twelve wide.
+  the browser queue on its own port. Not the full suite: the merge queue's
+  run of CI runs it twelve wide.
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
 - **Rebasing while building or in review** is only to resolve a conflict,
   or to move a branch built on the one ahead onto `main` once that one has
-  merged ([CI and merging](#ci-and-merging)). The merge queue brings a PR up
-  to date with `main` itself.
+  merged ([CI and merging](#ci-and-merging)). The merge queue tests a PR on
+  top of `main` itself, without touching its branch.
 - **Descriptions stay true in the same change**
   ([ADR-004](decisions/004-descriptions-stay-true.md)): the guide, the
   reference, in-app copy, the changelog entry (`changelog.d/<topic>.md`,
@@ -168,12 +170,33 @@ Findings come back ranked, and review is **one round**:
 
 ## CI and merging
 
-CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)):
+CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)),
+in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 
-- **The required check is `CI`.** It holds Lint, Web, Site, Browser smoke
-  (after Site), the Rust tests and their coverage, and the browser tier,
-  dealt to twelve runners by time, about eleven minutes. A PR that changes
-  only specs runs only those specs.
+- **A PR's own run is the fast lane.** Its `CI` check holds Lint, Coverage
+  (the Rust tests) and the Doctests when Rust changed; Web and Site when the
+  site, the docs or the app changed; Browser smoke when the app, the engine or
+  what runs the specs changed; and the browser specs the change reaches
+  (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
+  four runners. About five minutes without Rust, about nine with it.
+  - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
+    `style.css`, a crate) runs the smoke and no other spec. So does a helper
+    that more than twenty spec files require.
+  - A change to CI itself (`.github/workflows/`, `.github/actions/`) runs the
+    full gate in its own lane.
+  - **A green PR is fit to queue, not proven.** The fast lane is quick word on
+    what the PR changed. The full gate is the merge queue's run.
+- **The merge queue's run is the full gate.** Everything, as on `main`:
+  Lint, Web, Site, Coverage, the Doctests and the browser tier on twelve
+  runners, about twelve minutes, on the tree the batch makes on top of
+  `main`. It is CI on a draft PR the queue opens from a branch under
+  `mergify/merge-queue/`.
+- **The required check is `CI`,** in both lanes. `main`'s ruleset requires
+  it on a PR's head commit, from GitHub Actions, with no bypass for anyone,
+  admins and the queue included; the fast lane's `CI` is what meets it when
+  the queue merges the PR. It does not require the branch to be up to date
+  with `main`: the queue tests on top of `main` itself. To merge anything
+  else, the maintainer edits the ruleset.
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
@@ -187,34 +210,42 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
 - **Wait on the state, never a fixed time:** poll until the run completes,
   or the PR merges or leaves the queue, then read what happened.
 - **The merge queue merges**
-  ([ADR-021](decisions/021-merges-go-through-mergifys-queue.md)). Mergify's
-  queue, set up in `.mergify.yml`, is how a PR reaches `main`:
+  ([ADR-021](decisions/021-merges-go-through-mergifys-queue.md),
+  [ADR-023](decisions/023-the-gate-runs-in-the-queue.md)). Mergify's queue,
+  set up in `.mergify.yml`, is how a PR reaches `main`:
   - A reviewed PR is opened with the `queue` label; adding it is the one act
-    of enqueueing. A `@mergifyio queue` comment does the same.
-  - It enters the queue once its `CI` is green. The queue takes one PR at a
-    time, in order, and checks it on its own branch.
-  - At the front, a PR that `main` moved under is rebased onto `main`, and
-    `CI` runs again on that head. A PR already on `main`'s tip merges on the
-    run it has.
-  - The queue squash-merges the head that passed, so nothing pushed after
-    the check merges unchecked. The commit is `<title> (#<n>)` with the PR's
-    body.
-- **A red `CI` takes the PR out of the queue, and nothing is retried.**
-  Mergify's automatic retries are off, and a red check is never re-run until
-  it passes.
-  - The PR gets the `dequeued` label; its *Mergify Merge Queue* check and the
-    queue's comment say why it left.
-  - A red run is read, then fixed or quarantined on the branch
-    ([Flakes](#flakes)). The queue may have rebased the branch, so the
-    worktree is reset to the branch on GitHub before the fix is committed.
+    of enqueueing. A `@mergifyio queue` comment does the same. (The label
+    works through Mergify's auto-merge conditions, which act while Merge
+    Protections is active for the repository in Mergify's dashboard.)
+  - It enters the queue once its fast lane's `CI` is green.
+  - The queue tests up to three queued PRs together, a batch, on a draft PR
+    of its own, on top of `main`: one full gate for the batch. A batch waits
+    at most three minutes for company. One batch is tested at a time.
+  - Green, the queue squash-merges each PR of the batch on its own, the head
+    that was tested, so nothing pushed after the check merges unchecked. Each
+    commit is `<title> (#<n>)` with the PR's body. The queue never pushes to
+    a PR's branch.
+  - A PR labelled `priority`, a fix to CI or to a flaky test, goes into the
+    next batch ahead of everything else queued. The batch being tested goes
+    on.
+- **A PR can be green on its own run and red in the queue.** Then its batch
+  is split: Mergify tests the parts, the first part first, merges a part that
+  passes and splits a part that fails again. A PR that fails on its own is
+  the one at fault. The others go on, and nothing is retried: Mergify's
+  automatic retries are off, and a red check is never re-run until it
+  passes.
+  - The PR at fault gets the `dequeued` label; its *Mergify Merge Queue*
+    check and the queue's comment say why it left and which check failed.
+    The red run is the draft PR's, on its `mergify/merge-queue/` branch.
+  - The red run is read, then fixed or quarantined on the branch
+    ([Flakes](#flakes)).
   - It goes back in with `@mergifyio queue` (the `queue` label stays on).
     A run that was cancelled rather than failed goes back in as it is.
-  - A PR whose own first run is red never entered the queue: it enters once
-    a fix makes `CI` green.
-- **GitHub enforces it.** `main`'s ruleset requires the `CI` check, from
-  GitHub Actions, with no bypass for anyone, admins and the queue included.
-  It does not require the branch to be up to date with `main`; the queue
-  does that. To merge anything else, the maintainer edits the ruleset.
+  - A batch that goes red and whose parts then all pass was a flake: every
+    PR in it merges, and the batch's red run is read and the test quarantined
+    like any other.
+  - A PR whose own fast lane is red never entered the queue: it enters once a
+    fix makes `CI` green.
 - **Merge at green.** A PR whose `CI` is green and that has no blocking
   finding is in the queue then. Nothing is added to a green PR. A finding
   raised after it, or an improvement seen in passing, becomes an issue or the
@@ -225,26 +256,31 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   push it stacked on the one ahead: a squash merge gives `main` one new
   commit, and the branch behind, still carrying the old ones, conflicts
   wherever both PRs changed the same lines.
-- **A conflict with `main` takes a PR out of the queue.** Two PRs that both
-  edit the same lines can't both be rebased: the second leaves the queue.
-  Their changelog entries never do this, since each is a file of its own in
-  `changelog.d/`. Rebase it on
-  `main` by hand, push with
+- **A conflict takes a PR out of the queue.** Two PRs that both edit the same
+  lines can't go in one batch. The second is held, keeping its place, while
+  the one ahead is in the queue; once that one merges, the second conflicts
+  with `main` and leaves the queue. A conflict with `main` itself takes a PR
+  out at once. Changelog entries never conflict, since each is a file of its
+  own in `changelog.d/`. Rebase it on `main` by hand, push with
   `--force-with-lease=<branch>:<the head on GitHub>`, and queue it again.
-- **By hand, only when Mergify is down:**
-  `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`,
-  at green, on a PR up to date with `main` (rebased and run again if `main`
-  moved). A merge from outside the queue makes it start over on the new
+- **By hand, only when Mergify is down:** on a PR up to date with `main`
+  (rebased if `main` moved), run CI by hand on its branch (Actions → CI → Run
+  workflow: a run by hand is the full gate), and once that run and the PR's
+  `CI` are green,
+  `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`.
+  A merge from outside the queue makes the queue start over on the new
   `main`.
 - **Linear:** one merge queue, at most two streams of work in flight and
   never two touching the same files.
-- **On `main`**, a job the merged PR already passed is not run again when
-  the merged files are exactly the files the PR's run tested (the same git
-  tree). Through the queue they always are: it merges a PR only on a run
-  that tested it on `main`'s tip. The site deploys from CI's own build once
-  `CI` is green. `main`'s runs queue, so each merge gets its own run. The
-  *Slow suite* runs on every push to `main` and nightly; the *Flake hunt*
-  nightly. A failure there files an issue.
+- **On `main`**, a job the queue's run already passed is not run again when
+  `main`'s files are exactly the files that run tested (the same git tree):
+  the last merge of every batch. The site deploys from CI's own build once
+  `CI` is green. `main`'s runs keep the latest only: a batch lands as two or
+  three merges seconds apart, a run in progress finishes, the newest waiting
+  run replaces any older one, and a run whose commit `main` has already moved
+  past runs nothing, since the newest run covers it. The *Slow suite* runs on
+  `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
+  files an issue.
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table
 gets the PR, and the PR's branch deletes itself on GitHub (the repository

@@ -23,7 +23,8 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   suite. Two browsers at once make both late, and a timing assertion then
   fails for the machine, not the app.
 - **`make smoke`** runs the pair CI's *Browser smoke* job runs after the
-  site build (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
+  site build on a PR that changes the app or the engine (`smoke.spec.js`,
+  `failure_flows.spec.js`), in seconds.
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
   `AURACLE_TAP_LOG=1` prints it too.
@@ -34,9 +35,13 @@ The suite is about an hour and a half in one worker, so CI splits it
 ([`docs/architecture/testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)):
 
 - **Fast tier**: every test not tagged `@slow` or `@quarantine`, about
-  seventy-five minutes in one worker. Part of the required `CI` check on any
-  PR that touches `apps/web`, `tests/web` or the engine, dealt to twelve
-  runners by `shard.mjs` from main's last timings, about six minutes each.
+  seventy-five minutes in one worker. Part of the required `CI` check, in
+  two lanes. The merge queue's run, the full gate, runs all of it, dealt to
+  twelve runners by `shard.mjs` from main's last timings, about six minutes
+  each. A PR's own run, the fast lane, runs only the specs its change reaches
+  (`changed.mjs`, below), on up to four runners, and the smoke pair when it
+  changes the app or the engine: for `main.js`, `worker.js` or a crate, the
+  smoke pair and nothing else.
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a
@@ -57,11 +62,14 @@ make browser-slow   # --grep "@slow|@quarantine"
 ```
 
 On a workstation, run the specs your change reaches and let CI run the rest:
-it is the gate, and it runs them twelve wide. `make browser-changed` runs the
-specs changed against `origin/main`, the specs of a changed helper, and the
-specs named for a changed app module (`changed.mjs`); for `main.js` and the
+the merge queue's run is the gate, and it runs them twelve wide. `make
+browser-changed` runs the specs changed against `origin/main`, the specs of
+a changed helper, and the specs named for a changed app module
+(`changed.mjs`, which a PR's fast lane in CI uses too); for `main.js` and the
 engine, which reach every level, name them by file or prefix
-(`npx playwright test patch_ perform_layout.spec.js`).
+(`npx playwright test patch_ perform_layout.spec.js`). CI's fast lane runs
+none of them for such a change, only the smoke pair, so this local run is
+the one that sees them before the queue.
 
 When CI fails, the run's summary links one HTML report of every runner, with
 the failed tests' traces: download it and run `npx playwright show-report
