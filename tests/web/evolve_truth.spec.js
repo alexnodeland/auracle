@@ -426,7 +426,10 @@ test("after clicking EVOLVE's stop on the rail, → picks", async ({ page, app }
   expect(await picks(page)).toBe(n0 + 1);
 });
 
-test("opening a patch is not announced unless it kept you waiting", async ({ page, app }) => {
+// Quarantined (#186): its first half assumes an open on a CI runner is
+// quicker than OPEN_SAID_MS; on a slow runner it was not, and the app was
+// right to say "Opened …".
+test("opening a patch is not announced unless it kept you waiting", { tag: "@quarantine" }, async ({ page, app }) => {
   await boot(page, app);
   await toEvolve(page, app);
   await goLevel(page, "patch");
