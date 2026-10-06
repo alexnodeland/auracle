@@ -222,3 +222,6 @@ pub fn calibration(forecasts: &[Forecast]) -> Calibration {
         by_provenance,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -269,18 +269,18 @@ test-crate:
 # `--no-tests=fail` turns a list that no longer matches anything into a red
 # run. The search floor is split off because it alone is ~330 s on a runner:
 # it walks 16 seeds, one thread each, and gets a runner to itself.
-SEARCH_FLOOR := test(=tests::refinement_improves_pool)
+SEARCH_FLOOR := test(=engine::tests::refinement_improves_pool)
 SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) \
 	| test(=perform::tests::a_planned_measurement_is_the_measurement) \
-	| test(=tests::a_walk_is_a_function_of_its_job) \
+	| test(=walk::tests::a_walk_is_a_function_of_its_job) \
 	| test(=perform::tests::named_controls_move_the_sound_they_name) \
 	| test(=tests::evolve_from_this_on_the_farm_is_evolve_from_this) \
-	| test(=tests::closed_loop_learns_synthetic_taste) \
-	| test(=tests::closed_loop_learns_motion_rate) \
+	| test(=engine::tests::closed_loop_learns_synthetic_taste) \
+	| test(=engine::tests::closed_loop_learns_motion_rate) \
 	| test(=perform::tests::drift_is_local_and_follows_sigma) \
 	| test(=perform::tests::a_stepped_walk_is_the_walk) \
 	| test(=tests::farm_walks_breed_the_serial_generation) \
-	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
+	| test(=engine::tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
 NEXTEST = $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS) --no-tests=fail
 # CI passes `--partition slice:k/N` here to split the fast tier across runners.
 NEXTEST_ARGS ?=

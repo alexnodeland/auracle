@@ -4601,3 +4601,6 @@ impl Engine {
         self.posterior = None;
     }
 }
+
+#[cfg(test)]
+mod tests;
