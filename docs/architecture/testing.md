@@ -314,8 +314,10 @@ change to the code, is built and its crate's fast tier run on it, and a
 mutant no test fails on survives. What it runs, how to read a survivor and
 what review does with one are the crates' rules, in
 [`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing).
-The *Mutants* workflow (`mutants.yml`) is not part of the required `CI`
-check.
+The *Mutants* workflow (`mutants.yml`) is a workflow of its own, part of
+neither `CI` lane, and not required. It skips the queue's draft PRs
+(branches under `mergify/merge-queue/`), whose code each PR's own run has
+judged.
 
 **On every PR**, one runner tests the mutants in the changed code
 (`make mutants DIFF=1`'s command against the merge base, in place, one at a
@@ -378,8 +380,8 @@ eleven minutes of a runner's time on the fast tier (two runners, five and a
 half each), which this Mac runs in about a minute and a half unloaded: about
 eight times slower. A build is taken to be about four times slower. A mutant
 then costs about 15 s in taste, 25 s in grammar, two minutes in features
-and wasm, and three to four in session, and the workspace's 8,320 about 200
-to 250 runner-hours. Four runners for six hours a week are 24, hence the
+and wasm, and three to four in session, and the workspace's mutants (about
+8,300) about 200 to 250 runner-hours. Four runners for six hours a week are 24, hence the
 parts. `PLAN`'s counts are sized from these estimates to keep each shard
 near four and a half hours, under its cap of five and a half (session's
 2,001 mutants in 26 shards are 77 each: four and a half hours at three and

@@ -13,8 +13,9 @@ name: Mutants
 #
 # - pull_request: the mutants in the code the PR changed (`make mutants
 #   DIFF=1`'s, against the merge base), stopped at a time cap. It is not
-#   required: it is its own workflow, so it never fails the required `CI`
-#   check. Review treats each survivor it reports as a finding. The job is
+#   required: it is its own workflow, so it never fails `CI` (in either
+#   lane) or the queue's `Full gate`. Review treats each survivor it reports
+#   as a finding. The job is
 #   red when a mutant survived. It runs on every PR, with no `paths:`
 #   filter, and passes at once when no Rust in crates/ changed: a workflow
 #   a filter skips leaves a required check waiting forever, so this way
@@ -46,8 +47,10 @@ permissions:
 
 # A new push to a PR makes its run obsolete. On main nothing is cancelled
 # and nothing is skipped: runs wait in a queue (`queue: max`) and run in
-# turn. On a PR the queue is `single`, since `queue: max` beside
-# `cancel-in-progress: true` is a validation error (ci.yml says more).
+# turn, since each is a different part of the workspace (ci.yml and the Slow
+# suite keep only main's newest waiting run, which covers the ones before
+# it). On a PR the queue is `single`, since `queue: max` beside
+# `cancel-in-progress: true` is a validation error.
 concurrency:
   group: mutants-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -183,8 +186,9 @@ jobs:
 
   # This week's part of the workspace. The whole of it does not fit in a
   # week's runners: estimated from runs on a Mac (testing.md § Mutants), its
-  # 8,320 mutants take about 200 to 250 runner-hours, and two runners for
-  # most of a week would hold the runners a PR's `CI` needs. So each
+  # mutants (about 8,300) take about 200 to 250 runner-hours, and two
+  # runners for most of a week would hold the runners the queue's full gate
+  # and the PRs' fast lanes need. So each
   # crate's mutants are cut into PLAN's shards, as many as keep a shard
   # near four and a half hours at the estimates above (under its cap of
   # five and a half), and each week runs the next four, in order: crate by

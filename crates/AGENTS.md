@@ -193,7 +193,7 @@ survive.
   is `git add`ed). Run it before review on any Rust change.
 - `make mutants CRATE=auracle-taste`: one crate. With `DIFF=1` too, that
   crate's changed code.
-- `make mutants`: the whole workspace, 8,320 mutants: a day or two on a
+- `make mutants`: the whole workspace, about 8,300 mutants: a day or two on a
   16-core Mac, estimated. CI's weekly run takes it a part at a time.
 - Two mutants at a time (`MUTANTS_JOBS`), each in a copy of the tree whose
   first build is from clean, at `nice -n 10`. It holds a machine for long:
@@ -235,7 +235,8 @@ a follow-up issue tracks their survivors; each crate's PR still to come in
 done.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
-not part of the required `CI` check (how long each part takes, and why it is
+part of neither `CI` lane, the PR's fast lane or the queue's full gate, and
+is not required (how long each part takes, and why it is
 shaped so: `docs/architecture/testing.md`
 [§ Mutants](../docs/architecture/testing.md#mutants)):
 
