@@ -3151,3 +3151,101 @@ fn the_serial_driver_breeds_one_parent_a_call() {
     let retired: Vec<u64> = serde_json::from_str(&engine.refine_retired()).unwrap();
     assert_eq!(retired.len(), children);
 }
+
+/// **A deferred restore takes what survives, and finishes the rest here.**
+/// A save that does not read restores nothing, deferred or serial. A
+/// result for an index not pending, or one that did not survive, is
+/// refused; `bank_render` featurizes a pending entry in this worker (what
+/// the farm did not finish), and the session it rebuilds is the serial
+/// restore's. An entry the compiler can no longer build is dropped, as the
+/// serial restore drops it.
+#[test]
+fn a_deferred_restore_takes_what_survives_and_finishes_the_rest_here() {
+    let saved = filled(0x5A5C).export_session();
+    let mut d = WasmEngine::new(1, 6);
+    assert_eq!(d.import_session_deferred("{"), "[]");
+    assert_eq!(d.import_session("{"), 0);
+    let jobs: Vec<serde_json::Value> =
+        serde_json::from_str(&d.import_session_deferred(&saved)).unwrap();
+    assert!(jobs.len() >= 3);
+    assert!(
+        !d.bank_absorb(jobs.len(), "{}", &[]),
+        "no entry pending there"
+    );
+    assert!(!d.bank_absorb(0, "", &[]), "a result that did not survive");
+    assert!(!d.bank_render(jobs.len()));
+    for i in 0..jobs.len() {
+        assert!(d.bank_render(i));
+    }
+    assert_eq!(d.restore_finish(), jobs.len());
+    let mut serial = WasmEngine::new(1, 6);
+    assert_eq!(serial.import_session(&saved), jobs.len());
+    assert_eq!(session_content(&d), session_content(&serial));
+
+    let mut state: serde_json::Value = serde_json::from_str(&saved).unwrap();
+    state["bank"][0]["tree"] = serde_json::to_value(too_deep()).unwrap();
+    let mut broken = WasmEngine::new(1, 6);
+    let jobs: Vec<serde_json::Value> =
+        serde_json::from_str(&broken.import_session_deferred(&state.to_string())).unwrap();
+    assert!(
+        !broken.bank_render(0),
+        "an entry that does not compile landed"
+    );
+    for i in 1..jobs.len() {
+        assert!(broken.bank_render(i));
+    }
+    assert_eq!(broken.restore_finish(), jobs.len() - 1);
+}
+
+/// **The farm's results are checked, not trusted.** A tree that does not
+/// parse, a phrase that does not parse, and a tree that does not compile
+/// each come back not ok; a row filed under another tree's key is refused
+/// at absorption and burns its draw. A phrase that does not parse has no
+/// namespace.
+#[test]
+fn the_farm_refuses_what_it_cannot_measure_or_place() {
+    let mut engine = WasmEngine::new(0x9998, 8);
+    let phrase = engine.phrase_json();
+    assert_eq!(cache_namespace("{"), "");
+    let tree = serde_json::to_string(&presets()[0].1).unwrap();
+    let deep = serde_json::to_string(&too_deep()).unwrap();
+    for (t, p) in [
+        ("{", phrase.as_str()),
+        (tree.as_str(), "{"),
+        (deep.as_str(), phrase.as_str()),
+    ] {
+        let job = farm_render(t, p, true);
+        assert!(
+            !job.ok() && job.cached().is_empty(),
+            "{t:.20} under {p:.20}"
+        );
+    }
+    let wave: Vec<serde_json::Value> = serde_json::from_str(&engine.fill_draw(1)).unwrap();
+    let index = wave[0]["i"].as_u64().unwrap() as u32;
+    let other = farm_render(&tree, &phrase, false);
+    assert!(other.ok());
+    assert_eq!(engine.fill_absorb(index, &other.cached(), &[]), 0);
+    assert_eq!(engine.fill_cursor(), index + 1, "the draw was not burned");
+    assert_eq!(pool_ids(&engine).len(), 0);
+}
+
+/// **A preset the file names but the bank does not, or one whose
+/// measurement is not the length of the standardizer, is skipped** when
+/// the shipped wirings are read for the presets nearest a sound; the rest
+/// are read.
+#[test]
+fn a_wiring_file_row_that_does_not_fit_is_skipped() {
+    let bank = auracle_grammar::preset_bank();
+    let file = serde_json::json!({
+        "standardizer": {"mean": [1.0, 2.0], "std": [2.0, 4.0]},
+        "presets": [
+            {"name": bank[0].name, "data": {"z": [0.5, -1.0]}},
+            {"name": "Not A Preset", "data": {"z": [0.0, 0.0]}},
+            {"name": bank[1].name, "data": {"z": [0.0]}},
+        ],
+    });
+    let read = presets_from_wirings(&file.to_string());
+    assert_eq!(read.len(), 1);
+    assert_eq!((read[0].index, read[0].name.as_str()), (0, bank[0].name));
+    assert_eq!(read[0].audio, vec![2.0, -2.0], "z × std + mean");
+}
