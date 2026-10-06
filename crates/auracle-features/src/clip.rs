@@ -693,8 +693,11 @@ fn synthesize_reference(sr: f64, frames: usize) -> AuditionClip {
             *slot += PICK_LEVEL * p.vel * libm::exp(-t / PICK_TAU) * white();
         }
     }
-    // Never zero: the first pluck's pick sounds from the figure's first
-    // sample, and `reference` asks for at least one.
+    // At any rate a phrase is rendered at, the first pluck's pick sounds from
+    // the figure's first sample, so the peak is not zero. Below 83⅓ Hz the
+    // pick is shorter than a sample, and a single frame is silent: the scale
+    // is then infinite, each 0 × ∞ is NaN, and `quantize` casts NaN to 0, so
+    // the clip is silence, as it always was.
     let peak = out.iter().fold(0.0f64, |m, s| m.max(s.abs()));
     let scale = REFERENCE_PEAK / peak;
     let mono: Vec<f32> = out.iter().map(|s| quantize((s * scale) as f32)).collect();

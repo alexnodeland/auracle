@@ -339,6 +339,9 @@ fn a_short_phrase_hears_the_figures_opening() {
     };
     let r = dot(x, y) / (dot(x, x) * dot(y, y)).sqrt();
     assert!(r > 0.9999, "the opening is not the figure's: r = {r}");
+    // One frame at a rate too low for the first pick to last a sample is
+    // silence, every sample a number.
+    assert_eq!(synthesize_reference(50.0, 1).planar(), [vec![0.0f32]]);
 }
 
 /// The saved form's base64 is strict: whole quads, at most two pads and only

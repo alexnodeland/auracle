@@ -261,7 +261,10 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         } else {
             // Linear crossing between the last sub-threshold hop and this one.
             // `idx` is the first hop at the target, so the one before it is
-            // below it: `hi > lo`, and the crossing lies between them.
+            // below it: `hi > lo`, and the crossing lies between them. (Only
+            // a sample that is not a number breaks that, and then φ is not
+            // finite anyway; the featurizer and the file path refuse such
+            // input before it gets here.)
             let (lo, hi) = (env[idx - 1], env[idx]);
             (idx - 1) as f64 + ((target - lo) / (hi - lo)).clamp(0.0, 1.0)
         };
