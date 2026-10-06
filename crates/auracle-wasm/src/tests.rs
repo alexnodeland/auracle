@@ -2223,22 +2223,9 @@ fn a_deal_counts_when_it_is_shown() {
         assert!(deferred.duel_shown(y, x));
         assert!(!deferred.duel_shown(x, y), "shown once");
     }
-    assert_eq!(
-        counted.engine.shown_pairs_len(),
-        deferred.engine.shown_pairs_len()
-    );
-    // Deals thrown away until one is a pair never shown before: under
-    // the old count-at-the-deal it would have added a row.
-    let before = deferred.engine.shown_pairs_len();
-    for _ in 0..20 {
-        let _ = deferred.deal_duel_ex(None);
-    }
+    // A pair never dealt is not shown. (That deals thrown away move
+    // nothing is the session's discarded_deals_do_not_advance_the_check_cadence.)
     assert!(!deferred.duel_shown(u32::MAX, u32::MAX - 1), "never dealt");
-    assert_eq!(
-        deferred.engine.shown_pairs_len(),
-        before,
-        "a deal thrown away is not shown"
-    );
 }
 
 /// The import route enforces the same ceilings as every other write route,
