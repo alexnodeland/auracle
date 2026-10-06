@@ -82,12 +82,14 @@ defaults:
 # `.cargo/mutants.toml` excludes it as equivalent, with its reason
 # (crates/AGENTS.md § Mutation testing). The job passes at once on a PR that
 # changes no Rust in crates/ (a release and a Dependabot bump among them),
-# and with a warning when its time cap stops it before it has judged a
-# mutant, so no PR is kept out by time alone; a crate PR enters when its run
-# ends, up to 40 minutes (the job's limit) after it starts. Only the PR's
-# own, as for `PR checks`: on the draft PR the job passes at once, and the
-# merge conditions don't read it. Every PR needs it, in both queues. It is
-# required here, not in `main`'s ruleset (the maintainer, 2026-10-06).
+# and a run its time cap stops passes unless a mutant it judged survived
+# (one stopped before the unmutated tests were done judged none, and says so
+# with a warning), so no PR is kept out by time alone; a crate PR enters
+# when its run ends, up to 40 minutes (the job's limit) after it starts.
+# Only the PR's own, as for `PR checks`: on the draft PR the job passes at
+# once, and the merge conditions don't read it. Every PR needs it, in both
+# queues. It is required here, not in `main`'s ruleset (the maintainer,
+# 2026-10-06).
 queue_rules:
   # A release PR (the version bump and the changelog's new section, labelled
   # `release`: CONTRIBUTING.md § Cutting a release) is tested and merged

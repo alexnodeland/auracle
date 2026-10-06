@@ -322,12 +322,12 @@ why it is shaped so: `docs/architecture/testing.md`
   survivor with a test that asserts what the code does, or, when no behavior
   can show it, exclude it in `.cargo/mutants.toml` with its reason (*Reading
   a survivor*, above); push, and the job runs again. A timeout is reported
-  and passes. A run the cap stopped before it judged a mutant passes, with a
-  warning, and one it stopped after passes unless a mutant it judged
-  survived: no PR is held by time alone, and for the mutants the cap left,
-  the local `make mutants DIFF=1` is the complete run that review reads. A
-  crate PR enters the queue when the job ends, up to 40 minutes (its limit)
-  after it starts, which is often after its fast lane.
+  and passes. A run the cap stopped passes unless a mutant it judged
+  survived (one stopped before the unmutated tests were done judged none,
+  and says so with a warning): no PR is held by time alone, and for the
+  mutants the cap left, the local `make mutants DIFF=1` is the complete run
+  that review reads. A crate PR enters the queue when the job ends, up to 40
+  minutes (its limit) after it starts, which is often after its fast lane.
 - **Weekly, and by hand:** one part of the workspace. The whole does not fit
   in a week's runners, so each crate's mutants are cut into shards (the
   `plan` job's `PLAN`), four run each week, two runners at a time, and the

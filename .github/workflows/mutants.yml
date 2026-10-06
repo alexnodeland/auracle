@@ -11,25 +11,27 @@ name: Mutants
 #
 # Two ways in:
 #
-# - pull_request: the mutants in the code the PR changed (`make mutants
-#   DIFF=1`'s, against the merge base), stopped at a time cap. Its job's
-#   check, `Mutants in the changed code`, is required: Mergify's queue
-#   conditions (.mergify.yml) keep a PR out of the merge queue until it is
-#   green, beside `CI` and `PR checks` (#181). Not `main`'s ruleset; and it
-#   is a workflow of its own, so it never fails `CI` (in either lane) or the
-#   queue's `Full gate`. The job is red when a mutant of the changed code
-#   survived, or when the run broke (the unmutated tests failed, or
-#   cargo-mutants did). A survivor is killed with a test that asserts what
-#   the code does, or, when no behavior can show it, excluded in
-#   .cargo/mutants.toml with its reason. A timeout is reported and passes,
-#   and a run the cap stopped before it judged a mutant passes with a
-#   warning: no PR is held by time alone. It runs on every PR, with no
-#   `paths:` filter, and passes at once when no Rust in crates/ changed, and
-#   on the merge queue's draft PRs (branches under mergify/merge-queue/),
-#   whose code each PR's own run has judged. A workflow a filter skips
-#   leaves a required check waiting forever, and a job skipped by its `if`
-#   sits on the PR as skipped, which is not a success; this way the check
-#   always runs and reports, at about a runner-minute a batch.
+# - pull_request: the mutants in the code the PR changed
+#   (`make mutants DIFF=1`'s, against the merge base), stopped at a time
+#   cap. Its job's check, `Mutants in the changed code`, is required:
+#   Mergify's queue conditions (.mergify.yml) keep a PR out of the merge
+#   queue until it is green, beside `CI` and `PR checks` (#181). Not
+#   `main`'s ruleset; and it is a workflow of its own, so it never fails
+#   `CI` (in either lane) or the queue's `Full gate`. The job is red when a
+#   mutant of the changed code survived, or when the run broke (the
+#   unmutated tests failed, or cargo-mutants did). A survivor is killed with
+#   a test that asserts what the code does, or, when no behavior can show
+#   it, excluded in .cargo/mutants.toml with its reason. A timeout is
+#   reported and passes, and a run the cap stopped passes unless a mutant it
+#   judged survived (one stopped before the unmutated tests were done judged
+#   none, and says so with a warning): no PR is held by time alone. It runs
+#   on every PR, with no `paths:` filter, and passes at once when no Rust in
+#   crates/ changed, and on the merge queue's draft PRs (branches under
+#   mergify/merge-queue/), whose code each PR's own run has judged. A
+#   workflow a filter skips leaves a required check waiting forever, and a
+#   job skipped by its `if` sits on the PR as skipped, which is not a
+#   success; this way the check always runs and reports, at about a
+#   runner-minute a batch.
 # - schedule (weekly) and workflow_dispatch: one part of the workspace, four
 #   shards two runners at a time, the parts taken in turn so that a cycle
 #   aims to cover the workspace (the `plan` job says why it is not all of it

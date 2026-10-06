@@ -275,18 +275,18 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   lane's `CI`. Its check, *Mutants in the changed code*, is required by
   Mergify's queue conditions (not by the ruleset): a PR enters the queue
   only once it is green. On a PR that changes a crate it tests the changed
-  code, for at most 25 minutes; its summary lists the mutants of it that
-  no test noticed, and it is red when one survived or the run broke (the
-  unmutated tests failed, or cargo-mutants did). A survivor is killed with
-  a test that asserts what the code does, or, when no behavior can show
-  it, excluded narrowly in `.cargo/mutants.toml` with its reason
+  code, for at most 25 minutes; its summary lists the mutants of it that no
+  test noticed, and it is red when one survived or the run broke (the
+  unmutated tests failed, or cargo-mutants did). A survivor is killed with a
+  test that asserts what the code does, or, when no behavior can show it,
+  excluded narrowly in `.cargo/mutants.toml` with its reason
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing));
   the push runs the job again. A timeout is reported and passes, and a run
-  the cap stopped before it judged a mutant passes with a warning, so no
-  PR is held by time alone. A PR that changes no Rust in `crates/` passes
-  at once. The builder runs `make mutants DIFF=1` before review, so
-  survivors are answered before the PR. On the queue's draft PRs it passes
-  at once, since each PR's own run has judged their code.
+  the cap stopped passes unless a mutant it judged survived, so no PR is
+  held by time alone. A PR that changes no Rust in `crates/` passes at once.
+  The builder runs `make mutants DIFF=1` before review, so survivors are
+  answered before the PR. On the queue's draft PRs it passes at once, since
+  each PR's own run has judged their code.
 - **Codecov comments on the PR** when the PR's own run uploads coverage
   (the Rust's, or the web units' or the worker-protocol tests'), each flag
   the run didn't reach carried forward from `main`. It is a view,
