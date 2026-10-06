@@ -105,6 +105,7 @@ engine that traps on demand.
 | `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
 | `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
 | `tests/worker/warm_start.test.mjs` | The warm start's cards are measured while the player chooses, a pick's card next; *teach it* is handed to the worker when the card being measured ends, inserts its first pick and the other cards measured with no render (the rest rendered once each), and measures no card after; with every card measured ahead, *teach it*'s replies, the saved session and the first fit are the ones a worker that measured nothing makes |
+| `tests/worker/faces.test.mjs` | A pool member's face asked for during PERFORM's measurement is answered from the engine's memo, with nothing left pending, before the measurement's next render |
 
 ## The local loop
 

@@ -799,11 +799,18 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   preset} | {ref, memo}], render}`. A `memo` is a render key already in the
   engine's memo: PATCH's guess names the render of each candidate
   (`Guess::key`), and its face is read with `face_of_key`, which never
-  renders (a row evicted since is `failed`). Answered at once from memory alone, with `{type:
-  "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
-  are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
-  `face_of_tree`, a resident audition, the store), each posted as a `faces`
-  as it is found. With `render`, what none of them has is queued as
+  renders (a row evicted since is `failed`). Answered at once, with `{type:
+  "faces", items: [{id | ref, key, face}], pending, failed}`, from what the
+  worker has copied out and from the engine's memo through `face_of`,
+  `face_of_tree` and `face_of_key` without a render (a pool member's face
+  rides on its featurization; a resident audition is analyzed, a few
+  milliseconds, and the audition cache holds a dozen). Before, all but the
+  copied-out waited for `later`, which waits while a long job holds the
+  engine: on an engine slowed four times the bank's faces, and with them the
+  bank's mean every face is drawn against, came 154 s after the warm start,
+  when PERFORM's first measurement ended (`tests/worker/faces.test.mjs`).
+  The pending are looked up in `later` (**`face_lookup`**: the memo again,
+  then the store), each posted as a `faces` as it is found. With `render`, what none of them has is queued as
   **`face_render`** in the **faces lane**, below `later` (`FACES`), so a
   refit, a guess or a cable probe always goes first, and blocked until boot
   has finished (`blocked`: half a second each, they would slow the fill);
