@@ -36,11 +36,12 @@ const INK = {
 // written into a `.font` string here.
 const CANVAS_PX = parseFloat(tok("--t-canvas"));
 const canvasFont = (dpr) => `${CANVAS_PX * dpr}px ${tok("--font-mono")}`;
-// A motion token's length in ms (`--d-press`, `--d-state`, `--d-move`), read
-// when a motion starts rather than once: the reduced-motion rule sets them to
-// 0, and the setting can change with the app open. A script's tween takes its
-// length here, so it keeps the same three speeds, and the same rule, as a CSS
-// transition; `make dev-check` counts an animation's literal `duration:`.
+// A motion token's length in ms (`--d-press`, `--d-state`, `--d-move`,
+// `--d-zoom`), read when a motion starts rather than once: the reduced-motion
+// rule sets them to 0, and the setting can change with the app open. A
+// script's tween takes its length here, so it keeps the same four speeds, and
+// the same rule, as a CSS transition; `make dev-check` counts an animation's
+// literal `duration:`.
 const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
 // Two phosphors and silk, and nothing else: every other colour the canvases
 // and the inline styles use is made *from* these tokens, so no third hue can

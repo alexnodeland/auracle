@@ -121,7 +121,8 @@ the long-form notes are this directory's `README.md`.
     52; canvas text at `--t-canvas` (12 px, through `canvasFont()`); the
     rack's own tier is `--t-rack-*`;
   - space: `--s1` to `--s7` (4 to 48 px); radii `--r1` to `--r3`;
-  - motion: `--d-press`, `--d-state`, `--d-move` and the easings `--e-settle`
+  - motion: `--d-press`, `--d-state`, `--d-move`, `--d-zoom` (a move
+    between the levels) and the easings `--e-settle`
     and `--e-swap`; a script's tween reads its length with `motionMs()`.
     Every duration is 0 under reduced motion, so nothing may wait on a
     transition ending, and a tween of 0 ms must jump to its end.
