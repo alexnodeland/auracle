@@ -162,36 +162,38 @@ test('review-pr: findings that share a place each get a refuter, and none is los
 
 // Each workflow's stages: the pattern of the labels of its agents, and the
 // model it runs on by default (the maintainer's rule, AGENTS.md § Tooling:
-// opus for building, fixing and judging; sonnet for measuring, re-checking,
-// finalizing and listing). A new stage or label is a row here, or the test of
-// labels below fails.
+// opus for building, fixing, judging and the last gate on a finding; sonnet
+// for what a script or a count settles: the first mutation measure, finalize,
+// listing and reading one issue, review-pr's voice and process lenses). A new
+// stage or label is a row here, or the test of labels below fails.
 const STAGES = {
   'ship-issues': [
     ['build', /^build /, 'opus'],
     ['review', /^review /, 'opus'],
     ['fix', /^fix /, 'opus'],
-    ['verify', /^verify /, 'sonnet'],
+    ['verify', /^verify /, 'opus'],
     ['finalize', /^finalize /, 'sonnet'],
   ],
   'fix-flake': [
     ['diagnose', /^diagnose /, 'opus'],
     ['fix', /^fix /, 'opus'],
-    ['prove', /^prove /, 'sonnet'],
+    ['prove', /^prove /, 'opus'],
     ['review', /^review /, 'opus'],
-    ['verify', /^verify /, 'sonnet'],
+    ['verify', /^verify /, 'opus'],
     ['finalize', /^finalize /, 'sonnet'],
   ],
   'mutants-burndown': [
-    ['measure', /^measure /, 'sonnet'],
+    ['measure', /^measure \S+$/, 'sonnet'],
     ['kill', /^kill /, 'opus'],
+    ['remeasure', /^measure \S+ after$/, 'opus'],
     ['review', /^review /, 'opus'],
     ['fix', /^fix /, 'opus'],
-    ['verify', /^verify /, 'sonnet'],
+    ['verify', /^verify /, 'opus'],
     ['finalize', /^finalize /, 'sonnet'],
   ],
   'review-pr': [
     ['correctness', /^review correctness$/, 'opus'],
-    ['descriptions', /^review descriptions$/, 'sonnet'],
+    ['descriptions', /^review descriptions$/, 'opus'],
     ['tests', /^review tests$/, 'opus'],
     ['voice', /^review voice$/, 'sonnet'],
     ['process', /^review process$/, 'sonnet'],
@@ -283,7 +285,7 @@ test('ship-issues: an item sets the model of its build and fix stages, and no ot
   const run = args => stages('ship-issues', { items: [item], ...args })
   const labels = ['build #300', 'review #300', 'fix #300', 'verify #300', 'fix #300 r2', 'verify #300 r2', 'finalize #300']
   const mine = { 'build #300': 'sonnet', 'fix #300': 'sonnet', 'fix #300 r2': 'sonnet' }
-  const defaults = { 'build #300': 'opus', 'review #300': 'opus', 'fix #300': 'opus', 'verify #300': 'sonnet', 'fix #300 r2': 'opus', 'verify #300 r2': 'sonnet', 'finalize #300': 'sonnet' }
+  const defaults = { 'build #300': 'opus', 'review #300': 'opus', 'fix #300': 'opus', 'verify #300': 'opus', 'fix #300 r2': 'opus', 'verify #300 r2': 'opus', 'finalize #300': 'sonnet' }
 
   const base = await run({})
   assert.deepEqual(base.labels, labels)

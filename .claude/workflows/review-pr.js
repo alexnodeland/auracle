@@ -3,7 +3,7 @@ export const meta = {
   description: 'Review one auracle PR or branch through five lenses in parallel (correctness and dropped capability, descriptions, tests, voice, CI and process), then have an independent agent try to refute each finding; returns only the survivors, ranked, each with its failure scenario',
   whenToUse: 'A PR or a claude/ branch before it is queued, when one reviewer is not enough: a large change, several areas, or a second opinion. Read-only. Runs when the maintainer asks for it by name (it spends many tokens).',
   phases: [
-    { title: 'Review', detail: 'five reviewers, one lens each (opus for correctness and tests, sonnet for descriptions, voice and process)' },
+    { title: 'Review', detail: 'five reviewers, one lens each (opus for correctness, descriptions and tests, sonnet for voice and process)' },
     { title: 'Refute', detail: 'an independent agent tries to refute each finding (opus)' },
   ],
 }
@@ -12,10 +12,11 @@ export const meta = {
 // or a branch with its worktree. With a PR and no worktree, nothing is checked out: the diff and the
 // files come from GitHub.
 //   models?: { correctness, descriptions, tests, voice, process, refute: 'opus' | 'sonnet' }
-// Models, by how hard a lens is. Defaults: correctness and tests opus (a wrong result, a vacuous test:
-// the judgments that cost most when missed), and every refuter opus (a refuter has to confirm a
-// scenario by running it, or the finding is lost); descriptions, voice and process sonnet (a claim
-// checked against the code, a word against the table, a title and a link against the checks).
+// Models, by how hard a lens is, and what a miss costs. Defaults: correctness, descriptions and tests
+// opus (a wrong result; the ADR-004 sweep, whose miss is never recovered once the PR merges; a vacuous
+// test), and every refuter opus (a refuter has to confirm a scenario by running it, or the finding is
+// lost); voice and process sonnet (a word against the table; a title and a link against the checks,
+// which a script checks again).
 // `models` sets one lens's model, or `refute` the model of every refuter. Every agent also gets the
 // advisor line: it calls the advisor, when there is one, before it commits to an approach, when stuck,
 // and before it reports done.
@@ -35,7 +36,7 @@ need(args.worktree === undefined || (typeof args.worktree === 'string' && args.w
 
 // The model of each lens and of the refuters, by how hard they are (see args above).
 const MODELS = ['opus', 'sonnet']
-const STAGE_MODELS = { correctness: 'opus', descriptions: 'sonnet', tests: 'opus', voice: 'sonnet', process: 'sonnet', refute: 'opus' }
+const STAGE_MODELS = { correctness: 'opus', descriptions: 'opus', tests: 'opus', voice: 'sonnet', process: 'sonnet', refute: 'opus' }
 const MODEL_ARGS = args.models === undefined ? {} : args.models
 need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
 for (const [stage, m] of Object.entries(MODEL_ARGS)) {

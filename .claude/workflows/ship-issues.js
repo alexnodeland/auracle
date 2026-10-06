@@ -5,8 +5,8 @@ export const meta = {
   phases: [
     { title: 'Build', detail: 'the area agent builds and commits in the worktree (opus by default; an item sets sonnet when it is well specified and mechanical)' },
     { title: 'Review', detail: 'the reviewer agent, read-only, on the branch (opus)' },
-    { title: 'Fix', detail: 'every blocking and should-fix finding, the nits and the in-area open items, fixed on the branch (the build stage\'s model)' },
-    { title: 'Verify', detail: 'the reviewer re-checks the blocking findings (sonnet)' },
+    { title: 'Fix', detail: "every blocking and should-fix finding, the nits and the in-area open items, fixed on the branch (opus by default; an item's model sets it, with the build)" },
+    { title: 'Verify', detail: 'the reviewer re-checks the blocking findings, the last gate on each (opus)' },
     { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
@@ -21,9 +21,10 @@ export const meta = {
 //   models?: { build, review, fix, verify, finalize: 'opus' | 'sonnet' },   // a stage's model for every item
 //   session?: 'https://claude.ai/code/session_…'   // this operator session's link
 // }
-// Models, by how hard a stage is. Defaults: build, review and fix opus (writing and judging code);
-// verify and finalize sonnet (a re-check of findings already fixed; a rebase, quick gates and the PR
-// checks). An item's `model` sets build and fix (a fix round too) for that item and wins over
+// Models, by how hard a stage is, and what a wrong answer costs. Defaults: build, review and fix opus
+// (writing and judging code), and verify opus (the last gate on a blocking finding: a wrong "resolved"
+// ships the defect); finalize sonnet (a rebase, quick gates and the PR checks, which a script checks
+// again). An item's `model` sets build and fix (a fix round too) for that item and wins over
 // `models.build` and `models.fix`; `models` sets a stage for every item; finalize and the rest follow
 // `models` only. Every agent also gets the advisor line: it calls the advisor, when there is one,
 // before it commits to an approach, when stuck, and before it reports done.
@@ -56,7 +57,7 @@ need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'ses
 
 // The model of each stage, by how hard it is (see args above).
 const MODELS = ['opus', 'sonnet']
-const STAGE_MODELS = { build: 'opus', review: 'opus', fix: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const STAGE_MODELS = { build: 'opus', review: 'opus', fix: 'opus', verify: 'opus', finalize: 'sonnet' }
 const MODEL_ARGS = args.models === undefined ? {} : args.models
 need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
 for (const [stage, m] of Object.entries(MODEL_ARGS)) {

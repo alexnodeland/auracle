@@ -5,8 +5,8 @@ export const meta = {
   phases: [
     { title: 'Diagnose', detail: "the run's failed log and trace, the spec and the app path, reproduced at throttle 4 and under load; the cause named (opus)" },
     { title: 'Fix', detail: 'the test, or the app when it is at fault; the quarantine tag comes out (opus)' },
-    { title: 'Prove', detail: '--repeat-each=5 at throttle 4 and under load, and a mutation the test must fail on (sonnet)' },
-    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (sonnet)' },
+    { title: 'Prove', detail: '--repeat-each=5 at throttle 4 and under load, and a mutation the test must fail on (opus)' },
+    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (opus)' },
     { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
@@ -16,11 +16,11 @@ export const meta = {
 //         worktree: '$REPO/.claude/worktrees/<topic>' (the main checkout's .claude/worktrees/),
 //         agentType?: 'web-engineer' (default), session?: 'https://claude.ai/code/session_…',
 //         models?: { diagnose, fix, prove, review, verify, finalize: 'opus' | 'sonnet' } }
-// Models, by how hard a stage is. Defaults: diagnose, fix (the first fix, the fix of a failed proof and
-// the fix of the review's findings) and review opus (finding a cause, writing the change, judging it);
-// prove, verify and finalize sonnet (running the repeats and the mutation the diagnosis planned; a
-// re-check of findings already fixed; a rebase, quick gates and the PR checks). `models` sets a stage's
-// model, e.g. { diagnose: 'sonnet' } for a flake whose cause is plain from the log. Every agent also gets
+// Models, by how hard a stage is, and what a wrong answer costs. Defaults: diagnose, fix (the first fix,
+// the fix of a failed proof and the fix of the review's findings) and review opus (finding a cause,
+// writing the change, judging it); prove opus (telling a failure on the assertion the mutation broke
+// from a timeout elsewhere is a judgment) and verify opus (the last gate on a blocking finding);
+// finalize sonnet (a rebase, quick gates and the PR checks). `models` sets a stage's model, e.g. { diagnose: 'sonnet' } for a flake whose cause is plain from the log. Every agent also gets
 // the advisor line: it calls the advisor, when there is one, before it commits to an approach, when
 // stuck, and before it reports done.
 // Returns { workflow, session, items: [{ key, issue, branch, worktree, status, problems, diagnosis, proof,
@@ -45,7 +45,7 @@ need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'ses
 
 // The model of each stage, by how hard it is (see args above).
 const MODELS = ['opus', 'sonnet']
-const STAGE_MODELS = { diagnose: 'opus', fix: 'opus', prove: 'sonnet', review: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const STAGE_MODELS = { diagnose: 'opus', fix: 'opus', prove: 'opus', review: 'opus', verify: 'opus', finalize: 'sonnet' }
 const MODEL_ARGS = args.models === undefined ? {} : args.models
 need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
 for (const [stage, m] of Object.entries(MODEL_ARGS)) {

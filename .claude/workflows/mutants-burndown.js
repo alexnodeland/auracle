@@ -3,23 +3,25 @@ export const meta = {
   description: "Run cargo-mutants over one auracle crate, kill each surviving mutant with a behavior assertion (or show it equivalent and exclude it narrowly, with its reason), measure again, review and finalize the branch; the operator pushes",
   whenToUse: "One crate's survivors (the issue Mutants weekly files, 'Mutants that survive', or a crate whose survivors keep PRs out of the queue), with a worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
   phases: [
-    { title: 'Measure', detail: 'make mutants CRATE=<crate>, before and after, and the coverage floor (sonnet)' },
+    { title: 'Measure', detail: 'make mutants CRATE=<crate> before (sonnet, which only counts), and after (opus, which also commits the coverage floor, runs the gates, sorts the survivors left and drafts the PR)' },
     { title: 'Kill', detail: 'one agent per file with survivors, one after another in the one worktree (opus)' },
-    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (sonnet)' },
+    { title: 'Review', detail: 'the reviewer agent, read-only (opus), then the fixes (opus) and a re-check of the blocking ones (opus)' },
     { title: 'Finalize', detail: 'rebased onto origin/main, the quick gates again, the PR checks on the title and body (sonnet)' },
   ],
 }
 
 // args: { crate: 'auracle-taste', branch: 'claude/<topic>', worktree: '$REPO/.claude/worktrees/<topic>',
 //         issue?: <n>, session?: 'https://claude.ai/code/session_…',
-//         models?: { measure, kill, review, fix, verify, finalize: 'opus' | 'sonnet' } }
-// Models, by how hard a stage is. Defaults: kill, review and fix opus (finding the behavior a mutant
-// breaks and writing the test that asserts it; judging the tests; fixing what the review found);
-// measure (the run before and the run after, each only counting), verify and finalize sonnet (a
-// re-check of findings already fixed; a rebase, quick gates and the PR checks). `models` sets a
-// stage's model, e.g. { kill: 'sonnet' } for a crate whose survivors are all plain. Every agent but
-// the first measure also gets the advisor line: it calls the advisor, when there is one, before it
-// commits to an approach, when stuck, and before it reports done.
+//         models?: { measure, kill, remeasure, review, fix, verify, finalize: 'opus' | 'sonnet' } }
+// Models, by how hard a stage is, and what a wrong answer costs. Defaults: kill, review and fix opus
+// (finding the behavior a mutant breaks and writing the test that asserts it; judging the tests; fixing
+// what the review found); remeasure opus (the run after: it also commits the coverage floor, runs the
+// gates, sorts each survivor left as in_area or decision, and drafts the PR); verify opus (the last
+// gate on a blocking finding); measure sonnet (the run before, which only counts and groups the
+// survivors); finalize sonnet (a rebase, quick gates and the PR checks). `models` sets a stage's model,
+// e.g. { kill: 'sonnet' } for a crate whose survivors are all plain. Every agent but the first measure
+// also gets the advisor line: it calls the advisor, when there is one, before it commits to an
+// approach, when stuck, and before it reports done.
 // Returns { workflow, session, before, after, groups: [{ file, killed, equivalent, left }], items: [{ key, issue,
 // branch, worktree, status, problems, final, review, verify }] }: the item in ship-issues' shape.
 //
@@ -46,7 +48,7 @@ need(!SESSION || /^https:\/\/claude\.ai\/code\/session_\w+$/.test(SESSION), 'ses
 
 // The model of each stage, by how hard it is (see args above).
 const MODELS = ['opus', 'sonnet']
-const STAGE_MODELS = { measure: 'sonnet', kill: 'opus', review: 'opus', fix: 'opus', verify: 'sonnet', finalize: 'sonnet' }
+const STAGE_MODELS = { measure: 'sonnet', kill: 'opus', remeasure: 'opus', review: 'opus', fix: 'opus', verify: 'opus', finalize: 'sonnet' }
 const MODEL_ARGS = args.models === undefined ? {} : args.models
 need(MODEL_ARGS && typeof MODEL_ARGS === 'object' && !Array.isArray(MODEL_ARGS), `models is an object, {${Object.keys(STAGE_MODELS).join(', ')}: 'opus' | 'sonnet'}`)
 for (const [stage, m] of Object.entries(MODEL_ARGS)) {
@@ -238,7 +240,7 @@ ${RULES}
 Report with the structured output: after (the counts), the gates, every commit on the branch, a survivor still left as an open item (in_area when a test could still kill it; decision when it needs the maintainer), and the pr_title and pr_body drafts.
 
 ${ADVISOR}`,
-  { label: `measure ${KEY} after`, phase: 'Measure', agentType: 'engine-engineer', model: modelOf('measure'), schema: REPORT },
+  { label: `measure ${KEY} after`, phase: 'Measure', agentType: 'engine-engineer', model: modelOf('remeasure'), schema: REPORT },
 )
 if (!report) {
   return { workflow: 'mutants-burndown', session: SESSION, before: before.counts, after: null, groups: kills, items: [{ key: KEY, issue: ISSUE, branch: args.branch, worktree: WT, status: 'failed', problems: ['the second mutation run did not return; the branch holds the kills so far'] }] }
