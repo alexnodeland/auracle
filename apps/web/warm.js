@@ -9,10 +9,12 @@
 // size are now independent.
 //
 // Stratified rather than uniform on purpose. An unstratified sample of nine
-// from a library that is deliberately unevenly weighted (five basses, three
-// perc) keeps landing in the same corner, and a cold start taught from one
-// corner is the exact bias this screen exists to remove. One per family first,
-// then fill from what is left, so the first thirty seconds *span* the space.
+// from a library whose families are uneven (thirteen textures and eleven pads
+// to six weird sounds and seven basses, in presets.rs) keeps landing in the
+// same corner, and a cold start taught from one corner is the exact bias this
+// screen exists to remove. One per family first, then fill from what is left
+// (the shipped library's seven families leave two), so the first thirty
+// seconds *span* the space.
 
 /** How many cards the warm start shows. */
 export const WARM_CARDS = 9;
