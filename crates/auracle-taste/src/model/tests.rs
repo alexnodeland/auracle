@@ -259,7 +259,8 @@ fn imputation_costs_confidence_on_keep_kill_but_not_on_duels() {
     let imputed = s.loglik_with(&keep, 0, &[0, 1]);
     assert!(
         imputed < measured,
-        "imputing two weighted axes did not reduce confidence:              measured {measured:.4}, imputed {imputed:.4}"
+        "imputing two weighted axes did not reduce confidence: \
+         measured {measured:.4}, imputed {imputed:.4}"
     );
     // Less certain means *closer to a coin flip*, not merely different.
     let coin = 0.5f64.ln();
@@ -777,10 +778,11 @@ fn one_pass_summary_is_utility_and_responsibilities() {
     );
 }
 
-/// K = 2 smoke: the mixture path runs end-to-end and returns finite
-/// summaries, weights sum to one, and alignment is well-formed.
+/// The K = 2 mixture path runs end to end over a log of two sessions (two
+/// τ sites), and returns finite summaries per style and mixed, with
+/// responsibilities that sum to one after alignment.
 #[test]
-fn k2_smoke() {
+fn a_two_session_k2_fit_returns_finite_summaries() {
     let mut rng = StdRng::seed_from_u64(66);
     let user = ground_truth();
     let mut log = ObservationLog::new();
