@@ -47,7 +47,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
+| Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
@@ -60,11 +60,12 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
 | Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
 | The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
-| `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; no other spec |
-| An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, and that module's specs on up to four runners |
+| `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; Worker protocol; no other spec |
+| An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
-| A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke |
-| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site |
+| A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
+| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
+| The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
 | Another script (`scripts/*.py`: the changelog's assembler and its tests) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
@@ -74,7 +75,8 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
   changed spec, the specs that require a changed helper, the specs named for
   a changed app module, one runner per file up to four, dealt by time. A
   change that reaches every level (`main.js`, `worker.js`, the engine) picks
-  none, and gets the smoke only; so does a change that reaches more than
+  none, and gets the smoke only (with Worker protocol, which is the fast
+  lane's real check of `worker.js`); so does a change that reaches more than
   twenty spec files (a helper nearly every spec requires, or that many specs
   changed at once). A green fast lane puts the PR in the queue. It is not the
   gate: a `main.js` change has run two specs when it enters the queue.
@@ -147,8 +149,9 @@ batch's last merge, main's files are exactly the files that run tested (a
 pull_request run tests the draft PR merged into main). The queue's run
 leaves a record (its `CI` job writes the artifact `verified-tree-<git
 tree>`, kept 14 days) of the jobs that passed on those files, and main's
-*What changed* job reads it: Lint, Web, the Doctests, Coverage and the
-browser tier are skipped there when the record says they passed, and the
+*What changed* job reads it: Lint, Web, the Doctests, Coverage, Worker
+protocol and the browser tier are skipped there when the record says they
+passed, and the
 run's summary says so, with a link. Only a queue run's record counts: a PR's
 fast lane runs part of the gate and leaves none. Everything runs on main
 when no record matches (a merge by hand, outside the queue), on a manual
@@ -210,16 +213,16 @@ offers. Otherwise the push to `main` is where a slow
 test catches it.
 
 **Runners.** The account runs at most 20 jobs at once.
-- **The queue's run** at its widest holds about 17: twelve browser runners,
-  Site, the three Coverage runners, and one more for a Lint, Web or Doctests
-  job still running, or the *Browser report*. One batch is tested at a
+- **The queue's run** at its widest holds about 18: twelve browser runners,
+  Site, Worker protocol, the three Coverage runners, and one more for a Lint,
+  Web or Doctests job still running, or the *Browser report*. One batch is tested at a
   time.
-- **A PR's fast lane** holds at most eleven: four browser runners, the three
+- **A PR's fast lane** holds at most twelve: four browser runners, the three
   Coverage runners, Site (then Browser smoke, which waits for Site and takes
-  its place), and Lint, Web and the Doctests while they last. Only a PR that
-  changes both Rust and an app module with specs of its own reaches that.
-  A docs PR holds two (Web, then the engine and Site), an app PR without
-  Rust five or six, a Rust PR seven.
+  its place), Worker protocol, and Lint, Web and the Doctests while they
+  last. Only a PR that changes both Rust and an app module with specs of its
+  own reaches that. A docs PR holds two (Web, then the engine and Site), an
+  app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
   three browser runners), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
@@ -230,7 +233,7 @@ test catches it.
   no Rust. Its weekly run holds two on Saturdays, for about eleven hours
   from 09:17 UTC.
 
-So the queue's run and the *Slow suite* together are 21, one over: a merge
+So the queue's run and the *Slow suite* together are 22, two over: a merge
 starts the *Slow suite* just as the queue starts its next batch, and that
 batch can wait a few minutes for a runner. A PR's fast lane beside a queue
 run fits when it is small (a docs or app PR) and waits for a few runners
