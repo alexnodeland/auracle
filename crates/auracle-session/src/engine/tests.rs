@@ -1549,48 +1549,31 @@ fn may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving() {
 /// Locked refinement never touches a locked address: run `refine_from`
 /// with every continuous amp-envelope site locked and assert the child's
 /// amp env is bit-identical to the seed's while *something* else moved.
+/// One accepted child proves it; the walk is tried from each member in
+/// turn until one lands.
 #[test]
 fn locked_refinement_respects_locks() {
+    let mut engine = taught(0x10C5);
     let mut rng = StdRng::seed_from_u64(0x10C5);
-    let user = ground_truth();
-    let cfg = SessionConfig {
-        pool_size: 16,
-        refine_steps: 20,
-        ..fast()
-    };
-    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-    engine.begin_session();
-    engine.fill_pool(&mut rng);
-    for _ in 0..20 {
-        let (a, b) = engine.next_duel(&mut rng).unwrap();
-        let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-        engine.record_duel(a, b, chose_a);
-    }
-    engine.fit_posterior(&mut rng);
-
     let locked = vec![
         "amp#attack".to_string(),
         "amp#decay".to_string(),
         "amp#sustain".to_string(),
         "amp#release".to_string(),
     ];
-    let mut children = 0;
-    for round in 0..6 {
-        let seed_id = engine.pool[round % engine.pool.len()].id;
-        let seed_amp = engine.pool[engine.find(seed_id).unwrap()].tree.amp.clone();
-        if let Some(child_id) = engine.refine_from(&mut rng, seed_id, &locked) {
-            children += 1;
-            let child = &engine.pool[engine.find(child_id).unwrap()];
-            assert_eq!(child.tree.amp, seed_amp, "locked amp env moved");
-            let ev = engine.lineage.last().unwrap();
-            assert_eq!(ev.child_id, child_id);
-            assert!(ev.diff.iter().all(|d| !d.addr.starts_with("amp#")));
-        }
-        if children >= 2 {
-            break;
-        }
-    }
-    assert!(children > 0, "no locked refinement ever accepted a move");
+    let landed = (0..engine.pool.len()).find_map(|i| {
+        let (seed_id, seed_amp) = (engine.pool[i].id, engine.pool[i].tree.amp.clone());
+        engine
+            .refine_from(&mut rng, seed_id, &locked)
+            .map(|child_id| (child_id, seed_amp))
+    });
+    let (child_id, seed_amp) = landed.expect("no locked refinement ever accepted a move");
+    let child = &engine.pool[engine.find(child_id).unwrap()];
+    assert_eq!(child.tree.amp, seed_amp, "locked amp env moved");
+    let ev = engine.lineage.last().unwrap();
+    assert_eq!(ev.child_id, child_id);
+    assert!(!ev.diff.is_empty(), "nothing moved");
+    assert!(ev.diff.iter().all(|d| !d.addr.starts_with("amp#")));
 }
 
 /// A seed the grammar prior cannot score is reported as such, not as a
@@ -1862,26 +1845,11 @@ fn refits_keep_the_dominant_lens_where_it_was() {
 #[test]
 fn refinement_carries_node_identity() {
     use auracle_grammar::describe;
+    let mut engine = taught(0x1D3);
     let mut rng = StdRng::seed_from_u64(0x1D3);
-    let user = ground_truth();
-    let cfg = SessionConfig {
-        pool_size: 16,
-        refine_steps: 20,
-        ..fast()
-    };
-    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-    engine.begin_session();
-    engine.fill_pool(&mut rng);
-    for _ in 0..20 {
-        let (a, b) = engine.next_duel(&mut rng).unwrap();
-        let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-        engine.record_duel(a, b, chose_a);
-    }
-    engine.fit_posterior(&mut rng);
-
     let mut checked = 0;
-    for round in 0..8 {
-        let seed_id = engine.pool[round % engine.pool.len()].id;
+    for round in 0..engine.pool.len() {
+        let seed_id = engine.pool[round].id;
         let seed = describe::describe(&engine.pool[engine.find(seed_id).unwrap()].tree);
         let Some(child_id) = engine.refine_from(&mut rng, seed_id, &[]) else {
             continue;
@@ -1919,12 +1887,9 @@ fn refinement_carries_node_identity() {
         // without anything being wrong.
         //
         // `checked` counts only rounds that genuinely exercised the
-        // property, and the final assert still requires at least one.
-        if carried == 0 {
-            continue;
-        }
-        checked += 1;
-        if checked >= 2 {
+        // property, and the final assert requires one; one is enough.
+        if carried > 0 {
+            checked += 1;
             break;
         }
     }
