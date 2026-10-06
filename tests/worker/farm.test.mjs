@@ -7,7 +7,10 @@
 //
 // worker.js runs here as it is, over the built engine (harness.mjs), and the
 // farm is ports the test holds (`fakeCrew`): what reaches a farm worker, and
-// in what order, is what each port heard.
+// in what order, is what each port heard. Which worker renders what is the
+// order their answers arrive in, so nothing here asks that each one did:
+// under load here one worker took 29 of a guess's 30 renders, and on a CI
+// runner one of the two was handed none.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { workerFor, fakeCrew } from "./harness.mjs";
@@ -32,13 +35,21 @@ test("a capture hands every farm worker standing the new phrase", { timeout: TIM
   t.after(() => crew.close());
   const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
   // A crew stands after a walk: the model's guess raises one (it needs a
-  // taste and a patch on the bench), and keeps it a minute after.
+  // taste and a patch on the bench), and keeps it a minute after
+  // (`CREW_IDLE_MS`).
   const warm = (await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] })).at(-1);
   await w.send({ type: "fit" });
   await w.send({ type: "edit_begin", id: warm.first });
-  await w.send({ type: "guess", token: 1 });
-  assert.ok(crew.heard.every((h) => h.some((m) => m.type === "job")), "the crew rendered for the guess");
-  assert.ok(crew.heard.every((h) => !h.some(withClip)), "a phrase with a clip before any capture");
+  const ask = { type: "guess", token: 1 };
+  const at = w.post(ask);
+  await w.answers(ask);
+  // Standing: main was asked for it and handed both workers, the worker
+  // greeted each (its handshake phrase, no clip yet), and has not reaped it.
+  const [wanted] = w.repliesOf("farm_want", { after: at });
+  assert.ok(wanted, "the guess raised a crew");
+  for (const h of crew.heard) assert.deepEqual(h.filter((m) => m.type === "phrase").map(withClip), [false], "a worker was not greeted, or heard a clip before any capture");
+  assert.ok(crew.heard.some((h) => h.some((m) => m.type === "job")), "the crew was handed none of the guess's renders");
+  assert.deepEqual(w.repliesOf("farm_done", { where: { crew: wanted.crew } }), [], "the crew was reaped before the capture");
 
   const msg = capture();
   const [reply] = await w.send(msg, { transfer: [msg.samples.buffer] });
@@ -68,13 +79,17 @@ test("a restore that installs a captured clip hands boot's crew the clip's phras
   await w.boot({ seed: SEED, saved, farmPorts: crew.ports });
   const restored = w.repliesOf("audition_clip", { after }).pop();
   assert.equal(restored && restored.clip.source, "captured", "the restore installed the saved clip");
+  // The crew as a whole rendered the bank (which worker took which entry is
+  // the order of their answers); every worker standing heard the clip's
+  // phrase, and before any render it was handed.
+  assert.ok(crew.heard.some((h) => h.some((m) => m.type === "job")), "the crew was handed none of the bank's renders");
   for (const h of crew.heard) {
     const phrases = h.filter((m) => m.type === "phrase");
-    const firstJob = h.findIndex((m) => m.type === "job");
-    assert.ok(firstJob >= 0, "the crew rendered the bank");
     assert.ok(!withClip(phrases[0]), "the handshake, before the restore, carries no clip");
     const clipAt = h.findIndex(withClip);
-    assert.ok(clipAt >= 0 && clipAt < firstJob, "the bank's renders went out before the clip's phrase");
+    const firstJob = h.findIndex((m) => m.type === "job");
+    assert.ok(clipAt >= 0, "a worker standing was not handed the clip's phrase");
+    assert.ok(firstJob < 0 || clipAt < firstJob, "the bank's renders went out before the clip's phrase");
   }
   await w.close();
 });

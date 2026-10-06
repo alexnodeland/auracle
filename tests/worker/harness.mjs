@@ -374,10 +374,14 @@ export async function workerFor(t, options) {
   return w;
 }
 
-/** `n` farm workers that render nothing: each says `ready` as farm.js does
- *  once its engine is up, keeps every message the engine worker sends it
+/** `n` farm workers that render nothing: each says `ready` when the engine
+ *  worker first speaks to it (its handshake `phrase`), as farm.js does once
+ *  its engine is up, keeps every message the engine worker sends it
  *  (`heard[k]`), and answers a render (`job`) as a draw that did not vet,
- *  so the engine renders the work itself. `ports` go to the engine worker. */
+ *  so the engine renders the work itself. How the renders are shared among
+ *  them is the order their answers arrive in, so a test asks what the crew
+ *  as a whole heard, never that each worker rendered. `ports` go to the
+ *  engine worker. */
 export function fakeCrew(n) {
   const heard = [];
   const ports = [];
@@ -388,9 +392,9 @@ export function fakeCrew(n) {
     heard.push(got);
     port1.on("message", (m) => {
       got.push(m);
+      if (m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
       if (m.type === "job") port1.postMessage({ type: "done", i: m.i, ok: false });
     });
-    port1.postMessage({ type: "ready", build: V });
     ends.push(port1);
     ports.push(port2);
   }
