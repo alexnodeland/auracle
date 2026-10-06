@@ -423,8 +423,8 @@ fn guess_serial(engine: &WasmEngine, limit: u32) -> (serde_json::Value, String) 
 
 /// **The guess through the bindings, and an undo that counts as a skip.**
 /// No guess before the fit; after it, the bench's patch is planned
-/// first, then its candidates; the ranking runs by the lower bound.
-/// Taking the top guess is an ordinary edit of the bench, and putting the
+/// first, then its candidates, and ranked (by the lower bound: the
+/// session's `guesses_are_ranked_by_the_lower_bound`). Taking the top guess is an ordinary edit of the bench, and putting the
 /// tree back (as ⌘Z does, through `edit_set_tree_apply`) skips that
 /// family at that socket for this patch, logged as a skip; another
 /// patch keeps its own (empty) skips.
@@ -451,9 +451,6 @@ fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
     let guesses = rank["guesses"].as_array().expect("guesses").clone();
     assert!(!guesses.is_empty(), "{rank}");
     assert!(rank["planned"].as_u64().unwrap() <= 8);
-    for w in guesses.windows(2) {
-        assert!(w[0]["lcb"].as_f64().unwrap() >= w[1]["lcb"].as_f64().unwrap());
-    }
     let top = guesses[0].clone();
     assert_eq!(engine.guess_take(&top.to_string()), "");
     engine.edit_revet();
@@ -461,14 +458,11 @@ fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
     // ⌘Z: the tree before the guess comes back whole.
     assert_eq!(engine.edit_set_tree_apply(&before), "");
     engine.edit_revet();
-    let skip = |e: &WasmEngine| {
-        e.engine
-            .events
-            .iter()
-            .filter(|ev| ev.kind == "guess_skip")
-            .count()
-    };
-    assert_eq!(skip(&engine), 1, "the undo was not logged as a skip");
+    assert_eq!(
+        guess_skips_logged(&engine),
+        1,
+        "the undo was not logged as a skip"
+    );
     let again: serde_json::Value =
         serde_json::from_str(&engine.guess_rank(None, &failed, 8)).unwrap();
     assert!(again["skipped"].as_u64().unwrap() >= 1, "{again}");
@@ -482,7 +476,7 @@ fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
     assert!(engine.edit_begin(ids[1]));
     let other: serde_json::Value = serde_json::from_str(&engine.guess_plan(None, "[]", 0)).unwrap();
     assert_eq!(other["skipped"], 0, "{other}");
-    assert_eq!(skip(&engine), 1);
+    assert_eq!(guess_skips_logged(&engine), 1);
 }
 
 /// Skips are remembered per patch by pool id, and an import brings
@@ -523,9 +517,11 @@ fn pool_ids(engine: &WasmEngine) -> Vec<u32> {
         .collect()
 }
 
+/// How many guess skips the session's log holds, read from what the save
+/// carries (`export_session`'s `events`).
 fn guess_skips_logged(engine: &WasmEngine) -> usize {
-    engine
-        .engine
+    let state: SessionState = serde_json::from_str(&engine.export_session()).unwrap();
+    state
         .events
         .iter()
         .filter(|ev| ev.kind == "guess_skip")
