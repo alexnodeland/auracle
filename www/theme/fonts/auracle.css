@@ -28,7 +28,7 @@ html {
 }
 
 .content main {
-    font-size: 1.62rem;
+    font-size: var(--t-prose);
     line-height: 1.62;
 }
 
@@ -65,25 +65,25 @@ thead th,
 }
 
 .content h1 {
-    font-size: 2.9rem;
+    font-size: var(--t-h1);
     margin-block: 0.2em 0.9em;
     padding-block-end: 0.45em;
     border-block-end: 1px solid var(--hairline);
 }
 
 .content h2 {
-    font-size: 2.15rem;
+    font-size: var(--t-title);
     margin-block-start: 2.4em;
     color: var(--fg);
 }
 
 .content h3 {
-    font-size: 1.72rem;
+    font-size: var(--t-h3);
     margin-block-start: 2em;
 }
 
 .content h4 {
-    font-size: 1.5rem;
+    font-size: var(--t-body);
     color: var(--silk-dim);
 }
 
@@ -99,7 +99,7 @@ thead th,
    italic belongs to the model alone, in the app (www/brand/voice.md, "The
    model's voice"), and `<em>` everywhere here is ordinary emphasis. */
 .content .lede {
-    font-size: 1.95rem;
+    font-size: var(--t-title);
     font-weight: 300;
     line-height: 1.45;
     color: var(--silk-dim);
@@ -146,7 +146,7 @@ thead th,
 }
 
 .menu-title {
-    font-size: 1.4rem;
+    font-size: var(--t-body);
     font-weight: 500;
     color: var(--fg);
 }
@@ -173,14 +173,14 @@ thead th,
     display: flex;
     align-items: center;
     gap: 2px;
-    margin-inline-start: 1.4rem;
+    margin-inline-start: var(--s4);
 }
 
 .site-nav a {
-    font-size: 1.15rem;
+    font-size: var(--t-label);
     color: var(--silk-dim);
     text-decoration: none;
-    padding: 4px 9px;
+    padding: var(--s1) var(--s2);
     border: 1px solid transparent;
     border-radius: 3px;
     white-space: nowrap;
@@ -244,7 +244,7 @@ thead th,
    as the one destination worth a permanent button. */
 @media (max-width: 1000px) {
     #menu-bar .site-nav {
-        margin-inline-start: 0.9rem;
+        margin-inline-start: var(--s2);
     }
 
     #menu-bar .site-nav a:not(.play) {
@@ -280,7 +280,7 @@ thead th,
         flex-wrap: wrap;
         gap: 2px;
         margin: 0;
-        padding: 0.85rem 10px 0.75rem;
+        padding: var(--s2) var(--s3) var(--s2);
         border-block-end: 1px solid var(--hairline);
     }
 }
@@ -292,16 +292,16 @@ thead th,
 }
 
 .sidebar-heading {
-    font-size: 1.08rem;
+    font-size: var(--t-label);
     color: var(--silk-mute);
-    padding: 1.6rem var(--page-padding) 0.5rem;
+    padding: var(--s4) var(--page-padding) var(--s1);
     margin: 0;
 }
 
 .chapter li a {
-    font-size: 1.42rem;
+    font-size: var(--t-body);
     line-height: 1.4;
-    padding: 4px 0;
+    padding: var(--s1) 0;
 }
 
 .chapter li a.active {
@@ -315,7 +315,7 @@ thead th,
     font-family: var(--mono-font);
     font-weight: 400;
     color: var(--silk-mute);
-    font-size: 0.92em;
+    font-size: 0.92em; /* token-exempt: a chapter's number, sized to the link it sits in */
 }
 
 .chapter .spacer {
@@ -324,12 +324,12 @@ thead th,
 
 .chapter li.part-title {
     font-family: var(--font-silk);
-    font-size: 1.12rem;
+    font-size: var(--t-label);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--silk-mute);
     font-weight: 500;
-    margin-block: 1.8rem 0.4rem;
+    margin-block: var(--s4) var(--s1);
 }
 
 /* ─── Code ──────────────────────────────────────────────────────────────── */
@@ -337,7 +337,7 @@ thead th,
 pre {
     background: var(--code-bg);
     border: 1px solid var(--hairline);
-    border-radius: 4px;
+    border-radius: var(--r1);
     padding: 0;
 }
 
@@ -357,7 +357,7 @@ pre pre {
 
 pre > code {
     display: block;
-    padding: 1.1rem 1.3rem;
+    padding: var(--s3);
     line-height: 1.55;
     background: transparent;
 }
@@ -372,7 +372,7 @@ pre > code {
     color: var(--inline-code-color);
     background: transparent;
     padding: 0;
-    font-size: 0.92em;
+    font-size: 0.92em; /* token-exempt: inline code, sized to the line it sits in */
 }
 
 /* ─── Tables ────────────────────────────────────────────────────────────── */
@@ -382,19 +382,19 @@ pre > code {
 .content table {
     margin: 1.6em 0;
     width: 100%;
-    font-size: 0.95em;
+    font-size: 0.95em; /* token-exempt: a table, set a little under the prose around it */
 }
 
 .content thead th {
-    font-size: 1.08rem;
+    font-size: var(--t-label);
     font-weight: 500;
     color: var(--silk-dim);
     text-align: start;
-    padding: 8px 12px;
+    padding: var(--s2) var(--s3);
 }
 
 .content table td {
-    padding: 7px 12px;
+    padding: var(--s2) var(--s3);
     border-color: var(--table-border-color);
     vertical-align: top;
 }
@@ -434,7 +434,7 @@ pre > code {
     max-width: 100%;
     height: auto;
     border: 1px solid var(--hairline);
-    border-radius: 4px;
+    border-radius: var(--r1);
     background: var(--figure-bg);
 }
 
@@ -446,7 +446,7 @@ pre > code {
     margin-block-start: 0.7em;
     margin-inline: auto;
     max-width: 62ch;
-    font-size: 1.32rem;
+    font-size: var(--t-body);
     line-height: 1.5;
     color: var(--silk-dim);
 }
@@ -469,14 +469,14 @@ pre > code {
     height: auto;
     aspect-ratio: 16 / 9;
     border: 1px solid var(--hairline);
-    border-radius: 6px;
+    border-radius: var(--r2);
     background: var(--bezel);
 }
 
 /* The running time sits beside a film's heading, in the readout face. */
 .content .film-len {
     font-family: var(--mono-font, "IBM Plex Mono", monospace);
-    font-size: 0.62em;
+    font-size: 0.62em; /* token-exempt: a running time set beside a heading of any level, sized to it */
     font-weight: 400;
     letter-spacing: 0.04em;
     color: var(--silk-dim);
@@ -492,7 +492,7 @@ pre > code {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35em 1.3em;
-    font-size: 1.3rem;
+    font-size: var(--t-body);
     color: var(--silk-dim);
 }
 .content ol.film-chapters a {
@@ -507,7 +507,7 @@ pre > code {
 }
 .content details.film-transcript summary {
     cursor: pointer;
-    font-size: 1.3rem;
+    font-size: var(--t-body);
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
@@ -527,17 +527,17 @@ pre > code {
     background: var(--quote-bg);
     border: 1px solid var(--hairline);
     border-inline-start: 3px solid var(--phos-b-deep);
-    border-radius: 4px;
+    border-radius: var(--r1);
     box-shadow: none;
-    font-size: 0.98em;
+    font-size: var(--t-prose);
 }
 
 .admonition > .admonition-title {
     margin: 0;
-    padding: 0.6rem 1.2rem;
+    padding: var(--s2) var(--s3);
     background: transparent;
     border-block-end: 1px solid var(--hairline);
-    font-size: 1.12rem;
+    font-size: var(--t-label);
     font-weight: 500;
     color: var(--phos-b);
 }
@@ -559,11 +559,11 @@ pre > code {
 }
 
 .admonition > :last-child {
-    padding: 0.2rem 1.2rem 0.9rem;
+    padding: 0.2rem var(--s3) var(--s2);
 }
 
 .admonition > div > p:first-child {
-    margin-block-start: 0.8rem;
+    margin-block-start: var(--s2);
 }
 
 /* Two exceptions to amber, both earned. A warning about losing work is not the
@@ -609,7 +609,7 @@ pre > code {
 
 .content blockquote {
     margin: 1.8em 0;
-    padding: 0.2rem 1.4rem;
+    padding: 0.2rem var(--s4);
     border: 0;
     border-inline-start: 2px solid var(--hairline);
     background: transparent;
@@ -624,7 +624,7 @@ pre > code {
    block in the reading flow and wants block spacing, and a long one has to be
    able to scroll rather than push the page sideways. */
 .katex {
-    font-size: 1.06em;
+    font-size: 1.06em; /* token-exempt: a formula, sized to the line it sits in */
 }
 
 .katex-display {
@@ -651,9 +651,9 @@ kbd {
     border-block-end-width: 2px;
     border-radius: 3px;
     box-shadow: none;
-    padding: 1px 6px;
+    padding: 1px var(--s2);
     font-family: var(--mono-font);
-    font-size: 0.86em;
+    font-size: 0.86em; /* token-exempt: a key cap, sized to the line it sits in */
     line-height: 1.5;
     color: var(--fg);
     vertical-align: baseline;
@@ -663,7 +663,7 @@ kbd {
 
 #searchbar {
     font-family: var(--font-silk);
-    font-size: 1.5rem;
+    font-size: var(--t-body);
     border-radius: 3px;
 }
 
@@ -671,7 +671,7 @@ kbd {
     font-family: var(--font-silk);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 1.08rem;
+    font-size: var(--t-label);
 }
 
 ul#searchresults span.teaser em {
@@ -686,13 +686,13 @@ ul#searchresults span.teaser em {
    only actionable thing a docs page can offer a reader who found it wrong. */
 .page-footer {
     max-width: var(--content-max-width);
-    margin: 4rem auto 0;
-    padding-block-start: 1.4rem;
+    margin: var(--s7) auto 0;
+    padding-block-start: var(--s4);
     border-block-start: 1px solid var(--hairline);
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem 1.6rem;
-    font-size: 1.28rem;
+    gap: var(--s2) var(--s4);
+    font-size: var(--t-value);
     color: var(--silk-mute);
 }
 
@@ -736,9 +736,9 @@ ul#searchresults span.teaser em {
     *,
     *::before,
     *::after {
-        animation-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
         animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
         scroll-behavior: auto !important;
     }
 }

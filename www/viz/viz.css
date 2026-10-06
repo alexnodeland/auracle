@@ -21,8 +21,8 @@
   position: relative;
   background: var(--code-bg);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 14px 16px 12px;
+  border-radius: var(--r1);
+  padding: var(--s4) var(--s4) var(--s3);
 }
 
 .viz svg {
@@ -36,17 +36,17 @@
    axis name — the tracking law says mono gets no letter-spacing. */
 .viz text {
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: 10px;
+  font-size: var(--t-label);
   letter-spacing: 0;
   fill: var(--silk-dim);
 }
 
 /* Axis names, units and the small print inside a box. `--silk-dim`, not
    `--silk-mute`: law 1 says mute is the stroke tier and never carries a glyph,
-   and these are 9px glyphs on a dark panel — the tier below reads as unlit. */
+   and these are glyphs at the floor on a dark panel — the tier below reads as unlit. */
 .viz .v-axis {
   fill: var(--silk-dim);
-  font-size: 9px;
+  font-size: var(--t-label);
 }
 
 .viz .v-grid {
@@ -68,7 +68,7 @@
    label the figure had deliberately painted green went black too. */
 .viz .v-num {
   fill: var(--fg, var(--silk));
-  font-size: 11px;
+  font-size: var(--t-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -80,19 +80,19 @@
 .viz-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 22px;
+  gap: var(--s3) var(--s5);
   align-items: center;
-  margin-top: 12px;
-  padding-top: 11px;
+  margin-top: var(--s3);
+  padding-top: var(--s3);
   border-top: 1px solid var(--hairline);
 }
 
 .viz-ctl {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--s2);
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: 11px;
+  font-size: var(--t-label);
   color: var(--silk-dim);
 }
 
@@ -114,12 +114,12 @@
 
 .viz-btn {
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: 11px;
+  font-size: var(--t-label);
   color: var(--fg, var(--silk));
   background: var(--panel-hi);
   border: 1px solid var(--hairline);
   border-radius: 3px;
-  padding: 5px 11px;
+  padding: var(--s1) var(--s3);
   cursor: pointer;
 }
 
@@ -160,9 +160,9 @@
    of the picture and it is a `role="status"`, so a screen reader hears the
    figure change rather than only sighted readers seeing it. */
 .viz-readout {
-  margin-top: 10px;
+  margin-top: var(--s3);
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
-  font-size: 11px;
+  font-size: var(--t-label);
   line-height: 1.55;
   color: var(--silk-dim);
   min-height: 1.55em;
@@ -175,7 +175,7 @@
 
 .viz figcaption {
   margin-top: 0.8em;
-  font-size: 0.86em;
+  font-size: 0.86em; /* token-exempt: a caption under the prose of whichever page holds the figure; the three pages read prose at different sizes */
   line-height: 1.5;
   color: var(--silk-dim);
 }
@@ -189,17 +189,17 @@
    different pictures, and only one of them is informative. */
 @media (prefers-reduced-motion: reduce) {
   .viz * {
-    animation-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important; /* token-exempt: reduced motion's sweep over every rule, tokens or not; near zero, not 0, so end events still fire */
   }
 }
 
 /* ─── narrow viewports ──────────────────────────────────────────────────── */
 
 @media (max-width: 560px) {
-  .viz-stage { padding: 10px 10px 8px; }
-  .viz-controls { gap: 8px 14px; }
+  .viz-stage { padding: var(--s3) var(--s3) var(--s2); }
+  .viz-controls { gap: var(--s2) var(--s4); }
   .viz-ctl input[type="range"] { width: 100%; }
   .viz-ctl { flex: 1 1 100%; }
 }

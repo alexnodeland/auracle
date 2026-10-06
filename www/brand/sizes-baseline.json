@@ -1,13 +1,4 @@
 {
-  "www/theme/css/variables.css": {
-    "space": 1
-  },
-  "www/theme/fonts/auracle.css": {
-    "font": 26,
-    "radius": 4,
-    "space": 29,
-    "time": 2
-  },
   "www/video/films/dsp/film.js": {
     "font": 9,
     "radius": 11,
@@ -70,11 +61,5 @@
   },
   "www/video/stage/walk.js": {
     "font": 1
-  },
-  "www/viz/viz.css": {
-    "font": 7,
-    "radius": 1,
-    "space": 16,
-    "time": 2
   }
 }

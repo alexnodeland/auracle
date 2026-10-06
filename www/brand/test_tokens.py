@@ -321,6 +321,24 @@ class TheSizesRatchet(unittest.TestCase):
                 got = t.problems()
                 self.assertTrue(any(want in p for p in got), (new, got))
 
+    def test_a_consumer_writes_the_sizes_of_the_surface_it_names(self):
+        # The docs' two themes share one set of sizes, the docs surface's,
+        # written into the :root rule that holds the families.
+        src = T.load()
+        c = next(c for c in T.CONSUMERS if c["file"] == "www/theme/css/variables.css")
+        rules = dict(re.findall(r"^(\S[^{\n]*) \{\n(.*?)^\}", T.render_block(src, c), re.S | re.M))
+        self.assertIn("--t-prose:", rules[":root"])
+        self.assertNotIn("--t-prose:", rules["html.coal"] + rules["html.light"])
+        # Without the name, the families' rule has no surface, and the docs'
+        # sizes have nowhere to go: the source is refused.
+        unnamed = {k: v for k, v in c.items() if k != "sizes"}
+        consumers = T.CONSUMERS
+        try:
+            T.CONSUMERS = [unnamed if x is c else x for x in consumers]
+            self.assertIn(f"{T.SOURCE}: docs has sizes, but no consumer writes them (they go in the rule that holds the families)", T.validate_sizes(src))
+        finally:
+            T.CONSUMERS = consumers
+
     def test_every_block_carries_the_reduced_motion_rule(self):
         for c in T.CONSUMERS:
             block = T.BLOCK_RE.search(source(c["file"])).group(0)

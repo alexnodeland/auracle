@@ -108,14 +108,19 @@ SIZE_KINDS = ("font", "space", "radius", "time")
 
 # Each consumer: its stylesheet, and the rules its block holds, as
 # (selector, surface). A rule with no surface holds the font families only;
-# otherwise the families go in the first rule. `indent` is the rule's own
-# indentation inside the file (a <style> element indents its rules).
+# otherwise the families go in the first rule. The rule that holds the
+# families holds the sizes too, and writes its surface's own; a consumer whose
+# families' rule has no surface names the surface whose sizes it writes with
+# `sizes` (the docs' two themes share one set of sizes, in `:root`). `indent`
+# is the rule's own indentation inside the file (a <style> element indents
+# its rules).
 CONSUMERS = [
     {"file": "apps/web/style.css", "rules": [(":root", "app")], "indent": "", "step": "  "},
     {"file": "www/landing/style.css", "rules": [(":root", "landing")], "indent": "", "step": "  "},
     {
         "file": "www/theme/css/variables.css",
         "rules": [(":root", None), ("html.coal", "docs"), ("html.light", "docs-paper")],
+        "sizes": "docs",
         "indent": "",
         "step": "    ",
     },
@@ -372,7 +377,10 @@ def is_length(v: str) -> bool:
 
 
 def sizes_surface(c: dict) -> str | None:
-    """The surface whose own sizes a consumer writes: its families' rule's."""
+    """The surface whose own sizes a consumer writes: the one it names, or
+    its families' rule's."""
+    if "sizes" in c:
+        return c["sizes"]
     i = next((i for i, (_, s) in enumerate(c["rules"]) if s is None), 0)
     return c["rules"][i][1]
 
@@ -500,7 +508,7 @@ def render_group(title: str, toks: list[tuple[str, str, str]], d: str) -> list[s
     return lines
 
 
-def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, indent: str, step: str) -> list[str]:
+def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, indent: str, step: str, sizes: str | None = None) -> list[str]:
     d = indent + step
     lines = [f"{indent}{selector} {{"]
     groups = sections(src, surface) if surface else []
@@ -519,7 +527,7 @@ def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, inde
         for n, t in src["fonts"].items():
             decl = f"--font-{n}: {t['value']};"
             lines.append(f"{d}{decl}")
-        for title, toks in size_sections(src, surface):
+        for title, toks in size_sections(src, sizes):
             lines.append("")
             lines += render_group(title, toks, d)
     lines.append(f"{indent}}}")
@@ -531,7 +539,7 @@ def render_block(src: dict, c: dict) -> str:
     fonts_rule = next((i for i, (_, s) in enumerate(c["rules"]) if s is None), 0)
     out = [f"{ind}{BEGIN}"]
     for i, (sel, surface) in enumerate(c["rules"]):
-        out += render_rule(src, sel, surface, i == fonts_rule, ind, step)
+        out += render_rule(src, sel, surface, i == fonts_rule, ind, step, sizes_surface(c))
     still = " ".join(f"--{n}: {v};" for n, v in reduced_motion(src))
     out += [
         f"{ind}@media (prefers-reduced-motion: reduce) {{",

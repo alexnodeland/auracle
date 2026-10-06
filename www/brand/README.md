@@ -119,8 +119,12 @@ rasters), the 404, and the film stage. It holds:
 
 - **each surface's own sizes**: the rack's type tier in the app
   (`--t-rack-*`, drawn through its camera and sized at zoom 1), the landing
-  page's display tier, prose size and wide steps (`--s8`, `--s9`), and the
-  brand page's. A surface may restate a shared size for itself, with a note
+  page's display tier, prose size and wide steps (`--s8`, `--s9`), the
+  headings of the brand page and the 404, and the docs' prose and headings
+  (`--t-prose`, `--t-h1`, `--t-h3`). The docs' sizes go in their
+  stylesheet's `:root`, which both themes share: a consumer whose families'
+  rule holds no palette names the surface whose sizes it writes (`sizes` in
+  `tokens.py`). A surface may restate a shared size for itself, with a note
   that says why (the landing page reads its prose at `1rem`).
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS

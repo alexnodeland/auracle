@@ -88,6 +88,11 @@
     --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
     --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
     --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+    /* docs: sizes only this surface uses */
+    --t-prose: 16px; /* the books' prose, read at length (mdBook's own 1.6rem) */
+    --t-h1: 29px;    /* a page's title */
+    --t-h3: 17px;    /* a third-level heading, on the voice's step but not the voice, as the app's wordmark is */
 }
 html.coal {
     /* grounds */
@@ -212,7 +217,7 @@ html.light {
     --sidebar-width: min(var(--sidebar-target-width), 80vw);
     --sidebar-resize-indicator-width: 8px;
     --sidebar-resize-indicator-space: 2px;
-    --page-padding: 18px;
+    --page-padding: var(--s4);
     --content-max-width: 860px;
     /* Figures sit inside the reading column rather than matching it, so their
        edges read as an inset object instead of a second column of text. */
