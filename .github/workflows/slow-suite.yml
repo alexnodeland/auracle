@@ -48,7 +48,7 @@ name: Slow suite
 # did not cover (of the 20 runs on main before Oct 6, the whole browser tier
 # in 9, both Rust test jobs in 15, and Site in all 20, for the deploy). So a
 # PR pushed right after a merge can wait for runners until main's run is
-# done; the merge queue #177 plans keeps merges one at a time.
+# done; the merge queue (ADR-021) keeps merges one at a time.
 
 on:
   pull_request:
