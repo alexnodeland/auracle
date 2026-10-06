@@ -3006,6 +3006,12 @@ fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
 /// no repetition machinery at all and does not need any; `Bald` has to
 /// *earn* its equivalent behaviour from the exposure penalty, so it is the
 /// one that could regress.
+///
+/// Each bound is set from a sweep, not from this seed. `Random`'s are the
+/// uniform rule's own tails (400 000 simulated deals of 12 pairs from 24):
+/// each fails on fewer than 0.4% of seeds. `Bald`'s are 32 seeds of this
+/// very fixture (`0xD4E + k·0x9E37`): 15 to 20 distinct candidates, a share
+/// of at most 4 of 12, and 12 distinct pairs on 31 seeds, 11 on one.
 #[test]
 fn duels_spread_over_candidates_not_just_pairs() {
     const N: usize = 12;
@@ -3068,8 +3074,13 @@ fn duels_spread_over_candidates_not_just_pairs() {
         // source kind) shifted rng consumption again. `N - 2` admits the
         // two collisions the reasoning allows and fires at P(≥3) ≈ 0.19%,
         // which is a claim about the sampler rather than about the seed.
+        //
+        // `Bald`'s penalty is soft: it makes a repeat costly, not
+        // impossible, and one seed in the sweep of 32 repeats a pair once.
+        // Asking for every pair distinct failed on that 3% of seeds; one
+        // repeat is the bound the sweep supports.
         let min_pairs = match acquisition {
-            Acquisition::Bald => N,
+            Acquisition::Bald => N - 1,
             _ => N - 2,
         };
         assert!(
@@ -3094,8 +3105,17 @@ fn duels_spread_over_candidates_not_just_pairs() {
             distinct >= min_distinct,
             "{acquisition:?}: only {distinct} distinct candidates over {N} duels"
         );
+        // The share splits too. A uniform rule puts some candidate in 5 or
+        // more of 12 duels (a share over 0.35) on 4.6% of seeds, so that
+        // bound asserted `Random`'s seed luck; 7 or more (over 0.5) happens
+        // on 0.03%. `Bald` promises spread and keeps 0.35: the sweep's worst
+        // is 4 of 12.
+        let max_share_cap = match acquisition {
+            Acquisition::Bald => 0.35,
+            _ => 0.5,
+        };
         assert!(
-            max_share <= 0.35,
+            max_share <= max_share_cap,
             "{acquisition:?}: one candidate is in {max_share:.2} of duels \
                  — best-arm degeneracy"
         );
