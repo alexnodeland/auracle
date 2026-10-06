@@ -83,15 +83,6 @@
   "budgets.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
     }
   },
   "evolve_breeds_beside_you.spec.js": {
@@ -182,37 +173,16 @@
     }
   },
   "faces.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
       "count": 2
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 1
     }
   },
   "failure_flows.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
     },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
-    },
-    "playwright/prefer-locator": {
-      "count": 2
     },
     "playwright/prefer-to-have-count": {
       "count": 2
