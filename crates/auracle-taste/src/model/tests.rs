@@ -363,6 +363,137 @@ fn imputation_costs_confidence_on_keep_kill_but_not_on_duels() {
     }
 }
 
+/// A two-lens draw over `D` coordinates with a keep/kill threshold and
+/// three star cutpoints, for checking likelihoods by hand.
+fn two_lens_draw(rng: &mut StdRng) -> TasteSample {
+    TasteSample {
+        theta: vec![random_phi(rng), random_phi(rng)],
+        tau: vec![0.3],
+        cuts: vec![-1.0, 0.0, 1.5],
+    }
+}
+
+/// Every observation's likelihood is a probability distribution over what
+/// the listener could have done, under the max-of-lenses utility: a duel's
+/// two outcomes are `σ(±(u_a − u_b))`, a keep and a kill `σ(±(u − τ))`,
+/// and the ratings of an ordinal scale sum to one. A rating past the top of
+/// the scale reads as the top, and a one-category scale is certain.
+#[test]
+fn every_likelihood_is_a_distribution_over_its_outcomes() {
+    let mut rng = StdRng::seed_from_u64(0x11C);
+    let ln_sigmoid = |v: f64| -(1.0 + (-v).exp()).ln();
+    for _ in 0..20 {
+        let s = two_lens_draw(&mut rng);
+        let (a, b, x) = (
+            random_phi(&mut rng),
+            random_phi(&mut rng),
+            random_phi(&mut rng),
+        );
+        let u = |phi: &[f64]| s.theta.iter().map(|t| dot(t, phi)).fold(f64::MIN, f64::max);
+
+        let duel = |chose_a| Feedback::Duel {
+            a: a.clone(),
+            b: b.clone(),
+            chose_a,
+        };
+        let won = s.loglik(&duel(true), 0);
+        assert!((won - ln_sigmoid(u(&a) - u(&b))).abs() < 1e-12);
+        assert!((won.exp() + s.loglik(&duel(false), 0).exp() - 1.0).abs() < 1e-12);
+
+        let keep = |kept| Feedback::KeepKill { x: x.clone(), kept };
+        let kept = s.loglik(&keep(true), 0);
+        assert!((kept - ln_sigmoid(u(&x) - 0.3)).abs() < 1e-12);
+        assert!((kept.exp() + s.loglik(&keep(false), 0).exp() - 1.0).abs() < 1e-12);
+
+        let stars = |rating| Feedback::Stars {
+            x: x.clone(),
+            rating,
+        };
+        let top = s.cuts.len() as u8;
+        let total: f64 = (0..=top).map(|r| s.loglik(&stars(r), 0).exp()).sum();
+        assert!((total - 1.0).abs() < 1e-12, "ratings sum to {total}");
+        assert_eq!(s.loglik(&stars(top + 3), 0), s.loglik(&stars(top), 0));
+
+        let one_category = TasteSample {
+            cuts: Vec::new(),
+            ..s.clone()
+        };
+        assert_eq!(one_category.loglik(&stars(0), 0), 0.0);
+    }
+}
+
+/// A keep from a session the posterior has no τ for (one that began after
+/// the last fit) carries no threshold evidence: it leaves every draw's
+/// weight where it was, while the same keep in a fitted session moves them.
+#[test]
+fn a_keep_from_a_session_the_fit_never_saw_moves_nothing() {
+    let mut rng = StdRng::seed_from_u64(0x5E55);
+    let samples: Vec<TasteSample> = (0..50).map(|_| two_lens_draw(&mut rng)).collect();
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights: Vec::new(),
+    };
+    let keep = Feedback::KeepKill {
+        x: random_phi(&mut rng),
+        kept: true,
+    };
+    let unseen = p.reweighted(&keep, 3);
+    assert!(
+        (0..p.samples.len()).all(|i| (unseen.weight(i) - p.weight(i)).abs() < 1e-15),
+        "a session with no τ moved the weights"
+    );
+    assert!(p.reweighted(&keep, 0).ess() < p.ess() - 1.0);
+}
+
+/// An observation `h` places back in the log weighs `0.5^(h / half_life)` in
+/// the likelihood the fit conditions on, the newest weighing 1, so old
+/// taste fades as new evidence arrives (the session layer ships a half-life
+/// of 150). No half-life, or one that is not positive, weighs every
+/// observation alike. Read off the program's own factor, on a prior draw.
+#[test]
+fn old_votes_fade_by_the_half_life() {
+    let mut rng = StdRng::seed_from_u64(0x4A1F);
+    let user = ground_truth();
+    let mut log = ObservationLog::new();
+    for i in 0..12 {
+        let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+        log.push(user.observe_duel(&mut rng, a, b, i % 2));
+        let x = random_phi(&mut rng);
+        let kept = user.keep(&mut rng, &x);
+        log.push(Observation::new(Feedback::KeepKill { x, kept }, i % 2, &[]));
+    }
+    let data = FitSet::as_is(&log);
+    let n = data.len();
+    for half_life in [None, Some(0.0), Some(-1.0), Some(5.0)] {
+        let mut cfg = TasteConfig::linear(D);
+        cfg.recency_half_life = half_life;
+        let model = TasteModel::new(cfg);
+        let (s, trace) = run(
+            PriorHandler {
+                rng: &mut rng,
+                trace: Trace::default(),
+            },
+            model.model(&data),
+        );
+        let weight = |i: usize| match half_life {
+            Some(h) if h > 0.0 => 0.5f64.powf((n - 1 - i) as f64 / h),
+            _ => 1.0,
+        };
+        let expected: f64 = data
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, (o, session))| weight(i) * s.loglik(o, *session))
+            .sum();
+        assert!(
+            (trace.log_factors - expected).abs() < 1e-9 * expected.abs().max(1.0),
+            "half-life {half_life:?}: the program weighs the log at {}, not {expected}",
+            trace.log_factors
+        );
+    }
+}
+
 /// Alignment to an external reference puts each lens at the index of the
 /// reference lens it most resembles — so a refit keeps a style's identity —
 /// and a reference with fewer lenses than K leaves the extra lens on the
