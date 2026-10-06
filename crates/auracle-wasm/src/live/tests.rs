@@ -1123,21 +1123,28 @@ fn glide_slides_a_line_but_not_a_chord() {
     );
 }
 
-/// The meter reads a real level off a real interior port, and reads the
-/// mixer's two branches *apart* when the balance is hard over.
+/// The meter reads a real level off each interior port, and reads the
+/// mixer's two branches *apart* from the mix.
 ///
-/// The second half is what makes this a measurement rather than a smoke
-/// test. A crossfader at balance 0 passes branch `a` and mutes branch `b`
-/// downstream — but both sources are still oscillating, so a meter reading
-/// each module's own output must show both alive. What must differ is the
-/// *mix* against its quiet branch. Estimating levels from the term (what
-/// the rack did before this) gets that right by construction; the point
-/// here is that measuring gets it right too, from the audio.
+/// A crossfader at balance 0 passes branch `a` and mutes branch `b`. Here
+/// `a` is a saw and `b` the same saw through a lowpass far under its
+/// fundamental, so the three taps carry three levels: the mix is `a`'s, and
+/// `b` is well under both. A meter that copied one port's level into every
+/// tap, or read the mix for its branches, fails. Read as the worklet reads
+/// it, through `meter_ptr` and `meter_len`.
 #[test]
 fn meter_reads_levels_off_interior_ports() {
-    use auracle_grammar::term::{AmpEnv, Waveform};
+    use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
-
+    quiver::rng::seed(7);
+    let saw = || AudioNode::Vco {
+        uid: Uid::NEW,
+        wave: Waveform::Saw,
+        octave: 0,
+        detune: 0.5,
+        mod_depth: 0.0,
+        modulation: ModNode::None,
+    };
     let json = serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.1,
@@ -1148,20 +1155,14 @@ fn meter_reads_levels_off_interior_ports() {
         root: AudioNode::Mix {
             uid: Uid::NEW,
             balance: 0.0, // hard over to `a`
-            a: Box::new(AudioNode::Vco {
+            a: Box::new(saw()),
+            b: Box::new(AudioNode::Filter {
                 uid: Uid::NEW,
-                wave: Waveform::Saw,
-                octave: 0,
-                detune: 0.5,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.0,
+                resonance: 0.1,
                 mod_depth: 0.0,
-                modulation: ModNode::None,
-            }),
-            b: Box::new(AudioNode::Vco {
-                uid: Uid::NEW,
-                wave: Waveform::Saw,
-                octave: 0,
-                detune: 0.5,
-                mod_depth: 0.0,
+                input: Box::new(saw()),
                 modulation: ModNode::None,
             }),
         },
@@ -1172,26 +1173,33 @@ fn meter_reads_levels_off_interior_ports() {
     assert_eq!(poly.meter_len(), 0, "metering must be off until asked for");
 
     let n = poly.set_meter(true);
-    assert_eq!(n, 3, "one tap per term node: the mix and its two sources");
+    assert_eq!(n, 4, "one tap per term node");
+    assert_eq!(poly.meter_len(), n);
     let keys: Vec<String> = serde_json::from_str(&poly.meter_keys()).unwrap();
-    assert_eq!(keys, vec!["node", "node/0", "node/1"]);
+    assert_eq!(keys, vec!["node", "node/0", "node/1", "node/1/0"]);
 
     poly.note_on(60, 1.0);
     // Long enough for the 128-sample level buffers to fill several times.
     for _ in 0..16 {
         let _ = poly.process(512);
     }
-
-    let db = poly.meter.levels.clone();
-    assert!(db.iter().all(|d| d.is_finite()), "levels went non-finite");
-    for (k, d) in keys.iter().zip(&db) {
-        assert!(*d > -120.0, "tap `{k}` never read a level ({d} dB)");
-    }
-
-    // Both oscillators are running, whatever the crossfader does with them.
-    let a = db[keys.iter().position(|k| k == "node/0").unwrap()];
-    let b = db[keys.iter().position(|k| k == "node/1").unwrap()];
-    assert!(a > -60.0 && b > -60.0, "a source read silent: {a}, {b} dB");
+    // The worklet's view of wasm memory.
+    let db = unsafe { std::slice::from_raw_parts(poly.meter_ptr(), poly.meter_len()) };
+    let level = |k: &str| db[keys.iter().position(|key| key == k).unwrap()];
+    assert!(db.iter().all(|d| d.is_finite()), "levels: {db:?}");
+    let (mix, a, b) = (level("node"), level("node/0"), level("node/1"));
+    assert!(
+        (mix - a).abs() < 1.0,
+        "the mix is `a`'s: {mix} against {a} dB"
+    );
+    assert!(
+        mix - b > 6.0,
+        "`b` reads apart, under the mix: {b} against {mix} dB"
+    );
+    assert!(
+        level("node/1/0") - b > 6.0,
+        "the filter reads under its own input"
+    );
 
     // Off again clears the subscriptions and the buffer with them.
     assert_eq!(poly.set_meter(false), 0);
