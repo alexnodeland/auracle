@@ -996,10 +996,16 @@ fn two_lovers_and_a_spent_hater() -> TastePosterior {
     }
 }
 
-/// The update is `w_s · p(y | θ_s)`, renormalized, however firmly the vote
+/// The update is `w_s · p(y | θ_s)`, renormalized, however firmly a duel
 /// rules out every draw still carrying weight. The weight moves to the
 /// draw that contradicts it least, so a stronger contradiction never moves
-/// it less than a weaker one, and a draw with no weight stays at none.
+/// it less than a weaker one, and a draw with no weight stays at none. That
+/// holds for any vote whose log-likelihood stays finite on the weighted
+/// draws, as a duel's does for any finite φ. A star rating between the
+/// lowest and the highest is the exception until #227: far below its lower
+/// cutpoint its log-likelihood underflows to −∞, a draw it underflows for
+/// loses all its weight, and once it underflows on every weighted draw the
+/// weights are kept instead.
 ///
 /// The exponentials are shifted by the best log-likelihood among the draws
 /// that carry weight. Shifted by the best of all draws, here the one with
@@ -1035,11 +1041,14 @@ fn the_update_is_exact_however_strong_the_contradiction() {
     }
 }
 
-/// A vote that leaves the weighted draws no likelihood to update by, one on
-/// a φ that holds a NaN, leaves the weights as they were: what the votes
-/// since the last fit taught the draws is kept, and the observation waits
-/// in the log for the next fit. Resetting them to uniform threw that away
-/// and claimed a full effective sample size besides.
+/// A vote that leaves the weighted draws no likelihood to update by leaves
+/// the weights as they were: what the votes since the last fit taught the
+/// draws is kept, and the observation waits in the log for the next fit.
+/// Resetting them to uniform threw that away and claimed a full effective
+/// sample size besides. Here the vote is one on a φ that holds a NaN. A
+/// star rating between the lowest and the highest, far below its lower
+/// cutpoint on every weighted draw, reaches the same arm, until #227 gives
+/// it a finite likelihood there.
 ///
 /// The kept weights are a copy, not a computation, so they are compared
 /// exactly.

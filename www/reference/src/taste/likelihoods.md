@@ -89,7 +89,12 @@ match (k == 0, k == n_cats - 1) {
 
 Subtracting two near-equal sigmoids used to bottom out at a floor of
 $\ln 10^{-12} \approx -27.6$; in log space a rating far from $u$ scores its
-real log-probability. The factor $a$ is 1 unless some of the observation’s
+real log-probability, except in one tail until #227 is fixed. For a rating
+between the lowest and the highest, once $a(c_{k-1} - u)$ passes about 37,
+`(lo - hi).exp()` rounds to 1 and the result is $-\infty$ where the true value
+is finite
+([what reweighting does then](posterior.md#however-strong-the-contradiction)).
+The factor $a$ is 1 unless some of the observation’s
 coordinates were imputed ([below](#imputed-coordinates)).
 
 This treats ★★★ as **“between two cutpoints”** rather than as the number 3,

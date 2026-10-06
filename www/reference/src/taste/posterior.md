@@ -124,10 +124,10 @@ A vote can rule out every draw that still carries weight. Likelihoods of
 $e^{-3000}$ and $e^{-2400}$ are far under the smallest double (about
 $e^{-745}$), and taken as they are, every product would round to zero.
 Shifted by the best weighted draw, that draw's product is its own weight, so
-the sum cannot underflow. The weight moves to the draw that contradicts the
-vote least, by the exact update, and a stronger contradiction never moves it
-less than a weaker one. If it concentrates the weights far enough, ESS falls,
-the draws are [resampled](#systematic-resampling), and the
+the sum cannot underflow while that draw's log-likelihood is finite. The
+weight moves to the draw that contradicts the vote least, by the exact
+update. If it concentrates the weights far enough, ESS falls, the draws are
+[resampled](#systematic-resampling), and the
 [refit trigger](#the-refit-trigger) is armed.
 
 The shift used to be taken over every draw, including those with no weight
@@ -139,15 +139,37 @@ the weights and arm the trigger, while the stronger one left them where they
 were (`the_update_is_exact_however_strong_the_contradiction` in
 `auracle-taste`).
 
+A duel, a keep or a cut, and a star rating at either end of the scale have a
+finite log-likelihood for every finite $\varphi$, so for them a stronger
+contradiction now never moves the weights less than a weaker one. The same
+holds for a rating in between, as long as no weighted draw's utility sits
+far below its lower cutpoint. There, until #227 is fixed, its
+log-likelihood
+([computed in log space](likelihoods.md#star-ratings-a-cumulative-logit))
+loses precision, and about 37 under the cutpoint it underflows to $-\infty$
+where the true value is finite. A draw whose log-likelihood underflows loses
+all its weight, and once every weighted draw's does, the update
+[keeps the weights](#a-vote-with-no-likelihood-keeps-the-weights). On three
+test draws weighted [0.7, 0.3, 0], a rating of 1 that collapses the weights
+to [0, 1, 0] at one strength leaves them at [0.7, 0.3, 0] at a stronger one,
+where the exact update gives about [0.0001, 0.9999, 0].
+
 ### A vote with no likelihood keeps the weights
 
-The denominator is now not a number only when the vote leaves the weighted
-draws no likelihood to update by: a vote on a $\varphi$ that holds a NaN
-(which [vetting](../audition/vetting.md) exists to prevent), where every
-likelihood is NaN. Then the update **keeps the previous weights**. What the
-votes since the last fit taught the draws stays, and the observation waits in
-the log for the next fit. ESS is unchanged, so such a vote never calls for a
-resample by itself. The update used to reset the weights to uniform here,
+The denominator is now not a number only when the weighted draws give the
+update nothing to go by: when one of their log-likelihoods is NaN, or all of
+them are $-\infty$ (the shift is then $-\infty$ too, and
+$-\infty - (-\infty)$ is NaN). Two votes do that. One on a $\varphi$ that
+holds a NaN (which [vetting](../audition/vetting.md) exists to prevent) makes
+every log-likelihood NaN. A star rating in between, far enough below its
+lower cutpoint on every weighted draw, makes every one $-\infty$, as
+[above](#however-strong-the-contradiction) (#227). Then the update **keeps
+the previous weights**. That is a choice, not the exact update: a NaN leaves
+no update to make, and for the star rating the exact update would move the
+weights to the draw that contradicts it least. What the votes since the last
+fit taught the draws stays, and the observation waits in the log for the
+next fit. ESS is unchanged, so such a vote never calls for a resample by
+itself. The update used to reset the weights to uniform here,
 which threw that evidence away and claimed a full ESS besides
 (`a_vote_with_no_finite_likelihood_keeps_the_previous_weights` in
 `auracle-taste`).
@@ -242,10 +264,13 @@ to be resampled at least once since the last real fit”**, that is, the cheap
 path has provably run out of road. With no posterior yet, it is true as soon as
 the log holds anything. The engine reports it in its status. A vote that
 rules out every weighted draw arms it like any other pick that concentrates
-the weights, [however strong](#however-strong-the-contradiction) it is. A
-vote with [no likelihood](#a-vote-with-no-likelihood-keeps-the-weights)
-leaves the weights as they were and does not arm it, but the picks after it
-reweight from those weights as usual.
+the weights, [however strong](#however-strong-the-contradiction) it is,
+unless it is a vote with
+[no likelihood](#a-vote-with-no-likelihood-keeps-the-weights): one on a
+$\varphi$ that holds a NaN or, until #227 is fixed, a star rating in between
+far below its lower cutpoint on every weighted draw. Such a vote leaves the
+weights as they were and does not arm it, but the picks after it reweight
+from those weights as usual.
 
 The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other

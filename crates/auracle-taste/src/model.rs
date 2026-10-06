@@ -831,18 +831,29 @@ impl TastePosterior {
     /// acquisition function reads a frozen posterior and re-asks the same
     /// question until the next refit.
     ///
-    /// The update is exact however firmly a vote rules out every draw still
-    /// carrying weight: the likelihoods are shifted by the best among those
-    /// draws, so the products cannot all underflow, and the weight moves to
-    /// the draw that contradicts the vote least. A strong enough
-    /// contradiction collapses the effective sample size, which is the
-    /// caller's signal to resample and refit.
+    /// While every weighted draw's log-likelihood is finite, the update is
+    /// exact however firmly a vote rules out every draw still carrying
+    /// weight: the likelihoods are shifted by the best among those draws, so
+    /// the products cannot all underflow, and the weight moves to the draw
+    /// that contradicts the vote least. A strong enough contradiction
+    /// collapses the effective sample size, which is the caller's signal to
+    /// resample and refit. A duel, a keep/kill vote and a star rating at
+    /// either end of the scale have a finite log-likelihood for any finite φ.
+    /// A star rating in between does not, until #227 is fixed: once a draw's
+    /// utility is about 37 below the lower cutpoint, its log-likelihood
+    /// underflows to −∞ where the true value is finite, and that draw loses
+    /// all its weight. So for such a vote a stronger contradiction can move
+    /// the weights less than a weaker one.
     ///
-    /// A vote that leaves the weighted draws no likelihood to update by
-    /// leaves the weights as they were: one on a φ that holds a NaN, where
-    /// every likelihood is NaN. The update keeps what the votes since the
-    /// last fit gathered, and the observation waits in the caller's log for
-    /// the next fit. The effective sample size is unchanged.
+    /// When a weighted draw's log-likelihood is NaN, or every one is −∞,
+    /// there is nothing to update by, and the weights are kept as they were.
+    /// A vote on a φ that holds a NaN does the first, and that star rating,
+    /// far enough below its cutpoint on every weighted draw, the second.
+    /// Keeping the weights is a choice, not the exact update: for the star
+    /// rating the exact update would move them to the draw that contradicts
+    /// it least. It keeps what the votes since the last fit gathered, and the
+    /// observation waits in the caller's log for the next fit. The effective
+    /// sample size is unchanged.
     pub fn reweighted(&self, feedback: &Feedback, session: usize) -> TastePosterior {
         self.reweighted_with(feedback, session, &[])
     }
@@ -869,11 +880,13 @@ impl TastePosterior {
         // Shift by the best log-likelihood among the draws that still carry
         // weight before exponentiating. That draw's product is then its own
         // weight, so however firmly the vote rules out every weighted draw,
-        // the sum cannot underflow and the update stays exact. A draw with no
-        // weight takes no part, in the shift or in the products. In the
-        // shift, one that scored best pushed every product under the smallest
-        // double, and the update was skipped; in the products, 0 · e^(ll − m)
-        // is 0 · ∞ = NaN once it scores far enough above the others.
+        // the sum cannot underflow and the update stays exact, as long as
+        // that best log-likelihood is finite (#227 is a vote where it is
+        // not). A draw with no weight takes no part, in the shift or in the
+        // products. In the shift, one that scored best pushed every product
+        // under the smallest double, and the update was skipped; in the
+        // products, 0 · e^(ll − m) is 0 · ∞ = NaN once it scores far enough
+        // above the others.
         let m = (0..n)
             .filter(|&i| self.weight(i) > 0.0)
             .map(|i| ll[i])
@@ -890,16 +903,18 @@ impl TastePosterior {
                 *wi /= sum;
             }
         } else {
-            // Nothing to update by: a weighted draw's likelihood is NaN (a
-            // vote on a φ that holds a NaN gives every draw NaN), or every
-            // one is zero. Keep the previous weights, one per draw (a
-            // posterior persisted before reweighting existed stores none,
-            // which reads as uniform); the observation waits in the log for
-            // the next fit. Resetting to uniform here, as this used to, threw
-            // away the evidence gathered since the last fit. Weights with
-            // nothing left to keep (all zero, which only a posterior built by
-            // hand holds) become uniform, so the result is always a
-            // distribution.
+            // Nothing to update by: a weighted draw's log-likelihood is NaN
+            // (a vote on a φ that holds a NaN gives every draw NaN), or every
+            // one is −∞, so the shift is too and ll − m is NaN (a middle star
+            // rating far below its lower cutpoint underflows there, #227).
+            // Keep the previous weights, a choice rather than the exact
+            // update, one per draw (a posterior persisted before reweighting
+            // existed stores none, which reads as uniform); the observation
+            // waits in the log for the next fit. Resetting to uniform here,
+            // as this used to, threw away the evidence gathered since the
+            // last fit. Weights with nothing left to keep (all zero, which
+            // only a posterior built by hand holds) become uniform, so the
+            // result is always a distribution.
             let kept: Vec<f64> = (0..n).map(|i| self.weight(i)).collect();
             let total: f64 = kept.iter().sum();
             w = if total > 0.0 && total.is_finite() {
