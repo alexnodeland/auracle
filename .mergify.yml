@@ -36,10 +36,13 @@ queue_rules:
     update_method: rebase
     # `main` allows squash merges only.
     merge_method: squash
-    # The squash commit: "<PR title> (#<number>)", then the PR's body.
+    # The squash commit: "<PR title> (#<number>)", then what the repository
+    # already puts there (its squash setting: the PR's commit messages, each
+    # saying why). `pr-body` would change `main`'s history to PR bodies, and
+    # carry Dependabot's release notes into it.
     commit_message_format:
       title: pr-title
-      body: pr-body
+      body: inherit
 
 merge_queue:
   mode: serial

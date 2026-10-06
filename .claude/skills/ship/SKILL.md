@@ -125,7 +125,8 @@ gh -R alexnodeland/auracle pr create --base main --head claude/<topic> \
 The `queue` label is the one act of enqueueing: the PR enters Mergify's
 merge queue once its `CI` is green, and the queue merges it (`process.md`
 § CI and merging). The title becomes the squash commit's subject,
-`<title> (#<n>)`, and the body its body.
+`<title> (#<n>)`, and its body is the PR's commit messages (the repository's
+squash setting), so each commit's why reaches `main`.
 
 The body: what changed, why, how (what a reviewer should look at), checks
 (gates, specs and counts, the review and its findings), `Closes #<n>`, and,
@@ -220,7 +221,7 @@ the new head):
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
 gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" \
-  --subject "<title> (#<n>)" --body "$(gh -R alexnodeland/auracle pr view <n> --json body -q .body)"
+  --subject "<title> (#<n>)"
 ```
 
 Only the SHA that was checked; `main`'s ruleset refuses anything else. A

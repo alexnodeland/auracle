@@ -54,7 +54,8 @@ The tradeoff:
    - one queue, one PR at a time;
    - checked in place, on the PR's own branch;
    - rebased onto `main` when `main` has moved, and checked again there;
-   - squash-merged as `<title> (#<number>)`, with the PR's body.
+   - squash-merged as `<title> (#<number>)`, with the PR's commit messages
+     as its body (the repository's squash setting, as before).
 2. **The operator enqueues and stops.** A reviewed PR is opened with the
    `queue` label, or gets `@mergifyio queue`. It enters the queue once its
    `CI` is green, and the queue merges it.

@@ -227,7 +227,7 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   `main` by hand, push with
   `--force-with-lease=<branch>:<the head on GitHub>`, and queue it again.
 - **By hand, only when Mergify is down:**
-  `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)" --body "<the PR's body>"`,
+  `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`,
   at green, on a PR up to date with `main` (rebased and run again if `main`
   moved). A merge from outside the queue makes it start over on the new
   `main`.
