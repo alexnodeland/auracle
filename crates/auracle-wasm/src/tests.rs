@@ -2804,13 +2804,34 @@ fn a_held_sound_is_listed_and_readmitted_through_the_worker_surface() {
         "a held sound was ranked"
     );
     assert_eq!(ranked.len(), restored);
-    // A take that can't be read is refused in words.
-    let refused: serde_json::Value =
-        serde_json::from_str(&engine.readmit_held(9_999, r#"{"format":"x"}"#)).unwrap();
-    assert_eq!(refused["ok"], false);
-    assert!(!refused["error"].as_str().unwrap().is_empty());
-    // A readable one brings it back.
+    // Refused in words, the sound still held: a take that can't be read
+    // (or is not a take at all), a take with which it still plays nothing,
+    // and a sound that is not held.
+    let readmit = |e: &mut WasmEngine, id: u32, take: &str| -> serde_json::Value {
+        serde_json::from_str(&e.readmit_held(id, take)).unwrap()
+    };
+    let unread = readmit_note(&ReadmitError::NoTake);
+    for take in [r#"{"format":"x"}"#, "not a take"] {
+        let refused = readmit(&mut engine, 9_999, take);
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["error"], unread, "{take}");
+    }
+    let silent = auracle_grammar::Take::from_samples(&vec![0.0; sr as usize], sr).unwrap();
+    let silent = serde_json::to_string(&silent).unwrap();
+    let refused = readmit(&mut engine, 9_999, &silent);
+    assert_eq!(
+        refused["error"],
+        readmit_note(&ReadmitError::DoesNotVet(String::new()))
+    );
     let good = serde_json::to_string(&take).unwrap();
+    let refused = readmit(&mut engine, 1_234, &good);
+    assert_eq!(refused["error"], readmit_note(&ReadmitError::NotHeld));
+    assert_eq!(
+        engine.held_sounds().matches("\"id\":9999").count(),
+        1,
+        "still held"
+    );
+    // A readable one brings it back.
     let back: serde_json::Value = serde_json::from_str(&engine.readmit_held(9_999, &good)).unwrap();
     assert_eq!(back["ok"], true);
     assert_eq!(back["id"], 9_999);
@@ -3332,4 +3353,23 @@ fn perform_answers_what_it_cannot_read_or_move() {
         engine.perform_graft(&tree, "[]", none),
         r#"{"reason":"no_graft"}"#
     );
+}
+
+/// **Every way a held sound stays held has its own sentence**, and says
+/// whether anything changed: not held and nothing to replace change
+/// nothing; a take that can't be read and one with which the sound still
+/// plays nothing leave it kept safe.
+#[test]
+fn every_readmit_refusal_has_its_own_sentence() {
+    let notes = [
+        readmit_note(&ReadmitError::NotHeld),
+        readmit_note(&ReadmitError::NothingToReplace),
+        readmit_note(&ReadmitError::NoTake),
+        readmit_note(&ReadmitError::DoesNotVet("silent".into())),
+    ];
+    for (i, a) in notes.iter().enumerate() {
+        assert!(notes[i + 1..].iter().all(|b| a != b), "{a} twice");
+    }
+    assert!(notes[..2].iter().all(|n| n.contains("nothing changed")));
+    assert!(notes[2..].iter().all(|n| n.contains("still kept safe")));
 }
