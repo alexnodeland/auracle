@@ -13,7 +13,7 @@
 
 use auracle_features::{
     audio_features, explain, featurize, normalize_to, render_phrase, vet, AudioFeatures,
-    RenderedPhrase, VetConfig, VetFailure, TARGET_LUFS,
+    FeaturizeError, RenderedPhrase, VetConfig, VetFailure, TARGET_LUFS,
 };
 use auracle_grammar::term::FilterKind;
 use auracle_grammar::{cutoff_hz, lowpass_apply, lowpass_response, AudioNode, ModNode, Uid};
@@ -54,7 +54,9 @@ impl ExplainRender {
     }
 }
 
-fn reason(e: &auracle_features::FeaturizeError) -> &'static str {
+/// The word a refused render is told by: `silent`, or `vet` for any other
+/// reason it was refused.
+fn reason(e: &FeaturizeError) -> &'static str {
     if is_silent(e) {
         "silent"
     } else {
@@ -189,26 +191,24 @@ impl WasmEngine {
         }
         // No room for one more module: the filter follows the whole voice,
         // on the raw render (as a filter inside it would be), which is then
-        // vetted and normalized as `featurize` does a render.
-        if !tree.domain_violations().is_empty() {
-            return fail("vet");
-        }
-        let Ok(mut r) = render_phrase(&tree, phrase) else {
-            return fail("vet");
+        // vetted and normalized as `featurize` does a render, step for step,
+        // and refused for the reasons `featurize` gives.
+        let after = || -> Result<(RenderedPhrase, AudioFeatures), FeaturizeError> {
+            if let Some((site, value)) = tree.domain_violations().into_iter().next() {
+                return Err(FeaturizeError::OutOfDomain { site, value });
+            }
+            let mut r = render_phrase(&tree, phrase)?;
+            lowpass_apply(&mut r.samples, cutoff, LESSON_RESONANCE, sr);
+            let report = vet(&r.samples, &VetConfig::for_spec(phrase))?;
+            normalize_to(&mut r.samples, sr, TARGET_LUFS)
+                .ok_or(VetFailure::Silent { rms: report.rms })?;
+            let phi = audio_features(&r);
+            Ok((r, phi))
         };
-        lowpass_apply(&mut r.samples, cutoff, LESSON_RESONANCE, sr);
-        if let Err(e) = vet(&r.samples, &VetConfig::for_spec(phrase)) {
-            return fail(if matches!(e, VetFailure::Silent { .. }) {
-                "silent"
-            } else {
-                "vet"
-            });
+        match after() {
+            Err(e) => fail(reason(&e)),
+            Ok((r, phi)) => done(&r, &phi, Some("after")),
         }
-        if normalize_to(&mut r.samples, sr, TARGET_LUFS).is_none() {
-            return fail("silent");
-        }
-        let phi = audio_features(&r);
-        done(&r, &phi, Some("after"))
     }
 }
 
