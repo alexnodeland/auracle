@@ -52,7 +52,7 @@ WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: setup film-setup web-check spec-lint all check build test test-verbose fmt fmt-check lint lint-fix clippy \
-        js-check wasm-check smoke smoke-tools \
+        js-check wasm-check smoke smoke-tools worker-test \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
         mutants-installed mutants-diff mutants mutants-command \
@@ -226,6 +226,13 @@ smoke:
 ## Playwright's image, which has Chromium and its libraries.
 smoke-tools:
 	cd tests/web && npm ci --no-audit --no-fund && npx playwright install chromium
+
+## worker-test: the worker-protocol tests (tests/worker): apps/web/worker.js
+## run as it is in a Node worker thread over the built engine, with no page,
+## for what it answers and in what order (its lanes). Needs `make wasm` first.
+worker-test:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine in apps/web/pkg: run `make wasm` first\n'; exit 1; }
+	node --test tests/worker/*.test.mjs
 
 ## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower
