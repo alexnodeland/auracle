@@ -371,7 +371,7 @@ the suite a mutant's tests took compares across loads.
 Taste's survivors at `cf61f48`, by file: `model.rs` 53, `synthetic.rs` 21,
 `standardize.rs` 8, `observe.rs` 5; at `47a0d4f`, after #231, 51, 21, 8 and
 5; with #207's changes, none. Each was killed by a test or went with code
-that couldn't matter, but one equivalent mutant in `model.rs`, which
+that couldn't matter, except one equivalent mutant in `model.rs`, which
 `.cargo/mutants.toml` excludes with its reason (and so the run lists 601).
 A caught mutant costs little: nextest stops at the first failing test
 (`--max-fail=1:immediate`), so at `db2103f` taste's took 1.1 s of their

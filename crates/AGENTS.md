@@ -285,7 +285,7 @@ crates didn't start clean: on `main` at `cf61f48`, with taste's PR (#198)
 merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
 unviable). Taste's and features' PRs merged before this check existed, so
 a follow-up issue took their survivors (#207). Taste's are done: each was
-killed by a test or went with code that couldn't matter, but one, an
+killed by a test or went with code that couldn't matter, except one
 equivalent mutant, which is excluded. Features' are still to be measured,
 and #207 takes them then. Each crate's PR still to come in #181 kills or
 answers its own. The PR job becomes required once they are done.
