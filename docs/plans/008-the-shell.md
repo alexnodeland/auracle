@@ -33,7 +33,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
 | C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
-| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | not started |
+| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | built on `claude/preset-faces` with #153's C2b follow-ups, in review |
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
 | D: ⌘K, and the guide for the levels | #132 | not started |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
@@ -84,8 +84,8 @@ not framed). ADR-017 records §6 Q1.
   glyph, NEW and the unheard dot keep their column left of the name (a mark
   never moves a name), so names start 34 px further right than the mock's.
   The seed and may-be-replaced words sit over the row's end like the
-  actions, and give way to them; IN POOL does the same on a preset row,
-  whose rows keep its width. Presets drop the ▤ glyph (their tab says it).
+  actions, and give way to them; IN POOL did the same on a preset row,
+  whose rows keep its width (since #130 it stands left of the ▶ instead). Presets drop the ▤ glyph (their tab says it).
 - **Head extras.** The bank note is each tab's title, and the "what's this?"
   link went with it: the tour's `?` at the end of the find row starts at the
   tab you are on (`tourStepFor`). `#bank-count` is POOL's "+N", `#pin-budget`
@@ -384,6 +384,31 @@ into C2a and C2b; round 2's decisions govern PATCH):
   No film selector goes stale: the films wait on `#belief .bl-u` being
   attached, which it still is.
 - **Not here:** preset faces in the bank and the IN POOL clip (the next PR).
+
+**The PRESETS follow-up (#130, with #153's C2b follow-ups), as built:**
+- **Preset faces were already lazy on main** (`faceSlot(…, {lazy: true})`,
+  `faceWhenSeen`, a preset asked by index): measured in the browser, every
+  row in view got its face at 1000 px (12 of 12) and 1440 px (15 of 15),
+  the first about 33 s after boot, once PERFORM's first measurement of the
+  sound it opens with let go of the engine (the faces lane is below it, by
+  design). What could leave one empty for good was `faceLookup`: a second
+  asker for a render key already waiting (a preset row and that preset's
+  pool row, or the bench) was never answered, a looked-at one could take
+  the first's place, and a preset row's cancel dropped the render the
+  others waited on. A `face_render` job now carries every asker.
+- **IN POOL** no longer hides on approach: it stands left of the ▶'s strip
+  whenever the ▶ shows (the pointer, the focus in the row, the keyboard's
+  cursor, while it plays), on its own fading ground; it had been cut by the
+  ▶ wherever the ▶ showed without the pointer.
+- **#153:** a new patch's subtitle and sound A's go through the subtitle's
+  spans; Esc's closers outside PATCH spend the press (`preventDefault`), and
+  PERFORM's well modes hear Esc on the document while PERFORM shows; PATCH's
+  leans, worth chips and a module's note read one θ (`benchTheta`, the
+  bench's style); the guess line's ✕ sits beside its live region.
+- **Specs:** `faces_presets.spec.js` and `model_view_esc.spec.js` are new;
+  `bank_row.spec.js` and `patch_model_view.spec.js` gain tests;
+  `patch_facts.spec.js` checks the ✕'s place; `worker-faces.test.mjs` is
+  new, `worker-lanes.test.mjs` gains the preset face's place in the lanes.
 
 ## 1. Delta inventory (mock vs app)
 

@@ -21,7 +21,7 @@ at last time.
 | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Zoom out / in: PATCH, PERFORM, TASTE, LEARNING. From EVOLVE, out goes to TASTE and in to PATCH |
 | <kbd>⌥←</kbd> / <kbd>⌥→</kbd> | Beside it to EVOLVE / back to PERFORM |
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
-| Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it (in PATCH, once nothing nearer is open: the press walks out one thing first) |
+| Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it once nothing nearer is open (a press closes the nearest thing first, at every level) |
 
 They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
 view after a moment; a key pressed while it is down (<kbd>⌥↑</kbd>, say) is
@@ -72,7 +72,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first. In PATCH it walks out one thing at a time: a menu, a knob, the module, the catalog, then a new patch |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first, and a tapped [model view](./reading-the-model.md#the-model-view) goes last. In PATCH it walks out one thing at a time: a menu or panel, a knob, the module, the catalog, then a new patch |
 
 ## In EVOLVE
 
@@ -111,7 +111,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>F2</kbd>, or the menu key | Its structure menu (⋯) |
 | <kbd>Delete</kbd> | Delete it; a two-input module asks which input survives. On the guess: skip it |
 | <kbd>L</kbd> | Lock it, or unlock it |
-| <kbd>Q</kbd> | What goes here? The model's guess for its place: after it, on its modulation slot, or in it if the socket is empty (on a modulator, its module's slot). The guess takes the focus when it lands: <kbd>Enter</kbd> adds it, <kbd>Delete</kbd> skips it, <kbd>Esc</kbd> goes back to the guess for the output |
+| <kbd>Q</kbd> | What goes here? The model's guess for its place: after it, on its modulation slot, or in it if the socket is empty (on a modulator, its module's slot). The guess takes the focus when it lands, unless you have gone into a module's knobs since: <kbd>Enter</kbd> adds it, <kbd>Delete</kbd> skips it, <kbd>Esc</kbd> goes back to the guess for the output |
 | <kbd>/</kbd> | A module after it, from the catalog |
 | <kbd>Esc</kbd> | Out of it |
 

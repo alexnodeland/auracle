@@ -164,7 +164,8 @@ may merge on the fast tier and `PR checks` alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push, whose run covers the ones before it) and
-nightly, where a failure opens an issue; on a PR
+nightly, where a failure opens an issue (a quarantined test's is a comment
+on its own issue instead, while that issue is open); on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
 the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
@@ -182,7 +183,11 @@ coverage falls below its floor in `crates/coverage-baseline.json`, and every
 line the change adds or changes in `crates/` is run by a fast-tier test that
 checks what it does. `make coverage` runs the same locally, with the HTML
 report in `target/llvm-cov/html/`
-([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)).
+([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)). When your
+PR's run measures Rust or the app's Node tests, Codecov also comments on it
+with the coverage: the Rust's, and what those Node tests run of `apps/web`
+(not the browser specs, which it can't see). It is there to read, and never
+blocks a merge.
 
 Coverage says a test ran a line, not that it checked it. `make mutants
 DIFF=1` changes the code you changed one small way at a time (a `<` made
@@ -321,8 +326,10 @@ an alias for notes written before the rename).
      entry in `changelog.d/` gets a warning there (item 3), not a failure.
 
    Once the PR merges, the same workflow comments on each `Refs` issue,
-   closes any `Closes` issue GitHub didn't, and tells each closed issue's
-   parent issue how many of its sub-issues are closed.
+   closes any `Closes` issue GitHub didn't, tells each closed issue's
+   parent issue how many of its sub-issues are closed, and ticks the boxes
+   in other open issues' checklists that name an issue that closed, once
+   every issue each box names is closed as completed.
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`

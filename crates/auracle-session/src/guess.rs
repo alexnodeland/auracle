@@ -557,9 +557,10 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
             continue;
         };
         // Every op normalizes the whole term it lands on, so on a patch not
-        // in normal form (a modulation term the grammar would fold away, as
-        // an imported file can hold) an op that adds one module can take
-        // another away. Such a candidate is no guess.
+        // in normal form (a modulation term the grammar would fold away) an
+        // op that adds one module can take another away. Such a candidate is
+        // no guess. No patch the engine holds is one (every way in folds it:
+        // `normalize_tree`), but this function takes any tree it is given.
         let c = counts(&struct_features(&t));
         let keeps = c
             .iter()

@@ -50,8 +50,11 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   specs (a helper, the config, the lockfile) changed; for
   `main.js`, `worker.js` or a crate, the smoke pair alone.
 - The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on
-  a PR only with the `full-ci` label; the nightly *Flake hunt* runs the fast
-  tier three times each.
+  a PR only with the `full-ci` label, the quarantined tests in a job of their
+  own whose failures are said on each test's issue, never as a red run while
+  that issue is open; the
+  nightly *Flake hunt* runs the fast tier three times each, and files each
+  test that fails on its own `Flaky:` issue.
 - A runner that runs out of time still reports: it is interrupted a minute
   before Playwright's global timeout, and the test it was running is
   reported as interrupted, with its trace.
@@ -103,5 +106,7 @@ queue. A spec that fails only under load needs a state wait, an order on the
 app's own clock, or its speed bound made a budget (ADR-022), not a retry:
 there are no retries anywhere. A test that fails in CI only sometimes is
 fixed, or quarantined while it is fixed: a `flake` issue, the `@quarantine`
-tag with a comment naming it, the issue labelled `quarantined`
-(`docs/process.md` § Flakes). The fix removes the tag.
+tag with the issue named beside it (`{ tag: "@quarantine", annotation: {
+type: "issue", description: "#N" } }`, which `make spec-lint` checks), the
+issue labelled `quarantined` (`docs/process.md` § Flakes). The fix removes
+the tag and its annotation.

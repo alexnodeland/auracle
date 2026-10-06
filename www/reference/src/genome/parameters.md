@@ -111,11 +111,27 @@ it fixed. `NaN` goes to the domain’s midpoint; anything else is clamped, with
 `1.0` and above landing on `PARAM_MAX`. It runs on every session load, which is
 what mends a save written by a build that still let a knob rest on the stop.
 
+It is half of `normalize_tree()`, the normal form every tree is put in once, on
+its way in: a session's bank on load, a held sound brought back, an opened
+patch file, and a whole tree the panel posts. The other half folds a modulation
+term the grammar would fold (`ModNode::normalized`): a shaper over nothing is
+nothing, a pair with an empty side is its other side, and a one-parameter
+shaper's unused second parameter is 0. Every structural edit ends in both,
+though an edit that grafted a subtree once brought its modulation in unfolded,
+which is how a saved session or a patch file came to hold such a term. A term
+left unfolded was rewritten by the next edit instead, and on such a patch every
+module the [guess](../search/guess.md) could add also took the folded one
+away, so the guess said the patch was full. The compiler builds each such term
+as its folded form, so the fold changes no sound: it takes off the rack a
+module that did nothing. That is why a restore says so when it clamps a knob
+and not when it folds a term.
+
 The asymmetry with the size ceilings is deliberate:
 
 | Violation | Response | Because |
 |---|---|---|
 | A knob outside $[0,1)$ | **Repaired**, exactly and locally | There is one right answer |
+| A modulation term the grammar folds | **Folded** | It already plays as its folded form |
 | A term over the module/depth ceilings | **Refused** | Fixing it means deciding which modules to delete |
 
 Repair wins for parameters on product grounds: a saved session that already

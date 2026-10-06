@@ -48,11 +48,13 @@ const POOL: usize = 48;
 /// Mirrors `auracle_taste::standardize`'s tail fraction.
 const TAIL: f64 = 0.02;
 
+/// Mirrors `auracle_taste::standardize`'s `winsor_k`, whose constants keep
+/// k at most (n - 1) / 2 (checked there when it builds).
 fn winsor_k(n: usize) -> usize {
     if n < 10 {
         return 0;
     }
-    (((n as f64) * TAIL).ceil() as usize).clamp(1, (n - 1) / 2)
+    (((n as f64) * TAIL).ceil() as usize).max(1)
 }
 
 fn sd(col: &[f64], clip: Option<(f64, f64)>) -> f64 {

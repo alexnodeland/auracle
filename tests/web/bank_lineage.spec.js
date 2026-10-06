@@ -654,98 +654,122 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
   await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 60_000 });
 });
 
-test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", { tag: "@slow" }, async ({ page, app }) => {
-  test.setTimeout(240_000);
-  await taught(page, app);
-  // Every name seen, read when it is needed (the tap's `facts.names`).
-  const nameOf = async (id) => {
-    const n = (await app.facts()).names[id];
-    expect(n, `no name was ever posted for sound ${id}`).toBeTruthy();
-    return n;
-  };
-  // At rest, pointing at EVOLVE POOL marks the engine's own lists for the
-  // generation it would open: `ratings.seeds` and `ratings.may_replace`.
-  // (Each read is of the ratings main.js holds now: a pick's may still land.)
+// The generation is the spec's (#169): its `refine` never reaches the engine
+// (`app.stall`), and its replies are posted to main as the worker posts them,
+// each carrying the request's number and all but `refined` marked `more`
+// (web-runtime.md § The worker's replies). Its seeds and children are rows at
+// the top of the list, in view; what its end replaces is the two rows at the
+// foot. So every branch runs on every run: a child budding from its seed, one
+// landing under reduced motion and marked to be replaced, one bred and then
+// replaced at the end, and the sounds the end replaced. A real generation's
+// children landed only when the seeded walks bred and kept something, and its
+// buds only when they landed in view. Which seeds a generation takes and what
+// it may replace are the engine's (native
+// `next_seeds_and_may_replace_are_what_a_generation_does`), and so is the
+// lineage a child leaves, its seed, what changed and both ratings
+// (`a_refined_childs_lineage_names_its_seed_what_changed_and_both_ratings`);
+// evolve_breeds_beside_you runs a real generation end to end.
+test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", async ({ page, app }) => {
+  await pooled(page, app);
+  const s = await whole(app, "views");
+  const shown = await rowIds(page);
+  const nameOf = (id) => s.ranked.find((r) => r.id === id).name;
+  // From the top of the list, in view: the generation's three seeds, and the
+  // two sounds that stand in for its children. From the foot: the two its end
+  // replaces.
+  const seeds = shown.slice(0, 3);
+  const [kidA, kidB] = shown.slice(3, 5);
+  const gone = shown.slice(-2);
+  const gen = (s.status.generation || 0) + 1;
+  const ev = (seed, kid, diff) => ({ generation: gen, kind: "refine", parent_id: seed, child_id: kid, diff, parent_utility: 0.4, child_utility: 0.5 });
+  const lineage = [...(s.lineage || []), ev(seeds[0], kidA, [{ addr: "node/1#op", before: null, after: "delay" }])];
+  // The engine's own news about the pool (a fill's rows, a pick's ratings)
+  // waits until the test ends: the bank is the generation's.
+  await app.hold([{ views: true }, { ranked: true }, { ratings: true }, { lineage: true }]);
+
+  // Pressed, with the pointer left on it.
   await page.locator("#evolve-wrap").hover();
-  await expect.poll(async () => {
-    const r = (await app.facts()).ratings;
-    const shown = await rowIds(page);
-    const want = { seed: sorted(r.seeds.filter((id) => shown.includes(id))), may: sorted(r.may_replace.filter((id) => shown.includes(id) && !r.seeds.includes(id))) };
-    return JSON.stringify({ seed: await marked(page, "seed"), may: await marked(page, "may-go") }) === JSON.stringify(want);
-  }, { timeout: 30_000 }).toBe(true);
-  // Pressed, with the pointer left on it: the marks stay up through the
-  // generation, and each walk's are read as it lands (`__pwMarks`).
+  await app.stall("refine");
   await page.locator("#evolve-btn").click();
+  const { rid } = await app.stalled();
+  expect(rid, "main numbers every request").toBeGreaterThan(0);
+  const walk = (index, child, seed, { reason = null, retiring = [], lin = lineage } = {}) =>
+    app.inject({
+      type: "refine_child", re: rid, more: true, generation: gen, index, child, reason, seed,
+      done: index + 1, total: seeds.length, ranked: s.ranked, lineage: lin, retiring, ratings: s.ratings, eta: null,
+    });
+  await app.inject({
+    type: "refine_progress", re: rid, more: true, generation: gen, done: 0, total: seeds.length, walked: 0,
+    eta: null, farm: true, workers: 2, seeds,
+  });
+  // While it runs, EVOLVE POOL marks this generation's seeds (its progress
+  // posted them).
+  await expect.poll(() => marked(page, "seed")).toEqual(sorted(seeds));
 
-  // Three walks back, then stop: the generation ends with what it bred. On a
-  // fast machine the walks land in a burst and the generation may already
-  // have ended, with STOP gone: either way it ends with what it bred.
-  await app.engine((timeout) => expect.poll(async () => (await app.replies("refine_child")).length, { timeout }).toBeGreaterThanOrEqual(3), { ms: 400_000 });
-  const stop = page.locator("#evolve-stop");
-  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
-  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 120_000 });
-  // The generation's own seeds, as its first progress with them posted them
-  // (`refine_jobs`' parents, job i walking from seeds[i]): each walk's `seed`
-  // is one of them, in job order (`next_seeds` and `refine_jobs` share one
-  // rule).
-  const seeds = ((await app.replies("refine_progress", { where: { seeds: true } }))[0] || {}).seeds;
-  expect(seeds && seeds.length, "the generation's progress posted no seeds").toBe(10);
-  const kids = await app.replies("refine_child");
-  for (const k of kids) expect(k.seed, `walk ${k.index} came from a seed the generation did not take`).toBe(seeds[k.index]);
-  // While it ran, EVOLVE POOL marked this generation's seeds, not the next
-  // one's (`ratings.seeds` moves as its children land), and what its end
-  // will replace (that walk's `retiring`), in words of their own.
-  const during = await page.evaluate(() => window.__pwMarks.filter((s) => s.breeding));
-  expect(during.length, "no walk landed while the generation ran").toBeGreaterThan(0);
-  for (const s of during) {
-    expect(s.seed, `seeds marked after walk ${s.index}`).toEqual(sorted(seeds.filter((id) => s.rows.includes(id))));
-    expect(s.may, `will be replaced after walk ${s.index}`).toEqual(sorted(s.retiring.filter((id) => s.rows.includes(id) && !seeds.includes(id))));
-    expect(s.words, `the words after walk ${s.index}`).toEqual(s.may.length ? ["will be replaced"] : []);
-  }
-  if (during.some((s) => s.child > 0)) expect(during.some((s) => s.may.length > 0), "a child was taken in and nothing was marked as may be replaced").toBe(true);
-  await page.mouse.move(5, 5);
-  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
-  const refined = await app.last("refined");
-  const after = await app.facts();
-  const kept = refined.born.filter((id) => !refined.retired.includes(id));
-  console.log(`walks ${JSON.stringify(kids.map((k) => [k.index, k.seed, k.child, k.reason]))}; kept ${JSON.stringify(kept)}; retired ${JSON.stringify(refined.retired)}`);
+  // The first walk's child: at the top of the bank under New, with its seed
+  // and what changed, and a dot until heard. It buds from its seed's row.
+  await walk(0, kidA, seeds[0], { retiring: gone });
+  await expect(page.locator("#bank-list .bank-group.new .bg-label")).toHaveText(`new · generation ${gen}`);
+  await expect(page.locator("#bank-list .bank-group.new .bg-n")).toHaveText("1");
+  await expect(row(page, kidA).locator(".bi-from")).toHaveText(`from ${nameOf(seeds[0])} · +delay`);
+  await expect(row(page, kidA).locator(".bi-new")).toHaveText("new");
+  await expect(row(page, kidA).locator(".bi-dot")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__pwBuds.filter((b) => !b.refused).map((b) => b.text))).toEqual([nameOf(kidA)]);
+  // Out of its seed's row: level with it, where it starts.
+  const bud = (await page.evaluate(() => window.__pwBuds.filter((b) => !b.refused)))[0];
+  const at = await row(page, seeds[0]).boundingBox();
+  expect(bud.top).toBeGreaterThanOrEqual(at.y - 1);
+  expect(bud.bottom).toBeLessThanOrEqual(at.y + at.height + 1);
+  await expect.poll(() => page.evaluate(() => window.__pwSaid.includes("walk 1 of 3joined the pool"))).toBe(true);
+  // And what the end will replace so far (that walk's `retiring`), in words
+  // of its own.
+  await expect.poll(() => marked(page, "may-go")).toEqual(sorted(gone));
+  for (const id of gone) await expect(row(page, id).locator(".bi-flag")).toHaveText("will be replaced");
+  await expect.poll(() => marked(page, "seed")).toEqual(sorted(seeds));
 
-  // New holds the children kept, in birth order, each with its seed and what
-  // changed (its `LineageEvent`), and a dot until heard.
-  if (kept.length) {
-    await expect(page.locator("#bank-list .bank-group.new .bg-label")).toHaveText(`new · generation ${refined.status.generation}`);
-    await expect(page.locator("#bank-list .bank-group.new .bg-n")).toHaveText(String(kept.length));
-  }
-  for (const id of kept) {
-    const ev = after.lineage.find((e) => e.child_id === id);
-    expect(ev, `no lineage event for child ${id}`).toBeTruthy();
-    const walk = kids.find((k) => k.child === id);
-    expect(ev.parent_id, "the lineage names another seed than the walk's").toBe(walk.seed);
-    const seedName = await nameOf(ev.parent_id);
-    await expect(row(page, id).locator(".bi-from")).toHaveText(new RegExp(`^from ${reEsc(seedName)}( · .+)?$`));
-    await expect(row(page, id).locator(".bi-new")).toHaveText("new");
-    await expect(row(page, id).locator(".bi-dot")).toBeVisible();
-  }
-  // Each child budded from its seed's row, where that row was in view.
-  const buds = await page.evaluate(() => window.__pwBuds.filter((b) => !b.refused).map((b) => b.text));
-  console.log(`buds: ${JSON.stringify(buds)}`);
-  if (kept.length) expect(buds.length, "no child budded from its seed").toBeGreaterThan(0);
-  // EVOLVE POOL narrated each walk.
-  const said = await page.evaluate(() => window.__pwSaid.slice());
-  expect(said.some((t) => /^walk \d+ of 10(joined the pool|rated below the pool|already in the pool|came back unchanged|couldn’t start)?$/.test(t)), JSON.stringify(said)).toBe(true);
+  // With motion reduced, nothing buds: the button, the row and New's count
+  // still say it.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const lin2 = [...lineage, ev(seeds[1], kidB, [{ addr: "node/2#op", before: null, after: "chorus" }])];
+  await walk(1, kidB, seeds[1], { retiring: [...gone, kidB], lin: lin2 });
+  await expect(row(page, kidB).locator(".bi-from")).toHaveText(`from ${nameOf(seeds[1])} · +chorus`);
+  await expect(row(page, kidB).locator(".bi-new")).toHaveText("new");
+  await expect(page.locator("#bank-list .bank-group.new .bg-n")).toHaveText("2");
+  await expect.poll(() => page.evaluate(() => window.__pwSaid.includes("walk 2 of 3joined the pool"))).toBe(true);
+  // A child the end will replace says so in New, as the rows at the foot do:
+  // nothing leaves the bank unwarned.
+  await expect.poll(() => marked(page, "may-go")).toEqual(sorted([...gone, kidB]));
+  await expect(row(page, kidB).locator(".bi-flag")).toHaveText("will be replaced");
+  // (A bud is appended in the task that draws the row, so by now it would
+  // have been seen.)
+  expect(await page.evaluate(() => window.__pwBuds.filter((b) => !b.refused).length), "a child budded with motion reduced").toBe(1);
+
+  // The last walk breeds nothing, and the generation ends: the first child
+  // kept, the second bred and then replaced, and the two lowest replaced.
+  await walk(2, 0, seeds[2], { reason: "no_move", retiring: [...gone, kidB], lin: lin2 });
+  const mark = await app.toastMark();
+  await app.inject({
+    type: "refined", re: rid,
+    views: { ...s.views, ranked: s.ranked.filter((r) => ![...gone, kidB].includes(r.id)), lineage: lin2 },
+    status: { ...s.status, generation: gen },
+    born: [kidA, kidB], reasons: ["no_move"], retired: [...gone, kidB], stopped: false, bench: null,
+  });
+  // Its toast says what joined and what it replaced.
+  const said = await app.toast(`Generation ${gen}: 1 new sound in the pool (1 more was bred, then replaced).`, { since: mark });
+  for (const id of gone) expect(said).toContain(nameOf(id));
+  // New holds the child kept; the one replaced is counted under it.
+  await expect(page.locator("#bank-list .bank-group.new .bg-n")).toHaveText("1");
+  await expect(row(page, kidA).locator(".bi-from")).toHaveText(`from ${nameOf(seeds[0])} · +delay`);
+  await expect(row(page, kidB)).toHaveCount(0);
+  await expect(page.locator("#bank-list .bank-below").first()).toHaveText("1 more was bred and rated below the pool.");
 
   // Replaced: what the end replaced, by name, and nothing to play.
-  const gone = refined.retired.filter((id) => !refined.born.includes(id));
-  if (gone.length) {
-    const fold = page.locator("#bank-list .bank-group.replaced .bg-fold");
-    await fold.scrollIntoViewIfNeeded();
-    await expect(fold.locator(".bg-label")).toHaveText(`replaced · generation ${refined.status.generation}`);
-    await fold.click();
-    const goneNames = [];
-    for (const id of gone) goneNames.push(await nameOf(id));
-    await expect(page.locator("#bank-list .replaced-names span")).toHaveText(goneNames);
-    await expect(page.locator("#bank-list .replaced-names button")).toHaveCount(0);
-    for (const id of gone) await expect(row(page, id)).toHaveCount(0);
-  }
+  await page.mouse.move(5, 5);
+  const fold = page.locator("#bank-list .bank-group.replaced .bg-fold");
+  await fold.scrollIntoViewIfNeeded();
+  await expect(fold.locator(".bg-label")).toHaveText(`replaced · generation ${gen}`);
+  await fold.click();
+  await expect(page.locator("#bank-list .replaced-names span")).toHaveText(gone.map(nameOf));
+  await expect(page.locator("#bank-list .replaced-names button")).toHaveCount(0);
+  for (const id of gone) await expect(row(page, id)).toHaveCount(0);
 });
-

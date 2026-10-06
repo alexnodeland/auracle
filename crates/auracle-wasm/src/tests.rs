@@ -482,6 +482,40 @@ fn an_import_forgets_the_skips() {
     assert!(engine.guess_skip(skip), "a skip outlived the import");
 }
 
+/// **A whole-tree replace lands on the bench in normal form** (#208). The
+/// panel's rewrite (and ⌘Z) can hand in a tree with a quantizer over
+/// nothing on a slot; the bench holds it folded, which is the tree a
+/// structural edit would have made of it, so the guess finds room there
+/// instead of every module it could add also taking the quantizer away.
+#[test]
+fn a_whole_tree_replace_lands_in_normal_form() {
+    let mut engine = WasmEngine::new(3, 6);
+    while engine.fill_step(3) > 0 {}
+    assert!(engine.edit_begin(pool_ids(&engine)[0]));
+    let hornet = presets()
+        .into_iter()
+        .find(|(n, _)| *n == "Hornet")
+        .unwrap()
+        .1;
+    let mut sent = hornet.clone();
+    *sent.root.modulation_mut().unwrap() = auracle_grammar::ModNode::Op {
+        uid: auracle_grammar::Uid::NEW,
+        kind: auracle_grammar::term::ModOp::Quantize,
+        p0: 0.5,
+        p1: 0.0,
+        input: Box::new(auracle_grammar::ModNode::None),
+    };
+    assert_eq!(
+        engine.edit_set_tree_apply(&serde_json::to_string(&sent).unwrap()),
+        ""
+    );
+    let bench: PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
+    let mut folded = hornet;
+    *folded.root.modulation_mut().unwrap() = auracle_grammar::ModNode::None;
+    assert_eq!(bench, folded);
+    assert!(!auracle_session::guess_candidates(&bench, None).is_empty());
+}
+
 /// A guess for the bench as JSON, as `guess_rank` would give it: the
 /// first of `guess_candidates` of `kind`.
 fn a_guess(engine: &WasmEngine, kind: &str) -> String {
@@ -3397,9 +3431,11 @@ fn every_readmit_refusal_has_its_own_sentence() {
 /// ceilings is refused in the grammar's words, a guess or skip that does
 /// not read is refused, and before any taste a guess has `no_taste`. A
 /// patch imported that does not read, or that the bank already holds, is
-/// not admitted. Once the sound the bench was opened from has left the
-/// pool, there is nothing to compare the bench with. An event logged
-/// without φ carries none.
+/// not admitted, and `bank_twin_of` names the sound the bank holds it as by
+/// its `u32` id (0 for a file that does not read, or a sound the bank has
+/// let go). Once the sound the bench was opened from has left the pool,
+/// there is nothing to compare the bench with. An event logged without φ
+/// carries none.
 #[test]
 fn the_bench_refuses_in_words_what_it_cannot_take() {
     let mut engine = filled(0xB3C);
@@ -3442,6 +3478,8 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
     assert_eq!(engine.guess_rank(None, "[]", 0), r#"{"reason":"no_taste"}"#);
     assert_eq!(engine.import_patch("{", "x"), 0);
     assert_eq!(engine.import_patch(&tree, "again"), 0, "the bank holds it");
+    assert_eq!(engine.bank_twin_of(&tree), lowest, "as this sound");
+    assert_eq!(engine.bank_twin_of("{"), 0);
 
     engine.log_edit_event("open", lowest, 1.0, "{}", false);
     let state: SessionState = serde_json::from_str(&engine.export_session()).unwrap();
@@ -3456,6 +3494,7 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
         engine.engine.find(lowest as u64).is_none(),
         "fixture: it left"
     );
+    assert_eq!(engine.bank_twin_of(&tree), 0, "a sound the bank let go");
     assert!(!engine.edit_differs_from_original());
 }
 

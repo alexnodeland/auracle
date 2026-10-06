@@ -590,8 +590,10 @@
               </div>
               <!-- The model's guess for the next module: GUESS · FILTER and its
                    reason in the model's italic, over the rack's top left. Its
-                   module is drawn at its socket in the rack (patch.js). -->
-              <div class="guess-read" id="guess-read" role="status" hidden></div>
+                   module is drawn at its socket in the rack (patch.js). The
+                   words are a live region; the ✕ back to the output's guess
+                   sits beside it, so its label is not read with every line. -->
+              <div class="guess-read" id="guess-read" hidden><span class="gr-line" role="status"></span></div>
               <!-- Under the model view: what one more of each family the
                    patch holds is worth to the model, one chip per family
                    (main.js `paintWorth`). -->

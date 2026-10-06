@@ -35,18 +35,66 @@ const path = require("path");
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab, openCatalog } = require("./shell");
 const { budget } = require("./fixtures");
+const { SLOW_ENGINE } = require("./perform_budget");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
 
 const GRANTED = `try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`;
 
-async function boot(page, { granted = false } = {}) {
+// The engine's replies kept from main, in order, from the first of the type
+// named in `window.__pwHoldFrom` on, until `window.__pwRelease()` hands them
+// over: what main sees of a worker that is slow to answer. INIT's listener
+// runs first, so `__pwLast` still records a reply as it arrives.
+const HOLD = `(() => {
+  const Inner = window.Worker;
+  function Holding(url, opts) {
+    const w = new Inner(url, opts);
+    if (!/worker\\.js/.test(String(url))) return w;
+    const held = [];
+    let holding = false;
+    w.addEventListener("message", (e) => {
+      if (e.__pwReplay || !e.data) return;
+      if (!holding && window.__pwHoldFrom && e.data.type === window.__pwHoldFrom) holding = true;
+      if (!holding) return;
+      e.stopImmediatePropagation();
+      held.push(e.data);
+    });
+    window.__pwRelease = () => {
+      holding = false;
+      window.__pwHoldFrom = null;
+      for (const data of held.splice(0)) {
+        const ev = new MessageEvent("message", { data });
+        ev.__pwReplay = true;
+        w.dispatchEvent(ev);
+      }
+    };
+    return w;
+  }
+  Holding.prototype = Inner.prototype;
+  window.Worker = Holding;
+})();`;
+
+// AURACLE_CPU_THROTTLE=4 runs the page and the engine worker four times
+// slower, as the fixture's boot does, so the races a slower CI runner loses
+// show up on a fast machine.
+const THROTTLE = Number(process.env.AURACLE_CPU_THROTTLE || 0);
+
+async function boot(page, { granted = false, hold = false } = {}) {
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
   if (granted) await page.addInitScript(GRANTED);
   await page.addInitScript(STUB);
   await page.addInitScript(INIT);
+  if (hold) await page.addInitScript(HOLD);
+  if (THROTTLE > 1) {
+    await page.route(/\/worker\.js(\?|$)/, async (route) => {
+      const resp = await route.fetch();
+      await route.fulfill({ response: resp, body: SLOW_ENGINE(THROTTLE) + (await resp.text()), contentType: "text/javascript" });
+    });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
+  }
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await goLevel(page, "patch");
@@ -371,35 +419,67 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
   return { ctx, next, row, errors };
 }
 
-// Quarantined (#243): STOP is clicked after a fixed 1.2 s wait on a rack the
-// keep as new is redrawing; on a slow runner no take was sent.
-test("a recording goes on through a keep as new, and its take lands on the kept sound", { tag: "@quarantine" }, async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+/** A player's beat between RECORD and STOP: the take is then longer than the
+ *  0.1 s one the CAPTURE holds, and the two can't be read for each other. */
+const RECORD_BEAT_MS = 500;
+
+// The keep lands while RECORD records, however long the engine takes to keep
+// the sound: its answer is held from main (HOLD) until RECORD is rolling.
+// With RECORD pressed first and the keep's whole round trip after it, STOP
+// came after RECORD's 4 s limit on a slow runner (#243: a keep of 3.2 s on
+// CI, then a fixed 1.2 s), so RECORD had stopped itself and the click
+// started another recording. Now STOP is pressed once the kept sound is in
+// hand and its lane is lit: on a 16-core M3 Max 0.6 s into the recording,
+// and 1.0 s at AURACLE_CPU_THROTTLE=4.
+test("a recording goes on through a keep as new, and its take lands on the kept sound", async ({ page }, info) => {
+  const errors = await boot(page, { granted: true, hold: true });
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
-  const lane = page.locator("#rack-svg .take-lane").first();
-  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s", { timeout: 60_000 });
+  // The CAPTURE's lane on the rack drawn now, never a leaving rack's copy
+  // (`.rack-exit`; a keep draws none, the tree being the same).
+  const lane = page.locator("#rack-svg > :not(.rack-exit) .take-lane").first();
+  const rec = lane.locator(".take-rec");
+  const line = lane.locator(".take-line");
+  await expect(line).toHaveText("take · 0.1 s", { timeout: 60_000 });
   await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
   // An edit to keep: CAPTURE's PLAY from hold to the next.
   await page.locator('#rack-svg g[data-addr$="#play"]').first().click();
   await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
-  await lane.locator(".take-rec").click();
-  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: false });
-  // Kept as new while RECORD is lit (the express path: no card).
+  // Kept as new (the express path: no card). The engine answers; main has
+  // not heard it yet, and Mic Loop is still in hand.
   const before = await page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null));
-  await page.evaluate(() => { document.getElementById("improve-check").checked = true; });
+  await page.evaluate(() => {
+    window.__pwHoldFrom = "committed";
+    document.getElementById("improve-check").checked = true;
+  });
   await page.locator("#rack-commit").click();
   await expect.poll(() => page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null)), { timeout: 60_000 })
     .not.toBe(before);
-  await page.waitForTimeout(1200);
-  await page.locator("#rack-svg .take-lane .take-rec").first().click();
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
-    .toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  const kept = await page.evaluate(() => window.__pwLast.committed.id);
+  await expect(page.locator("#live-label")).toContainText("Mic Loop");
+  // RECORD, while the keep is on its way.
+  await rec.click();
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: false });
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- a player's beat between RECORD and STOP
+  await page.waitForTimeout(RECORD_BEAT_MS);
+  // The keep lands: the kept sound is in hand, and its CAPTURE's RECORD is
+  // still lit, recording.
+  await page.evaluate(() => window.__pwRelease());
+  const name = await page.locator(`#bank-list .bank-item[data-id="${kept}"] .bi-name`).first().textContent();
+  await expect(page.locator("#live-label")).toContainText(name);
+  await expect(page.locator("#rack-subject")).toContainText(name);
+  await expect(rec).toHaveAttribute("aria-pressed", "true");
+  await expect(line).toHaveText("recording…");
+  await expect.poll(async () => (await takes(page)).rolling).toMatchObject({ waiting: false, held: null });
+  // STOP: the take is rendered and lands on the kept sound, as an edit.
+  await rec.click();
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
+  await expect(line).not.toHaveText("take · 0.1 s", { timeout: 30_000 });
+  await expect(line).toHaveText(/^take · \d\.\d s$/);
+  await expect(page.locator("#rack-subject")).toContainText(name);
   expect(await page.evaluate(() => window.__pwToasts.join("\n"))).not.toContain("you moved to another sound");
-  await expect(page.locator("#rack-svg .take-lane .take-line").first()).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
-  await expect(page.locator("#rack-svg .take-lane .take-line").first()).not.toHaveText("take · 0.1 s");
   expect(errors).toEqual([]);
 });
 

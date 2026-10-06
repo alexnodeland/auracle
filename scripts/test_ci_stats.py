@@ -265,9 +265,11 @@ class Waits(unittest.TestCase):
         r["jobs"].append(dict(job("Site", 0, 9, 9), conclusion="skipped", runner_name=""))
         r["jobs"].append(job("Browser report", 0, 7, 8))
         r["jobs"].append(job("Deploy to Pages", 10, 12, 13))
-        # Required: the test job; not CI itself, the report or the deploy.
+        r["jobs"].append(job("Codecov from the queue's run", 1, 5, 6))
+        # Required: the test job; not CI itself, the report, the deploy or
+        # main's Codecov upload.
         self.assertEqual(S.waits(r), [3])
-        self.assertEqual(sorted(S.waits(r, required=False)), [0, 2, 3, 7])
+        self.assertEqual(sorted(S.waits(r, required=False)), [0, 2, 3, 4, 7])
 
     def test_on_a_queue_run_the_full_gate_waits_for_ci_and_the_report(self):
         r = queue_run(9, 0, 12)

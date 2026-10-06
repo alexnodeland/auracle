@@ -16,8 +16,12 @@ name: PR checks
 # - `Issues on merge`, once a PR merges into main: a comment on each issue
 #   it advanced (`Refs #n`), each issue it finishes (`Closes #n`) closed if
 #   GitHub didn't close it, and each parent of an issue that closed told,
-#   with its count of sub-issues closed. Each line it writes is marked, so a
-#   run again adds only what an earlier run left out, and nothing twice.
+#   with its count of sub-issues closed. In the other open issues' bodies,
+#   each task box that names an issue that closed is ticked once every
+#   issue it names is closed as completed (an edit of the body:
+#   `issues: write`), and that issue's comment has a line for each box.
+#   Each line it writes is marked, so a run again adds only what an earlier
+#   run left out, and nothing twice.
 #
 # Neither runs on the merge queue's draft PRs (branches under
 # mergify/merge-queue/: .mergify.yml), whose titles and bodies are Mergify's.
@@ -88,7 +92,8 @@ jobs:
       && !startsWith(github.head_ref, 'mergify/merge-queue/')
     runs-on: ubuntu-24.04
     # Up to a minute of waiting for GitHub to close what the PR closes, and a
-    # few calls per issue.
+    # few calls per issue: a search, and for each body it ticks boxes in, a
+    # read, a write and a read 5 seconds later, up to three times.
     timeout-minutes: 5
     permissions:
       contents: read
@@ -108,5 +113,5 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           sparse-checkout: scripts
           persist-credentials: false
-      - name: Comment on what it advanced, close what it finished, tell the parents
+      - name: Comment on what it advanced, close what it finished, tell the parents, tick the boxes
         run: python3 scripts/pr_checks.py merged

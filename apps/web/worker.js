@@ -991,48 +991,6 @@ async function restoreSession(saved, farmed, stages) {
   return engine.restore_finish();
 }
 
-// ---------- "the bank already has this one" ----------
-//
-// The engine's own duplicate test is `PatchTree == PatchTree`, which is
-// structural and — deliberately — blind to `Uid` (`impl PartialEq for Uid` is
-// unconditionally true: identity travels with a node, it does not define it).
-// Reproducing that here means comparing the *shape*, not the bytes: two
-// serializations of the same tree differ in key order and in whether the uids
-// that survived a round trip are printed at all.
-//
-// So both sides are canonicalized — keys sorted, `uid` dropped, numbers put
-// through `JSON.parse` so a hand-formatted file and serde's output agree — and
-// compared as strings. Anything this gets wrong falls back to the honest
-// "it did not go in" message, which is where it was before.
-function canonTree(v) {
-  if (Array.isArray(v)) return v.map(canonTree);
-  if (v && typeof v === "object") {
-    const out = {};
-    for (const k of Object.keys(v).sort()) {
-      if (k === "uid") continue;
-      out[k] = canonTree(v[k]);
-    }
-    return out;
-  }
-  return v;
-}
-function canonJson(s) {
-  try {
-    return JSON.stringify(canonTree(JSON.parse(s)));
-  } catch (_) {
-    return null;
-  }
-}
-/** The id of the bank entry that *is* this tree, or 0. */
-function bankTwinOf(json) {
-  const want = canonJson(json);
-  if (want == null) return 0; // unparseable: not a duplicate, a bad file
-  for (const row of JSON.parse(engine.ranked())) {
-    if (canonJson(engine.tree_json_of(row.id)) === want) return row.id;
-  }
-  return 0;
-}
-
 // Why the last `refine_seed` / `refine_from` returned nothing: one of `idle`,
 // `injected`, `no_taste`, `unknown_seed`, `outside_support`, `no_move`,
 // `duplicate`, `not_admitted`. `outside_support` is the one worth a sentence
@@ -1294,8 +1252,13 @@ self.addEventListener("unhandledrejection", (ev) => {
 // resident audition, the store), and what none of them has (a row stored
 // before faces existed, a preset not yet heard) is rendered one per turn in
 // the faces lane, below `later` (`face_render`), each answered as it lands,
-// or as failed. `face_cancel` drops what is still waiting for a slot that
-// left the view, and says so. Every request is answered.
+// or as failed. One render serves every slot that asked for its key while it
+// waited (a preset's row and that preset's pool row, or the bench, share a
+// render key): each asker is on the job (`asks`) with its own source, the
+// render is made from the first that can still say what to render
+// (`faceFromAsks`), and each is answered.
+// `face_cancel` drops what is still waiting for a slot that left the view,
+// and says so. Every request is answered.
 const FACE_DB = "auracle-faces";
 const FACE_STORE = "faces";
 const FACE_META = "meta";
@@ -1304,7 +1267,7 @@ let faceNs = null;
 let faceDb = null;
 let faceDbOpening = null;
 const faceMem = new Map(); // "<ns>/<key>" -> Uint8Array
-const faceRendering = new Set(); // keys with a `face_render` queued
+const faceRendering = new Map(); // key -> its `face_render` job, while it waits
 
 const idb = (req) =>
   new Promise((resolve, reject) => {
@@ -1422,10 +1385,15 @@ async function faces(m) {
 }
 
 const faceTag = (q) => (q.id != null ? { id: q.id } : { ref: q.ref });
+const sameAsker = (a, b) => (a.id != null ? a.id === b.id : b.id == null && a.ref === b.ref);
 
 // What `faces` could not answer from memory (`later`): the memo, a resident
 // audition, the store; what none of them has is rendered in the faces lane,
-// below everything else, or said to be missing.
+// below everything else, or said to be missing. A face whose render is
+// already waiting is not queued twice: its asker joins that job (`asks`), and
+// one the player is looking at (`seen`) takes the job to the front. Before,
+// a second asker was left unanswered, and a looked-at one took the job's
+// place in the answer from whoever asked first.
 async function faceLookup(m) {
   const items = [];
   const failed = [];
@@ -1444,17 +1412,26 @@ async function faceLookup(m) {
       faceMem.set(q.key, b);
       items.push({ ...faceTag(q), key: q.key, face: b });
     } else if (m.render) {
-      if (!faceRendering.has(q.key)) {
-        faceRendering.add(q.key);
-        const job = { type: "face_render", ...q };
-        if (q.seen) lanes[FACES].unshift(job);
-        else lanes[FACES].push(job);
+      // An asker keeps its own source (its id, tree or memo row), so the
+      // render can be made from another's if the first can't any more.
+      const asker = { ...q };
+      const job = faceRendering.get(q.key);
+      if (!job) {
+        const fresh = { type: "face_render", key: q.key, ...(q.seen ? { seen: true } : {}), asks: [asker] };
+        faceRendering.set(q.key, fresh);
+        if (q.seen) lanes[FACES].unshift(fresh);
+        else lanes[FACES].push(fresh);
         schedulePump();
-      } else if (q.seen) {
-        // Already waiting for a slot, and now looked at: to the front.
-        const i = lanes[FACES].findIndex((j) => j.type === "face_render" && j.key === q.key);
-        if (i > 0) lanes[FACES].unshift({ ...lanes[FACES].splice(i, 1)[0], seen: true, ref: q.ref });
-        else if (i === 0) lanes[FACES][0].seen = true;
+      } else {
+        const had = job.asks.find((a) => sameAsker(a, asker));
+        if (!had) job.asks.push(asker);
+        else if (q.seen) had.seen = true;
+        if (q.seen && !job.seen) {
+          // Already waiting, and now looked at: to the front, every asker kept.
+          job.seen = true;
+          const i = lanes[FACES].indexOf(job);
+          if (i > 0) lanes[FACES].unshift(...lanes[FACES].splice(i, 1));
+        }
       }
     } else if (!m.quiet) {
       failed.push({ ...faceTag(q), missing: true });
@@ -1464,17 +1441,22 @@ async function faceLookup(m) {
 }
 
 // A face asked for and no longer in view (a preset row scrolled past): its
-// render, or its lookup, if still waiting, is dropped, and said to be.
+// asker leaves the render, or the lookup, still waiting, and is said to. A
+// render is dropped once nobody is left on it: another slot waiting on the
+// same key (the bench, the preset's pool row) still gets its face.
 function faceCancel(m) {
   const gone = new Set([...(m.ids || []).map((id) => `i${id}`), ...(m.refs || [])]);
   const named = (q) => gone.has(q.id != null ? `i${q.id}` : q.ref);
   const cancelled = [];
   for (let i = lanes[FACES].length - 1; i >= 0; i--) {
     const q = lanes[FACES][i];
-    if (q.type !== "face_render" || !named(q)) continue;
+    if (q.type !== "face_render" || !q.asks.some(named)) continue;
+    for (const a of q.asks) if (named(a)) cancelled.push(faceTag(a));
+    q.asks = q.asks.filter((a) => !named(a));
+    q.seen = q.asks.some((a) => a.seen);
+    if (q.asks.length) continue;
     lanes[FACES].splice(i, 1);
     faceRendering.delete(q.key);
-    cancelled.push(faceTag(q));
   }
   for (const job of lanes[LATER].filter((q) => q.type === "face_lookup")) {
     const keep = job.asks.filter((q) => !named(q));
@@ -1484,21 +1466,39 @@ function faceCancel(m) {
   post({ type: "faces", items: [], pending: [], failed: [], cancelled });
 }
 
-// One render for a face nothing else had (the faces lane).
+// What a face's render is made from: its askers' own sources, in the order
+// they asked, until one gives the face or one has been rendered. A pool
+// member cut since it asked keys nothing now and is passed over, as is a
+// memo row the memo has let go (`face_of_key` never renders); a render that
+// gives nothing (a tree that does not vet) would give nothing to anyone else
+// on its key, so it is not made twice. Before, the render was made from the
+// first asker alone, and when that one had gone every other asker was
+// failed with it.
+function faceFromAsks(q) {
+  for (const a of q.asks || [q]) {
+    if (a.id != null && faceKeyOf(a) !== q.key) continue;
+    const b = faceNow(a, true);
+    if (b || !a.memo) return b;
+  }
+  return null;
+}
+
+// One render for a face nothing else had (the faces lane), answered to
+// everyone on it.
 function faceRender(q) {
   faceRendering.delete(q.key);
+  const tags = (q.asks || [q]).map(faceTag);
   let b = faceMem.get(q.key) || null;
   if (!b) {
     try {
-      b = faceNow(q, true);
+      b = faceFromAsks(q);
     } catch (err) {
-      news({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
+      news({ type: "faces", items: [], pending: [], failed: tags });
       throw err; // fatal: the engine is down, and says so once
     }
     if (b) faceKeep(q.key, b);
   }
-  const tag = q.id != null ? { id: q.id } : { ref: q.ref };
-  news(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
+  news(b ? { type: "faces", items: tags.map((t) => ({ ...t, key: q.key, face: b })), pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: tags });
 }
 
 // After a render reaches main: its face, if main has not been sent it, looked
@@ -2986,9 +2986,13 @@ async function dispatch(m) {
           });
           // Say so when the restore had to mend something. A profile fitted on
           // values that were not measurements is the one kind of silent repair
-          // this app should never make — and the numbers are zero for every
-          // session written since the domain gate shipped, so the message only
-          // ever appears when it is true.
+          // this app should never make. The numbers count a knob or a log cell
+          // clamped into its range, a pick dropped as unreadable, and a take
+          // that couldn't be read, so they are zero for every session written
+          // since the domain gate shipped whose takes all read, and the message
+          // only ever appears when it is true. A modulation term folded on the
+          // way in is not counted (`Engine::repair_report`): it sounds as it
+          // did.
           try {
             const rep = JSON.parse(engine.repair_report());
             // Which sounds are kept for a recording that couldn't be read, so
@@ -3175,7 +3179,7 @@ async function dispatch(m) {
         pair = JSON.parse(engine.next_duel());
       }
       // `ahead`: main asked for the pair after this one, dealt while this one
-      // is on the table (see `requestAhead` in main.js); it rides back so the
+      // is on the table (deal.js `dealAhead`); it rides back so the
       // reply is not taken for the table's.
       post({ type: "duel", pair, meta, ahead: !!m.ahead });
       // The pair's sounds are not rendered here. They used to be, in this
@@ -3654,12 +3658,17 @@ async function dispatch(m) {
       // vet", which tells the player to go and find out for themselves.
       //
       // So the answer is looked up here rather than guessed at in the UI: on a
-      // 0, find the twin. Only on the failure path, so an ordinary import pays
-      // nothing for it, and over the bank's forty entries at most.
+      // 0, the engine names the twin (`bank_twin_of`). Only on the failure
+      // path, so an ordinary import pays nothing for it. The engine's, not a
+      // comparison of the file's text here: the import puts the file in normal
+      // form before it looks in the bank (a quantizer over nothing an older
+      // build saved is folded away), so the file as written can differ from
+      // the sound it is, and a twin missed that way was called a patch that
+      // failed the vet.
       post({
         type: "patch_imported",
         id,
-        duplicate: id > 0 ? 0 : bankTwinOf(m.json),
+        duplicate: id > 0 ? 0 : engine.bank_twin_of(m.json),
         views: tasteViews(),
         status: status(),
       });

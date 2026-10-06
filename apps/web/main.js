@@ -181,6 +181,10 @@ const { createGuide } = await import(`./guide.js?v=${BUILD}`);
 // The toast lane's queue (toasts.js, tests/toasts.test.mjs): created with the
 // DOM it draws on, where `note()` is, below.
 const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}`);
+// EVOLVE's dealing rules (deal.js, tests/deal.test.mjs): which answer to a
+// deal goes up, waits as the next pair or is dealt again. Created with what
+// it reads of the table where the next pair is dealt ahead, below.
+const { createDealer } = await import(`./deal.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -1988,10 +1992,12 @@ const patchView = createPatch({
   paintFace: (slot) => setFaceSlot(slot, "out", wb.rack && wb.subjectId != null ? (benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId }) : null),
   benchState: () => ({ dirty: !!wb.dirty, pending: !!editPending || !laneFree() }),
   closeCatalog: () => closeCatalog(),
+  // Whatever main's Esc chain would close first (`escFloats`, `escSteps`:
+  // the same lists, so the two cannot drift), a module in hand, a cable
+  // being dragged, or a rack control the press backs out of.
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogOpen() || plateSel != null ||
-    !$("ctx-menu").classList.contains("hidden") ||
-    !$("ovf-menu").classList.contains("hidden") ||
+    !!(armed || wire) ||
+    escFloats().some(([isOpen]) => isOpen()) || escSteps().some(([isOpen]) => isOpen()) ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
 });
 
@@ -2078,7 +2084,7 @@ worker.onmessage = (e) => {
       // unconditionally; `choose()`'s early return on it is inert here because
       // there is no pair on the table yet.
       dealing = true;
-      requestDeal();
+      dealer.deal();
       send({ type: "taste_views" });
       // A session restored with no picks in it — the saved patches a reset
       // kept — is not "your taste restored": there is none yet, and the warm
@@ -2149,7 +2155,7 @@ worker.onmessage = (e) => {
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing && !dealsOut) requestDeal();
+      if (!currentDuel && !dealing && !dealer.out) dealer.deal();
       renderFillHint();
       warmPrewarmPump();
       break;
@@ -2292,9 +2298,8 @@ worker.onmessage = (e) => {
     }
     case "duel": {
       // Every deal, a pick's or one dealt ahead, lands here in the order it
-      // was asked for (see `onDealt`).
-      dealsOut = Math.max(0, dealsOut - 1);
-      onDealt(m.pair, m.meta || null);
+      // was asked for (deal.js `dealt`).
+      dealer.dealt(m.pair, m.meta || null);
       break;
     }
     // The worker announces the start and end of every call that blocks its
@@ -2327,7 +2332,7 @@ worker.onmessage = (e) => {
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
       onRenderArrived(m.id);
       compareRenderArrived(m.id);
-      requestAhead();
+      dealer.dealAhead();
       break;
     }
     case "tree_json": {
@@ -3563,10 +3568,9 @@ function releaseRequest(request, id, req, message, fatal = false) {
       pendingEvolve = false;
       break;
     case "duel":
-      dealsOut = Math.max(0, dealsOut - 1);
       // The table waits on nothing else: it stops waiting, as it always did.
       // A deal ahead that died leaves the table as it was.
-      if (!currentDuel && dealsOut === 0) {
+      if (dealer.failed()) {
         dealing = false;
         setDuelControlsEnabled(true);
       }
@@ -4353,7 +4357,9 @@ function applyViews(next) {
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
     dealAnother();
   }
-  checkAhead();
+  dealer.check();
+  // A table with nothing to deal asks again: the pool may hold two now.
+  dealer.soundsBack();
   // New ratings move the seeds and what may be replaced, if they are marked.
   if (mayGoShown) markMayGo(true);
   // The engine owns the budget and ships it with every views post, which is
@@ -5546,6 +5552,63 @@ function attachPianoPointers(piano) {
 // and a note looked up by the character then never let go.
 const downComputerKeys = new Map(); // event.code -> midi
 const physicalKey = (e) => e.code || e.key.toLowerCase();
+
+/** What floats over the levels, each `[isOpen, close]`: Esc closes every one
+ *  that is open in one press, before anything in `escSteps`, a new patch
+ *  (patch.js, through `escBusy`), PERFORM's well modes or the model view.
+ *  `escBusy` reads this list and the chain closes from it, so the two
+ *  cannot disagree about what is waiting for Esc. The order is the order
+ *  they close in: where two hand the focus back, the later one keeps it. */
+function escFloats() {
+  const shown = (id) => !$(id).classList.contains("hidden");
+  return [
+    // A waiting handoff, or a cable half made.
+    [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
+    // A bank row's ★, folded out where it is drawn.
+    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [() => compareId != null, closeCompare],
+    [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
+    [() => shown("ovf-menu"), () => {
+      $("ovf-menu").classList.add("hidden");
+      $("ovf-btn").setAttribute("aria-expanded", "false");
+      $("ovf-btn").focus();
+    }],
+    // The scope and picture panels, never by listeners of their own: those
+    // heard Esc after this chain had put PATCH's selected module down for
+    // the same press. The focus goes back to ⋯, which they hang off (the
+    // item that opened each is in the menu, hidden now).
+    [() => panelOpen("scope-panel") || panelOpen("image-panel"), () => {
+      closeScopePanel();
+      closeImagePanel();
+      $("ovf-btn").focus();
+    }],
+    [() => shown("bank-tour"), () => { endBankTour(); $("bank-tour-btn").focus(); }],
+    [keysPopOpen, () => {
+      const inside = $("keys-pop").contains(document.activeElement);
+      setKeysPop(false);
+      if (inside) $("keys-btn").focus();
+    }],
+    // The structure menu (F2, ⋯): its own keydown leaves Esc to this chain.
+    [() => shown("ctx-menu"), closeMenu],
+  ];
+}
+
+/** After the floats, one thing a press, each `[isOpen, close]`, the first
+ *  open one closing: PATCH's menus and folds, then its chain (the
+ *  specimen's): a selected module, then the catalog; a new patch after all
+ *  of them (patch.js, through `escBusy`). */
+function escSteps() {
+  const patchHere = () => currentView === "patch" && !armed;
+  return [
+    [layoutMenuOpen, () => setLayoutMenu(false)],
+    [shelfOpen, () => setShelf(false)],
+    [() => teachOpen && currentView === "patch", () => setTeach(false)],
+    [evolveMenuOpen, () => setEvolveMenu(false)],
+    [() => patchHere() && plateSel != null, () => selectPlate(null)],
+    [() => patchHere() && catalogOpen(), () => closeCatalog()],
+  ];
+}
+
 document.addEventListener("keydown", (e) => {
   // ⌘Z: first the newest teaching act still inside its undo window, in any
   // view; then, in PATCH only, the edit undo.
@@ -5585,52 +5648,20 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it — one thing a
-    // press: a menu or a waiting handoff closed is that press spent, and
-    // PATCH's chain (selection, then the catalog) waits for the next one.
-    const handoff = !!pendingTarget || !!connectPick;
-    cancelPending();
-    endConnectPick();
-    foldStars(); // a bank row's ★, open
-    let spent = handoff;
-    if (compareId != null) { closeCompare(); spent = true; }
-    if (!$("lineage-pop").classList.contains("hidden")) {
-      setLineageOpen(false);
-      $("lineage-btn").focus();
-      spent = true;
-    }
-    if (!$("ovf-menu").classList.contains("hidden")) {
-      $("ovf-menu").classList.add("hidden");
-      $("ovf-btn").setAttribute("aria-expanded", "false");
-      $("ovf-btn").focus();
-      spent = true;
-    }
-    if (!$("bank-tour").classList.contains("hidden")) {
-      endBankTour();
-      $("bank-tour-btn").focus();
-      spent = true;
-    }
-    if (keysPopOpen()) {
-      const inside = $("keys-pop").contains(document.activeElement);
-      setKeysPop(false);
-      if (inside) $("keys-btn").focus();
-      spent = true;
-    }
-    if (!$("ctx-menu").classList.contains("hidden")) spent = true;
+    // press: whatever floats closed is that press spent, and the steps after
+    // it (PATCH's selection, then the catalog) wait for the next one. Both
+    // lists are `escFloats` and `escSteps`, which `escBusy` reads too.
+    const open = escFloats().filter(([isOpen]) => isOpen());
+    for (const [, close] of open) close();
+    // A ★ left marked for a row not drawn (another tab, a row cut) is
+    // nothing to see, so it spent nothing above; it is let go all the same.
+    foldStars();
     // What this press closed is said with `preventDefault`, so the model
     // view (shell.js, which takes Esc last) stays up for it and goes on the
     // press that has nothing nearer left to close.
-    if (spent) { e.preventDefault(); closeMenu(); return; }
-    let closed = true;
-    if (layoutMenuOpen()) setLayoutMenu(false);
-    else if (shelfOpen()) setShelf(false);
-    else if (teachOpen && currentView === "patch") setTeach(false);
-    else if (evolveMenuOpen()) setEvolveMenu(false);
-    // PATCH's chain (the specimen's): a selected module, then the catalog;
-    // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed && plateSel != null) selectPlate(null);
-    else if (currentView === "patch" && !armed) closed = closeCatalog();
-    else closed = false;
-    if (closed) e.preventDefault();
+    if (open.length) { e.preventDefault(); closeMenu(); return; }
+    const step = escSteps().find(([isOpen]) => isOpen());
+    if (step) { step[1](); e.preventDefault(); }
     closeMenu();
     return;
   }
@@ -6892,16 +6923,6 @@ $("pd-back").onclick = () => {
 // away. Normal deal latency is ~30 ms, so nobody feels the lockout.
 let dealing = false;
 
-/** Ask the engine for the next pair. The patches the player has cut go with
- *  the request, their undo windows included: a cut patch is never dealt
- *  again (the engine skips them, `next_duel_ex`). It stays in the pool until a
- *  generation replaces it, and dealing used to ignore the cut, so a sound the
- *  player had thrown out came back minutes later as a question. */
-function requestDeal() {
-  dealsOut += 1;
-  send({ type: "duel", exclude: [...cutIds] });
-}
-
 // A deal that takes longer than this says why on the dimmed cards. Most deals
 // land in ~30 ms and say nothing; during a generation a deal waits for the
 // seed being bred, up to twenty seconds, and inert cards with no reason read
@@ -6947,8 +6968,14 @@ function sayDealing(text) {
   }
 }
 
+// The pair's buttons, on EVOLVE's cards and PATCH's strip: the picks, ▶, ↻
+// and the cards' corners (⇄ circuit, ↓ patch). Off while the table has no
+// pair: each acts on the pair on the table, and with none ↓ patch did
+// nothing and ⇄ circuit hid the face for a circuit it had no sound to ask
+// for (#195).
+const DUEL_CONTROLS = ["choose-a", "choose-b", "skip-duel", "play-a", "play-b", "flip-a", "flip-b", "promote-a", "promote-b", "pd-pick-a", "pd-pick-b", "pd-skip"];
 function setDuelControlsEnabled(on) {
-  for (const id of ["choose-a", "choose-b", "skip-duel", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
+  for (const id of DUEL_CONTROLS) {
     const el = $(id);
     if (el) el.disabled = !on;
   }
@@ -6960,11 +6987,30 @@ function setDuelControlsEnabled(on) {
   else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
 }
 
+// The table's deal came back empty: the engine deals nothing when fewer than
+// two sounds in the pool may be dealt, every other one cut (each deal
+// excludes the cuts, `deal_duel_except`). The cards stay off and say so at
+// once, since nothing is on its way, and deal again by themselves when a
+// sound may have come back (deal.js `soundsBack`: a cut taken back, or the
+// pool changed). It used to put up nothing as if it were a pair, and the
+// buttons came back live over the pair just put away (#195).
+const NOTHING_TO_PAIR = "Nothing to pair. Fewer than two sounds are left to deal.";
+function nothingToDeal() {
+  duelMeta = null;
+  dealing = false;
+  setDuelControlsEnabled(false);
+  sayDealing(NOTHING_TO_PAIR);
+  retireForecast();
+  clearPairGuess();
+  renderPlayDuel();
+  // A refit armed by the last pick waited for this deal (`commitAndSettle`).
+  settleFit();
+}
+
 /** Put a dealt pair on the table: a deal's reply, or the pair dealt ahead.
  *  The one place a pair goes up, so anything owed to a pair being *shown*
  *  belongs here. */
 function placePair(pair, meta) {
-  leftPair = null;
   currentDuel = pair;
   // Randomise the presented side: the engine's first pick was always A,
   // always left, always ←. `duel_pred` is computed at record time from
@@ -6991,145 +7037,49 @@ function placePair(pair, meta) {
   // The pair is on the table; a refit armed by the last vote can now be
   // enqueued *behind* this pair's audio rather than in front of it.
   settleFit();
-  aheadRetries = 0;
-  // A pair waiting that is the one just put up is no next pair.
-  checkAhead();
-  requestAhead();
+  // A pair waiting that is the one just put up is no next pair, and the one
+  // after is dealt.
+  dealer.placed(currentDuel);
 }
 
 // ---------- the next pair, dealt ahead ----------
-// A pick used to put the table away and wait for the engine to deal: ~30 ms
-// on a quiet engine, but a whole seed's walk (up to about 20 s) while a
-// generation ran, and the new pair's sounds then rendered after it. So while
-// a pair is on the table the next one is dealt and both its sounds fetched,
-// and a pick or "another pair" swaps it in at once; the one after is dealt
-// in the background. The pair is chosen before the pick is known, which is
-// what already happened (the pick is held in its undo window, and the deal
-// used to go out before it was logged): under the default rule every pair is
-// dealt at random, and under bald/thompson it is chosen against the current
-// posterior, which the model already lets lag its log by up to six picks.
-//
-// Asked for only once the table's own two sounds are here, so the pair in
-// front of the player never waits behind the next one's. The next pair's
-// sounds are fetched in the background (`bg`): the worker renders them
-// behind every gesture waiting on it.
-//
-// The worker answers deals in the order they were asked for, and `onDealt`
-// takes each answer on its own terms rather than by which request asked for
-// it: the first to land while the table waits goes up, and any other waits as
-// the next pair. A pick made while a deal ahead is still out (a generation
-// holds deals behind the seed being bred) waits for that deal rather than
-// asking for a second. It used to ask for one, keep the first answer as "the
-// next" because a pick's deal was expected, and put the second up: the table
-// ran P, R, Q, with the cards dimmed through a deal and two renders nobody
-// needed, and when an answer landed changed what a seeded session showed
-// (ADR-001). Now the pairs go up in the order the engine dealt them.
-let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
-let dealsOut = 0; // deals asked for and not yet answered
-let aheadRetries = 0; // deals refused since the table last changed
-let leftPair = null; // the pair ↻ or a lost side just put away, until the next goes up
+// While a pair is on the table the next one is dealt and both its sounds
+// fetched, so a pick or "another pair" swaps it in at once (deal.js says why,
+// and holds the rules: which answer goes up, waits or is dealt again). Here
+// is what the dealer reads and does.
 const goneIds = new Set(); // ids that have left the pool, as views said so
-
-/** A side of the pair was cut (its undo window included) after the deal was
- *  asked for: the deal excluded the cuts made before it, and this checks
- *  the ones made since. */
-function holdsCut(pair) {
-  return pair.some((id) => cutIds.has(id));
-}
-
-function aheadUsable(pair) {
-  if (!pair || pair.length !== 2) return false;
-  // A patch cut since is never dealt.
-  if (holdsCut(pair)) return false;
-  // Replaced since (a generation, a preset load or an import can replace a
-  // patch while the pair waits): `applyViews` drops the pair when one of
-  // its ids leaves the pool. The bank's rows can lag the pool while it
-  // fills, so a missing row is not taken for a replaced patch.
-  if (pair.some((id) => goneIds.has(id))) return false;
-  // Not the question on the table, the one just put away, or the one being
-  // held in an undo window.
-  const same = (p) => p && p.includes(pair[0]) && p.includes(pair[1]);
-  return !same(currentDuel) && !same(leftPair) && !same(pendingVote && pendingVote.pair);
-}
-
-function requestAhead() {
-  if (ahead || dealsOut || !currentDuel || dealing) return;
-  const heard = (id) => renders.has(id) || renderFailures.has(id);
-  if (!currentDuel.every(heard)) return;
-  dealsOut += 1;
-  send({ type: "duel", exclude: [...cutIds], ahead: true });
-}
-
-/** A deal's answer. With the table waiting it goes up; with a pair on the
- *  table it waits as the next one, its sounds fetched, unless one already
- *  waits. */
-function onDealt(pair, meta) {
-  if (!currentDuel) {
-    if (!pair || aheadUsable(pair)) return void placePair(pair, meta);
-    // Dealt before a cut, or the pair just put away: the next answer is
-    // already on its way, or one more is asked for.
-    if (dealsOut) return;
-    // A pair holding a cut sound is never put up, however many tries it
-    // takes: it is dealt again. That ends, because every deal excludes the
-    // cuts made before it was asked for: only a cut made while a deal is out
-    // brings its answer back here, once per cut. It used to go up after the
-    // third try like any other refusal.
-    if (holdsCut(pair)) return void requestDeal();
-    // A pool too small to deal anything else puts it up after a few tries.
-    if (aheadRetries++ < 3) return void requestDeal();
-    return void placePair(pair, meta);
-  }
-  // No pair: the engine dealt nothing (fewer than two sounds it may deal),
-  // so nothing new waits, take-back or not. A pair already waiting: the one a
-  // taken-back pick had put up, back as the next (`retractVote`), and this
-  // answer, the deal asked for behind that pair, is thrown away unseen.
-  if (!pair || ahead) return;
-  if (!aheadUsable(pair)) {
-    // The engine may deal the very pair on the table again (a small pool
-    // early in a session does, often): ask again, a few times.
-    if (aheadRetries++ < 3) requestAhead();
-    return;
-  }
-  ahead = { pair, meta };
+const dealer = createDealer({
+  table: () => currentDuel,
+  held: () => (pendingVote ? pendingVote.pair : null),
+  cut: cutIds,
+  gone: goneIds,
+  heard: (id) => renders.has(id) || renderFailures.has(id),
+  // The patches the player has cut go with every deal, their undo windows
+  // included: a cut patch is never dealt again (the engine skips them,
+  // `deal_duel_ex`). It stays in the pool until a generation replaces it,
+  // and dealing used to ignore the cut, so a sound the player had thrown out
+  // came back minutes later as a question.
+  ask: (ahead) => send(ahead ? { type: "duel", exclude: [...cutIds], ahead: true } : { type: "duel", exclude: [...cutIds] }),
+  place: (pair, meta) => placePair(pair, meta),
   // In the background (`bg`, see `requestPairRendersNow`): nobody hears
   // these until the next pick, and a gesture must not wait behind them.
-  for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
-}
-
-/** Swap the pair dealt ahead onto the table; false when there is none that
- *  may still be dealt. */
-function takeAhead() {
-  const a = ahead;
-  ahead = null;
-  if (!a || !aheadUsable(a.pair)) return false;
-  placePair(a.pair, a.meta);
-  return true;
-}
-
-/** A pair that may no longer be dealt (cut, or replaced) is dropped, and the
- *  next is asked for. */
-function checkAhead() {
-  if (ahead && !aheadUsable(ahead.pair)) {
-    ahead = null;
-    requestAhead();
-  }
-}
+  fetch: (pair) => {
+    for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
+  },
+  nothing: () => nothingToDeal(),
+});
 
 /** Put the pair on the table away and deal another: a pick does this, and so
  *  does "another pair" (↻), which used to leave the old pair up with buttons
  *  that looked live and did nothing until the deal landed. The pair dealt
- *  ahead goes up at once when there is one; the pair put away is remembered
- *  until the next goes up, so neither it nor a deal of it goes straight back. */
+ *  ahead goes up at once when there is one; otherwise the cards go inert
+ *  until a deal lands (deal.js `another`). */
 function dealAnother() {
-  leftPair = currentDuel;
+  const prev = currentDuel;
   currentDuel = null;
-  aheadRetries = 0;
-  if (takeAhead()) return;
+  if (dealer.another(prev)) return;
   dealing = true;
   setDuelControlsEnabled(false);
-  // A deal already out (one asked for ahead) is the next pair: its answer
-  // goes up when it lands. Only with none out is one asked for.
-  if (!dealsOut) requestDeal();
 }
 
 // ---------- taking back a teaching act ----------
@@ -7209,27 +7159,10 @@ function retractVote() {
     return true;
   }
   // The pick's pair goes back on the table, and which pair is next depends
-  // on what went up in its place.
-  //
-  // A pair went up (the one dealt ahead, or a deal that landed inside the
-  // window): it waits as the next one, sounds and all, when it may
-  // (`aheadUsable`). The player has seen it, so it comes before any pair
-  // dealt behind it, and the deal asked for behind it, if one was, is thrown
-  // away unseen: one that has landed is overwritten here, and one still out
-  // lands with a pair waiting and is dropped (`onDealt`). The pair after it
-  // is dealt when it goes up (`placePair`). When it may not wait (as when it
-  // is this same pair, put up again by a pool too small to deal another),
-  // nothing is thrown away: a deal behind it that has landed stays the next
-  // pair, and one still out becomes it.
-  //
-  // Nothing went up (the table was waiting on a deal): that deal lands with
-  // this pair on the table, so it becomes the next pair (`onDealt`) rather
-  // than covering this one.
+  // on what went up in its place (deal.js `retract`).
   const displaced = currentDuel;
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
-  leftPair = null;
-  if (displaced && aheadUsable(displaced)) ahead = { pair: displaced, meta: duelMeta };
   dealing = false;
   setDuelControlsEnabled(true);
   setFlip("a", false);
@@ -7239,9 +7172,10 @@ function retractVote() {
   setDuelSelection(null);
   dealCards();
   renderPlayDuel();
-  // Its sounds are resident, so no render will land to ask for the pair
-  // after it: asked here, unless one is waiting or on its way.
-  requestAhead();
+  // What went up in its place waits as the next pair. Its sounds are
+  // resident, so no render will land to ask for the pair after it: asked
+  // here, unless one is waiting or on its way.
+  dealer.retract(displaced, duelMeta);
   return true;
 }
 
@@ -8376,11 +8310,11 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
-  // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
+  // A cut patch is never dealt again (every deal sends the cut ids), and
   // that includes the pair on the table: a side the player just threw out is
   // not a question worth asking, so another pair is dealt the way ↻ deals one.
   // …and so does the pair dealt ahead: it is dropped, and dealt again.
-  checkAhead();
+  dealer.check();
   if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
   let toast = null;
   let back = null;
@@ -8406,6 +8340,8 @@ function cutRow(r) {
     cutIds.delete(r.id);
     renderBank();
     scheduleSave();
+    // A table with nothing to deal asks again: this sound may be dealt.
+    dealer.soundsBack();
   };
   // ⌘Z reaches it too, like a pick's: the newest teaching act first.
   back = holdTakeBack(() => {
@@ -10771,8 +10707,11 @@ function chainRoute(x1, y1, x2, y2) {
 }
 
 /** The `d` for one cable, given where the plates are *now*. `null` when either
- *  end is missing, which is a wire the caller should skip rather than draw. */
-function wirePathD(w, pos, modByKey) {
+ *  end is missing, which is a wire the caller should skip rather than draw.
+ *  `rest` decides which way the cable runs: where the plates are now, unless
+ *  the caller is the rack's motion drawing a cable fading in
+ *  (`startRackMotion`), which passes where they come to rest. */
+function wirePathD(w, pos, modByKey, rest = pos) {
   const from = pos.get(w.from);
   const to = pos.get(w.to);
   if (!from || !to) return null;
@@ -10813,7 +10752,32 @@ function wirePathD(w, pos, modByKey) {
   // tightest gap either flow layout can produce is the 28px gutter, so this
   // branch is unreachable from chain or compact and cannot change how an
   // existing patch draws.
-  if (x2 < x1 + 8) {
+  //
+  // Which of the two runs a cable takes is decided from `rest`, which is
+  // where its plates are this frame (`pos`) for every cable but one fading
+  // in: the rack's motion (`startRackMotion`) hands that one where its
+  // plates come to rest. Within one sound a slide can take a module past the
+  // one newly plugged into it: an insert slides the amp out from under the
+  // module fading in where it was, and ⌘Z or BACK TO after NEW PATCH slides
+  // it back past its source, which fades in where it rests. Decided from the
+  // frame, the new cable took this run while the amp was behind its source
+  // and jumped to the curve as it came out, about half way through the slide
+  // (#228). Decided at rest, it is the curve on every frame. While its ends
+  // are crossed that curve's control points sit 18 out from each jack, so it
+  // is a short hook out of each and a run straight back between them, over
+  // whatever lies between, drawn while the cable is still faint. A cable
+  // already on the rack has no fade to hide that run in, so it keeps
+  // deciding from the frame: switching a layout by hand to chain or compact
+  // (or reset positions) slides a module put behind its source out from
+  // behind it along this run, then curves. No slide in chain or compact, or
+  // between them, reaches this branch: a cable that stays on the rack has
+  // the gap between its jacks go on one ease from a gutter or more to a
+  // gutter or more, and one fading in is decided at rest. A plate
+  // dragged by hand is redrawn from where the hand has it (`movePlateTo`),
+  // so a module put behind its source routes as it is dragged.
+  const rf = rest.get(w.from) || from;
+  const rt = rest.get(w.to) || to;
+  if (rt.x < rf.x + rf.w + 8) {
     const yb = Math.max(from.y + from.h, to.y + to.h) + 26;
     return orth([[x1, y1], [x1 + 26, y1], [x1 + 26, yb], [x2 - 26, yb], [x2 - 26, y2], [x2, y2]]);
   }
@@ -10830,6 +10794,25 @@ function wirePathD(w, pos, modByKey) {
   const dx = Math.min(Math.max(span * 0.5, 18), 120);
   const sag = Math.abs(y2 - y1) < 2 ? Math.min(span * 0.08, 14) : 0;
   return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+}
+
+/** Put a modulation cable's words (`t`) beside its middle as its ink is
+ *  drawn now: half its length along it, 8 right and 4 down. The build places
+ *  them, and whatever moves the cable without a build moves them with it:
+ *  each frame of the rack's motion (`startRackMotion`) and a plate dragged
+ *  by hand (`movePlateTo`). Without that they stayed where the build put
+ *  them, where the cable rests, while the cable slid in from up to 195 units
+ *  away, and stayed behind a dragged plate until it was let go. False when
+ *  the ink has no point to give. */
+function placeCableWords(t, ink) {
+  let p = null;
+  try {
+    p = ink.getPointAtLength(ink.getTotalLength() * 0.5);
+  } catch (_) { p = null; }
+  if (!p) return false;
+  t.setAttribute("x", (p.x + 8).toFixed(1));
+  t.setAttribute("y", (p.y + 4).toFixed(1));
+  return true;
 }
 
 /** A modulation cable's words: the host's mod depth and the modulator's rate,
@@ -11181,8 +11164,9 @@ function renderSubject() {
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
     fam("");
-    metaEl.textContent =
-      benchBeforeAudition != null ? `← back returns to ${nameOf(benchBeforeAudition)}` : "";
+    // A state, in a span as every other is: under the model view the belief
+    // line comes first, and this follows it after a "·" (style.css).
+    metaSpans(metaEl, benchBeforeAudition != null ? [["", `← back returns to ${nameOf(benchBeforeAudition)}`]] : []);
     return;
   }
   nameEl.classList.remove("hearing");
@@ -11200,7 +11184,9 @@ function renderSubject() {
     nameEl.textContent = fresh.name;
     nameEl.title = fresh.name;
     fam("from nothing");
-    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
+    // Its counts are what the belief line stands in for under the model
+    // view (`pt-made`); what is happening to it stays after it.
+    metaSpans(metaEl, [["pt-made", fresh.made], ...[...fresh.states, laneWaitingText()].filter(Boolean).map((t) => ["", t])]);
     return;
   }
   // The rack's own counts: modules in the audio path (not the amp, not an
@@ -11231,15 +11217,21 @@ function renderSubject() {
   // model view's belief line can stand in for the counts alone (`pt-made`,
   // style.css) and every state stays in sight beside it.
   const lf = lineageFacts();
-  const parts = [
+  metaSpans(metaEl, [
     ...(lf ? [["pt-from", bredLine(lf.seedName, lf.changes)]] : []),
     ["pt-made", `${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`],
     ...states.map((t) => ["", t]),
-  ];
+  ]);
+  syncEditBar();
+}
+
+/** PATCH's subtitle, one span per part (`[class, words]`), each after the
+ *  first with its "·", so the model view's belief line can stand in for the
+ *  counts alone (`pt-made`) and every state stays in sight beside it. */
+function metaSpans(metaEl, parts) {
   metaEl.innerHTML = parts
     .map(([cls, t], i) => `<span class="pm${cls ? ` ${cls}` : ""}">${i ? `<i class="pm-sep"> · </i>` : ""}${esc(t)}</span>`)
     .join("");
-  syncEditBar();
 }
 
 /** The edit bar (`#pt-editbar`): shown once the bench has been edited, as
@@ -11477,13 +11469,8 @@ function buildRack(svg, rack, opts) {
       if (it.w.kind !== "mod" || modByKey.get(it.w.to)?.is_mod) continue;
       const text = modCableText(it.w, modByKey, rack.wires);
       if (!text) continue;
-      let p = null;
-      try {
-        const len = it.inkEl.getTotalLength();
-        p = it.inkEl.getPointAtLength(len * 0.5);
-      } catch (_) { p = null; }
-      if (!p) continue;
-      const t = svgEl("text", { x: (p.x + 8).toFixed(1), y: (p.y + 4).toFixed(1) }, "mod-cable-label");
+      const t = svgEl("text", {}, "mod-cable-label");
+      if (!placeCableWords(t, it.inkEl)) continue;
       t.textContent = text;
       wireLayer.appendChild(t);
       it.labelEl = t;
@@ -12440,6 +12427,7 @@ function startRackMotion(before) {
   // plate and cable enters, and nothing leaves.
   const ghosts = before.ghosts;
   const arriving = rackFrame.wires.filter((it) => !before.wids.has(it.wid));
+  const fadingIn = new Set(arriving);
   if (!moves.length && !enters.length && !arriving.length && !ghosts.length) return false;
 
   const moveMs = motionMs("--d-move");
@@ -12506,6 +12494,12 @@ function startRackMotion(before) {
     // did not move, interpolated ones for everything that did. The cables are
     // then re-routed from it, which is the difference between "the patch is
     // deforming" and "the plates are sliding out from under their wiring".
+    // A cable fading in takes the run it rests in (`rackFrame.pos`), so it
+    // does not change shape as it appears; a cable already on the rack takes
+    // its run from this frame (`wirePathD`, at its backwards branch). What
+    // sits on a cable goes where it is drawn on this frame: a modulation
+    // cable's words (`placeCableWords`) and an audio cable's level mark
+    // (patch.js `platesMoving`).
     const at = new Map(rackFrame.pos);
     for (const it of moves) {
       it.cx = it.ox + (it.x - it.ox) * e;
@@ -12516,12 +12510,22 @@ function startRackMotion(before) {
       at.set(it.key, { ...rackFrame.pos.get(it.key), x: it.cx, y: it.cy });
     }
     for (const it of rackFrame.wires) {
-      const d = wirePathD(it.w, at, rackFrame.mods);
+      const d = fadingIn.has(it)
+        ? wirePathD(it.w, at, rackFrame.mods, rackFrame.pos)
+        : wirePathD(it.w, at, rackFrame.mods);
       if (d == null) continue;
       it.caseEl.setAttribute("d", d);
       it.inkEl.setAttribute("d", d);
+      if (it.labelEl) placeCableWords(it.labelEl, it.inkEl);
     }
-    if (u < 1) { rackTween = requestAnimationFrame(step); return; }
+    if (u < 1) {
+      // As the build lands (the first call, below) the marks are not drawn
+      // yet: `patchView.rackBuilt`, after it, draws them on the cables as
+      // this frame has them, and the frames after carry them.
+      patchView.platesMoving();
+      rackTween = requestAnimationFrame(step);
+      return;
+    }
     rackTween = null;
     // Hand the plates back to their `transform` attribute, which has held the
     // final position all along — the last frame already agrees with it, so
@@ -12585,6 +12589,7 @@ function movePlateTo(it, x, y) {
     if (d == null) continue;
     w.caseEl.setAttribute("d", d);
     w.inkEl.setAttribute("d", d);
+    if (w.labelEl) placeCableWords(w.labelEl, w.inkEl);
   }
   patchView.platesMoved();
 }
@@ -13181,7 +13186,8 @@ syncLodBtn();
 function beliefResolved(m, sup) {
   const spec = MOD_BY_KIND[m.kind];
   if (!spec || !spec.phi) return null;
-  const t = nbTheta(m.kind);
+  // The patch's own style, as its worth chips read it (`benchTheta`).
+  const t = benchTheta(m.kind);
   if (beliefState(t, sup.byPhi[spec.phi] || 0) !== "resolved") return null;
   return { spec, t };
 }
@@ -15495,7 +15501,10 @@ $("ctx-menu").addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowUp") return go(i <= 0 ? items.length - 1 : i - 1);
   if (ev.key === "Home") return go(0);
   if (ev.key === "End") return go(items.length - 1);
-  if (ev.key === "Escape") { ev.preventDefault(); return closeMenu(); }
+  // Esc is left to main's Esc chain, which closes the menu as one of
+  // `escFloats` (the focus back where `closeMenu` puts it) and spends the
+  // press there. Closed here, it was gone before the chain looked, so the
+  // chain took the press for the next thing: PATCH's selected module.
   // Type-ahead: the verbs are words, and a menu of words that cannot be
   // reached by typing them is a menu that only a mouse can read.
   if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
@@ -18510,11 +18519,13 @@ function specRest() {
 /** The kind the dock is currently describing, or null for the resting line. */
 let specSubject = null;
 
-/** Everything both surfaces say about a module, derived once. */
-function specParts(m) {
+/** Everything both surfaces say about a module, derived once. Its lean is
+ *  read with `theta`: your taste across the bank (`nbTheta`) in the
+ *  catalog, the patch's own style (`benchTheta`) for a module in it. */
+function specParts(m, theta = nbTheta) {
   const { byPhi, total } = nbSupport();
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
-  const t = nbTheta(m.kind);
+  const t = theta(m.kind);
   // Several modules share one coordinate on purpose (see structural.rs). Saying
   // "the model likes distortion" when the coefficient cannot separate it from a
   // wavefolder would be the surface claiming a resolution the model lacks.
@@ -18778,7 +18789,7 @@ function moduleModelHTML(mod) {
     ? `<span class="pr-part"><b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ` +
       `${PRICE_SIGN(c.contribution)} of this patch’s utility.</span><br>`
     : "";
-  return `<div class="pr-model sd-model mono">${part}${specParts(spec).belief}</div>`;
+  return `<div class="pr-model sd-model mono">${part}${specParts(spec, benchTheta).belief}</div>`;
 }
 
 // ---- the selection: plates on the canvas ----
@@ -18861,21 +18872,32 @@ function hoverPlate(key) {
 // guess line above the rack — deliberately, so "drive +0.09" up there and
 // "+0.04" down here are the same kind of quantity and can be added.
 
-/** The θ row a placement is priced from — under the **bench's** lens, so the
- *  price and the number it promises to move come from the same decomposition.
- *  Falls back to the lens that claims most of the bank before the first bench
- *  featurize, which is the same one the chips read. */
-function priceTheta(kind) {
+/** The θ row the patch in hand is read from, for a module's family: under
+ *  the **bench's** style (the one that rates the patch highest, `belief`'s),
+ *  so a price, the number it promises to move and the belief line's parts
+ *  come from the same decomposition. Falls back to the style that claims
+ *  most of the bank before the bench's first rating. Under the model view
+ *  PATCH reads its leans (each plate's edge), its worth chips and a selected
+ *  module's lean from this one row, so a settled chip never sits under "no
+ *  settled lean" (#153); the catalog's θ cell speaks for your taste across
+ *  the bank (`nbTheta`, the largest style). */
+function benchTheta(kind) {
   const phi = MOD_BY_KIND[kind]?.phi;
   if (!phi || !views || !views.styles || views.styles.length === 0) return null;
-  const scale = views.scale ? views.scale[phi] : null;
-  if (!scale || !(scale > 0)) return null;
   const k =
     belief.styleK != null && views.styles[belief.styleK] ? belief.styleK : (activeStyles()[0] || {}).k;
   const s = k != null ? views.styles[k] : null;
   const row = s && s.theta ? s.theta.find((t) => t.name === phi) : null;
   if (!row) return null;
-  return { phi, scale, style: k, mean: row.mean, std: row.std, share: s.share };
+  return { phi, style: k, mean: row.mean, std: row.std, share: s.share };
+}
+
+/** The θ row a placement is priced from (`benchTheta`), with its scale. */
+function priceTheta(kind) {
+  const t = benchTheta(kind);
+  const scale = t && views.scale ? views.scale[t.phi] : null;
+  if (!scale || !(scale > 0)) return null;
+  return { ...t, scale };
 }
 
 /** What placing `kind` at `key` is worth, and — when it is not a number — why.
@@ -21216,6 +21238,18 @@ function startScope() {
 // ---------- the scope's settings panel ----------
 // Hung off the header's ⋯ rather than given its own gear on the rack: it is a
 // preference, and preferences live where the app's other preferences live.
+
+/** Whether the panel `id` (the scope's, the picture's) is open. */
+function panelOpen(id) {
+  const el = $(id);
+  return !!el && !el.classList.contains("hidden");
+}
+
+function closeScopePanel() {
+  $("scope-panel")?.classList.add("hidden");
+  $("scope-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function scopePanelInit() {
   const panel = $("scope-panel");
   if (!panel) return;
@@ -21242,10 +21276,7 @@ function scopePanelInit() {
   bind("sp-trigger", (e) => { e.checked = !!scopeState.trigger; }, (e) => { scopeState.trigger = e.checked; });
   bind("sp-glow", (e) => { e.checked = !!scopeState.glow; }, (e) => { scopeState.glow = e.checked; });
   bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("scope-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeScopePanel;
   $("scope-close").onclick = close;
   $("scope-btn").onclick = (ev) => {
     ev.stopPropagation();
@@ -21262,9 +21293,7 @@ function scopePanelInit() {
     if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
     close();
   });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { close(); $("scope-btn").focus(); }
-  });
+  // Esc closes it in main's Esc chain, with whatever else floats.
 }
 
 // Audio cables only look alive while audio is actually flowing — before this,
@@ -23034,6 +23063,11 @@ async function runCardExport() {
   }
 }
 
+function closeImagePanel() {
+  $("image-panel")?.classList.add("hidden");
+  $("image-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function imagePanelInit() {
   const panel = $("image-panel");
   if (!panel) return;
@@ -23048,14 +23082,12 @@ function imagePanelInit() {
   bind("ix-scale", (e) => { e.value = String(imageState.scale); }, (e) => { imageState.scale = Number(e.value); });
   bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
   bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("image-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeImagePanel;
   // Focus goes back to the ⋯, not to the menu item that opened this: the item
   // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
   // and `focus()` on a `display:none` element is a no-op that drops the
   // keyboard on the body. The ⋯ is the visible control this panel hangs off.
+  // (Esc does the same, in main's Esc chain, for this panel and the scope's.)
   const dismiss = () => { close(); $("ovf-btn")?.focus(); };
   $("image-close").onclick = dismiss;
   $("ix-go").onclick = runImageExport;
@@ -23063,7 +23095,7 @@ function imagePanelInit() {
     ev.stopPropagation();
     $("ovf-menu").classList.add("hidden");
     $("ovf-btn").setAttribute("aria-expanded", "false");
-    $("scope-panel")?.classList.add("hidden");
+    closeScopePanel();
     const shut = panel.classList.toggle("hidden");
     $("image-btn").setAttribute("aria-expanded", String(!shut));
     if (!shut) { imageSync(); $("ix-scope").focus(); }
@@ -23073,9 +23105,6 @@ function imagePanelInit() {
     if (panel.classList.contains("hidden")) return;
     if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
     close();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) dismiss();
   });
 }
 
@@ -23724,7 +23753,12 @@ document.addEventListener("keydown", (e) => {
   // Same optional-chaining as the note-key guard: a keydown targeting the
   // document has no `closest`, and the throw stopped `?` opening help.
   if (e.key === "?" && !e.target?.closest?.("input")) showHelp(true);
-  if (e.key === "Escape") showHelp(false);
+  // Only a press that closed it is spent (`preventDefault`): with the card
+  // away, Esc goes on to what it closes elsewhere, the model view last.
+  if (e.key === "Escape" && !$("help").classList.contains("hidden")) {
+    e.preventDefault();
+    showHelp(false);
+  }
 });
 
 // ---------- resize ----------

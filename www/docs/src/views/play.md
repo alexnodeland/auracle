@@ -154,7 +154,10 @@ it* instead; when it would not pass the safety check, *without it, it fails
 the safety check*. The amp and an empty socket have no outline.
 
 **The cables.** Each green cable curves from one module's output to the next
-one's input, carries light by the level the engine measured on it, and a mark
+one's input. Into a module you've placed [by hand](../rack.md#layout) anywhere
+but clear to the right of the module feeding it, the cable runs backwards,
+below both in straight lines, on purpose: it says at a glance that it goes
+back. Each carries light by the level the engine measured on it, and a mark
 on its middle lights a bar for each third of the meter's range; point at it
 for the number. A module with two inputs names them beside the cables that
 arrive (*a*, *b*, or *carrier* and *mod*). A modulation cable is dashed amber,
@@ -331,6 +334,9 @@ has, not which is which, so two filters share one figure (*VCOs −0.07 · share
 by 2*), the same wherever they sit. A figure the model isn't sure of is dashed
 and says *a guess*; a family too thin to price gets no chip. It is the price
 the catalog quotes for a module in your hand.
+
+The edges, the chips and a selected module's note all read one style: the
+one that rates the patch highest, which the readout names.
 
 **The guess's runners-up.** Beside the model's guess, the two it ranks next,
 fainter and smaller, each with its lower bound (*2 · DELAY, lower bound
