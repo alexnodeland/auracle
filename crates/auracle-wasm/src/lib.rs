@@ -211,12 +211,6 @@ impl RenderJob {
     pub fn take_samples(&mut self) -> Vec<f32> {
         std::mem::take(&mut self.samples)
     }
-
-    /// Number of samples still held (0 after [`RenderJob::take_samples`]).
-    #[wasm_bindgen(getter)]
-    pub fn n_samples(&self) -> usize {
-        self.samples.len()
-    }
 }
 
 /// The persistent render cache's namespace for `phrase_json`, or `""` if the
@@ -1221,15 +1215,6 @@ impl WasmEngine {
             .collect()
     }
 
-    /// The term of pending bank entry `index`, as JSON (`""` if unknown) —
-    /// the restore path's re-issue hook.
-    pub fn bank_draw_json(&self, index: usize) -> String {
-        self.pending_bank
-            .get(index)
-            .and_then(|e| serde_json::to_string(&e.tree).ok())
-            .unwrap_or_default()
-    }
-
     /// Reinstate one restored bank entry from an off-engine featurization.
     /// Returns false for an unknown index or a result that did not survive —
     /// a bank entry that no longer vets is dropped, exactly as the serial
@@ -1633,12 +1618,6 @@ impl WasmEngine {
     pub fn fit(&mut self) {
         let mut rng = self.rng.fit(self.engine.log.len());
         self.engine.fit_posterior(&mut rng);
-    }
-
-    /// One whole generation of taste-guided refinement, serially (renders —
-    /// worker!). The same jobs, walk and absorption as the farm path.
-    pub fn refine(&mut self) {
-        self.engine.refine(&mut self.rng.refine);
     }
 
     /// Open a generation with its jobs kept in the engine; returns the parent
@@ -2421,44 +2400,6 @@ impl WasmEngine {
             &self.engine.belief(),
             r#"{"ranked":[],"seeds":[],"may_replace":[]}"#,
         )
-    }
-
-    /// Display name of one candidate (user-given, else musical).
-    pub fn name_of(&self, id: u32) -> String {
-        self.engine
-            .display_names()
-            .get(&(id as u64))
-            .cloned()
-            .unwrap_or_default()
-    }
-
-    /// **Why this patch scores what it does**, as JSON, or `null` before the
-    /// first fit / for an unknown id:
-    ///
-    /// ```json
-    /// {"id":12,"style":1,"style_name":"Dark Drones",
-    ///  "utility":0.84,"utility_std":0.31,
-    ///  "mix_utility":0.91,"responsibility":0.86,
-    ///  "contributions":[{"name":"centroid_mean","theta":0.42,
-    ///                    "phi_std":1.01,"contribution":0.42}, …]}
-    /// ```
-    ///
-    /// Contributions are sorted by descending |contribution| and sum exactly
-    /// to `utility` — utility is linear within a lens, so this is an exact
-    /// decomposition rather than a surrogate approximation.
-    ///
-    /// **Draw `mix_utility` as the score.** It is the value `ranked()` sorts
-    /// the bank by; `utility` is the lens-conditional quantity the
-    /// contributions explain, and it is always ≤ `mix_utility`. Rendering
-    /// `utility` beside a row ranked by `mix_utility` shows a number that
-    /// disagrees with its own list. `responsibility` says how much that
-    /// distinction matters for this patch: near 1 the two coincide, well
-    /// below 1 the patch sits between styles.
-    pub fn explain(&self, id: u32) -> String {
-        match self.engine.explain(id as u64) {
-            Some(e) => serde_json::to_string(&e).unwrap(),
-            None => "null".into(),
-        }
     }
 
     /// Prequential calibration as JSON — a **proper** score, replacing the
@@ -3451,8 +3392,24 @@ impl WasmEngine {
         }
     }
 
-    /// The exact per-feature decomposition of that number (`null` before the
-    /// first fit). Same shape as [`Self::explain`], for the bench.
+    /// The exact per-feature decomposition of that number, as JSON, or
+    /// `null` before the first fit (`auracle_session::Engine::explain_phi`):
+    ///
+    /// ```json
+    /// {"id":0,"style":1,"style_name":"Dark Drones",
+    ///  "utility":0.84,"utility_std":0.31,
+    ///  "mix_utility":0.91,"responsibility":0.86,
+    ///  "contributions":[{"name":"centroid_mean","theta":0.42,
+    ///                    "phi_std":1.01,"contribution":0.42}, …]}
+    /// ```
+    ///
+    /// Contributions are sorted by descending |contribution| and sum exactly
+    /// to `utility`, which is linear within a lens, so this is an exact
+    /// decomposition rather than a surrogate. **Draw `mix_utility` as the
+    /// score**: it is what the bank is ranked by and what
+    /// [`Self::edit_utility`] calls `u`; `utility` is the lens-conditional
+    /// quantity the contributions explain, never above it, and
+    /// `responsibility` says how far apart the two are for this patch.
     pub fn edit_explain(&self) -> String {
         match self
             .bench_phi
@@ -3493,19 +3450,6 @@ impl WasmEngine {
         };
         self.engine
             .log_event_detail(kind, id as u64, value, detail, before, after);
-    }
-
-    /// Clear the workbench.
-    pub fn edit_cancel(&mut self) {
-        self.guesses.clear_taken();
-        self.bench_tree = None;
-        self.bench_render = None;
-        self.bench_original = None;
-        self.guess_key = None;
-        self.bench_vet_ok = false;
-        self.bench_vet_silent = false;
-        self.bench_phi = None;
-        self.bench_phi_prev = None;
     }
 
     fn phrase(&self) -> PhraseSpec {
