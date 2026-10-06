@@ -92,6 +92,24 @@ fn a_named_group_at_rho_zero_is_the_flat_program() {
     assert!(fit(&on) != draws, "a group at ρ = 0.25 changed nothing");
 }
 
+/// A fused group that names a coordinate φ does not have (a config saved
+/// under a longer φ) is the group of the coordinates it does name: the
+/// same seed draws the same prior from either.
+#[test]
+fn a_fused_group_ignores_a_coordinate_phi_lacks() {
+    let mut cfg = TasteConfig::mixture(D, 2);
+    cfg.fused = vec![vec![0, 1]];
+    cfg.fused_rho = Some(0.5);
+    let past_the_end = TasteConfig {
+        fused: vec![vec![0, 1, D]],
+        ..cfg.clone()
+    };
+    let draw = |cfg: &TasteConfig| {
+        TasteModel::new(cfg.clone()).prior_sample(&mut StdRng::seed_from_u64(9), &FitSet::default())
+    };
+    assert_eq!(draw(&past_the_end), draw(&cfg));
+}
+
 /// The site counts the docs quote are the live φ's. Every one assumes
 /// d = 44, so a change to φ fails here until they are all updated:
 /// - 49 + S at K = 1 and 225 + S at K = 5, with the sweeps per site they
@@ -319,6 +337,15 @@ fn imputation_costs_confidence_on_keep_kill_but_not_on_duels() {
         (imputed - coin).abs() < (measured - coin).abs(),
         "the correction moved the verdict away from 0.5 instead of toward it"
     );
+    // By exactly as much as the module says: u − τ = 0.8, and the imputed
+    // axes add θ₀² + θ₁² = 4.5 of variance to u, so the log-odds are
+    // 0.8 / √(1 + 4.5·π/8).
+    let pulled = 0.8 / (1.0 + 4.5 * std::f64::consts::PI / 8.0).sqrt();
+    let by_hand = -(1.0 + (-pulled).exp()).ln();
+    assert!(
+        (imputed - by_hand).abs() < 1e-12,
+        "attenuated to {imputed}, not {by_hand}"
+    );
 
     // Imputing an axis this listener does not care about costs nothing:
     // its θ is zero, so it contributes no variance.
@@ -428,7 +455,8 @@ fn two_lens_draw(rng: &mut StdRng) -> TasteSample {
 /// the listener could have done, under the max-of-lenses utility: a duel's
 /// two outcomes are `σ(±(u_a − u_b))`, a keep and a kill `σ(±(u − τ))`,
 /// and the ratings of an ordinal scale sum to one. A rating past the top of
-/// the scale reads as the top, and a one-category scale is certain.
+/// the scale reads as the top, and a one-category scale is certain. The
+/// forecast a draw makes for a duel is the likelihood it scores the pick by.
 #[test]
 fn every_likelihood_is_a_distribution_over_its_outcomes() {
     let mut rng = StdRng::seed_from_u64(0x11C);
@@ -450,6 +478,13 @@ fn every_likelihood_is_a_distribution_over_its_outcomes() {
         let won = s.loglik(&duel(true), 0);
         assert!((won - ln_sigmoid(u(&a) - u(&b))).abs() < 1e-12);
         assert!((won.exp() + s.loglik(&duel(false), 0).exp() - 1.0).abs() < 1e-12);
+        let forecast = s.prob_prefers(&a, &b);
+        assert!(
+            (forecast - won.exp()).abs() < 1e-12,
+            "the draw forecasts {forecast} for a pick it scores at {}",
+            won.exp()
+        );
+        assert!((forecast + s.prob_prefers(&b, &a) - 1.0).abs() < 1e-12);
 
         let keep = |kept| Feedback::KeepKill { x: x.clone(), kept };
         let kept = s.loglik(&keep(true), 0);
@@ -542,6 +577,39 @@ fn old_votes_fade_by_the_half_life() {
             "half-life {half_life:?}: the program weighs the log at {}, not {expected}",
             trace.log_factors
         );
+    }
+}
+
+/// The star cutpoints are the transform of their raw sites the module doc
+/// gives: `c₁ = −2 + 1.5·raw₀`, and each next one `exp(−0.5 + 0.7·raw_j)`
+/// above the last, so they are ordered whatever the raws. Read off prior
+/// draws, against the raw values in the program's own trace.
+#[test]
+fn the_cutpoints_are_the_ordered_transform_of_their_raw_sites() {
+    let mut rng = StdRng::seed_from_u64(0xC075);
+    let model = TasteModel::new(TasteConfig::linear(2));
+    for _ in 0..20 {
+        let (s, trace) = run(
+            PriorHandler {
+                rng: &mut rng,
+                trace: Trace::default(),
+            },
+            model.model(&FitSet::default()),
+        );
+        let raw = |j: usize| trace.get_f64(&addr!("cut", j)).expect("a raw cut site");
+        let mut by_hand = vec![-2.0 + 1.5 * raw(0)];
+        for j in 1..model.cfg.n_stars - 1 {
+            by_hand.push(by_hand[j - 1] + (-0.5 + 0.7 * raw(j)).exp());
+        }
+        assert_eq!(s.cuts.len(), by_hand.len());
+        for (c, want) in s.cuts.iter().zip(&by_hand) {
+            assert!(
+                (c - want).abs() < 1e-12,
+                "cuts {:?}, not {by_hand:?}",
+                s.cuts
+            );
+        }
+        assert!(s.cuts.windows(2).all(|w| w[0] < w[1]), "{:?}", s.cuts);
     }
 }
 
