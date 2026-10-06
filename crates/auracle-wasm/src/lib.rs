@@ -2728,6 +2728,11 @@ impl WasmEngine {
     /// the buffer in the memo's audio tier, where `render_of` finds it, so the
     /// ▶ waits on one render instead of two. Nothing else differs: the insert
     /// is a φ hit on the same featurization.
+    ///
+    /// A preset already featurized without its audio (a warm-start card the
+    /// worker measured while the player chose, with [`Self::memo_render`]) is
+    /// a φ hit here too, and keeps no buffer: its insert renders nothing, and
+    /// the `render_of` after it renders the sound once.
     pub fn load_preset_heard(&mut self, index: usize) -> u32 {
         let all = presets();
         let Some((name, tree)) = all.into_iter().nth(index) else {

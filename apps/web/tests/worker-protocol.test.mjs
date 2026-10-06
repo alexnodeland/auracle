@@ -372,7 +372,7 @@ test("the requests the tap does not wait on are exactly the ones the worker neve
     perform_wire: ["measure"], perform_offer: ["walkRun"], perform_drift: ["walkRun"],
     guess: ["guessCrewPhase", "guessRun"],
   };
-  const internal = ["face_lookup", "face_render", "breed_step"];
+  const internal = ["face_lookup", "face_render", "breed_step", "warm_card"];
   const answersIt = /\b(answer|performReply)\(m\b|\bpost\(/;
   for (const [type, body] of cases) {
     if (replies.test(body) || unanswered.includes(type)) continue;
