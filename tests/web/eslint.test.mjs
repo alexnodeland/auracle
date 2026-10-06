@@ -89,6 +89,10 @@ test("expect-expect: the fixture's asserting waits count as checks", async () =>
   await flags("playwright/expect-expect", bare("  await app.boot({ wait: false });"));
   await passes("playwright/expect-expect", bare("  await app.boot();\n  await app.toast(/^Picked /);"));
   await passes("playwright/expect-expect", bare('  await app.reply("fitted");'));
+  await passes("playwright/expect-expect", bare('  await app.answered({ lanes: ["bench"] });'));
+  await passes("playwright/expect-expect", bare('  const [asked] = await app.sent("edit_set_tree");\n  await app.replyTo(asked);'));
+  // A read of what is still waiting fails on nothing: it is no check.
+  await flags("playwright/expect-expect", bare("  await app.unanswered();"));
 });
 
 test("no-useless-await is on, so the fixture's app.last carries a disable with its reason", async () => {

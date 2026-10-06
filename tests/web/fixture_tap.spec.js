@@ -135,7 +135,7 @@ test("a request's last reply is the one that names it, not the first of its type
   const done = await app.replyTo({ type: "slow", rid: 1 });
   expect(done).toMatchObject({ type: "done", re: 1 });
   expect(done.more, "its last reply").toBeUndefined();
-  expect((await app.replies("done")).length, "the engine's own done came first").toBe(2);
+  expect(await app.replies("done"), "the engine's own done came first").toHaveLength(2);
   await app.answered();
   expect(await app.unanswered()).toEqual([]);
   // Asked by type and by lane; a request main did not number is not waited for.

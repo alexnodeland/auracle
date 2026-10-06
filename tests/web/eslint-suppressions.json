@@ -440,9 +440,6 @@
   "patch_page.js": {
     "auracle/no-own-pageerror": {
       "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 1
     }
   },
   "patch_sheet.spec.js": {
