@@ -366,3 +366,93 @@ test("a pick taken back on a table with nothing to deal puts its pair back", () 
   assert.equal(t.dealer.out, 1, "only the pair after it is dealt");
   assert.equal(t.asked.at(-1), "ahead");
 });
+
+// A taken-back pick and the deal behind the pair it put back (#211). P is on
+// the table and Q waits; a pick puts Q up and the deal behind it (R) is asked
+// for once Q's sounds are here; ⌘Z puts P back with Q waiting. Whether R was
+// asked for by then depends on how long Q's sounds took, and it used to be
+// thrown away when it had been: the pair after Q was then the deal after R.
+
+test("a taken-back pick keeps the deal behind the pair it put back as the pair after next", () => {
+  const t = upWith([P, Q, R, S]);
+  t.pick(); // Q up
+  t.settle(); // R lands as the next
+  t.undo();
+  assert.deepEqual(t.table, P);
+  assert.deepEqual(t.dealer.next, Q);
+  assert.deepEqual(t.dealer.afterNext, R, "the deal behind Q was thrown away");
+  const asked = t.asked.length;
+  assert.equal(t.pick(), true);
+  assert.deepEqual(t.table, Q);
+  assert.deepEqual(t.dealer.next, R);
+  assert.equal(t.asked.length, asked, "a deal was asked for with R waiting");
+  t.pick();
+  assert.deepEqual(t.table, R);
+  assert.equal(t.fetched.filter((p) => samePair(p, R)).length, 1, "R's sounds were fetched twice");
+});
+
+test("a deal behind the put-back pair that lands after ⌘Z is kept, and judged when that pair goes up", () => {
+  const t = upWith([P, Q, Q, R]);
+  t.pick(); // Q up, the deal behind it out
+  t.undo();
+  t.land(); // it lands after ⌘Z, with P on the table: it is Q again
+  assert.deepEqual(t.dealer.afterNext, Q, "kept as it is");
+  t.pick(); // Q up: Q behind Q may not wait, and is dealt again
+  assert.deepEqual(t.dealer.next, null);
+  t.land();
+  assert.deepEqual(t.dealer.next, R);
+});
+
+test("a pair kept after the next is offered when the next is dropped by a cut", () => {
+  const t = upWith([P, Q, R, S]);
+  t.pick();
+  t.settle();
+  t.undo(); // P up, Q next, R after it
+  t.cut.add(2); // a side of Q
+  t.dealer.check();
+  assert.deepEqual(t.dealer.next, R);
+  assert.equal(t.dealer.afterNext, null);
+  assert.equal(t.dealer.out, 0, "a deal was asked for with R there to take Q's place");
+});
+
+/** #211's probe on the dealer: pick, ⌘Z, pick, pick, with the deals behind
+ *  Q all landed before ⌘Z, one landed and the next still out, the first
+ *  still out, or none asked for before ⌘Z (Q's sounds arriving only after
+ *  it). `behindQ` is what the engine deals after Q. Returns every pair put
+ *  up and every deal asked for, in order (each draws the engine's next). */
+function probe(order, behindQ) {
+  const unheard = new Set();
+  const t = setup({ answers: [P, Q, ...behindQ, S, T, R], heard: (id) => !unheard.has(id) });
+  t.dealer.deal();
+  t.settle(); // P up, Q waiting with its sounds
+  if (order === "not asked") for (const id of Q) unheard.add(id);
+  t.pick(); // Q up
+  if (order === "landed") t.settle();
+  if (order === "one landed") t.land();
+  t.undo();
+  if (order === "still out" || order === "one landed") t.settle();
+  if (order === "not asked") {
+    unheard.clear();
+    t.dealer.dealAhead(); // Q's renders land
+  }
+  t.pick(); // Q up again
+  t.settle();
+  t.pick(); // the pair after Q
+  t.settle();
+  return { shown: t.shown.map((p) => p.join()), asked: t.asked.join() };
+}
+
+for (const [name, behindQ] of [
+  ["dealt at once", [R]],
+  ["the pick's own pair first, refused and dealt again", [P, R]],
+  ["the pick's own pair three times", [P, P, P, R]],
+  ["the pick's own pair four times, refused until the dealer gives up", [P, P, P, P, R]],
+]) {
+  test(`a seeded session shows the same pairs and asks for the same deals however Q's sounds were timed (the deal behind Q: ${name})`, () => {
+    const b = probe("not asked", behindQ);
+    assert.equal(b.shown.at(-1), R.join(), "the pair after Q is the first deal behind it that may go up");
+    for (const order of ["landed", "one landed", "still out"]) {
+      assert.deepEqual(probe(order, behindQ), b, `the deal behind Q ${order} at ⌘Z`);
+    }
+  });
+}

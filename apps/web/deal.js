@@ -41,6 +41,20 @@
 // the table stays off and says why (`nothing`), and deals again by itself
 // when a sound may have come back (`soundsBack`): a cut taken back, or the
 // pool changed.
+//
+// A taken-back pick. ⌘Z puts the pick's pair (P) back on the table, and the
+// pair that went up in its place (Q) waits as the next, since the player has
+// seen it. The deal behind Q (R) used to be thrown away: overwritten if it
+// had landed, dropped if it landed later. Whether R had been asked for by ⌘Z
+// depends on how long Q's sounds took to arrive, since the pair after the
+// table's is dealt only once the table's sounds are here. When it had, the
+// pair after Q was a fresh deal, the one after R in the engine's stream; when
+// it had not, it was R. The same seed and the same gestures showed a
+// different pair after Q (#211, ADR-001). Now R is kept as the pair after
+// next (`retract`, `dealt`), and offered as the next pair when Q goes up
+// (`placed`), refused or kept on the same terms as a deal landing then, with
+// the refusals counted behind Q carried over: the deals asked for, and the
+// pairs that go up, are the same in either order.
 
 /** How many answers in a row the dealer refuses before it stops dealing
  *  again: with the table waiting, the answer after these goes up anyway (a
@@ -94,7 +108,9 @@ export function usable(pair, { table = null, left = null, held = null, cut, gone
  *  - `nothing()`: the table's deal came back empty, so the table has no pair
  *    to put up and stays off until a sound comes back. */
 export function createDealer(io) {
-  let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
+  let ahead = null; // {pair, meta, fetched}: dealt, sounds fetched or on their way
+  let after = null; // {pair, meta, fetched}: dealt behind the pair a take-back made the next
+  let kept = null; // {pair, retries}: that pair, and the refusals counted behind it
   let out = 0; // deals asked for and not yet answered
   let retries = 0; // answers refused since the table last changed
   let left = null; // the pair ↻ or a lost side just put away, until the next goes up
@@ -126,9 +142,23 @@ export function createDealer(io) {
     io.nothing();
   }
 
+  /** An answer offered as the next pair: it waits, its sounds fetched, when
+   *  it may; otherwise it is dealt again, a few times. */
+  function offer(a) {
+    if (!may(a.pair)) {
+      // The engine may deal the very pair on the table again (a small pool
+      // early in a session does, often): ask again, a few times.
+      if (retries++ < RETRIES) dealAhead();
+      return;
+    }
+    ahead = a;
+    if (!a.fetched) io.fetch(a.pair);
+    a.fetched = true;
+  }
+
   /** A deal's answer. With the table waiting it goes up; with a pair on the
-   *  table it waits as the next one, its sounds fetched, unless one already
-   *  waits. */
+   *  table it waits as the next one, its sounds fetched, or, when a
+   *  take-back already made a pair the next, after that one. */
   function dealt(pair, meta) {
     out = Math.max(0, out - 1);
     if (!io.table()) {
@@ -153,37 +183,50 @@ export function createDealer(io) {
       return void io.place(pair, meta);
     }
     // No pair: the engine dealt nothing (fewer than two sounds it may deal),
-    // so nothing new waits, take-back or not. A pair already waiting: the one
-    // a taken-back pick had put up, back as the next (`retract`), and this
-    // answer, the deal asked for behind that pair, is thrown away unseen.
-    if (!pair || ahead) return;
-    if (!may(pair)) {
-      // The engine may deal the very pair on the table again (a small pool
-      // early in a session does, often): ask again, a few times.
-      if (retries++ < RETRIES) dealAhead();
+    // so nothing new waits, take-back or not.
+    if (!pair) return;
+    // A pair already waiting: the one a taken-back pick had put up, back as
+    // the next (`retract`), and this answer is the deal asked for behind it.
+    // It is kept as the pair after next, as it is, and judged when that
+    // pair goes up (`placed`): judged now, it would be against the pair the
+    // take-back put back on the table, not the one it was dealt behind.
+    if (ahead) {
+      if (!after) after = { pair, meta, fetched: false };
       return;
     }
-    ahead = { pair, meta };
-    io.fetch(pair);
+    offer({ pair, meta, fetched: false });
   }
 
-  /** Swap the pair dealt ahead onto the table; false when there is none that
-   *  may still be dealt. */
+  /** Swap the pair dealt ahead onto the table (or, when it may no longer be
+   *  dealt, the pair after it); false when there is none that may. */
   function take() {
-    const a = ahead;
-    ahead = null;
-    if (!a || !may(a.pair)) return false;
-    io.place(a.pair, a.meta);
-    return true;
+    while (ahead || after) {
+      if (!ahead) [ahead, after] = [after, null];
+      const a = ahead;
+      ahead = null;
+      if (may(a.pair)) {
+        io.place(a.pair, a.meta);
+        return true;
+      }
+    }
+    return false;
   }
 
   /** A pair that may no longer be dealt (cut, or replaced) is dropped, and
-   *  the next is asked for. */
+   *  the pair after it, if a take-back kept one, is offered in its place;
+   *  with none, the next is asked for. */
   function check() {
+    let dropped = false;
     if (ahead && !may(ahead.pair)) {
       ahead = null;
-      dealAhead();
+      dropped = true;
     }
+    if (!ahead && after) {
+      const a = after;
+      after = null;
+      return void offer(a);
+    }
+    if (dropped) dealAhead();
   }
 
   return {
@@ -211,28 +254,34 @@ export function createDealer(io) {
       if (!out) deal();
       return false;
     },
-    /** A pair went up (`placePair`): the pair waiting, if it is the one just
-     *  put up, is no next pair, and the one after is dealt. */
-    placed() {
+    /** `pair` went up (`placePair`): the pair waiting, if it is the one
+     *  just put up, is no next pair; the pair a take-back kept behind it, if
+     *  any, is offered as the next, with the refusals counted behind it
+     *  before the take-back; otherwise the one after is dealt. */
+    placed(pair) {
       left = null;
-      retries = 0;
       empty = false;
+      retries = kept && samePair(kept.pair, pair) ? kept.retries : 0;
+      kept = null;
       check();
-      dealAhead();
+      // Behind a pair the dealer had given up on before a take-back (its
+      // answers refused, three times over), nothing more is dealt ahead.
+      if (retries <= RETRIES) dealAhead();
     },
     /** A taken-back pick put its pair back on the table (main has put it
      *  there). `displaced` is the pair that went up in its place, or null
      *  when the table was still waiting on a deal; `meta` is its deal's.
      *
      *  A pair went up: it waits as the next one, when it may (`usable`). The
-     *  player has seen it, so it comes before any pair dealt behind it, and
-     *  the deal asked for behind it, if one was, is thrown away unseen: one
-     *  that has landed is overwritten here, and one still out lands with a
-     *  pair waiting and is dropped (`dealt`). The pair after it is dealt when
-     *  it goes up (`placed`). When it may not wait (as when it is this same
-     *  pair, put up again by a pool too small to deal another), nothing is
-     *  thrown away: a deal behind it that has landed stays the next pair, and
-     *  one still out becomes it.
+     *  player has seen it, so it comes before any pair dealt behind it. The
+     *  deal asked for behind it, if one was, is kept as the pair after next:
+     *  the one that has landed here, and one still out when it lands
+     *  (`dealt`). When the displaced pair goes up again, that deal is offered
+     *  as the next (`placed`); when none was asked for, the pair after it is
+     *  dealt then. When it may not wait (as when it is this same pair, put up
+     *  again by a pool too small to deal another), nothing changes: a deal
+     *  behind it that has landed stays the next pair, and one still out
+     *  becomes it.
      *
      *  Nothing went up: the deal the table was waiting on lands with this
      *  pair on the table, so it becomes the next pair (`dealt`) rather than
@@ -241,7 +290,11 @@ export function createDealer(io) {
     retract(displaced, meta) {
       left = null;
       empty = false;
-      if (displaced && may(displaced)) ahead = { pair: displaced, meta };
+      if (displaced && may(displaced)) {
+        after = ahead;
+        kept = { pair: displaced, retries };
+        ahead = { pair: displaced, meta, fetched: true };
+      }
       dealAhead();
     },
     /** A sound may have come back (a cut taken back, or the pool changed):
@@ -260,6 +313,10 @@ export function createDealer(io) {
     /** The pair waiting as the next one, or null. */
     get next() {
       return ahead ? ahead.pair : null;
+    },
+    /** The pair a take-back kept to come after the next, or null. */
+    get afterNext() {
+      return after ? after.pair : null;
     },
   };
 }

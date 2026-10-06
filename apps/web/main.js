@@ -7006,7 +7006,7 @@ function placePair(pair, meta) {
   settleFit();
   // A pair waiting that is the one just put up is no next pair, and the one
   // after is dealt.
-  dealer.placed();
+  dealer.placed(currentDuel);
 }
 
 // ---------- the next pair, dealt ahead ----------
