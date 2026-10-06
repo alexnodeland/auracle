@@ -145,8 +145,9 @@ instrumented, as Coverage) and its wasm32 build (the engine job, with
 warnings as errors) run, so "green locally" and "green in CI" are one
 claim. What CI runs that `make check` does
 not is the site build (`make site && make site-check`) with the browser smoke
-test after it (`make smoke`'s two specs), and the browser specs, because they
-need the wasm built and the site needs the pinned doc toolchain.
+test after it (`make smoke`'s two specs), the worker-protocol tests
+(`make worker-test`), and the browser specs, because they need the wasm built
+and the site needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
