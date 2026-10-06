@@ -15,9 +15,10 @@
  *      A reader can decode which half of the product a section is about from its
  *      colour alone, which is why a third accent would cost more than it added.
  *
- * The one deliberate extension is a DISPLAY TIER above the app's scale. The app
- * tops out at 22px because it is an instrument panel with a 10px floor; a page
- * that has to state a thesis needs sizes an instrument never does.
+ * The one deliberate extension is a DISPLAY TIER beside the app's scale. The
+ * app's steps are fixed, from an 11px floor (9px in the rack) to 52px for a
+ * level's one headline; a page that has to state a thesis needs sizes that
+ * follow the viewport, which an instrument never does.
  *
  * No build step, no framework, no external requests — same as apps/web.
  */
@@ -226,12 +227,12 @@
   --measure: 62ch;
   --wide: 1440px;
   --gutter: clamp(var(--s5), 5vw, var(--s8));
-  /* The page frame. 1440 + two gutters, so a screenshot published at its
-     captured size fits inside it without being scaled down — see
-     www/SCREENSHOTS.md for why scaling a frame of this app is not an option.
-     Every section aligns to this, which is the only reason the eyebrows all
-     start at the same x. */
-  --frame: 1568px;
+  /* The page frame. 1440 + two of the widest gutters, so a screenshot
+     published at its captured size fits inside it without being scaled down
+     (www/SCREENSHOTS.md says why scaling a frame of this app is not an
+     option). Every section aligns to this, which is the only reason the
+     eyebrows all start at the same x. */
+  --frame: calc(var(--wide) + 2 * var(--s8));
 
   color-scheme: dark;
 }
@@ -1223,7 +1224,7 @@ kbd {
 
 /* Identity and tagline on the left, destinations on the right, credits under
    both. The earlier version stacked all three full width and fenced them with
-   two horizontal rules, which on a 1568px frame is three short lines of text
+   two horizontal rules, which on the full frame is three short lines of text
    spread down 300px with most of the row empty — a lot of furniture for a
    footer. One rule now, above the credits, where it separates two different
    kinds of information rather than three helpings of the same one. */
