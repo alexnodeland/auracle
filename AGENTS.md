@@ -89,8 +89,12 @@ contributor guide; this file does not repeat it.
    written for someone who has never seen the repo.
 9. **Work flows through issues and reviewed PRs.** Outstanding work is a
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
-   own worktree. An agent commits there and never pushes, opens a PR or
-   merges; the operator pushes it and opens the PR in the merge queue (a
+   own worktree, at `.claude/worktrees/<topic>` inside the main checkout,
+   which git ignores (`make worktree TOPIC=<topic>`). An agent there also
+   loads the main checkout's `AGENTS.md` files, as ancestors; where they
+   differ, its worktree's own are the ones to follow. An agent commits in
+   its worktree and never pushes, opens a PR or merges; the operator pushes
+   it and opens the PR in the merge queue (a
    human contributor pushes their own branch). Every branch an agent builds
    is reviewed before its PR, and a PR merges through Mergify's queue: its
    own `CI` is a fast lane that, with `PR checks`, puts it in the queue, and
@@ -108,6 +112,7 @@ contributor guide; this file does not repeat it.
 | When | Run |
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
+| A branch's worktree | `make worktree TOPIC=<topic>` (at `.claude/worktrees/<topic>`); once merged, `make worktree-rm TOPIC=<topic>` |
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests) |
 | After changing Rust the app calls | `make wasm` |
 | Only JS changed | `make web-check` |
@@ -140,8 +145,9 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   its batch ([`docs/process.md`](docs/process.md)).
 - **Agents run on Opus** (`model: opus` in each definition).
 - **Hooks:** at session start, a report of a missing or stale
-  `apps/web/pkg` and of the browser queue; no hand edits under the five
-  generated paths (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
+  `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
+  hand edits under the five generated paths of a file's own checkout, a
+  worktree included (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
   `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
   `cargo test` without `--release`, `--profile` or `--doc` refused on any

@@ -13,7 +13,7 @@ disk with little used; the writable allowance is what ran out.
 | `target/debug`, `target/ci*` | several GB | Yes; cargo rebuilds them |
 | `target/release`, `target/test-fast` | 1–2 GB | Only if you accept a long rebuild |
 | `www/video/out/<film>/music`, `voice` | 100–200 MB | Yes; they regenerate, slowly |
-| `.claude/worktrees/*` | 0.2–1.2 GB each | Only after confirming the work is merged |
+| `.claude/worktrees/*` | 0.2–1.2 GB each | Only after confirming the work is merged, with `make worktree-rm TOPIC=<topic>` (a plain `rm -rf` leaves git's record of it until `git worktree prune`) |
 
 ## What to do
 

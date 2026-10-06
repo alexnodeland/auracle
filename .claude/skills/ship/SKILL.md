@@ -24,7 +24,7 @@ in zsh, this environment's shell):
 
 ```bash
 REPO=/absolute/path/to/auracle          # the main checkout
-WT="$REPO/../auracle-wt-<topic>"        # this task's worktree
+WT="$REPO/.claude/worktrees/<topic>"    # this task's worktree
 ```
 
 ## 1. The issue
@@ -50,14 +50,17 @@ edit the body to fill the template's sections.
 ## 2. A worktree and a branch
 
 ```bash
-git -C "$REPO" fetch -q origin
-git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
-(cd "$WT/tests/web" && npm ci --no-audit --no-fund)
+make -C "$REPO" worktree TOPIC=<topic>
+git -C "$REPO" merge -q --ff-only origin/main
 ```
 
-The last line installs `tests/web`'s packages in the new worktree
-(`node_modules` is per checkout): without them `make web-check` stops at the
-specs' lint, and the after-edit hook does not lint a spec.
+The first line fetches, makes `claude/<topic>` from `origin/main` at `$WT`,
+inside the main checkout where git ignores it, and installs `tests/web`'s
+packages there (`node_modules` is per checkout): without them
+`make web-check` stops at the specs' lint, and the after-edit hook does not
+lint a spec. The second keeps the main checkout on `main` and current: an
+agent in `$WT` also loads its `AGENTS.md` files, as ancestors, and follows
+its worktree's own where they differ.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
@@ -314,8 +317,7 @@ The PR's branch deletes itself on GitHub when it merges. Remove the worktree
 and the local branch:
 
 ```bash
-git -C "$REPO" worktree remove "$WT"
-git -C "$REPO" branch -D claude/<topic>
+make -C "$REPO" worktree-rm TOPIC=<topic>                    # git worktree remove "$WT"; git branch -D claude/<topic>
 gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>", or by PR checks if GitHub missed it
 ```
 

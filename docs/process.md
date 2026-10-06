@@ -18,7 +18,7 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 3. Accepted | An ADR for each decision the RFC makes, and a plan when the work spans more than one PR | [`decisions/`](decisions/), [`plans/`](plans/) | |
 | 4. Planned | One issue per plan task, in the plan's milestone | GitHub issues | The operator |
 | 5. Briefed | What the builder needs: scope, decisions, tests, docs, report | The issue body, or a brief it links | The operator |
-| 6. Built | Commits on `claude/<topic>`, in a worktree of its own | A branch | An agent, or a person |
+| 6. Built | Commits on `claude/<topic>`, in a worktree of its own (`.claude/worktrees/<topic>`) | A branch | An agent, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
 | 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
 | 9. Checked | Green `CI` (the fast lane) and `PR checks` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
@@ -80,11 +80,35 @@ in a plan's prose, a session's notes or a conversation.
 
 ## Building
 
-- **One worktree per branch**, beside the main checkout:
-  `git worktree add -b claude/<topic> ../auracle-wt-<topic> origin/main`.
-  An agent's branch is `claude/<topic>`; a contributor names theirs as
-  [`CONTRIBUTING.md` § Workflow](../CONTRIBUTING.md#workflow) says. Never build
-  in the main checkout while other work is in flight there.
+- **One worktree per branch**, inside the main checkout at
+  `.claude/worktrees/<topic>`, which git ignores: `make worktree TOPIC=<topic>`,
+  from any checkout, fetches, makes `claude/<topic>` from `origin/main` there
+  and installs `tests/web`'s packages in it. By hand, from the main checkout:
+  `git worktree add -b claude/<topic> .claude/worktrees/<topic> origin/main`.
+  Claude Code puts the worktrees it makes itself there too (a subagent's
+  `isolation: worktree`, `EnterWorktree`, `claude --worktree`). A worktree
+  made beside the main checkout before this (`../auracle-wt-<topic>`) is
+  finished where it is. An agent's branch is `claude/<topic>`; a contributor
+  names theirs as [`CONTRIBUTING.md` § Workflow](../CONTRIBUTING.md#workflow)
+  says (`BRANCH=`). Never build in the main checkout while other work is in
+  flight there.
+- **The main checkout stays on `main`, clean and current:**
+  `git -C <main checkout> merge --ff-only origin/main` after each fetch. A
+  session or an agent in a worktree inside it also loads the main checkout's
+  `CLAUDE.md` and `AGENTS.md` files, as ancestors of its directory, beside its
+  worktree's own; kept current, they say the same. Where they differ, the
+  worktree's own `AGENTS.md` is the one to follow: it is the branch's.
+- **Each worktree is a checkout of its own.** Its build output (`target/`,
+  `apps/web/pkg/`, `tests/web/node_modules/`) is its own: cargo, rustup, Node
+  and the specs' server find its files before the main checkout's. The
+  repo's checks and hooks never read from one checkout into another: the
+  checks read their own directories, the one that walks the tree (the agent
+  docs') leaves out `.claude/worktrees/` and any directory holding a `.git`
+  (a worktree's is a file), and the hooks judge a path from the root of the
+  checkout it is in. `rg` and `git grep` skip the worktrees too, since git
+  ignores them; a `grep -r` or `find` from the main checkout's root does not.
+  `git clean -fdx` in the main checkout leaves a worktree alone, but `-ffdx`
+  deletes it, work and all.
 - **Builders commit only.** An agent never pushes, opens a PR or merges. Its
   commits are small, one area each, each leaving the app working.
 - **Commit messages** explain why (root `AGENTS.md` rule 8). They carry
@@ -388,8 +412,10 @@ names another repository's issue, or an issue closed as not planned or as a
 duplicate; one whose issue closed without a merge; one the search missed
 (added in the minute before the merge, so the run's log says nothing of it);
 and one the run's log says changed as it was read. Remove the worktree and
-the local branch: `git worktree remove ../auracle-wt-<topic>`,
-`git branch -D claude/<topic>`.
+the local branch: `make worktree-rm TOPIC=<topic>`, which is
+`git worktree remove .claude/worktrees/<topic>` and
+`git branch -D claude/<topic>` (it refuses a worktree holding work not
+committed).
 
 ## Flakes
 

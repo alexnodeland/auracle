@@ -70,7 +70,14 @@ the PR, CI as the gate, merging, flaky tests, approvals for new words) is
 [`docs/process.md`](docs/process.md). This section is the commands.
 
 Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
-`fix/arp-gate-length`, `docs/…`), then:
+`fix/arp-gate-length`, `docs/…`). To work on more than one change at a time,
+give each branch a worktree of its own inside the checkout, at
+`.claude/worktrees/<topic>`, which git ignores:
+`make worktree TOPIC=tempo-lfo BRANCH=feature/tempo-synced-lfo` makes it from
+`origin/main` and installs `tests/web`'s packages there, and
+`make worktree-rm TOPIC=tempo-lfo BRANCH=feature/tempo-synced-lfo` removes it
+and the branch once it is merged. Keep the main checkout itself on `main`.
+Then:
 
 ```bash
 make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)

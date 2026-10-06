@@ -283,7 +283,7 @@ through), the suppressions' check (`suppressions.mjs`, below), and the
 quarantine check (`flakes.mjs check`: every `@quarantine` test names its
 issue). It needs
 this directory's packages: `npm ci` here, once (`make setup` does it, and
-the `ship` skill does it in a new worktree). Where they are installed, the
+`make worktree` does it in a new worktree). Where they are installed, the
 after-edit hook lints a file here when you edit it, in under a second.
 
 **Today's violations are a baseline that only goes down.**
