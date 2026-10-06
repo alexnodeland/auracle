@@ -516,9 +516,10 @@ jobs:
   # minutes: with Playwright's own split by count, five runners took from 9
   # to 19. Twelve, not eight: simulated with the runners' observed spread of
   # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
-  # (#177 § 3.1). The count is fixed and raised by hand; with the Slow suite
-  # off the PR path, a PR's CI at twelve still fits the account's 20 jobs at
-  # once (slow-suite.yml says how).
+  # (#177 § 3.1). The count is fixed and raised by hand. With the Slow suite
+  # off the PR path, a PR's CI at twelve fits the account's 20 jobs beside
+  # the Slow suite's four; right after a merge, main's own run takes runners
+  # too, and a PR can wait for it (slow-suite.yml says how much).
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
   # the engine works). A failure that only appears here is still a finding

@@ -75,7 +75,13 @@ test("EVOLVE POOL breeds beside you: …", { tag: "@slow" }, async ({ page }) =>
 
 Tag the test, not the file: the rest of a file stays fast. A PR that adds
 or changes one runs it before merging only with the `full-ci` label (the
-push to main runs it either way). A test that is slow only because it waits
+push to main runs it either way), and so does a PR that changes what the
+slow tests cover: in `tests/web`, `fixtures.js`, `playwright.config.js` or
+`package*.json`; in `apps/web`, `worker.js`, `farm.js`, `perform.js`,
+`patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
+`vessel.js`; any crate, the Cargo files, `rust-toolchain.toml`, the
+`Makefile`, `slow-suite.yml` or `.github/actions/`
+([`testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)). A test that is slow only because it waits
 on a fixed timer is better made faster than tagged.
 
 **A flaky test** is fixed, or tagged `@quarantine` with a comment naming its

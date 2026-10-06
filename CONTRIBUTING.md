@@ -150,8 +150,14 @@ above, the Rust tests except the slow ones, and every browser spec not tagged
 alone. The **slow tier** (the *Slow suite* workflow) runs the search floor, the
 other Rust tests over a minute and the `@slow` and `@quarantine` browser specs
 on every push to `main` and nightly, where a failure opens an issue; on a PR
-only when you add the `full-ci` label, which a PR that changes EVOLVE's
-generations, PERFORM's offers or the engine under them should carry. A flaky test is fixed or quarantined, never retried
+only when you add the `full-ci` label. Add it when the PR changes what those
+tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
+the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
+`worker.js`, `farm.js`, `perform.js`, `patch.js`, `live-audio.js`,
+`audio-in.js`, `explain.js`, `faces.js` or `vessel.js`; `tests/web/`'s
+`fixtures.js`, `playwright.config.js`, `package.json` or `package-lock.json`;
+a spec file that holds an `@slow` or `@quarantine` test; or a `main.js`
+change that reaches EVOLVE's generations or PERFORM's offers. A flaky test is fixed or quarantined, never retried
 ([§ Flakes](docs/architecture/testing.md#flakes)). Locally, `make check` still runs every
 Rust test; `make test-fast-tier` / `make test-slow-tier` and
 `make browser-fast` / `make browser-slow` run one tier the way CI does.

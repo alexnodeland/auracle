@@ -23,9 +23,15 @@ name: Slow suite
 #   the label runs nothing here (the `scope` job is skipped, and every job
 #   after it). It reports; it does not block merging, and it no longer takes
 #   runners from the gate on every PR push that reaches what it covers. Add
-#   `full-ci` to a PR that changes EVOLVE's generations, PERFORM's offers or
-#   the engine under them, or a test tagged @slow or @quarantine; otherwise
-#   the push to main is where a slow test catches it.
+#   `full-ci` to a PR that changes what these tests cover, the paths this
+#   workflow used to run a PR for: any crate, Cargo.toml or Cargo.lock,
+#   rust-toolchain.toml, the Makefile, this workflow or .github/actions/;
+#   apps/web's worker.js, farm.js, perform.js, patch.js, live-audio.js,
+#   audio-in.js, explain.js, faces.js or vessel.js; tests/web's fixtures.js,
+#   playwright.config.js, package.json or package-lock.json; or a spec file
+#   that holds an @slow or @quarantine test. Also a main.js change that
+#   reaches EVOLVE's generations or PERFORM's offers. Otherwise the push to
+#   main is where a slow test catches it.
 # - on every push to main and nightly, always and in full. A failure there
 #   opens an issue titled "Slow suite failing on main", or comments on it if
 #   one is already open, so a regression that merged on the fast tier is found
@@ -33,11 +39,15 @@ name: Slow suite
 # - on demand (Actions → Slow suite → Run workflow), in full.
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
-# Rust leg and three browser runners), so beside it a PR's whole `CI` still
-# fits under the account's cap of 20 jobs at once. That CI at its widest is
+# Rust leg and three browser runners). A PR's whole `CI` at its widest is
 # twelve browser runners, the Site job and the two Rust test runners, 15,
 # and one more for the Browser report or a Lint or Web job still running:
-# 16 + 4 = 20.
+# 16 + 4 = 20, the account's cap. But the push to main that starts this
+# workflow also starts main's own CI, which re-runs what the merged PR's run
+# did not cover (of the 20 runs on main before Oct 6, the whole browser tier
+# in 9, both Rust test jobs in 15, and Site in all 20, for the deploy). So a
+# PR pushed right after a merge can wait for runners until main's run is
+# done; the merge queue #177 plans keeps merges one at a time.
 
 on:
   pull_request:
@@ -52,12 +62,17 @@ permissions:
   contents: read
 
 # A new push to a PR makes its in-flight run obsolete. On main nothing is
-# cancelled: every push there gets its own verdict. Adding an unrelated label
-# to a PR starts a run too (GitHub cannot filter `labeled` by name); it gets a
-# group of its own, so it does nothing rather than cancel a real run.
+# cancelled, and nothing is skipped: main's runs (each push, the nightly run)
+# wait in a queue (`queue: max`) and run in turn, so every push there gets
+# its own verdict. On a PR the queue is `single`, since `queue: max` beside
+# `cancel-in-progress: true` is a validation error (ci.yml's concurrency
+# says more). Adding an unrelated label to a PR starts a run too (GitHub
+# cannot filter `labeled` by name); it gets a group of its own, so it does
+# nothing rather than cancel a real run.
 concurrency:
   group: slow-suite-${{ github.head_ref || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && '-label' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 env:
   CARGO_TERM_COLOR: always

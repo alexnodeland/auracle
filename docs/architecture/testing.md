@@ -24,11 +24,11 @@ this table.
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
-| Crate tests | `cargo test -p <crate> --profile test-fast --lib --bins --tests` (without the flags it also builds the crate's examples, which no test runs) | That crate's gates | The crate you changed |
+| Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
-| Native and wasm agree | `cargo test -p auracle-wasm --profile test-fast --test boot_agrees`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
+| Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
@@ -121,16 +121,27 @@ failure there opens an issue titled *Slow suite failing on main*, or comments
 on the open one. On demand from the Actions tab. On a PR, only when the PR
 carries the `full-ci` label: adding it starts a run, and every push to the
 labelled PR runs it again; a PR without it runs nothing there. Add it to a
-PR that changes EVOLVE's generations, PERFORM's offers or the engine under
-them (`worker.js`, `farm.js`, `perform.js`, `crates/auracle-session`,
-`crates/auracle-wasm`), or a test tagged `@slow` or `@quarantine`; otherwise
-the push to `main` is where a slow test catches it.
+PR that changes what the slow tests cover, the paths the workflow used to run
+a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
+`rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
+`apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
+`live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
+`tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or
+`package-lock.json`; or a spec file that holds an `@slow` or `@quarantine`
+test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
+offers. Otherwise the push to `main` is where a slow
+test catches it.
 
 **Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
 widest holds 16 (twelve browser runners, Site, the two Rust test runners and
 one more); the *Slow suite* holds at most four (`max-parallel`: one Rust leg
-and three browser runners), so beside a push to `main` the two fit. The
-nightly *Flake hunt* holds four, beside *Search health*'s three long jobs.
+and three browser runners), so the two fit together. A merge also starts
+`main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
+on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
+15, Site in all), so a PR pushed right after a merge can wait for runners
+until `main`'s run is done; the merge queue #177 plans keeps merges one at a
+time. The nightly *Flake hunt* holds four, beside *Search health*'s three
+long jobs.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five

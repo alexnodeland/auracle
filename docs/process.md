@@ -162,9 +162,15 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   the browser tier, dealt to twelve runners by time, about eleven minutes. A
   PR that changes only specs runs only those specs.
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
-  PR that changes EVOLVE's generations, PERFORM's offers or the engine under
-  them, or a test tagged `@slow` or `@quarantine`. It does not block merging;
-  without it, the push to `main` is where a slow test catches the change.
+  PR that changes what the slow tests cover: any crate, `Cargo.toml` or
+  `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or
+  `.github/actions/`; `apps/web/`'s `worker.js`, `farm.js`, `perform.js`,
+  `patch.js`, `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or
+  `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
+  `package.json` or `package-lock.json`; a spec file that holds an `@slow` or
+  `@quarantine` test; or a `main.js` change that reaches EVOLVE's
+  generations or PERFORM's offers. It does not block merging; without it,
+  the push to `main` is where a slow test catches the change.
 - **Wait on the run's state, never a fixed time:** poll until it completes,
   then read its jobs.
 - **Merge on green only:** `gh pr merge <n> --squash --match-head-commit <sha>`,
