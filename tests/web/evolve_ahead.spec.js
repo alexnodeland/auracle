@@ -13,6 +13,12 @@
 // "the next" and put the second up: the table ran P, R, Q instead of P, Q, R,
 // so when an answer landed changed what a seeded session showed.
 //
+// "At once" is the app's own order, not a time (ADR-022): the cards show the
+// next pair, live, before the click's own task ends (`placePair` is
+// synchronous), and no deal for the table is asked for between the click and
+// the cards changing. How many milliseconds that took is a budget: 0.3 s for
+// the pair, 0.15 s for its ▶ (budgets.spec.js holds the same two).
+//
 // The engine worker is reached through the fixture's tap (fixtures.js), to
 // see which deals were asked for ahead, and to hold what the engine says
 // while a deal is out. Sessions are seeded.
@@ -46,76 +52,101 @@ const heardAll = async (app, pair) => {
 };
 const soundsHeard = (app, pair) =>
   app.engine((timeout) => expect.poll(() => heardAll(app, pair), { timeout }).toBe(true), { ms: 60_000 });
-/** The `n`th pair dealt ahead (or a later one) is waiting with its sounds. */
+/** The `n`th pair dealt ahead (or a later one) is waiting with its sounds:
+ *  it has landed, no deal is still out, and both sounds of the last one are
+ *  here. Not just the `n`th landed: main drops an answer that lands while a
+ *  pair already waits (a pick taken back makes the pair it brought up the
+ *  next), and the pick after it asks for another, which a swap then waits
+ *  for. Call it with no hold standing: a held reply is not counted. */
 async function aheadReady(app, n = 1) {
   await app.engine((timeout) => expect.poll(async () => {
     const pairs = await aheadPairs(app);
-    return pairs.length >= n && heardAll(app, pairs[pairs.length - 1]);
+    const out = (await app.sentCount("duel")) - (await app.count("duel"));
+    return pairs.length >= n && out === 0 && heardAll(app, pairs[pairs.length - 1]);
   }, { timeout }).toBe(true), { ms: 60_000 });
 }
 
-/** Click a card's control in the page and return how long, in the page's
- *  clock, until the cards show a different pair. */
+/** Click a card's control in the page. Returns `sync`: whether the cards
+ *  showed another pair, live, before the click's own task ended (read as
+ *  `click()` returns, before anything else can run); `between`: every request
+ *  the page posted from the click until the cards changed, in order, as
+ *  [type, ahead]; and `ms`, how long that took in the page's clock. */
 async function pickAndTime(page, sel) {
   return page.evaluate(async (sel) => {
     const ids = () => ["a", "b"].map((s) => document.querySelector(`#name-${s} .dn-id`)?.textContent).join();
     const before = ids();
+    const changed = () => ids() !== before && !document.querySelector("#choose-a").disabled;
+    const sent = window.__tap.sent;
+    const n0 = sent.length;
     const t0 = performance.now();
     document.querySelector(sel).click();
+    const sync = changed();
     for (;;) {
-      if (ids() !== before && !document.querySelector("#choose-a").disabled) return performance.now() - t0;
-      if (performance.now() - t0 > 60_000) return Infinity;
+      if (changed()) return { sync, ms: performance.now() - t0, between: sent.slice(n0).map((q) => [q.type, !!q.m.ahead]) };
+      if (performance.now() - t0 > 60_000) return { sync, ms: Infinity, between: sent.slice(n0).map((q) => [q.type, !!q.m.ahead]) };
       await new Promise((r) => setTimeout(r, 2));
     }
   }, sel);
 }
 
-// Quarantined (#160): its 300 ms wall-clock bounds include a shared
-// runner's jank (CI measured 346 ms for ↻).
-test("a pick puts the pair dealt ahead on the table at once, sounds and all", { tag: "@quarantine" }, async ({ page, app }) => {
+/** A pick or ↻ put the pair dealt ahead up at once: in the click's own task,
+ *  with no deal for the table asked for before the cards changed. The time
+ *  it took is a budget (ADR-022). */
+function expectAtOnce(app, r, what) {
+  expect(r.sync, `${what}: the next pair went up in the click's own task`).toBe(true);
+  expect(r.between.filter(([type, ahead]) => type === "duel" && !ahead), `${what}: a deal for the table was asked for before the cards changed`).toEqual([]);
+  app.budget(`${what}: the click → the next pair on the table`, r.ms, 300);
+}
+
+test("a pick puts the pair dealt ahead on the table at once, sounds and all", async ({ page, app }) => {
   await boot(page, app);
   // A pair dealt ahead, and its sounds fetched.
   await aheadReady(app);
   const before = await cardIds(page);
   const mark = await app.now();
 
-  const ms = await pickAndTime(page, "#choose-a");
-  console.log(`pick → next pair on the table: ${ms.toFixed(0)} ms`);
+  const r = await pickAndTime(page, "#choose-a");
+  console.log(`pick → next pair on the table: ${r.ms.toFixed(0)} ms, in the click's task: ${r.sync}`);
   const now = await cardIds(page);
   const all = await deals(app);
   console.log(`deals: ${JSON.stringify(all.map(([k, a, p]) => [k, a ? "ahead" : "table", p]))}`);
-  expect(ms).toBeLessThan(300);
+  expectAtOnce(app, r, "a pick");
   // It was a pair dealt ahead, and no deal for the table was asked for.
   expect((await aheadPairs(app)).map((p) => [...p].sort().join())).toContain([...now].sort().join());
   expect((await deals(app, mark)).filter(([k, a]) => k === "sent" && !a), "a deal was asked for after the pick").toEqual([]);
   expect(now).not.toEqual(before);
-  // Its sound is here: ▶ SAMPLE plays at once.
+  // Its sound is here: ▶ SAMPLE sounds in the click's own task, and asks for
+  // no render.
   const play = await page.evaluate(async () => {
     const b = document.querySelector("#play-a");
+    const sent = window.__tap.sent;
+    const n0 = sent.length;
     const t0 = performance.now();
     b.click();
+    const sync = b.classList.contains("playing");
     for (;;) {
-      if (b.classList.contains("playing")) return performance.now() - t0;
-      if (performance.now() - t0 > 30_000) return Infinity;
+      if (b.classList.contains("playing")) return { sync, ms: performance.now() - t0, renders: sent.slice(n0).filter((q) => q.type === "render").length };
+      if (performance.now() - t0 > 30_000) return { sync, ms: Infinity, renders: sent.slice(n0).filter((q) => q.type === "render").length };
       await new Promise((r) => setTimeout(r, 2));
     }
   });
-  console.log(`▶ SAMPLE on the pair dealt ahead: ${play.toFixed(0)} ms`);
-  expect(play).toBeLessThan(150);
+  console.log(`▶ SAMPLE on the pair dealt ahead: ${play.ms.toFixed(0)} ms, in the click's task: ${play.sync}`);
+  expect(play.sync, "▶ SAMPLE sounds in the click's own task").toBe(true);
+  expect(play.renders, "▶ SAMPLE asked for a render: its sound was not here").toBe(0);
+  app.budget("▶ SAMPLE on the pair dealt ahead → sounding", play.ms, 150);
   await page.locator("#play-a").click(); // stop it
 
   // Taken back: the pick's pair returns, and the one it brought up waits.
   await page.keyboard.press("Control+z");
   await expect.poll(async () => [...(await cardIds(page))].sort().join()).toBe([...before].sort().join());
-  const again = await pickAndTime(page, "#choose-b");
-  expect(again).toBeLessThan(300);
+  expectAtOnce(app, await pickAndTime(page, "#choose-b"), "a pick after ⌘Z");
   expect([...(await cardIds(page))].sort()).toEqual([...now].sort());
 
   // ↻ swaps too, and the one after that is dealt behind it.
   await aheadReady(app, 2);
   const skip = await pickAndTime(page, "#skip-duel");
-  console.log(`another pair ↻: ${skip.toFixed(0)} ms`);
-  expect(skip).toBeLessThan(300);
+  console.log(`another pair ↻: ${skip.ms.toFixed(0)} ms, in the click's task: ${skip.sync}`);
+  expectAtOnce(app, skip, "↻");
 });
 
 test("a patch cut while its pair waits ahead is never put up", async ({ page, app }) => {
@@ -163,7 +194,7 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
   // breeds a generation.
   await app.hold({}, { from: AHEAD });
   const mark = await app.now();
-  expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
+  expectAtOnce(app, await pickAndTime(page, "#choose-a"), "a pick");
   await expect.poll(() => app.holding()).toBe(true);
   // Picked again while that deal is out: the cards wait for it, and no
   // second deal is asked for meanwhile.
@@ -194,7 +225,7 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
   await app.engine((timeout) => expect.poll(async () => firstUsable(await dealt(), refused, up + 1), { timeout }).toBeGreaterThan(up), { ms: 60_000 });
   const next = (await dealt())[firstUsable(await dealt(), refused, up + 1)];
   await soundsHeard(app, next);
-  expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
+  expectAtOnce(app, await pickAndTime(page, "#choose-a"), "the next pick");
   expect(await tableKey(page)).toBe(key(next));
 });
 
@@ -203,7 +234,7 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
   await aheadReady(app);
   const mark = await app.now();
   await app.hold({}, { from: AHEAD });
-  expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
+  expectAtOnce(app, await pickAndTime(page, "#choose-a"), "a pick");
   await expect.poll(() => app.holding()).toBe(true);
   const before = await tableKey(page);
   await page.locator("#choose-b").click();
@@ -221,7 +252,7 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
   const next = (await got())[firstUsable(await got(), [before])];
   await soundsHeard(app, next);
   const pickMark = await app.now();
-  expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
+  expectAtOnce(app, await pickAndTime(page, "#choose-a"), "the pick after the deal landed");
   expect(await tableKey(page)).toBe(key(next));
   const sentForTable = (await deals(app, pickMark)).filter(([k, a]) => k === "sent" && !a).length;
   expect(sentForTable).toBe(0);
