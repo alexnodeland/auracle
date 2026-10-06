@@ -140,8 +140,9 @@ the long-form notes are this directory's `README.md`.
 - **The build stamp** (`pkg/build.json`) hashes the wasm and every app
   script, so browsers refetch what changed. `make wasm` writes it; after a
   JS-only change `make -s wasm-stamp` refreshes it. It also says which build
-  it is (`profile`: `release`, or `dev` from `make wasm-dev`, which the specs
-  and films refuse) and what it was built from (`source`, which
+  it is (`profile`: `release`; `dev` from `make wasm-dev`; or `unfinished`
+  while a build runs and after one fails; the specs and films refuse the
+  last two) and what it was built from (`source`, which
   `make pkg-reuse` compares): `scripts/wasm_pkg.py`. `main.js` reads only
   `build`.
 

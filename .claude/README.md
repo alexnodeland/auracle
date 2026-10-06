@@ -47,7 +47,8 @@ agents too.
 - **Session start** (`session-start.sh`): says when `apps/web/pkg` has no
   built engine, is older than the Rust it is built from (a `.rs` file under
   `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`), or is a quick
-  `make wasm-dev` build, which the browser specs and the films refuse; and
+  `make wasm-dev` build or an unfinished one (a build that failed or was
+  stopped), which the browser specs and the films refuse; and
   how many jobs wait in the browser queue and whether a film's `footage.mjs`
   is running. It never fails the session.
 - **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):

@@ -453,5 +453,6 @@ version stamp `main.js` puts on its worker and wasm URLs: a content hash over
 the engine and the app scripts, so the ~2 MB binary is cached across reloads
 and re-fetched exactly when it changed. Without it (the repo served with no
 build) the app falls back to `Date.now()` — correct, never cached. The stamp
-also names the build (`"profile": "release"` or `"dev"`) and what it was
+also names the build (`"profile": "release"`, `"dev"`, or `"unfinished"`
+while a build runs and after one fails) and what it was
 built from (`source`); the app reads only the hash.

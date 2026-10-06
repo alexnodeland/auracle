@@ -147,7 +147,9 @@ if (!film || film.startsWith("--")) {
   process.exit(2);
 }
 // A recording, and the rehearsal that predicts it, run on the release engine:
-// a quick build (`make wasm-dev`: no LTO, no wasm-opt) keeps other times.
+// a quick build (`make wasm-dev`: no LTO, no wasm-opt) keeps other times, and
+// an unfinished one (a build that failed, was stopped or is running) may
+// hold a new, unoptimized engine.
 {
   let profile = "release";
   try {
@@ -155,8 +157,12 @@ if (!film || film.startsWith("--")) {
   } catch {
     /* no stamp: the app says there is no engine */
   }
+  const what = {
+    dev: "a dev build (`make wasm-dev`)",
+    unfinished: "an unfinished build (a `make wasm` or `make wasm-dev` that failed or was stopped, or is running)",
+  };
   if (profile !== "release") {
-    console.error(`footage.mjs: apps/web/pkg is a ${profile} build (\`make wasm-dev\`), and rehearsals and recordings run on the release build: run \`make wasm\` first`);
+    console.error(`footage.mjs: apps/web/pkg is ${what[profile] || `a ${profile} build`}, and rehearsals and recordings run on the release build: run \`make wasm\` first`);
     process.exit(2);
   }
 }

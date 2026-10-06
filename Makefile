@@ -596,7 +596,11 @@ revalidate: phi-stats norm-peak climb search-check
 # The engine's two builds, and what pkg/build.json says of them
 # (scripts/wasm_pkg.py): which build it is, and what it was made from (a
 # hash of the Rust it reads and the command below), so another checkout can
-# take it instead of building the same one (`make pkg-reuse`).
+# take it instead of building the same one (`make pkg-reuse`). Each marks
+# pkg/ unfinished before it starts (`begin`): wasm-pack writes the engine
+# before wasm-opt runs, and a build that stops there would otherwise leave
+# it under the last build's stamp. The inputs are hashed again once it is
+# done, and kept only if the Rust didn't change while it built.
 WASM_PKG := python3 scripts/wasm_pkg.py
 WASM_PACK := wasm-pack build crates/auracle-wasm --target web --out-dir ../../apps/web/pkg
 WASM_RELEASE := $(WASM_RUSTFLAGS) $(WASM_PACK) --release
@@ -612,8 +616,9 @@ RELEASE_ENGINE := @$(WASM_PKG) check
 wasm:
 	@src="$$($(WASM_PKG) source --recipe '$(WASM_RELEASE)')"; \
 	printf '%s\n' '$(WASM_RELEASE)'; \
+	$(WASM_PKG) begin && \
 	$(RUSTUP_NOTE)$(WASM_RELEASE) && \
-	$(WASM_PKG) stamp --profile release --source "$$src" $(WEB_STAMPED)
+	$(WASM_PKG) stamp --profile release --source "$$src" --recipe '$(WASM_RELEASE)' $(WEB_STAMPED)
 
 ## wasm-dev: a quick engine build, for trying an engine edit in the browser
 ## (`make serve`) in seconds rather than a minute: no LTO, no wasm-opt,
@@ -622,8 +627,9 @@ wasm:
 wasm-dev:
 	@src="$$($(WASM_PKG) source --recipe '$(WASM_DEV)')"; \
 	printf '%s\n' '$(WASM_DEV)'; \
+	$(WASM_PKG) begin && \
 	$(RUSTUP_NOTE)$(WASM_DEV) && \
-	$(WASM_PKG) stamp --profile dev --source "$$src" $(WEB_STAMPED)
+	$(WASM_PKG) stamp --profile dev --source "$$src" --recipe '$(WASM_DEV)' $(WEB_STAMPED)
 
 ## pkg-reuse: in a worktree, take the main checkout's release engine instead
 ## of building it again (about a second, not a minute), when it was built from

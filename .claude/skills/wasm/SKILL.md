@@ -51,6 +51,12 @@ release build).
   in seconds rather than a minute. Its stamp says `"profile": "dev"`, and the
   `make browser-*` targets, the Playwright config, rehearsals and recordings
   refuse it, naming `make wasm`; the session-start hook reports it.
+- **A build that fails or is stopped** leaves its stamp saying
+  `"profile": "unfinished"` (each build writes that before it starts:
+  wasm-pack writes the engine before wasm-opt runs), which everything that
+  refuses a dev build refuses too, and `make pkg-reuse` won't take. If the
+  Rust changed while it built, the stamp leaves out its `source`, so no
+  other checkout takes it either.
 - After a **JS-only** change, `make -s wasm-stamp` refreshes the build stamp
   so browsers refetch the changed scripts. It keeps the stamp's profile and
   source: the engine is the same.

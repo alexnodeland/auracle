@@ -51,7 +51,7 @@ contributor guide; this file does not repeat it.
 4. **Rebuild the wasm after Rust changes the app uses.** `apps/web/pkg` is
    generated and ignored by git: `make wasm`, then reload. A session-start hook
    warns when it is older than the Rust sources, or a quick `make wasm-dev`
-   build, which the browser specs and the films refuse.
+   build or an unfinished one, which the browser specs and the films refuse.
 5. **Browser jobs take a ticket.** Run every browser job through
    `www/video/tools/one_browser.sh` (a first-come, first-served line):
    rehearsals and recordings get the machine to themselves, browser tests run

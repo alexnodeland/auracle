@@ -10,7 +10,9 @@ of it beside it, and a pkg/ of a few bytes in each. Python 3 standard library
 only.
 """
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -133,6 +135,34 @@ class Stamp(Checkouts):
         again = W.stamp(os.path.join(self.main, W.PKG), self.stamped(self.main), profile="release", src="")
         self.assertNotIn("source", again)
 
+    def test_a_build_keeps_the_source_it_hashed_first_only_if_the_rust_is_the_same_when_it_is_done(self):
+        pkg = os.path.join(self.main, W.PKG)
+        before = W.source(self.main, RECIPE)
+        self.build(self.main, src=None)
+        made = ["stamp", "--profile", "release", "--source", before, "--recipe", RECIPE, *self.stamped(self.main)]
+        said = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
+            self.assertEqual(W.main(made, root=self.main), 0)
+            self.assertEqual(self.stamp_of(self.main)["source"], before)
+            self.assertEqual(said.getvalue(), "")
+            # An edit saved while it built: the engine may hold it or not.
+            self.write(self.main, "crates/auracle-wasm/src/lib.rs", "pub fn f() { 2; }\n")
+            self.assertEqual(W.main(made, root=self.main), 0)
+        self.assertIn("the Rust changed while it built", said.getvalue())
+        got = W.read_stamp(pkg)
+        self.assertEqual(got["profile"], "release")
+        self.assertNotIn("source", got)
+
+    def test_begin_marks_the_pkg_unfinished_with_no_build_id_and_a_restamp_keeps_it_so(self):
+        pkg = os.path.join(self.main, W.PKG)
+        self.assertEqual(W.begin(pkg), {"profile": "unfinished"}, "a first build: pkg/ made, and marked")
+        self.build(self.main)
+        W.begin(pkg)
+        self.assertEqual(W.read_stamp(pkg), {"profile": "unfinished"})
+        again = W.stamp(pkg, self.stamped(self.main))
+        self.assertEqual(again["profile"], "unfinished")
+        self.assertNotIn("source", again)
+
 
 class Check(Checkouts):
     def test_no_engine_says_to_build_one(self):
@@ -142,6 +172,14 @@ class Check(Checkouts):
         self.build(self.main, profile="dev")
         why = W.refusal(os.path.join(self.main, W.PKG))
         self.assertIn("dev build", why)
+        self.assertIn("`make wasm`", why)
+
+    def test_an_unfinished_build_is_refused_naming_make_wasm(self):
+        pkg = os.path.join(self.main, W.PKG)
+        self.build(self.main)
+        W.begin(pkg)
+        why = W.refusal(pkg)
+        self.assertIn("unfinished build", why)
         self.assertIn("`make wasm`", why)
 
     def test_a_release_build_and_one_from_before_the_profile_pass(self):
@@ -221,6 +259,41 @@ class Reuse(Checkouts):
         self.assertEqual(code, 1)
         self.assertIn("doesn't say what it was built from", said)
         self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG, W.WASM)))
+
+    def test_a_build_that_stopped_after_writing_its_engine_is_refused_here_and_by_the_specs(self):
+        # The main checkout's release build of this Rust; then a build of
+        # other Rust that wrote its engine and stopped before wasm-opt.
+        self.build(self.main, wasm=b"\0asm-S1-optimized")
+        pkg = os.path.join(self.main, W.PKG)
+        W.begin(pkg)
+        with open(os.path.join(pkg, W.WASM), "wb") as f:
+            f.write(b"\0asm-S2-unoptimized")
+        self.assertIn("unfinished build", W.refusal(pkg))
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        self.assertIn("unfinished build", said)
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG, W.WASM)))
+
+    def test_a_build_that_starts_there_while_it_is_copied_is_refused_and_nothing_is_left(self):
+        self.build(self.main, wasm=b"\0asm-main")
+        self.build(self.wt, wasm=b"\0asm-mine", profile="dev")
+        copy = shutil.copytree
+
+        def copy_then_build_there(src, dst, *a, **k):
+            out = copy(src, dst, *a, **k)
+            W.begin(os.path.join(self.main, W.PKG))  # make wasm starts in the main checkout
+            return out
+
+        W.shutil.copytree = copy_then_build_there
+        try:
+            code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        finally:
+            W.shutil.copytree = copy
+        self.assertEqual(code, 1)
+        self.assertIn("changed while it was copied", said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-mine")
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG) + ".reuse"))
 
     def test_the_main_checkout_has_no_other_to_take(self):
         self.build(self.main)

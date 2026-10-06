@@ -5,9 +5,13 @@ is, and taking another checkout's instead of building the same one again.
     python3 scripts/wasm_pkg.py source --recipe CMD
         print the hash of the engine's inputs here: the Rust the build reads
         and the command that builds it
-    python3 scripts/wasm_pkg.py stamp [--profile P] [--source H] FILE...
+    python3 scripts/wasm_pkg.py begin
+        mark pkg/ unfinished, before a build writes into it (`make wasm`,
+        `make wasm-dev`)
+    python3 scripts/wasm_pkg.py stamp [--profile P] [--source H [--recipe CMD]] FILE...
         write pkg/build.json over FILE... (`make wasm`, `make wasm-dev`,
-        `make wasm-stamp`)
+        `make wasm-stamp`); with --recipe, H is kept only if the inputs
+        still hash to it, the build done
     python3 scripts/wasm_pkg.py check
         exit 1, saying what to run, unless pkg/ holds a release build (the
         `make browser-*` targets and `make smoke`)
@@ -22,12 +26,21 @@ pkg/build.json holds three things:
   URLs, so the same bytes keep their URL and a browser refetches exactly
   what changed (apps/web/AGENTS.md).
 - `profile`: `release` (`make wasm`: fat LTO, one codegen unit, wasm-opt),
-  the build CI, the browser specs, rehearsals and recordings run on; or
-  `dev` (`make wasm-dev`), for trying an engine edit in the browser in
-  seconds, which they refuse. A stamp with none is a release build, from
-  before the field.
+  the build CI, the browser specs, rehearsals and recordings run on; `dev`
+  (`make wasm-dev`), for trying an engine edit in the browser in seconds,
+  which they refuse; or `unfinished`, from the moment a build starts until
+  it is stamped, which they refuse too. A stamp with none is a release
+  build, from before the field.
 - `source`: the hash of what the build was made from (`source`, above), so
   another checkout can tell whether this build is the one it would make.
+
+Why `unfinished`: wasm-pack writes the new engine into pkg/ before it runs
+wasm-opt, and leaves build.json alone. A build that fails at wasm-opt (its
+download, docs/runbooks/wasm-opt-download.md) or is stopped there would
+leave a new, unoptimized engine under the last build's stamp: release, and
+built from other Rust, which the specs would run and another checkout would
+take. Marked before the build starts, pkg/ says what it holds whatever
+happens next, until `make wasm` finishes.
 
 Re-stamping (after a JS-only change, or CI's cached engine against a new
 commit's app scripts) keeps the profile and the source: the engine is the
@@ -54,6 +67,12 @@ WASM = "auracle_wasm_bg.wasm"
 # nor a doc makes two checkouts' engines differ.
 INPUTS = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml")
 PROSE = ".md"
+RELEASE, DEV, UNFINISHED = "release", "dev", "unfinished"
+# What a profile is, for a refusal.
+WHAT = {
+    DEV: "a dev build (`make wasm-dev`)",
+    UNFINISHED: "an unfinished build (a `make wasm` or `make wasm-dev` that failed or was stopped, or is running)",
+}
 
 
 def own_env():
@@ -101,6 +120,22 @@ def read_stamp(pkg):
         return {}
 
 
+def write_stamp(pkg, out):
+    with open(os.path.join(pkg, "build.json"), "w") as f:
+        json.dump(out, f)
+    return out
+
+
+def begin(pkg):
+    """Mark pkg/ unfinished: a build is about to write into it (`make wasm`,
+    `make wasm-dev`). No `build`, so the app fetches every script afresh
+    meanwhile (main.js's fallback), and no `source`, so no checkout takes
+    it; `stamp` replaces it when the build is done, and a re-stamp keeps
+    it."""
+    os.makedirs(pkg, exist_ok=True)
+    return write_stamp(pkg, {"profile": UNFINISHED})
+
+
 def stamp(pkg, files, profile=None, src=None):
     """Write pkg/build.json: `build` over `files`, `profile` and `source`
     as given, or as the stamp already there had them (an empty `src` drops
@@ -110,13 +145,18 @@ def stamp(pkg, files, profile=None, src=None):
     for path in files:
         with open(path, "rb") as f:
             h.update(f.read())
-    out = {"build": h.hexdigest()[:16], "profile": profile or before.get("profile") or "release"}
+    out = {"build": h.hexdigest()[:16], "profile": profile or before.get("profile") or RELEASE}
     kept = before.get("source") if src is None else src
     if kept:
         out["source"] = kept
-    with open(os.path.join(pkg, "build.json"), "w") as f:
-        json.dump(out, f)
-    return out
+    return write_stamp(pkg, out)
+
+
+def settled(root, recipe, src):
+    """`src`, a hash of the inputs taken before a build, if they still hash
+    to it now the build is done; otherwise "" (no source): Rust saved while
+    it built may or may not be in the engine, so no checkout may take it."""
+    return src if src and source(root, recipe) == src else ""
 
 
 def refusal(pkg):
@@ -124,10 +164,10 @@ def refusal(pkg):
     or None: it must hold a release build."""
     if not os.path.isfile(os.path.join(pkg, WASM)):
         return "no built engine in apps/web/pkg: run `make wasm` first"
-    profile = read_stamp(pkg).get("profile") or "release"
-    if profile != "release":
+    profile = read_stamp(pkg).get("profile") or RELEASE
+    if profile != RELEASE:
         return (
-            f"apps/web/pkg is a {profile} build (`make wasm-dev`), and the browser specs, rehearsals and "
+            f"apps/web/pkg is {WHAT.get(profile, f'a {profile} build')}, and the browser specs, rehearsals and "
             "recordings run on the release build: run `make wasm` first"
         )
     return None
@@ -158,9 +198,9 @@ def reuse(root, recipe, files, origin=None):
     rec = read_stamp(theirs)
     if not os.path.isfile(os.path.join(theirs, WASM)) or not rec:
         return 1, f"{origin} has no built engine to reuse: run `make wasm` there, or here"
-    profile = rec.get("profile") or "release"
-    if profile != "release":
-        return 1, f"{origin}'s engine is a {profile} build: run `make wasm` there, or here"
+    profile = rec.get("profile") or RELEASE
+    if profile != RELEASE:
+        return 1, f"{origin}'s engine is {WHAT.get(profile, f'a {profile} build')}: run `make wasm` there, or here"
     if not rec.get("source"):
         return 1, f"{origin}'s engine doesn't say what it was built from (a stamp from before it did): run `make wasm` there, or here"
     mine = source(root, recipe)
@@ -175,9 +215,14 @@ def reuse(root, recipe, files, origin=None):
     staged = ours + ".reuse"
     shutil.rmtree(staged, ignore_errors=True)
     shutil.copytree(theirs, staged)
+    # A build there marks its pkg/ unfinished before it writes a byte, so a
+    # stamp unchanged after the copy means nothing was written during it.
+    if read_stamp(theirs) != rec:
+        shutil.rmtree(staged, ignore_errors=True)
+        return 1, f"{origin}'s engine changed while it was copied (a build there?): `make pkg-reuse` again once it is done, or `make wasm`"
     shutil.rmtree(ours, ignore_errors=True)
     os.replace(staged, ours)
-    stamp(ours, files, profile="release", src=mine)
+    stamp(ours, files, profile=RELEASE, src=mine)
     return 0, f"apps/web/pkg: {origin}'s release build, from the same Rust and build command ({mine})"
 
 
@@ -186,9 +231,11 @@ def main(argv, root=ROOT):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("source")
     p.add_argument("--recipe", required=True)
+    sub.add_parser("begin")
     p = sub.add_parser("stamp")
-    p.add_argument("--profile", choices=("release", "dev"))
+    p.add_argument("--profile", choices=(RELEASE, DEV))
     p.add_argument("--source", dest="src")
+    p.add_argument("--recipe")
     p.add_argument("files", nargs="+")
     sub.add_parser("check")
     p = sub.add_parser("reuse")
@@ -200,8 +247,20 @@ def main(argv, root=ROOT):
     if a.cmd == "source":
         print(source(root, a.recipe) or "")
         return 0
+    if a.cmd == "begin":
+        begin(pkg)
+        return 0
     if a.cmd == "stamp":
-        out = stamp(pkg, a.files, a.profile, a.src)
+        src = a.src
+        if a.recipe is not None and src:
+            src = settled(root, a.recipe, src)
+            if not src:
+                print(
+                    "  the Rust changed while it built, so this build doesn't say what it was built from and "
+                    "no other checkout takes it (`make pkg-reuse`); `make wasm` again to stamp it",
+                    file=sys.stderr,
+                )
+        out = stamp(pkg, a.files, a.profile, src)
         print(f"  apps/web/pkg/build.json: {json.dumps(out)}")
         return 0
     if a.cmd == "check":

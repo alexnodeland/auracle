@@ -19,8 +19,9 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   and the films do. In a worktree that changed no Rust, `make pkg-reuse`
   takes the main checkout's build instead (in about a second), when it was
   built from the same Rust. A quick build (`make wasm-dev`, for trying an
-  engine edit by hand) is refused: the config stops before a browser starts,
-  and the `make browser-*` targets say so first.
+  engine edit by hand) is refused, and so is one a build left unfinished:
+  the config stops before a browser starts, and the `make browser-*`
+  targets say so first.
 - **`AURACLE_TEST_PORT`** starts a server of the suite's own on that port
   (the `make browser-*` targets use it too, when it is set).
   Without it the config reuses whatever answers on `:8642`, which from a
