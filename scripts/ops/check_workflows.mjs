@@ -26,12 +26,16 @@
 //   agent answers with data its schema allows, its arrays one element long,
 //   its booleans false and its nullable fields filled (`rich`); with the
 //   least data its schema allows, its arrays empty and its booleans true
-//   (`lean`); and every agent fails and returns null (`dead`, as a skipped or
-//   dead agent does). `pipeline()` and `parallel()` keep the tool's semantics
-//   (no barrier between a pipeline's stages; a throwing stage or thunk gives
-//   null). In `rich` and `lean` no stage may throw, since a stage that
-//   throws there has a bug the tool would hide as a null; in all three the
-//   run must return a value JSON can carry. Every agent call has a label, a
+//   (`lean`); every agent fails and returns null (`dead`, as a skipped or
+//   dead agent does); and `rich` again once per agent call with that one
+//   agent dead. `pipeline()` and `parallel()` keep the tool's semantics (no
+//   barrier between a pipeline's stages; a throwing stage or thunk gives
+//   null; a stage that gives null ends its item, and no later stage runs on
+//   it). In `rich`, `lean` and one agent dead no stage may throw, since a
+//   stage that throws there has a bug the tool would hide as a null; in
+//   every run the run must return a value JSON can carry. Whether a dead
+//   agent leaves an item `ready` is a property of each workflow, asserted
+//   in scripts/ops/workflows.test.mjs. Every agent call has a label, a
 //   prompt with no `undefined`, `NaN` or `[object Object]` in it, only the
 //   options the tool takes, a known agent type, and a schema the tool
 //   accepts (an object at the root, `required` within `properties`).
@@ -341,13 +345,25 @@ export function compile(body) {
   return new AsyncFunction(...GLOBALS, ...SHADOWED, body)
 }
 
-/** One run of the body. Resolves to what it recorded; never rejects. */
-export async function dryRun(fn, args, mode, known = agentTypes()) {
-  const rec = { calls: 0, phases: new Set(), problems: [], stageErrors: [], result: undefined, error: null }
+/** A workflow file's body, compiled for dryRun (its meta declared as `meta`). */
+export function compileWorkflow(src) {
+  const m = metaText(src)
+  if (m.problem) throw new Error(m.problem)
+  const rest = src.slice(m.end).replace(/^;/, '')
+  return compile(`const meta = ${m.text};\n${rest}`)
+}
+
+/** One run of the body. Resolves to what it recorded; never rejects.
+ * `kill`: the index of the one agent call that dies (returns null), the rest
+ * answering as `mode` says. `answer(opts, prompt, index)`: answers in place
+ * of `mode`'s (a test's scripted agents). */
+export async function dryRun(fn, args, mode, known = agentTypes(), { kill = -1, answer = null } = {}) {
+  const rec = { calls: 0, labels: [], phases: new Set(), problems: [], stageErrors: [], result: undefined, error: null }
   const say = p => { if (!rec.problems.includes(p)) rec.problems.push(p) }
   async function agent(prompt, opts = {}) {
-    rec.calls++
+    const index = rec.calls++
     const label = opts && typeof opts.label === 'string' ? opts.label : '(no label)'
+    rec.labels.push(label)
     if (typeof prompt !== 'string' || !prompt.trim()) say(`agent ${label}: the prompt is not a string, or is empty`)
     else for (const bad of ['undefined', 'NaN', '[object Object]']) {
       if (new RegExp(`(^|[^\\w])${bad.replace(/[[\]]/g, '\\$&')}([^\\w]|$)`).test(prompt)) say(`agent ${label}: the prompt has \`${bad}\` in it (an interpolation of something missing)`)
@@ -363,15 +379,19 @@ export async function dryRun(fn, args, mode, known = agentTypes()) {
       if (opts.model !== undefined && typeof opts.model !== 'string') say(`agent ${label}: model is not a string`)
       if (opts.schema !== undefined) for (const p of schemaProblems(opts.schema)) say(`agent ${label}: ${p}`)
     }
-    if (mode === 'dead') return null
+    if (mode === 'dead' || index === kill) return null
+    if (answer) return answer(opts, prompt, index)
     return opts && opts.schema ? sample(opts.schema, mode) : mode === 'rich' ? 'x' : ''
   }
+  // As the tool's: a stage that returns null (or throws, which gives null)
+  // ends its item, and no later stage runs on it.
   async function pipeline(items, ...stages) {
     if (!Array.isArray(items)) throw new TypeError('pipeline(): items is not an array')
     if (!stages.every(s => typeof s === 'function')) throw new TypeError('pipeline(): a stage is not a function')
     return Promise.all(items.map(async (item, i) => {
       let prev = item
       for (const stage of stages) {
+        if (prev === null) break
         try { prev = await stage(prev, item, i) } catch (e) { rec.stageErrors.push(e); return null }
       }
       return prev
@@ -435,8 +455,10 @@ export async function checkSource(name, src, samples = SAMPLES[name], known = ag
     for (const e of none.stageErrors) out.push(`no args: a stage threw: ${describe(e)}`)
   }
   for (const [i, args] of samples.entries()) {
+    let rich = null
     for (const mode of ['rich', 'lean', 'dead']) {
       const r = await dryRun(fn, structuredClone(args), mode, known)
+      if (mode === 'rich') rich = r
       const where = `sample ${i + 1}, ${mode}`
       out.push(...r.problems.map(p => `${where}: ${p}`))
       if (r.error) out.push(`${where}: the run threw: ${describe(r.error)}`)
@@ -447,6 +469,16 @@ export async function checkSource(name, src, samples = SAMPLES[name], known = ag
       if (mode !== 'dead') for (const e of r.stageErrors) out.push(`${where}: a stage threw: ${describe(e)}`)
       for (const t of r.phases) if (t && !declared.has(t)) out.push(`${where}: phase ${JSON.stringify(t)} ran but is not in meta.phases`)
       if (mode === 'rich' && !r.calls && !r.error) out.push(`${where}: no agent was called`)
+    }
+    // One agent dead at a time, the rest answering richly: an agent skipped,
+    // or dead on an API error, mid-run. No stage may throw on its null, and
+    // the run still returns.
+    for (let k = 0; rich && !rich.error && k < rich.calls; k++) {
+      const r = await dryRun(fn, structuredClone(args), 'rich', known, { kill: k })
+      const where = `sample ${i + 1}, rich with agent ${JSON.stringify(rich.labels[k])} dead`
+      if (r.error) out.push(`${where}: the run threw: ${describe(r.error)}`)
+      else if (r.result === undefined) out.push(`${where}: the run returned nothing`)
+      for (const e of r.stageErrors) out.push(`${where}: a stage threw: ${describe(e)}`)
     }
   }
   return [...new Set(out)]

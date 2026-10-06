@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkSource, impurities, codeOnly, sample, schemaProblems, DIR, SAMPLES } from './check_workflows.mjs'
+import { checkSource, impurities, codeOnly, sample, schemaProblems, dryRun, compile, metaText, DIR, SAMPLES } from './check_workflows.mjs'
 
 const META = `export const meta = {
   name: 'demo',
@@ -129,6 +129,36 @@ return out
   const crashes = drops.replace('return out', 'return out.map(x => x.length)')
   const problems = await check(crashes)
   assert.ok(problems.some(p => /dead: the run threw/.test(p)), problems.join('\n'))
+})
+
+test('a stage that gives null ends its item, as in the tool', async () => {
+  // The first stage drops its item on purpose; the second reads prev.head and
+  // must not run on that null.
+  const src = META + `
+if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
+let later = 0
+const out = await pipeline([1], async () => { await agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} }); return null }, prev => { later++; return prev.head })
+return { out, later }
+`
+  assert.deepEqual(await check(src), [])
+  const r = await dryRun(compile(src.slice(metaText(src).end)), { what: 'it' }, 'rich')
+  assert.deepEqual(r.result, { out: [null], later: 0 })
+})
+
+test('one agent dead mid-run: a stage or a run that throws on its null is caught', async () => {
+  // Sound with every agent alive, and with every agent dead (the first null
+  // throws before the second agent is called); not with only the second dead.
+  const src = META + `
+if (!args || typeof args !== 'object') throw new Error('demo: args is an object')
+const a = await agent('Build it.', { label: 'build', phase: 'Build', schema: ${SCHEMA} })
+if (!a) return { head: null }
+const b = await agent('Build it again.', { label: 'build again', phase: 'Build', schema: ${SCHEMA} })
+return { head: a.head + b.head }
+`
+  const problems = await check(src)
+  assert.ok(problems.some(p => /sample 1, rich with agent "build again" dead: the run threw/.test(p)), problems.join('\n'))
+  assert.ok(!problems.some(p => /agent "build" dead/.test(p)), problems.join('\n'))
+  assert.deepEqual(await check(src.replace('a.head + b.head', 'a.head + (b ? b.head : "")')), [])
 })
 
 test('a prompt that interpolates something missing is caught', async () => {
