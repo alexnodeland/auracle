@@ -59,13 +59,40 @@ fast-forwarded. Before that, `make dev-check` tries the branch's own
 | `truth-auditor` | Read-only: walk a view or feature against its descriptions and report every gap |
 | `reviewer` | Read-only: review a diff against this repo's invariants |
 
-Every agent runs on Opus (`model: opus` in its frontmatter). Give agents that
-change code their own worktree, under `.claude/worktrees/`. They commit there
-and hand back a report; they never push, open a PR or merge. The session that
-coordinates the work (the operator) reviews, pushes and opens the PR in the
-merge queue, which merges it once the full gate is green on its batch
-([`docs/process.md`](../docs/process.md)). The one-browser rule applies to
-agents too.
+Give agents that change code their own worktree, under `.claude/worktrees/`.
+They commit there and hand back a report; they never push, open a PR or merge.
+The session that coordinates the work (the operator) reviews, pushes and opens
+the PR in the merge queue, which merges it once the full gate is green on its
+batch ([`docs/process.md`](../docs/process.md)). The one-browser rule applies
+to agents too.
+
+### Choosing the model
+
+Each agent definition names Opus as its default (`model: opus` in its
+frontmatter). The operator chooses the model for each task, Opus or Sonnet 5.5,
+by how hard the task looks: how much design, diagnosis or judgment it takes,
+and what a wrong answer costs. By hand, that is the Agent tool's `model`. In a
+workflow, every `agent()` call passes a `model`, which the script sets from the
+stage. The operator changes a stage with `models: {stage: 'opus' | 'sonnet'}`
+in the run's args, and in `ship-issues` an item's own `model` sets its build and
+fix stages.
+
+| Model | For | For example |
+| --- | --- | --- |
+| Opus | Work that takes design, diagnosis or judgment | Building a feature or fixing a bug; finding a flake's cause; a test that kills a mutant by asserting a behavior; reviewing a branch; planning a wave |
+| Sonnet 5.5 | Work with a clear recipe and an easy check | Listing issues; reading one issue; counting a crate's mutants; re-checking a finding already fixed; a rebase, the quick gates and the PR checks; an item whose issue says exactly what to change and a gate proves it |
+
+When in doubt, use Opus. A wrong answer from the cheaper model costs a review
+round, and that costs more than the tokens saved.
+
+The advisor is a tool, when the session has one, that gives your work so far to
+a stronger model for a second opinion. Every agent definition says to call it
+before committing to an approach, when stuck or going in circles, and before
+reporting done. So does every workflow prompt for substantive work; a pure
+listing skips it. `make dev-check` holds both: it fails on an `agent()` call
+with no `model`, on a definition without `model: opus` or without the advisor
+line, and on a workflow whose `models` override does not reach its stage
+(`scripts/ops/workflows.test.mjs`).
 
 ## Workflows (`.claude/workflows/`)
 
@@ -90,10 +117,11 @@ A workflow file is a plain script, not a module: `export const meta = {…}`
 and the after-edit hook): meta, the phases it names, no `Date.now()`,
 `Math.random()` or Node API, and a dry run of the body on stubbed agents
 with sample `args` for each, which it keeps. A new workflow adds its sample
-there. What the workflows promise the operator is tested on scripted agents
-in `scripts/ops/workflows.test.mjs`: an item of `ship-issues`, `fix-flake`
-or `mutants-burndown` is `ready` only when every agent it needed came back,
-and `review-pr` loses no finding. An agent label is `<stage> <key>`
+there, and every `agent()` call passes `model: 'opus'` or `model: 'sonnet'`
+([Choosing the model](#choosing-the-model)). What the workflows promise the
+operator is tested on scripted agents in `scripts/ops/workflows.test.mjs`: an
+item of `ship-issues`, `fix-flake` or `mutants-burndown` is `ready` only when
+every agent it needed came back, and `review-pr` loses no finding. An agent label is `<stage> <key>`
 (`build #233`, `fix #233 r2`), which `wf_result.py` reads a running
 workflow's journal by.
 

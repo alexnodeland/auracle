@@ -152,7 +152,11 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `truth-auditor` and `reviewer` are read-only. The operator pushes and opens
   the PR in the merge queue, which merges it once the full gate is green on
   its batch ([`docs/process.md`](docs/process.md)).
-- **Agents run on Opus** (`model: opus` in each definition).
+- **Models are chosen per task.** Opus is each agent definition's default
+  (`model: opus`). The operator picks Opus or Sonnet 5.5 for a task by how hard
+  it looks: the Agent tool's `model` by hand, a workflow's `model` and `models`
+  in a wave. Agents call the advisor tool when there is one and it helps
+  ([`.claude/README.md`](.claude/README.md#choosing-the-model)).
 - **Hooks:** at session start, a report of a missing or stale
   `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
   hand edits under the five generated paths of a file's own checkout, a
