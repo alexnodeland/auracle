@@ -51,7 +51,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
-| Mutants | `.github/workflows/mutants.yml`, *Mutants* | On a PR that changes a crate, the mutants in the changed code (`make mutants DIFF=1`) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; the whole every twelve weeks), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
+| Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane:
 
@@ -317,50 +317,74 @@ what review does with one are the crates' rules, in
 The *Mutants* workflow (`mutants.yml`) is not part of the required `CI`
 check.
 
-**On a PR that changes a crate**, one runner tests the mutants in the
-changed code (`make mutants DIFF=1` against the merge base, in place, one at
-a time) for at most 25 minutes, the unmutated build and tests included, then
-stops and reports what it judged. The run's summary has the table and every
-survivor and timeout, linked; the job is red when a mutant survived.
+**On every PR**, one runner tests the mutants in the changed code
+(`make mutants DIFF=1`'s command against the merge base, in place, one at a
+time) for at most 25 minutes, the unmutated build and tests included, then
+stops and reports what it judged. It runs `make -s mutants-command`'s
+command itself rather than `make mutants`, whose exit code is make's 2 for
+any failure, so it reads cargo-mutants' own: a survivor, a timeout, the
+unmutated tests failing, a diff that doesn't match the tree, or the run
+breaking. A PR that changes no Rust in `crates/` passes at once; the
+workflow has no `paths:` filter, which would leave the check waiting, never
+run, on such a PR once it is required. The run's summary has the table and
+every survivor and timeout, linked; the job is red when a mutant survived.
+A run the cap stops before the unmutated tests are done judges nothing and
+passes, with a warning on the PR's checks.
 
 **Weekly** (Saturdays, 09:17 UTC) **and by hand**, one part of the
 workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
-job: taste 1, grammar 3, features 13, session 20, wasm 9), and each week
+job: taste 1, grammar 4, features 16, session 26, wasm 11), and each week
 runs the next four, two runners at a time, each stopped at five and a half
-hours. Forty-six shards make twelve parts: the workspace once every twelve
-weeks. A run by hand takes this week's part, or the one its `part` input
-names. A run on `main` that finds a survivor files or comments on
-*Mutants that survive*, naming its part.
+hours. Fifty-eight shards make fifteen parts, so a fifteen-week cycle aims
+to cover the workspace. The cover is approximate: a shard is a slice of
+its crate's mutants in source order on the day it runs, so code that
+changes between weeks moves the slices' edges, and a mutant near one can be
+tested twice in a cycle or not at all. Weeks count from Mondays, so a run
+by hand takes the part the coming Saturday will, unless its `part` input
+names another (its summary lists them all). A week whose run is dropped
+leaves its part to the next cycle. A run on `main` that finds a survivor,
+or a shard that left no outcomes, files or comments on *Mutants that
+survive*, naming its part.
 
-**How long.** Measured on Oct 6 at `db2103f`, on a 16-core Mac shared with
-other work (load 17 to 76), at `nice -n 19` and two mutants at a time:
+**How long.** Measured on Oct 6 on a 16-core Mac shared with other work,
+two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a
+load of 17 to 76, with the timeout at 3 times the unmutated time (it is 5
+now: `.cargo/mutants.toml` says why); the run at `cf61f48`, after taste's
+PR (#198), at 5.
 
 | Run | Mutants | Wall time | Caught | Survived | Timed out | Unviable | A mutant, on average |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `auracle-taste`, whole | 622 | 29.4 min | 428 | 166 | 2 | 26 | 3.1 s to build, 2.5 s of tests (of a 4.7 s suite) |
-| `auracle-session`, 1 in 100 (round robin) | 21 | 10.3 min | 11 | 7 | 0 | 3 | 13 s to build, 37 s of tests (of a 46 s suite) |
+| `auracle-taste` at `cf61f48`, whole | 619 | 18 min | 506 | 87 | 0 | 26 | 2.3 s to build, 1.1 s of tests (of a 4.7 s suite) |
+| `auracle-taste` at `db2103f`, whole | 622 | 29.4 min | 428 | 166 | 2 | 26 | 3.1 s to build, 2.5 s of tests (of a 4.7 s suite) |
+| `auracle-session` at `db2103f`, 1 in 100 (round robin) | 21 | 10.3 min | 11 | 7 | 0 | 3 | 13 s to build, 37 s of tests (of a 46 s suite) |
 
-A caught mutant costs little: nextest stops at the first failing test
-(`--max-fail=1:immediate`), so taste's took 1.1 s of their 4.7 s suite and
-session's 16 s of 46. A survivor runs every test (taste's 6.3 s, session's
-86 s), so the cost falls as the crates' PRs kill survivors. Each crate's
-fast tier alone, on the same machine under like load, took: taste 9 s,
-grammar 1 s, features 38 s, wasm 40 s, session 64 s; rebuilding a crate's
-tests after a change, 3 to 11 s.
+Taste's survivors at `cf61f48`, by file: `model.rs` 53, `synthetic.rs` 21,
+`standardize.rs` 8, `observe.rs` 5. A caught mutant costs little: nextest
+stops at the first failing test (`--max-fail=1:immediate`), so at `db2103f`
+taste's took 1.1 s of their 4.7 s suite and session's 16 s of 46. A
+survivor runs every test (taste's 6.3 s, session's 86 s), so the cost falls
+as survivors are killed: taste's mutants took 2.5 s of tests each at
+`db2103f` and 1.1 s at `cf61f48`, with half as many survivors (and a
+lighter load). Each crate's fast tier alone, on the same machine under like load,
+took: taste 9 s, grammar 1 s, features 38 s, wasm 40 s, session 64 s;
+rebuilding a crate's tests after a change, 3 to 11 s. Two of taste's
+mutants timed out at `db2103f` (`synthetic.rs:54` and `:55`, in
+`SyntheticUser::stars`), at the 20 s floor over a 4.7 s suite; why is not
+known. At `cf61f48`, with #198's tests and a 24 s limit, both finished in
+4 s and survived.
 
 **On a runner**, estimated, not yet measured. CI's Test job spends about
 eleven minutes of a runner's time on the fast tier (two runners, five and a
 half each), which this Mac runs in about a minute and a half unloaded: about
 eight times slower. A build is taken to be about four times slower. A mutant
-then costs about 15 s in taste, 25 s in grammar,
-two minutes in features and wasm, and three to four in session, and the
-workspace's 8,340 about 200 to 250 runner-hours. Four runners for six hours
-a week are 24, hence the parts. `PLAN`'s counts are sized from these
-estimates to keep each shard near five hours; a weekly shard that stops at
-its cap is a measurement that says its crate needs more. The two timeouts
-in taste were most likely the machine's load, not hangs: both stopped at
-the 20 s floor, over a suite of 4.7 s, while survivors there took up to
-four times the unmutated time.
+then costs about 15 s in taste, 25 s in grammar, two minutes in features
+and wasm, and three to four in session, and the workspace's 8,320 about 200
+to 250 runner-hours. Four runners for six hours a week are 24, hence the
+parts. `PLAN`'s counts are sized from these estimates to keep each shard
+near four and a half hours, under its cap of five and a half (session's
+2,001 mutants in 26 shards are 77 each: four and a half hours at three and
+a half minutes a mutant, five at four). A weekly shard that stops at its
+cap is a measurement that says its crate needs more.
 
 ## Flakes
 

@@ -172,15 +172,18 @@ its fast tier. A mutant some test fails on is *caught*. A mutant every test
 passes on *survives*: the tests run that code and don't check what it does.
 A mutant that doesn't compile is *unviable*, and one whose tests run past
 five times the unmutated run's test time (20 s at least) is stopped as a
-*timeout* (most often a hang: a loop bound or a sample count changed);
-neither is a survivor.
+*timeout* (a hang, such as a changed loop bound, or tests slowed past the
+limit); neither is a survivor.
 
 **What runs.** `.cargo/mutants.toml` says, each choice with its reason: the
 `test-fast` profile and nextest; a mutant is tested by its own crate's tests
-only, so a survivor is code its crate's tests don't check, the standard each
-crate's coverage floor holds; the fast tier, the slow tests never (the
-Makefile passes `SEARCH_FLOOR` and `SLOW_TESTS`); no examples, which are
-neither mutated nor built; and the hand-written `Debug` impls left out.
+only, so a survivor is code its crate's tests don't check; the fast tier,
+the slow tests never (the Makefile passes `SEARCH_FLOOR` and `SLOW_TESTS`);
+no examples, which are neither mutated nor built; and the hand-written
+`Debug` impls left out. Judging each crate by its own tests is stricter
+than coverage, which is measured over the whole workspace's run: a branch
+of grammar's that only a session test reaches is covered, and its mutants
+survive.
 
 **Running it.** cargo-mutants is pinned in the `Makefile`
 (`MUTANTS_VERSION`), and `make setup` installs it.
@@ -190,22 +193,24 @@ neither mutated nor built; and the hand-written `Debug` impls left out.
   is `git add`ed). Run it before review on any Rust change.
 - `make mutants CRATE=auracle-taste`: one crate. With `DIFF=1` too, that
   crate's changed code.
-- `make mutants`: the whole workspace, 8,340 mutants: a day or two on a
+- `make mutants`: the whole workspace, 8,320 mutants: a day or two on a
   16-core Mac, estimated. CI's weekly run takes it a part at a time.
 - Two mutants at a time (`MUTANTS_JOBS`), each in a copy of the tree whose
-  first build is from clean. It holds a machine for long: on a shared one,
-  `nice -n 19 make mutants …`.
+  first build is from clean, at `nice -n 10`. It holds a machine for long:
+  on a shared one, `nice -n 19 make mutants …`.
 - What it found is in `mutants.out/`: `missed.txt` lists the survivors,
   `timeout.txt` the timeouts, `log/` holds each mutant's change, build and
   test output. `python3 scripts/mutants_report.py mutants.out` prints them
-  per crate. `make mutants` exits 0 when no mutant survived or timed out,
-  3 when one timed out, else 2 when one survived: a 3 can hide survivors,
-  so read `missed.txt`.
+  per crate. `make mutants` succeeds only when every mutant was caught or
+  unviable. Any other end fails it with make's own exit code, 2, whatever
+  the cause; the line before make's error gives cargo-mutants' code (2: a
+  survivor; 3: a timeout, and maybe survivors too; 4: the unmutated tests
+  failed), and the report says what it found.
 
 **Reading a survivor.** Each names a place, a function and a change:
-`crates/auracle-taste/src/model.rs:330:16: replace + with - in sigmoid`
-says that with `1.0 + (-x).exp()` made `1.0 - (-x).exp()`, every test of
-`auracle-taste` still passed. It is one of three things:
+`crates/auracle-taste/src/model.rs:326:16: replace + with - in sigmoid`
+(at `cf61f48`) says that with `1.0 + (-x).exp()` made `1.0 - (-x).exp()`,
+every test of `auracle-taste` still passed. It is one of three things:
 
 1. **A test that checks too little.** The usual case: a test runs the code
    and asserts something the change keeps (a loose bound, a property that
@@ -222,34 +227,42 @@ says that with `1.0 + (-x).exp()` made `1.0 - (-x).exp()`, every test of
 
 **Review treats a survivor in changed code as a finding**, as it does an
 uncovered changed line: killed, or answered with why it can't be. The
-crates don't start clean: on `main` at `db2103f`, 166 of `auracle-taste`'s
-622 mutants survived (428 were caught, 26 unviable, 2 timed out). Each crate's PR in
-#181 kills or answers its own, and the PR job becomes required once they
-are done.
+crates don't start clean: on `main` at `cf61f48`, with taste's PR (#198)
+merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
+unviable). Taste's and features' PRs merged before this check existed, so
+a follow-up issue tracks their survivors; each crate's PR still to come in
+#181 kills or answers its own. The PR job becomes required once they are
+done.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
 not part of the required `CI` check (how long each part takes, and why it is
 shaped so: `docs/architecture/testing.md`
 [§ Mutants](../docs/architecture/testing.md#mutants)):
 
-- **On a PR that changes a crate:** the mutants in the changed code
-  (`make mutants DIFF=1` against the merge base), one at a time on one
-  runner, stopped after 25 minutes, the unmutated build and tests included,
-  with what was judged reported. Mutants run in source order, so a stopped
-  run has judged the first. A change to taste or grammar finishes; one that
-  changes much of session, features or wasm is judged in part, and the
-  local `make mutants DIFF=1` is the complete run. The run's summary lists
-  each survivor (its line, linked, its function and its change) and each
-  timeout, the PR's changed files mark survivors on their lines (the first
-  ten), and the job is red when one survived.
+- **On every PR:** the mutants in the changed code (`make mutants
+  DIFF=1`'s command against the merge base, run directly so the job reads
+  cargo-mutants' own exit code), one at a time on one runner, stopped after
+  25 minutes, the unmutated build and tests included, with what was judged
+  reported. A PR that changes no Rust in `crates/` passes at once. Mutants
+  run in source order, so a stopped run has judged the first. A change to
+  taste or grammar finishes; one that changes much of session, features or
+  wasm is judged in part, and the local `make mutants DIFF=1` is the
+  complete run. The run's summary lists each survivor (its line, linked,
+  its function and its change) and each timeout, the PR's changed files
+  mark survivors on their lines (the first ten), and the job is red when
+  one survived.
 - **Weekly, and by hand:** one part of the workspace. The whole does not fit
   in a week's runners, so each crate's mutants are cut into shards (the
   `plan` job's `PLAN`), four run each week, two runners at a time, and the
-  parts come in turn: the workspace once every twelve weeks. Every shard's
-  survivors are in one summary, and a run on `main` that finds any files or
-  comments on one issue, *Mutants that survive*, naming the part it
-  covered; a cycle's comments cover the workspace. A shard stopped at its
-  cap means its crate needs more shards in `PLAN`.
+  parts come in turn: a cycle of fifteen weeks aims to cover the workspace.
+  The cover is approximate: a shard is a slice of its crate's mutants in
+  source order on the day it runs, so code that changes between weeks
+  moves the slices' edges, and a mutant near one can be tested twice in a
+  cycle or not at all. A week whose run is dropped leaves its part to the
+  next cycle. Every shard's survivors are in one summary, and a run on
+  `main` that finds any files or comments on one issue, *Mutants that
+  survive*, naming the part it covered. A shard stopped at its cap means
+  its crate needs more shards in `PLAN`.
 
 ## Diagnostics worth knowing
 
