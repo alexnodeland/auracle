@@ -116,6 +116,72 @@ impl quiver::introspection::ModuleIntrospection for Refuses {
     }
 }
 
+/// **A step no tree can make fail records its fault, and the build returns
+/// it.** A live knob's cable and a modulation term's wiring are aimed by the
+/// compiler at ports it named itself, so only a compiler mistake fails
+/// them; when one does, the error is kept (the first, not what follows from
+/// it), the build goes on, and the build's result is that error. Never a
+/// panic: the wasm engine compiles every patch, and a panic there aborts
+/// it. Aimed here at a port the module does not have.
+#[test]
+fn a_build_step_that_fails_records_its_fault_and_the_build_returns_it() {
+    let level = || Arc::new(AtomicF64::new(0.0));
+    let mut c = Compiler::new(SR, &level(), &level(), None, false);
+    let adsr = c.patch.add("t:adsr", Adsr::new(SR));
+    let nowhere = |port| PortRef {
+        node: adsr.id(),
+        port,
+    };
+    assert!(c.take_fault().is_ok(), "a clean build has no fault");
+
+    c.knob("node", "cut", 0.5, ParamMap::Unit, false, nowhere(999));
+    assert!(
+        c.params.contains_key("node#cut"),
+        "the knob is still registered"
+    );
+    let lfo = ModNode::Lfo {
+        uid: Uid::NEW,
+        wave: Waveform::Sine,
+        rate: 0.5,
+    };
+    c.wire_mod(
+        &lfo,
+        "node/1",
+        0.5,
+        nowhere(998),
+        None,
+        DepthScale::Normalized,
+    );
+    assert!(
+        c.params.contains_key("node/1/m#rate"),
+        "the build went on past the first fault"
+    );
+    // The knob's fault (port 999), not the modulation's after it (998).
+    let err = c.take_fault().unwrap_err();
+    assert!(
+        matches!(err, PatchError::InvalidPort { port: Some(999), node, .. } if node == adsr.id()),
+        "{err}"
+    );
+    assert!(c.take_fault().is_ok(), "the fault is returned once");
+
+    // A modulation term's wiring alone records its own.
+    c.wire_mod(
+        &lfo,
+        "node/2",
+        0.5,
+        nowhere(998),
+        None,
+        DepthScale::Normalized,
+    );
+    assert!(matches!(
+        c.take_fault(),
+        Err(PatchError::InvalidPort {
+            port: Some(998),
+            ..
+        })
+    ));
+}
+
 /// A pin that cannot take says why, because each cause is a different
 /// compiler mistake: a cable already on the control input (quiver 0.4.0
 /// refuses the pin rather than letting the cable shadow it), an id that

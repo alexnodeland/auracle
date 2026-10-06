@@ -1280,17 +1280,6 @@ impl Sig {
     }
 }
 
-/// Why a live knob's cable cannot fail to connect. `connect` refuses a port
-/// that is not on the patch, or a signal-kind mismatch under
-/// `ValidationMode::Strict`; a knob's source is the `ExternalInput` just
-/// added for it, its target a port this compiler named with `in_` on its own
-/// patch (which panics on a name the module lacks), and every patch is wired
-/// in `Warn` mode. So a refusal here is the compiler contradicting itself,
-/// as an unknown port name already is, and it says so rather than returning
-/// an error no tree can cause.
-const KNOB_CABLE: &str =
-    "a knob's cable joins its own input to a port named on this patch, in Warn mode";
-
 struct Compiler {
     patch: Patch,
     pitch_out: PortRef,
@@ -1322,6 +1311,12 @@ struct Compiler {
     /// afterwards (the end of [`compile`]).
     #[cfg(test)]
     pins: Vec<(NodeId, &'static str, f64)>,
+    /// The first error a step of the build that no tree can make fail ran
+    /// into (a knob's cable, a modulation term's wiring): recorded here by
+    /// [`Self::record`] so the build goes on, and returned when it ends
+    /// ([`Self::take_fault`]). Never a panic: the wasm engine compiles every
+    /// patch, and a panic there aborts the engine.
+    fault: Option<PatchError>,
 }
 
 impl Compiler {
@@ -1354,7 +1349,20 @@ impl Compiler {
             track_feeds: HashMap::new(),
             #[cfg(test)]
             pins: Vec::new(),
+            fault: None,
         }
+    }
+
+    /// Keep `e` as the build's fault, unless an earlier one is already kept:
+    /// the first is the cause, and what follows it only repeats it.
+    fn record(&mut self, e: PatchError) {
+        self.fault.get_or_insert(e);
+    }
+
+    /// The build's fault, if a step recorded one, as the error the build
+    /// returns.
+    fn take_fault(&mut self) -> Result<(), PatchError> {
+        self.fault.take().map_or(Ok(()), Err)
     }
 
     /// Pin the control input `port` on `node` to a constant `value`. Used only
@@ -1460,7 +1468,12 @@ impl Compiler {
         };
         let n = self.patch.add(format!("{key}:{site}!"), input);
         for target in targets {
-            self.patch.connect(n.out("out"), *target).expect(KNOB_CABLE);
+            // A port this compiler named on its own patch, in Warn mode: no
+            // tree makes this fail, and if the compiler ever does, the build
+            // returns the error rather than aborting the engine.
+            if let Err(e) = self.patch.connect(n.out("out"), *target) {
+                self.record(e);
+            }
         }
         self.params
             .insert(format!("{key}#{site}"), ParamHandle { value, map: pmap });
@@ -1494,6 +1507,24 @@ impl Compiler {
     /// decided here, but "how many volts is full depth" is a property of the
     /// destination, and the two together pick the taper — see [`DepthScale`].
     fn wire_mod(
+        &mut self,
+        m: &ModNode,
+        owner: &str,
+        depth: f64,
+        target: PortRef,
+        owner_input: Option<Sig>,
+        scale: DepthScale,
+    ) {
+        // Wiring a term the grammar can hold fails only on a compiler
+        // mistake (a pin that cannot take, `constant`'s diagnostic): the
+        // fault is recorded and the build returns it when it ends.
+        if let Err(e) = self.try_wire_mod(m, owner, depth, target, owner_input, scale) {
+            self.record(e);
+        }
+    }
+
+    /// [`Self::wire_mod`]'s steps, stopping at the first that fails.
+    fn try_wire_mod(
         &mut self,
         m: &ModNode,
         owner: &str,
@@ -2108,7 +2139,7 @@ impl Compiler {
                     // for a follower to tap — as on the wavetable and pluck.
                     None,
                     DepthScale::Pitch,
-                )?;
+                );
                 Ok(Sig::mono(vco.out(wave.port_name())))
             }
             AudioNode::Supersaw {
@@ -2130,7 +2161,7 @@ impl Compiler {
                     pitch_in,
                     None,
                     DepthScale::Pitch,
-                )?;
+                );
                 self.knob(
                     key,
                     "det",
@@ -2253,7 +2284,7 @@ impl Compiler {
                     wt.in_("morph"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(wt.out("out")))
             }
             AudioNode::Pluck {
@@ -2302,7 +2333,7 @@ impl Compiler {
                     ks.in_("damping"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(ks.out("out")))
             }
             AudioNode::Formant {
@@ -2339,7 +2370,7 @@ impl Compiler {
                     fo.in_("vowel"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(fo.out("out")))
             }
             AudioNode::Mix { balance, a, b, .. } => {
@@ -2417,7 +2448,7 @@ impl Compiler {
                     filt.in_("fm"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(filt.out(out_port)))
             }
             AudioNode::Fold {
@@ -2455,7 +2486,7 @@ impl Compiler {
                     fold.in_("threshold"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(fold.out("out")))
             }
             AudioNode::Delay {
@@ -2492,7 +2523,7 @@ impl Compiler {
                     dl.in_("time"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(dl.out("out")))
             }
             AudioNode::Chorus {
@@ -2526,7 +2557,7 @@ impl Compiler {
                     ch.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Width is the entire reason a chorus exists; port 10 (`out`)
                 // is the mono sum of the two voices and throws it away.
                 Ok(Sig::stereo(ch.out("left"), ch.out("right")))
@@ -2562,7 +2593,7 @@ impl Compiler {
                     rv.in_("size"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // The decorrelation between the two tanks *is* the reverb.
                 Ok(Sig::stereo(rv.out("left"), rv.out("right")))
             }
@@ -2596,7 +2627,7 @@ impl Compiler {
                     ds.in_("drive"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(ds.out("out")))
             }
             AudioNode::Bitcrush {
@@ -2626,7 +2657,7 @@ impl Compiler {
                     bc.in_("bits"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(bc.out("out")))
             }
             AudioNode::Phaser {
@@ -2670,7 +2701,7 @@ impl Compiler {
                     ph.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Ports 11/12 are the spread pair; port 10 is the mono sweep
                 // and discards the decorrelation `spread` exists to create.
                 Ok(Sig::stereo(ph.out("left"), ph.out("right")))
@@ -2718,7 +2749,7 @@ impl Compiler {
                     fl.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Ports 11/12 are the spread pair; port 10 is bit-identical to
                 // `left` and throws the decorrelation away.
                 Ok(Sig::stereo(fl.out("left"), fl.out("right")))
@@ -2763,7 +2794,7 @@ impl Compiler {
                     tr.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(tr.out("out")))
             }
             AudioNode::Vibrato {
@@ -2802,7 +2833,7 @@ impl Compiler {
                     vb.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(vb.out("out")))
             }
             AudioNode::Eq {
@@ -2861,7 +2892,7 @@ impl Compiler {
                     eq.in_("mid_gain"),
                     Some(in_out),
                     DepthScale::Gain,
-                )?;
+                );
                 Ok(Sig::mono(eq.out("out")))
             }
             AudioNode::Granular {
@@ -2912,7 +2943,7 @@ impl Compiler {
                     gr.in_("position"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(gr.out("out")))
             }
             AudioNode::RingMod { mix, a, b, .. } => {
@@ -2975,7 +3006,7 @@ impl Compiler {
                     ps.in_("shift"),
                     Some(in_out),
                     DepthScale::Shift,
-                )?;
+                );
                 Ok(Sig::mono(ps.out("out")))
             }
             AudioNode::Comp {
@@ -3030,7 +3061,7 @@ impl Compiler {
                     cp.in_("threshold"),
                     Some(in_out),
                     DepthScale::Detector,
-                )?;
+                );
                 Ok(Sig::mono(cp.out("out")))
             }
             AudioNode::Duck {
@@ -3085,7 +3116,7 @@ impl Compiler {
                     dk.in_("amount"),
                     Some(in_out),
                     DepthScale::ParamCv,
-                )?;
+                );
                 Ok(Sig::mono(dk.out("out")))
             }
             AudioNode::Gate {
@@ -3133,7 +3164,7 @@ impl Compiler {
                     ng.in_("threshold"),
                     Some(in_out),
                     DepthScale::Detector,
-                )?;
+                );
                 Ok(Sig::mono(ng.out("out")))
             }
             AudioNode::Vocoder {
@@ -3187,7 +3218,7 @@ impl Compiler {
                     // follows.
                     Some(carrier_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(vc.out("out")))
             }
             // The input plays `/0`. The tracker is built on `/1` first, and
@@ -3629,6 +3660,9 @@ fn compile_voice(
     if let Some(r) = right {
         c.patch.connect(r, out.in_("right"))?;
     }
+    // A step that recorded its fault rather than stop the build: the build
+    // is done, and that error is its result.
+    c.take_fault()?;
 
     // Every pinned constant still drives its port now that the whole patch is
     // wired: a cable connected to a pinned port *after* the pin would shadow
