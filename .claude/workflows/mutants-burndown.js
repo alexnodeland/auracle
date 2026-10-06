@@ -1,7 +1,7 @@
 export const meta = {
   name: 'mutants-burndown',
   description: "Run cargo-mutants over one auracle crate, kill each surviving mutant with a behavior assertion (or show it equivalent and exclude it narrowly, with its reason), measure again, review and finalize the branch; the operator pushes",
-  whenToUse: "One crate's survivors (the weekly Mutants run's issue, or before the Mutants check becomes required), with a worktree created from origin/main. Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
+  whenToUse: "One crate's survivors (the weekly Mutants run's issue, or before the Mutants check becomes required), with a worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Long: a crate's run takes hours, twice. Runs when the maintainer asks for it by name.",
   phases: [
     { title: 'Measure', detail: 'make mutants CRATE=<crate>, before and after, and the coverage floor' },
     { title: 'Kill', detail: 'one agent per file with survivors, one after another in the one worktree' },
@@ -10,8 +10,8 @@ export const meta = {
   ],
 }
 
-// args: { crate: 'auracle-taste', branch: 'claude/<topic>', worktree: '/abs/path', issue?: <n>,
-//         session?: 'https://claude.ai/code/session_…' }
+// args: { crate: 'auracle-taste', branch: 'claude/<topic>', worktree: '$REPO/.claude/worktrees/<topic>',
+//         issue?: <n>, session?: 'https://claude.ai/code/session_…' }
 // Returns { workflow, session, before, after, groups: [{ file, killed, equivalent, left }], items: [{ key, issue,
 // branch, worktree, status, problems, final, review, verify }] }: the item in ship-issues' shape.
 //

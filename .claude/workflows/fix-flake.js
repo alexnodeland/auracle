@@ -1,7 +1,7 @@
 export const meta = {
   name: 'fix-flake',
   description: 'Diagnose one flaky auracle browser test from the run that caught it, fix the test or the app at the cause, prove it under load and by mutation, review, and finalize the branch; the operator pushes',
-  whenToUse: 'One flaky test (a Flaky: issue, or a red run a dequeued PR did not cause) with its worktree created from origin/main. Runs when the maintainer asks for it by name (it spends many tokens); the ship-wave skill has the steps around it.',
+  whenToUse: 'One flaky test (a Flaky: issue, or a red run a dequeued PR did not cause) with its worktree created from origin/main (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Runs when the maintainer asks for it by name (it spends many tokens); the ship-wave skill has the steps around it.',
   phases: [
     { title: 'Diagnose', detail: "the run's failed log and trace, the spec and the app path, reproduced at throttle 4 and under load; the cause named" },
     { title: 'Fix', detail: 'the test, or the app when it is at fault; the quarantine tag comes out' },
@@ -12,7 +12,8 @@ export const meta = {
 }
 
 // args: { spec: 'patch_facts' | 'tests/web/patch_facts.spec.js', test_title: '…', run_id: <the run that caught it>,
-//         issue?: <its Flaky: issue>, branch: 'claude/<topic>', worktree: '/abs/path', port,
+//         issue?: <its Flaky: issue>, branch: 'claude/<topic>', port,
+//         worktree: '$REPO/.claude/worktrees/<topic>' (the main checkout's .claude/worktrees/),
 //         agentType?: 'web-engineer' (default), session?: 'https://claude.ai/code/session_…' }
 // Returns { workflow, session, items: [{ key, issue, branch, worktree, status, problems, diagnosis, proof,
 // final, review, verify, labels }] }, one item, in ship-issues' shape (scripts/ops/wf_result.py reads both).

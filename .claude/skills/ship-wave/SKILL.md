@@ -31,7 +31,7 @@ the like in the call that uses them. The shell is zsh: quote a line of
 
 ```bash
 REPO=/absolute/path/to/auracle          # the main checkout
-WT="$REPO/../auracle-wt-<topic>"        # one item's worktree
+WT="$REPO/.claude/worktrees/<topic>"    # one item's worktree
 ```
 
 ## Which workflow
@@ -67,11 +67,18 @@ rebased by hand.
 For each item:
 
 ```bash
-git -C "$REPO" fetch -q origin
-git -C "$REPO" worktree add -q -b claude/<topic> "$REPO/../auracle-wt-<topic>" origin/main
-(cd "$REPO/../auracle-wt-<topic>/tests/web" && npm ci --no-audit --no-fund)
+make -C "$REPO" worktree TOPIC=<topic>
+git -C "$REPO" merge -q --ff-only origin/main
+make -C "$WT" pkg-reuse || nice -n 10 make -C "$WT" wasm
 gh -R alexnodeland/auracle issue comment <n> --body "In progress: \`claude/<topic>\` <what it will do, in a line>."
 ```
+
+The first line fetches and makes `claude/<topic>` from `origin/main` at
+`$WT`, inside the main checkout where git ignores it, with `tests/web`'s
+packages; the second keeps the main checkout on `main` and current, since an
+agent in `$WT` also loads its root `AGENTS.md` and runs its hooks; the third
+gives the worktree an engine (the [`ship`](../ship/SKILL.md) skill's step 2
+says more of each).
 
 Give each item a free port of its own (8771 and up; the reviewer takes the
 port plus 100). Its notes are what the builder needs and would otherwise ask:
@@ -85,7 +92,7 @@ With Claude Code's Workflow tool, by name (the file
 
 ```
 Workflow({ name: "ship-issues", args: { items: [ { issue: 233, closes: [233], refs: [177],
-  branch: "claude/<topic>", worktree: "/abs/path/auracle-wt-<topic>", port: 8781,
+  branch: "claude/<topic>", worktree: "/abs/path/auracle/.claude/worktrees/<topic>", port: 8781,
   agentType: "web-engineer", notes: "…", decisions: "…", avoid: "…" } ],
   session: "https://claude.ai/code/session_…" } })
 ```
@@ -209,9 +216,12 @@ advanced and their parents, and ticks the boxes (the `ship` skill's step 8
 says what it leaves to you). Then:
 
 ```bash
-git -C "$REPO" worktree remove "$REPO/../auracle-wt-<topic>"
-git -C "$REPO" branch -D claude/<topic>
+make -C "$REPO" worktree-rm TOPIC=<topic>    # removes $WT and deletes the branch it is on
 ```
+
+It refuses a branch whose commits no remote branch holds: once
+`origin/claude/<topic>` is pruned (`git fetch --prune`), a merged branch
+needs `FORCE=1`.
 
 ## When something hangs
 

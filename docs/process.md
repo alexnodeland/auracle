@@ -441,7 +441,9 @@ The operator's loop:
 1. **Plan.** A triage, when the next wave isn't obvious. Its questions go to
    the maintainer as one batch before the wave.
 2. **Prepare.** A worktree from `origin/main` and a port for each item, and
-   an in-progress comment on its issue.
+   an in-progress comment on its issue: `make worktree TOPIC=<topic>`, at
+   `.claude/worktrees/<topic>`, with the main checkout kept on `main` and
+   current.
 3. **Run.** One run per issue, or per small bundle of issues that share
    files: a run returns when its slowest item is done, and one per item
    lets each completion say so.
@@ -460,7 +462,8 @@ The operator's loop:
    diff3 and its row-wise parts resolved by `scripts/ops/rows_resolve.py`,
    pushed with a lease to its `claude/` branch, and put back in the queue
    with `@mergifyio queue`.
-8. **Clean up** after each merge, as for one task.
+8. **Clean up** after each merge, as for one task:
+   `make worktree-rm TOPIC=<topic>`.
 
 An agent inside a workflow can't be resumed once the run has ended: a
 follow-up is a fresh agent briefed with the branch, its head and what is

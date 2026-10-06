@@ -84,7 +84,7 @@ class FinishedRun(Base):
 
     def test_a_ship_issues_result_gives_the_body_and_the_summary(self):
         item = {
-            "issue": 300, "branch": "claude/thing", "worktree": "/w/auracle-wt-thing", "status": "ready", "problems": [],
+            "issue": 300, "branch": "claude/thing", "worktree": "/w/auracle/.claude/worktrees/thing", "status": "ready", "problems": [],
             "final": report(), "review": review(), "verify": {"all_resolved": True, "remaining": [], "notes": ""}, "fix_rounds": 1,
         }
         path = self.write_output({"workflow": "ship-issues", "session": SESSION, "items": [item]}, {"session": SESSION, "items": [{}]})
@@ -104,7 +104,7 @@ class FinishedRun(Base):
             "decision: Should BACK TO fade?",
             "other_area: the guide's rack page",
             "decided: kept main's behavior for BACK TO",
-            "ship: scripts/ops/ship_pr.sh --full-ci /w/auracle-wt-thing claude/thing 'fix(web): the thing is true now' ",
+            "ship: scripts/ops/ship_pr.sh --full-ci /w/auracle/.claude/worktrees/thing claude/thing 'fix(web): the thing is true now' ",
         ):
             self.assertIn(want, said)
         self.assertNotIn("PROBLEM", said)
@@ -214,8 +214,8 @@ class Journal(Base):
             started("k6", "finalize #300", "a6"), done("k6", final),
         ]
         prompts = {
-            "a1": "You are building GitHub issue #300 of alexnodeland/auracle.\nWorktree: /w/auracle-wt-thing (branch claude/thing, already created from origin/main). Browser port: 8800.",
-            "a2": "You are building GitHub issue #301.\nWorktree: /w/auracle-wt-other (branch claude/other, already created from origin/main).",
+            "a1": "You are building GitHub issue #300 of alexnodeland/auracle.\nWorktree: /w/auracle/.claude/worktrees/thing (branch claude/thing, already created from origin/main). Browser port: 8800.",
+            "a2": "You are building GitHub issue #301.\nWorktree: /w/auracle/.claude/worktrees/other (branch claude/other, already created from origin/main).",
         }
         run = self.write_journal(records, prompts)
         code, said = self.run_main(run, "--session", SESSION)
@@ -223,7 +223,7 @@ class Journal(Base):
         self.assertIn("#300  claude/thing  done, read from the journal", said)
         self.assertIn("title: fix(web): the thing is true now", said, "the latest report is the finalized one")
         self.assertIn("re-check: all resolved", said)
-        self.assertIn("ship: scripts/ops/ship_pr.sh --full-ci /w/auracle-wt-thing claude/thing", said)
+        self.assertIn("ship: scripts/ops/ship_pr.sh --full-ci /w/auracle/.claude/worktrees/thing claude/thing", said)
         self.assertIn("#301  claude/other  running (build #301)", said)
         self.assertEqual(self.read("pr-300.md").rstrip().splitlines()[-1], SESSION)
         self.assertFalse(os.path.exists(os.path.join(self.out, "pr-301.md")))
@@ -244,7 +244,7 @@ class Journal(Base):
             # Failed, then started again by a resumed run, and back.
             started("k7", "build #302"), failed("k7"), started("k7", "build #302"), done("k7", report(closes=[302], pr_body=f"Closes #302\nRefs #177\n\n{SESSION}")),
         ]
-        prompt = "Worktree: /w/auracle-wt-thing (branch claude/thing, already created from origin/main)."
+        prompt = "Worktree: /w/auracle/.claude/worktrees/thing (branch claude/thing, already created from origin/main)."
         run = self.write_journal(records, {"k1": prompt})
         _, said = self.run_main(run, "--session", SESSION)
         self.assertNotIn("running", said, "nothing is running: the fix failed")

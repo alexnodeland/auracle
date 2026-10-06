@@ -66,7 +66,7 @@ const ITEM = {
     issue: { type: 'integer', description: 'the main issue' },
     closes: { type: 'array', items: { type: 'integer' } },
     refs: { type: 'array', items: { type: 'integer' } },
-    topic: { type: 'string', description: 'the branch is claude/<topic>, the worktree ../auracle-wt-<topic>' },
+    topic: { type: 'string', description: 'the branch is claude/<topic>, the worktree .claude/worktrees/<topic>' },
     agentType: { type: 'string', enum: AGENTS },
     notes: { type: 'string', description: 'what remains, for the builder' },
     decisions: { type: 'string', description: 'decisions already made, for the builder' },

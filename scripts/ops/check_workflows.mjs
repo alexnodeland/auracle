@@ -63,7 +63,7 @@ export const SAMPLES = {
     {
       items: [
         {
-          issue: 300, closes: [300], refs: [177], branch: 'claude/sample', worktree: '/tmp/auracle-wt-sample', port: 8800,
+          issue: 300, closes: [300], refs: [177], branch: 'claude/sample', worktree: '/tmp/auracle/.claude/worktrees/sample', port: 8800,
           agentType: 'web-engineer', notes: 'What remains.', decisions: '- one', avoid: 'apps/web/perform.js',
         },
       ],
@@ -71,23 +71,23 @@ export const SAMPLES = {
     },
     {
       items: [
-        { issue: 301, branch: 'claude/a', worktree: '/tmp/auracle-wt-a', port: 8801, notes: 'A.' },
-        { issue: 302, closes: [302, 303], branch: 'claude/b', worktree: '/tmp/auracle-wt-b', port: 8802, agentType: 'engine-engineer', notes: 'B.' },
+        { issue: 301, branch: 'claude/a', worktree: '/tmp/auracle/.claude/worktrees/a', port: 8801, notes: 'A.' },
+        { issue: 302, closes: [302, 303], branch: 'claude/b', worktree: '/tmp/auracle/.claude/worktrees/b', port: 8802, agentType: 'engine-engineer', notes: 'B.' },
       ],
     },
   ],
   'fix-flake': [
     {
       spec: 'patch_facts', test_title: 'a sound opens', run_id: 123456, issue: 304, branch: 'claude/flake-304',
-      worktree: '/tmp/auracle-wt-flake-304', port: 8803, session: SESSION,
+      worktree: '/tmp/auracle/.claude/worktrees/flake-304', port: 8803, session: SESSION,
     },
-    { spec: 'tests/web/perform_touch.spec.js', test_title: 'a touch plays', run_id: 123457, branch: 'claude/flake', worktree: '/tmp/auracle-wt-flake', port: 8804 },
+    { spec: 'tests/web/perform_touch.spec.js', test_title: 'a touch plays', run_id: 123457, branch: 'claude/flake', worktree: '/tmp/auracle/.claude/worktrees/flake', port: 8804 },
   ],
   'triage-backlog': [{ session: SESSION }, { issues: [1, 2, 3] }],
-  'review-pr': [{ pr: 250 }, { branch: 'claude/sample', worktree: '/tmp/auracle-wt-sample' }],
+  'review-pr': [{ pr: 250 }, { branch: 'claude/sample', worktree: '/tmp/auracle/.claude/worktrees/sample' }],
   'mutants-burndown': [
-    { crate: 'auracle-taste', branch: 'claude/mutants-taste', worktree: '/tmp/auracle-wt-mutants-taste', session: SESSION, issue: 181 },
-    { crate: 'auracle-grammar', branch: 'claude/mutants-grammar', worktree: '/tmp/auracle-wt-mutants-grammar' },
+    { crate: 'auracle-taste', branch: 'claude/mutants-taste', worktree: '/tmp/auracle/.claude/worktrees/mutants-taste', session: SESSION, issue: 181 },
+    { crate: 'auracle-grammar', branch: 'claude/mutants-grammar', worktree: '/tmp/auracle/.claude/worktrees/mutants-grammar' },
   ],
 }
 

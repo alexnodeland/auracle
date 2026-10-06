@@ -1,7 +1,7 @@
 export const meta = {
   name: 'ship-issues',
   description: 'Build, review, fix, re-check and finalize auracle issues, each on its own claude/ branch and worktree; returns the head, title, body and open items the operator needs to push and queue the PR',
-  whenToUse: 'Prefer ONE issue per run (or a small bundle of issues that share files), so each completion notifies on its own: a run returns only when its slowest item is done. Each item needs its worktree created from origin/main first. Runs when the maintainer asks for a wave or for this workflow by name (it spends many tokens); the ship-wave skill has the steps around it.',
+  whenToUse: 'Prefer ONE issue per run (or a small bundle of issues that share files), so each completion notifies on its own: a run returns only when its slowest item is done. Each item needs its worktree created from origin/main first (make worktree TOPIC=<topic>: .claude/worktrees/<topic>). Runs when the maintainer asks for a wave or for this workflow by name (it spends many tokens); the ship-wave skill has the steps around it.',
   phases: [
     { title: 'Build', detail: 'the area agent builds and commits in the worktree' },
     { title: 'Review', detail: 'the reviewer agent, read-only, on the branch' },
@@ -12,7 +12,8 @@ export const meta = {
 }
 
 // args: {
-//   items: [{ issue, closes?: [n], refs?: [n], branch: 'claude/<topic>', worktree: '/abs/path', port,
+//   items: [{ issue, closes?: [n], refs?: [n], branch: 'claude/<topic>', port,
+//             worktree: '$REPO/.claude/worktrees/<topic>' (the main checkout's .claude/worktrees/),
 //             agentType?: 'web-engineer' | 'engine-engineer' | 'docs-writer' | 'film-producer',
 //             notes?: 'what remains', decisions?: 'already made', avoid?: 'files not to touch' }],
 //   session?: 'https://claude.ai/code/session_…'   // this operator session's link

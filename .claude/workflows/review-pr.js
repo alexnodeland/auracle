@@ -8,8 +8,9 @@ export const meta = {
   ],
 }
 
-// args: { pr?: <number>, branch?: 'claude/<topic>', worktree?: '/abs/path' }: a PR, or a branch with its
-// worktree. With a PR and no worktree, nothing is checked out: the diff and the files come from GitHub.
+// args: { pr?: <number>, branch?: 'claude/<topic>', worktree?: '$REPO/.claude/worktrees/<topic>' }: a PR,
+// or a branch with its worktree. With a PR and no worktree, nothing is checked out: the diff and the
+// files come from GitHub.
 // Returns { workflow, target, findings: [{ severity, lenses, file, line, summary, scenario, evidence,
 // verdict }], refuted: [...], lenses_failed: [...] }, findings most severe first, then by place. Every
 // finding is put to a refuter of its own, and each comes back in findings or in refuted.
