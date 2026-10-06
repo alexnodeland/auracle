@@ -4009,7 +4009,8 @@ function firstNotePlayed() {
 // here is the DOM: the toast's element (`note`), and where the lane sits
 // (rules 1 and 2, `positionToastLane` below). A toast that says a sound
 // joined or left the pool, or was saved or released, is given `bank: true`
-// (rule 6): it is never dropped for having waited.
+// (rule 6): nothing in the queue takes it off before its turn, neither its
+// age, the backlog's trim, nor a later word or a refusal on its key.
 const toastLane = createToastLane({
   view: {
     show(el) {

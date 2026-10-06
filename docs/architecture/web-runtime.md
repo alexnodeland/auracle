@@ -1124,17 +1124,30 @@ EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 One lane, bottom right, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
-jumps the queue (and honours `replace` too); an undo keeps its full window,
-and when the window closes its button is removed. A plain remark that has
-waited more than 9 s (`TOAST_STALE_MS`) is dropped when its turn comes, and
-with more than three waiting the plain remark nearest the front of the queue
-is cut (a queue position, not an age: `replace` and `urgent` reorder it). An
-undo, a refusal and a toast that reports a change to the player's sounds
-(`bank: true`: a sound joined or left the pool, or was saved or released) are
-never dropped for their age; the cut takes them only when no plain remark
-waits, and a refusal last of all (#129). The queue is `apps/web/toasts.js`
-(`createToastLane`, unit-tested in `apps/web/tests/toasts.test.mjs`); read
-its rules before adding a toast.
+jumps the queue (and honours `replace` too), and the toast it interrupts
+comes back behind it with a fresh window unless it was already fading; an
+undo keeps its full window, and when the window closes its button is
+removed. A plain remark that has waited more than 9 s (`TOAST_STALE_MS`) is
+dropped when its turn comes, and with more than three waiting the plain
+remark nearest the front of the queue is cut (a queue position, not an age:
+`replace` and `urgent` reorder it); with none, the undo nearest the front,
+and a refusal last of all. An undo and a refusal are never dropped for their
+age.
+
+A toast that reports a change to the player's sounds (`bank: true`: a sound
+joined or left the pool, or was saved or released) has its turn whatever
+comes after it, since for a replaced sound it is the only place the sound is
+named (#129, #183). It is never dropped for its age; the cut neither takes
+it nor counts it among the three, so a burst of them each shows in turn; a
+later toast on its `replace` key does not take its place, and waits its turn
+at the back when it has no other toast on that key to replace; and a refusal
+on its key interrupts it as it would any toast, rather than removing it. It
+still takes the place of an earlier toast on its own key that is not one of
+these (the warm start's result, a keep's after its reveal). Its caller can
+still take it down when what it says stops being true (an undone cut).
+
+The queue is `apps/web/toasts.js` (`createToastLane`, unit-tested in
+`apps/web/tests/toasts.test.mjs`); read its rules before adding a toast.
 
 ## ⌘Z
 

@@ -289,19 +289,34 @@ test("drop: a toast taken back goes at once, and the count beside the screen fol
   assert.equal(l.onScreen(), "next");
 });
 
-test("trim: a remark about the player's sounds is cut only after the plain remarks", (t) => {
+test("trim: a remark about the player's sounds is never cut, nor counted against the three waiting", (t) => {
   const l = setup(t);
   l.say("live");
   l.say("replaced Tine", { bank: true });
   l.say("remark 1");
   l.say("replaced Bell Jar", { bank: true });
   l.say("remark 2");
-  assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 2"]);
   l.say("remark 3");
-  assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 3"]);
+  // Five waiting, three of them counted: nothing is cut.
+  assert.deepEqual(l.waiting(), ["replaced Tine", "remark 1", "replaced Bell Jar", "remark 2", "remark 3"]);
+  assert.equal(l.stacks.get("live"), 5);
+  // A fourth counted: the plain remark nearest the front goes.
+  l.say("remark 4");
+  assert.deepEqual(l.waiting(), ["replaced Tine", "replaced Bell Jar", "remark 2", "remark 3", "remark 4"]);
   l.wait(NEVER);
-  assert.ok(!l.shown.includes("remark 1") && !l.shown.includes("remark 2"));
+  assert.ok(!l.shown.includes("remark 1"));
   assert.deepEqual(l.shown.slice(0, 3), ["live", "replaced Tine", "replaced Bell Jar"]);
+});
+
+test("trim: with no plain remark waiting it cuts the undo nearest the front, passing over a remark about the player's sounds", (t) => {
+  const l = setup(t);
+  l.say("live");
+  const preset = "Opened the preset as First Bass. It replaced the lowest-rated sound it could: Tine.";
+  l.say(preset, { bank: true });
+  for (const n of [1, 2, 3, 4]) l.say(`undo ${n}`, { undo: () => {} });
+  assert.deepEqual(l.waiting(), [preset, "undo 2", "undo 3", "undo 4"]);
+  l.wait(NEVER);
+  assert.deepEqual(l.shown, ["live", preset, "undo 2", "undo 3", "undo 4"]);
 });
 
 test("stale: a plain remark still goes stale beside a remark about the player's sounds", (t) => {
@@ -344,7 +359,7 @@ test("a remark about the player's sounds waits its turn behind other remarks, ho
 // Keep a sound as new, and keep another before the first toast shows. The
 // second commit's reveal (`replace: "commit"`) took the first one's place,
 // and Woodblock was never named.
-test("replace: a later word on its key doesn't take a waiting remark about the player's sounds; it waits behind it", { todo: "#183" }, (t) => {
+test("replace: a later word on its key doesn't take a waiting remark about the player's sounds; it waits behind it", (t) => {
   const l = setup(t);
   l.say("Picked Glass Pad over Soft Wash.");
   l.wait(1000);
@@ -365,7 +380,7 @@ test("replace: a later word on its key doesn't take a waiting remark about the p
   assert.deepEqual(l.shown, ["Picked Glass Pad over Soft Wash.", first, second]);
 });
 
-test("replace: a later word on its key leaves a remark about the player's sounds on screen for its whole window", { todo: "#183" }, (t) => {
+test("replace: a later word on its key leaves a remark about the player's sounds on screen for its whole window", (t) => {
   const l = setup(t);
   const bred = "⚡ bred Glass 2 from Glass Pad, and it’s ready to play. It replaced the lowest-rated sound it could: Tine.";
   l.say(bred, { replace: "evolve-from", bank: true });
@@ -399,7 +414,7 @@ test("replace: a remark about the player's sounds still takes the place of an ea
 // "⚡ bred Glass 2 … It replaced Tine." is on screen with OPEN IT, and ⚡ is
 // pressed again while EVOLVE POOL is breeding. The refusal shares the key
 // (`replace: "evolve-from"`), and took that toast and its button down at once.
-test("urgent: a refusal on its key interrupts a remark about the player's sounds; it comes back with its button and a fresh window", { todo: "#183" }, (t) => {
+test("urgent: a refusal on its key interrupts a remark about the player's sounds; it comes back with its button and a fresh window", (t) => {
   const l = setup(t);
   const bred = "⚡ bred Glass 2 from Glass Pad: it’s at the top of the pool, and your edits are still open. It replaced the lowest-rated sound it could: Tine.";
   l.say(bred, { undo: () => {}, undoLabel: "open it", replace: "evolve-from", bank: true });
@@ -422,7 +437,7 @@ test("urgent: a refusal on its key interrupts a remark about the player's sounds
 // three cuts follow (each an undo and a remark about the player's sounds).
 // The trim, finding no plain remark, cut the one nearest the front: the
 // preset's.
-test("trim: a remark about the player's sounds waiting behind an undo isn't cut by the toasts said after it", { todo: "#183" }, (t) => {
+test("trim: a remark about the player's sounds waiting behind an undo isn't cut by the toasts said after it", (t) => {
   const l = setup(t);
   const pick = "Picked Glass Pad over Soft Wash.";
   l.say(pick, { undo: () => {}, replace: "vote" });
@@ -436,7 +451,7 @@ test("trim: a remark about the player's sounds waiting behind an undo isn't cut 
   assert.deepEqual(l.shown, [pick, preset, ...cuts]);
 });
 
-test("trim: past three refusals waiting it cuts the oldest refusal, never a remark about the player's sounds behind them", { todo: "#183" }, (t) => {
+test("trim: past three refusals waiting it cuts the oldest refusal, never a remark about the player's sounds behind them", (t) => {
   const l = setup(t);
   const saved = "Saved Glass Pad. No generation will replace it (1 of 8 saved).";
   l.say(saved, { bank: true });
