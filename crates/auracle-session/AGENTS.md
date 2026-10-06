@@ -74,7 +74,9 @@ instantiation, so one fitness type has to take every path of it.
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
-`AIM_WALKS`) and the loops. `suggest_census` measures ways the model could
+`AIM_WALKS`; `wire_predict`, how well a wiring predicted from the tree
+alone, from a table of measured Jacobians, would do before the
+measurement lands, #290) and the loops. `suggest_census` measures ways the model could
 suggest the next module in PATCH, their cost and their quality against
 synthetic listeners (`docs/notes/suggest-2026-10/`); `guess_cost` measures
 what was built from it (renders and CPU per guess, and what it guesses, on
