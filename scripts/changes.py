@@ -68,10 +68,13 @@ SCRIPT = re.compile(r"^scripts/[^/]+\.py$")
 # What the browser reads: the app, its specs and what runs them, the engine.
 BROWSER = re.compile(r"^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)")
 PROSE = re.compile(r"\.md$")
-# The specs' lint (its config, its suppressions, its own tests): Web runs
-# it, and no browser reads it.
-SPEC_LINT = re.compile(
-    r"^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs)$"
+# What Web runs and no browser reads: the specs' lint (its config, its
+# suppressions, its own tests), CI's flake routing (flakes.mjs and its tests)
+# and the timings fold's tests. A change to them alone, or beside spec files,
+# runs what a spec-only change runs.
+WEB_ONLY = re.compile(
+    r"^tests/web/(eslint\.config\.mjs|eslint-suppressions\.json|eslint\.test\.mjs|suppressions\.mjs"
+    r"|flakes(\.test)?\.mjs|shard\.test\.mjs)$"
 )
 SPEC = re.compile(r"^tests/web/[^/]+\.spec\.js$")
 WORKER = re.compile(r"^(apps/web/|tests/worker/)")
@@ -108,7 +111,7 @@ def classify(files: list[str]) -> dict[str, bool]:
     rust = any(RUST.search(f) for f in files)
     site = rust or any(SITE.search(f) for f in files)
     web = site or any(SCRIPT.search(f) for f in files)
-    reach = [f for f in files if BROWSER.search(f) and not PROSE.search(f) and not SPEC_LINT.search(f)]
+    reach = [f for f in files if BROWSER.search(f) and not PROSE.search(f) and not WEB_ONLY.search(f)]
     # Spec files alone run against main's app, and run themselves.
     smoke = any(not SPEC.search(f) for f in reach)
     worker = rust or any(WORKER.search(f) and not PROSE.search(f) for f in files)

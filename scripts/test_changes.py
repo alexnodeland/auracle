@@ -53,6 +53,16 @@ class Lanes(unittest.TestCase):
         self.assertEqual(reached(*lint), {"site", "web"})
         self.assertEqual(reached(*lint, "tests/web/patch_cables.spec.js"), {"site", "web", "reach"})
 
+    def test_cis_flake_routing_and_the_timings_tests_reach_no_browser_and_beside_a_spec_run_that_spec(self):
+        # Web runs them and no browser reads them. shard.mjs itself deals the
+        # browser runners, so it is what runs the specs, and reaches the smoke.
+        routing = ("tests/web/flakes.mjs", "tests/web/flakes.test.mjs", "tests/web/shard.test.mjs")
+        for f in routing:
+            with self.subTest(f=f):
+                self.assertEqual(reached(f), {"site", "web"})
+        self.assertEqual(reached(*routing, "tests/web/patch_cables.spec.js"), {"site", "web", "reach"})
+        self.assertEqual(reached("tests/web/shard.mjs"), {"site", "web", "smoke", "reach"})
+
     def test_an_app_script_reaches_the_smoke_and_the_worker(self):
         for f in ("apps/web/main.js", "apps/web/worker.js", "apps/web/index.html", "apps/web/style.css", "apps/web/patch.js"):
             with self.subTest(f=f):
