@@ -823,18 +823,11 @@ fn the_memory_carries_and_remembers_only_so_many_takes() {
     assert_eq!(mem.observe(3, &befores[1]), Some(cands[1].skip()));
 }
 
-/// **A guess never takes a module away, even from a patch not in normal
-/// form.** A shared patch file can hold a modulation term the grammar would
-/// fold away (a quantizer over nothing on the root's slot), and the import
-/// (`WasmEngine::import_patch`: parse, clamp, validate, commit) keeps it as
-/// it is. Every op a guess makes normalizes the whole term it lands on, so
-/// on that patch each placement, a slew on that slot included, would delete
-/// the quantizer: none is offered, and the plan is refused as full rather
-/// than offering a guess that silently takes a module away.
-#[test]
-fn a_guess_never_takes_a_module_away_from_a_patch_not_in_normal_form() {
+/// Hornet with a quantizer over nothing on its root's slot, where Hornet
+/// has its burble: a term the grammar folds away, as a shared file written
+/// by an older build can hold.
+fn hornet_with_a_quantizer_over_nothing() -> PatchTree {
     use auracle_grammar::term::ModOp;
-    let mut e = warm(4, false);
     let mut tree = preset("Hornet");
     *tree.root.modulation_mut().expect("the root has a slot") = ModNode::Op {
         kind: ModOp::Quantize,
@@ -843,43 +836,60 @@ fn a_guess_never_takes_a_module_away_from_a_patch_not_in_normal_form() {
         input: Box::new(ModNode::None),
         uid: Uid::NEW,
     };
-    let json = serde_json::to_string(&tree).unwrap();
-    let mut imported: PatchTree = serde_json::from_str(&json).unwrap();
-    imported.clamp_domains();
-    assert!(
-        validate_tree(&imported).is_ok(),
-        "the import would refuse it"
-    );
-    let id = e
-        .commit_edit(None, imported, crate::EditOutcome::Untold)
-        .expect("the import lands");
-    let bench = e.pool[e.find(id).unwrap()].tree.clone();
-    assert!(
-        matches!(
-            bench.root.modulation(),
-            Some(ModNode::Op {
-                kind: ModOp::Quantize,
-                ..
-            })
-        ),
-        "the import normalized the term, so this is not the case"
-    );
-    let had = module_counts(&bench);
+    tree
+}
+
+/// **A guess never takes a module away, even from a patch not in normal
+/// form.** Every op a guess makes normalizes the whole term it lands on, so
+/// on a patch with a quantizer over nothing each placement, a slew on that
+/// slot included, would delete the quantizer: none is offered, and the plan
+/// is refused as full rather than offering a guess that silently takes a
+/// module away. No patch the engine holds is one (every way in folds it,
+/// the import below), but the guess takes any tree it is handed, so the
+/// filter stays.
+#[test]
+fn a_guess_never_takes_a_module_away_from_a_patch_not_in_normal_form() {
+    let e = warm(4, false);
+    let tree = hornet_with_a_quantizer_over_nothing();
+    let had = module_counts(&tree);
     let slew = StructOp::SetMod {
         key: "node".into(),
         kind: ModKind::Slew,
     };
-    let taken = apply_struct_op(&bench, &slew).unwrap();
+    let taken = apply_struct_op(&tree, &slew).unwrap();
     assert!(
         module_counts(&taken).iter().any(|(k, n)| *n < had[k]),
         "a slew here keeps the quantizer, so this is not the case"
     );
-    assert!(guess_candidates(&bench, None).is_empty());
+    assert!(guess_candidates(&tree, None).is_empty());
     let none = HashSet::new();
     assert_eq!(
-        e.guess_plan(&bench, None, &[], &none, 0).map(|p| p.total),
+        e.guess_plan(&tree, None, &[], &none, 0).map(|p| p.total),
         Err(GuessRefusal::Full)
     );
+}
+
+/// **An imported patch not in normal form gets the guess its normal form
+/// gets** (#208). The import (`Engine::import_patch`, after the binding's
+/// parse) folds the quantizer over nothing, so the bank holds Hornet with
+/// an empty root slot, and the guess on it plans what the guess on that
+/// tree written by hand plans, not the refusal that said the patch was
+/// full.
+#[test]
+fn an_imported_patch_not_in_normal_form_gets_the_guess_its_normal_form_gets() {
+    let mut e = warm(4, false);
+    let file = serde_json::to_string(&hornet_with_a_quantizer_over_nothing()).unwrap();
+    let id = e
+        .import_patch(serde_json::from_str(&file).unwrap(), "Hornet, shared")
+        .expect("the import lands");
+    let imported = e.pool[e.find(id).unwrap()].tree.clone();
+    let mut normal = preset("Hornet");
+    *normal.root.modulation_mut().unwrap() = ModNode::None;
+    assert_eq!(imported, normal, "the import kept the quantizer");
+    let none = HashSet::new();
+    let plan = e.guess_plan(&imported, None, &[], &none, 0);
+    assert!(plan.as_ref().is_ok_and(|p| p.total > 0), "{plan:?}");
+    assert_eq!(plan, e.guess_plan(&normal, None, &[], &none, 0));
 }
 
 /// **A reason is read under the lens most responsible for the guess.** On

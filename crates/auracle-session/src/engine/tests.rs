@@ -3894,6 +3894,59 @@ fn a_held_sound_is_readmitted_with_a_readable_take() {
     assert_eq!(bank.iter().filter(|e| e.id == id).count(), 1);
 }
 
+/// A quantizer over nothing: a modulation term the grammar folds away,
+/// which a build that grafted a fragment's slots verbatim could save.
+fn quantizer_over_nothing() -> auracle_grammar::ModNode {
+    auracle_grammar::ModNode::Op {
+        uid: auracle_grammar::Uid::NEW,
+        kind: auracle_grammar::term::ModOp::Quantize,
+        p0: 0.5,
+        p1: 0.0,
+        input: Box::new(auracle_grammar::ModNode::None),
+    }
+}
+
+/// **A held sound comes back in normal form.** A sound held for an
+/// unreadable take is kept as it was loaded, a quantizer over nothing on
+/// its filter included, so a save writes it back unchanged; brought back
+/// with a readable take, it joins the pool folded, as the rest of the bank
+/// did on its way in (#208).
+#[test]
+fn a_held_sound_comes_back_in_normal_form() {
+    use auracle_grammar::term::FilterKind;
+    use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    let (engine, id, take) = capture_only_engine();
+    let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+    let entry = saved["bank"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|e| e["id"] == id)
+        .unwrap();
+    let mut tree: PatchTree = serde_json::from_value(entry["tree"].clone()).unwrap();
+    tree.root = AudioNode::Filter {
+        uid: auracle_grammar::Uid::NEW,
+        kind: FilterKind::SvfLp,
+        cutoff: 0.6,
+        resonance: 0.2,
+        mod_depth: 0.5,
+        modulation: quantizer_over_nothing(),
+        input: Box::new(tree.root),
+    };
+    entry["tree"] = serde_json::to_value(&tree).unwrap();
+    entry["tree"]["root"]["Filter"]["input"]["Capture"]["take"]["length"] = 7.into();
+    let mut back = restore(&engine, serde_json::from_value(saved).unwrap());
+    assert_eq!(back.held().len(), 1);
+    assert_eq!(
+        back.held()[0].tree.root.modulation(),
+        Some(&quantizer_over_nothing()),
+        "a held sound is kept as it was loaded"
+    );
+    assert_eq!(back.readmit_held(id, take), Ok(id));
+    let c = &back.pool[back.find(id).expect("in the pool")];
+    assert_eq!(c.tree.root.modulation(), Some(&ModNode::None));
+}
+
 /// A file that repeats an id cannot make one held sound drop another:
 /// two entries under one id, each a capture whose only take is
 /// unreadable, are both held and both saved again.
@@ -4611,6 +4664,83 @@ fn a_restore_mends_what_it_can_and_says_what_it_mended() {
         .all(|c| c.tree.domain_violations().is_empty()));
     let ev = &back.export_state().events[0];
     assert!(ev.phi_before[at] <= 1.0 && ev.phi_after[at] <= 1.0);
+}
+
+/// **A saved sound not in normal form restores folded, and sounds the
+/// same** (#208). A session written by an older build can hold modulation
+/// terms the grammar folds: here a quantizer over nothing on Hornet's
+/// filter and a min with an empty side on its oscillator. The restore puts
+/// the term in normal form and counts the sound repaired, as it would a
+/// clamped knob, and what the restored sound plays is what the saved term
+/// played, sample for sample: the fold changes the rack, not the sound. The
+/// farm's restore, the app's path, gives the same.
+#[test]
+fn a_saved_sound_not_in_normal_form_restores_folded_and_sounds_the_same() {
+    use auracle_grammar::term::{PairOp, Waveform};
+    use auracle_grammar::{ModNode, PatchTree, Uid};
+    let lfo = ModNode::Lfo {
+        uid: Uid::NEW,
+        wave: Waveform::Sine,
+        rate: 0.3,
+    };
+    let hornet = |filter: ModNode, oscillator: ModNode| {
+        let (_, mut t) = auracle_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "Hornet")
+            .unwrap();
+        *t.root.modulation_mut().unwrap() = filter;
+        *t.root.children_mut()[0].modulation_mut().unwrap() = oscillator;
+        t
+    };
+    let min_with_an_empty_side = ModNode::Pair {
+        uid: Uid::NEW,
+        kind: PairOp::Min,
+        a: Box::new(lfo.clone()),
+        b: Box::new(ModNode::None),
+    };
+    let as_saved = hornet(quantizer_over_nothing(), min_with_an_empty_side);
+    let normal = hornet(ModNode::None, lfo);
+
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 4,
+            ..fast()
+        },
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut StdRng::seed_from_u64(0x208));
+    let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+    let id = saved["bank"][0]["id"].as_u64().unwrap();
+    saved["bank"][0]["tree"] = serde_json::to_value(&as_saved).unwrap();
+    let state: SessionState = serde_json::from_value(saved).unwrap();
+
+    let phrase = &engine.cfg.phrase;
+    let heard = |t: &PatchTree| {
+        let pre = PreFeaturized::render(t.clone(), phrase, true).expect("it vets");
+        let samples = pre.audition.expect("asked for").samples.clone();
+        (samples, pre.cached.features.audio)
+    };
+    let (before, measured) = heard(&as_saved);
+
+    let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+    back.import_state(state.clone());
+    let c = &back.pool[back.find(id).expect("the sound came back")];
+    assert_eq!(c.tree, normal, "restored as it was saved");
+    assert_eq!(c.features.audio, measured, "it measures differently");
+    assert!(heard(&c.tree).0 == before, "it sounds different");
+    assert_eq!(back.repair_report(), (1, 0, 0));
+
+    let mut farmed = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+    for entry in farmed.import_state_deferred(state) {
+        let pre = PreFeaturized::render(entry.tree.clone(), phrase, false).unwrap();
+        farmed.absorb_bank_entry(entry, pre);
+    }
+    farmed.finish_restore();
+    let f = &farmed.pool[farmed.find(id).unwrap()];
+    assert_eq!(f.tree, normal);
+    assert_eq!(f.features.phi(), c.features.phi());
+    assert_eq!(farmed.repair_report(), (1, 0, 0));
 }
 
 /// **A clip the listeners cannot be measured with leaves them as they
