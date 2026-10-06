@@ -279,20 +279,64 @@ export function codeOnly(src) {
   return out
 }
 
-/** Each agent() call in the source's code, as { line, call }: the line it
- * starts on, and its text from `agent(` to the matching `)`, its strings and
- * comments blanked. A call named in a prompt or a comment is not one. */
+/** The pieces of `text` between its top-level commas, as [from, to) offsets.
+ * Depth rises on `(`, `[` and `{` (a template's `${` too) and falls on their
+ * closers, so a comma inside a nested call, list or object is not a split. */
+function splitTop(text, from = 0, to = text.length) {
+  const parts = []
+  let depth = 0
+  let start = from
+  for (let i = from; i < to; i++) {
+    const c = text[i]
+    if ('([{'.includes(c)) depth++
+    else if (')]}'.includes(c)) depth--
+    else if (c === ',' && depth === 0) { parts.push([start, i]); start = i + 1 }
+  }
+  if (text.slice(start, to).trim()) parts.push([start, to])
+  return parts
+}
+
+/** The keys of the options object (the call's second argument) that the call
+ * names itself: `{ label: …, model }` gives label and model; what is nested
+ * (a schema's own `model` property) is not the call's. `text` is the code and
+ * `src` the source it was made from, character for character, which still
+ * holds a quoted key's name. { problem } when the options cannot be read:
+ * absent, or not an object literal. */
+function optionKeys(text, src, open, close) {
+  const args = splitTop(text, open + 1, close)
+  if (args.length < 2) return { problem: 'passes no options (label, phase, model, schema)' }
+  const [from, to] = args[1]
+  const at = from + (/^\s*/.exec(text.slice(from, to))[0].length)
+  if (text[at] !== '{') return { problem: 'has options that are not an object literal, so its model cannot be read' }
+  const keys = []
+  for (const [a, b] of splitTop(text, at + 1, text.lastIndexOf('}', to))) {
+    const entry = text.slice(a, b)
+    const k = a + (/^\s*/.exec(entry)[0].length)
+    if (text[k] === '"' || text[k] === "'") keys.push(src.slice(k + 1, text.indexOf(text[k], k + 1)))
+    else {
+      const id = /^[A-Za-z_$][\w$]*/.exec(text.slice(k, b))
+      if (id) keys.push(id[0]) // `key: value`, the shorthand `key`, or a method `key()`
+    }
+  }
+  return { keys }
+}
+
+/** Each agent() call in the source's code, as { line, call, keys, problem }:
+ * the line it starts on, its text from `agent(` to the matching `)` (strings
+ * and comments blanked), and the keys of its options object (optionKeys). A
+ * call named in a prompt or a comment is not one. */
 export function agentCalls(src) {
   const text = codeOnly(src)
   const out = []
   for (const m of text.matchAll(/(?<![\w$.])agent\s*\(/g)) {
     let depth = 0
-    let i = m.index + m[0].length - 1
+    const open = m.index + m[0].length - 1
+    let i = open
     for (; i < text.length; i++) {
       if (text[i] === '(') depth++
       else if (text[i] === ')' && --depth === 0) break
     }
-    out.push({ line: text.slice(0, m.index).split('\n').length, call: text.slice(m.index, i + 1) })
+    out.push({ line: text.slice(0, m.index).split('\n').length, call: text.slice(m.index, i + 1), ...optionKeys(text, src, open, i) })
   }
   return out
 }
@@ -478,7 +522,10 @@ export async function checkSource(name, src, samples = SAMPLES[name], known = ag
   if (rest.startsWith(';')) rest = rest.slice(1)
   const body = `const meta = ${m.text};\n${rest}`
   out.push(...forbidden(rest))
-  for (const c of agentCalls(src)) if (!/\bmodel\s*:/.test(c.call)) out.push(`line ${c.line}: this agent() call passes no \`model\` ('opus' or 'sonnet', by how hard the stage is)`)
+  for (const c of agentCalls(src)) {
+    if (c.problem) out.push(`line ${c.line}: this agent() call ${c.problem}`)
+    else if (!c.keys.includes('model')) out.push(`line ${c.line}: this agent() call passes no \`model\` ('opus' or 'sonnet', by how hard the stage is)`)
+  }
   const named = namedPhases(rest)
   for (const t of named) if (!declared.has(t)) out.push(`phase ${JSON.stringify(t)} is used but not in meta.phases`)
   for (const t of declared) if (!named.has(t)) out.push(`meta.phases has ${JSON.stringify(t)}, which the body never names`)

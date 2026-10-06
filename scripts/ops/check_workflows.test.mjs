@@ -193,6 +193,34 @@ test('an agent call with no model, or a model that is not opus or sonnet, is cau
   assert.ok(!unreached.some(p => /agent never/.test(p)), 'no sample runs it, so only the source check sees it')
 })
 
+const IN_SCHEMA = `{ type: 'object', properties: { model: { type: 'string' } }, required: ['model'] }`
+const SCHEMA_MODEL = `model: 'sonnet', schema: ${SCHEMA}`
+
+test("a schema property named model is not the call's model", async () => {
+  // The source check reads the options object's own keys, not the text of the call.
+  const hidden = await check(META + BODY.replace(SCHEMA_MODEL, `schema: ${IN_SCHEMA}`))
+  assert.ok(hidden.some(p => /^line 8: this agent\(\) call passes no `model`/.test(p)), hidden.join('\n'))
+  // The same property beside a real model: nothing to say.
+  assert.deepEqual(await check(META + BODY.replace(SCHEMA_MODEL, `model: 'opus', schema: ${IN_SCHEMA}`)), [])
+})
+
+test('a model given by shorthand or as a quoted key is a model', async () => {
+  const shorthand = META + BODY.replace('const r = await agent(', "const model = 'opus'\nconst r = await agent(").replace(SCHEMA_MODEL, `model, schema: ${SCHEMA}`)
+  assert.deepEqual(await check(shorthand), [])
+  assert.deepEqual(await check(META + BODY.replace("model: 'sonnet'", "'model': 'sonnet'")), [])
+  // A shorthand for another name is not a model.
+  const other = await check(shorthand.replace('model, schema', 'modelled, schema').replace("const model =", 'const modelled ='))
+  assert.ok(other.some(p => /^line 9: this agent\(\) call passes no `model`/.test(p)), other.join('\n'))
+})
+
+test('options that cannot be read are said, not passed', async () => {
+  const OPTS = `{ label: 'build', phase: 'Build', ${SCHEMA_MODEL} }`
+  const named = await check(META + BODY.replace(OPTS, 'OPTS').replace('const r =', "const OPTS = { label: 'build', phase: 'Build', model: 'opus' }\nconst r ="))
+  assert.ok(named.some(p => /this agent\(\) call has options that are not an object literal/.test(p)), named.join('\n'))
+  const bare = await check(META + BODY.replace(', ' + OPTS, ''))
+  assert.ok(bare.some(p => /this agent\(\) call passes no options/.test(p)), bare.join('\n'))
+})
+
 test("agent calls are found in the code, at the file's line", () => {
   const src = `// agent('a comment')
 const a = await agent('the word agent(x) in a string', { label: 'one', model: 'opus' })
