@@ -11,11 +11,12 @@ change, so two open PRs never edit the same lines.
   [`www/brand/voice.md`](../www/brand/voice.md)). Nothing comes before the
   first heading, and no `#` or `##` heading at all.
 - **Check it:** `python3 scripts/changelog.py --check` (in `make dev-check`
-  and CI) and `python3 www/checkwords.py` (the voice).
+  and on every PR) and `python3 www/checkwords.py` (the voice).
   `python3 scripts/changelog.py --preview` prints `[Unreleased]` with every
   file here folded in.
 - **At a release,** `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD`
-  moves them into `CHANGELOG.md` in the order they merged, oldest first, and
-  deletes them ([`CONTRIBUTING.md` § Cutting a release](../CONTRIBUTING.md#cutting-a-release)).
+  moves them into `CHANGELOG.md` newest first, as the file runs (the one
+  merged last at the top), and deletes them
+  ([`CONTRIBUTING.md` § Cutting a release](../CONTRIBUTING.md#cutting-a-release)).
 
 This README is not an entry: the assembler and the voice check skip it.

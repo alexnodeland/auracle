@@ -11,9 +11,10 @@ description: >
 A change writes its entry as a file of its own, `changelog.d/<topic>.md`, and
 never edits `CHANGELOG.md`: when every PR added to the top of `[Unreleased]`,
 any two open PRs conflicted there, and the merge queue sends back a PR it
-can't rebase. A release moves the files into `CHANGELOG.md` in the order they
-merged (`scripts/changelog.py --release`), and that section becomes the
-release notes verbatim, so write for a player or a newcomer, not for the diff.
+can't rebase. A release moves the files into `CHANGELOG.md`, newest first as
+the rest of the file runs (`scripts/changelog.py --release`), and that section
+becomes the release notes verbatim, so write for a player or a newcomer, not
+for the diff.
 
 ## Where
 
@@ -66,7 +67,8 @@ release notes verbatim, so write for a player or a newcomer, not for the diff.
 ## Check it
 
 - `python3 scripts/changelog.py --check`: the file's shape, with the file and
-  line of anything wrong.
+  line of anything wrong, and that `[Unreleased]` in `CHANGELOG.md` still
+  holds only its note above the older entries.
 - `python3 www/checkwords.py`: the voice. The file is new, so any banned word,
   em dash or British spelling in it fails.
 - `make dev-check` runs both, and CI runs both on every PR.
