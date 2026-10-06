@@ -119,3 +119,6 @@ pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<Patc
     edited.inherit_uids(tree);
     Ok(edited)
 }
+
+#[cfg(test)]
+mod tests;

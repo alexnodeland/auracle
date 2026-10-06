@@ -1278,3 +1278,6 @@ pub fn describe(tree: &PatchTree) -> RackDescription {
     describe_node(&tree.root, "node", 1, &mut out);
     out
 }
+
+#[cfg(test)]
+mod tests;

@@ -2941,3 +2941,6 @@ fn inherit_mod(child: &mut ModNode, parent: &ModNode) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

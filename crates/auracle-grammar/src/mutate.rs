@@ -1768,3 +1768,6 @@ fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     tree.ensure_uids();
     Ok(tree)
 }
+
+#[cfg(test)]
+mod tests;
