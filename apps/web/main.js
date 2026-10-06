@@ -4648,6 +4648,8 @@ function showView(name, opts) {
 /** What a move does to the rest of the instrument (the shell's host). */
 function levelChanged(prev, name, { chosen = false } = {}) {
   if (chosen) viewChosenAt = performance.now();
+  // The first step "zoom out to TASTE": done by going there.
+  if (chosen && name === "taste") guide.done("zoom");
   // Nothing may stay in your hand across a level change: PATCH is only
   // hidden, not torn down, so its sockets still match and the armed key
   // handler would go on swallowing EVOLVE's arrow-key votes.
@@ -5139,6 +5141,17 @@ async function bootPerform() {
       // grew), is what the voices take the tree at before its render.
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}), ...(makeup > 0 ? { makeup } : {}) }, null, { op: "perform" });
     },
+  });
+  // The levels' two first steps, after PERFORM's three (Plan-008 C3, the
+  // specimen's guide): zoom out to TASTE (ticked by arriving there, however
+  // the player went), and hold ⌥ for the model view (ticked as it comes up).
+  guide.add({
+    id: "zoom",
+    text: () => (COARSE ? "Pinch to zoom out to TASTE, the sound among all sounds" : platformKeys("Press ⌥↑ to zoom out to TASTE, the sound among all sounds")),
+  });
+  guide.add({
+    id: "model",
+    text: () => (COARSE ? "Hold MODEL to see what the model believes" : platformKeys("Hold ⌥ to see what the model believes")),
   });
   // Explain anything (Plan-005 task 10): each control's figure, measured on
   // the sound in hand, and the lesson on filters. It draws and asks; the
@@ -21644,6 +21657,8 @@ function styleName(s, k) {
 // - PERFORM: nothing per control, until the engine exposes a control's lean.
 function modelViewChanged(on) {
   modelOn = on;
+  // The first step "hold ⌥ to see what the model believes": done by doing it.
+  if (on) guide.done("model");
   flipBank(() => renderBank());
   if (taste) taste.setModelView(on);
   askPairGuess();
