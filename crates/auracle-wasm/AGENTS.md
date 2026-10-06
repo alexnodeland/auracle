@@ -81,4 +81,8 @@ A binding test asserts what the binding adds: the reply's shape and field
 names, refusals and their words, `u32` ids, key order, buffers, handles.
 It compares the reply with the engine's own answer once; the engine's fact
 has its test in `auracle-session`, so a binding test builds no twin engine
-to prove it again.
+to prove it again. The exception is a twin that compares the wire path
+with the in-engine path, which only the bindings have both of: a stepped
+offer against the one call (`a_stepped_offer_gives_the_reply_the_one_call_gives`),
+a listening seed's ⚡ on the farm against ⚡ in the engine
+(`a_listening_seed_evolves_on_the_farm_with_its_clip_and_take`).
