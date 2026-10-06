@@ -1,0 +1,64 @@
+# Mergify's merge queue: how a PR reaches `main` (ADR-021, docs/process.md
+# § CI and merging). The operator opens a reviewed PR with the `queue` label,
+# or comments `@mergifyio queue` on it. Once its `CI` is green the PR enters
+# the queue; at the front, the queue rebases it onto `main` if `main` moved,
+# waits for `CI` on that head, and squash-merges it. A red `CI` takes it out
+# of the queue, and nothing is retried.
+#
+# Mergify reads this file from `main` only: a change here acts once merged.
+# The keys are the current ones (docs.mergify.com, October 2026) and validate
+# against docs.mergify.com/mergify-configuration-schema.json; Mergify also
+# checks the file on every push that changes it.
+
+queue_rules:
+  - name: default
+    # A green `CI` from GitHub Actions: the check `main`'s ruleset requires,
+    # bound to the same app. Checked in place (below), the queue tests the PR
+    # on these conditions and merges on them; a `merge_conditions` list of
+    # its own would make the queue two-step and test on a draft PR instead.
+    # The ruleset's `CI` is also injected as a condition for queueing and
+    # merging (`branch_protection_injection_mode`'s default, `queue`), and
+    # GitHub refuses the merge without it in any case.
+    queue_conditions:
+      - check-success = @github-actions/CI
+    # One PR at a time, checked on the PR itself: no draft PR and no
+    # mergify/merge-queue/* branch. In-place checks need all four of
+    # batch_size 1 and max_checks_retries 0 here, and max_parallel_checks 1
+    # and serial mode under merge_queue below.
+    batch_size: 1
+    # No automatic CI retries: a red check is read, then fixed or quarantined
+    # (docs/process.md § Flakes). 0 is the default, written so it stays.
+    max_checks_retries: 0
+    # A PR behind `main` is rebased onto it and runs `CI` again, so what
+    # merges was tested on top of everything merged ahead of it. Rebase keeps
+    # the branch a straight line of the builder's commits; `main` stays linear
+    # either way, since a squash makes no merge commit.
+    update_method: rebase
+    # `main` allows squash merges only.
+    merge_method: squash
+    # The squash commit: "<PR title> (#<number>)", then what the repository
+    # already puts there (its squash setting: the PR's commit messages, each
+    # saying why). `pr-body` would change `main`'s history to PR bodies, and
+    # carry Dependabot's release notes into it.
+    commit_message_format:
+      title: pr-title
+      body: inherit
+
+merge_queue:
+  mode: serial
+  max_parallel_checks: 1
+  # A PR that leaves the queue without merging gets `dequeued`: the state the
+  # operator waits on, beside a merge (the `ship` skill), since a conflict
+  # takes a PR out with no red run to see. No `queued` label: one letter from
+  # our `queue`, it would be a trap, and the PR's "Mergify Merge Queue" check
+  # says where a queued PR stands.
+  queued_label: null
+  dequeued_label: dequeued
+
+pull_request_rules:
+  - name: A PR to main with the queue label goes into the queue
+    conditions:
+      - base = main
+      - label = queue
+    actions:
+      queue:

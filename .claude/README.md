@@ -37,9 +37,10 @@ line: the rules are in the `AGENTS.md` files, which other agents read as well.
 Every agent runs on Opus (`model: opus` in its frontmatter). Give agents that
 change code their own worktree. They commit there and hand back a report;
 they never push, open a PR or merge. The session that
-coordinates the work (the operator) reviews, pushes, opens the PR and merges
-on a green check ([`docs/process.md`](../docs/process.md)). The one-browser rule
-applies to agents too.
+coordinates the work (the operator) reviews, pushes and opens the PR in the
+merge queue, which merges it on a green check
+([`docs/process.md`](../docs/process.md)). The one-browser rule applies to
+agents too.
 
 ## Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 

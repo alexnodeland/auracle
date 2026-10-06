@@ -80,9 +80,11 @@ contributor guide; this file does not repeat it.
 9. **Work flows through issues and reviewed PRs.** Outstanding work is a
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
    own worktree. An agent commits there and never pushes, opens a PR or
-   merges; the operator does (a human contributor pushes their own branch).
-   Every branch an agent builds is reviewed before its PR, and a PR merges
-   only on a green `CI` check, which `main` requires of everyone. A flaky test is fixed or
+   merges; the operator pushes it and opens the PR in the merge queue (a
+   human contributor pushes their own branch). Every branch an agent builds
+   is reviewed before its PR, and a PR merges through Mergify's queue, only
+   on a green `CI` check on top of `main` (`main` requires `CI` of everyone;
+   [ADR-021](docs/decisions/021-merges-go-through-mergifys-queue.md)). A flaky test is fixed or
    quarantined with an issue, never retried. A new term, label or phrase that
    `www/brand/voice.md`'s word table governs waits for the maintainer's
    approval. The whole flow is [`docs/process.md`](docs/process.md); the
@@ -104,7 +106,7 @@ contributor guide; this file does not repeat it.
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
 | A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
-| A merge, once `CI` is green | `gh pr merge <n> --squash --match-head-commit <sha>` (the operator; [`docs/process.md`](docs/process.md#ci-and-merging)) |
+| A merge | Open the PR with `--label queue` (or comment `@mergifyio queue`); the merge queue merges it once `CI` is green on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
 
 The `check` skill picks the right subset for what changed.
 
@@ -118,8 +120,9 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `truth-pass`, `changelog`, `film`, and `ship` (an issue to a merged PR).
 - **Agents:** `engine-engineer`, `web-engineer`, `docs-writer`,
   `film-producer` build in their own worktree and commit only;
-  `truth-auditor` and `reviewer` are read-only. The operator pushes, opens the
-  PR and merges on a green check ([`docs/process.md`](docs/process.md)).
+  `truth-auditor` and `reviewer` are read-only. The operator pushes and opens
+  the PR in the merge queue, which merges it on a green check
+  ([`docs/process.md`](docs/process.md)).
 - **Agents run on Opus** (`model: opus` in each definition).
 - **Hooks:** at session start, a report of a missing or stale
   `apps/web/pkg` and of the browser queue; no hand edits under the five

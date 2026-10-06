@@ -3,17 +3,17 @@ name: ship
 description: >
   Take one Auracle task from its GitHub issue to a merged PR, the way
   docs/process.md says: a worktree and branch, a brief, an agent that builds
-  and commits, a review before the PR, the PR, CI as the gate, a checked
-  squash merge, and the clean-up. Use when asked to build, land, merge or
-  "ship" a planned task, a fix or a follow-up.
+  and commits, a review before the PR, the PR in the merge queue, CI as the
+  gate, the queue's squash merge, and the clean-up. Use when asked to build,
+  land, merge or "ship" a planned task, a fix or a follow-up.
 ---
 
 # Ship one task
 
 [`docs/process.md`](../../../docs/process.md) is the rule; this is the
-procedure. You are the operator: agents build and commit, you review, push,
-open the PR, merge and clean up. Keep at most two streams in flight, never two
-on the same files.
+procedure. You are the operator: agents build and commit; you review, push,
+open the PR in the merge queue, and clean up once the queue has merged it.
+Keep at most two streams in flight, never two on the same files.
 
 Every command names the repository explicitly (`gh -R alexnodeland/auracle`,
 `git -C <path>`), so it works from any session directory. Each Bash call is a
@@ -97,9 +97,8 @@ agent, so it keeps its context), and have only those fixes looked at again:
 File every other finding as an issue and name it in the PR body. A finding
 you decline goes in the PR body with the reason.
 
-**One PR in CI at a time.** If this branch was built on another PR that is
-still open, hold it until that one merges, then move it onto `main` before
-step 5, so its first run tests what it merges into:
+**A branch built on another open PR** is held until that one merges, then
+moved onto `main` before step 5:
 
 ```bash
 git -C "$WT" fetch -q origin
@@ -108,20 +107,26 @@ git -C "$WT" rebase --onto origin/main <the one ahead's last head>
 
 Don't push it stacked on the open one: once that one squash-merges, a branch
 still carrying its commits conflicts wherever both changed the same lines
-(`CHANGELOG.md`, nearly always), and needs a new head and a second run. A PR
-whose files don't meet any open PR's goes up now, based on `main`. Otherwise
-rebase only to resolve a conflict with `main`.
+(`CHANGELOG.md`, nearly always), and the queue can't rebase it. Any other
+branch goes up now, based on `main`: the queue brings it up to date when it
+reaches the front. Otherwise rebase only to resolve a conflict.
 
 New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
 
-## 5. The PR
+## 5. The PR, in the merge queue
 
 ```bash
 git -C "$WT" push -q -u origin claude/<topic>
 gh -R alexnodeland/auracle pr create --base main --head claude/<topic> \
-  --title "<what is true now>" --body-file <scratch>/pr-<topic>.md
+  --title "<what is true now>" --body-file <scratch>/pr-<topic>.md --label queue
 ```
+
+The `queue` label is the one act of enqueueing: the PR enters Mergify's
+merge queue once its `CI` is green, and the queue merges it (`process.md`
+§ CI and merging). The title becomes the squash commit's subject,
+`<title> (#<n>)`, and its body is the PR's commit messages (the repository's
+squash setting), so each commit's why reaches `main`.
 
 The body: what changed, why, how (what a reviewer should look at), checks
 (gates, specs and counts, the review and its findings), `Closes #<n>`, and,
@@ -138,54 +143,89 @@ suite* runs on a PR only with it. It covers any crate, `Cargo.toml` or
 `@quarantine` test; and a `main.js` change that reaches EVOLVE's
 generations or PERFORM's offers. It does not block the merge.
 
-## 6. CI, waited on by state
+## 6. The merge, waited on by state
+
+The queue rebases the PR onto `main` if `main` moved, runs `CI` on that
+head, and merges. Wait until it merges, its `CI` goes red, or it leaves the
+queue:
+
+```bash
+until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
+    if .state != "OPEN" then .state
+    elif any(.labels[]; .name == "dequeued") then "dequeued"
+    elif any(.statusCheckRollup[]; .name == "CI" and (.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")) then "CI red"
+    else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
+```
+
+Run the wait in the background; never sleep a fixed time and assume.
+
+- **`MERGED`:** watch `main`'s run. It reuses the PR's verdict (the queue
+  merged the files that run tested) and deploys the site once green. Then
+  step 8.
+- **`CI red`:** read the run on the PR's head:
+  `gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> --json databaseId,conclusion,headSha`,
+  then `gh -R alexnodeland/auracle run view <run> --log-failed`, and the
+  run summary's merged browser report. Then step 7.
+- **`dequeued`:** it left the queue without merging: a red run on the
+  rebased head, a conflict with `main`, or a run that was cancelled.
+  `gh -R alexnodeland/auracle pr checks <n>` (the *Mergify Merge Queue*
+  check) and the queue's comment (`gh -R alexnodeland/auracle pr view <n> --comments`)
+  say why. Then step 7.
+
+## 7. When it doesn't merge
+
+Green, with no blocking finding, the PR is in the queue: nothing is added to
+it, and a later finding is an issue or the next PR. When it comes back red
+or dequeued:
+
+1. **Bring the worktree to the branch on GitHub.** The queue may have
+   rebased it:
+
+   ```bash
+   git -C "$WT" fetch -q origin
+   git -C "$WT" reset -q --hard origin/claude/<topic>
+   ```
+
+2. **Fix it on the branch.** The app or the test is fixed there (by the
+   builder). A red test the PR doesn't touch, for a cause outside it
+   (`process.md` § Flakes, step 4), gets one commit that quarantines it with
+   its `flake` issue; don't root-cause it here. Never re-run a red check
+   until it passes. A run that was cancelled rather than failed needs no
+   fix.
+   - **A conflict with `main`:** rebase it, with a lease that names the head
+     on GitHub, so a push nobody fetched is never overwritten:
+
+   ```bash
+   pushed=$(git -C "$WT" rev-parse origin/claude/<topic>)
+   git -C "$WT" rebase origin/main
+   git -C "$WT" push -q --force-with-lease=claude/<topic>:"$pushed" origin claude/<topic>
+   ```
+
+3. **Push it, and put it back in the queue.** The `queue` label stays on;
+   the command re-queues:
+
+   ```bash
+   git -C "$WT" push -q origin claude/<topic>
+   gh -R alexnodeland/auracle pr edit <n> --remove-label dequeued
+   gh -R alexnodeland/auracle pr comment <n> --body "@mergifyio queue"
+   ```
+
+   The comment is safe either way: a PR whose own first run was red never
+   entered the queue, and enters by itself once `CI` is green. Then step 6
+   again.
+
+**By hand, only when Mergify is down.** On green, and up to date with
+`main` (if `main` moved, rebase it with the lease above and wait for `CI` on
+the new head):
 
 ```bash
 sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
-until [ "$(gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> \
-  --json headSha,status -q "[.[] | select(.headSha==\"$sha\")][0].status")" = completed ]; do sleep 30; done
-gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> \
-  --json databaseId,conclusion,headSha -q "[.[] | select(.headSha==\"$sha\")][0]"
-gh -R alexnodeland/auracle run view <run> --json jobs -q '.jobs[] | "\(.name) \(.conclusion)"'
+gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" \
+  --subject "<title> (#<n>)"
 ```
 
-Run the wait in the background; never sleep a fixed time and assume. A red
-run: `gh -R alexnodeland/auracle run view <run> --log-failed`, and the run summary's merged browser
-report. The app or the test is fixed on the branch; a flake is fixed or
-quarantined (`process.md` § Flakes). Never re-run a red check until it
-passes.
-
-## 7. Merge at green
-
-Green, with no blocking finding: merge now. Nothing is added to a green PR;
-a later finding is an issue or the next PR.
-
-- **`main` moved under it** (`git -C "$WT" merge-base --is-ancestor
-  origin/main HEAD` fails): compare its files with what merged since.
-  - If none meet, merge on this run; `main`'s run verifies the merged tree
-    in full. Watch that run, and fix a failure there before anything else
-    merges.
-  - If they meet, catch up. The lease names the head that was pushed, so a
-    push nobody fetched is never overwritten:
-
-```bash
-pushed=$(git -C "$WT" rev-parse origin/claude/<topic>)
-git -C "$WT" rebase origin/main
-git -C "$WT" push -q --force-with-lease=claude/<topic>:"$pushed" origin claude/<topic>
-```
-
-  Then wait for CI on the new head (step 6, with the new `sha`).
-- **Red on a test the PR doesn't touch, for a cause outside it**
-  (`process.md` § Flakes, step 4): one commit that quarantines it with its
-  `flake` issue, push, and wait for that run. Don't root-cause it here.
-
-```bash
-gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
-```
-
-Only on green, only the SHA that was checked; `main`'s ruleset refuses
-anything else. Then watch `main`'s run: it reuses the PR's verdict when the
-merged files are exactly the tested ones, and deploys the site once green.
+Only the SHA that was checked; `main`'s ruleset refuses anything else. A
+merge from outside the queue makes the queue start over on the new `main`.
 
 ## 8. Clean up
 
