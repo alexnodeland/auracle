@@ -191,6 +191,9 @@ const { createDealer } = await import(`./deal.js?v=${BUILD}`);
 const bootParams = await import(`./params.js?v=${BUILD}`);
 // The warm start's nine cards, one per family (warm.js, tests/warm.test.mjs).
 const { warmSample } = await import(`./warm.js?v=${BUILD}`);
+// Find a sound's rule: what a sound must hold to stay in the bank while words
+// are typed (bank-find.js, tests/bank-find.test.mjs).
+const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -7842,7 +7845,8 @@ const sq = (u) => 1 / (1 + Math.exp(-u));
 // Find a sound (`#bank-find`): what is typed, lowercased and trimmed. Held
 // here, not read from the field at render time, and the field sits outside
 // the list, so the bank's many redraws (and the rename guard's deferred one)
-// keep both the words and the filter.
+// keep both the words and the filter. What a sound must hold to match is
+// bank-find.js's (`bankMatches`, tests/bank-find.test.mjs).
 let bankQuery = "";
 /** The library's row for a pool sound opened from it, if any: its category
  *  and blurb are what Find reads for it. */
@@ -7851,23 +7855,19 @@ function presetOfId(id) {
   for (const [index, pid] of presetIds) if (pid === id) return presetRows.find((p) => p.index === index) || null;
   return null;
 }
-/** Does a sound match what is typed? Its name, its category and its blurb
- *  (a preset's own, or the preset a pool sound was opened from). */
-function bankMatches(name, category = "", blurb = "") {
-  if (!bankQuery) return true;
-  return [name, category, blurb].some((t) => String(t || "").toLowerCase().includes(bankQuery));
-}
+/** Does a pool sound match what is typed? Its name, and the category and
+ *  blurb of the preset it was opened from, if any. */
 function poolMatches(r) {
   if (!bankQuery) return true;
   const p = presetOfId(r.id);
-  return bankMatches(r.name, p && p.category, p && p.blurb);
+  return bankMatches(bankQuery, r.name, p && p.category, p && p.blurb);
 }
 
 function bankSource() {
   const ranked = (views && views.ranked) || [];
   const live = ranked.filter((r) => !cutIds.has(r.id) && poolMatches(r));
   if (bankFilter === "saved") return live.filter((r) => r.pinned);
-  if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(p.name, p.category, p.blurb));
+  if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(bankQuery, p.name, p.category, p.blurb));
   return live;
 }
 
@@ -7980,7 +7980,7 @@ function renderBank() {
     frag.appendChild(bankRow(r, fitted));
   });
   if (bankFilter === "pool" && !bankQuery) appendReplaced(frag);
-  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }), (name) => bankMatches(name));
+  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }), (name) => bankMatches(bankQuery, name));
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
@@ -8502,7 +8502,7 @@ $("bank-list").setAttribute("aria-labelledby", "bank-tab-pool-w"); // the word a
 {
   const find = $("bank-find");
   find.addEventListener("input", () => {
-    const q = find.value.trim().toLowerCase();
+    const q = findQuery(find.value);
     if (q === bankQuery) return;
     bankQuery = q;
     renderBank();
