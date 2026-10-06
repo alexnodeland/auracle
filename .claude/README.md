@@ -57,10 +57,12 @@ agents too.
 - **After an edit** (`post-edit-check.sh`, on Edit, Write and MultiEdit):
   `rustfmt` on a `.rs` file; `node --check` on `.js`, `.mjs` and `.cjs` (as an
   ES module under `apps/web/`, which also catches a backtick inside
-  `live-audio.js`'s `PROCESSOR`); `py_compile` on `.py`; `json.tool` on
-  `.json`; `bash -n` on `.sh`. It skips `target/`, `node_modules/` and
-  `apps/web/pkg/`. A failure comes back to you at once, not at `make check`
-  time.
+  `live-audio.js`'s `PROCESSOR`); ESLint on a spec or helper in `tests/web`,
+  as `make spec-lint` runs it, where `tests/web`'s packages are installed
+  (`npm ci` there; a few tenths of a second for one file); `py_compile` on
+  `.py`; `json.tool` on `.json`; `bash -n` on `.sh`. It skips `target/`,
+  `node_modules/` and `apps/web/pkg/`. A failure comes back to you at once,
+  not at `make check` time.
 - **Before a Bash command** (`guard-bash.sh`): refuses `cargo test` on any
   crate without `--release`, `--profile` or `--doc` (use
   `--profile test-fast`), and refuses `playwright test` outside

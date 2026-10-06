@@ -37,6 +37,20 @@ if command -v rustfmt >/dev/null; then
   printf 'fn  main(){let x=1;}\n' > "$tmp/ok.rs"; expect 0 "formats Rust" post-edit-check.sh "$(edit "$tmp/ok.rs")"
   grep -q '    let x = 1;' "$tmp/ok.rs" || { echo "  FAIL: rustfmt did not format"; fails=$((fails + 1)); }
 fi
+# The specs' lint, where tests/web's packages are installed (npm ci there; CI's
+# Web job installs them): a spec of the suite's, with violations the
+# suppressions hold, passes; a new spec that breaks a rule fails. The new ones
+# go in a copy of tests/web's lint set-up outside the tree, where no
+# Playwright run can pick them up.
+web="$root/tests/web"
+if [ -x "$web/node_modules/.bin/eslint" ]; then
+  expect 0 "a spec held by the suppressions" post-edit-check.sh "$(edit "$web/smoke.spec.js")"
+  mkdir -p "$tmp/tests/web" && cp "$web/eslint.config.mjs" "$tmp/tests/web/" && ln -s "$web/node_modules" "$tmp/tests/web/node_modules"
+  printf 'const { test, expect } = require("./fixtures");\n\ntest("waits", async ({ page }) => {\n  await page.waitForTimeout(100);\n  await expect(page.locator("#a")).toBeVisible();\n});\n' > "$tmp/tests/web/new.spec.js"
+  expect 2 "a new spec's fixed wait" post-edit-check.sh "$(edit "$tmp/tests/web/new.spec.js")"
+  printf 'const { test, expect } = require("./fixtures");\n\ntest("shows", async ({ page }) => {\n  await expect(page.locator("#a")).toBeVisible();\n});\n' > "$tmp/tests/web/ok.spec.js"
+  expect 0 "a clean new spec" post-edit-check.sh "$(edit "$tmp/tests/web/ok.spec.js")"
+fi
 expect 0 "session start"         session-start.sh '{}'
 echo "  hooks: $runs cases, $fails failure(s)"
 [ "$fails" = 0 ]

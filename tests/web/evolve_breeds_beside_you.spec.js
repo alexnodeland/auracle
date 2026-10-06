@@ -282,6 +282,7 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   // within a few).
   const kids = await app.count("refine_child");
   await app.quiet(5_000);
+  // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("refine_child")).toBe(kids);
 });
 

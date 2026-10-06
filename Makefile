@@ -51,7 +51,7 @@ WASM_STACK := 8388608
 # helper only the native-only items use) must fail.
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: setup film-setup web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: setup film-setup web-check spec-lint all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
@@ -159,10 +159,20 @@ tokens:
 sound:
 	@python3 www/brand/sound.py
 
-## web-check: every web module parses (js-check), and the pure-logic modules'
-## unit tests pass
-web-check: js-check
+## web-check: every web module parses (js-check), the pure-logic modules'
+## unit tests pass, and the browser specs pass their lint (spec-lint)
+web-check: js-check spec-lint
 	node --test apps/web/tests/*.test.mjs
+
+## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
+## the Playwright plugin's recommended rules and the house rules, with no
+## file's count of a rule above tests/web/eslint-suppressions.json and none
+## below it unrecorded (tests/web/AGENTS.md § The lint). Run from tests/web,
+## where the suppressions are; needs tests/web's packages (npm ci there).
+spec-lint:
+	@test -x tests/web/node_modules/.bin/eslint && test -d tests/web/node_modules/eslint-plugin-playwright || { \
+		printf '  ESLint is not installed in tests/web: run  cd tests/web && npm ci\n'; exit 1; }
+	@cd tests/web && node_modules/.bin/eslint . && printf '  tests/web: lint OK\n'
 
 build:
 	$(CARGO) build --workspace

@@ -60,14 +60,15 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   be pressed".
 - Assert what a player sees or hears; a worker message only when the message
   is the behaviour (a request not sent twice, a stale reply refused).
-- Use the shared fixture when `tests/web/fixtures.js` is present: `app.boot()`
+- Start from the shared fixture, `tests/web/fixtures.js`: `app.boot()`
   (seeded by default), typed waits (`app.reply`, `app.toast`, `app.level`),
   `app.quiet()` for "nothing happens", `app.hold()` so an injected reply can't
   be overwritten by the engine's own. It fails a test on any page error, so no
-  spec collects `pageerror` itself. Without it, reuse the spec helpers
-  (`boot(page, { warmed })`) and collect `pageerror`.
+  spec collects `pageerror` itself, and the lint refuses a new spec that takes
+  `@playwright/test` or listens for `pageerror` on its own.
 - Wait for states, never times: no `waitForTimeout` except a named pacing
-  constant inside a gesture. Engine work is bounded by `offerBudget`
+  constant inside a gesture, which says so to the lint on its line
+  (`tests/web/AGENTS.md` § The lint). Engine work is bounded by `offerBudget`
   (`perform_budget.js`), not a guess. Accept the app being faster than when
   the test was written.
 - Time is one of three kinds (ADR-022; `tests/web/AGENTS.md` says how): an
@@ -77,6 +78,16 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   `app.budget(name, ms, limit)`, recorded and never failed on the gate,
   judged with `AURACLE_PERF=1`. Never `expect(ms).toBeLessThan(…)`.
 - No exact count of something a slow runner may legitimately do twice.
+- **The lint** (`make spec-lint`, part of `make web-check`; `npm ci` in
+  `tests/web` once) holds what a syntax rule can see of these: no fixed wait,
+  no missing `await`, web-first assertions, no assertion in a branch, no
+  clock on the runner, no `expect(await …)` straight after an action, a
+  duration bound only as a budget, `window.__aur` only through named
+  helpers. The after-edit hook runs it on each file you edit. Fix what it
+  finds rather than suppress it; a fix lowers a count in
+  `tests/web/eslint-suppressions.json`, recorded with `npx eslint
+  --prune-suppressions` in `tests/web` (the lint fails until it is). A false
+  positive is a disable on its line with the reason after `--`.
 - A test over about 40 s on CI is tagged `@slow` (`tests/web/AGENTS.md`).
 
 ## A failure

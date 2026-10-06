@@ -1,0 +1,695 @@
+{
+  "audio_in.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 3
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/no-runner-clock": {
+      "count": 2
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 13
+    },
+    "playwright/prefer-locator": {
+      "count": 1
+    }
+  },
+  "audio_in_takes.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 4
+    },
+    "auracle/no-own-pageerror": {
+      "count": 2
+    },
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "auracle/no-runner-clock": {
+      "count": 2
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 13
+    },
+    "playwright/prefer-locator": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "bank_find.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "bank_kept.spec.js": {
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "bank_lineage.spec.js": {
+    "playwright/no-conditional-expect": {
+      "count": 9
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 11
+    },
+    "playwright/no-skipped-test": {
+      "count": 4
+    }
+  },
+  "booth.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 2
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 1
+    }
+  },
+  "budgets.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 3
+    }
+  },
+  "evolve_breeds_beside_you.spec.js": {
+    "auracle/budget-not-expect": {
+      "count": 1
+    },
+    "auracle/no-aur-in-spec": {
+      "count": 4
+    },
+    "playwright/no-conditional-expect": {
+      "count": 6
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 6
+    },
+    "playwright/no-wait-for-selector": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 2
+    }
+  },
+  "evolve_feedback.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 3
+    },
+    "playwright/no-conditional-expect": {
+      "count": 9
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 6
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "evolve_from_new.spec.js": {
+    "playwright/no-conditional-expect": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 2
+    }
+  },
+  "evolve_generation_timing.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-skipped-test": {
+      "count": 1
+    }
+  },
+  "evolve_truth.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 3
+    },
+    "auracle/no-read-after-action": {
+      "count": 3
+    },
+    "playwright/no-conditional-expect": {
+      "count": 8
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 14
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "explain.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 3
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 1
+    }
+  },
+  "faces.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 2
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "failure_flows.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 3
+    },
+    "playwright/prefer-locator": {
+      "count": 2
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 2
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 5
+    }
+  },
+  "film_chip.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    }
+  },
+  "first_run.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 3
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 4
+    }
+  },
+  "keys_are_not_notes.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 6
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 3
+    }
+  },
+  "keys_for_the_platform.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    }
+  },
+  "midi_announced.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    }
+  },
+  "model_view.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/no-read-after-action": {
+      "count": 2
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 5
+    }
+  },
+  "narrow_gate.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/consistent-spacing-between-blocks": {
+      "count": 4
+    }
+  },
+  "patch_audible.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 3
+    },
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 2
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 2
+    }
+  },
+  "patch_cables.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    }
+  },
+  "patch_camera.spec.js": {
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    }
+  },
+  "patch_canvas.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-force-option": {
+      "count": 3
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "patch_catalog.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 1
+    },
+    "playwright/no-conditional-expect": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 2
+    },
+    "playwright/no-force-option": {
+      "count": 1
+    }
+  },
+  "patch_editing.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 5
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 7
+    }
+  },
+  "patch_facts.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 6
+    },
+    "playwright/no-conditional-expect": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 4
+    }
+  },
+  "patch_from_nothing.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    }
+  },
+  "patch_guess.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 1
+    },
+    "auracle/no-runner-clock": {
+      "count": 2
+    },
+    "playwright/no-conditional-expect": {
+      "count": 2
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 4
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 2
+    }
+  },
+  "patch_keys.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 2
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 1
+    }
+  },
+  "patch_model_view.spec.js": {
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    }
+  },
+  "patch_page.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "patch_sheet.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 4
+    },
+    "playwright/no-conditional-expect": {
+      "count": 7
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 3
+    }
+  },
+  "patch_touch.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/prefer-locator": {
+      "count": 1
+    }
+  },
+  "patch_truth.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 3
+    }
+  },
+  "perform_aimed.spec.js": {
+    "playwright/no-conditional-expect": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    }
+  },
+  "perform_controls.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    }
+  },
+  "perform_layout.spec.js": {
+    "playwright/consistent-spacing-between-blocks": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "perform_next.spec.js": {
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "perform_offer_latency.spec.js": {
+    "auracle/budget-not-expect": {
+      "count": 1
+    },
+    "auracle/no-runner-clock": {
+      "count": 4
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 3
+    }
+  },
+  "perform_offer_moments.spec.js": {
+    "playwright/no-conditional-expect": {
+      "count": 2
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "perform_palette.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    }
+  },
+  "perform_recentre.spec.js": {
+    "playwright/no-conditional-expect": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-selector": {
+      "count": 1
+    }
+  },
+  "perform_stage.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    }
+  },
+  "perform_teaches.spec.js": {
+    "playwright/no-wait-for-selector": {
+      "count": 2
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "perform_touch.spec.js": {
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "perform_truth.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 1
+    },
+    "auracle/no-read-after-action": {
+      "count": 2
+    },
+    "auracle/no-runner-clock": {
+      "count": 2
+    },
+    "playwright/no-conditional-expect": {
+      "count": 4
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 4
+    },
+    "playwright/no-wait-for-selector": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    },
+    "playwright/prefer-web-first-assertions": {
+      "count": 3
+    }
+  },
+  "perform_wander.spec.js": {
+    "auracle/no-read-after-action": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 1
+    }
+  },
+  "responsive.spec.js": {
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    },
+    "playwright/no-wait-for-selector": {
+      "count": 2
+    },
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "session_seed.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 2
+    }
+  },
+  "shell_levels.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/no-read-after-action": {
+      "count": 2
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-count": {
+      "count": 1
+    }
+  },
+  "smoke.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    }
+  },
+  "space_after_a_click.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 1
+    },
+    "auracle/no-own-pageerror": {
+      "count": 1
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    }
+  },
+  "taste_learning.spec.js": {
+    "auracle/no-aur-in-spec": {
+      "count": 2
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 2
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 2
+    }
+  },
+  "taste_marks.spec.js": {
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    }
+  },
+  "taste_profile.spec.js": {
+    "playwright/no-wait-for-timeout": {
+      "count": 1
+    },
+    "playwright/prefer-to-have-length": {
+      "count": 2
+    }
+  },
+  "text_fits.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 3
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/consistent-spacing-between-blocks": {
+      "count": 3
+    }
+  },
+  "type_scale.spec.js": {
+    "auracle/no-own-pageerror": {
+      "count": 3
+    },
+    "auracle/use-the-fixture": {
+      "count": 1
+    },
+    "playwright/no-conditional-in-test": {
+      "count": 1
+    }
+  }
+}

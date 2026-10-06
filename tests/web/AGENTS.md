@@ -102,7 +102,8 @@ runs. No retries anywhere
   sees, not arithmetic. A boot is seconds, here and on CI (a median of 4
   to 5 s there, about 28% of the fast tier's test time).
 - **Start from the fixture.** `const { test, expect } = require("./fixtures")`
-  (`fixtures.js`), never `@playwright/test` directly:
+  (`fixtures.js`), never `@playwright/test` directly (the lint holds this
+  and the `pageerror` rule below, [§ The lint](#the-lint)):
   - **page errors fail the test by themselves** (the auto fixture
     `pageErrors`, on every page of the test's context): no spec collects
     `pageerror` or ends with `expect(errors).toEqual([])`.
@@ -187,8 +188,9 @@ runs. No retries anywhere
   check that something does not occur. A longer window says why in its
   call (`app.quiet(5_000)`, the window a behaviour was always watched over).
   A pause inside a gesture (a player's pace between picks, a drag's steps) is
-  a named constant beside the spec's helpers. Any other `waitForTimeout` is
-  a wait for something: wait for it.
+  a named constant beside the spec's helpers, and its line says so to the
+  lint ([§ The lint](#the-lint)). Any other `waitForTimeout` is a wait for
+  something: wait for it.
 - **Waiting on PERFORM's engine** (an offer or a drift growing, or the work
   queued ahead of it) is renders, seconds each on a CI runner: bound it with
   `app.offerBudget()` (`perform_budget.js`), not a fixed number
@@ -219,5 +221,69 @@ runs. No retries anywhere
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
 - Not yet on the fixture (#170): `audio_in*`, `smoke`, `failure_flows` and
-  the shell's and views' other specs. A spec moved onto it keeps every test's
-  title (the timings and `testing.md` key on them).
+  the shell's and views' other specs (the lint's suppressions hold their
+  imports and their `pageerror` listeners until they move). A spec moved onto
+  it keeps every test's title (the timings and `testing.md` key on them).
+
+## The lint
+
+`make spec-lint` (part of `make web-check`, and so of CI's Web job) runs
+ESLint over every `.js` and `.mjs` file here with `eslint.config.mjs`: the
+Playwright plugin's recommended rules and the house rules of this file that a
+syntax rule can see, every one an error. It needs this directory's packages:
+`npm ci` here, once (`make setup` does it). Where they are installed, the
+after-edit hook lints a file here when you edit it, in under a second.
+
+**Today's violations are a baseline that only goes down.**
+`eslint-suppressions.json` holds each file's count of each rule as the lint
+came in. A file passes at its count and fails above it or below it:
+
+- **A count that rises fails.** ESLint then lists every hit of that rule in
+  that file, not only the new one: find yours by its line.
+- **A count that falls fails until it is recorded.** After the fix, run
+  `npx eslint --prune-suppressions` here and commit the file with the fix.
+- **A new spec starts at zero:** it has no entry.
+- **Nothing is added to it.** `eslint --suppress-all` is not run again (it
+  would take a new violation into the baseline), the gate never passes
+  `--pass-on-unpruned-suppressions`, and a diff to the file only lowers
+  counts or removes entries; review holds it to that. The one exception is a
+  rule new to the set (a house rule added, or one a plugin release adds to
+  its recommended set, which then fails the lint in the bump's PR): its
+  findings that day are taken in once, by name, in the PR that brings it
+  (`npx eslint --suppress-rule <rule>`).
+- **Run it from `tests/web`**, as `make spec-lint` and the hook do: the
+  file's paths are relative to it.
+
+The burn-down is the area PRs' (#178), each spec edited once.
+
+**Fix it rather than suppress it.** What each rule asks for:
+
+| Rule | Instead |
+| --- | --- |
+| `playwright/no-wait-for-timeout` | Wait for the state (`expect`, `expect.poll`, `app.reply`); "nothing happens" is `app.quiet()`. A gesture's pause is the one other kind: a named constant, its line under `// eslint-disable-next-line playwright/no-wait-for-timeout -- <the gesture>` |
+| `playwright/prefer-web-first-assertions` | `await expect(locator).toHaveText(…)` (or `toHaveAttribute`, `toBeVisible` and the rest) retries until the page gets there; `expect(await locator.textContent())` reads once |
+| `auracle/no-read-after-action` | `expect(await …)` straight after a click, a press or another action reads once, before the app has answered: wait for the state (a web-first assertion, `expect.poll(() => …)`, `app.reply`) |
+| `playwright/no-conditional-in-test`, `playwright/no-conditional-expect` | No assertion inside a branch or over a list that can be empty (#178): a branch the run did not take checked nothing. Hold the state that decides it (`app.hold`, `app.stall`), or split the test |
+| `playwright/missing-playwright-await` | Await every `expect(locator)` and `expect.poll`: without it the test moves on, and the check fails later or never |
+| `playwright/no-networkidle` | Wait for what the page shows |
+| `auracle/use-the-fixture` | `require("./fixtures")`. `boot_agrees.spec.js`, which opens no page, is the one spec that does not |
+| `auracle/no-own-pageerror` | Nothing: the fixture's `pageErrors` fails the test on any page error |
+| `auracle/no-runner-clock` | No `Date.now()` or `performance.now()` on the runner in a spec: the three kinds of time above. A read inside what the page runs (`page.evaluate`, `addInitScript`, `waitForFunction`) is on the page's clock and passes |
+| `auracle/budget-not-expect` | `app.budget(name, ms, limit)`. It flags `toBeLessThan` (or `OrEqual`) on a name that holds a duration (`ms`, `took`, `elapsed`, `pickMs`) against a number or a `…_MS` constant; it reads names, not values, so `expect(deals[0]).toBeLessThan(1_000)` passes it and review catches it |
+| `auracle/no-aur-in-spec`, `auracle/aur-allow-list` | `window.__aur` is main's private state: assert what a player sees or what the tap heard. A read a spec cannot do without goes in a named helper (`fixtures.js`, `patch_page.js`), which may read only the members on `AUR_ALLOWED` in `eslint.config.mjs` (the ones the suite read when the lint came in); one more is a review decision |
+
+**A false positive** is a disable on its line with the reason after `--`,
+never a rewrite to please the rule:
+`// eslint-disable-next-line <rule> -- <why>`. A disable nothing needs fails
+the lint. Two rules misread the fixture's own names:
+
+- `playwright/prefer-to-have-count` takes `expect(await app.count(type))`,
+  the tap's count, for a locator's, and its fix would break the test: disable
+  it on that line (`-- app.count is the tap's count, not a locator's`).
+- `playwright/no-useless-await` took every `await app.last(…)` for
+  `Locator.last()`, and its fix deletes the `await` the test needs: it is
+  off.
+
+Never run `eslint --fix` over the specs wholesale: a fix rewrites code no
+one has read. The `.mjs` files (`shard.mjs`, `changed.mjs`) are Node tools,
+linted without the plugin.

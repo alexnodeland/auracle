@@ -315,6 +315,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt | xargs python3 -m pip install --quiet
+      # The specs' lint (in web-check) and its hook's test (in dev-check) run
+      # tests/web's locked ESLint.
+      - run: cd tests/web && npm ci --no-audit --no-fund
       - run: make web-check
       - run: make -j4 -O dev-check
 

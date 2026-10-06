@@ -35,7 +35,7 @@ git diff --stat HEAD
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
 | `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed`, or by name for `main.js` (the `browser-test` skill) |
-| `tests/web/**` | the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
+| `tests/web/**` | `make spec-lint` (the after-edit hook lints each file as you edit it; a fixed violation is recorded with `npx eslint --prune-suppressions` in `tests/web`, `tests/web/AGENTS.md` § The lint), then the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
 | `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
@@ -47,6 +47,8 @@ git diff --stat HEAD
 
 - `make check` when Rust changed; `make web-check` is enough for JS-only,
   unless a string changed: then `make dev-check` too, for the voice check.
+  `make web-check` (and so `make check`) includes the spec lint, which needs
+  `npm ci` in `tests/web` once (it says so when that is missing).
 - A user-visible change also needs its descriptions updated (`truth-pass`)
   and a changelog entry as `changelog.d/<topic>.md` (`changelog`).
 - `apps/web/style.css` or `main.js` changed: nothing to bump. The site and
