@@ -194,6 +194,9 @@ const { warmSample } = await import(`./warm.js?v=${BUILD}`);
 // Find a sound's rule: what a sound must hold to stay in the bank while words
 // are typed (bank-find.js, tests/bank-find.test.mjs).
 const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
+// What pointing at EVOLVE POOL marks in the bank: the seeds, and what may or
+// will be replaced (marks.js, tests/marks.test.mjs).
+const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./marks.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -334,7 +337,7 @@ let modelOn = false;       // the model view is up (shell.js; `modelViewChanged`
 // well as with every views post; `views.ranked` and `views.map` still change
 // only when views are posted. While a generation runs, what it will replace is
 // `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
-// so read it at rest. Pointing at EVOLVE POOL marks both (`evolveMarks`).
+// so read it at rest. Pointing at EVOLVE POOL marks both (marks.js `evolveMarks`).
 // TASTE's halos and LEARNING's arrow are drawn from it (taste.js).
 // TASTE and LEARNING, once the bridge creates them (taste.js `createTaste`).
 let taste = null;
@@ -7378,29 +7381,10 @@ function renderEvolveBtn() {
 // ---------- what a generation does: its seeds, and what it may replace ----------
 // Pointing at (or focusing) EVOLVE POOL marks, in the bank, the sounds a
 // generation breeds from and the ones it may replace, so a save can come
-// first. Every mark is the engine's own list (ADR-012), never worked out here:
-// - at rest, a generation opened now: `ratings.seeds` (`Engine::next_seeds`,
-//   the rule `refine_jobs` takes its parents by) and `ratings.may_replace`
-//   (`Engine::may_replace`: nothing outside it can leave at its end), said
-//   "may be replaced";
-// - while one runs, that generation: the seeds it opened with
-//   (`breeding.seeds`, posted with its progress: `refine_jobs`' parents), and
-//   what its end would replace if it ended now (`refine_child`'s `retiring`,
-//   `Engine::retiring`), said "will be replaced": stopped now or run out, its
-//   end replaces them. That list grows by one with each child admitted
-//   (`admit_refined` defers the eviction) and loses none, so it is empty until
-//   the first child lands, and a child still to come can add a sound not on
-//   it: it is not the whole of what may go (words.js `markWord`);
-// - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed),
-//   and what its child would replace if the pool takes it. With no
-//   generation open `absorb_from` evicts at once (`evict_to_size`, the seed
-//   protected) the lowest of `eviction_order`, which passes over the seed in
-//   flight (`evolving`); `may_replace` ranks the same way, so its first
-//   `pool + 1 − pool_target` (one at size, none while the pool fills) are
-//   those.
-// The rail carries the mark (amber, the model's choice: solid for a seed,
-// dashed for what may go) and the word sits on the row's second line, over
-// the stars, so the name never moves.
+// first, from the engine's own lists: which list, by what is running, is
+// marks.js's (`evolveMarks`, `bankMarks`, `retiringAfter`, with the rules
+// and why; tests/marks.test.mjs). What stays here is when they are read and
+// the rows they are painted on.
 let mayGoShown = false;
 let mayGo = new Set();
 let mayKind = "may"; // which word the dashed rail's rows carry (`markWord`)
@@ -7408,32 +7392,18 @@ let seedMarks = new Set();
 // Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
 // takes its focus away while the pointer is still on it.
 const mayGoBy = { hover: false, focus: false };
-function evolveMarks() {
-  const r = views && views.ratings;
-  if (breeding) return { seeds: breeding.seeds || [], may: breeding.retiring || [], kind: "will" };
-  if (evolvingFrom) {
-    const owed = status ? Math.max(0, (status.pool || 0) + 1 - (status.pool_target || Infinity)) : 0;
-    const may = ((r && r.may_replace) || []).filter((id) => id !== evolvingFrom.id).slice(0, owed);
-    return { seeds: [evolvingFrom.id], may, kind: "may" };
-  }
-  return { seeds: (r && r.seeds) || [], may: (r && r.may_replace) || [], kind: "may" };
-}
 function markMayGo(on) {
   mayGoShown = on;
-  const m = on ? evolveMarks() : { seeds: [], may: [], kind: "may" };
-  seedMarks = new Set(m.seeds);
-  mayGo = new Set(m.may.filter((id) => !seedMarks.has(id)));
-  mayKind = m.kind;
+  const m = on ? evolveMarks({ breeding, evolvingFrom, ratings: views && views.ratings, status }) : NO_MARKS;
+  ({ seeds: seedMarks, may: mayGo, kind: mayKind } = bankMarks(m));
   for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) paintMarks(el, Number(el.dataset.id));
 }
 /** A reply that can move what the running generation will replace (a save, a
- *  preset or a kept edit: `eviction_order` passes over saved sounds, and a
- *  new member moves the lowest) carries `retiring` while one is open; only
- *  `refine_child` did, so a sound saved mid-run kept "will be replaced"
- *  while the one that would go instead was unmarked. The caller repaints
- *  (`applyViews` and the `pinned` case do). */
+ *  preset or a kept edit) carries `retiring` while one is open (marks.js
+ *  `retiringAfter`). The caller repaints (`applyViews` and the `pinned` case
+ *  do). */
 function takeRetiring(m) {
-  if (breeding && Array.isArray(m.retiring)) breeding.retiring = m.retiring;
+  if (breeding) breeding.retiring = retiringAfter(breeding, m);
 }
 /** The word a row carries while EVOLVE POOL is pointed at, or "". */
 function flagWord(id) {

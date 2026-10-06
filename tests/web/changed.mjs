@@ -46,6 +46,7 @@ export const MODULES = {
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],
   "apps/web/bank-find.js": ["bank_find"],
+  "apps/web/marks.js": ["bank_lineage", "bank_kept"],
   "apps/web/params.js": ["session_seed"],
   "apps/web/warm.js": ["first_run", "faces", "text_fits"],
   "apps/web/shell.js": ["shell_levels", "model_view", "guide_pill"],

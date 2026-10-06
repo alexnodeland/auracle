@@ -377,7 +377,8 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
   so the seeds and what may be replaced.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
-`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`), and TASTE
+`seeds` and `may_replace` in the bank (`evolveMarks` in `marks.js`, unit-tested
+in `tests/marks.test.mjs`), and TASTE
 draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
 arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
 every halo on the map moves to the ratings it carries, in one tween; a views
