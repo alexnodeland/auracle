@@ -1,6 +1,5 @@
 use super::*;
-use crate::phrase::PhraseSpec;
-use crate::pipeline::{featurize, Features};
+use crate::pipeline::Features;
 use crate::tests::{amp, vco};
 use auracle_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Uid, Waveform};
 use auracle_grammar::PatchTree;
@@ -88,10 +87,10 @@ fn phi_carries_no_exact_collinearity() {
     ] {
         assert!(!names.contains(&gone), "`{gone}` is back in φ");
     }
-    let spec = PhraseSpec::default();
+    // On the term alone: the counts are render-free, so every preset is
+    // checked in milliseconds rather than rendered first.
     for (name, tree) in auracle_grammar::presets() {
-        let f = featurize(&tree, &spec).unwrap().features;
-        let s = &f.structural;
+        let s = &struct_features(&tree);
         let sources = s.n_vco + s.n_supersaw + s.n_noise + s.n_wavetable + s.n_pluck + s.n_formant;
         let binaries = s.n_mix + s.n_ringmod + s.n_comp + s.n_duck + s.n_gate + s.n_vocoder;
         let sum = sources
