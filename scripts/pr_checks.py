@@ -9,7 +9,8 @@ docs/process.md § Pull requests).
     python3 scripts/pr_checks.py merged      on merge: comment, close, tell the parents
 
 In CI each reads the PR from the event, through the environment
-(PR_NUMBER, PR_TITLE, PR_BODY, PR_AUTHOR, PR_HEAD_REPO, GITHUB_REPOSITORY),
+(PR_NUMBER, PR_TITLE, PR_BODY, PR_AUTHOR, PR_HEAD_REPO, PR_MERGED_AT,
+GITHUB_REPOSITORY),
 never from a script the workflow writes. `--pr N` reads PR N with `gh`
 instead, for a run by hand; `check --pr N` runs the first three on it, and
 `merged --pr N --dry-run` says what the merge job would do, writing nothing.
@@ -37,9 +38,10 @@ sees (PLAYER_FACING) with no entry in `changelog.d/` gets a warning, never a
 failure: whether a change is noticeable is a judgment the script can't make.
 
 **On merge,** for a PR that names issues: each `Closes` issue GitHub didn't
-close is closed here, with a comment saying why; each issue that closed and
-has a parent (GitHub's sub-issues) is counted on the parent, with how many of
-its sub-issues are closed; each `Refs` issue gets a comment naming the PR. One
+close is closed here, with a comment saying why; each issue that closed with
+the PR (not one closed before it merged) and has a parent (GitHub's
+sub-issues) is counted on the parent, with how many of its sub-issues are
+closed; each `Refs` issue gets a comment naming the PR. One
 comment per issue per PR, each of its lines carrying a marker of its own, so a
 run again adds only what an earlier run left out: a line a failed run couldn't
 write is posted, and none is posted twice. GitHub closes linked issues a moment
@@ -60,6 +62,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Callable
 
 REPO = "alexnodeland/auracle"
@@ -347,6 +350,15 @@ class Pr:
     body: str
     author: str
     head_repo: str = REPO
+    merged_at: str = ""  # GitHub's ISO time; "" when unknown
+
+
+def earlier(when: str | None, than: str | None) -> bool:
+    """`when` is before `than`, both GitHub's ISO times; False when either
+    is unknown."""
+    if not when or not than:
+        return False
+    return datetime.fromisoformat(when.replace("Z", "+00:00")) < datetime.fromisoformat(than.replace("Z", "+00:00"))
 
 
 def on_merge(
@@ -426,9 +438,14 @@ def on_merge(
             if status == 200 and isinstance(again, dict):
                 issues[n] = again
 
+    # An issue closed before the merge (by hand, or by another PR that named
+    # it) wasn't closed with this PR, so its parent isn't told it was.
     closed: list[int] = []
     for n, issue in issues.items():
         if issue.get("state") == "closed":
+            if earlier(issue.get("closed_at"), pr.merged_at):
+                log(f"#{n}: closed before #{pr.number} merged, so not with it: its parent isn't told")
+                continue
             log(f"#{n}: closed")
             closed.append(n)
             continue
@@ -521,12 +538,20 @@ def read_pr(api: Api, repo: str, n: int | None) -> Pr:
             body=os.environ.get("PR_BODY", ""),
             author=os.environ.get("PR_AUTHOR", ""),
             head_repo=os.environ.get("PR_HEAD_REPO", repo),
+            merged_at=os.environ.get("PR_MERGED_AT", ""),
         )
     status, data = api.get(f"repos/{repo}/pulls/{n}")
     if status != 200 or not isinstance(data, dict):
         sys.exit(f"PR #{n} couldn't be read (HTTP {status}): {data}")
     head = (data.get("head") or {}).get("repo") or {}
-    return Pr(n, data.get("title") or "", data.get("body") or "", (data.get("user") or {}).get("login", ""), head.get("full_name", ""))
+    return Pr(
+        n,
+        data.get("title") or "",
+        data.get("body") or "",
+        (data.get("user") or {}).get("login", ""),
+        head.get("full_name", ""),
+        data.get("merged_at") or "",
+    )
 
 
 def run_title(pr: Pr, ci: bool) -> bool:

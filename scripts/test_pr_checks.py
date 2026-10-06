@@ -20,6 +20,7 @@ import pathlib
 import subprocess
 import sys
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -49,7 +50,13 @@ class Fake:
 
     def _issue(self, n):
         i = self.issues[n]
-        out = {"number": n, "title": i.get("title", f"issue {n}"), "state": i.get("state", "open"), "repository_url": f"https://api.github.com/repos/{i.get('repo', REPO)}"}
+        out = {
+            "number": n,
+            "title": i.get("title", f"issue {n}"),
+            "state": i.get("state", "open"),
+            "closed_at": i.get("closed_at"),
+            "repository_url": f"https://api.github.com/repos/{i.get('repo', REPO)}",
+        }
         if i.get("pr"):
             out["pull_request"] = {"url": "…"}
         return out
@@ -96,11 +103,11 @@ class Fake:
         return 200, {}
 
 
-def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO):
+def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO, merged_at=""):
     """Run the merge job on a PR with `body` against `api`: its exit code,
     its log, and how many times it slept."""
     log, slept = [], []
-    code = P.on_merge(P.Pr(number, title, body, author, head), api, REPO, sleep=slept.append, log=log.append)
+    code = P.on_merge(P.Pr(number, title, body, author, head, merged_at), api, REPO, sleep=slept.append, log=log.append)
     return code, log, len(slept)
 
 
@@ -392,6 +399,30 @@ class OnMerge(unittest.TestCase):
         # #186, closed here, counts though the list still has it open.
         self.assertIn("#160, #185 and #186 closed with #300. 4 of 5 sub-issues are closed.", comments[0][2])
 
+    def test_an_issue_closed_before_the_merge_isnt_told_to_its_parent_as_closed_with_it(self):
+        # #5 was closed an hour before #300 merged (another PR of the batch
+        # named it, or someone closed it by hand); GitHub closed #6 with the
+        # merge, in the same second.
+        fake = Fake(
+            {
+                177: {},
+                5: {"parent": 177, "state": "closed", "closed_at": "2026-10-06T11:00:00Z"},
+                6: {"parent": 177, "state": "closed", "closed_at": "2026-10-06T12:00:00Z"},
+            }
+        )
+        code, log, _ = merge("Closes #5\nCloses #6", fake, merged_at="2026-10-06T12:00:00Z")
+        self.assertEqual(code, 0)
+        (comment,) = [w[2] for w in fake.writes if w[1] == 177]
+        self.assertIn("#6 closed with #300. 2 of 2 sub-issues are closed.", comment)
+        self.assertNotIn("#5", comment)
+        self.assertIn("#5: closed before #300 merged, so not with it: its parent isn't told", log)
+
+    def test_with_no_merge_time_a_closed_issue_counts_as_closed_with_the_pr(self):
+        fake = Fake({177: {}, 5: {"parent": 177, "state": "closed", "closed_at": "2026-10-06T11:00:00Z"}})
+        merge("Closes #5", fake)
+        (comment,) = [w[2] for w in fake.writes if w[1] == 177]
+        self.assertIn("#5 closed with #300", comment)
+
     def test_a_parent_that_is_also_refd_gets_one_comment_with_both(self):
         fake = Fake({177: {}, 216: {"parent": 177, "state": "closed"}})
         merge("Closes #216\nRefs #177", fake)
@@ -453,6 +484,25 @@ class OnMerge(unittest.TestCase):
         P.on_merge(P.Pr(300, "t", "Closes #5\nRefs #177", "a"), fake, REPO, dry_run=True, sleep=slept.append, log=log.append)
         self.assertEqual((fake.writes, slept), ([], []))
         self.assertIn("#5: open: would close it", log)
+
+
+class ReadPr(unittest.TestCase):
+    """The PR the merge job acts on: from the event's environment in CI,
+    from the API with `--pr N`; its merge time among the rest."""
+
+    def test_from_the_environment(self):
+        env = {"PR_NUMBER": "300", "PR_TITLE": "t", "PR_BODY": "Closes #5", "PR_AUTHOR": "a", "PR_HEAD_REPO": REPO, "PR_MERGED_AT": "2026-10-06T12:00:00Z"}
+        with unittest.mock.patch.dict(os.environ, env):
+            self.assertEqual(P.read_pr(None, REPO, None), P.Pr(300, "t", "Closes #5", "a", REPO, "2026-10-06T12:00:00Z"))
+
+    def test_from_the_api(self):
+        pull = {"title": "t", "body": None, "user": {"login": "a"}, "head": {"repo": {"full_name": REPO}}, "merged_at": "2026-10-06T12:00:00Z"}
+
+        class Pulls:
+            def get(self, path):
+                return (200, pull) if path == f"repos/{REPO}/pulls/300" else (404, "")
+
+        self.assertEqual(P.read_pr(Pulls(), REPO, 300), P.Pr(300, "t", "", "a", REPO, "2026-10-06T12:00:00Z"))
 
 
 class GhApi(unittest.TestCase):
