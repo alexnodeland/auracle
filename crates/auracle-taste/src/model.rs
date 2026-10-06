@@ -831,14 +831,18 @@ impl TastePosterior {
     /// acquisition function reads a frozen posterior and re-asks the same
     /// question until the next refit.
     ///
-    /// An observation that no draw still carrying weight can account for, a
-    /// total contradiction, leaves the weights as they were. That is a vote
-    /// on a φ that is not finite (every likelihood is NaN), or one that every
-    /// weighted draw rules out so firmly that each product underflows to
-    /// zero. The draws have nothing to say about it, so the update keeps
-    /// what the votes since the last fit gathered, and the observation waits
-    /// in the caller's log for the next fit. The effective sample size is
-    /// unchanged: a contradiction by itself never makes it fall.
+    /// The update is exact however firmly a vote rules out every draw still
+    /// carrying weight: the likelihoods are shifted by the best among those
+    /// draws, so the products cannot all underflow, and the weight moves to
+    /// the draw that contradicts the vote least. A strong enough
+    /// contradiction collapses the effective sample size, which is the
+    /// caller's signal to resample and refit.
+    ///
+    /// A vote that leaves the weighted draws no likelihood to update by
+    /// leaves the weights as they were: one on a φ that holds a NaN, where
+    /// every likelihood is NaN. The update keeps what the votes since the
+    /// last fit gathered, and the observation waits in the caller's log for
+    /// the next fit. The effective sample size is unchanged.
     pub fn reweighted(&self, feedback: &Feedback, session: usize) -> TastePosterior {
         self.reweighted_with(feedback, session, &[])
     }
@@ -862,20 +866,37 @@ impl TastePosterior {
             .iter()
             .map(|s| obs_loglik_with(feedback, session, s, absent))
             .collect();
-        // Shift by the max before exponentiating: log-likelihoods here are
-        // bounded above by 0, but the same guard keeps mixed modalities safe.
-        let m = ll.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let mut w: Vec<f64> = (0..n).map(|i| self.weight(i) * (ll[i] - m).exp()).collect();
+        // Shift by the best log-likelihood among the draws that still carry
+        // weight before exponentiating. That draw's product is then its own
+        // weight, so however firmly the vote rules out every weighted draw,
+        // the sum cannot underflow and the update stays exact. A draw with no
+        // weight takes no part, in the shift or in the products. In the
+        // shift, one that scored best pushed every product under the smallest
+        // double, and the update was skipped; in the products, 0 · e^(ll − m)
+        // is 0 · ∞ = NaN once it scores far enough above the others.
+        let m = (0..n)
+            .filter(|&i| self.weight(i) > 0.0)
+            .map(|i| ll[i])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let mut w: Vec<f64> = (0..n)
+            .map(|i| match self.weight(i) {
+                wi if wi > 0.0 => wi * (ll[i] - m).exp(),
+                _ => 0.0,
+            })
+            .collect();
         let sum: f64 = w.iter().sum();
         if sum > 0.0 && sum.is_finite() {
             for wi in &mut w {
                 *wi /= sum;
             }
         } else {
-            // A total contradiction: keep the previous weights, one per draw
-            // (a posterior persisted before reweighting existed stores none,
-            // which reads as uniform). Resetting to uniform here, as this
-            // used to, threw away the evidence gathered since the last fit.
+            // Nothing to update by: a weighted draw's likelihood is NaN (a
+            // vote on a φ that holds a NaN gives every draw NaN), or every
+            // one is zero. Keep the previous weights, one per draw (a
+            // posterior persisted before reweighting existed stores none,
+            // which reads as uniform); the observation waits in the log for
+            // the next fit. Resetting to uniform here, as this used to, threw
+            // away the evidence gathered since the last fit.
             w = (0..n).map(|i| self.weight(i)).collect();
         }
         TastePosterior {

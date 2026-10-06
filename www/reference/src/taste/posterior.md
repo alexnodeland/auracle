@@ -96,8 +96,16 @@ observation is folded into the existing draws by reweighting:
 $$w_s \;\leftarrow\; \frac{w_s \, p(y \mid \theta_s)}{\sum_{s'} w_{s'} \, p(y \mid \theta_{s'})}$$
 
 ```rust
-let m = ll.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-let mut w: Vec<f64> = (0..n).map(|i| self.weight(i) * (ll[i] - m).exp()).collect();
+let m = (0..n)
+    .filter(|&i| self.weight(i) > 0.0)
+    .map(|i| ll[i])
+    .fold(f64::NEG_INFINITY, f64::max);
+let mut w: Vec<f64> = (0..n)
+    .map(|i| match self.weight(i) {
+        wi if wi > 0.0 => wi * (ll[i] - m).exp(),
+        _ => 0.0,
+    })
+    .collect();
 ```
 
 This is **exact** (the weighted draws target the updated posterior), and its
@@ -106,27 +114,42 @@ the one before it; without
 it the acquisition rule reads a frozen posterior and re-asks the same question
 until the next full fit.
 
-The max-shift before exponentiating is the usual guard. Log-likelihoods here
-are bounded above by 0, so it is not strictly needed for duels, but it keeps
-mixed modalities safe.
+The likelihoods are shifted before they are exponentiated, by the best
+log-likelihood among the draws that still carry weight. A draw whose weight
+has already fallen to zero takes no part, in the shift or in the products.
 
-### A total contradiction keeps the weights
+### However strong the contradiction
 
-The denominator can be zero, or not a number. That happens when no draw still
-carrying weight can account for the observation: a vote on a $\varphi$ that is
-not finite (which [vetting](../audition/vetting.md) exists to prevent), where
-every likelihood is NaN, or a vote that every weighted draw rules out so firmly
-that each product $w_s \, p(y \mid \theta_s)$, taken after the max-shift,
-falls under the smallest double (about $e^{-745}$) and rounds to zero. The
-draw that scores best is then one with no weight left.
+A vote can rule out every draw that still carries weight. Likelihoods of
+$e^{-3000}$ and $e^{-2400}$ are far under the smallest double (about
+$e^{-745}$), and taken as they are, every product would round to zero.
+Shifted by the best weighted draw, that draw's product is its own weight, so
+the sum cannot underflow. The weight moves to the draw that contradicts the
+vote least, by the exact update, and a stronger contradiction never moves it
+less than a weaker one. If it concentrates the weights far enough, ESS falls,
+the draws are [resampled](#systematic-resampling), and the
+[refit trigger](#the-refit-trigger) is armed.
 
-Then the update **keeps the previous weights**. The draws have nothing to say
-about the observation, so what the votes since the last fit taught them stays,
-and the observation waits in the log for the next fit.
-ESS is unchanged: a contradiction by itself never makes it fall, and never
-calls for a [resample](#systematic-resampling). The update used to reset the
-weights to uniform here, which threw that evidence away and claimed a full ESS
-besides (`a_total_contradiction_keeps_the_previous_weights` in
+The shift used to be taken over every draw, including those with no weight
+left. When one of those scored best, its log-likelihood set the shift, and a
+vote that every weighted draw ruled out firmly enough pushed every product
+under the smallest double. The weighted draws still ranked the vote, but the
+update was skipped: a slightly weaker version of the same vote could collapse
+the weights and arm the trigger, while the stronger one left them where they
+were (`the_update_is_exact_however_strong_the_contradiction` in
+`auracle-taste`).
+
+### A vote with no likelihood keeps the weights
+
+The denominator is now not a number only when the vote leaves the weighted
+draws no likelihood to update by: a vote on a $\varphi$ that holds a NaN
+(which [vetting](../audition/vetting.md) exists to prevent), where every
+likelihood is NaN. Then the update **keeps the previous weights**. What the
+votes since the last fit taught the draws stays, and the observation waits in
+the log for the next fit. ESS is unchanged, so such a vote never calls for a
+resample by itself. The update used to reset the weights to uniform here,
+which threw that evidence away and claimed a full ESS besides
+(`a_vote_with_no_finite_likelihood_keeps_the_previous_weights` in
 `auracle-taste`).
 
 ### What the app is sent after each pick
@@ -217,10 +240,12 @@ pub fn needs_refit(&self) -> bool {
 The engine’s condition is not a count of picks. It is **“the weights have had
 to be resampled at least once since the last real fit”**, that is, the cheap
 path has provably run out of road. With no posterior yet, it is true as soon as
-the log holds anything. The engine reports it in its status. A
-[total contradiction](#a-total-contradiction-keeps-the-weights) does not arm
-it, since it leaves the weights as they were, but the picks after it reweight
-from those weights as usual.
+the log holds anything. The engine reports it in its status. A vote that
+rules out every weighted draw arms it like any other pick that concentrates
+the weights, [however strong](#however-strong-the-contradiction) it is. A
+vote with [no likelihood](#a-vote-with-no-likelihood-keeps-the-weights)
+leaves the weights as they were and does not arm it, but the picks after it
+reweight from those weights as usual.
 
 The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other
