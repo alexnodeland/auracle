@@ -218,28 +218,34 @@ function phraseOnlyThroughTheStamp() {
 // How long a crew waits on the stamp, as worker.js has it.
 const RENDER_STAMP_MS = Number(/^const RENDER_STAMP_MS = (\d+);$/m.exec(workerSrc)?.[1]);
 
-// The engine worker's side of boot's crew, as written: `farmBoot` and what it
-// calls, over `engine` and `glue` stand-ins, and `farmHandshake` answered at
-// once. `renderStoreModule` is render-store.js itself, or `module`.
-function engineWorker(idb, { module = async () => renderStore } = {}) {
+// The engine worker's side of a crew, as written: `farmBoot` (boot's crew) and
+// `crewUp` (a walk crew's) and what they call, over `engine` and `glue`
+// stand-ins, with `farmHandshake` answered at once and main's side of
+// `farm_want` left to `news`. `renderStoreModule` is render-store.js itself,
+// or `module`.
+function engineWorker(idb, { module = async () => renderStore, news = () => {} } = {}) {
   assert.ok(RENDER_STAMP_MS > 0, "worker.js has no RENDER_STAMP_MS");
   assert.ok(
     /^const renderStoreModule = \(\) => import\(`\.\/render-store\.js\?v=\$\{V\}`\);$/m.test(workerSrc),
     "worker.js does not import render-store.js as renderStoreModule",
   );
   phraseOnlyThroughTheStamp();
+  const crewReady = /^const crewReady = .*;$/m.exec(workerSrc);
+  assert.ok(crewReady, "worker.js has no crewReady");
   return new Function(
     "self", "engine", "glue", "renderStoreModule", "farmHandshake", "FARM_HANDSHAKE_MS", "RENDER_STAMP_MS",
-    "onFarmMessage",
+    "CREW_SPAWN_MS", "news", "onFarmMessage",
     [
       "const farm = [];",
       "const farmPreDead = new Set();",
       "let renderStamped = null;",
-      lift(workerSrc, "farmPhrase"),
-      lift(workerSrc, "farmSetup"),
-      lift(workerSrc, "renderStoreReady"),
-      lift(workerSrc, "farmBoot"),
-      "return { farmBoot, renderStoreReady, farm };",
+      "let farmSink = null, farmClosed = false, farmCrew_ = 0;",
+      "let crewSeq = 0, crewWaiting = null, crewRaising = null, crewIdleTimer = null;",
+      crewReady[0],
+      ...["farmPhrase", "farmSetup", "renderStoreReady", "farmBoot", "farmUsable", "farmSay", "farmShutdown"]
+        .concat(["crewUp", "crewArrived", "crewKeep"])
+        .map((name) => lift(workerSrc, name)),
+      "return { farmBoot, renderStoreReady, crewUp, crewArrived, farm };",
     ].join("\n"),
   )(
     { indexedDB: idb.as("engine") },
@@ -249,6 +255,8 @@ function engineWorker(idb, { module = async () => renderStore } = {}) {
     async () => true,
     5000,
     RENDER_STAMP_MS,
+    10000,
+    news,
     () => {},
   );
 }
@@ -271,12 +279,10 @@ function farmWorker(idb, who) {
   )({ indexedDB: idb.as(who) }, { cache_namespace: () => NS }, port, renderStore);
 }
 
-// Boot's crew of `width` farm workers on `idb`, booted as `init` boots it: the
-// stamp started, then `farmBoot` with a port to each worker, every message on a
-// port delivered on a later task. Resolves once every worker has taken the
-// phrase.
-async function bootCrew(idb, width, opts) {
-  const engine = engineWorker(idb, opts);
+// A crew of `width` farm workers on `idb` and a port to each, every message on
+// a port delivered on a later task. `taken()` resolves once each worker has
+// taken what was posted to it.
+function crewOf(idb, width) {
   const farms = Array.from({ length: width }, (_, k) => farmWorker(idb, `farm ${k}`));
   const taken = [];
   const ports = farms.map((f, k) => ({
@@ -285,15 +291,23 @@ async function bootCrew(idb, width, opts) {
       taken.push(new Promise((resolve) => later(() => resolve(f.onJob(msg)))));
     },
   }));
+  return { farms, ports, taken: () => Promise.all(taken) };
+}
+
+// Boot's crew, booted as `init` boots it: the stamp started, then `farmBoot`.
+async function bootCrew(idb, width, opts) {
+  const engine = engineWorker(idb, opts);
+  const { farms, ports, taken } = crewOf(idb, width);
   engine.renderStoreReady(NS);
   assert.equal(await engine.farmBoot(ports, NS), true);
-  await Promise.all(taken);
+  await taken();
   return { engine, farms };
 }
 
-test("the engine worker creates and stamps the render store before boot's crew is handed the phrase, and the crew's opens write nothing", async () => {
-  const idb = fakeIndexedDB();
-  const { farms } = await bootCrew(idb, 6);
+// The store was created once, by the engine worker, and stamped before any
+// farm worker was handed the phrase or opened it; the farm workers' opens
+// wrote nothing, and each holds the store, the namespace and the phrase.
+function stampedFirst(idb, farms) {
   const at = (pred) => idb.log.findIndex(pred);
   const stamped = at((e) => e.who === "engine" && e.op === "readwrite" && e.store === RENDER_META);
   const firstPhrase = at((e) => e.op === "posted" && e.type === "phrase");
@@ -314,6 +328,43 @@ test("the engine worker creates and stamps the render store before boot's crew i
     assert.equal(ns, NS);
     assert.equal(phrase, PHRASE);
   }
+}
+
+test("the engine worker creates and stamps the render store before boot's crew is handed the phrase, and the crew's opens write nothing", async () => {
+  const idb = fakeIndexedDB();
+  const { farms } = await bootCrew(idb, 6);
+  stampedFirst(idb, farms);
+});
+
+test("a walk crew wanted while the render store is being stamped is asked for, and handed the phrase, after the stamp", async () => {
+  // A machine whose boot has no farm (width 0, two or three cores) still
+  // raises walk crews, and nothing else waits on the stamp started at init.
+  const idb = fakeIndexedDB();
+  const release = idb.hold("engine");
+  const { farms, ports, taken } = crewOf(idb, 2);
+  const engine = engineWorker(idb, {
+    news(msg) {
+      idb.log.push({ who: "engine", op: "news", type: msg.type });
+      if (msg.type === "farm_want") later(() => engine.crewArrived({ crew: msg.crew, ports }));
+    },
+  });
+  engine.renderStoreReady(NS);
+  const raised = engine.crewUp();
+  for (let i = 0; i < 6; i++) await settle();
+  assert.equal(
+    idb.log.some((e) => e.op === "posted" && e.type === "phrase"),
+    false,
+    "a walk crew was handed the phrase while the store was being stamped",
+  );
+  release();
+  assert.equal(await raised, true);
+  await taken();
+  stampedFirst(idb, farms);
+  const at = (pred) => idb.log.findIndex(pred);
+  assert.ok(
+    at((e) => e.op === "news" && e.type === "farm_want") > at((e) => e.op === "readwrite" && e.store === RENDER_META),
+    "the walk crew was asked for before the store was stamped",
+  );
 });
 
 test("a render store the engine worker could not open is created by the crew, which still caches", async () => {

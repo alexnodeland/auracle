@@ -271,7 +271,7 @@ function farmSetup(ports) {
 // the veil waited about 1.5 s for them (#200). Started at init whatever the
 // farm's width, and once per worker: the namespace never sees the audition
 // clip, so a phrase sent again (`farmResendPhrase`) leaves the stamp as it is,
-// and a walk crew raised after boot finds the store stamped. Settles when the
+// and a walk crew waits for it as boot's does (`crewUp`). Settles when the
 // store is stamped or cannot be opened, or after `RENDER_STAMP_MS`, whichever
 // comes first; an open that answers later still stamps the store if it needs
 // it, and its connection is closed.
@@ -452,6 +452,12 @@ function crewUp() {
   if (crewReady()) return Promise.resolve(true);
   if (crewRaising) return crewRaising;
   crewRaising = (async () => {
+    // As boot's crew (`farmBoot`): a walk crew is asked for once the render
+    // store is stamped (`renderStoreReady`, started at init), so its workers'
+    // opens only read. Settled by then, as a rule: the stamp is done about
+    // 50 ms after init. Waited for here, before main spawns anything, so no
+    // crew stands half set up meanwhile.
+    await renderStamped;
     const id = ++crewSeq;
     const ports = await new Promise((resolve) => {
       const timer = setTimeout(() => {
