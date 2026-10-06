@@ -101,6 +101,8 @@ fn clean_columns_are_bit_identical_to_the_plain_moments() {
         (0..60).map(|i| (1.0 + i as f64 / 6.0).ln()).collect(),
         // Near-constant with two rare non-zeros — a module in 2 of 48.
         (0..48).map(|i| if i < 46 { 0.0 } else { 1.0 }).collect(),
+        // …and in 1 of 48, where both clip points fall on the common value.
+        (0..48).map(|i| if i < 47 { 0.0 } else { 1.0 }).collect(),
         // Bipolar, symmetric.
         (0..80).map(|i| (i as f64 - 40.0) / 13.0).collect(),
         // A count column with a legitimately extreme member.
@@ -122,6 +124,62 @@ fn clean_columns_are_bit_identical_to_the_plain_moments() {
             "case {i}: σ moved"
         );
     }
+}
+
+/// The runaway rule is a ratio, so it is the same in any units: a column
+/// scaled by a power of two (which floating point does exactly) fits to the
+/// same decision, with its moments scaled by that power to the last bit. A
+/// clean column stays plain at 2^30, where its σ is far over the ratio's
+/// 1e6, and a runaway one is clipped at 2^-20, where its σ is far under it.
+#[test]
+fn the_runaway_rule_is_the_same_in_any_units() {
+    let clean: Vec<f64> = (0..48).map(|i| (1.0 + i as f64 / 6.0).ln()).collect();
+    let mut runaway: Vec<f64> = (0..47).map(|i| i as f64 / 46.0).collect();
+    runaway.push(1e9);
+    for (what, values) in [("clean", &clean), ("runaway", &runaway)] {
+        let unit = Standardizer::fit(&col(values));
+        for scale in [2f64.powi(-20), 2f64.powi(30)] {
+            let scaled: Vec<f64> = values.iter().map(|v| v * scale).collect();
+            let sz = Standardizer::fit(&col(&scaled));
+            assert_eq!(
+                (sz.mean[0], sz.std[0]),
+                (unit.mean[0] * scale, unit.std[0] * scale),
+                "{what} column at a scale of {scale}"
+            );
+        }
+    }
+    // The runaway column was clipped: its σ is its real values', not 1e9's.
+    assert!(Standardizer::fit(&col(&runaway)).std[0] < 1.0);
+}
+
+/// "More than [`RUNAWAY_RATIO`] times wider" is the rule, to the last bit:
+/// a column whose plain σ is exactly that many times its clipped σ keeps its
+/// plain moments, and the same column with its outlier one step of a double
+/// further out is clipped. The outlier's value was searched for: ten rows,
+/// nine of them `0, 1/8, …, 1`, whose clipped σ is 0.3223449239556907 and
+/// whose plain σ, with this outlier, is 322344.9239556907.
+#[test]
+fn a_column_exactly_at_the_runaway_ratio_is_not_runaway() {
+    let at_ratio = 1074483.5798518176;
+    let mut values: Vec<f64> = (0..9).map(|i| i as f64 / 8.0).collect();
+    values.push(at_ratio);
+    let sz = Standardizer::fit(&col(&values));
+    assert_eq!(sz.std[0], 322344.9239556907, "the plain σ");
+    assert_eq!(sz.std[0], RUNAWAY_RATIO * 0.3223449239556907);
+    values[9] = f64::from_bits(at_ratio.to_bits() + 1);
+    let past = Standardizer::fit(&col(&values));
+    assert_eq!(past.std[0], 0.3223449239556907, "the clipped σ");
+}
+
+/// A column is degenerate, and standardized by 1 rather than by its σ, only
+/// when its σ is under 1e-9: a column spread by exactly 1e-9 keeps it, and
+/// one constant to a rounding error does not.
+#[test]
+fn only_a_column_spread_under_a_billionth_is_degenerate() {
+    let tiny = Standardizer::fit(&col(&[-1e-9, 1e-9]));
+    assert_eq!((tiny.mean[0], tiny.std[0]), (0.0, 1e-9));
+    let flat = Standardizer::fit(&col(&[0.1, 0.1, 0.1]));
+    assert_eq!(flat.std[0], 1.0);
 }
 
 /// A non-finite cell is dropped from its column rather than turning the
