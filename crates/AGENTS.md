@@ -297,11 +297,14 @@ measured; the weekly run finds them, with the other crates', and files them
 on *Mutants that survive*. A crate PR's own *Mutants* check holds the code
 it changes.
 
-**In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
-part of neither `CI` lane, the PR's fast lane or the queue's full gate; its
-PR job's check, `Mutants in the changed code`, is required by Mergify's
-queue conditions, not by `main`'s ruleset (how long each part takes, and
-why it is shaped so: `docs/architecture/testing.md`
+**In CI**, two workflows, each part of neither `CI` lane, the PR's fast
+lane or the queue's full gate: *Mutants* (`.github/workflows/mutants.yml`)
+on every PR, and *Mutants weekly* (`.github/workflows/mutants-weekly.yml`)
+weekly and by hand. The PR's check, `Mutants in the changed code`, is
+required by Mergify's queue conditions, not by `main`'s ruleset. They are
+two so that a run by hand from a PR's branch puts no such check on the PR
+(how long each part takes, and why it is shaped so:
+`docs/architecture/testing.md`
 [§ Mutants](../docs/architecture/testing.md#mutants)):
 
 - **On every PR:** the mutants in the changed code (`make mutants
@@ -328,10 +331,12 @@ why it is shaped so: `docs/architecture/testing.md`
   mutants the cap left, the local `make mutants DIFF=1` is the complete run
   that review reads. A crate PR enters the queue when the job ends, up to 40
   minutes (its limit) after it starts, which is often after its fast lane.
-- **Weekly, and by hand:** one part of the workspace. The whole does not fit
-  in a week's runners, so each crate's mutants are cut into shards (the
-  `plan` job's `PLAN`), four run each week, two runners at a time, and the
-  parts come in turn: a cycle of fifteen weeks aims to cover the workspace.
+- **Weekly, and by hand** (*Mutants weekly*): one part of the workspace, or
+  by hand every shard of the crates named, for a burn-down. The whole does
+  not fit in a week's runners, so each crate's mutants are cut into shards
+  (the `plan` job's `PLAN`), four run each week, two runners at a time, and
+  the parts come in turn: a cycle of fifteen weeks aims to cover the
+  workspace.
   The cover is approximate: a shard is a slice of its crate's mutants in
   source order on the day it runs, so code that changes between weeks
   moves the slices' edges, and a mutant near one can be tested twice in a

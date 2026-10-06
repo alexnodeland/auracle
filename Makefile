@@ -435,9 +435,9 @@ coverage-floors:
 # no test fails on survives, and each survivor is a finding
 # (crates/AGENTS.md § Mutation testing). The fast tier's filter is passed
 # here, so the slow tests stay named in one place (SEARCH_FLOOR, SLOW_TESTS
-# above). Pinned exactly, here, in scripts/setup.sh and in mutants.yml: a
-# new version can make mutants an old one did not, and the workflow reads
-# its mutants.out.
+# above). Pinned exactly, here, in scripts/setup.sh and in mutants.yml and
+# mutants-weekly.yml: a new version can make mutants an old one did not,
+# and the workflows read its mutants.out.
 #
 # Results go to mutants.out/ (missed.txt lists the survivors, timeout.txt
 # the mutants stopped at the time limit, outcomes.json all of it, log/ each

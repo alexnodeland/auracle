@@ -109,7 +109,7 @@ beside them. A PR may merge on the fast tier, the PR checks and its
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
-| Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). The weekly run gates nothing |
+| Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane:
@@ -300,8 +300,8 @@ offers. Otherwise the push to `main` is where a slow test catches it.
 - ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to forty
   minutes (the job's limit; the run inside stops at 25), well after a crate
   PR's fast lane is done, and for about a minute on a PR that changes no
-  Rust. A PR enters the queue only once it ends. Its weekly run holds two on
-  Saturdays, for about eleven hours from 09:17 UTC.
+  Rust. A PR enters the queue only once it ends. *Mutants weekly* holds two
+  on Saturdays, for about eleven hours from 09:17 UTC.
 
 So the queue's run and the *Slow suite* together are 22, two over: a merge
 starts the *Slow suite* just as the queue starts its next batch, and that
@@ -429,14 +429,23 @@ change to the code, is built and its crate's fast tier run on it, and a
 mutant no test fails on survives. What it runs, how to read a survivor and
 what review does with one are the crates' rules, in
 [`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing).
-The *Mutants* workflow (`mutants.yml`) is a workflow of its own, part of
-neither `CI` lane. Its PR job's check, `Mutants in the changed code`, is
-required by Mergify's queue conditions (`.mergify.yml`, #181), beside `CI`
-and `PR checks`: a PR enters the merge queue only once it is green. Not by
-`main`'s ruleset, and not by the queue's merge conditions: on the queue's
-draft PRs (branches under `mergify/merge-queue/`) the job passes at once,
-about a runner-minute a batch, since each PR's own run has judged its code.
-It still runs there, so its check shows green rather than skipped.
+Two workflows run it, each part of neither `CI` lane: *Mutants*
+(`mutants.yml`) on every PR, and *Mutants weekly* (`mutants-weekly.yml`)
+over the workspace, weekly and by hand. The PR's check,
+`Mutants in the changed code`, is required by Mergify's queue conditions
+(`.mergify.yml`, #181), beside `CI` and `PR checks`: a PR enters the merge
+queue only once it is green. Not by `main`'s ruleset, and not by the
+queue's merge conditions: on the queue's draft PRs (branches under
+`mergify/merge-queue/`) the job passes at once, about a runner-minute a
+batch, since each PR's own run has judged its code. It still runs there, so
+its check shows green rather than skipped.
+
+They are two workflows so that only a PR's run posts that check. As one,
+a run by hand from a PR's branch put the PR job's check on the PR's head
+commit too, skipped by the job's condition (it put one on #265's). If
+Mergify reads a check by its latest run, as its open-source engine did, a
+skipped one that ended after the PR's own run would keep the PR out of the
+queue.
 
 **On every PR**, one runner tests the mutants in the changed code
 (`make mutants DIFF=1`'s command against the merge base, in place, one at a
@@ -466,8 +475,8 @@ touches no Rust passes at once. A crate PR's job ends up to 40 minutes
 after it starts, often after its fast lane, and the PR enters the queue
 then.
 
-**Weekly** (Saturdays, 09:17 UTC) **and by hand**, one part of the
-workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
+**Weekly** (Saturdays, 09:17 UTC) **and by hand**, *Mutants weekly* runs
+one part of the workspace: each crate's mutants are cut into shards (`PLAN` in the `plan`
 job: taste 1, grammar 4, features 16, session 26, wasm 11), and each week
 runs the next four, two runners at a time, each stopped at five and a half
 hours. Fifty-eight shards make fifteen parts, so a fifteen-week cycle aims
@@ -487,8 +496,9 @@ it names instead of a part, and `parallel` sets how many at once (two by
 default, at most twelve). Each shard uploads its own outcomes as it ends, so
 its survivors can be killed while the others still run. Twelve runners leave
 the queue's full gate eight, so a batch waits for runners while a wide
-burn-down runs. Run from a branch, it files nothing; the burn-down's PRs
-carry the survivors (#181).
+burn-down runs. Run from a branch, it files nothing, and it puts no
+`Mutants in the changed code` on the branch's PR; the burn-down's PRs carry
+the survivors (#181), each judged by its own run.
 
 **How long.** Measured on Oct 6 on a 16-core Mac shared with other work,
 two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a

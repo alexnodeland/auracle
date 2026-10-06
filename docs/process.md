@@ -395,9 +395,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   run replaces any older one, and a run whose commit `main` has already moved
   past runs nothing, since the newest run covers it. The *Slow suite* runs on
   `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
-  files an issue. *Mutants* runs weekly over a part of the workspace (a
-  fifteen-week cycle aims to cover it all), and a surviving mutant files
-  one too
+  files an issue. *Mutants weekly* runs on Saturdays over a part of the
+  workspace (a fifteen-week cycle aims to cover it all), and a surviving
+  mutant files one too
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 - **CI's health is measured:** `python3 scripts/ci_stats.py` reports the
   last 7 days of CI, by lane and kind of PR, and `--compare` sets each

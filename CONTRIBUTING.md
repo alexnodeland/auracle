@@ -194,11 +194,11 @@ Coverage says a test ran a line, not that it checked it. `make mutants
 DIFF=1` changes the code you changed one small way at a time (a `<` made
 `<=`, a function returning a default) and runs its crate's fast tier on
 each change; a change no test fails on survives, and review treats a
-survivor as a finding. The *Mutants* workflow runs the same on your PR's
-own run (done at once when no Rust changed), and weekly on a part of the
-workspace, a fifteen-week cycle aiming to cover it all. It is a workflow
+survivor as a finding. The *Mutants* workflow runs the same on your PR
+(done at once when no Rust changed), and *Mutants weekly* on a part of the
+workspace, a fifteen-week cycle aiming to cover it all. Each is a workflow
 of its own, in neither the fast lane nor the full gate, but the merge
-queue waits on its PR check: a mutant of the code you changed that
+queue waits on the PR's check, `Mutants in the changed code`: a mutant of the code you changed that
 survives keeps your PR out of the queue until a test kills it, or until it
 is excluded as equivalent in `.cargo/mutants.toml` with its reason. A
 timeout, or a run its 25-minute cap stopped before it judged a mutant,

@@ -9,71 +9,49 @@ name: Mutants
 # the configuration, are in crates/AGENTS.md § Mutation testing and
 # .cargo/mutants.toml; `make mutants` runs it locally the way this does.
 #
-# Two ways in:
+# This workflow is a PR's: the mutants in the code the PR changed
+# (`make mutants DIFF=1`'s, against the merge base), stopped at a time cap.
+# Its job's check, `Mutants in the changed code`, is required: Mergify's
+# queue conditions (.mergify.yml) keep a PR out of the merge queue until it
+# is green, beside `CI` and `PR checks` (#181). Not `main`'s ruleset; and it
+# is a workflow of its own, so it never fails `CI` (in either lane) or the
+# queue's `Full gate`. The job is red when a mutant of the changed code
+# survived, or when the run broke (the unmutated tests failed, or
+# cargo-mutants did). A survivor is killed with a test that asserts what the
+# code does, or, when no behavior can show it, excluded in
+# .cargo/mutants.toml with its reason. A timeout is reported and passes, and
+# a run the cap stopped passes unless a mutant it judged survived (one
+# stopped before the unmutated tests were done judged none, and says so with
+# a warning): no PR is held by time alone.
 #
-# - pull_request: the mutants in the code the PR changed
-#   (`make mutants DIFF=1`'s, against the merge base), stopped at a time
-#   cap. Its job's check, `Mutants in the changed code`, is required:
-#   Mergify's queue conditions (.mergify.yml) keep a PR out of the merge
-#   queue until it is green, beside `CI` and `PR checks` (#181). Not
-#   `main`'s ruleset; and it is a workflow of its own, so it never fails
-#   `CI` (in either lane) or the queue's `Full gate`. The job is red when a
-#   mutant of the changed code survived, or when the run broke (the
-#   unmutated tests failed, or cargo-mutants did). A survivor is killed with
-#   a test that asserts what the code does, or, when no behavior can show
-#   it, excluded in .cargo/mutants.toml with its reason. A timeout is
-#   reported and passes, and a run the cap stopped passes unless a mutant it
-#   judged survived (one stopped before the unmutated tests were done judged
-#   none, and says so with a warning): no PR is held by time alone. It runs
-#   on every PR, with no `paths:` filter, and passes at once when no Rust in
-#   crates/ changed, and on the merge queue's draft PRs (branches under
-#   mergify/merge-queue/), whose code each PR's own run has judged. A
-#   workflow a filter skips leaves a required check waiting forever, and a
-#   job skipped by its `if` sits on the PR as skipped, which is not a
-#   success; this way the check always runs and reports, at about a
-#   runner-minute a batch.
-# - schedule (weekly) and workflow_dispatch: one part of the workspace, four
-#   shards two runners at a time, the parts taken in turn so that a cycle
-#   aims to cover the workspace (the `plan` job says why it is not all of it
-#   each week, and why the cover is approximate). On main, survivors file or
-#   update one issue, "Mutants that survive".
+# It runs on every PR, with no `paths:` filter, and passes at once when no
+# Rust in crates/ changed, and on the merge queue's draft PRs (branches
+# under mergify/merge-queue/), whose code each PR's own run has judged. A
+# workflow a filter skips leaves a required check waiting forever, and a job
+# skipped by its `if` sits on the PR as skipped, which is not a success;
+# this way the check always runs and reports, at about a runner-minute a
+# batch.
+#
+# The weekly run over the workspace, and the runs by hand, are
+# mutants-weekly.yml's. They were jobs of this workflow until this check
+# became required (#181). A run by hand from a PR's branch then put this
+# job's check on the PR's head commit too, skipped by the job's `if` (it put
+# one on #265's). If Mergify reads a check by its latest run, as its
+# open-source engine did, a skipped one that ended after the PR's own run
+# would keep the PR out of the queue. A workflow that runs only on a PR
+# posts this check only on a PR.
 
 on:
   pull_request:
-  schedule:
-    # Saturdays at 09:17 UTC: clear of the nightly runs (Search health from
-    # 04:20 for up to four hours, the Slow suite at 04:23, the Flake hunt at
-    # 05:41). Two runners at a time, about eleven hours.
-    - cron: "17 9 * * 6"
-  workflow_dispatch:
-    inputs:
-      part:
-        description: "The part of the cycle to run, from 1 (each run's plan job lists every part in its summary); empty for this week's"
-        required: false
-        default: ""
-      crates:
-        description: "Instead of a part: every shard of these crates, comma-separated (e.g. auracle-grammar,auracle-wasm), for a burn-down"
-        required: false
-        default: ""
-      parallel:
-        description: "Shards at once (1 to 12); the account runs 20 jobs, and the queue's full gate takes about 18 at its widest"
-        required: false
-        default: "2"
 
-# It reads the code; only the issue job writes, and it asks for that itself.
+# It reads the code.
 permissions:
   contents: read
 
-# A new push to a PR makes its run obsolete. On main nothing is cancelled
-# and nothing is skipped: runs wait in a queue (`queue: max`) and run in
-# turn, since each is a different part of the workspace (ci.yml and the Slow
-# suite keep only main's newest waiting run, which covers the ones before
-# it). On a PR the queue is `single`, since `queue: max` beside
-# `cancel-in-progress: true` is a validation error.
+# A new push to a PR makes its run obsolete.
 concurrency:
-  group: mutants-${{ github.head_ref || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
+  group: mutants-${{ github.head_ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -118,7 +96,6 @@ jobs:
   # to it is a change to both files.
   changed:
     name: Mutants in the changed code
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -161,7 +138,8 @@ jobs:
         if: steps.rust.outputs.changed == 'true'
         run: rustup toolchain install --no-self-update && rustc --version
       # Its own cache: the RUSTFLAGS above differ from ci.yml's, so ci.yml's
-      # caches would not match. Saved from main by the weekly run.
+      # caches would not match. Saved from main by the weekly run
+      # (mutants-weekly.yml, the same key).
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: steps.rust.outputs.changed == 'true'
         with:
@@ -223,233 +201,3 @@ jobs:
           path: mutants.out/
           retention-days: 7
           if-no-files-found: ignore
-
-  # This week's part of the workspace. The whole of it does not fit in a
-  # week's runners: estimated from runs on a Mac (testing.md § Mutants), its
-  # mutants (about 8,300) take about 235 to 265 runner-hours, and two
-  # runners for most of a week would hold the runners the queue's full gate
-  # and the PRs' fast lanes need. So each
-  # crate's mutants are cut into PLAN's shards, as many as keep a shard
-  # near four and a half hours at the estimates above (under its cap of
-  # five and a half), and each week runs the next four, in order: crate by
-  # crate, so a shard's unmutated tests, and the time limit they set, are
-  # its own crate's. PLAN's shards divided by four, rounded up, is the
-  # cycle, in weeks.
-  #
-  # The cover is approximate. A shard is a slice of its crate's mutants in
-  # source order, as they are on the day it runs; code added or removed
-  # between one week and the next moves the slices' edges, so over a cycle
-  # a mutant near an edge can be tested twice or not at all. A week whose
-  # run is dropped leaves its part for the next cycle.
-  #
-  # A shard stopped at its cap is the sign that its crate needs more; as
-  # the crates' PRs kill their survivors, which run every test where a
-  # caught mutant stops at the first failure, a shard costs less and the
-  # counts can come down.
-  plan:
-    name: This week's part
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      shards: ${{ steps.plan.outputs.shards }}
-      part: ${{ steps.plan.outputs.part }}
-    env:
-      PLAN: '{"auracle-taste": 1, "auracle-grammar": 4, "auracle-features": 16, "auracle-session": 26, "auracle-wasm": 11}'
-      PER_WEEK: 4
-      PART: ${{ github.event.inputs.part }}
-      CRATES: ${{ github.event.inputs.crates }}
-    steps:
-      - id: plan
-        run: |
-          python3 - <<'EOF'
-          import datetime, json, os, sys
-          plan = json.loads(os.environ["PLAN"])
-          per = int(os.environ["PER_WEEK"])
-          shards = [{"crate": c, "k": k, "n": n} for c, n in plan.items() for k in range(n)]
-          parts = [shards[i : i + per] for i in range(0, len(shards), per)]
-          def name(p):
-              return ", ".join(f"{s['crate']} {s['k']}/{s['n']}" for s in p)
-          # A burn-down asks for whole crates instead of a part: every shard
-          # of each, in the plan's order.
-          crates = [c.strip() for c in os.environ.get("CRATES", "").split(",") if c.strip()]
-          if crates:
-              unknown = [c for c in crates if c not in plan]
-              if unknown:
-                  sys.exit(f"crates {unknown}: the plan has {list(plan)}")
-              chosen = [s for s in shards if s["crate"] in crates]
-              with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-                  out.write("shards=" + json.dumps(chosen) + "\n")
-                  out.write(f"part=every shard of {', '.join(crates)}\n")
-              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
-                  out.write(f"This run: every shard of {', '.join(crates)} ({len(chosen)} shards), for a burn-down.\n")
-              print(f"every shard of {', '.join(crates)}: {len(chosen)}")
-              sys.exit(0)
-          asked = os.environ.get("PART", "").strip()
-          if asked and not (asked.isdigit() and 1 <= int(asked) <= len(parts)):
-              sys.exit(f"part {asked!r}: the cycle has parts 1 to {len(parts)}")
-          # Weeks run Monday to Sunday, as ISO weeks do: a run by hand takes
-          # the part of its week's Saturday (on a Sunday, the day before's).
-          week = (datetime.date.today() - datetime.date(1970, 1, 5)).days // 7
-          i = int(asked) - 1 if asked else week % len(parts)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write("shards=" + json.dumps(parts[i]) + "\n")
-              out.write(f"part=part {i + 1} of {len(parts)}: {name(parts[i])}\n")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
-              out.write(f"This run: part {i + 1} of {len(parts)}. The cycle (each shard is cargo-mutants' --shard k/n, k from 0):\n\n")
-              out.write("| Part | Shards |\n| ---: | --- |\n")
-              out.write("".join(f"| {j + 1} | {name(p)} |\n" for j, p in enumerate(parts)))
-          print(f"part {i + 1} of {len(parts)}: {name(parts[i])}")
-          EOF
-
-  # Each shard: one crate's mutants, its k-th of n (cargo-mutants' --shard
-  # k/n counts k from 0; slices in source order). `make mutants`' command,
-  # run directly as the PR job runs it, so the code is cargo-mutants'.
-  shard:
-    name: Mutants (${{ matrix.crate }} ${{ matrix.k }}/${{ matrix.n }})
-    needs: plan
-    runs-on: ubuntu-24.04
-    # GitHub's limit for a hosted job. The run inside stops at CAP minutes,
-    # so the setup, the kill's grace and the upload fit under it and what
-    # was judged is kept.
-    timeout-minutes: 360
-    env:
-      CAP: 330
-    strategy:
-      fail-fast: false
-      # Two by default, so a week's part leaves the runners to the queue and
-      # the PRs; a burn-down by hand may ask for more (`parallel`, at most
-      # twelve), at the cost of the queue's full gate waiting for runners.
-      max-parallel: ${{ fromJSON(github.event.inputs.parallel != '' && github.event.inputs.parallel || '2') > 12 && 12 || fromJSON(github.event.inputs.parallel != '' && github.event.inputs.parallel || '2') }}
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.shards) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust (rust-toolchain.toml)
-        run: rustup toolchain install --no-self-update && rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: mutants
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
-        with:
-          tool: cargo-mutants@27.1.0,nextest
-      # Red when the run broke, or its unmutated tests failed, or the cap
-      # came before they were done: survivors (2) and timeouts (3) are the
-      # report's to judge, over every shard at once.
-      - name: Mutants
-        env:
-          CRATE: ${{ matrix.crate }}
-          SHARD: ${{ matrix.k }}/${{ matrix.n }}
-        run: |
-          cmd="$(make -s mutants-command CRATE="$CRATE" MUTANTS_JOBS= MUTANTS_ARGS="--in-place --shard $SHARD")"
-          echo "$cmd"
-          set +e
-          timeout -s INT -k 60 "${CAP}m" bash -c "$cmd"
-          code=$?
-          case "$code" in
-            0|2|3) ;;
-            124|137)
-              if [ ! -f mutants.out/outcomes.json ]; then
-                echo "::error::Stopped at the ${CAP}-minute cap before the unmutated build and tests were done: no mutant was judged."
-                exit 1
-              fi
-              echo "::warning::Stopped at the ${CAP}-minute cap; the mutants not reached are not judged, and $CRATE needs more shards in the plan." ;;
-            4) echo "::error::The unmutated tests failed, so no mutant was judged: the log above, and the artifact's log/baseline.log, say why."; exit 4 ;;
-            *) echo "::error::cargo-mutants exited $code (1: an error of cargo-mutants' own, an interrupt among them): its log is above."; exit "$code" ;;
-          esac
-      # The artifact holds one directory named for the shard, so that the
-      # survivors job finds each shard where it looks, however many came
-      # (download-artifact puts a lone artifact's files at its path, and
-      # several each in a directory of its own; `merge-multiple` there
-      # makes the two the same).
-      - name: Name the shard's output
-        if: ${{ !cancelled() }}
-        env:
-          SHARD_DIR: mutants-${{ matrix.crate }}-${{ matrix.k }}-of-${{ matrix.n }}
-        run: |
-          mkdir -p shard-out
-          if [ -d mutants.out ]; then cp -R mutants.out "shard-out/$SHARD_DIR"; fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ !cancelled() }}
-        with:
-          name: mutants-${{ matrix.crate }}-${{ matrix.k }}-of-${{ matrix.n }}
-          path: shard-out/
-          retention-days: 14
-          if-no-files-found: warn
-
-  # Every shard's survivors in one summary, and the issue's body. A shard
-  # that left no outcomes is named as missing and the others are still
-  # reported. Red when a mutant survived anywhere or a shard is missing,
-  # which is what files the issue.
-  survivors:
-    name: Mutants that survive
-    needs: [plan, shard]
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      issue: ${{ steps.report.outputs.issue }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Every shard's directory into shards/. A pattern that matches no
-      # artifact (every shard died before its upload) downloads nothing and
-      # passes; the report then names each shard as missing.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: mutants-*
-          path: shards
-          merge-multiple: true
-      - id: report
-        env:
-          PART: ${{ needs.plan.outputs.part }}
-          SHARDS: ${{ needs.plan.outputs.shards }}
-          LINK: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
-        run: |
-          echo "This run: $PART." >> "$GITHUB_STEP_SUMMARY"
-          # One directory per shard the plan named, whether or not its
-          # artifact came: a shard with none is reported as missing.
-          dirs="$(python3 -c 'import json, os
-          for s in json.loads(os.environ["SHARDS"]):
-              print("shards/mutants-%s-%s-of-%s" % (s["crate"], s["k"], s["n"]))')"
-          set +e
-          # shellcheck disable=SC2086 # one word per directory, none with a space
-          python3 scripts/mutants_report.py $dirs --markdown "$GITHUB_STEP_SUMMARY" --link "$LINK" --issue issue.md
-          code=$?
-          {
-            echo "issue<<MUTANTS_ISSUE_END"
-            cat issue.md
-            echo "MUTANTS_ISSUE_END"
-          } >> "$GITHUB_OUTPUT"
-          exit "$code"
-
-  # One open issue, commented on by every later run on main that finds a
-  # survivor, until someone closes it (.github/actions/file-issue). Each
-  # comment names the part it covered; a cycle's comments aim to cover the
-  # workspace.
-  file:
-    name: File the survivors
-    needs: [plan, shard, survivors]
-    if: >-
-      always() && github.ref == 'refs/heads/main' &&
-      github.event_name != 'pull_request' &&
-      needs.plan.result == 'success' &&
-      contains(needs.*.result, 'failure')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/file-issue
-        with:
-          title: Mutants that survive
-          run: ${{ github.event_name == 'schedule' && 'The weekly run' || 'A run started by hand' }}
-          results: ${{ toJSON(needs) }}
-          advice: |
-            This run covered ${{ needs.plan.outputs.part }}.
-
-            Each mutant below is a change to the engine's code that no test of its crate failed on: code the tests run without checking what it does. Kill each with a test that asserts what the code does, at the lowest level that can show it, or, when no behavior can show the change, exclude it in .cargo/mutants.toml's exclude_re with its reason (crates/AGENTS.md § Mutation testing). A failed shard means the run itself broke; its log says why.
-
-            ${{ needs.survivors.outputs.issue }}
