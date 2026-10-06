@@ -542,6 +542,24 @@ fn aligned_to_keeps_lens_identities_across_fits() {
     let selfed = post.aligned();
     let m0 = selfed.theta_mean(0);
     assert!(cosine(&m0, &a) > 0.99 || cosine(&m0, &b) > 0.99);
+    // An empty reference (no previous fit) is self-alignment.
+    assert_eq!(post.aligned_to(&[]).samples, selfed.samples);
+
+    // One lens has nothing to switch: alignment leaves its draws as they are.
+    let one = TastePosterior {
+        cfg: TasteConfig::linear(D),
+        samples: post
+            .samples
+            .iter()
+            .map(|s| TasteSample {
+                theta: vec![s.theta[0].clone()],
+                ..s.clone()
+            })
+            .collect(),
+        weights: Vec::new(),
+    };
+    assert_eq!(one.aligned().samples, one.samples);
+    assert_eq!(one.aligned_to(&[b.clone()]).samples, one.samples);
 }
 
 /// M3 gate 2: all three modalities condition one posterior; recovery
@@ -795,6 +813,131 @@ fn sample_sd(v: &[f64]) -> f64 {
     let n = v.len() as f64;
     let m = v.iter().sum::<f64>() / n;
     (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / n).sqrt()
+}
+
+/// A posterior with no draws (a fit that kept none) is inert: it claims no
+/// information (ESS 0, so the session's refit trigger fires), and every
+/// update and alignment returns it empty rather than dividing by zero.
+#[test]
+fn an_empty_posterior_is_inert() {
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples: Vec::new(),
+        weights: Vec::new(),
+    };
+    assert_eq!(p.ess(), 0.0);
+    let duel = Feedback::Duel {
+        a: vec![1.0; D],
+        b: vec![0.0; D],
+        chose_a: true,
+    };
+    for q in [
+        p.resampled(),
+        p.reweighted(&duel, 0),
+        p.aligned(),
+        p.aligned_to(&[vec![1.0; D]]),
+    ] {
+        assert!(q.samples.is_empty() && q.weights.is_empty());
+        assert_eq!(q.ess(), 0.0);
+    }
+}
+
+/// Reweighting always leaves the weights a distribution, finite and
+/// summing to one, even when the update has nothing finite to say: a vote
+/// on a candidate whose φ is not finite (a render that escaped the
+/// featurizer's quarantine), or one that every draw still carrying weight
+/// rules out entirely, so that every product underflows to zero.
+#[test]
+fn reweighting_always_leaves_a_distribution() {
+    let mut rng = StdRng::seed_from_u64(0xD157);
+    let samples: Vec<TasteSample> = (0..20).map(|_| two_lens_draw(&mut rng)).collect();
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples,
+        weights: Vec::new(),
+    };
+    let is_distribution = |q: &TastePosterior| {
+        q.weights.len() == q.samples.len()
+            && q.weights.iter().all(|w| w.is_finite() && *w >= 0.0)
+            && (q.weights.iter().sum::<f64>() - 1.0).abs() < 1e-12
+    };
+    let mut nan = random_phi(&mut rng);
+    nan[3] = f64::NAN;
+    let unreadable = Feedback::Duel {
+        a: nan,
+        b: random_phi(&mut rng),
+        chose_a: true,
+    };
+    assert!(is_distribution(&p.reweighted(&unreadable, 0)));
+
+    // All the weight on a draw that loves dimension 0; the vote says the
+    // listener hates it, so strongly that draw's likelihood is e^−3000.
+    let lens = |sign: f64| {
+        let mut t = vec![0.0; D];
+        t[0] = sign * 50.0;
+        vec![t.clone(), t]
+    };
+    let decided = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples: vec![
+            TasteSample {
+                theta: lens(1.0),
+                ..p.samples[0].clone()
+            },
+            TasteSample {
+                theta: lens(-1.0),
+                ..p.samples[0].clone()
+            },
+        ],
+        weights: vec![1.0, 0.0],
+    };
+    let (mut a, mut b) = (vec![0.0; D], vec![0.0; D]);
+    a[0] = 30.0;
+    b[0] = -30.0;
+    let contradiction = Feedback::Duel {
+        a,
+        b,
+        chose_a: false,
+    };
+    assert!(is_distribution(&decided.reweighted(&contradiction, 0)));
+}
+
+/// Every per-style summary is importance-weighted, as the crate's rule
+/// asks: between fits the draws stop being equally probable, and an
+/// unweighted mean or spread describes a posterior nobody holds. Checked
+/// by hand on two draws weighted 3 : 1, whose lenses are deliberately in
+/// opposite orders.
+#[test]
+fn per_style_summaries_are_importance_weighted() {
+    let draw = |theta: Vec<Vec<f64>>| TasteSample {
+        theta,
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.0],
+    };
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(2, 2),
+        samples: vec![
+            draw(vec![vec![0.0, 1.0], vec![1.0, 0.0]]),
+            draw(vec![vec![2.0, 1.0], vec![0.0, 0.5]]),
+        ],
+        weights: vec![0.75, 0.25],
+    };
+    // Lens 0 is θ = (0, 1) at 3/4 and (2, 1) at 1/4 (unweighted: mean
+    // (1, 1), SD (1, 0)).
+    assert_eq!(p.theta_mean(0), vec![0.5, 1.0]);
+    assert_eq!(p.theta_std(0), vec![0.75f64.sqrt(), 0.0]);
+    // A candidate along (1, 0) is lens 1's in the first draw and lens 0's in
+    // the second; one along (0, 1) is lens 0's in both.
+    assert_eq!(p.responsibilities(&[1.0, 0.0]), vec![0.25, 0.75]);
+    assert_eq!(p.responsibilities(&[0.0, 1.0]), vec![1.0, 0.0]);
+    // So the two candidates' shares average to (5/8, 3/8) (unweighted:
+    // (3/4, 1/4)).
+    assert_eq!(
+        p.style_share(&[vec![1.0, 0.0], vec![0.0, 1.0]]),
+        vec![0.625, 0.375]
+    );
+    // No candidates: no claim.
+    assert_eq!(p.style_share(&[]), vec![0.0, 0.0]);
 }
 
 /// Between full refits the posterior is updated by importance

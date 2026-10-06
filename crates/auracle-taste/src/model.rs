@@ -773,11 +773,10 @@ impl TastePosterior {
     /// draw count for uniform weights and collapses toward 1 as the weights
     /// concentrate — the trigger for paying for a full MCMC refit.
     pub fn ess(&self) -> f64 {
-        let n = self.samples.len();
-        if n == 0 {
-            return 0.0;
-        }
-        let sq: f64 = (0..n).map(|i| self.weight(i) * self.weight(i)).sum();
+        // With no draws the sum is empty, so `sq` is 0 and the ESS is too.
+        let sq: f64 = (0..self.samples.len())
+            .map(|i| self.weight(i) * self.weight(i))
+            .sum();
         if sq <= 0.0 {
             0.0
         } else {
