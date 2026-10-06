@@ -147,12 +147,43 @@ class TheCheck(unittest.TestCase):
             for rel in ("www/landing/index.html", "www/video/stage/poster.html", "www/theme/highlight.css"):
                 self.assertTrue(any(p.startswith(rel) for p in got), rel)
 
-    def test_the_not_yet_files_are_named_and_not_scanned(self):
-        scanned = {rel for rel, _ in T.scanned_files()}
-        for rel, why in T.NOT_YET:
-            self.assertTrue(os.path.exists(os.path.join(T.ROOT, rel)), rel)
-            self.assertNotIn(rel, scanned)
-            self.assertTrue(why)
+    def test_the_figures_the_docs_layer_and_the_raster_source_are_scanned(self):
+        # The four files NOT_YET held until #146, each with the literal it held.
+        planted = {
+            "www/viz/viz.js": lambda s: s + "\nconst tint = 'rgba(142,240,177,.10)';\n",
+            "www/viz/viz.css": lambda s: s + "\n.viz-stage { border-color: #999; }\n",
+            "www/theme/fonts/auracle.css": lambda s: s + "\n.x { background: var(--bezel, #07080a); }\n",
+            "www/brand/render.html": lambda s: s.replace("</style>", "body { background: #333; }\n</style>", 1),
+        }
+        with Tree() as t:
+            for rel, fn in planted.items():
+                t.edit(rel, fn)
+            got = t.problems()
+            for rel in planted:
+                self.assertTrue(any(p.startswith(rel + ":") and "a colour outside the tokens" in p for p in got), (rel, got))
+
+    def test_a_file_on_not_yet_is_not_scanned(self):
+        saved = T.NOT_YET
+        T.NOT_YET = [("www/viz/viz.css", "a decision it waits on")]
+        try:
+            self.assertNotIn("www/viz/viz.css", {rel for rel, _ in T.scanned_files()})
+        finally:
+            T.NOT_YET = saved
+
+    def test_a_figure_reading_a_token_one_of_its_pages_lacks_fails_the_check(self):
+        # The figures are loaded under Rack, under Paper and on the landing
+        # page: a tile filled with a token Paper lacks is filled with nothing
+        # there.
+        with Tree() as t:
+            t.edit(T.SOURCE, lambda s: s.replace('"white": [70],\n        "phos-a": [10],\n', '"white": [70],\n', 1))
+            with contextlib.redirect_stdout(io.StringIO()):
+                T.generate(check=False)
+            got = t.problems()
+            self.assertTrue(any(p.startswith("www/viz/viz.js:") and "var(--phos-a-10) is not defined on docs-paper," in p for p in got), got)
+        with Tree() as t:
+            t.edit("www/viz/viz.css", lambda s: s + "\n.viz-x { background: var(--popup); }\n")
+            got = t.problems()
+            self.assertTrue(any(p.startswith("www/viz/viz.css:") and "var(--popup) is not defined on docs, landing," in p for p in got), got)
 
     def test_a_value_that_is_not_a_colour_is_reported_as_one(self):
         # Even when opacities are derived from it: a friendly line, not a traceback.
