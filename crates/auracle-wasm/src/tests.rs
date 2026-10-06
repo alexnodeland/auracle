@@ -961,18 +961,19 @@ fn presets_come_back_from_the_shipped_wirings() {
     assert!(d.windows(2).all(|w| w[0] <= w[1]));
 }
 
-/// **The farm's wire changes no child.** The serial generation
-/// (`Engine::refine`) is its jobs, `run_walk` on each with the engine's
-/// memo, and `refine_absorb` in job order. The farm hands the same jobs out
-/// as JSON (`refine_jobs`), a farm worker walks each through the stateless
-/// `farm_walk` export, and the engine absorbs what comes back. So the farm
-/// breeds the serial generation exactly when `farm_walk` of a job, as sent,
-/// answers what `run_walk` answers on the engine's own context and job, and
-/// the binding absorbs that answer in turn and only in turn. (That the order
-/// the walks finish in cannot move the bank is the session's
-/// `a_generation_absorbed_in_any_completion_order_is_the_serial_one`.)
+/// **A farm walk is the engine's walk, absorbed in job order.** The farm
+/// hands a generation's jobs out as JSON (`refine_jobs`), a farm worker walks
+/// each through the stateless `farm_walk` export, and the engine absorbs
+/// what comes back: `farm_walk` of a job, as sent, answers exactly what
+/// `run_walk` answers on the engine's own context and job; the binding
+/// absorbs that answer in turn and only in turn (out of turn, after the
+/// finish, or unreadable, it is refused); and a job or a context that does
+/// not parse is refused, not walked. Those are the jobs, walk and absorption
+/// of the serial generation (`Engine::refine`); that the order the walks
+/// finish in cannot move the bank is the session's
+/// `a_generation_absorbed_in_any_completion_order_is_the_serial_one`.
 #[test]
-fn farm_walks_breed_the_serial_generation() {
+fn farm_walks_are_the_engines_walks_absorbed_in_job_order() {
     let mut engine = taught_wasm(0xFA2);
     let size = pool_ids(&engine).len();
     let reply: serde_json::Value = serde_json::from_str(&engine.refine_jobs()).unwrap();
