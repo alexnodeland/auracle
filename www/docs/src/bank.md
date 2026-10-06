@@ -278,8 +278,8 @@ The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the lowest-rated sound it can. The toast names what it
 replaced (*It replaced the lowest-rated sound it could: Bell Jar.*), and saved
 sounds are never among them, nor is a sound you kept as new that hasn’t been in
-a pick yet. From then on the row
-reads **IN POOL**, and a second click opens the same copy.
+a pick yet. From then on the row reads **IN POOL** at its end, just left of its
+**▶** whenever the **▶** shows, and a second click opens the same copy.
 
 The presets are worth playing through early. They are what the [warm
 start](./teaching.md#the-warm-start) draws from, and they cover the range of
