@@ -3443,3 +3443,59 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
     );
     assert!(!engine.edit_differs_from_original());
 }
+
+/// **A clip is said for what it is.** A capture of a shape no clip has
+/// (three channels) is refused with the sentence for a capture that could
+/// not be used, not the one for silence. A clip taken while a sound in the
+/// bank listens re-measures it, by id; one under which it no longer vets
+/// (a clip just loud enough to take, too quiet once through the patch)
+/// leaves it unmeasured, by id. A saved clip that no longer reads restores
+/// to the built-in phrase, with the sentence that says so and the reason.
+#[test]
+fn a_clip_is_said_for_what_it_is() {
+    use auracle_grammar::term::{AudioNode, InputChannel};
+    let mut engine = filled(0xC11);
+    let reply = |s: String| -> serde_json::Value { serde_json::from_str(&s).unwrap() };
+    let tone_at = |a: f32| -> Vec<f32> {
+        (0..48_000)
+            .map(|i| a * (i as f32 * 220.0 / 48_000.0 * std::f32::consts::TAU).sin())
+            .collect()
+    };
+    let tone = tone_at(0.3);
+    let shape = reply(engine.set_audition_clip(tone.clone(), 3, 48_000.0));
+    assert_eq!(shape["ok"], false);
+    assert_eq!(shape["note"], refused_note(&ClipError::Channels(3)));
+    assert_ne!(shape["note"], refused_note(&ClipError::Silent { rms: 0.0 }));
+
+    let mut listens = presets()[0].1.clone();
+    listens.root = AudioNode::AudioIn {
+        uid: auracle_grammar::Uid::NEW,
+        input: 0,
+        gain: auracle_grammar::INPUT_GAIN_UNITY,
+        channel: InputChannel::Both,
+    };
+    let id = engine.import_patch(&serde_json::to_string(&listens).unwrap(), "Mic");
+    assert!(id > 0);
+    let taken = reply(engine.set_audition_clip(tone, 1, 48_000.0));
+    assert_eq!(taken["ok"], true);
+    assert_eq!(taken["remeasured"], serde_json::json!([id]));
+    assert_eq!(taken["unmeasured"], serde_json::json!([]));
+    // A clip just over the silence floor (`VetConfig::rms_floor`) is taken,
+    // and through the patch's amp envelope the sound falls under it.
+    let faint: Vec<f32> = tone_at(2.2e-4);
+    let quiet = reply(engine.set_audition_clip(faint, 1, 48_000.0));
+    assert_eq!(quiet["ok"], true, "{quiet}");
+    assert_eq!(quiet["unmeasured"], serde_json::json!([id]));
+
+    let mut state: serde_json::Value = serde_json::from_str(&engine.export_session()).unwrap();
+    state["audition_clip"]["data"] = "not base64".into();
+    let mut back = WasmEngine::new(1, 6);
+    assert!(back.import_session(&state.to_string()) > 0);
+    let status = reply(back.audition_clip());
+    assert_eq!(status["source"], "reference");
+    assert!(status["unreadable"].as_str().is_some_and(|w| !w.is_empty()));
+    assert!(
+        status["note"].as_str().unwrap().contains("didn't load"),
+        "{status}"
+    );
+}
