@@ -28,9 +28,10 @@
 //   key held. Monitoring starts off on every load, and a sound that listens
 //   opened after a reload gets its input without a prompt.
 // - The first listen captures a clip and the engine takes it as the
-//   session's audition clip; NEW CLIP captures another. (That the farm is
-//   then handed the phrase with the clip, after a capture or a restore, is
-//   the engine worker's: tests/worker/farm.test.mjs.)
+//   session's audition clip; NEW CLIP captures another. The clip is saved
+//   with the session, and after a reload it is the session's clip again.
+//   (That the farm is then handed the phrase with the clip, after a capture
+//   or a restore, is the engine worker's: tests/worker/farm.test.mjs.)
 // - An unplugged input silences its module and says so; plugged back in, it
 //   is reopened and heard again.
 // - The browser's "default" is numbered as the input it stands for, even when
@@ -331,6 +332,23 @@ test("the first listen captures a clip, and the engine measures with it", async 
   await lane(page).locator(".ain-clip").click();
   await expect.poll(() => page.evaluate(() => window.__pwSent.length), { timeout: 20_000 }).toBe(2);
   await expect.poll(() => page.evaluate(() => window.__pwCounts.audition_clip), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+  expect(errors).toEqual([]);
+});
+
+test("a captured clip is saved with the session, and is the session's clip again after a reload", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect.poll(() => page.evaluate(() => window.__pwLast.audition_clip && window.__pwLast.audition_clip.ok), { timeout: 40_000 }).toBe(true);
+  // The clip is saved with the session: a save after the engine took it
+  // (main saves 2.5 s after the last change).
+  const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
+  await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
+
+  await page.reload();
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  // The restore's word on the clip reaches AUDIO IN (main.js `audioIn.clip`).
+  await expect.poll(async () => (await state(page)).clipSource, { timeout: 30_000 }).toBe("captured");
   expect(errors).toEqual([]);
 });
 
