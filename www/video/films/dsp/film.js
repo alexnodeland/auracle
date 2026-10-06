@@ -72,7 +72,7 @@ function box(under, { x, y, w, h, title, sub = "", color = "a", ax = 0, ay = 0, 
   Object.assign(t.style, { position: "absolute", left: "18px", top: "14px", fontSize: `${size}px`, color: color === "b" ? C.b : color === "s" ? C.silk : C.a, fontWeight: 600, whiteSpace: "nowrap" });
   if (sub) {
     const s = el("div", { class: "mono" }, d, sub);
-    Object.assign(s.style, { position: "absolute", left: "18px", top: `${size + 26}px`, right: "14px", fontSize: "16px", color: C.dim, lineHeight: "1.45", whiteSpace: "pre-wrap" });
+    Object.assign(s.style, { position: "absolute", left: "18px", top: `${size + 26}px`, right: "14px", fontSize: "var(--t-frame-2)", color: C.dim, lineHeight: "1.45", whiteSpace: "pre-wrap" });
   }
   return d;
 }
@@ -150,7 +150,7 @@ function fnD(n, f) {
 /** A dark instrument panel for a plot. */
 function panel(under, { x, y, w, h }) {
   const d = place(el("div", {}, under), { x, y, w, h });
-  Object.assign(d.style, { background: inkA("--bezel", 0.62), border: `1px solid ${C.hair}`, borderRadius: "10px" });
+  Object.assign(d.style, { background: inkA("--bezel", 0.62), border: `1px solid ${C.hair}`, borderRadius: "var(--r2)" });
   return d;
 }
 const fmtInt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -285,7 +285,7 @@ function sceneIntro({ stage, beat, line }) {
     build(layer) {
       const { under, svg, over } = stack(layer);
       const eb = place(el("div", { class: "eyebrow" }, over, "the sound engine"), { x: 120, y: 92 });
-      eb.style.fontSize = "26px";
+      eb.style.fontSize = "var(--t-frame-4)";
       // Glass Pad's real standard-phrase render, swept across like a beam.
       const env = envOf(DATA.gp.env);
       const X = 120, WD = 1680, Y = 380, A = 250;
@@ -361,9 +361,9 @@ function sceneIntro({ stage, beat, line }) {
 function modPlate(under, svg, { x, y, w, h, name, type, knobs = [], color = "a" }) {
   const d = place(el("div", { class: "plate" }, under), { x, y, w, h });
   const t = el("div", { class: "silk" }, d, name);
-  Object.assign(t.style, { position: "absolute", left: "18px", top: "14px", fontSize: "19px", letterSpacing: "0.16em" });
+  Object.assign(t.style, { position: "absolute", left: "18px", top: "14px", fontSize: "var(--t-frame-3)", letterSpacing: "0.16em" });
   const s = el("div", { class: "mono" }, d, type);
-  Object.assign(s.style, { position: "absolute", left: "18px", top: "44px", fontSize: "15px", color: C.mute, whiteSpace: "nowrap" });
+  Object.assign(s.style, { position: "absolute", left: "18px", top: "44px", fontSize: "var(--t-frame-1)", color: C.mute, whiteSpace: "nowrap" });
   for (const [sx, sy] of [[8, 8], [w - 18, 8], [8, h - 18], [w - 18, h - 18]]) {
     const sc = el("i", { class: "screw" }, d);
     Object.assign(sc.style, { left: `${sx}px`, top: `${sy}px`, width: "10px", height: "10px" });
@@ -374,7 +374,7 @@ function modPlate(under, svg, { x, y, w, h, name, type, knobs = [], color = "a" 
     const k = knob(svg, { cx, cy, r: 16, color, glow: false });
     k.set(kn.v);
     const lb = el("div", { class: "mono" }, d, kn.label);
-    Object.assign(lb.style, { position: "absolute", left: `${cx - x - 30}px`, width: "60px", textAlign: "center", top: `${h - 25}px`, fontSize: "13px", color: C.mute });
+    Object.assign(lb.style, { position: "absolute", left: `${cx - x - 30}px`, width: "60px", textAlign: "center", top: `${h - 25}px`, fontSize: "var(--t-frame-1)", color: C.mute });
     return { k, cx, cy, ...kn };
   });
   return { d, ks, x, y, w, h };
@@ -639,9 +639,9 @@ function sceneModules({ stage, beat, line }) {
         DATA.glyphs.filter((m) => m[0] === gid).forEach((m, i) => {
           const x = x0 + 150 + i * 112;
           const d = place(el("div", {}, bankU), { x, y: y0, w: 104, h: 96 });
-          Object.assign(d.style, { background: `linear-gradient(180deg,${ink("--panel-hi")},${ink("--panel")})`, border: `1px solid ${C.hair}`, borderRadius: "8px" });
+          Object.assign(d.style, { background: `linear-gradient(180deg,${ink("--panel-hi")},${ink("--panel")})`, border: `1px solid ${C.hair}`, borderRadius: "var(--r2)" });
           const nm = el("div", { class: "mono" }, d, m[1]);
-          Object.assign(nm.style, { position: "absolute", left: 0, right: 0, bottom: "9px", textAlign: "center", fontSize: "14px", color: C.dim });
+          Object.assign(nm.style, { position: "absolute", left: 0, right: 0, bottom: "9px", textAlign: "center", fontSize: "var(--t-frame-1)", color: C.dim });
           const gg = el("g", { transform: `translate(${x + 20} ${y0 + 14}) scale(3.2)` }, bankS);
           gg.innerHTML = m[2];
           const paths = [...gg.querySelectorAll("path")].map((p) => {
@@ -787,7 +787,7 @@ function sceneModules({ stage, beat, line }) {
       });
       const nodeEls = NODES.map((n) => {
         const d = pill(typO, n.n, { x: n.x, y: n.y, cls: n.sort, ax: 0.5 });
-        Object.assign(d.style, { fontSize: "24px", padding: "10px 26px" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", padding: "var(--s3) var(--s5)" });
         return d;
       });
       const legA = label(typO, "── audio · AudioNode", { x: 600, y: 190, size: 19, color: C.a });
@@ -807,7 +807,7 @@ function sceneModules({ stage, beat, line }) {
         `&nbsp;&nbsp;}, …<br>}`;
       codeT.style.lineHeight = "1.5";
       const intruder = pill(typO, "lfo", { x: 0, y: 0, cls: "b", ax: 0.5 });
-      Object.assign(intruder.style, { fontSize: "24px", padding: "10px 26px" });
+      Object.assign(intruder.style, { fontSize: "var(--t-frame-4)", padding: "var(--s3) var(--s5)" });
       const cross = label(typO, "✕", { x: 0, y: 0, size: 64, color: C.silk, ax: 0.5, ay: 0.5 });
       cross.style.textShadow = `0 0 18px ${inkA("--silk", 0.45)}`;
       const err1 = label(typO, "error[E0308]: mismatched types", { x: 980, y: 560, size: 24, color: C.silk });
@@ -964,7 +964,7 @@ function sceneCompile({ stage, beat, line }) {
       // compile(): `<audio> → DC blocker → VCA (amp ADSR) → Limiter → StereoOutput`.
       const RY = 200, RH = 140, RC = RY + RH / 2;
       const src = place(el("div", {}, under), { x: 100, y: RY, w: 240, h: RH });
-      Object.assign(src.style, { border: `2px dashed ${C.aDeep}`, borderRadius: "10px" });
+      Object.assign(src.style, { border: `2px dashed ${C.aDeep}`, borderRadius: "var(--r2)" });
       const srcT = label(over, "⟨audio⟩", { x: 220, y: RY + 50, size: 26, color: C.a, ax: 0.5, ay: 0.5 });
       const srcS = label(over, "the evolved term", { x: 220, y: RY + 90, size: 16, color: C.dim, ax: 0.5, ay: 0.5 });
       const B = [
@@ -1564,9 +1564,9 @@ function sceneLoudness({ stage, beat, line }) {
         const MX = 1220, MW = 560;
         const mxv = (l) => MX + ((clamp(l, -40, 0) + 40) / 40) * MW;
         const track = place(el("div", {}, bU), { x: MX, y: p.y - 30, w: MW, h: 24 });
-        Object.assign(track.style, { background: C.bezel, border: `1px solid ${C.hair}`, borderRadius: "5px" });
+        Object.assign(track.style, { background: C.bezel, border: `1px solid ${C.hair}`, borderRadius: "var(--r1)" });
         const fill = place(el("div", {}, bU), { x: MX, y: p.y - 30, w: 0, h: 24 });
-        Object.assign(fill.style, { background: `linear-gradient(90deg,${ink("--phos-a-deep")},${ink("--phos-a")})`, borderRadius: "5px" });
+        Object.assign(fill.style, { background: `linear-gradient(90deg,${ink("--phos-a-deep")},${ink("--phos-a")})`, borderRadius: "var(--r1)" });
         const tick = el("line", { x1: mxv(-18), x2: mxv(-18), y1: p.y - 42, y2: p.y + 6, stroke: C.silk, "stroke-width": 2 }, bS);
         const val = label(bO, "", { x: MX, y: p.y + 14, size: 20, color: C.a });
         const rms = label(bO, "", { x: MX, y: p.y + 48, size: 20, color: C.silk });
@@ -1852,7 +1852,7 @@ function sceneFeatures({ stage, beat, line }) {
         const d = place(el("div", {}, f6U), { x, y, w: 118, h: 76 });
         const v = DATA.gpStruct[i];
         const fam = i < 19;
-        Object.assign(d.style, { borderRadius: "8px", border: `1px solid ${fam ? C.aDeep : C.hair}`, background: v > 0 ? (fam ? inkA("--phos-a", 0.16) : inkA("--silk", 0.1)) : ink("--recess-hi") });
+        Object.assign(d.style, { borderRadius: "var(--r2)", border: `1px solid ${fam ? C.aDeep : C.hair}`, background: v > 0 ? (fam ? inkA("--phos-a", 0.16) : inkA("--silk", 0.1)) : ink("--recess-hi") });
         const nm = label(f6, n, { x: x + 59, y: y + 12, size: 14, color: C.dim, ax: 0.5 });
         const vl = label(f6, Number.isInteger(v) ? `${v}` : v.toFixed(2), { x: x + 59, y: y + 38, size: 21, color: v > 0 ? (fam ? C.a : C.silk) : C.mute, ax: 0.5 });
         return { d, nm, vl, i };
@@ -1998,7 +1998,7 @@ function sceneLive({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const comp = box(under, { x: 100, y: 300, w: 240, h: 100, title: "compile()", sub: "auracle_grammar", color: "s" });
       const wk = place(el("div", {}, under), { x: 420, y: 150, w: 1000, h: 470 });
-      Object.assign(wk.style, { border: `1.5px solid ${C.hair}`, borderRadius: "16px", background: inkA("--panel", 0.4) });
+      Object.assign(wk.style, { border: `1.5px solid ${C.hair}`, borderRadius: "var(--r3)", background: inkA("--panel", 0.4) });
       const wkT = label(over, "AudioWorklet · the render thread", { x: 444, y: 166, size: 19, color: C.silk });
       const LX = 470, LW = 520;
       const laneSet = (y0, color, seedBase) => [0, 1, 2, 3].map((i) => {
@@ -2043,12 +2043,12 @@ function sceneLive({ stage, beat, line }) {
       const quanta = Array.from({ length: QN }, (_, i) => {
         const x = 100 + i * 120;
         const d = place(el("div", {}, q3U), { x, y: 700, w: 108, h: 54 });
-        Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.aDeep}`, background: inkA("--phos-a", 0.06) });
+        Object.assign(d.style, { borderRadius: "var(--r2)", border: `1px solid ${C.aDeep}`, background: inkA("--phos-a", 0.06) });
         const t = label(q3, "128", { x: x + 54, y: 727, size: 16, color: C.dim, ax: 0.5, ay: 0.5 });
         return { d, t, x };
       });
       const buf = place(el("div", {}, q3U), { x: 1400, y: 690, w: 400, h: 74 });
-      Object.assign(buf.style, { borderRadius: "8px", border: `1.5px solid ${C.a}`, background: inkA("--phos-a", 0.08), boxShadow: `0 0 24px ${inkA("--phos-a", 0.15)}` });
+      Object.assign(buf.style, { borderRadius: "var(--r2)", border: `1.5px solid ${C.a}`, background: inkA("--phos-a", 0.08), boxShadow: `0 0 24px ${inkA("--phos-a", 0.15)}` });
       label(q3, "out_buf · one persistent buffer", { x: 1600, y: 716, size: 17, color: C.a, ax: 0.5, ay: 0.5 });
       label(q3, "process_ptr() → a pointer into wasm memory", { x: 1600, y: 744, size: 14, color: C.dim, ax: 0.5, ay: 0.5 });
       label(q3, "render quanta, 128 frames each", { x: 100, y: 664, size: 17, color: C.dim });
@@ -2064,7 +2064,7 @@ function sceneLive({ stage, beat, line }) {
       const gy = (g) => 820 - g * 130;
       const cellsQ = ["fade", "fade", "voice 1", "voice 2", "voice 3", "voice 4", "fade", "fade"].map((n, i) => {
         const d = place(el("div", {}, s4U), { x: fx(i * 128) + 2, y: 836, w: TW / 8 - 4, h: 36 });
-        Object.assign(d.style, { borderRadius: "5px", border: `1px solid ${i >= 2 && i < 6 ? C.aDeep : C.hair}`, background: i >= 2 && i < 6 ? inkA("--phos-a", 0.07) : "transparent" });
+        Object.assign(d.style, { borderRadius: "var(--r1)", border: `1px solid ${i >= 2 && i < 6 ? C.aDeep : C.hair}`, background: i >= 2 && i < 6 ? inkA("--phos-a", 0.07) : "transparent" });
         const t = label(s4, n, { x: fx(i * 128 + 64), y: 854, size: 15, color: i >= 2 && i < 6 ? C.a : C.dim, ax: 0.5, ay: 0.5 });
         return { d, t };
       });
@@ -2220,7 +2220,7 @@ function sceneFarm({ stage, beat, line }) {
         const cells = Array.from({ length: NP }, (_, i) => {
           const x = PX + i * PC;
           const d = place(el("div", {}, under), { x, y, w: PC - 12, h: 44 });
-          Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.hair}`, background: ink("--recess-hi") });
+          Object.assign(d.style, { borderRadius: "var(--r2)", border: `1px solid ${C.hair}`, background: ink("--recess-hi") });
           const g = group(svg, "a");
           const p = path(g, cellD(i, x, y), { stroke: C.a, "stroke-width": 1.8 });
           const n = label(over, `${i}`, { x: x + PC - 18, y: y + 4, size: 13, color: C.mute, ax: 1 });
@@ -2322,11 +2322,12 @@ function sceneOutro({ stage, beat, line }) {
       const pulses = [group(diagS, "b"), group(diagS, "a")].map((g, i) => el("circle", { r: 9, fill: i ? ink("--phos-a-pulse") : ink("--phos-b-pulse"), opacity: 0 }, g));
       // The lockup, as in the engine film.
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "96px";
+      lock.style.fontSize = "var(--t-frame-11)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 96;
-      const gap = 0.62 * 96;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       const mk = mark(svg, { cx: left + markPx / 2, cy: 460, size: markPx });
       place(lock, { x: left + markPx + gap, y: 460, ay: 0.5 });

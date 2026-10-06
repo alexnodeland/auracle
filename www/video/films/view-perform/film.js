@@ -314,7 +314,7 @@ const Z = 6; // above the walkthrough's scenes, below the grain
  *  and the chapter label outside it stay as they are. */
 function veil(S, K, layer, { a = 0.62, blur = 5 } = {}) {
   const v = S.place(S.el("div", {}, layer), { x: 120, y: 70, w: 1680, h: 945 });
-  v.style.borderRadius = "14px";
+  v.style.borderRadius = "var(--r3)";
   v.style.background = `radial-gradient(120% 95% at 30% 50%, ${K.inkA("--bezel", a)} 0%, ${K.inkA("--bezel", Math.min(0.92, a + 0.18))} 100%)`;
   v.style.backdropFilter = `blur(${blur}px) saturate(0.85)`;
   return v;
@@ -336,7 +336,7 @@ function titleCard(stage, S, K) {
     build(layer) {
       veil(S, K, layer, { a: 0.66, blur: 6 });
       const eyebrow = S.place(S.el("div", { class: "eyebrow" }, layer, "Auracle · the four views, in depth"), { x: 960, y: 250, ax: 0.5, ay: 0.5 });
-      eyebrow.style.fontSize = "22px";
+      eyebrow.style.fontSize = "var(--t-frame-3)";
       const title = K.textBlock(layer, { x: 960, y: 372, w: 1600, cls: "silk", size: 168, align: "center", ax: 0.5, ay: 0.5, text: "PERFORM" });
       title.style.letterSpacing = "0.14em";
       title.style.textShadow = `0 0 40px ${K.inkA("--phos-a", 0.18)}`;
@@ -391,7 +391,7 @@ function turnCard(stage, S, K, c) {
       veil(S, K, layer, { a: 0.6, blur: 5 });
       const X = 250;
       const num = S.place(S.el("div", { class: "eyebrow" }, layer, c.n ? `${String(c.n).padStart(2, "0")} / ${String(COUNT).padStart(2, "0")}` : "putting it together"), { x: X, y: 400 });
-      num.style.fontSize = "24px";
+      num.style.fontSize = "var(--t-frame-4)";
       const rule = S.place(S.el("div", {}, layer), { x: X, y: 446, w: 0, h: 2 });
       rule.style.background = K.ink("--phos-a");
       rule.style.boxShadow = `0 0 12px ${K.inkA("--phos-a", 0.6)}`;
@@ -446,7 +446,7 @@ function outroCard(stage, S, K) {
       const ls = S.words(loop, "*play it* · *turn it* · _let it offer_");
       // Next: PATCH, and the guide.
       const next = S.place(S.el("div", { class: "eyebrow" }, layer, "next, in depth"), { x: 250, y: 640 });
-      next.style.fontSize = "22px";
+      next.style.fontSize = "var(--t-frame-3)";
       const patch = K.textBlock(layer, { x: 244, y: 676, w: 1200, cls: "silk", size: 96, text: "PATCH" });
       patch.style.letterSpacing = "0.14em";
       const inside = K.textBlock(layer, { x: 250, y: 800, w: 1200, cls: "voice", size: 50, text: "inside the sound" });
@@ -457,11 +457,15 @@ function outroCard(stage, S, K) {
       const svg = K.svgLayer(layer);
       // Right-aligned with the pill: the wordmark measured, the mark before it.
       const wm = S.place(S.el("div", { class: "lk" }, layer), { x: 0, y: 700, ay: 0.5 });
-      wm.style.fontSize = "46px";
+      wm.style.fontSize = "var(--t-frame-7)";
       S.el("span", { class: "wm" }, wm, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
+      // The mark and the gap keep their proportion to the wordmark: 76 and 22 at 46.
+      const wmPx = parseFloat(getComputedStyle(wm).fontSize); // the size its token sets
+      const markPx = (76 / 46) * wmPx;
+      const gap = (22 / 46) * wmPx;
       S.place(wm, { x: 1670 - wmW, y: 700, ay: 0.5 });
-      const mk = K.mark(svg, { cx: 1670 - wmW - 22 - 38, cy: 700, size: 76 });
+      const mk = K.mark(svg, { cx: 1670 - wmW - gap - markPx / 2, cy: 700, size: markPx });
       const L2 = l2.t0 - b.t0;
       return (tl, t) => {
         const u = S.ramp(tl, -0.3, 0.5, S.E.out3);

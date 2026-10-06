@@ -284,6 +284,12 @@ class TheSizesRatchet(unittest.TestCase):
 
     def test_a_count_that_falls_without_lowering_the_baseline_fails(self):
         with Tree() as t:
+            # A literal the baseline holds...
+            t.edit("www/404.html", lambda s: s.replace("padding: var(--s5);", "padding: 24px;", 1))
+            now, _ = T.size_counts()
+            T.write_size_baseline(T.updated_baseline(now, T.load_size_baseline(), allow_rise=True))
+            self.assertEqual(t.problems(), [])
+            # ...moved onto the scale, without lowering it.
             t.edit("www/404.html", lambda s: s.replace("padding: 24px;", "padding: var(--s5);", 1))
             got = t.problems()
             self.assertTrue(any(p.startswith("www/404.html") and "under the baseline" in p for p in got), got)
@@ -314,6 +320,60 @@ class TheSizesRatchet(unittest.TestCase):
                 t.edit(T.SOURCE, lambda s: s.replace(old, new, 1))
                 got = t.problems()
                 self.assertTrue(any(want in p for p in got), (new, got))
+
+    def test_a_consumer_writes_the_sizes_of_the_surface_it_names(self):
+        # The docs' two themes share one set of sizes, the docs surface's,
+        # written into the :root rule that holds the families.
+        src = T.load()
+        c = next(c for c in T.CONSUMERS if c["file"] == "www/theme/css/variables.css")
+        rules = dict(re.findall(r"^(\S[^{\n]*) \{\n(.*?)^\}", T.render_block(src, c), re.S | re.M))
+        self.assertIn("--t-prose:", rules[":root"])
+        self.assertNotIn("--t-prose:", rules["html.coal"] + rules["html.light"])
+        # …so the check reads them as Paper's too.
+        self.assertEqual(T.size_names(src, "docs-paper"), T.size_names(src, "docs"))
+        # Without the name, the families' rule has no surface, and the docs'
+        # sizes have nowhere to go: the source is refused.
+        unnamed = {k: v for k, v in c.items() if k != "sizes"}
+        consumers = T.CONSUMERS
+        try:
+            T.CONSUMERS = [unnamed if x is c else x for x in consumers]
+            self.assertIn(f"{T.SOURCE}: docs has sizes, but no consumer writes them (they go in the rule that holds the families)", T.validate_sizes(src))
+        finally:
+            T.CONSUMERS = consumers
+
+    def test_the_docs_type_follows_the_readers_font_size(self):
+        # mdBook sets its root at 62.5% so a theme in rem scales with the
+        # reader's font size. Every type size the docs' theme reads is in rem,
+        # at that root, or the books stop following it.
+        src = T.load()
+        names = T.size_names(src, "docs")
+        read = set(re.findall(r"var\(--(t-[a-z0-9-]+)\)", source("www/theme/fonts/auracle.css")))
+        self.assertTrue(read)
+        for n in sorted(read):
+            self.assertRegex(names.get(n, ""), r"^\d+(\.\d+)?rem$", f"--{n} in the docs' :root")
+
+    def test_a_figures_text_holds_its_size_on_every_page_that_loads_it(self):
+        # A figure lays its drawing out around its labels: text that followed
+        # the reader's font size would run off it. So whatever a figure's text
+        # reads is in px on each page that loads the runtime.
+        src = T.load()
+        read = set(re.findall(r"var\(--(t-[a-z0-9-]+)\)", source("www/viz/viz.css")))
+        self.assertTrue(read)
+        for surface in ("docs", "docs-paper", "landing"):
+            names = T.size_names(src, surface)
+            for n in sorted(read):
+                self.assertRegex(names.get(n, ""), r"^\d+px$", f"--{n} on {surface}")
+
+    def test_the_frames_type_is_the_scales_ratio_continued(self):
+        # A film's text is set in pixels of its frame, on the type scale's
+        # ratio past the page's steps: --t-frame-n is step n.
+        src = T.load()
+        frame = {n: t["value"] for n, t in src["surfaces"]["stage"]["sizes"].items() if n.startswith("t-frame-")}
+        self.assertTrue(frame)
+        base, ratio = int(src["type"]["tokens"][src["type"]["base"]]["value"][:-2]), src["type"]["ratio"]
+        for name, value in frame.items():
+            step = int(name.rsplit("-", 1)[1])
+            self.assertEqual(value, f"{round(base * ratio**step)}px", name)
 
     def test_every_block_carries_the_reduced_motion_rule(self):
         for c in T.CONSUMERS:

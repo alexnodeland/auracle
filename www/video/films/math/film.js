@@ -14,7 +14,7 @@ export async function build(stage) {
   // Formulas: indices and exponents set small and tight, as in print, so
   // `θ<sub>k</sub>` reads as one symbol and an exponent does not open a gap.
   el("style", {}, document.head).textContent =
-    "#frame sub, #frame sup { font-size: 0.64em; line-height: 0; }" +
+    "#frame sub, #frame sup { font-size: 0.64em; /* token-exempt: a sub- or superscript, sized to the symbol it hangs on */ line-height: 0; }" +
     "#frame sup { vertical-align: 0.62em; } #frame sub { vertical-align: -0.28em; }";
   sceneIntro(ctx);
   sceneUtility(ctx);
@@ -213,12 +213,12 @@ function miniCard(under, svg, { x, y, w = 300, h = 124, side, name, wave }) {
   const d = plate(under, x, y, w, h);
   const badge = el("div", {}, d, side);
   Object.assign(badge.style, {
-    position: "absolute", left: "16px", top: "14px", width: "40px", height: "40px", borderRadius: "7px",
+    position: "absolute", left: "16px", top: "14px", width: "40px", height: "40px", borderRadius: "var(--r2)",
     border: `1.5px solid ${ink("--phos-a-deep")}`, display: "grid", placeItems: "center",
-    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "22px", color: A,
+    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "var(--t-frame-3)", color: A,
   });
   const nm = el("div", { class: "mono" }, d, name);
-  Object.assign(nm.style, { position: "absolute", left: "70px", top: "20px", fontSize: "24px", color: SILK });
+  Object.assign(nm.style, { position: "absolute", left: "70px", top: "20px", fontSize: "var(--t-frame-4)", color: SILK });
   const scr = el("div", { class: "screen" }, d);
   Object.assign(scr.style, { left: "16px", top: "66px", width: `${w - 32}px`, height: `${h - 82}px` });
   const tr = scope(svg, { x: x + 26, y: y + 70, w: w - 52, h: h - 90, width: 2.2, points: 180, wave });
@@ -1152,12 +1152,12 @@ function sceneCalibration({ stage, beat, line }) {
       const cA = miniCard(cardsU, cardsG, { x: 330, y: 330, w: 560, h: 250, side: "A", name: "Soft Engine", wave: voiceWave({ f: 1.5, bright: 0.3, seed: 31 }) });
       const cB = miniCard(cardsU, cardsG, { x: 1030, y: 330, w: 560, h: 250, side: "B", name: "Pale Wire", wave: voiceWave({ f: 2.3, bright: 0.65, seed: 32 }) });
       const note = place(el("div", {}, over), { x: 960, y: 240, ax: 0.5, ay: 0.5 });
-      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "36px", color: B, textShadow: textGlow("b"), border: `1.5px dashed ${ink("--phos-b-dim")}`, borderRadius: "10px", padding: "12px 30px", whiteSpace: "nowrap" });
+      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "var(--t-frame-6)", color: B, textShadow: textGlow("b"), border: `1.5px dashed ${ink("--phos-b-dim")}`, borderRadius: "var(--r2)", padding: "var(--s3) var(--s6)", whiteSpace: "nowrap" });
       note.textContent = "forecast: B, 64%";
       const pick = txt(over, "you pick B", { x: 1310, y: 610, size: 22, color: A, ax: 0.5 });
       const score = place(el("div", { class: "pill b" }, over), { x: 960, y: 700, ax: 0.5, ay: 0.5 });
       score.innerHTML = "<span>(p<sub>chosen</sub> − 1)<sup>2</sup> = (0.64 − 1)<sup>2</sup> = 0.13</span>";
-      score.style.fontSize = "28px";
+      score.style.fontSize = "var(--t-frame-5)";
       const brier = txt(over, "B = mean (p<sub>chosen</sub> − 1)<sup>2</sup>   ·   skill = 1 − B / 0.25", { x: 960, y: 790, size: 32, color: B, ax: 0.5, ay: 0.5, glow: "b" });
       // calibration2: the expected score against the reported probability, for a true p = 0.7.
       const PX0 = 190;
@@ -1558,8 +1558,8 @@ function sceneTarget({ stage, beat, line }) {
       const f = txt(over, "π<sub>β</sub>(x) ∝ p<sub>grammar</sub>(x) · e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup>", { x: 700, y: 170, size: 50, color: SILK, ax: 0.5, ay: 0.5 });
       const land = landscape(svg, over, { X0: 150, X1: 1250, base: 760, H: 400 });
       // What each factor does (reference: search / target).
-      const roleP = txt(over, `p<sub>grammar</sub>(x)<br><span style='color:${ink("--silk-dim")};font-size:20px'>supplies parsimony</span>`, { x: 1370, y: 340, size: 30, color: A, lh: 1.5 });
-      const roleU = txt(over, `e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup><br><span style='color:${ink("--silk-dim")};font-size:20px'>supplies direction</span>`, { x: 1370, y: 470, size: 30, color: B, lh: 1.5 });
+      const roleP = txt(over, `p<sub>grammar</sub>(x)<br><span style='color:${ink("--silk-dim")};font-size:var(--t-frame-3)'>supplies parsimony</span>`, { x: 1370, y: 340, size: 30, color: A, lh: 1.5 });
+      const roleU = txt(over, `e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup><br><span style='color:${ink("--silk-dim")};font-size:var(--t-frame-3)'>supplies direction</span>`, { x: 1370, y: 470, size: 30, color: B, lh: 1.5 });
       // target2: three terms, depth 1–3, and the prior mass each is left with.
       const TX = 1370;
       const BW = 300;
@@ -1573,7 +1573,7 @@ function sceneTarget({ stage, beat, line }) {
         let px = TX;
         const pills = nodes.map((n) => {
           const d = place(el("div", { class: "pill a" }, treeH, n), { x: px, y, ay: 0.5 });
-          Object.assign(d.style, { fontSize: "19px", padding: "6px 14px" });
+          Object.assign(d.style, { fontSize: "var(--t-frame-3)", padding: "var(--s2) var(--s4)" });
           const w = d.getBoundingClientRect().width;
           d.dataset.x0 = px;
           d.dataset.x1 = px + w;
@@ -1706,7 +1706,7 @@ function sceneRefine({ stage, beat, line }) {
       });
       const pills = NODES.map((nd) => {
         const d = place(el("div", { class: "pill a" }, tH, nd.n), { x: nd.x, y: nd.y, ax: 0.5, ay: 0.5 });
-        Object.assign(d.style, { fontSize: "26px", padding: "10px 26px" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", padding: "var(--s3) var(--s5)" });
         const ad = txt(tH, nd.addr, { x: nd.x, y: nd.y + 36, size: 20, color: B, ax: 0.5 });
         return { d, ad };
       });
@@ -2291,21 +2291,22 @@ function sceneOutro({ stage, beat, line }) {
     build(layer) {
       const { svg, over } = stack(layer);
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "96px";
+      lock.style.fontSize = "var(--t-frame-11)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 96;
-      const gap = 0.62 * 96;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       const mk = mark(svg, { cx: left + markPx / 2, cy: 300, size: markPx });
       place(lock, { x: left + markPx + gap, y: 300, ay: 0.5 });
       const v1 = voiceLine(over, cap(l1, "Every constant here is in _the reference_, with its measurement where there is one."), { y: 470, size: 48, ay: 0.5, w: 1500 });
       const TOK = ["beta 2.0", "proposal_tilt 0.6", "recency_half_life 150", "RIDGE 0.05", "JACOBIAN_STEP 0.08", "PURITY_FLOOR 0.35", "REACH_FLOOR 0.15"];
       const row = el("div", {}, over);
-      Object.assign(row.style, { position: "absolute", left: "260px", top: "600px", width: "1400px", display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "16px 34px" });
+      Object.assign(row.style, { position: "absolute", left: "260px", top: "600px", width: "1400px", display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "var(--s4) var(--s6)" });
       const toks = TOK.map((s) => {
         const d = el("div", { class: "mono" }, row, s);
-        Object.assign(d.style, { fontSize: "24px", color: B_DIM, whiteSpace: "nowrap" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", color: B_DIM, whiteSpace: "nowrap" });
         return d;
       });
       const links = ["taste model", "search", "performance"].map((s, i) => place(el("div", { class: "pill a" }, over, `${s}  ▸`), { x: 960 + (i - 1) * 330, y: 800, ax: 0.5, ay: 0.5 }));

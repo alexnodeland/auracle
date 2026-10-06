@@ -40,7 +40,7 @@
     place-items: center;
     z-index: 1;
   }
-  .badge svg { width: 40px; height: 40px; margin-left: 8px; }
+  .badge svg { width: 40px; height: 40px; margin-left: var(--s2); }
   .cap {
     position: absolute;
     left: 196px;
@@ -48,19 +48,19 @@
     z-index: 1;
     display: flex;
     align-items: baseline;
-    gap: 22px;
+    gap: var(--s5);
   }
   .cap .what {
     font-family: "Jost", sans-serif;
     font-weight: 500;
-    font-size: 30px;
+    font-size: var(--t-frame-5);
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--silk);
   }
   .cap .len {
     font-family: "IBM Plex Mono", monospace;
-    font-size: 26px;
+    font-size: var(--t-frame-4);
     color: var(--phos-a);
   }
 </style>

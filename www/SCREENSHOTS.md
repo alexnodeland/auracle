@@ -15,10 +15,10 @@ node www/capture-screens.mjs /tmp/raw
 ```
 
 It uses the browser tests' Playwright (`tests/web/node_modules`, so `npm ci`
-there first) at a **1440×900 viewport**. 1440×900 is not arbitrary: the app has
-a 10px type floor and no page scrolling, so it lays out to fit whatever it is
-given, and this is the smallest common desktop size at which the rack, the bank
-and the node bank are all fully present.
+there first) at a **1440×900 viewport**. 1440×900 is not arbitrary: the app sets
+text as small as 11px (9px in the rack) and has no page scrolling, so it lays
+out to fit whatever it is given, and this is the smallest common desktop size at
+which the rack, the bank and the node bank are all fully present.
 
 Every figure on the site is capped inside the reading column, so a **full frame
 is published small** — about 0.54× — and its UI labels are texture rather than

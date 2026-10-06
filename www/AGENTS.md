@@ -66,6 +66,14 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   that a figure reads and one of the pages loading it (the docs' Rack and
   Paper, the landing page) does not define
   ([`brand/README.md`](brand/README.md#the-tokens)).
+- **So do sizes.** A font size, space, radius or duration in those files is a
+  token, or its declaration says why with a trailing `token-exempt:` comment.
+  The baseline (`brand/sizes-baseline.json`) is empty, so `make dev-check`
+  fails on any new literal. Keep a page's prose and small print in rem (a
+  surface restates the step in rem), so it follows the reader's font size,
+  and a live figure's text in px, since the figure is laid out around it;
+  `brand/test_tokens.py` holds both
+  ([`brand/README.md`](brand/README.md#the-tokens)).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in
   `book.toml` parses and is ignored.

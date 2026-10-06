@@ -57,11 +57,11 @@
        under the scale at 11 px, the floor for text in a page; the rack, drawn
        to its zoom, has sizes of its own, and a lone glyph is sized to its
        button */
-    --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
-    --t-value: 12px;   /* mono values, readouts, small print */
-    --t-body: 14px;    /* prose, names, hints */
+    --t-label: 1.1rem; /* docs: 11 px at the root, in rem so it follows the reader's font size */
+    --t-value: 1.2rem; /* docs: 12 px, in rem */
+    --t-body: 1.4rem;  /* docs: 14 px, in rem */
     --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
-    --t-title: 21px;   /* a title: a sound's name, a card's heading, the wordmark */
+    --t-title: 2.1rem; /* docs: 21 px, in rem */
     --t-display: 52px; /* a level's one headline */
     --t-canvas: 12px;  /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
 
@@ -88,6 +88,13 @@
     --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
     --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
     --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+    /* docs: sizes only this surface uses */
+    --t-prose: 1.6rem; /* 16 px: the books' prose, read at length (mdBook's own size) */
+    --t-h1: 2.9rem;    /* 29 px: a page's title */
+    --t-lede: 1.95rem; /* 19.5 px: a page's light first paragraph, between the voice's step and a section's heading (the landing page's --t-lede is its own) */
+    --t-h3: 1.7rem;    /* 17 px: a third-level heading, on the voice's step but not the voice, as the app's wordmark is */
+    --t-micro: 11px;   /* a figure's text, at the floor and in px, as on the landing page: a figure lays its drawing out around its labels, so they stay this size */
 }
 html.coal {
     /* grounds */
@@ -212,7 +219,7 @@ html.light {
     --sidebar-width: min(var(--sidebar-target-width), 80vw);
     --sidebar-resize-indicator-width: 8px;
     --sidebar-resize-indicator-space: 2px;
-    --page-padding: 18px;
+    --page-padding: var(--s4);
     --content-max-width: 860px;
     /* Figures sit inside the reading column rather than matching it, so their
        edges read as an inset object instead of a second column of text. */

@@ -49,10 +49,10 @@ function wordTime(l, word) {
 function box(under, { x, y, w, h, title, sub = "", color = "a", ax = 0, ay = 0 }) {
   const d = place(el("div", { class: "plate" }, under), { x, y, w, h, ax, ay });
   const t = el("div", { class: "mono" }, d, title);
-  Object.assign(t.style, { position: "absolute", left: "18px", top: "14px", fontSize: "22px", color: color === "b" ? ink("--phos-b") : color === "s" ? ink("--silk") : ink("--phos-a"), fontWeight: 600 });
+  Object.assign(t.style, { position: "absolute", left: "18px", top: "14px", fontSize: "var(--t-frame-3)", color: color === "b" ? ink("--phos-b") : color === "s" ? ink("--silk") : ink("--phos-a"), fontWeight: 600 });
   if (sub) {
     const s = el("div", { class: "mono" }, d, sub);
-    Object.assign(s.style, { position: "absolute", left: "18px", top: "48px", right: "14px", fontSize: "16px", color: ink("--silk-dim"), lineHeight: "1.45", whiteSpace: "pre-wrap" });
+    Object.assign(s.style, { position: "absolute", left: "18px", top: "48px", right: "14px", fontSize: "var(--t-frame-2)", color: ink("--silk-dim"), lineHeight: "1.45", whiteSpace: "pre-wrap" });
   }
   return d;
 }
@@ -159,7 +159,7 @@ function sceneGenome({ stage, beat, line }) {
       const edges = el("g", {}, svg);
       const nodeEls = nodes.map((nd, i) => {
         const d = place(el("div", { class: "pill a" }, over, nd.n), { x: nd.x, y: nd.y, ax: 0.5, ay: 0.5 });
-        Object.assign(d.style, { fontSize: "24px", padding: "10px 24px" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", padding: "var(--s3) var(--s5)" });
         let line = null;
         if (nd.parent >= 0) {
           const p = nodes[nd.parent];
@@ -168,15 +168,15 @@ function sceneGenome({ stage, beat, line }) {
         let addr = null;
         if (nd.k) {
           addr = place(el("div", { class: "mono" }, over, `${nd.addr}#${nd.k}`), { x: nd.x, y: nd.y + 34, ax: 0.5 });
-          Object.assign(addr.style, { fontSize: "18px", color: ink("--phos-b") });
+          Object.assign(addr.style, { fontSize: "var(--t-frame-2)", color: ink("--phos-b") });
         }
         return { d, line, addr };
       });
       const term = place(el("div", { class: "mono" }, over, ""), { x: 1330, y: 250 });
       term.innerHTML = `<span style="color:${ink("--silk-dim")}">// a patch, as a term</span><br>out(<br>&nbsp;&nbsp;verb(<br>&nbsp;&nbsp;&nbsp;&nbsp;vca(<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ladder(saw, lfo),<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;env)))`;
-      Object.assign(term.style, { fontSize: "26px", color: ink("--phos-a"), lineHeight: "1.5" });
+      Object.assign(term.style, { fontSize: "var(--t-frame-4)", color: ink("--phos-a"), lineHeight: "1.5" });
       const prior = place(el("div", { class: "mono" }, over, "x ~ p_grammar(x)"), { x: 1330, y: 640 });
-      Object.assign(prior.style, { fontSize: "34px", color: ink("--phos-b"), textShadow: `0 0 18px ${inkA("--phos-b", 0.4)}` });
+      Object.assign(prior.style, { fontSize: "var(--t-frame-6)", color: ink("--phos-b"), textShadow: `0 0 18px ${inkA("--phos-b", 0.4)}` });
       const v1 = voiceLine(over, "A patch is a term in a *typed grammar*: a probabilistic program over modules.");
       const v2 = voiceLine(over, "Every knob and every structural choice has a _trace address_, so a whole patch is one draw from a prior.");
       const tAddr = wordTime(l2, "trace address");
@@ -237,7 +237,7 @@ function sceneCompile({ stage, beat, line }) {
       const dots = Array.from({ length: 5 }, () => el("circle", { r: 7, fill: ink("--phos-a-pulse"), opacity: 0 }, sampleG));
       const badge = place(el("div", { class: "pill a" }, over, "0 allocations on the audio path"), { x: 960, y: 250, ax: 0.5, ay: 0.5 });
       const q = place(el("div", { class: "mono" }, over, "quiver · Patch::tick() → one sample"), { x: 960, y: 790, ax: 0.5 });
-      Object.assign(q.style, { fontSize: "24px", color: ink("--silk-dim") });
+      Object.assign(q.style, { fontSize: "var(--t-frame-4)", color: ink("--silk-dim") });
       const v1 = voiceLine(over, "It compiles to a *quiver signal graph*, which runs one sample at a time with _no allocation on the audio path_.");
       return (tl, t) => {
         wires.forEach((w, i) => w.update(t, { draw: ramp(t, b.t0 + 0.3 + i * 0.25, b.t0 + 0.8 + i * 0.25), flow: 1 }));
@@ -279,18 +279,18 @@ function sceneAudition({ stage, beat, line }) {
       const nEls = notes.map(([s, d, m]) => el("rect", { x: 200 + s * 150, y: 520 - (m - 60) * 18, width: d * 150 - 8, height: 14, rx: 4, fill: ink("--phos-a"), opacity: 0 }, roll));
       const lbl = place(el("div", { class: "eyebrow" }, over, "the standard phrase"), { x: 200, y: 200 });
       const meter = place(el("div", {}, over), { x: 900, y: 250, w: 36, h: 380 });
-      Object.assign(meter.style, { background: ink("--bezel"), borderRadius: "6px", border: `1px solid ${ink("--hairline")}`, overflow: "hidden" });
+      Object.assign(meter.style, { background: ink("--bezel"), borderRadius: "var(--r2)", border: `1px solid ${ink("--hairline")}`, overflow: "hidden" });
       const fillM = el("div", {}, meter);
       Object.assign(fillM.style, { position: "absolute", left: 0, right: 0, bottom: 0, height: "0%", background: `linear-gradient(0deg,${ink("--phos-a-deep")},${ink("--phos-a")})` });
       const tgt = place(el("div", { class: "mono" }, over, "— target loudness"), { x: 945, y: 360 });
-      Object.assign(tgt.style, { fontSize: "18px", color: ink("--silk-dim") });
+      Object.assign(tgt.style, { fontSize: "var(--t-frame-2)", color: ink("--silk-dim") });
       const gate = ["silence", "clipping", "DC offset", "non-finite"].map((g, i) => {
         const d = place(el("div", { class: "pill" }, over, `✕ ${g}`), { x: 1300, y: 300 + i * 90 });
-        Object.assign(d.style, { fontSize: "22px" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-3)" });
         return d;
       });
       const pass = place(el("div", { class: "pill a" }, over, "✓ vetted → featurize"), { x: 1300, y: 690 });
-      Object.assign(pass.style, { fontSize: "22px" });
+      Object.assign(pass.style, { fontSize: "var(--t-frame-3)" });
       const v1 = voiceLine(over, "Every candidate plays the same *standard phrase*, normalized for loudness, through a *vetting gate* that rejects silence, clipping and DC.");
       return (tl, t) => {
         lbl.style.opacity = ramp(t, b.t0, b.t0 + 0.4);
@@ -330,7 +330,7 @@ function sceneFeatures({ stage, beat, line }) {
       const s18 = place(el("div", { class: "pill a" }, over, "φ_audio · 18"), { x: 680, y: 720, ax: 0.5 });
       const s26 = place(el("div", { class: "pill" }, over, "φ_struct · 26"), { x: 1470, y: 720, ax: 0.5 });
       const z = place(el("div", { class: "mono" }, over, "z = (φ − μ) / σ   — standardized"), { x: 960, y: 820, ax: 0.5 });
-      Object.assign(z.style, { fontSize: "30px", color: ink("--silk") });
+      Object.assign(z.style, { fontSize: "var(--t-frame-5)", color: ink("--silk") });
       const v1 = voiceLine(over, "From that phrase come *eighteen perceptual features*, from brightness and noisiness to envelope shape and *three bands of modulation rate*. Twenty-six structural ones come from the patch itself. Every one is standardized.", { size: 38 });
       return (tl, t) => {
         const u = ramp(t, b.t0 + 0.1, b.t0 + 1.8, E.io2);
@@ -364,7 +364,7 @@ function sceneUtility({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const f = place(el("div", { class: "mono" }, over, ""), { x: 960, y: 200, ax: 0.5, ay: 0.5 });
       f.innerHTML = `u(x) = max<sub>k</sub> θ<sub>k</sub> · φ(x)`;
-      Object.assign(f.style, { fontSize: "64px", color: ink("--phos-b"), textShadow: `0 0 26px ${inkA("--phos-b", 0.45)}` });
+      Object.assign(f.style, { fontSize: "var(--t-frame-9)", color: ink("--phos-b"), textShadow: `0 0 26px ${inkA("--phos-b", 0.45)}` });
       // The three likelihoods (auracle-taste's `Feedback`): heard edits,
       // self-reports and PERFORM's offers are duels with a provenance tag.
       const streams = ["duels", "keep or cut", "stars"].map((s, i) => {
@@ -403,7 +403,7 @@ function sceneUtility({ stage, beat, line }) {
       const pulse = el("circle", { r: 7, fill: ink("--phos-b"), opacity: 0 }, svg);
       pulse.style.filter = GLOW.b;
       const cap = place(el("div", { class: "mono" }, over, "MCMC · 500 draws · reweighted between refits"), { x: 1215, y: 760, ax: 0.5 });
-      Object.assign(cap.style, { fontSize: "26px", color: ink("--phos-b-dim"), whiteSpace: "nowrap" });
+      Object.assign(cap.style, { fontSize: "var(--t-frame-4)", color: ink("--phos-b-dim"), whiteSpace: "nowrap" });
       const v1 = voiceLine(over, "Taste is a utility: _the maximum over a few linear experts_ on those features.");
       const v2 = voiceLine(over, "A duel, a keep or a cut, a star rating: each has its own likelihood. The posterior is sampled by _Markov chain Monte Carlo_, and each new answer reweights those samples until a refit is due.", { size: 38 });
       return (tl, t) => {
@@ -456,19 +456,19 @@ function sceneCalibration({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const steps = ["forecast  p(B) = 0.64", "answer  B", "score  (1 − 0.64)² = 0.13"].map((s, i) => {
         const d = place(el("div", { class: "pill b" }, over, s), { x: 360 + i * 600, y: 330, ax: 0.5, ay: 0.5 });
-        Object.assign(d.style, { fontSize: "26px", padding: "14px 30px" });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", padding: "var(--s4) var(--s6)" });
         return d;
       });
       const ar = [arrow(svg, [620, 330], [780, 330], "b"), arrow(svg, [1170, 330], [1330, 330], "b")];
       const kinds = ["dealt duels", "PERFORM offers", "heard edits", "self-reports"].map((k, i) => {
         const d = place(el("div", { class: "mono" }, over, k), { x: 600, y: 520 + i * 70, ax: 1, ay: 0.5 });
-        Object.assign(d.style, { fontSize: "24px", color: ink("--silk-dim") });
+        Object.assign(d.style, { fontSize: "var(--t-frame-4)", color: ink("--silk-dim") });
         const bar = place(el("div", {}, over), { x: 630, y: 520 + i * 70, w: 0, h: 18, ay: 0.5 });
-        Object.assign(bar.style, { background: ink("--phos-b-dim"), borderRadius: "4px" });
+        Object.assign(bar.style, { background: ink("--phos-b-dim"), borderRadius: "var(--r1)" });
         return { d, bar, w: [420, 300, 360, 220][i] };
       });
       const cap = place(el("div", { class: "mono" }, over, "each stream scored on its own"), { x: 1300, y: 625, ay: 0.5 });
-      Object.assign(cap.style, { fontSize: "22px", color: ink("--silk-mute") });
+      Object.assign(cap.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-mute") });
       const v1 = voiceLine(over, "Every duel is _forecast before it's answered_. Each forecast is scored with a *proper scoring rule*, separately for each kind of evidence.");
       return (tl, t) => {
         steps.forEach((s, i) => (s.style.opacity = ramp(t, b.t0 + 0.3 + i * 0.9, b.t0 + 0.6 + i * 0.9)));
@@ -500,7 +500,7 @@ function sceneSearch({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const f = place(el("div", { class: "mono" }, over, ""), { x: 960, y: 150, ax: 0.5, ay: 0.5 });
       f.innerHTML = `π<sub>β</sub>(x) ∝ p<sub>grammar</sub>(x) · e<sup>β 𝔼[u(x)]</sup>`;
-      Object.assign(f.style, { fontSize: "52px", color: ink("--silk") });
+      Object.assign(f.style, { fontSize: "var(--t-frame-8)", color: ink("--silk") });
       // A 1-D landscape: prior (green), tilt (amber), target (silk).
       const X0 = 200;
       const X1 = 1720;
@@ -526,7 +526,7 @@ function sceneSearch({ stage, beat, line }) {
       el("line", { x1: X0, y1: base, x2: X1, y2: base, stroke: ink("--hairline"), "stroke-width": 2 }, svg);
       const legend = place(el("div", { class: "mono" }, over, ""), { x: X0, y: base + 30 });
       legend.innerHTML = `<span style="color:${ink("--phos-a")}">— the grammar's prior</span> &nbsp;&nbsp; <span style="color:${ink("--phos-b")}">— tilted by your taste</span>`;
-      Object.assign(legend.style, { fontSize: "22px" });
+      Object.assign(legend.style, { fontSize: "var(--t-frame-3)" });
       // An MH chain: dots hopping, mostly within the amber mode.
       const R = rng(99);
       const chain = [];
@@ -591,7 +591,7 @@ function scenePerform({ stage, beat, line }) {
         const p = [O[0] + Math.cos(a) * 250, O[1] - Math.sin(a) * 250];
         const ar = arrow(svg, O, p, "a", { width: 3 });
         const lb = place(el("div", { class: "mono" }, over, n), { x: O[0] + Math.cos(a) * 295, y: O[1] - Math.sin(a) * 295, ax: 0.5, ay: 0.5 });
-        Object.assign(lb.style, { fontSize: "22px", color: ink("--silk") });
+        Object.assign(lb.style, { fontSize: "var(--t-frame-3)", color: ink("--silk") });
         return { ar, lb };
       });
       // Right: the Jacobian, knobs × features, as a heat grid.
@@ -606,14 +606,14 @@ function scenePerform({ stage, beat, line }) {
         }
       }
       const jl = place(el("div", { class: "mono" }, over, "∂φ / ∂knob — one render per knob"), { x: gx, y: gy - 50 });
-      Object.assign(jl.style, { fontSize: "22px", color: ink("--silk-dim") });
+      Object.assign(jl.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-dim") });
       const ridge = place(el("div", { class: "pill a" }, over, "ridge solve → ≤ 4 knobs per control"), { x: gx + 250, y: 600, ax: 0.5 });
       const checks = ["−1", "−½", "+½", "+1"].map((s, i) => {
         const d = place(el("div", { class: "pill a" }, over, `${s} ✓`), { x: gx + 20 + i * 130, y: 700 });
         return d;
       });
       const rendered = place(el("div", { class: "mono" }, over, "checked on real renders"), { x: gx + 20, y: 770 });
-      Object.assign(rendered.style, { fontSize: "20px", color: ink("--silk-mute") });
+      Object.assign(rendered.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-mute") });
       const v1 = voiceLine(over, "PERFORM's named controls are *fixed directions* in that standardized space of sound.");
       const v2 = voiceLine(over, "For each patch, a *finite-difference Jacobian* and a *ridge solve* wire each control to its knobs. Every half of every control is then _checked on real renders_.", { size: 40 });
       return (tl, t) => {
@@ -647,9 +647,9 @@ function sceneRuntime({ stage, beat, line }) {
     build(layer) {
       const { under, svg, over } = stack(layer);
       const tab = place(el("div", {}, under), { x: 140, y: 140, w: 1640, h: 700 });
-      Object.assign(tab.style, { border: `1.5px solid ${ink("--hairline")}`, borderRadius: "16px", background: inkA("--panel", 0.35) });
+      Object.assign(tab.style, { border: `1.5px solid ${ink("--hairline")}`, borderRadius: "var(--r3)", background: inkA("--panel", 0.35) });
       const tl0 = place(el("div", { class: "mono" }, over, "your browser tab"), { x: 170, y: 160 });
-      Object.assign(tl0.style, { fontSize: "20px", color: ink("--silk-mute") });
+      Object.assign(tl0.style, { fontSize: "var(--t-frame-3)", color: ink("--silk-mute") });
       const B = [
         box(under, { x: 220, y: 260, w: 360, h: 170, title: "main thread", sub: "the UI: PERFORM, PATCH,\nEVOLVE, TASTE", color: "s" }),
         box(under, { x: 780, y: 260, w: 360, h: 170, title: "engine worker", sub: "auracle-wasm: search,\ntaste, wiring" }),
@@ -688,11 +688,12 @@ function sceneOutro({ stage, beat, line }) {
     build(layer) {
       const { svg, over } = stack(layer);
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "96px";
+      lock.style.fontSize = "var(--t-frame-11)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 96;
-      const gap = 0.62 * 96;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       const mk = mark(svg, { cx: left + markPx / 2, cy: 380, size: markPx });
       place(lock, { x: left + markPx + gap, y: 380, ay: 0.5 });

@@ -71,10 +71,20 @@ and printed key hints are built here; its other contracts stay in
      the aliases of them, that every page loading them defines
      (`ON_EVERY`). On the Rack theme nothing renders differently on screen;
      in print, a figure's frame takes each theme's `--silk-mute`.
-   - *Still to do:* move the landing page, the docs theme, the live figures,
-     the brand page and its raster source, the 404 and the films onto the
-     scale (their counts are in the baseline, listed by every `--check`)
-     (#145).
+   - *Progress (2026-10-06):* **every surface is on the scale** (#145): the
+     landing page, the docs theme and the live figures, the brand page and
+     its raster source, the 404, the film stage and the films. The docs hold
+     their prose, lede and headings as sizes of their own, and the films set
+     their text on a frame tier, the scale's ratio continued past the page's
+     steps (`--t-frame-n`); what has no step says why. The site's pages
+     restate in rem the steps their prose and small print use, so their text
+     still follows the reader's font size, and a live figure's text holds at
+     11 px (`--t-micro`) on every page that loads it. `sizes-baseline.json`
+     is empty.
+   - *Still to do:* the films' drawing helpers (the kit's `textBlock()`, a
+     film's `label()` or `txt()`) take a number for a label's size, which the
+     check does not count, so those labels are not yet on the frame tier
+     (#291).
 2. **Voice guide** (part 2). Written 2026-09-30, as
    [`www/brand/voice.md`](../../www/brand/voice.md) under
    [ADR-013](../decisions/013-one-voice.md). It has a new line, American
