@@ -51,7 +51,7 @@ export const MODULES = {
   "apps/web/levels.js": ["shell_levels"],
   "apps/web/midi.js": ["midi_announced"],
   "apps/web/booth.js": ["booth"],
-  "apps/web/words.js": ["text_fits"],
+  "apps/web/words.js": ["text_fits", "evolve_feedback", "taste_profile"],
   "apps/web/support.js": ["taste_marks", "patch_model_view", "patch_catalog"],
   "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in"],
   "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing"],

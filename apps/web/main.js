@@ -129,6 +129,7 @@ const {
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
+  dealRule, jobEta,
 } = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
@@ -3865,15 +3866,6 @@ function lampOff(job) {
   renderJobSlot();
 }
 
-/** "about 40 s" for a remaining time in ms; "" when there is no estimate. */
-function aboutLeft(ms) {
-  if (ms == null || !Number.isFinite(ms)) return "";
-  const s = ms / 1000;
-  if (s < 3) return "almost done";
-  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
-  return `about ${Math.round(s / 60)} min`;
-}
-
 /** What the generation still owes, counted down from the worker's last
  *  estimate. */
 function breedLeft() {
@@ -3888,7 +3880,8 @@ function slotJob() {
     const total = b.total || 0;
     if (b.stopping) return { kind: "refine", text: "⚡ stopping, ending with what’s bred", fill: total ? b.done / total : 0 };
     const count = total ? ` ${b.done}/${total}` : "…";
-    const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
+    // "about 40 s" (words.js `jobEta`, tests/words.test.mjs).
+    const left = total && b.done < total ? jobEta(breedLeft()) : "";
     return {
       kind: "refine",
       text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
@@ -6585,61 +6578,22 @@ function retireForecast() {
 }
 
 // ---------- how the pair was chosen ----------
-// The engine says, on every deal, which rule dealt the pair (`meta.method`):
-// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
-// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
-// "unbiased probe" mark over the forecast line, captioned "about one duel in
-// ten is dealt at random rather than by the acquisition rule". Under the
-// default rule, `Acquisition::Random`, that caption was false: *every* pair is
-// dealt at random, which is the reason it is the default (engine.rs). So the
-// mark was hidden after five deals as saying nothing, never drawn on the deal
-// after a vote (the forecast held its slot), and the rule in use went unsaid.
-//
-// Now the rule is stated on its own line, where it holds its place while
-// forecasts come and go above it. Under the default it is one fact about
-// every pair — the model does not choose what you hear, which is what makes
-// every pick a fair test of its forecast — and it does not change from deal
-// to deal. The one-in-ten ◇ mark is kept for what it is true of: a check
-// dealt at random under a rule that otherwise chooses.
-//
-// The rule is read from the deals themselves, as the method of the last deal
-// that was not a scheduled check. Under `Random` the engine says "random" of
-// every pair, the scheduled slot included (auracle-session's
-// `the_default_rule_deals_every_pair_at_random_and_says_so` pins it); a
-// "check" that reached the page under `Random` all the same would still not
-// be taken for a change of rule. (An engine's first deal is never a check.)
-let dealRule = null;
-
-const DEAL_RULE = {
-  random: {
-    text: "◇ random pair · a fair test",
-    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and its forecasts in LEARNING are graded on them all.",
-  },
-  bald: {
-    text: "chosen where it’s least sure",
-    title: "The model dealt this pair where its guess is closest to a coin flip: the question it learns most from. About one pair in ten is dealt at random instead, as a fair test (◇).",
-  },
-  thompson: {
-    text: "chosen from its best guesses",
-    title: "The model drew two likely versions of your taste and dealt the sound each rates highest. About one pair in ten is dealt at random instead, as a fair test (◇).",
-  },
-  check: {
-    text: "◇ fair test · dealt at random",
-    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in LEARNING.",
-  },
-};
+// The rule that dealt the pair, on its own line (`#duel-rule`), read from the
+// deals themselves: the method of the last deal that was not a scheduled
+// check, and a check marked ◇ only under a rule that otherwise chooses. The
+// rule and its words are words.js's (`dealRule`, `DEAL_RULE`,
+// tests/words.test.mjs); what stays here is the rule read so far and the line.
+let dealRuleRead = null;
 
 function renderDealRule() {
   const el = $("duel-rule");
   if (!el || !duelMeta || !duelMeta.method) return;
-  const method = duelMeta.method;
-  if (method !== "check") dealRule = method;
-  // A scheduled check is only news under a rule that otherwise chooses.
-  const said = DEAL_RULE[method === "check" && dealRule !== "random" ? "check" : dealRule || method];
-  if (!said) return;
-  el.textContent = said.text;
-  el.title = said.title;
-  el.classList.toggle("check", said === DEAL_RULE.check);
+  const line = dealRule(duelMeta.method, dealRuleRead);
+  dealRuleRead = line.rule;
+  if (!line.said) return;
+  el.textContent = line.said.text;
+  el.title = line.said.title;
+  el.classList.toggle("check", line.check);
 }
 
 // ---------- the live utility readout ----------
@@ -21936,17 +21890,18 @@ $("warm-rerun-btn").onclick = () => openWarmStart();
 // forecasts, style names or generations, and none of the unsaved pool, which
 // is filled afresh on the reload.
 let resetting = null; // null | "exporting" | "saving"
+/** Reset's question, with the counts (words.js `resetQuestion`,
+ *  tests/words.test.mjs): TAUGHT's kinds, the generations bred and the saved
+ *  sounds that stay. */
 function resetQuestion() {
-  const n = picksTaught();
-  const g = status.generation || 0;
-  const saved = ((views && views.ranked) || []).filter((r) => r.pinned).length;
-  const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  const k = taughtKinds();
-  const forgotten = `Your ${plural(k.picks, "pick", "picks")}, ${plural(k.stars, "star", "stars")}, ${plural(k.cuts, "cut", "cuts")}, and ${plural(g, "generation", "generations")} are forgotten`;
-  return saved > 0
-    ? `Reset your taste? ${forgotten}, with every sound you haven’t saved. ` +
-        `Your ${plural(saved, "saved sound stays", "saved sounds stay")}. A copy of your taste downloads first.`
-    : `Reset your taste? ${forgotten}, and the bank starts afresh. A copy of your taste downloads first.`;
+  const { picks, stars, cuts } = taughtKinds();
+  return words.resetQuestion({
+    picks,
+    stars,
+    cuts,
+    generations: status.generation || 0,
+    saved: ((views && views.ranked) || []).filter((r) => r.pinned).length,
+  });
 }
 $("taste-reset-btn").onclick = () => {
   if (saveBlocked === "crashed") {

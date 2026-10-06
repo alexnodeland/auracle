@@ -1331,8 +1331,9 @@ Long work has one home, in the menu bar just left of the sound in hand:
 taste map…", with **stop** where the job can be stopped. It shows only while
 such a job runs, and the round lamp after the wordmark (`#wm-lamp`) is lit
 exactly while it shows: both are drawn from `lampJobs` (`lampOn`/`lampOff`,
-one count per job kind) in `renderJobSlot`. GENERATIONS (`#gen-count`) is on
-EVOLVE's cap line.
+one count per job kind) in `renderJobSlot`. The estimate counts down from the
+worker's last one (`breedLeft`), in words.js's words (`jobEta`). GENERATIONS
+(`#gen-count`) is on EVOLVE's cap line.
 EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
