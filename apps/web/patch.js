@@ -15,6 +15,12 @@
 //  - **A patch from nothing:** NEW PATCH, CLEAR and BACK TO ‹name›.
 //  - **The module sheet** on touch: every setting of a tapped module.
 
+/** How long the bench must be quiet after an arrival (PATCH coming into view,
+ *  or a sound opening) before the cable probe and the guess are asked: the
+ *  settle's window (`arrive`, below). Exported so patch_cables.spec.js holds
+ *  the page to this value, not to a copy of it. */
+export const ARRIVE_MS = 1200;
+
 export function createPatch(host) {
   const $ = (id) => document.getElementById(id);
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -54,13 +60,12 @@ export function createPatch(host) {
   // the player often clicks on (another sound, straight away), and a render
   // started then is one that click waits behind: on a slow machine the open
   // took over a second and was announced (`OPEN_SAID_MS`, "Opened …"). So
-  // after an arrival the bench must be quiet for longer first.
+  // after an arrival the bench must be quiet for longer first (`ARRIVE_MS`).
   // The window is kept by its end (`quietUntil`), not by the timer: a reply
   // inside it (a probe or a guess for the sound before, come back after the
   // open landed) asks for a settle sooner, and that shorter timer replaces
   // the arrival's, so the settle waits out what is left of the window
   // (#167). "What goes here?" is the player asking: it is not held to it.
-  const ARRIVE_MS = 1200;
   let quietUntil = 0;
   function arrive() {
     quietUntil = performance.now() + ARRIVE_MS;

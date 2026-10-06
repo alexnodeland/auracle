@@ -173,9 +173,10 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   expect(most, "probes piled up at the engine").toBe(1);
 });
 
-// How long the bench is quiet, after PATCH comes into view or a sound lands,
-// before the probe and the guess are asked (patch.js `ARRIVE_MS`).
-const ARRIVE_MS = 1_200;
+/** How long the bench is quiet, after PATCH comes into view or a sound lands,
+ *  before the probe and the guess are asked: patch.js `ARRIVE_MS`, read from
+ *  the app, so the spec cannot drift from the window the page keeps. */
+const arriveMs = (app) => app.page.evaluate(() => import("/patch.js").then((m) => m.ARRIVE_MS));
 
 /** Mark, in the page, when the next press on PATCH's stop on the rail lands,
  *  before the app's own handler sees it: the arrival, or a moment before. */
@@ -190,10 +191,12 @@ const markArrival = (page) => page.evaluate(() => {
 
 /** Every cable probe and guess the page sent since `arrived` kept the quiet
  *  window: none went out with an open on its way (asked and not landed), and
- *  each went out at least ARRIVE_MS (less 5 ms for the grain of the page's
+ *  each went out at least `ARRIVE_MS` (less 5 ms for the grain of the page's
  *  clock) after the later of arriving and the last open to land before it.
  *  The window's promise, which holds at any pace the opens are made at. */
 async function keptQuiet(app, arrived) {
+  const quiet = await arriveMs(app);
+  expect(quiet, "patch.js's ARRIVE_MS, the quiet window").toBeGreaterThan(0);
   const log = await app.log({ after: arrived });
   const opens = log.filter((e) => e.type === "sent:edit_begin");
   const landings = log.filter((e) => e.type === "bench" && e.subject != null);
@@ -203,14 +206,14 @@ async function keptQuiet(app, arrived) {
     const onItsWay = opens.filter((o) => o.at < p.at && !landings.some((l) => l.subject === o.id && l.at > o.at && l.at < p.at));
     expect(onItsWay.map((o) => o.id), `${what}, with an open on its way`).toEqual([]);
     const from = Math.max(arrived, ...landings.filter((l) => l.at < p.at).map((l) => l.at));
-    expect(p.at - from, `${what}, ${Math.round(p.at - from)} ms after it arrived or the last open landed`).toBeGreaterThanOrEqual(ARRIVE_MS - 5);
+    expect(p.at - from, `${what}, ${Math.round(p.at - from)} ms after it arrived or the last open landed`).toBeGreaterThanOrEqual(quiet - 5);
   }
   return asks;
 }
 
 // The probe is a render on the engine's one thread, so one started the moment
 // PATCH comes into view is one the player's next click waits behind. It is
-// asked only once the bench has been quiet for ARRIVE_MS after an arrival or
+// asked only once the bench has been quiet for `ARRIVE_MS` after an arrival or
 // an open landing, with nothing on its way, so sounds opened right after
 // arriving find no probe at the engine, nor the model's guess, asked with
 // it. Both are made as slow as a CI runner's render here, so either, gone
