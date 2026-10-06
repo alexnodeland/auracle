@@ -81,7 +81,12 @@ fn a_hole_beside_a_source_still_renders() {
 /// the prior.
 ///
 /// Every built-in preset has to vet to get that far, so this is also the
-/// gate that a preset that can't be auditioned never ships.
+/// gate that a preset that can't be auditioned never ships. And over the
+/// prior's draws, every candidate the pipeline lets through is a
+/// measurement: φ has the documented dimension and is finite, a draw that
+/// fails fails only as a quarantine (never a compile error, an out-of-domain
+/// term or a non-finite feature), and most draws vet. Over a sweep of 26
+/// seeds of 30 draws, the fewest that vetted was 28; the bound is half.
 #[test]
 fn no_vetted_render_leaves_above_the_peak_ceiling() {
     let spec = PhraseSpec::default();
@@ -89,6 +94,9 @@ fn no_vetted_render_leaves_above_the_peak_ceiling() {
     let mut pulled = 0usize;
 
     let mut check = |what: &str, vc: &VettedCandidate| {
+        let phi = vc.features.phi();
+        assert_eq!(phi.len(), Features::phi_names().len(), "{what}");
+        assert!(phi.iter().all(|x| x.is_finite()), "{what}: φ {phi:?}");
         let peak = vc.render.samples.iter().fold(0.0f64, |p, s| p.max(s.abs()));
         assert!(
             peak <= PEAK_CEILING + 1e-9,
@@ -111,7 +119,9 @@ fn no_vetted_render_leaves_above_the_peak_ceiling() {
 
     let mut rng = StdRng::seed_from_u64(0xE05);
     let prior = PatchGrammarPrior::default();
-    for i in 0..24 {
+    let n = 30;
+    let mut vetted = 0;
+    for i in 0..n {
         let (tree, _): (PatchTree, Trace) = run(
             PriorHandler {
                 rng: &mut rng,
@@ -119,14 +129,20 @@ fn no_vetted_render_leaves_above_the_peak_ceiling() {
             },
             prior.model(),
         );
+        let got = featurize(&tree, &spec);
+        assert!(
+            matches!(got, Ok(_) | Err(FeaturizeError::Quarantined(_))),
+            "prior draw {i} failed as more than a quarantine: {:?}",
+            got.map(|_| ())
+        );
         // Quarantined draws are never auditioned, so they have no peak to
         // make a claim about.
-        if let Ok(vc) = featurize(&tree, &spec) {
+        if let Ok(vc) = got {
+            vetted += 1;
             check(&format!("prior draw {i}"), &vc);
         }
     }
-
-    assert!(checked > 0, "nothing was checked");
+    assert!(vetted * 2 > n, "only {vetted}/{n} prior draws vetted");
     println!("{checked} renders under the ceiling, {pulled} of them pulled down to get there");
 }
 
@@ -197,38 +213,6 @@ fn vet_quarantines_silence() {
         matches!(err, FeaturizeError::Quarantined(VetFailure::Silent { .. })),
         "expected Silent quarantine, got: {err}"
     );
-}
-
-/// Pipeline over prior samples: most draws featurize; quarantines are
-/// only ever the legitimate classes; φ has the documented dimension and
-/// is always finite.
-#[test]
-fn pipeline_over_prior_samples() {
-    let spec = PhraseSpec::default();
-    let prior = PatchGrammarPrior::default();
-    let mut rng = StdRng::seed_from_u64(7);
-    let n = 30;
-    let mut ok = 0;
-    for _ in 0..n {
-        let (tree, _) = run(
-            PriorHandler {
-                rng: &mut rng,
-                trace: Trace::default(),
-            },
-            prior.model(),
-        );
-        match featurize(&tree, &spec) {
-            Ok(v) => {
-                ok += 1;
-                let phi = v.features.phi();
-                assert_eq!(phi.len(), Features::phi_names().len());
-                assert!(phi.iter().all(|x| x.is_finite()));
-            }
-            Err(FeaturizeError::Quarantined(_)) => {}
-            Err(e) => panic!("unexpected pipeline error: {e}"),
-        }
-    }
-    assert!(ok * 2 > n, "only {ok}/{n} prior samples featurized");
 }
 
 /// A term with a knob outside its range never becomes a row.
