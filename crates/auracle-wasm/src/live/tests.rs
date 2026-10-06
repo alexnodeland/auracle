@@ -432,7 +432,8 @@ fn sync_drives_every_voice_from_one_transport() {
 /// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
 /// at different velocities leave their own voices' wired knob at
 /// different values, in the direction asked, and a mezzo note leaves it
-/// exactly where the knob is.
+/// exactly where the knob is, wherever the knob has moved to. Touch off is
+/// off, however it was turned off.
 #[test]
 fn velocity_touch_offsets_its_own_voice_only() {
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
@@ -494,13 +495,32 @@ fn velocity_touch_offsets_its_own_voice_only() {
         (mezzo - home).abs() < 1e-5 * home.abs(),
         "mezzo moved the knob"
     );
-    // Off is off: no offsets on the next note.
-    assert!(poly.set_touch("[]", 1.0));
-    poly.note_on(72, 1.0);
-    assert!((cut(&poly, 72) - home).abs() < 1e-9);
-    // Bad input turns touch off rather than half-applying it.
-    assert!(!poly.set_touch("not json", 1.0));
-    assert!(poly.touch.is_empty());
+    // Off is off: no offset on the next note, whether turned off by an
+    // empty list, by a depth that is not a number, or by input that does
+    // not read (rather than half-applying it). Each on an instrument of its
+    // own, so the note's voice is one touch never offset.
+    let wired = r#"[["node#cut", 0.3, 0.5]]"#;
+    for (off, depth) in [("[]", 1.0), (wired, f64::NAN), ("not json", 1.0)] {
+        let mut fresh = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        assert!(fresh.set_touch(wired, 1.0));
+        assert_eq!(fresh.set_touch(off, depth), off != "not json");
+        fresh.note_on(72, 1.0);
+        assert!((cut(&fresh, 72) - home).abs() < 1e-9, "{off} at {depth}");
+    }
+    // The knob moves under touch (`set_touch_base`): a mezzo note plays
+    // its new value. A base that is not a number, or a site past the list,
+    // moves nothing.
+    assert!(poly.set_touch(wired, 1.0));
+    poly.set_touch_base(0, 0.7);
+    poly.set_touch_base(0, f64::NAN);
+    poly.set_touch_base(1, 0.1);
+    poly.all_off();
+    poly.note_on(60, TOUCH_MEZZO);
+    let moved = poly.voices[0].voice.params["node#cut"].map.apply(0.7);
+    assert!(
+        (cut(&poly, 60) - moved).abs() < 1e-5 * moved.abs(),
+        "the mezzo note is not on the moved knob"
+    );
 }
 
 /// **The envelope carry.** Swapping the patch under a held pad used to
