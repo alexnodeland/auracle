@@ -23279,6 +23279,10 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  // Every deal starts with none picked. The last deal's picks used to stay
+  // (⋯ › Re-run, or the offer again after a skip), so a new card could not
+  // be added once three were held, and TEACH IT taught the old ones.
+  warmPicked.clear();
   warmHeard.clear();
   warmPrewarm = { done: new Set(), busy: false };
   warmPrewarmPump();

@@ -17,3 +17,11 @@
   rendering the next pair, or now the warm start's presets, and two of those
   at once could each slip a render in ahead of what you pressed: TEACH IT
   waited 0.8 s behind three renders on that machine (`worker-lanes.test.mjs`).
+
+### Fixed: the warm start run again starts with nothing picked
+
+- **⋯ › *Re-run the three-pick warm start* lets you pick three new presets.**
+  It dealt nine new presets but still held the three you picked the last
+  time, so a click on a new one marked nothing, the button read TEACH IT
+  anyway, and TEACH IT taught the old three again. Each deal now starts with
+  none picked.
