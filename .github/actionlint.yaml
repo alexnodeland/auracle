@@ -1,0 +1,10 @@
+# actionlint's own configuration (https://github.com/rhysd/actionlint).
+#
+# actionlint 1.7.12, the latest release, does not know concurrency's `queue`
+# key (rhysd/actionlint#654), which GitHub accepts since May 2026 ("Control
+# the concurrency of workflows and jobs"). ci.yml uses it to queue runs on
+# main; drop this once a release knows the key.
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

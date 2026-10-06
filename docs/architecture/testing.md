@@ -92,9 +92,9 @@ suite* and the nightly flake hunt still run in full.
 **The site deploys from CI.** On main, the Site job keeps the site it built
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. A run on
-main is not cancelled by the next push; GitHub keeps one waiting run, so when
-three merges land inside one run's length the middle one is covered by the
-newest. Lint and the Rust tests are reused only while `rust-toolchain.toml`
+main is not cancelled by the next push, and none is skipped: main's runs
+wait in a queue (`queue: max`) and run in turn, so when three merges land
+inside one run's length each is tested and deployed in order. Lint and the Rust tests are reused only while `rust-toolchain.toml`
 still pins the release they ran on (the record keeps `rustc --version`).
 
 **The workflows themselves.** Each workflow's token is read-only unless a

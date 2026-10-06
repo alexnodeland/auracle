@@ -28,13 +28,18 @@ on:
 
 # A new push to a PR makes the in-flight run for that PR obsolete, so stop it
 # rather than paying for two answers to the same question. A run on main is
-# not cancelled by the next push: it finishes, and the next waits. (GitHub
-# keeps one waiting run per group, so of three merges inside one run's length
-# the middle one is skipped, and the newest run covers its files.) With the
-# merged PR's jobs reused (the changes job), main's runs are short.
+# not cancelled by the next push, and none is skipped: runs on main wait in
+# a queue (`queue: max`, up to 100 waiting) and run in turn, so each of three
+# merges inside one run's length gets its own verdict.
+# (The default, `single`, keeps one waiting run and replaces it, so the
+# middle merge was never tested on main.) On a PR the queue stays `single`:
+# `queue: max` with `cancel-in-progress: true` is a workflow validation
+# error, so both keys are expressions on the event. With the merged PR's
+# jobs reused (the changes job), main's runs are short.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 # Read the code, nothing else: no job here writes to the repository. The
 # Actions cache and artifacts use the runner's own token, not this one.
