@@ -2821,3 +2821,195 @@ fn a_held_sound_is_listed_and_readmitted_through_the_worker_surface() {
         "the readmitted sound is not in the bank"
     );
 }
+
+/// A six-patch pool, filled serially: the engine most binding tests read.
+fn filled(seed: u64) -> WasmEngine {
+    let mut engine = WasmEngine::new(seed, 6);
+    while engine.fill_step(3) > 0 {}
+    engine
+}
+
+/// **A member is read by its id, and an id not in the pool reads as
+/// nothing.** Its makeup, s-expression, rack and tree are the member's own;
+/// for an id that is not there (0, which no member has, or one long gone)
+/// each answers its "nothing": unity makeup, `""`, `null`, no render, no
+/// forecast, no lens. A prefetch makes the member's audition resident, so
+/// ▶ waits on no render.
+#[test]
+fn a_member_is_read_by_its_id_and_an_unknown_id_by_nothing() {
+    let mut engine = filled(0x1D5);
+    let id = pool_ids(&engine)[0];
+    let i = engine.engine.find(id as u64).unwrap();
+    let (features, own) = (
+        engine.engine.pool[i].features.clone(),
+        engine.engine.pool[i].tree.clone(),
+    );
+    assert_eq!(engine.makeup_of(id), live_makeup(&features));
+    assert_eq!(engine.sexpr_of(id), own.to_sexpr());
+    let rack: serde_json::Value = serde_json::from_str(&engine.describe_of(id)).unwrap();
+    assert_eq!(rack, serde_json::to_value(describe(&own)).unwrap());
+    let tree: PatchTree = serde_json::from_str(&engine.tree_json_of(id)).unwrap();
+    assert_eq!(tree, own);
+    for gone in [0, 9_999] {
+        assert_eq!(engine.makeup_of(gone), 1.0);
+        assert_eq!(engine.sexpr_of(gone), "");
+        assert_eq!(engine.describe_of(gone), "null");
+        assert_eq!(engine.tree_json_of(gone), "null");
+        assert!(!engine.prefetch_render(gone));
+        assert_eq!(engine.duel_pred(id, gone), -1.0);
+        assert_eq!(engine.best_style_of(gone), -1);
+        assert!(!engine.edit_begin(gone));
+    }
+    engine.engine.pool[i].render = None;
+    assert!(engine.prefetch_render(id));
+    assert!(
+        engine.engine.pool[i].render.is_some(),
+        "the prefetch left the audition unrendered"
+    );
+}
+
+/// **What the player says about a member reaches the bank.** A name shows
+/// in the ranked list and an empty one gives the generated name back; a
+/// pin holds within the pin budget and is refused past it or for an id not
+/// there; a logged event is in the save; a preset loaded is ranked as a
+/// preset.
+#[test]
+fn naming_pinning_and_logging_reach_the_bank() {
+    let mut engine = filled(0x2A3);
+    let ids = pool_ids(&engine);
+    let row = |e: &WasmEngine, id: u32| -> serde_json::Value {
+        serde_json::from_str::<Vec<serde_json::Value>>(&e.ranked())
+            .unwrap()
+            .into_iter()
+            .find(|r| r["id"] == id)
+            .unwrap()
+    };
+    let generated = row(&engine, ids[0])["name"].clone();
+    engine.set_name(ids[0], "My Bass");
+    assert_eq!(row(&engine, ids[0])["name"], "My Bass");
+    assert_eq!(row(&engine, ids[0])["named"], true);
+    engine.set_name(ids[0], "");
+    assert_eq!(row(&engine, ids[0])["name"], generated);
+    assert_eq!(row(&engine, ids[0])["named"], false);
+
+    let cap = engine.pin_budget()[1];
+    assert_eq!(engine.pin_budget(), vec![0, cap]);
+    for &id in &ids[..cap as usize] {
+        assert!(engine.set_pinned(id, true));
+        assert_eq!(row(&engine, id)["pinned"], true);
+    }
+    assert_eq!(engine.pin_budget(), vec![cap, cap]);
+    assert!(
+        !engine.set_pinned(ids[cap as usize], true),
+        "past the budget"
+    );
+    assert!(!engine.set_pinned(9_999, true), "not in the pool");
+    assert!(engine.set_pinned(ids[0], false));
+    assert_eq!(engine.pin_budget(), vec![cap - 1, cap]);
+
+    engine.log_event("promote", ids[1], 2.0);
+    let state: SessionState = serde_json::from_str(&engine.export_session()).unwrap();
+    let ev = state.events.last().unwrap();
+    assert_eq!(
+        (ev.kind.as_str(), ev.id, ev.value),
+        ("promote", ids[1] as u64, 2.0)
+    );
+
+    let preset = engine.load_preset(3);
+    assert!(preset > 0);
+    assert_eq!(row(&engine, preset)["origin"], "preset");
+}
+
+/// **The preset bank crosses the boundary as the grammar holds it.** One
+/// row per preset, in its order, with its name, category, blurb and
+/// signature; a preset's tree by its index; and an index past the bank is
+/// nothing to load or play.
+#[test]
+fn the_preset_bank_crosses_the_boundary() {
+    let mut engine = filled(0x2A4);
+    let bank = auracle_grammar::preset_bank();
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&engine.preset_list()).unwrap();
+    assert_eq!(rows.len(), bank.len());
+    for (k, (row, p)) in rows.iter().zip(&bank).enumerate() {
+        assert_eq!(row["index"], k);
+        assert_eq!(row["name"], p.name);
+        assert_eq!(row["category"], p.category);
+        assert_eq!(row["blurb"], p.blurb);
+        assert_eq!(row["sig"], p.tree.signature());
+    }
+    let tree: PatchTree = serde_json::from_str(&engine.preset_tree_json(5)).unwrap();
+    assert_eq!(tree, bank[5].tree);
+    let past = bank.len();
+    assert_eq!(engine.preset_tree_json(past), "");
+    assert_eq!(engine.load_preset(past), 0);
+    assert_eq!(engine.load_preset_heard(past), 0);
+}
+
+/// **A preset heard as it is loaded is rendered once.** `load_preset_heard`
+/// featurizes it with its audio, so the buffer ▶ plays is in the memo's
+/// audio tier when the insert lands; `load_preset` keeps φ only.
+#[test]
+fn a_preset_heard_as_it_is_loaded_is_rendered_once() {
+    let mut engine = filled(0x2A5);
+    let key_of =
+        |e: &WasmEngine, id: u32| e.engine.pool[e.engine.find(id as u64).unwrap()].key.clone();
+    let plain = engine.load_preset(7);
+    assert!(plain > 0);
+    assert!(engine
+        .engine
+        .memo()
+        .get_audio(&key_of(&engine, plain))
+        .is_none());
+    let heard = engine.load_preset_heard(8);
+    assert!(heard > 0);
+    assert!(
+        engine
+            .engine
+            .memo()
+            .get_audio(&key_of(&engine, heard))
+            .is_some(),
+        "the heard preset's audio is not resident"
+    );
+}
+
+/// **A face is found by its render key, or by its tree.** By key: the
+/// memo row's face, else one taken from the row's resident audio (and
+/// remembered), else none; a key never rendered has none. By tree: the
+/// same, and with `render` a tree never measured is featurized for one; a
+/// tree that does not parse or does not render has none.
+#[test]
+fn a_face_is_found_by_its_render_key_or_its_tree() {
+    let mut engine = filled(0x2A6);
+    let id = engine.load_preset_heard(9);
+    let i = engine.engine.find(id as u64).unwrap();
+    let key = engine.engine.pool[i].key.clone();
+    let want = engine.face_of(id, false);
+    assert_eq!(want.len(), auracle_features::FACE_LEN);
+    assert_eq!(engine.face_of_key(&key), want, "from the memo's face");
+    let faceless = |e: &WasmEngine| {
+        let mut row = e.engine.memo().get(&key).unwrap();
+        row.face = None;
+        e.engine.memo().put(row, None);
+    };
+    faceless(&engine);
+    assert_eq!(engine.face_of_key(&key), want, "from the resident audio");
+    assert!(engine.engine.memo().get(&key).unwrap().face.is_some());
+    assert!(engine.face_of_key("no/such/key").is_empty());
+
+    let tree = engine.preset_tree_json(9);
+    faceless(&engine);
+    assert_eq!(engine.face_of_tree(&tree, false), want, "the tree's audio");
+    assert_eq!(engine.face_of_tree(&tree, false), want, "its memo face");
+    let unheard = engine.preset_tree_json(10);
+    assert!(
+        engine.face_of_tree(&unheard, false).is_empty(),
+        "no render asked"
+    );
+    assert_eq!(
+        engine.face_of_tree(&unheard, true).len(),
+        auracle_features::FACE_LEN
+    );
+    assert!(engine.face_of_tree("{", true).is_empty());
+    let deep = serde_json::to_string(&too_deep()).unwrap();
+    assert!(engine.face_of_tree(&deep, true).is_empty());
+}
