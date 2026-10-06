@@ -1571,93 +1571,60 @@ fn an_aimed_offer_reply_carries_how_far_it_moved() {
 }
 
 /// **The worker's way of asking is the same offer.** `perform_offer` is
-/// `perform_offer_begin`, stepped, `perform_job_finish`; the worker steps
-/// one render at a time and answers the player between steps. Two twins
-/// taught alike and asked alike give the same reply, the Offer button's
-/// and a search control's and a drift, even when a pick is recorded on
-/// one of them between two steps: the walk keeps the target it began on.
-/// No handle outlives its reply, and a handle that is not in hand answers
-/// as nothing.
+/// `perform_offer_begin`, stepped to its end, and `perform_job_finish`; the
+/// worker steps one render at a time and answers the player between steps.
+/// Two twins taught alike and asked alike give the same reply, even when a
+/// pick is recorded on one of them between two steps: the walk keeps the
+/// target it began on. (That stepping cannot change any kind of walk is the
+/// session's `a_stepped_walk_is_the_walk`.) A handle is spent by its reply
+/// or its drop, one not in hand answers as nothing, and handles count up
+/// past the top of `u32` without ever being 0 or one still in hand.
 #[test]
 fn a_stepped_offer_gives_the_reply_the_one_call_gives() {
-    let tree_of = |e: &mut WasmEngine| -> String {
-        let id = serde_json::from_str::<Vec<serde_json::Value>>(&e.ranked()).unwrap()[0]["id"]
-            .as_u64()
-            .unwrap() as u32;
-        assert!(e.edit_begin(id));
-        e.edit_tree_json()
+    let (mut one, mut stepped) = twins(5);
+    // The same tree for both (module uids come off a process-wide counter,
+    // so the twins' own copies are numbered apart).
+    assert!(one.edit_begin(pool_ids(&one)[0]));
+    let tree = one.edit_tree_json();
+    let want = one.perform_offer(&tree, "[]", "[]", 4, None, None);
+    let grown: serde_json::Value = serde_json::from_str(&want).unwrap();
+    assert!(
+        grown.get("tree").is_some(),
+        "fixture: the offer grows: {want}"
+    );
+    let handle = |reply: String| -> u32 {
+        let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        v["job"].as_u64().expect("a walk begins") as u32
     };
-    let mut one = taught_wasm(5);
-    let mut stepped = taught_wasm(5);
-    // The same tree for both (module uids come off a process-wide
-    // counter, so the twins' own copies are numbered apart).
-    let tree = tree_of(&mut one);
-    let grit = auracle_session::perform::CONTROLS
-        .iter()
-        .position(|c| c.name == "Grit")
-        .unwrap() as u32;
-    let mut picked = false;
-    let mut compared = 0;
-    for (control, sign, drift) in [
-        (None, None, false),
-        (Some(grit), Some(1.0), false),
-        (None, None, true),
-    ] {
-        let (want, begun) = if drift {
-            (
-                one.perform_drift(&tree, "[]", "[]", 5, 0.1),
-                stepped.perform_drift_begin(&tree, "[]", "[]", 5, 0.1),
-            )
-        } else {
-            (
-                one.perform_offer(&tree, "[]", "[]", 4, control, sign),
-                stepped.perform_offer_begin(&tree, "[]", "[]", 4, control, sign),
-            )
-        };
-        let Some(job) = serde_json::from_str::<serde_json::Value>(&begun)
-            .unwrap()
-            .get("job")
-            .and_then(|j| j.as_u64())
-        else {
-            // Cannot start: the one call said the same.
-            assert_eq!(begun, want);
-            continue;
-        };
-        let job = job as u32;
-        assert_eq!(stepped.jobs.len(), 1);
-        let mut steps = 0;
-        while stepped.perform_job_step(job, 1) {
-            steps += 1;
-            // A pick, between two steps (once, and only with a tree to
-            // pick against).
-            let v: serde_json::Value = serde_json::from_str(&want).unwrap();
-            if steps == 1 && !picked && v.get("tree").is_some() {
-                picked =
-                    stepped.perform_record(&tree, "[]", &v["tree"].to_string(), true, u32::MAX);
-                assert!(picked, "the pick was not recorded");
-            }
-        }
-        assert!(steps > 1, "a walk of several renders is several steps");
-        assert_eq!(stepped.perform_job_finish(job), want);
-        assert_eq!(stepped.jobs.len(), 0, "the handle was spent");
-        compared += 1;
-    }
-    assert!(compared > 0, "no walk began, so nothing was compared");
-    assert!(picked, "no pick was made between steps");
+    let job = handle(stepped.perform_offer_begin(&tree, "[]", "[]", 4, None, None));
+    assert_eq!(stepped.jobs.len(), 1);
+    assert!(
+        stepped.perform_job_step(job, 1),
+        "a walk of several renders is several steps"
+    );
+    // A pick, between two steps.
+    let offer = grown["tree"].to_string();
+    assert!(stepped.perform_record(&tree, "[]", &offer, true, u32::MAX));
+    while stepped.perform_job_step(job, 1) {}
+    assert_eq!(stepped.perform_job_finish(job), want);
+    assert_eq!(stepped.jobs.len(), 0, "the handle was spent");
     // Not in hand: nothing to step, nothing to answer.
-    assert!(!stepped.perform_job_step(9_999, 1));
-    assert_eq!(stepped.perform_job_finish(9_999), "null");
+    assert!(!stepped.perform_job_step(job, 1));
+    assert_eq!(stepped.perform_job_finish(job), "null");
     // Dropped: spent, and not answered.
-    let begun = stepped.perform_offer_begin(&tree, "[]", "[]", 4, None, None);
-    if let Some(job) = serde_json::from_str::<serde_json::Value>(&begun)
-        .unwrap()
-        .get("job")
-        .and_then(|j| j.as_u64())
-    {
-        assert!(stepped.perform_job_drop(job as u32));
-        assert!(!stepped.perform_job_drop(job as u32));
-        assert_eq!(stepped.jobs.len(), 0);
-    }
+    let dropped = handle(stepped.perform_offer_begin(&tree, "[]", "[]", 4, None, None));
+    assert!(stepped.perform_job_drop(dropped));
+    assert!(!stepped.perform_job_drop(dropped));
+    assert_eq!(stepped.jobs.len(), 0);
+    // Four billion handles later: past the top, 0 is skipped, and so is a
+    // handle still in hand.
+    stepped.next_job = u32::MAX;
+    let begin =
+        |e: &mut WasmEngine| handle(e.perform_offer_begin(&tree, "[]", "[]", 4, None, None));
+    assert_eq!(begin(&mut stepped), u32::MAX);
+    assert_eq!(begin(&mut stepped), 1, "0 is never a handle");
+    stepped.next_job = 1;
+    assert_eq!(begin(&mut stepped), 2, "1 is still in hand");
 }
 
 /// A walk's reply says what was true when it began. A drift begun before
