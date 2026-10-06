@@ -68,46 +68,74 @@ fn duels_recover_theta() {
     assert!(acc > 0.8, "held-out duel accuracy {acc} too low");
 }
 
-/// A fused group adds exactly `K` sites and nothing else, and an unfused
-/// config is untouched.
+/// Naming a fused group changes nothing until its correlation is above
+/// zero: an unfused config, a named group with `fused_rho` unset, and one
+/// at 0 are the same program, so a fit from one seed draws the same
+/// posterior bit for bit.
 ///
-/// The second half is the one that matters for a change like this: the
-/// flat path is what every unit test, every synthetic user and every
-/// existing saved posterior runs on, and it must be the same program node
-/// for node. `mu` is empty without a group, so it is.
+/// That is what matters about the flat path: it is what every unit test,
+/// every synthetic user and every saved posterior runs on, and the guard
+/// is that both knobs are needed. The fit at ρ = 0.25 differs, so the
+/// comparison can fail.
 #[test]
-fn fusing_costs_one_site_per_style_and_nothing_when_unused() {
-    // The live φ, not a literal: this used to hard-code `d = 40` and call
-    // the result "the documented 206", and φ had been 41 coordinates for
-    // some time — the number was stale in three doc comments and one
-    // test, which is exactly how a stale number survives.
-    let d = auracle_features::Features::phi_names().len();
-    let flat = TasteConfig::mixture(d, 5);
-    let flat_sites = SiteAddrs::new(&flat, 1).site_count();
-    assert_eq!(flat_sites, d * 5 + 1 + 5, "d·K + S + (n_stars − 1)");
-    assert_eq!(
-        d, 44,
-        "φ moved — update the site counts quoted in `model.rs`"
-    );
+fn a_named_group_at_rho_zero_is_the_flat_program() {
+    let mut rng = StdRng::seed_from_u64(0xF1A7);
+    let user = ground_truth();
+    let mut log = ObservationLog::new();
+    for _ in 0..20 {
+        let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+        log.push(user.observe_duel(&mut rng, a, b, 0));
+    }
+    let data = FitSet::as_is(&log);
+    let fit = |cfg: &TasteConfig| {
+        let mut r = StdRng::seed_from_u64(7);
+        TasteModel::new(cfg.clone())
+            .fit(&mut r, &data, 2_000, 1_000)
+            .samples
+    };
 
-    // Both knobs are needed, which is itself the guard: naming a group
-    // with rho at its default 0 must stay the flat program.
+    let flat = TasteConfig::mixture(D, 2);
     let mut named_only = flat.clone();
     named_only.fused = vec![vec![2, 5, 0]];
-    assert_eq!(
-        SiteAddrs::new(&named_only, 1).site_count(),
-        flat_sites,
-        "a named group at rho = 0 must add no sites — off means off"
-    );
+    let mut at_zero = named_only.clone();
+    at_zero.fused_rho = Some(0.0);
+    let mut on = named_only.clone();
+    on.fused_rho = Some(0.25);
 
-    let mut fused = named_only.clone();
-    fused.fused_rho = Some(0.25);
-    let fused_sites = SiteAddrs::new(&fused, 1).site_count();
-    assert_eq!(
-        fused_sites,
-        flat_sites + 5,
-        "one latent mean per style, and no other new site"
+    let draws = fit(&flat);
+    assert!(
+        fit(&named_only) == draws,
+        "a named group with ρ unset moved the fit"
     );
+    assert!(
+        fit(&at_zero) == draws,
+        "a named group at ρ = 0 moved the fit"
+    );
+    assert!(fit(&on) != draws, "a group at ρ = 0.25 changed nothing");
+}
+
+/// The site counts the docs quote are the live φ's. `model.rs` quotes 226
+/// sites as shipped (K = 5, one session) and 231 with the brightness group;
+/// the reference (`taste/likelihoods.md`, `taste/posterior.md`) quotes
+/// 49 + S at K = 1 and 225 + S at K = 5. All of them assume d = 44, so a
+/// change to φ fails here until they are updated.
+#[test]
+fn the_site_counts_the_docs_quote_are_the_live_phis() {
+    let d = auracle_features::Features::phi_names().len();
+    let sites = |k: usize, sessions: usize, fused: bool| {
+        let mut cfg = TasteConfig::mixture(d, k);
+        if fused {
+            cfg.fused = vec![vec![0, 1, 2]];
+            cfg.fused_rho = Some(0.25);
+        }
+        SiteAddrs::new(&cfg, sessions).site_count()
+    };
+    let docs = "φ moved: update the site counts quoted in model.rs and the reference";
+    assert_eq!(sites(1, 1, false), 49 + 1, "{docs}");
+    assert_eq!(sites(5, 1, false), 225 + 1, "{docs}");
+    assert_eq!(sites(5, 1, false), 226, "{docs}");
+    // One latent mean per style for the group, and no other new site.
+    assert_eq!(sites(5, 1, true), 231, "{docs}");
 }
 
 /// A fused prior over correlated coordinates recovers taste better than a

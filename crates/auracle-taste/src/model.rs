@@ -467,8 +467,8 @@ impl SiteAddrs {
     /// groups. At K = 5, d = 44, S = 1 and one brightness group that is
     /// 220 + 1 + 5 + 5 = **231**; without the group it is the 226 the module
     /// doc quotes. (φ was 40 coordinates when these numbers were first
-    /// written; `fusing_costs_one_site_per_style_and_nothing_when_unused`
-    /// now computes them from the live feature set.)
+    /// written; `the_site_counts_the_docs_quote_are_the_live_phis` now
+    /// checks them against the live feature set.)
     pub fn site_count(&self) -> usize {
         self.theta.len() + self.tau.len() + self.cut.len() + self.mu.len()
     }
