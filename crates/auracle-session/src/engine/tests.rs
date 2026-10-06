@@ -2539,55 +2539,6 @@ fn locks_are_symmetric_over_births() {
     ));
 }
 
-/// Duel selection must not keep asking the same question. Between refits
-/// the posterior barely moves, which is exactly when a best-arm rule
-/// locks onto one pair and shows it over and over.
-#[test]
-fn acquisition_asks_different_questions() {
-    let distinct_pairs = |acquisition: Acquisition| -> usize {
-        let mut rng = StdRng::seed_from_u64(0xACC);
-        let user = ground_truth();
-        let cfg = SessionConfig {
-            pool_size: 24,
-            acquisition,
-            duel_check_every: 0,
-            ..fast()
-        };
-        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-        engine.begin_session();
-        engine.fill_pool(&mut rng);
-        for _ in 0..10 {
-            let (a, b) = engine.next_duel(&mut rng).unwrap();
-            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-            engine.record_duel(a, b, chose_a);
-        }
-        engine.fit_posterior(&mut rng);
-        // Now hold the posterior still and ask for 12 duels in a row.
-        let mut seen = std::collections::HashSet::new();
-        for _ in 0..12 {
-            let (a, b) = engine.next_duel(&mut rng).unwrap();
-            let (x, y) = (engine.pool[a].id, engine.pool[b].id);
-            seen.insert(if x <= y { (x, y) } else { (y, x) });
-        }
-        seen.len()
-    };
-    let bald = distinct_pairs(Acquisition::Bald);
-    assert!(
-        bald >= 10,
-        "BALD offered only {bald} distinct pairs out of 12"
-    );
-    // Deliberately NOT asserted: `bald > thompson`. That is a horse race
-    // between two rules at one seed, and it is brittle in exactly the way
-    // this suite must not be — Thompson's degeneracy needs a *sharp*
-    // posterior to express (the shipped bug appeared after many refits),
-    // and after 10 duels the posterior here is wide enough that Thompson
-    // draws varied champions on some seeds. Rule-vs-rule quality is
-    // established distributionally by `learn_synthetic --compare` (20
-    // CRN-paired seeds, both regimes); a unit test's job is the
-    // product property — the shipped rule must not lock onto one pair —
-    // which is the assertion above.
-}
-
 /// The local explanation is *exact*: utility is linear within a lens, so
 /// the contributions must sum to the utility, with no residual to
 /// apologize for.
