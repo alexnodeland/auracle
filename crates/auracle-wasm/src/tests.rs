@@ -3431,9 +3431,11 @@ fn every_readmit_refusal_has_its_own_sentence() {
 /// ceilings is refused in the grammar's words, a guess or skip that does
 /// not read is refused, and before any taste a guess has `no_taste`. A
 /// patch imported that does not read, or that the bank already holds, is
-/// not admitted. Once the sound the bench was opened from has left the
-/// pool, there is nothing to compare the bench with. An event logged
-/// without φ carries none.
+/// not admitted, and `bank_twin_of` names the sound the bank holds it as by
+/// its `u32` id (0 for a file that does not read, or a sound the bank has
+/// let go). Once the sound the bench was opened from has left the pool,
+/// there is nothing to compare the bench with. An event logged without φ
+/// carries none.
 #[test]
 fn the_bench_refuses_in_words_what_it_cannot_take() {
     let mut engine = filled(0xB3C);
@@ -3476,6 +3478,8 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
     assert_eq!(engine.guess_rank(None, "[]", 0), r#"{"reason":"no_taste"}"#);
     assert_eq!(engine.import_patch("{", "x"), 0);
     assert_eq!(engine.import_patch(&tree, "again"), 0, "the bank holds it");
+    assert_eq!(engine.bank_twin_of(&tree), lowest, "as this sound");
+    assert_eq!(engine.bank_twin_of("{"), 0);
 
     engine.log_edit_event("open", lowest, 1.0, "{}", false);
     let state: SessionState = serde_json::from_str(&engine.export_session()).unwrap();
@@ -3490,6 +3494,7 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
         engine.engine.find(lowest as u64).is_none(),
         "fixture: it left"
     );
+    assert_eq!(engine.bank_twin_of(&tree), 0, "a sound the bank let go");
     assert!(!engine.edit_differs_from_original());
 }
 

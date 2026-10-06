@@ -3192,7 +3192,7 @@ impl Engine {
     /// Import a shared patch file's tree into the bank under `name`: a hand
     /// edit with no original and nothing told about it. Returns the new id,
     /// or `None` when the tree is over the ceilings, the bank already holds
-    /// it, or it does not vet.
+    /// it (which sound, [`Engine::bank_twin_of`] says), or it does not vet.
     ///
     /// A shared file is untrusted input by definition, and the pictures
     /// already in circulation carry whatever the build that wrote them had
@@ -3216,6 +3216,23 @@ impl Engine {
         let id = self.commit_edit(None, tree, EditOutcome::Untold)?;
         self.set_name(id, name);
         Some(id)
+    }
+
+    /// The bank's sound a shared patch file already is: the member whose
+    /// tree is the file's normal form, compared as [`Engine::import_patch`]
+    /// compares it, or `None`. It tells the two refusals an import answers
+    /// with `None` apart: a file the bank holds is that sound, and the app
+    /// opens it, where a file that does not vet is refused.
+    ///
+    /// Put in normal form first, as the import does. Compared as written, a
+    /// file holding a term the import folds (a quantizer over nothing from an
+    /// older build) or a knob it clamps is no member's twin, though the
+    /// import found one, and the app called the file one that failed the
+    /// safety vet.
+    pub fn bank_twin_of(&self, tree: &PatchTree) -> Option<u64> {
+        let mut tree = tree.clone();
+        normalize_tree(&mut tree);
+        self.pool.iter().find(|c| c.tree == tree).map(|c| c.id)
     }
 
     /// How many sounds kept as new may be protected at once

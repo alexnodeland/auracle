@@ -35,7 +35,8 @@
 //! | `record_stars(id, rating) -> bool` | same | same |
 //! | `last_refine_reason() -> String` | `"idle"\|"injected"\|"no_taste"\|"unknown_seed"\|"outside_support"\|"no_move"\|"duplicate"\|"not_admitted"\|"stale"` | Why the last `refine_seed`/`refine_absorb`/`refine_from` returned 0. `stale` means a walk result was offered out of job order or after its generation finished, and changed nothing. `outside_support` is the one to surface: the seed has zero prior mass (a knob past its domain, a tree deeper than the prior can score) and no budget will move it. |
 //! | `edit_param(addr, value, is_index) -> bool` | unchanged shape | now also `false` for a non-finite `value`. |
-//! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. The tree lands in normal form (`normalize_tree`), so `0` also answers a file whose normal form the bank already holds. |
+//! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. The tree lands in normal form (`normalize_tree`), and a file whose normal form the bank already holds is that sound: `0`, and `bank_twin_of` names it. |
+//! | `bank_twin_of(tree_json) -> u32` | the id of the bank's sound the file is, or `0` | Compared in normal form, as `import_patch` compares it, so a `0` from the import is told apart: a twin is a sound to open, no twin a refusal. `0` for a file that does not read. |
 //! | `budget_ceilings() -> String` (free function) | `{"size":24,"depth":6,"mod":3}` | The hand-edit ceilings, read from the grammar rather than restated in the app. |
 
 mod explain;
@@ -2752,6 +2753,18 @@ impl WasmEngine {
             return 0;
         };
         self.engine.import_patch(tree, name).unwrap_or(0) as u32
+    }
+
+    /// The id of the bank's sound a patch file already is, compared in
+    /// normal form as `import_patch` compares it
+    /// ([`auracle_session::Engine::bank_twin_of`]), or 0 (bad JSON / none).
+    /// What the worker asks when an import answers 0: a file the bank holds
+    /// is opened as that sound, not called one that failed the vet.
+    pub fn bank_twin_of(&self, tree_json: &str) -> u32 {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return 0;
+        };
+        self.engine.bank_twin_of(&tree).unwrap_or(0) as u32
     }
 
     /// Load candidate `id` onto the workbench. Returns false for unknown id.

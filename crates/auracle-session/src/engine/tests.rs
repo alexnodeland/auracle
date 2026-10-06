@@ -3947,6 +3947,55 @@ fn a_held_sound_comes_back_in_normal_form() {
     assert_eq!(c.tree.root.modulation(), Some(&ModNode::None));
 }
 
+/// **A patch file the bank already holds is found as that sound, though
+/// the file is not in normal form** (#208). An import folds a quantizer
+/// over nothing before it looks for the patch in the bank, so the same file
+/// opened twice lands once, and the second import's `None` is the bank's
+/// sound, which `bank_twin_of` names: the app opens it rather than call the
+/// file refused. So is a file that is a sound already in the pool with a
+/// quantizer over nothing in a slot that sound leaves empty. A patch the
+/// bank does not hold has no twin.
+#[test]
+fn a_patch_file_whose_normal_form_the_bank_holds_is_found_as_that_sound() {
+    use auracle_grammar::{ModNode, PatchTree};
+    let with_a_quantizer_on_its_root = |mut t: PatchTree| {
+        *t.root.modulation_mut().expect("the root has a slot") = quantizer_over_nothing();
+        t
+    };
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 4,
+            ..fast()
+        },
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut StdRng::seed_from_u64(0x208));
+    let presets = auracle_grammar::presets();
+
+    let hornet = presets.iter().find(|(n, _)| *n == "Hornet").unwrap();
+    let file = with_a_quantizer_on_its_root(hornet.1.clone());
+    assert_eq!(
+        engine.bank_twin_of(&file),
+        None,
+        "Hornet is not in the pool yet"
+    );
+    let id = engine
+        .import_patch(file.clone(), "Hornet, shared")
+        .expect("the first import lands");
+    assert_eq!(engine.import_patch(file.clone(), "again"), None);
+    assert_eq!(engine.bank_twin_of(&file), Some(id));
+
+    let (name, held) = presets
+        .iter()
+        .find(|(n, t)| *n != "Hornet" && t.root.modulation() == Some(&ModNode::None))
+        .expect("a preset whose root slot is empty");
+    let kept = engine.insert_preset(held.clone(), name).expect("it lands");
+    let file = with_a_quantizer_on_its_root(held.clone());
+    assert_eq!(engine.import_patch(file.clone(), ""), None);
+    assert_eq!(engine.bank_twin_of(&file), Some(kept), "{name}");
+}
+
 /// A file that repeats an id cannot make one held sound drop another:
 /// two entries under one id, each a capture whose only take is
 /// unreadable, are both held and both saved again.
