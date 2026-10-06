@@ -600,6 +600,37 @@ fn a_note_held_through_touch_off_keeps_its_touch_until_let_go() {
     );
 }
 
+/// **Touch off in unison.** A unison note strikes every voice, so after
+/// touch goes off the next one plays the knob on all of them (#223: each
+/// kept the soft note's dark).
+#[test]
+fn touch_off_in_unison_puts_back_every_voice() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&ladder_json(), 44_100.0, 4).unwrap();
+    let home = knob_at(&poly, "node#cut", 0.5);
+    let cuts = |poly: &LivePoly| -> Vec<f64> {
+        poly.voices
+            .iter()
+            .map(|v| v.voice.params["node#cut"].value.get())
+            .collect()
+    };
+    poly.set_unison(true, 0.5, 0.5);
+    assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
+    poly.note_on(48, 0.1);
+    assert!(
+        cuts(&poly).iter().all(|c| *c < home),
+        "the stack is not dark"
+    );
+    poly.note_off(48);
+    assert!(poly.set_touch("[]", 1.0));
+    poly.note_on(50, 0.1);
+    assert!(
+        cuts(&poly).iter().all(|c| (c - home).abs() < 1e-9),
+        "{:?} is not the knob",
+        cuts(&poly)
+    );
+}
+
 /// **Touch moved to another control.** Switching what velocity plays from
 /// one knob to another puts the first back on the next note while the
 /// second takes the touch; switched back, the second plays where it has
