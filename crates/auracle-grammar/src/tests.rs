@@ -1530,21 +1530,24 @@ fn every_level_of_nesting_costs_the_same_prior_mass() {
     }
 }
 
-/// **Small patches are what the prior draws most**: with a `#leaf` that
-/// comes out "source" at `source_prob` (0.4), four draws in ten are a lone
-/// source, more than half hold at most two modules, and the median holds
-/// two. A parsimony regression (a leaf probability lowered, processor
-/// weights that favour the binary kinds) moves these first.
+/// **Small patches are what the prior draws most**: the shipped `#leaf`
+/// comes out "source" four times in ten (0.4, a literal here, so a changed
+/// `source_prob` moves the draws and not the bound), so four draws in ten
+/// are a lone source, over half hold at most two modules, and the median
+/// holds two. A parsimony regression (a leaf probability lowered, processor
+/// weights that favour the binary kinds) moves these first; `source_prob`
+/// at 0.35 or 0.45 fails it.
 ///
-/// The bands come from a sweep: 400 draws on each of seeds 0 to 39 put the
-/// lone-source share between 0.357 and 0.475 (binomial σ ≈ 0.024 around
-/// 0.4), the share of size ≤ 2 between 0.540 and 0.688, and the median at 2
-/// on every seed.
+/// The bands come from a sweep: 4,000 draws on each of seeds 0 to 299 put
+/// the lone-source share between 0.376 and 0.426 (binomial σ ≈ 0.008 around
+/// 0.4), the share of size ≤ 2 between 0.566 and 0.616, and the median at
+/// 2 on every seed. (At 400 draws a share swings 0.325 to 0.475 over 1,000
+/// seeds, too wide to see a leaf probability move by 0.05.)
 #[test]
 fn the_prior_draws_small_patches_most_often() {
     let prior = PatchGrammarPrior::default();
     let mut rng = StdRng::seed_from_u64(5);
-    let n = 400;
+    let n = 4_000;
     let mut sizes: Vec<usize> = (0..n)
         .map(|_| draw(&prior, &mut rng).0.root.size())
         .collect();
@@ -1553,13 +1556,12 @@ fn the_prior_draws_small_patches_most_often() {
         |keep: fn(usize) -> bool| sizes.iter().filter(|&&s| keep(s)).count() as f64 / n as f64;
     let lone = share(|s| s == 1);
     assert!(
-        (lone - prior.source_prob).abs() < 0.085,
-        "{lone:.3} of draws are a lone source; `#leaf` is drawn at {}",
-        prior.source_prob
+        (lone - 0.4).abs() < 0.035,
+        "{lone:.3} of draws are a lone source, not four in ten"
     );
     let small = share(|s| s <= 2);
     assert!(
-        (0.5..0.75).contains(&small),
+        (0.55..0.635).contains(&small),
         "{small:.3} of draws hold at most two modules"
     );
     assert_eq!(
