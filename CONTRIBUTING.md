@@ -35,9 +35,10 @@ Be respectful and constructive.
 2. **Install [rustup](https://rustup.rs/) and Node 22** (the version in
    `.node-version`; fnm or nvm pick it up), then run **`make setup`**
    (`scripts/setup.sh`): it installs the Rust release `rust-toolchain.toml`
-   pins (with rustfmt, clippy and the wasm32 target), `wasm-pack` and
-   `cargo-nextest`, installs the browser tests' packages and Chromium, turns on
-   the git hooks and builds the app's engine. It is idempotent; run it again
+   pins (with rustfmt, clippy and the wasm32 target, and its `llvm-tools`),
+   `wasm-pack`, `cargo-nextest` and `cargo-llvm-cov`, installs the browser
+   tests' packages and Chromium, turns on the git hooks and builds the app's
+   engine. It is idempotent; run it again
    after pulling. For the films, **`make film-setup`** also builds
    `.venv-voice` (the narration's pinned Kokoro/Whisper set and the film
    tools' packages; needs Python 3.10–3.12), downloads the voice models and
@@ -77,6 +78,7 @@ make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
+make coverage       # the Rust's coverage from the fast tier: each crate's floor, every changed line
 ```
 
 The site is a second, independent gate:
@@ -145,10 +147,11 @@ need the wasm built and the site needs the pinned doc toolchain.
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
 The **fast tier** is the required `CI` check, about eleven minutes: the jobs
-above, the Rust tests except the slow ones, and every browser spec not tagged
-`@slow` or `@quarantine`, dealt to twelve runners by time. A PR may merge on it
-alone. The **slow tier** (the *Slow suite* workflow) runs the search floor, the
-other Rust tests over a minute and the `@slow` and `@quarantine` browser specs
+above, the Rust tests except the slow ones, the same tests instrumented for
+coverage, and every browser spec not tagged `@slow` or `@quarantine`, dealt
+to twelve runners by time. A PR may merge on it alone. The **slow tier**
+(the *Slow suite* workflow) runs the search floor, the other Rust tests over
+a minute and the `@slow` and `@quarantine` browser specs
 on every push to `main` and nightly, where a failure opens an issue; on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
@@ -161,6 +164,13 @@ change that reaches EVOLVE's generations or PERFORM's offers. A flaky test is fi
 ([§ Flakes](docs/architecture/testing.md#flakes)). Locally, `make check` still runs every
 Rust test; `make test-fast-tier` / `make test-slow-tier` and
 `make browser-fast` / `make browser-slow` run one tier the way CI does.
+
+Coverage holds a Rust change to two things: no crate's line or function
+coverage falls below its floor in `crates/coverage-baseline.json`, and every
+line the change adds or changes in `crates/` is run by a fast-tier test that
+checks what it does. `make coverage` runs the same locally, with the HTML
+report in `target/llvm-cov/html/`
+([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)).
 
 Changes that touch `www/`, `apps/web/` or any public API must also pass `make
 site && make site-check`. If you changed a doc comment that the reference

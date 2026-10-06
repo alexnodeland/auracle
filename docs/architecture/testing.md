@@ -27,6 +27,7 @@ this table.
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
+| Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
@@ -43,7 +44,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine), then Browser smoke (`make smoke`'s two specs, against the same engine); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine), then Browser smoke (`make smoke`'s two specs, against the same engine); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); the same tests instrumented for coverage (built once, run on three runners, then one report: [Coverage](#coverage)); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 
@@ -53,7 +54,8 @@ they set the check's length: about eleven minutes, the engine job and twelve
 runners planned at about six minutes each (the hosted runners differ in
 speed by about two times, and each shard's log and the run's summary name
 its CPU). Rust takes about seven and a half (a two-minute compile,
-then the tests); Web and Site take two to three.
+then the tests); Coverage about nine, estimated (a build, three runners and
+a report: [Coverage](#coverage)); Web and Site take two to three.
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
 equal count, which left one of five runners with twice another's work.
@@ -104,8 +106,8 @@ merges a PR only on a run that tested it on main's tip, so its files are
 exactly the files the PR's run tested (a pull_request run tests the PR
 merged into main). That run's `CI` job leaves a record (the artifact
 `verified-tree-<git tree>`, kept 14 days) of the jobs that passed on those
-files, and main's *What changed* job reads it: Lint, Web, the Rust tests and
-the browser tier are skipped there when the record says they passed, and the
+files, and main's *What changed* job reads it: Lint, Web, the Rust tests,
+Coverage and the browser tier are skipped there when the record says they passed, and the
 run's summary says so, with a link. A job the PR skipped or ran in part (a
 spec-only PR's browser tier) runs on main as before; so does everything when
 main moved on after the PR's run (a merge by hand, outside the queue), on a
@@ -118,8 +120,8 @@ and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. A run on
 main is not cancelled by the next push, and none is skipped: main's runs
 wait in a queue (`queue: max`) and run in turn, so when three merges land
-inside one run's length each is tested and deployed in order. Lint and the Rust tests are reused only while `rust-toolchain.toml`
-still pins the release they ran on (the record keeps `rustc --version`).
+inside one run's length each is tested and deployed in order. Lint, the Rust tests and Coverage are reused only while
+`rust-toolchain.toml` still pins the release they ran on (the record keeps `rustc --version`).
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every job runs on
@@ -149,10 +151,13 @@ offers. Otherwise the push to `main` is where a slow
 test catches it.
 
 **Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
-widest holds 16 (twelve browser runners, Site, the two Rust test runners and
-one more; Browser smoke waits for Site and takes its place); the *Slow
-suite* holds at most four (`max-parallel`: one Rust leg and three browser
-runners), so the two fit together. A merge also starts
+widest holds 19 (twelve browser runners, Site, the two Rust test runners,
+the three Coverage runners and one more; Browser smoke waits for Site and
+takes its place); the *Slow suite* holds at most four (`max-parallel`: one
+Rust leg and three browser runners). The two no longer fit together: 23
+against 20, so while the *Slow suite* runs on `main` a PR can wait for up
+to three runners. Folding Test into Coverage, which runs the same tests,
+gives two of them back ([Coverage](#coverage)). A merge also starts
 `main`'s own `CI`, which re-runs what the PR's run did not cover (of 20 runs
 on `main` before Oct 6, the whole browser tier in 9, both Rust test jobs in
 15, Site in all), so a PR pushed right after a merge can wait for runners
@@ -175,6 +180,50 @@ slow one: `not (SEARCH_FLOOR | SLOW_TESTS)` for nextest, `--grep-invert
 or tags it; a renamed slow Rust test falls into the fast tier rather than out
 of both; a slow list that matches nothing fails its leg (`--no-tests=fail`).
 `make test` and `make check` still run every Rust test locally.
+
+## Coverage
+
+The fast tier's Rust tests, instrumented by
+[cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) with the pinned
+compiler's `llvm-tools`. What the gate holds, how to read it and what is
+measured are the crates' rules, in
+[`crates/AGENTS.md` § Coverage](../../crates/AGENTS.md#coverage).
+
+**In CI**, on a PR that changes Rust and on every push to `main`, inside the
+required `CI` check: three jobs, the way cargo-llvm-cov merges runs made on
+several machines.
+
+1. *Coverage build* builds the instrumented test binaries once, into a
+   nextest archive (`make coverage-archive`).
+2. *Coverage (1/3)* to *(3/3)* each run a slice of the archive
+   (`make coverage-run`, with `--partition slice:k/3`) and keep their
+   profiles. They compile nothing and fetch nothing.
+3. *Coverage* reads every runner's profiles against the archive
+   (`make coverage-report`): each crate against its floor, the floors against
+   their copy at the merge base, and the changed lines. The run's summary
+   has the table and every uncovered changed line, linked; the HTML report
+   is the `coverage-report` artifact.
+
+**How long.** Instrumented, the tier takes about 1.2 times its plain time
+(1,257 test-seconds against 1,029, measured on a 16-core Mac on Oct 5), so
+about twelve minutes on one runner, and about nine on three with the build
+and the report around them: an estimate until a run on a runner measures
+it, and inside the browser tier's path. #181's first measurement, twenty
+minutes, was cargo-llvm-cov 0.6, which instrumented every dependency,
+quiver's DSP loops included; 0.7 and later instrument the workspace's
+crates alone, and the Makefile and CI ask for 0.9.1.
+
+**Beside Test, for now.** The Coverage jobs run the same tests as Test,
+instrumented. Folding Test into them would run the tests once and give back
+two runners ([Runners](#ci-tiers)); it waits for a run that has measured the
+instrumented time on a runner.
+
+**Locally.** `make coverage` (about two minutes on a 16-core Mac) runs the
+whole tier, writes `target/llvm-cov/html/index.html`, `lcov.info` and
+`summary.json`, and runs the same gate against `origin/main` (`BASE=` for
+another). `make coverage-report` runs the gate again without the tests, and
+`make coverage-floors` raises the floors to the last run's values.
+`make setup` installs cargo-llvm-cov and the `llvm-tools` component.
 
 ## Flakes
 
