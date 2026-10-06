@@ -62,9 +62,9 @@ use auracle_grammar::{
     PatchGrammarPrior, PatchTree, StructOp,
 };
 use auracle_session::{
-    run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, GuessMemory, GuessSkip,
-    Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy, SessionConfig, SessionState,
-    WalkContext, WalkJob, WalkResult,
+    run_walk, BankEntry, ClipChange, ClipStatus, DealSchedule, EditOutcome, Engine, GuessMemory,
+    GuessSkip, Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy, SessionConfig,
+    SessionState, WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -813,6 +813,10 @@ pub struct WasmEngine {
     /// [`WasmEngine::perform_drift_begin`]), by handle.
     jobs: std::collections::HashMap<u32, Held>,
     next_job: u32,
+    /// How far into the pool each deal of this session reaches, and how many
+    /// have been drawn ([`WasmEngine::set_deal_schedule`]). No schedule until
+    /// the worker sets one.
+    deals: DealSchedule,
 }
 
 /// A PERFORM walk begun and not yet answered: the job, the generator it
@@ -1092,6 +1096,7 @@ impl WasmEngine {
             own_presets: Vec::new(),
             jobs: std::collections::HashMap::new(),
             next_job: 1,
+            deals: DealSchedule::default(),
         }
     }
 
@@ -1348,9 +1353,8 @@ impl WasmEngine {
     /// small. See [`WasmEngine::next_duel_ex`] for the annotated form.
     pub fn next_duel(&mut self) -> String {
         let pair = self
-            .engine
-            .next_duel(&mut self.rng.duel)
-            .map(|(a, b)| [self.engine.pool[a].id, self.engine.pool[b].id]);
+            .deal(&[], true)
+            .map(|d| [self.engine.pool[d.a].id, self.engine.pool[d.b].id]);
         serde_json::to_string(&pair).unwrap()
     }
 
@@ -1376,7 +1380,7 @@ impl WasmEngine {
     /// [`WasmEngine::duel_shown`] instead.
     pub fn next_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
         let exclude = exclude_ids(exclude);
-        let choice = self.engine.next_duel_except(&mut self.rng.duel, &exclude);
+        let choice = self.deal(&exclude, true);
         self.duel_json(choice)
     }
 
@@ -1387,8 +1391,40 @@ impl WasmEngine {
     /// not the repeat and exposure penalties. Same JSON, same random stream.
     pub fn deal_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
         let exclude = exclude_ids(exclude);
-        let choice = self.engine.deal_duel_except(&mut self.rng.duel, &exclude);
+        let choice = self.deal(&exclude, false);
         self.duel_json(choice)
+    }
+
+    /// Deal by the fill's schedule (#211): the `k`-th deal of the session
+    /// draws only from the first `step · (k + 1)` sounds of the pool, in pool
+    /// order, until that reaches the pool's size, and every later deal from
+    /// the whole pool ([`DealSchedule`]). The worker sets it to the size the
+    /// app is handed over at, so the first deal waits for nothing. Counts
+    /// deals from 0 again; `0` is no schedule.
+    pub fn set_deal_schedule(&mut self, step: usize) {
+        self.deals = DealSchedule::new(step);
+    }
+
+    /// How many sounds the pool must hold before the next deal, with
+    /// `exclude` not dealt, is drawn as the schedule says: 0 when it can be
+    /// drawn now. Draws nothing. The worker holds a deal until this is 0, or
+    /// the fill is over.
+    pub fn deal_need(&self, exclude: Option<Vec<u32>>) -> u32 {
+        let exclude = exclude_ids(exclude);
+        self.engine.deal_need(&self.rng.duel, &exclude, &self.deals) as u32
+    }
+
+    /// The next deal, by the schedule, from the duel stream; counted as shown
+    /// at once when `shown`.
+    fn deal(&mut self, exclude: &[u64], shown: bool) -> Option<auracle_session::DuelChoice> {
+        let choice =
+            self.engine
+                .deal_duel_scheduled(&mut self.rng.duel, exclude, &mut self.deals)?;
+        if shown {
+            let (a, b) = (self.engine.pool[choice.a].id, self.engine.pool[choice.b].id);
+            self.engine.duel_shown(a, b);
+        }
+        Some(choice)
     }
 
     /// The pair `a`, `b` (ids, either order), dealt by

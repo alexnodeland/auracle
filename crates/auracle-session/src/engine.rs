@@ -56,6 +56,9 @@ use crate::farm::{draw_seed, Draw, PreFeaturized};
 use crate::naming::{claim_name, NameScale, NAME_FLOOR};
 use crate::walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult};
 
+mod deal;
+pub use deal::DealSchedule;
+
 /// The φ coordinate names, as owned strings (what the log records).
 pub fn phi_names() -> Vec<String> {
     Features::phi_names()
@@ -3477,93 +3480,14 @@ impl Engine {
     /// scheduled check depends on how many pairs have been *shown*, so a deal
     /// thrown away and dealt again is dealt under the same schedule. The
     /// random stream is consumed exactly as `next_duel_except` consumes it.
+    ///
+    /// Drawn from the whole pool, with no [`DealSchedule`]: a uniform pair is
+    /// drawn over every standardized candidate, the excluded ones too, and
+    /// one holding an excluded candidate is drawn again, so an exclusion
+    /// that deals neither side changes nothing ([`Engine::deal_duel_scheduled`]
+    /// says why).
     pub fn deal_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
-        // Un-standardized candidates score utility exactly 0 (`dot` over an
-        // empty vector), which beats every real utility once a user has killed
-        // enough patches — they must not be selectable, the same guard
-        // `ranked()` applies.
-        let cands: Vec<usize> = (0..self.pool.len())
-            .filter(|&i| !self.pool[i].phi_std.is_empty() && !exclude.contains(&self.pool[i].id))
-            .collect();
-        if cands.len() < 2 {
-            return None;
-        }
-        let uniform = |rng: &mut R| uniform_pair(rng, &cands);
-
-        let check = self.cfg.duel_check_every > 0
-            && self.duels_shown > 0
-            && self.duels_shown.is_multiple_of(self.cfg.duel_check_every);
-
-        let choice = match (&self.posterior, check) {
-            // No taste yet, or a scheduled check duel: uniform at random.
-            // A uniform pair *is* a calibration check, so it is tagged as one
-            // whether it was scheduled or is simply how this engine picks
-            // every duel. Under the default rule that makes the unbiased
-            // subsample the entire sample, which is the whole reason to
-            // prefer it: the reliability diagram needs no asterisk.
-            (None, _) => {
-                let (a, b) = uniform(rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: true,
-                    method: "random",
-                }
-            }
-            // Under the random rule every pair is random, so a scheduled
-            // check is no different from any other deal and says "random".
-            // Matched before the check arm: labelled "check", every tenth
-            // pair read as the exception to a rule that has none. Both arms
-            // draw the pair the same way, so a seeded deal is unchanged.
-            (Some(_), _) if self.cfg.acquisition == Acquisition::Random => {
-                let (a, b) = uniform(rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: true,
-                    method: "random",
-                }
-            }
-            (Some(_), true) => {
-                let (a, b) = uniform(rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: true,
-                    method: "check",
-                }
-            }
-            (Some(posterior), false) if self.cfg.acquisition == Acquisition::Thompson => {
-                let (a, b) = thompson_pair(posterior, &self.pool, &cands, rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: false,
-                    method: "thompson",
-                }
-            }
-            (Some(posterior), false) => {
-                let (a, b, info) = self.bald_pair(posterior, &cands, rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: info,
-                    random_check: false,
-                    method: "bald",
-                }
-            }
-        };
-
-        let key = pair_key(self.pool[choice.a].id, self.pool[choice.b].id);
-        self.dealt_unshown.push_back((key, choice.random_check));
-        if self.dealt_unshown.len() > DEALT_UNSHOWN {
-            self.dealt_unshown.pop_front();
-        }
-        Some(choice)
+        self.deal_duel_scheduled(rng, exclude, &mut DealSchedule::default())
     }
 
     /// The BALD scan itself. Utilities are precomputed once per candidate per
