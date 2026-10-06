@@ -21,75 +21,36 @@
 //   (a list of presets scrolled through), a refit is answered before most of
 //   them land (an order); within 6 s is a budget (ADR-022).
 //
-// Sessions are seeded (the films' own Math.random), so the pool is the same
-// run to run.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const { budget } = require("./fixtures");
+// Sessions are seeded (the films' own Math.random, no `?seed`: the session's
+// seed is drawn from it), so the pool is the same run to run. What was asked
+// of the engine and what it answered is the fixture's tap.
+const { test, expect, goLevel, bankTab, openApp } = require("./fixtures");
 const fs = require("fs");
 
-const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
-
-const init = (warmed) => `(() => {
-  const Orig = window.Worker;
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      window.__pwEngine = w;
-      // When each request went out and each answer came back, by type.
-      const log = (window.__pwLog = []);
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type) log.push({ dir: "sent", type: m.type, at: performance.now() });
-        return post(m, t);
-      };
-      w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (d && d.type) log.push({ dir: "got", type: d.type, at: performance.now(), refs: d.type === "faces" ? (d.items || []).map((x) => x.ref).filter(Boolean) : undefined });
-      });
-      // main.js sets onmessage; with __pwNoFaces the faces never reach it.
-      let fn = null;
-      Object.defineProperty(w, "onmessage", {
-        get: () => fn,
-        set: (f) => {
-          fn = f;
-          w.addEventListener("message", (e) => {
-            if (window.__pwNoFaces && e.data && e.data.type === "faces") return;
-            f.call(w, e);
-          });
-        },
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  // What a slot shows: its drawing, as the image it is (vessel.js draws it).
+// What a slot shows: its drawing, as the image it is (vessel.js draws it).
+const INIT = `(() => {
   window.__pwOutline = async (img) => (img ? img.getAttribute("src") || "" : "");
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured"${warmed ? ', "auracle-warmed"' : ""}]) localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page, { warmed = true, noFaces = false } = {}) {
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.addInitScript(SEED);
-  await page.addInitScript(init(warmed));
-  if (noFaces) await page.addInitScript(() => { window.__pwNoFaces = true; });
-  await page.goto("/");
-  return errors;
+/** Boot the films' way (Math.random 20260928), the tours seen, and the warm
+ *  start unless `warmed` is false; with `noFaces`, the worker's `faces`
+ *  messages are kept from main (`app.hold`), so no face ever lands. Not
+ *  waited for: `booted`. */
+async function boot(page, app, { warmed = true, noFaces = false } = {}) {
+  await page.addInitScript(INIT);
+  if (noFaces) await app.hold("faces");
+  await app.boot({ random: 20260928, warmed, wait: false });
 }
-const booted = (page) => expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+const booted = (app) => app.booted();
 
-/** Every pool row drawn: 40 rows, each with its face. */
-async function bankDrawn(page) {
-  await expect
+/** Every pool row drawn: 40 rows, each with its face. An engine wait. */
+async function bankDrawn(page, app) {
+  await app.engine((timeout) => expect
     .poll(() => page.evaluate(() => {
       const rows = [...document.querySelectorAll("#bank-list .bank-item[data-id]")];
       return rows.length >= 40 && rows.every((r) => r.querySelector(".face-slot img.face"));
-    }), { timeout: 120_000 })
-    .toBe(true);
+    }), { timeout })
+    .toBe(true), { ms: 120_000 });
 }
 
 /** Where each row's name sits in its row, how wide it is, and whether it is cut. */
@@ -112,31 +73,31 @@ const outlines = (page) =>
     return out;
   });
 
-test("a face appears on every row, card and chip once its render lands", async ({ page }) => {
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("a face appears on every row, card and chip once its render lands", async ({ page, app }) => {
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   // EVOLVE's two cards.
   await goLevel(page, "evolve");
-  await expect(page.locator("#face-a.face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#face-a.face-slot img.face")).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(page.locator("#face-b.face-slot img.face")).toHaveCount(1);
   // PATCH: the header and the teach strip's A and B.
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
-  await expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.locator("#pd-a .face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#pd-a .face-slot img.face")).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(page.locator("#pd-b .face-slot img.face")).toHaveCount(1);
   // PERFORM: the sound in hand, and B once an offer has grown.
   await goLevel(page, "perform");
-  await expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   await expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(0);
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
+  await app.reached();
   await page.evaluate(() => {
     const pad = document.querySelector(".pf-pad.primary");
     pad.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1 }));
     pad.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1 }));
   });
-  await expect(page.locator(".pf-offer.ready")).toHaveCount(1, { timeout: 120_000 });
-  await expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-offer.ready")).toHaveCount(1, { timeout }), { ms: 120_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(1, { timeout }), { ms: 30_000 });
   // The offer's face is its own render's, not the sound in hand's.
   const [held, offer] = await page.evaluate(async () => [
     await window.__pwOutline(document.querySelector(".pf-faces > .pf-face img.face")),
@@ -144,25 +105,23 @@ test("a face appears on every row, card and chip once its render lands", async (
   ]);
   expect(held).not.toBe("");
   expect(offer).not.toBe(held);
-  expect(errors).toEqual([]);
 });
 
-// About 120 to 135 s on CI, most of it the bank arriving behind the warm
+// About 85 to 135 s on CI, most of it the bank arriving behind the warm
 // start's renders: the slow tier's (tests/web/AGENTS.md § The two tiers).
-test("the warm start's cards carry their faces", { tag: "@slow" }, async ({ page }) => {
+test("the warm start's cards carry their faces", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: false });
-  await expect(page.locator("#warmstart")).toBeVisible({ timeout: 150_000 });
+  await boot(page, app, { warmed: false });
+  await app.engine((timeout) => expect(page.locator("#warmstart")).toBeVisible({ timeout }), { ms: 150_000 });
   await expect(page.locator("#warm-grid .warm-item")).toHaveCount(9);
   // Their renders wait for the bank to arrive, then each lands.
-  await expect(page.locator("#warm-grid .warm-item .face-slot img.face")).toHaveCount(9, { timeout: 150_000 });
-  expect(errors).toEqual([]);
+  await app.engine((timeout) => expect(page.locator("#warm-grid .warm-item .face-slot img.face")).toHaveCount(9, { timeout }), { ms: 150_000 });
 });
 
-test("a face's whitening moves when the bank changes", async ({ page }) => {
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("a face's whitening moves when the bank changes", async ({ page, app }) => {
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   const before = await outlines(page);
   // Cut three rows: the bank is three sounds smaller, so its mean and spread
   // move, and every other face is drawn against the bank as it is now. (One
@@ -178,7 +137,6 @@ test("a face's whitening moves when the bank changes", async ({ page }) => {
     const after = await outlines(page);
     return Object.keys(after).filter((id) => before[id] && after[id] && after[id] !== before[id]).length;
   }, { timeout: 10_000 }).toBeGreaterThan(25);
-  expect(errors).toEqual([]);
 });
 
 for (const [label, ctx] of [
@@ -186,20 +144,22 @@ for (const [label, ctx] of [
   ["on a phone", { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }],
 ]) {
   test.describe(label, () => {
-    test(`a name is at the same x and width with or without its face, ${label}`, async ({ browser }, info) => {
-      test.setTimeout(360_000); // two boots
+    test(`a name is at the same x and width with or without its face, ${label}`, async ({ newContext }) => {
+      test.setTimeout(130_000); // about 57 to 63 s on CI: two boots, each in a context of its own
       const measure = async (noFaces) => {
-        const context = await browser.newContext({ ...ctx, baseURL: info.project.use.baseURL });
+        const context = await newContext(ctx);
         const page = await context.newPage();
-        const errors = await boot(page, { noFaces });
+        const app = await openApp(page);
+        await boot(page, app, { noFaces });
         if (ctx.isMobile) await page.locator("#hg-anyway").click();
-        await booted(page);
-        await expect.poll(() => page.evaluate(() => document.querySelectorAll("#bank-list .bank-item[data-id]").length), { timeout: 120_000 }).toBeGreaterThanOrEqual(40);
-        if (!noFaces) await bankDrawn(page);
-        else await page.waitForTimeout(2000);
+        await booted(app);
+        await app.engine((timeout) => expect.poll(() => page.evaluate(() => document.querySelectorAll("#bank-list .bank-item[data-id]").length), { timeout }).toBeGreaterThanOrEqual(40), { ms: 120_000 });
+        if (!noFaces) await bankDrawn(page, app);
+        // With no faces, none comes, however long it is given.
+        else await app.quiet(2_000);
         const boxes = await nameBoxes(page);
         await context.close();
-        return { boxes, errors };
+        return { boxes };
       };
       const without = await measure(true);
       const withFaces = await measure(false);
@@ -217,17 +177,16 @@ for (const [label, ctx] of [
       // And every row's name starts where every other's does.
       expect(new Set(withFaces.boxes.map((b) => b.x)).size).toBe(1);
       expect(withFaces.boxes.some((b) => b.cut), "a face cuts no name short").toBe(false);
-      expect([...without.errors, ...withFaces.errors]).toEqual([]);
     });
   });
 }
 
-test("the sound's card downloads with its face, its name and its patch", async ({ page }) => {
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("the sound's card downloads with its face, its name and its patch", async ({ page, app }) => {
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
-  await expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   const name = (await page.locator("#rack-subject").textContent()).trim();
   await page.locator("#ovf-btn").click();
   await page.locator("#image-btn").click();
@@ -265,64 +224,64 @@ test("the sound's card downloads with its face, its name and its patch", async (
   expect(text).toMatch(/<image [^>]*href="data:image\/png;base64,/);
   expect(text).toContain(name.replace(/&/g, "&amp;"));
   expect(text).toContain('<metadata id="auracle-patch">');
-  expect(errors).toEqual([]);
 });
 
-test("a face is the same drawing for the same render after a reload", async ({ page }) => {
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("a face is the same drawing for the same render after a reload", async ({ page, app }) => {
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   const first = await outlines(page);
   // Saved on leaving, restored on the reload: the same pool, its faces now
   // from the worker's store rather than the featurization.
-  await page.reload();
-  await booted(page);
-  await bankDrawn(page);
+  await app.reload();
+  await bankDrawn(page, app);
   const again = await outlines(page);
   const ids = Object.keys(first).filter((id) => again[id]);
   expect(ids.length).toBeGreaterThan(30);
   for (const id of ids) expect(again[id], `row ${id}`).toBe(first[id]);
-  expect(errors).toEqual([]);
 });
 
-test("a refit is answered promptly while sixty face renders wait", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("a refit is answered promptly while sixty face renders wait", async ({ page, app }) => {
+  test.setTimeout(100_000); // about 37 to 46 s on CI, most of it engine waits: a boot, six picks, two refits, the faces
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
-    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
     await page.locator("#choose-a").click();
   }
   // The sixth pick's own refit, once its undo window has closed.
-  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "fitted")), { timeout: 60_000 }).toBe(true);
+  await app.reply("fitted", { timeout: 60_000 });
   // Sixty presets' faces, none rendered yet: sixty renders queued (a list of
-  // presets scrolled through asks for that many).
-  await page.evaluate(() => {
-    window.__pwLog.length = 0;
-    window.__pwEngine.postMessage({ type: "faces", ids: [], trees: Array.from({ length: 60 }, (_, i) => ({ ref: `p${i}`, preset: i })), render: true });
-  });
-  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "faces" && m.refs && m.refs.length)), { timeout: 30_000 }).toBe(true);
+  // presets scrolled through asks for that many). What was asked and heard
+  // from here on is the tap's, after `t0`.
+  const t0 = await app.now();
+  await app.post({ type: "faces", ids: [], trees: Array.from({ length: 60 }, (_, i) => ({ ref: `p${i}`, preset: i })), render: true });
+  // The preset faces (each item named by its `ref`) begin to land.
+  await app.engine((timeout) => page.waitForFunction(
+    (t) => window.__tap.replies.some((r) => r.type === "faces" && r.at > t && (r.d.items || []).some((x) => x.ref)),
+    t0, { timeout },
+  ), { ms: 30_000 });
   // A refit asked for now is answered without waiting for them.
-  await page.evaluate(() => window.__pwEngine.postMessage({ type: "fit" }));
-  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "fitted")), { timeout: 60_000 }).toBe(true);
-  const t = await page.evaluate(() => {
-    const sent = window.__pwLog.find((m) => m.dir === "sent" && m.type === "fit");
-    const got = window.__pwLog.find((m) => m.dir === "got" && m.type === "fitted");
-    const facesBefore = window.__pwLog.filter((m) => m.dir === "got" && m.type === "faces" && m.at < got.at).reduce((n, m) => n + (m.refs || []).length, 0);
+  await app.post({ type: "fit" });
+  await app.reply("fitted", { after: t0, timeout: 60_000 });
+  const t = await page.evaluate((t) => {
+    const T = window.__tap;
+    const refs = (m) => (m.d.items || []).map((x) => x.ref).filter(Boolean).length;
+    const sent = T.sent.find((m) => m.type === "fit" && m.at > t);
+    const got = T.replies.find((m) => m.type === "fitted" && !m.injected && m.at > t);
+    const facesBefore = T.replies.filter((m) => m.type === "faces" && m.at > t && m.at < got.at).reduce((n, m) => n + refs(m), 0);
     return { ms: got.at - sent.at, facesBefore };
-  });
+  }, t0);
   expect(t.facesBefore, `${t.facesBefore} faces landed before the fit's answer`).toBeLessThan(40);
-  budget("a refit asked with sixty face renders queued → fitted", t.ms, 6000);
-  expect(errors).toEqual([]);
+  app.budget("a refit asked with sixty face renders queued → fitted", t.ms, 6000);
 });
 
-test("a preset's face still lands after the bank redraws while it was on its way", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  await booted(page);
-  await bankDrawn(page);
+test("a preset's face still lands after the bank redraws while it was on its way", async ({ page, app }) => {
+  await boot(page, app);
+  await booted(app);
+  await bankDrawn(page, app);
   // PRESETS asks for the faces of the rows in view, each a render; a play at
   // once redraws the bank (the preset joins the pool) while they are pending.
   await bankTab(page, "presets");
@@ -338,9 +297,8 @@ test("a preset's face still lands after the bank redraws while it was on its way
     });
     return { rows: rows.length, faces: rows.filter((r) => r.querySelector(".face-slot img.face")).length };
   });
-  await expect.poll(async () => {
+  await app.engine((timeout) => expect.poll(async () => {
     const v = await inView();
     return v.rows > 3 && v.faces === v.rows;
-  }, { timeout: 120_000 }).toBe(true);
-  expect(errors).toEqual([]);
+  }, { timeout }).toBe(true), { ms: 120_000 });
 });

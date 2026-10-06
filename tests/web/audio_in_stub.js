@@ -5,8 +5,10 @@
 // STUB answers getUserMedia, enumerateDevices and the Permissions API from
 // tones (never a real microphone), as Chrome and Edge answer: an
 // unconstrained ask opens the pseudo-device "default", and the list carries
-// it. INIT wraps the engine worker, records toasts and the clip's tap
-// messages, and taps the output.
+// it. SPY keeps what the fixture's tap does not see: each clip sent to the
+// engine as it was before its samples were handed over, the clip's tap's
+// messages, and the output. Both are init scripts a spec adds before
+// `app.boot()`, so they run after the tap and before main.js.
 
 const STUB = `(() => {
   const granted0 = (() => { try { return sessionStorage.getItem("__pwMicGranted") === "1"; } catch (_) { return false; } })();
@@ -134,42 +136,19 @@ const STUB = `(() => {
   };
 })();`;
 
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const last = (window.__pwLast = {});
-  const counts = (window.__pwCounts = {});
-  const sent = (window.__pwSent = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      window.__pwEngine = w;
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type === "set_audition_clip") {
-          sent.push({ type: m.type, channels: m.channels, sampleRate: m.sampleRate, frames: m.samples ? m.samples.length / Math.max(1, m.channels) : 0 });
-        }
-        return post(m, t);
-      };
-      w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (!d || typeof d.type !== "string") return;
-        // The engine refusing a capture, on demand (this listener runs before
-        // main's, on the same data): what it says of a silent one.
-        if (window.__pwRefuseClip && d.type === "audition_clip" && d.ok === true) {
-          window.__pwRefuseClip = false;
-          d.ok = false;
-          d.note = "That capture was silent, so nothing changed. Check the input, then capture again.";
-          d.clip = { ...d.clip, source: "reference" };
-          delete d.views;
-        }
-        last[d.type] = d;
-        counts[d.type] = (counts[d.type] || 0) + 1;
-      });
+const SPY = `(() => {
+  // Each clip main sends the engine (\`set_audition_clip\`), read as the
+  // request goes out, before its samples are transferred: the tap keeps the
+  // request, its samples by then empty. A spy on postMessage itself, which
+  // the tap's wrapper of the engine worker calls last.
+  const clips = (window.__pwClips = []);
+  const workerPost = Worker.prototype.postMessage;
+  Worker.prototype.postMessage = function (m, ...rest) {
+    if (m && m.type === "set_audition_clip") {
+      clips.push({ channels: m.channels, sampleRate: m.sampleRate, frames: m.samples ? m.samples.length / Math.max(1, m.channels) : 0 });
     }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
+    return workerPost.call(this, m, ...rest);
+  };
 
   // What the capture's tap is told: on, off (hand the take back), drop.
   const tapSaid = (window.__pwTapSaid = []);
@@ -178,19 +157,6 @@ const INIT = `(() => {
     if (m && (m.type === "on" || m.type === "off" || m.type === "drop")) tapSaid.push(m.type);
     return portPost.call(this, m, ...rest);
   };
-
-  const toasts = (window.__pwToasts = []);
-  document.addEventListener("DOMContentLoaded", () => {
-    const lane = document.getElementById("toasts");
-    if (!lane) return;
-    new MutationObserver((muts) => {
-      for (const m of muts)
-        for (const n of m.addedNodes) {
-          const msg = n.querySelector && n.querySelector(".toast-msg");
-          if (msg) toasts.push(msg.textContent);
-        }
-    }).observe(lane, { childList: true, subtree: true });
-  });
 
   // The output tap: anything connected to a destination is also connected
   // to one analyser per context.
@@ -228,9 +194,21 @@ const INIT = `(() => {
     const rms = Math.sqrt(sum / b.length);
     return { db, peak: peak > 0 ? 20 * Math.log10(peak) : -Infinity, rms: rms > 0 ? 20 * Math.log10(rms) : -Infinity };
   };
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"]) localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-module.exports = { STUB, INIT };
+/** The loudest reading at the output over `ms`, read every 100 ms in the
+ *  page, on its clock: at `hz` (dB), or with `rms` the whole output's RMS
+ *  (dBFS). */
+const loudest = (page, hz, ms, { rms = false } = {}) =>
+  page.evaluate(async ([hz, ms, rms]) => {
+    let db = -Infinity;
+    const end = performance.now() + ms;
+    while (performance.now() < end) {
+      const r = window.__pwAt(hz);
+      if (r) db = Math.max(db, rms ? r.rms : r.db);
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    return db;
+  }, [hz, ms, rms]);
+
+module.exports = { STUB, SPY, loudest };

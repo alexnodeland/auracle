@@ -25,6 +25,9 @@
 //   always the last to hear a reply, and a spec's own init scripts (added
 //   after) wrap outside it. Nothing in the app changes for the tests: the tap
 //   wraps `Worker` before main.js runs (tests/web/AGENTS.md).
+// - **`newContext(options)`** (only when a test asks for it) makes another
+//   context of the test's own (a phone beside a desktop, a second visit),
+//   whose pages' errors fail the test as the test's own context's do.
 //
 // What the tap keeps, in the page (`window.__tap`):
 //   replies   what main was handed, in order: { type, at, injected, d }
@@ -475,6 +478,25 @@ class App {
   async reload() {
     await this.page.reload();
     await this.booted();
+  }
+
+  /** A full load of the instrument at `path`, its `?seed=` the call's own
+   *  `seed` (SEED, as `boot`'s default, unless the call names one; none for
+   *  null), and the boot waited for unless `wait` is false. It does not know
+   *  what `boot` was given: after a boot the films' way (`random` and no
+   *  `seed`), it loads with SEED unless the call says `seed: null`. `path` may
+   *  carry a level's hash ("/#learning"), which `boot`'s `query` cannot. The
+   *  load goes by about:blank, so a change of hash alone is a new visit,
+   *  never a move within the page. On a page `boot` opened: its init scripts
+   *  (the seeded Math.random, the tours seen, a throttle) hold on this load
+   *  as on every other. */
+  async visit(path = "/", { seed = DEFAULT_SEED, wait = true } = {}) {
+    const { page } = this;
+    const url = new URL(path, "http://localhost");
+    if (seed != null && !url.searchParams.has("seed")) url.searchParams.set("seed", String(seed));
+    await page.goto("about:blank");
+    await page.goto(`${url.pathname}${url.search}${url.hash}`);
+    if (wait) await this.booted();
   }
 
   /** A wait on the engine. `fn(timeout)` gets the bound (`ms`, ENGINE_MS by
@@ -1014,7 +1036,25 @@ const test = base.test.extend({
       if (seen && process.env.AURACLE_TAP_LOG) console.log(`tap at failure (timeout ${testInfo.timeout} ms, ${Math.round(testInfo.duration)} ms in): ${JSON.stringify(seen)}`);
     }
   },
-
+  // Another context of the test's own (another device, a second visit):
+  // `newContext(options)` is `browser.newContext`, the project's `use` under
+  // `options`. A page error on any of its pages fails the test as one on the
+  // test's own context does (`pageErrors`, and `consoleErrors` with it), and
+  // the context is closed when the test ends. The tap goes on one of its
+  // pages with `openApp`.
+  newContext: async ({ browser, pageErrors, consoleErrors }, use) => {
+    const made = [];
+    await use(async (options = {}) => {
+      const context = await browser.newContext(options);
+      made.push(context);
+      context.on("page", (p) => {
+        p.on("pageerror", (e) => pageErrors.push(e.message));
+        if (consoleErrors) p.on("console", (m) => { if (m.type() === "error") pageErrors.push(`console.error: ${m.text()}`); });
+      });
+      return context;
+    });
+    for (const c of made) await c.close().catch(() => {});
+  },
 });
 
 module.exports = { test, expect, openApp, budget, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, UNANSWERED, LANES, ...shell };

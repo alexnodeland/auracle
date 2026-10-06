@@ -5,32 +5,34 @@
 // PERFORM, holds a chord and moves two named controls; one key press stops it
 // on the spot (banner gone, Wander and Blend home) — and nothing it did was
 // counted as a pick. Attract runs quiet: its offers are never answered.
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
-test("attract plays in PERFORM, hands over on a key, and teaches nothing", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/?booth=3");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+test("attract plays in PERFORM, hands over on a key, and teaches nothing", async ({ page, app }) => {
+  // A first visit (the warm start and the tours not yet seen), seeded.
+  await app.boot({ warmed: false, seen: false, query: "?booth=3" });
   await page.locator("#warm-skip").click();
   const picks = await page.locator("#duel-count").textContent();
 
   await expect(page.locator("#booth-attract")).not.toHaveClass(/hidden/, { timeout: 30_000 });
-  await expect(page.locator("#ba-cap")).toContainText("under one hand", { timeout: 90_000 });
+  await app.engine((timeout) => expect(page.locator("#ba-cap")).toContainText("under one hand", { timeout }), { ms: 90_000 });
   await expect(page.locator('.rail-stop[data-level="perform"]')).toHaveAttribute("aria-current", "location");
-  await page.waitForTimeout(3000);
-  const moved = await page.evaluate(() =>
-    [0, 1, 2, 3, 4, 5].some((i) => Number(document.querySelector(`.pf-knob[data-i="${i}"]`).getAttribute("aria-valuenow")) !== 0),
-  );
-  expect(moved, "the invisible hand moves a named control").toBe(true);
+  await expect
+    .poll(() => page.evaluate(() =>
+      [0, 1, 2, 3, 4, 5].some((i) => Number(document.querySelector(`.pf-knob[data-i="${i}"]`).getAttribute("aria-valuenow")) !== 0),
+    ), { message: "the invisible hand moves a named control" })
+    .toBe(true);
 
   await page.keyboard.press("h");
   await expect(page.locator("#booth-attract")).toHaveClass(/hidden/, { timeout: 5000 });
-  await page.waitForTimeout(1000);
+  // Given the time to, nothing it did is counted as a pick.
+  await app.quiet();
   // Blend (the slider in the well) and Wander (at the start of the pads) home.
   await expect(page.locator('.pf-blend[data-i="6"] input')).toHaveAttribute("aria-valuenow", "0.00");
   await expect(page.locator('.pf-knob[data-i="7"]')).toHaveAttribute("aria-valuenow", "0.00");
   expect(await page.locator("#duel-count").textContent()).toBe(picks);
-  expect(errs).toEqual([]);
+  // Nor was one on its way: no pick was sent to the engine, from EVOLVE's
+  // table or from PERFORM's offers (an answered offer reaches TAUGHT only on
+  // the engine's reply).
+  expect(await app.sentCount("record_duel"), "a pick sent from EVOLVE's table").toBe(0);
+  expect(await app.sentCount("perform_record"), "an offer's answer sent as a pick").toBe(0);
 });

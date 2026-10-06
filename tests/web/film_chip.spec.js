@@ -5,8 +5,7 @@
 //
 // The app ships with data-films="{}" until films are published, so these
 // tests serve index.html with a list injected, as publish.py would write it.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { test, expect, goLevel } = require("./fixtures");
 
 const FILMS = { tour: "2:31", "view-perform": "5:12", "view-patch": "5:40", "view-evolve": "4:40", "view-taste": "4:55" };
 
@@ -25,21 +24,24 @@ async function withFilms(page) {
   );
 }
 
-async function boot(page, query = "") {
-  await page.goto(`/${query}`);
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+/** A first visit (the warm start and the tours not yet seen), seeded, at
+ *  `query`. */
+async function boot(app, query = "") {
+  await app.boot({ warmed: false, seen: false, query });
 }
 
-test("the chip offers the tour first, then each view's film once, then folds", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
+/** The warm start a fresh visitor gets, 500 ms after the veil drops, its
+ *  cards on their way from the engine. */
+const warmStartShown = (app) =>
+  app.engine((timeout) => expect(app.page.locator("#warmstart")).toBeVisible({ timeout }), { ms: 60_000 });
+
+test("the chip offers the tour first, then each view's film once, then folds", async ({ page, app }) => {
   await withFilms(page);
-  await boot(page);
+  await boot(app);
   const chip = page.locator("#film-chip");
   const link = page.locator("#fc-link");
   // Behind the warm start it waits, folded.
-  await expect(page.locator("#warmstart")).toBeVisible({ timeout: 60_000 });
+  await warmStartShown(app);
   await expect(chip).not.toHaveClass(/\bopen\b/);
   await page.locator("#warm-skip").click();
 
@@ -62,35 +64,31 @@ test("the chip offers the tour first, then each view's film once, then folds", a
   await expect(link).toHaveAttribute("title", /EVOLVE in depth · 4:40/);
 
   // Once per view: back in EVOLVE after a reload, nothing is said.
-  await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await app.reload();
   await goLevel(page, "evolve");
   await expect(chip).not.toHaveClass(/\bopen\b/);
   // A view not yet visited still gets its note.
   await goLevel(page, "taste");
   await expect(chip).toHaveClass(/\bopen\b/);
   await expect(link).toContainText("watch TASTE in depth · 4:55");
-  expect(errs).toEqual([]);
 });
 
-test("a film's own recording never shows the chip", async ({ page }) => {
-  test.setTimeout(180_000);
+test("a film's own recording never shows the chip", async ({ page, app }) => {
   await withFilms(page);
-  await boot(page, "?film");
+  await boot(app, "?film");
   // A fresh visitor gets the warm start 500 ms after the veil drops, film or
   // not: wait for it rather than checking once, or it opens over the tabs.
-  await expect(page.locator("#warmstart")).toBeVisible({ timeout: 60_000 });
+  await warmStartShown(app);
   await page.locator("#warm-skip").click();
   await goLevel(page, "taste");
   await expect(page.locator("#film-chip")).toBeHidden();
 });
 
-test("with no films published, there is no chip", async ({ page }) => {
-  test.setTimeout(180_000);
-  await boot(page);
+test("with no films published, there is no chip", async ({ page, app }) => {
+  await boot(app);
   // A fresh visitor always gets the warm start, 500 ms after the veil drops:
   // wait for it rather than checking once, or it opens over the tabs below.
-  await expect(page.locator("#warmstart")).toBeVisible({ timeout: 60_000 });
+  await warmStartShown(app);
   await page.locator("#warm-skip").click();
   for (const v of ["perform", "patch", "evolve", "taste", "learning"]) {
     await goLevel(page, v);

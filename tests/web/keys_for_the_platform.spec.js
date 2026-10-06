@@ -12,31 +12,25 @@
 // `navigator.userAgentData` before the app runs, so the spec reads the same
 // on a Mac and on CI's Linux. What it does not claim: what the keys do
 // (evolve_truth.spec.js holds ⌘Z, and Ctrl Z is the same handler).
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 const as = (platform, uaPlatform) => `(() => {
   Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => ${JSON.stringify(platform)} });
   Object.defineProperty(Navigator.prototype, "userAgentData", { configurable: true, get: () => ({ platform: ${JSON.stringify(uaPlatform)}, mobile: false, brands: [] }) });
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page, platform, uaPlatform) {
-  const errors = [];
-  page.on("pageerror", (err) => errors.push(err.message));
+/** Boot as the platform says it is: seeded, the warm start and the tours
+ *  seen (the fixture's `app.boot`). */
+async function boot(page, app, platform, uaPlatform) {
   await page.addInitScript(as(platform, uaPlatform));
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 60_000 });
-  return errors;
+  await app.boot();
 }
 
 const helpKeys = (page) => page.locator("#help kbd").allTextContents();
 const mapTip = (page) => page.locator("span.tt:has(#rack-map-btn)");
 
-test("off Apple platforms the ? card, the booth menu and the minimap's tooltip print Ctrl and Shift, never ⌘", async ({ page }) => {
-  const errors = await boot(page, "Win32", "Windows");
+test("off Apple platforms the ? card, the booth menu and the minimap's tooltip print Ctrl and Shift, never ⌘", async ({ page, app }) => {
+  await boot(page, app, "Win32", "Windows");
   await page.keyboard.press("?");
   await expect(page.locator("#help")).toBeVisible();
   const keys = await helpKeys(page);
@@ -45,11 +39,10 @@ test("off Apple platforms the ? card, the booth menu and the minimap's tooltip p
   await expect(page.locator("#booth-reset-btn kbd")).toHaveText("Shift Esc");
   await expect(mapTip(page)).toHaveAttribute("title", /Shift 1–9 jumps to one/);
   await expect(mapTip(page)).not.toHaveAttribute("title", /⇧/);
-  expect(errors).toEqual([]);
 });
 
-test("on an Apple platform the same places print ⌘ and ⇧", async ({ page }) => {
-  const errors = await boot(page, "MacIntel", "macOS");
+test("on an Apple platform the same places print ⌘ and ⇧", async ({ page, app }) => {
+  await boot(page, app, "MacIntel", "macOS");
   await page.keyboard.press("?");
   await expect(page.locator("#help")).toBeVisible();
   const keys = await helpKeys(page);
@@ -57,5 +50,4 @@ test("on an Apple platform the same places print ⌘ and ⇧", async ({ page }) 
   expect(await page.locator("#help").textContent()).not.toMatch(/\bCtrl [Z0]/);
   await expect(page.locator("#booth-reset-btn kbd")).toHaveText("⇧Esc");
   await expect(mapTip(page)).toHaveAttribute("title", /⇧1–9 jumps to one/);
-  expect(errors).toEqual([]);
 });

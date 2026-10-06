@@ -11,26 +11,18 @@
 // (as perform_recentre.spec.js does). What it does not claim: what the knob
 // then does to the sound (perform_recentre.spec.js and the guide's MIDI
 // section).
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 const INIT = `(() => {
   const input = { id: "pw", name: "Test pot", manufacturer: "", state: "connected", onmidimessage: null };
   const access = { inputs: new Map([["pw", input]]), outputs: new Map(), onstatechange: null, sysexEnabled: false };
   Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: () => Promise.resolve(access) });
   window.__cc = (cc, v) => input.onmidimessage && input.onmidimessage({ data: new Uint8Array([0xb0, cc, v]), timeStamp: performance.now() });
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-test("a MIDI knob that claims or learns a control is announced in a sentence", async ({ page }) => {
-  test.setTimeout(120_000);
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+test("a MIDI knob that claims or learns a control is announced in a sentence", async ({ page, app }) => {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 60_000 });
+  await app.boot();
   await expect(page.locator("#midi-ind")).toContainText("●", { timeout: 15_000 });
   const toast = page.locator("#toasts .toast-msg");
 
@@ -47,5 +39,4 @@ test("a MIDI knob that claims or learns a control is announced in a sentence", a
   await expect(page.locator("#midi-panel .midi-row").nth(1)).toContainText("CC 21");
   await expect(toast.filter({ hasText: "CC 21" })).toHaveText("CC 21 now moves Snap.", { timeout: 10_000 });
   await expect(toast.filter({ hasText: "CC 74" })).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
