@@ -182,3 +182,55 @@ test("a farm worker that reports ready after the handshake's window takes the re
   assert.deepEqual(await bankOf(w), pool, "the pool is not the one this seed fills with no farm");
   await w.close();
 });
+
+test("a farm worker that reports ready after the rest of its crew failed is handed the draws they left, and the fill finishes as the serial one", { timeout: TIMEOUT }, async (t) => {
+  const { pool } = await serialSession();
+  // Three workers. A and B are ready in the handshake's window, so the fill
+  // begins on the farm. Whichever is handed draw 0 sits on it, and the other
+  // answers AHEAD draws past it at once (with no render: none of them can be
+  // folded in while draw 0 is out, and a run's answers go when it ends);
+  // then both decline a job, as a broken instance does. The run ends with
+  // the draws it was handed still issued and none folded in, and the fill
+  // goes on in this worker. C is still starting, and reports ready once this
+  // worker's first batch has landed, so the next batch goes back to the farm
+  // with most of those draws not yet folded in. C renders.
+  const AHEAD = 8;
+  let ahead = 0;
+  let sitting = null;
+  const crew = fakeCrew(3, {
+    ready: [true, true, false],
+    render,
+    job: (k, m) => {
+      if (k === 2) return undefined;
+      if (m.i === 0) {
+        sitting = k;
+        return null;
+      }
+      if (ahead < AHEAD) {
+        ahead++;
+        return { type: "done", i: m.i, ok: false };
+      }
+      return { type: "cannot", i: m.i, reason: "a broken instance (the test's)" };
+    },
+    answered: (k, reply) => {
+      if (reply.type === "cannot" && reply.i !== 0) crew.answer(sitting, { type: "cannot", i: 0, reason: "a broken instance (the test's)" });
+    },
+  });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { boot: false });
+  const after = w.replies.length;
+  const booting = w.boot({ seed: SEED, poolSize: POOL, farmPorts: crew.ports });
+  await w.until((r) => r.type === "fill_progress" && r.pool > 0, { after });
+  crew.ready(2);
+  await booting;
+
+  const handed = (k) => crew.heard[k].filter((m) => m.type === "job").map((m) => m.i);
+  const failed = [...handed(0), ...handed(1)];
+  const late = handed(2);
+  assert.ok(failed.includes(0) && Math.max(...failed) > AHEAD, "the crew that failed was not handed draw 0 and the draws past it");
+  assert.ok(late.length > 0, "the worker ready late was handed none of the fill");
+  assert.ok(Math.min(...late) <= Math.max(...failed), "the worker ready late was handed only new draws, not the ones the failed crew left");
+  assert.equal(w.repliesOf("playable", { after }).length, 1, "the pool was never playable");
+  assert.deepEqual(await bankOf(w), pool, "the pool is not the one this seed fills with no farm");
+  await w.close();
+});

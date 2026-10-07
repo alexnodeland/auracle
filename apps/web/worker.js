@@ -3281,18 +3281,41 @@ async function dispatch(m) {
         // absorb is one `await`-free step, and the promise below only resolves
         // between messages, so the queue drains throughout — `playable at 8`
         // and the progress meter keep working exactly as they do serially.
-        const fillOnFarm = () =>
-          runFarm({
+        //
+        // `issuedTo` is one past the last draw any farm run of this fill was
+        // handed (`fill_draw`). A run that ends because every ready worker
+        // died leaves the draws it was handed and did not fold in issued: the
+        // engine's issue cursor is past its fill cursor, and `fill_draw` hands
+        // out only from the first, so a later run that drew only new ones would
+        // wait for the fill cursor's draw forever (a worker that reports ready
+        // late, #285). The batches here fold some of those; each run hands out
+        // what is left of them first, by index (`draw_json`: the draw *is* its
+        // index), and only then draws new ones.
+        let issuedTo = engine.fill_cursor();
+        const fillOnFarm = () => {
+          let again = engine.fill_cursor();
+          const upTo = issuedTo;
+          return runFarm({
             startAt: engine.fill_cursor(),
             // The farm takes a term as JSON text, not as a structured object:
             // it deserializes straight into a `PatchTree`, and a string is the
             // cheaper thing to clone across the port besides.
-            take: (n) =>
-              JSON.parse(engine.fill_draw(n)).map((d) => ({
-                i: d.i,
-                tree: JSON.stringify(d.tree),
-                dup: d.dup,
-              })),
+            take: (n) => {
+              const out = [];
+              // `dup` is economy only (the engine checks at absorb), and a
+              // draw handed out again has no `fill_draw` to say it.
+              while (out.length < n && again < upTo) {
+                out.push({ i: again, tree: engine.draw_json(again), dup: false });
+                again++;
+              }
+              if (out.length < n) {
+                for (const d of JSON.parse(engine.fill_draw(n - out.length))) {
+                  out.push({ i: d.i, tree: JSON.stringify(d.tree), dup: d.dup });
+                  issuedTo = Math.max(issuedTo, d.i + 1);
+                }
+              }
+              return out;
+            },
             absorb: (i, r) => {
               engine.fill_absorb(
                 i,
@@ -3306,6 +3329,7 @@ async function dispatch(m) {
             wantAudio: (i) => i < FARM_AUDIO_AHEAD,
             after: fillProgress,
           });
+        };
 
         // Fill incrementally so the boot meter can narrate progress — and
         // yield between batches so the app the user is already using stays
@@ -3317,9 +3341,9 @@ async function dispatch(m) {
         // whole fill, and with one it is what the farm left (every worker died,
         // or a draw was retired). The two paths fold the *same* indexed draw
         // stream from the same cursor, so either finishes the same bank. A farm
-        // run that folds nothing in (the stream's issued draws are still out
-        // from a crew that died) is followed by a batch here, so the loop
-        // always moves.
+        // run that folds nothing in (every worker it had died first) is
+        // followed by a batch here, and the next farm run hands out first what
+        // the dead crew left (`issuedTo`), so the loop always moves.
         while (st.pool < st.pool_target) {
           if (farmUsable()) {
             const from = engine.fill_cursor();
