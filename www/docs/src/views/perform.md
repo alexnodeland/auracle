@@ -11,7 +11,9 @@ ask you a question.</p>
 playing it: you reach for *brighter*, not for a filter’s cutoff, and the
 instrument works out which of this patch’s knobs make it brighter. It plays
 the sound already under your fingers, and the keybed below is the same one
-every view shares.
+every level shares. It is the middle of [the levels](../levels.md), where the
+app opens: zoom out (<kbd>⌥↑</kbd>) to TASTE, in (<kbd>⌥↓</kbd>) to PATCH, or
+step beside it (<kbd>⌥←</kbd>) to EVOLVE.
 
 ## Play it
 
@@ -86,8 +88,9 @@ On the right, what you turn:
   **TAKE** and **PASS**, each with its key. On a window under about 1360
   pixels wide, WANDER takes a line of its own above the four.
 
-**Show measurements** in the **⋯** menu adds the numbers behind each control
-to its tooltip: purity, reach in σ, the measured halves, and the knob gains.
+**Show measurements**, in [⌘K](../levels.md#k-find-anything), adds the
+numbers behind each control to its tooltip: purity, reach in σ, the measured
+halves, and the knob gains.
 
 ### What velocity plays
 
@@ -274,12 +277,15 @@ after your hand rests, it is measured again, and the last figure stays,
 dimmed, under *measuring…* until the new one is drawn. A control placed from
 the palette and asked about before it has been measured says so, and answers
 once it has. <kbd>Esc</kbd>, the ×, a click
-elsewhere, another view, or booth mode's attract puts it away. **HEAR IT**
+elsewhere, another level, or booth mode's attract puts it away. **HEAR IT**
 plays the long-press sweep. <kbd>Space</kbd> still plays the sound while it
 is open, after a click on one of its buttons too, and <kbd>?</kbd>
 answers for the control under the pointer, or one you reached with the
 keyboard; a control you just turned with the mouse, once the pointer has
-left it, is not asked again, and <kbd>?</kbd> opens the key map instead.
+left it, is not asked again, and <kbd>?</kbd> opens [⌘K’s
+list](../levels.md#k-find-anything) instead. In ⌘K, *What does BRIGHT do?*
+opens BRIGHT’s answer while BRIGHT is on the panel, and *Learn: what a filter
+does* opens the lesson below from any level.
 
 ### Learn: what a filter does
 
@@ -649,15 +655,29 @@ until you leave. A refusal said while it is on (*Nothing to undo here*) shows
 over the stage, and in its line at the bottom for a few seconds.
 
 In PERFORM, <kbd>⇧F</kbd> takes the place of F’s accent (Shift with a note key
-plays it harder). F on its own is still a note, and in every other view
+plays it harder). F on its own is still a note, and at every other level
 <kbd>⇧F</kbd> is the accented F it always was.
 
 ## Nothing opens a dialog
 
-Nothing reachable from PERFORM opens a modal. A player in the middle of a
+Nothing PERFORM does on its own opens a dialog. A player in the middle of a
 phrase can’t answer a question, so everything PERFORM needs to tell you arrives
 as a line: the status line, B’s words in the well, or a toast. Everything it offers you
-is a pad you can ignore.
+is a pad you can ignore. The dialogs you can open from it are your own
+choice, ⌘K’s list and the lesson on filters, and <kbd>Esc</kbd> closes
+either.
+
+## In ⌘K
+
+At PERFORM, [⌘K’s list](../levels.md#k-find-anything) starts with THIS
+LEVEL: the pads and the buttons, each with its key. *Offer: grow a variant
+into B* (<kbd>N</kbd>), *Take the offer in B* (<kbd>⇧↵</kbd>), *Pass on the
+offer in B*, and once the sound has moved *Keep: make the sound home*
+(<kbd>↵</kbd>) and *Back: glide back to the last sound you kept*
+(<kbd>⇧⌫</kbd>); *Freeze Wander*, *Arrange your controls*, *How it works*,
+*XY pad: two controls under one finger*, *Stage mode* (<kbd>⇧F</kbd>),
+*Share this sound as a picture*, and *What does BRIGHT do?* while BRIGHT is
+on the panel.
 
 ## Before you have taught it anything
 

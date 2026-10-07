@@ -50,7 +50,8 @@ kept, a patch file you opened) is rendered again on the next return; see
 
 ## Download and open
 
-Everything here is in the **⋯** menu.
+Everything here is a command in [⌘K](./levels.md#k-find-anything): type a word of it (*download*,
+*open*) and press <kbd>↵</kbd>.
 
 ### Your taste
 
@@ -106,7 +107,7 @@ with nothing Auracle’s in it.
 
 ## Start over
 
-1. Choose **Reset your taste…** from the **⋯** menu.
+1. Choose *Reset your taste…* in [⌘K](./levels.md#k-find-anything).
 2. Read the question, which has your counts: *Reset your taste? Your 52 picks,
    4 stars, 2 cuts, and 4 generations are forgotten, with every sound you
    haven’t saved. Your 3 saved sounds stay. A copy of your taste downloads

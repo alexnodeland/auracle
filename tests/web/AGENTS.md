@@ -323,8 +323,11 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
   waits for the move to land (`landed(page)`: one section `.on`, nothing
   flying; a move between the levels animates for `--d-zoom`), into KEYS ⋯
   with `openKeys(page)`, to a bank with `bankTab(page,
-  "pool"|"saved"|"presets")` and into the model view with `modelView(page,
-  on)`, from `shell.js` (re-exported by `fixtures.js`). A bank row's guess
+  "pool"|"saved"|"presets")`, into the model view with `modelView(page,
+  on)`, and run a command from ⌘K's list with `runCommand(page, label)`
+  (⌘K's button, the label typed, its row clicked; `commandRow(page, label)`
+  is the row), from `shell.js` (re-exported by `fixtures.js`). What the ⋯
+  menu and the ? card held are commands there (Plan-008 PR D). A bank row's guess
   (`.bi-pct`, `.bi-u`) shows only under the model view, its actions
   (`.bi-acts`) only on approach, and its stars through ★ or the 1–5 keys;
   find a row by its `data-id`, not by text. The app opens at PERFORM

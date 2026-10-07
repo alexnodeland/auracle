@@ -34,8 +34,8 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
 | C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
 | Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | built on `claude/preset-faces` with #153's C2b follow-ups, in review |
-| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | built on `claude/shell-c3`, in review |
-| D: ⌘K, and the guide for the levels | #132 | not started |
+| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | merged (#331) |
+| D: ⌘K, and the guide for the levels | #132 | built on `claude/shell-d`, in review |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
 | PATCH's specs on the shared fixture | #136 | merged (#168) |
 | After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | not started |
@@ -485,6 +485,82 @@ into C2a and C2b; round 2's decisions govern PATCH):
   land (`landed`); `guide_pill.spec.js` and `first_run.spec.js` changed
   meaning (PERFORM's five steps, the loop's line after the fifth);
   `type_scale.spec.js` reads `--d-zoom` too (mechanical).
+
+**PR D, as built, where it differs from §2.4 and §3:**
+- **`rank` and the list's rules live in `levels.js`**, as §2.1 has it:
+  `rank`, `fuzzy` (the letters' places rather than the mock's HTML, so the
+  list marks them with nodes), `hitMarks` (the run `rank` counted, not the
+  mock's first scattered letters) and `cmdkList` (the groups, best first
+  with a query, `SOUNDS_SHOWN` 5 and 8). The mock caps every group at 20;
+  here only Sounds is capped, so every command can be reached by scrolling
+  or the arrows with nothing typed, by a pointer and a finger as by keys.
+- **The registry** is `shell.cmd` as §2.4 has it, plus `shell.cmds(fn)` for
+  commands that come and go (*Record again: ‹name›*, one per sound kept
+  safe), and `label`, `hint` and `key` may be functions (a setting's *on*).
+  `patch.js`, `taste.js` and `explain.js` give theirs as `cmds()`; PERFORM's
+  are registered in main.js through the API `perform.js` already returns
+  (`pad`, `openPalette`, `openStage`), since `perform.js` is #290's while
+  this was built; `takes.js` gives the kept sounds' names (`kept`).
+- **Every command is a control the app has,** run as it runs, in its own
+  words (its label, its tooltip or the guide's line for its key). New words,
+  drafted for voice.md and listed in the PR: the button's *Find or do
+  anything*, the field's *Find a sound, a level or what to do*, the groups,
+  the foot's *choose · do it · close*, *Keys and gestures*, *What does
+  BRIGHT do?*, *What are the three banks?* (the brief's), *Record again:
+  ‹name›* (the brief's), *Watch ‹LEVEL› in depth* (the old card's link, as a
+  label), and the warm start's skip toast (*Press a key to hear it. ⌘K lists
+  what you can do, with its keys.*). The mock's *Search or do anything* and
+  *Search sounds and actions* are not used: voice.md's Find a sound row
+  lists *search* and *Search sounds* under Not.
+- **A sound runs as Enter on its bank row does,** not as a click: in your
+  hands at the level you're at (a pool row's click also moves to PATCH;
+  ⌘K is the keyboard's list, and a sound picked at PERFORM is played
+  there). Its face slot is built `lazy` and never asks the engine for a
+  face (ADR-025): a face the bank has not drawn stays an empty slot.
+- **⌘K's list is a modal dialog,** so `host.blocked` holds the level keys and
+  the pad keys while it is open, and it opens under no other modal (⌘K and
+  `?` do nothing under the warm start, the commit pair, stage mode or a
+  lesson; the ? card opened over them).
+- **What ⋯ and the ? card held,** and where each went:
+
+  | Before | After (mouse, keyboard, touch) |
+  | --- | --- |
+  | ⋯ › Download your taste, Open a taste file…, Download this patch, Download as a picture…, Open a patch file…, Scope & analyzer…, Re-run the three-pick warm start, Reset your taste…, Show measurements (its state), Booth mode (its state), New visitor ⇧Esc (in booth mode) | The same words as commands in ⌘K's Anywhere, a state as the hint *on*; New visitor only in booth mode, with ⇧Esc. Clicked, ↵, or tapped |
+  | ⋯ › Keyboard map & gestures ?, the ? card's prose | *Keys and gestures* opens the guide's keyboard page; each action the card named is a command with its key (ADR-017: `?` away from a control opens the list) |
+  | ⋯ › Watch the films ↗ | *Watch the films* ↗ |
+  | The ? card's *watch ‹VIEW› in depth* | *Watch ‹LEVEL› in depth* ↗, at a level whose film is published (`data-films`), not on film or in booth mode |
+  | The ? card's © line, license and source | The list's foot, right |
+  | `#help-open` (?) in the menu bar | ⌘K's button, *Find or do anything ⌘K*; `?` opens the list |
+  | The bank's tour `?` | Kept, and *What are the three banks?* in Anywhere |
+  | The film chip | Kept, folded after `#where` (§8), and *Watch ‹LEVEL› in depth* |
+  | The catalog's walkthrough `?` | Kept, and *How the catalog works* at PATCH |
+
+  The scope's and the picture's panels hang under ⌘K's button, and their
+  Esc gives the focus to it. `publish.py`'s `APP_LINKS` no longer un-hides
+  `#films-link` and `#help-film`, which are gone; ⌘K reads `data-films`.
+- **Not built here:** BREED TOWARD IT, which waits for the own-sound card
+  (#133); `preview.html`, §4's palette capture (the PR shows the list on the
+  app); the landing's and the guide's full re-capture (`capture-screens.mjs`
+  now reaches the warm start through ⌘K; the run is the PR's open item if
+  the browser queue did not allow it).
+- **The film selectors D leaves stale,** owed with the Wave 3 re-records as
+  A's to C3's are: `#ovf-btn`, `#ovf-menu`, `.ovf-item`, `#export-btn`,
+  `#patch-export-btn`, `#image-btn`, `#scope-btn`, `#engineer-btn`,
+  `#warm-rerun-btn` and `#help`, in `shots.json` (composing 5, playing 1,
+  tour 6, view-patch 3, view-taste 6), `gen_shots.py` (composing 11,
+  playing 1, tour 9, view-patch 6, view-taste 8), `playing`'s
+  `gen_base.json` (1) and the storyboards (composing 6, playing 1,
+  view-patch 2, view-taste 1; tour's "? opens the help card").
+- **Specs:** `cmdk.spec.js` is new; `runCommand(page, label)` and
+  `commandRow` join `tests/web/shell.js`. Mechanical (⋯ to `runCommand`):
+  `faces`, `warm_start`, `first_run`, `failure_flows`, `taste_profile`,
+  `patch_keys`, `model_view_esc`'s panels. Changed meaning: `explain`'s ?
+  test (the list, not the card), `pad_keys` and `shell_levels` (⌘K's list is
+  their modal), `model_view_esc` (the list, and the focus back on ⌘K's
+  button), `type_scale` (⌘K's button in the bar's one row, the list's type),
+  `keys_for_the_platform` (the keys the list prints), and
+  `space_after_a_click` lost the file items' Enter and Space test, which
+  `cmdk.spec.js` holds for ↵ and a click (Space types into the field).
 
 ## 1. Delta inventory (mock vs app)
 

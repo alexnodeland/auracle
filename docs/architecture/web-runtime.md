@@ -83,7 +83,7 @@ unit-tested (`tests/levels.test.mjs`):
   PERFORM), ⌥← goes to EVOLVE and ⌥→ back, ⌥1–5 by `event.code`. A text field
   keeps them (`typing`), and so does any modal dialog showing (`host.blocked`:
   a connected, visible `[aria-modal="true"]`, which is the warm start, the
-  commit pair, the ? card, PERFORM's stage mode and explain's lesson); a
+  commit pair, ⌘K's list, PERFORM's stage mode and explain's lesson); a
   non-modal panel does not. ⌥ alone is `preventDefault`ed on keydown and
   keyup, or Firefox and Edge on Windows open the window's menu. The wordmark's
   click is a move like the others (`show("perform")`, the address replaced),
@@ -161,7 +161,7 @@ view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
 (Esc any view, held or tapped, once nothing nearer took the press: the shell
 hears Esc last, on the window in the bubble phase, and leaves a press a
 closer used, which says so with `preventDefault` or stops it on its way; at
-every level, a bank row's ★, PATCH's chain, PERFORM's well modes, the ? card,
+every level, a bank row's ★, PATCH's chain, PERFORM's well modes, ⌘K's list,
 the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
@@ -204,6 +204,56 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   part of a listening sound's key), never per frame. A lean of the same
   sound stays drawn until a newer one lands; one asked under another
   posterior or panel is not shown when the view comes up.
+
+### ⌘K, the one list
+
+`⌘K` or `Ctrl K` (taken on the window in the capture phase, before anything
+on the page, with `preventDefault`, since Firefox takes Ctrl K), the menu
+bar's **Find or do anything** (`#cmdk-btn`), or `?` opens one list of every
+command and every sound (Plan-008 §2.4). `?` is read on the document in the
+bubble phase, after explain.js, which claims it in the capture phase over a
+control it can answer for (`preventDefault` and `stopPropagation`), so `?`
+over a PERFORM control asks about it and anywhere else opens the list; not
+in a text field, and neither key under another modal dialog (`host.blocked`).
+
+- **The registry** is the shell's: `shell.cmd({id, level, label, key, hint,
+  icon, run, when})`, and `shell.cmds(fn)` for commands that come and go
+  (`takes.kept()`'s *Record again: ‹name›*). `label`, `hint` and `key` may be
+  functions, read each time the list draws (a setting's *on*); `when()` false
+  leaves one out. The shell registers the levels (their `⌥1`–`⌥5`) and the
+  model view; main.js the rest of Anywhere (the sound in hand, `⌘Z` through
+  `undoKey`, `[ ]`, Z/X, VOL, MIDI, ● REC, every KEYS ⋯ setting, what ⋯
+  held, the bank tour, the film of the level shown when publish.py has
+  listed it in the film chip's `data-films`) and PERFORM's, PATCH's and
+  EVOLVE's level commands, each the control it names (PERFORM's through
+  perform.js's `pad`, `openPalette` and `openStage`); `patchView.cmds()`,
+  `taste.cmds()` and `explain.cmds()` add theirs where each is made. A
+  command is a control the app already has: its words are that control's,
+  its key is printed through `platformKeys`, and running it does what the
+  control does.
+- **The list** is `#cmdk` (`role=dialog`, `aria-modal`), a combobox field
+  over a `listbox`: This level (commands whose `level` is the one shown),
+  Anywhere (no `level`), Sounds (`host.sounds()`: the pool in the bank's
+  order at rest, then the presets not in it). levels.js ranks a query
+  (`rank`, `fuzzy`, `hitMarks`, `cmdkList`, unit-tested): a label's start,
+  then a word's, then anywhere, then its letters in order; with a query the
+  group with the best hit leads; Sounds shows five with no query and eight
+  with one (`SOUNDS_SHOWN`), the commands all. It draws from what the page
+  holds and sends the engine nothing (ADR-025): a sound's face is a `cmdk`
+  face slot built `lazy`, so a face not drawn yet stays an empty slot and
+  is never asked for. A sound runs as Enter on its bank row does
+  (`openOnBench`, or `openPreset` with no move), at the level shown.
+- **The keys** while it is open are its own, taken on the window in the
+  capture phase with `stopPropagation`: ↑/↓ choose
+  (`aria-activedescendant`), ↵ runs, Esc and ⌘K close, Tab stays in the
+  field, and every other key is typed into it and reaches nothing behind it
+  (no note, level key, ⌘Z, pad key or Esc for the model view). A press in
+  the dialog keeps the focus in the field. Closing gives the focus back to
+  what held it before (none, when a pointer's click on its button opened
+  it), then runs the row, in the same task as the key or the click, so a
+  file's command (`#import-input`, `#patch-import-input`, kept in the page)
+  opens its picker. The scope's and the picture's panels hang under the
+  button (`.cmdk-anchor`), and their Esc gives the focus to it.
 
 ## The worker's lanes
 
@@ -769,7 +819,7 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   plate's controls (which walk only that plate's), F2 or the menu key for
   `openStructMenu`. Esc closes one thing a press. Whatever floats spends
   it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
-  pop-up, the ⋯ menu, the scope or picture panel, the bank tour, KEYS ⋯, a
+  pop-up, the scope or picture panel, the bank tour, KEYS ⋯, a
   context menu; main's Esc chain closes all that are open together, and
   the two panels and the context menu hear Esc nowhere else), and so does
   the touch sheet (it stops the event in patch.js); then the first of
@@ -1654,7 +1704,7 @@ that pick commits (`settleFit`), so it keeps its window too.
   the films seed it), so it starts from the same pool, warm start and sides
   on every run; the nightly flake hunt boots those unseeded. A spec that
   names its own `random:` seed keeps it.
-- Booth mode (the ⋯ menu) plays itself when idle and hides links out of the
+- Booth mode (⌘K's *Booth mode*) plays itself when idle and hides links out of the
   instrument.
 - `window.__aur` is the debugging handle; browser tests wrap `Worker` instead
   of relying on test-only hooks.

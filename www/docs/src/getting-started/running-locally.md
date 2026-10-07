@@ -73,7 +73,7 @@ builds.
 
 For a kiosk or a show floor:
 
-1. Turn on **Booth mode** in the **⋯** menu, or open the app with `?booth` on
+1. Turn on *Booth mode* in [⌘K](../levels.md#k-find-anything), or open the app with `?booth` on
    the address (`?booth=30` sets the idle time to thirty seconds; the default
    is a minute).
 2. Leave it. With nobody at the keys, it plays itself.
@@ -88,7 +88,7 @@ What happens:
   the spot. The visitor is holding whatever was playing, with Wander still and
   BLEND home. Nothing it did while playing itself is logged or counted as a
   pick.
-- **The next visitor.** <kbd>⇧Esc</kbd> (or **New visitor** in the ⋯ menu)
+- **The next visitor.** <kbd>⇧Esc</kbd> (or *New visitor* in ⌘K)
   forgets the visitor’s taste and starts again with the warm start, on a new
   pool (it takes `?seed` off the address). Booth mode and PERFORM’s measured
   controls are kept, so the set stays instant.

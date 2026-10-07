@@ -80,7 +80,7 @@ start points the model at you without holding it there.
 ```
 
 **SKIP** goes straight to the instrument. A few picks later it offers the warm
-start once more, and you can run it again any time from **⋯** › *Re-run the
+start once more, and you can run it again any time from [⌘K](../levels.md#k-find-anything): *Re-run the
 three-pick warm start*.
 
 ## 3. Pick between pairs
@@ -98,7 +98,7 @@ Mac). The menu bar names the level you’re at, and as you move, the face of
 the sound you’re playing travels with you to where the next level draws it.
 
 <figure>
-<img src="../img/evolve.webp" alt="The EVOLVE view: the question Pick the one you’d reach for, with a teaching line and a small TASTE map; two cards side by side, each with its sound’s face large in a well, its name, and PLAY and PICK below it." loading="lazy" width="1440" height="900">
+<img src="../img/evolve.webp" alt="EVOLVE: the question Pick the one you’d reach for, with a teaching line and a small TASTE map; two cards side by side, each with its sound’s face large in a well, its name, and PLAY and PICK below it." loading="lazy" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
 under it counts down to the next refit.</figcaption>
 </figure>
@@ -210,4 +210,6 @@ which.
 - Lock what you love and breed around it: [⚡ evolve from this](../rack.md#locks-and-evolving-from-here).
 - See what the model learns from: [what the model learns from](../teaching.md).
 
-Press <kbd>?</kbd> in the app at any point for the full key map.
+Press <kbd>⌘K</kbd> in the app at any point (or <kbd>?</kbd> anywhere but over
+one of PERFORM’s controls) for every command with its key, and [the keyboard
+map](../keyboard.md) has them all in one place.

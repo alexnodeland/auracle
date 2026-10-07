@@ -107,9 +107,9 @@ make film-publish FILMS="tour view-perform view-evolve view-patch view-taste pla
 ```
 
 `publish.py` places the films, fills the guide's `<!-- film:NAME -->` blocks,
-the Films page, the README and the app's film chip (`data-films`; the chip,
-the help card's film link and the warm start's tour link stay hidden until
-their film is published). Check the site: `make site && make site-check`.
+the Films page, the README and the app's film chip (`data-films`; the chip
+and ⌘K's Watch ‹LEVEL› in depth read it, and the chip and the warm start's
+tour link stay hidden until their film is published). Check the site: `make site && make site-check`.
 
 ## 6. Guide screenshots
 
