@@ -102,6 +102,7 @@ async function nothingLeft(page) {
 test("after a move exactly one level is on, however soon the next move follows", async ({ page, app }) => {
   await bootWithFaces(app);
   const moves = [["perform", "taste"], ["evolve", "learning"], ["perform", "patch"], ["taste", "perform"]];
+  const firstCut = [];
   for (const [i, gap] of GAPS.entries()) {
     const [first, last] = moves[i];
     const t0 = await app.now();
@@ -117,17 +118,16 @@ test("after a move exactly one level is on, however soon the next move follows",
     await expect(page.locator("body")).toHaveAttribute("data-level", last);
     await expect(page.locator(`.rail-stop[data-level="${last}"]`)).toHaveAttribute("aria-current", "location");
     await nothingLeft(page);
-    // Both landed, the second whole. With no gap the second is asked for
-    // in the first's own task, so the first is cut short; with one, a page
-    // stalled long enough can let the first finish before the second comes,
-    // and either is right.
+    // Both landed, in order, the second whole.
     const marks = (await app.marks("level-landed", { after: t0 })).map((m) => m.detail);
-    if (gap === 0) expect(marks.map((d) => [d.to, d.cut]), "with no gap").toEqual([[first, true], [last, false]]);
-    else {
-      expect(marks.map((d) => d.to), `at a gap of ${gap} ms`).toEqual([first, last]);
-      expect(marks[1].cut, `at a gap of ${gap} ms`).toBe(false);
-    }
+    expect(marks.map((d) => d.to), `at a gap of ${gap} ms`).toEqual([first, last]);
+    expect(marks[1].cut, `at a gap of ${gap} ms`).toBe(false);
+    firstCut.push(marks[0].cut);
   }
+  // With no gap the second is asked for in the first's own task, so the
+  // first is cut short. With one, a page stalled long enough can let the
+  // first finish before the second comes, and either is right.
+  expect(firstCut[GAPS.indexOf(0)], "with no gap, the first move is cut short").toBe(true);
 });
 
 test("the face lands where the level draws it, within 2 px", async ({ page, app }) => {
