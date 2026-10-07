@@ -1360,8 +1360,9 @@ controls turn, their travel wears the not-measured look (thin and dim, never
 the dashed amber of a search control), the status line says *listening…*,
 and the measurement is asked for in `soon`. It lands through
 `applyRechecked`'s rebase whatever knobs each control turns, so nothing you
-hear moves and no control re-centres, and it waits for the hand as a
-re-check does.
+hear moves and a turned control keeps its place (unless the measurement
+closed the half it is on, where it stops at the centre), and it waits for
+the hand as a re-check does.
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
