@@ -105,7 +105,7 @@ $$N = \mathrm{clamp}(\text{hardwareConcurrency} - 2,\; 0,\; 6)$$
 capped at **2** when `deviceMemory ≤ 4`, and a width of 1 is taken as 0:
 below two workers the serial path is as fast (`farmWidth`, in `main.js`).
 Override with `?farm=k` or `localStorage["auracle-renderers"]`, from 0 to 8;
-`0` is the serial path exactly.
+`0` is the serial path, which builds the same pool.
 
 ### The pool is identical at every width, including 0
 
@@ -129,6 +129,19 @@ Gated natively by `farm_width_does_not_change_the_pool` and
 stream**: a worker that never initializes, one killed mid-boot, a build-stamp
 mismatch, and a browser that cannot structured-clone a `WebAssembly.Module`. So
 parallelism costs time and never content.
+
+Boot waits `FARM_HANDSHAKE_MS` (5 s, in `worker.js`) for a farm worker to
+report ready. When none has, a crew with a worker still starting is kept: the
+fill (or a [restore](./persistence.md#restore-goes-sound-by-sound)) begins in
+the engine worker, asks before each batch (each entry) whether a worker has
+reported ready since, and hands it the rest from there. A slow machine
+instantiating the engine in several workers at once can miss the window, and
+before this its crew sat out the whole boot. The two paths fold the same
+stream from the same cursor, so the pool is the same whichever took which part.
+A farm run that ended because every ready worker died leaves the draws it was
+handed and did not fold in issued (the engine's issue cursor past its fill
+cursor); the engine worker's batches fold some, and the next farm run hands
+the rest out again first, by index (`draw_json`), before it draws new ones.
 
 A draw retired after two attempts (`MAX_TRIES`, in `worker.js`) is recorded,
 not hidden, but in the app’s own log (`window.__aurLog`) rather than as a

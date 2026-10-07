@@ -83,16 +83,22 @@ call runs (`post`'s `during`), as one of main's arrives mid-render, so a
 lane rule is an order of events on one thread, and a slow machine makes it
 slower, never wrong. A farm is ports the test holds (`fakeCrew`): what
 reaches a farm worker, and in what order, is what its port heard. Its
-workers render nothing: each render is answered as a draw that did not vet
+workers render nothing unless the test hands them a render (`render`, the
+glue's own `farm_render`): each render is answered as a draw that did not vet
 (`ok: false`), so a restore on that crew takes the worker's own
-`bank_render` path for every entry, never `bank_absorb`. A request goes
+`bank_render` path for every entry, never `bank_absorb`. A crew made with
+`ready: false` stays quiet until `crew.ready()`, as workers still starting
+are on a slow machine. A request goes
 out numbered (`rid`), as main's `send` numbers it, and `send` and `answers`
 take the replies that name it (`re`) up to the one without `more`
 ([The worker's replies](web-runtime.md#the-workers-replies)).
 
-It has no page, no Web Audio or AudioWorklet, no media stream, no
-IndexedDB (the face store is off) and no `farm.js`: what needs them stays in
-the browser. A behaviour that moves here leaves its spec a check of the
+It has no page, no Web Audio or AudioWorklet, no media stream and no
+`farm.js`, and no IndexedDB unless the test gives it a stand-in (`idb`:
+`apps/web/tests/fake-idb.mjs`, the render store and the face store in memory,
+read back with `w.idb()` and handed to the next thread as a browser keeps
+it between visits; without it the stores are off): what needs the rest stays
+in the browser. A behaviour that moves here leaves its spec a check of the
 page's wiring, or nothing where another spec already holds that.
 `apps/web/tests/worker-lanes.test.mjs` and `worker-perform-replies.test.mjs`
 still lift the worker's functions over a stub engine: milliseconds, and an
@@ -104,6 +110,7 @@ engine that traps on demand.
 | `tests/worker/background.test.mjs` | A measurement nobody waits on (`bg`) gives way to a cable probe asked for during it and finishes after it, where PERFORM's own keeps the floor; a measurement `retire` demoted is the player's again after `promote`, landing before a drift asked for after it, and without `promote` the drift lands first; an Offer asked for while the guess waits for its crew begins before the guess renders anything |
 | `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
 | `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
+| `tests/worker/restore.test.mjs` | A restore with no farm comes back sound by sound: each sound's `fill_progress` ("recalling n of m sounds…") posted as it lands, before the restore ends, a request posted during the third answered before the fourth is folded in, and no one call (`import_session`); on a first visit every sound is rendered here and its row kept in the render store, and on the next every sound is read from it with nothing rendered; farm workers that report ready after the handshake's window take the rest of a restore (from the entry after the ones done here) and the rest of a fill; whichever ran, the bank is what `import_state` builds from the same save, in its order, and the pool the one the seed fills with no farm |
 | `tests/worker/warm_start.test.mjs` | The warm start's cards are measured while the player chooses, a pick's card next; *teach it* is handed to the worker when the card being measured ends, inserts its first pick and the other cards measured with no render (the rest rendered once each), and measures no card after; with every card measured ahead, *teach it*'s replies, the saved session and the first fit are the ones a worker that measured nothing makes |
 | `tests/worker/faces.test.mjs` | A pool member's face asked for during PERFORM's measurement is answered from the engine's memo, with nothing left pending, before the measurement's next render |
 
@@ -716,6 +723,7 @@ from it ([Rules](#rules)).
 | Spec | Pins |
 | --- | --- |
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
+| `restore.spec.js` | A returning visit with no farm (`?farm=0`) and the engine slowed fourfold says each sound on the veil as it comes back ("recalling n of m sounds…", every n from 1, before the veil lifts), the bar moving with each; after a visit whose farm filled the pool, every sound is read from the render store and none rendered (the farm keeps the rows of the sounds it rendered with their audio too); with nothing in the store (`@slow`), every sound is rendered and still said. The seconds from boot to the veil, and the longest step between two sounds, are budgets |
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; every preset's face, rendered in the built wasm as the worker renders a preset's (`preset_tree_json`, `face_of_tree`, an engine of its own each), is the shipped file's byte for byte, under the key the worker files it by (`farm_key`), a test per family, and the file lists the library in its order; opens no page, about 3 s under Node for the probe and 20 s of CPU for the faces |
 | `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1`; on a worker that answers as `worker.js` does, a request's last reply (`app.replyTo`) is the one carrying its number without `more`, not the first of its type nor the engine's own news, `app.answered` waits while a request it covers has none and names it when it gives up, by type or lane, never for a request the worker never answers or one main did not number, and a reply `app.answer` or `app.fail` gives for a request carries its number; `app.visit` is a new load of the seeded address with a level's hash, even when only the hash changed; a page error in a context `newContext` made fails the test, and the context has the project's `use` |
