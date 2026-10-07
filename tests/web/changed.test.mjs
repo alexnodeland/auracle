@@ -47,6 +47,12 @@ test("a changed helper runs the specs that require it, and an app module the spe
   assert.deepEqual(mod, SPECS.filter((s) => s.startsWith("taste_")));
 });
 
+test("the move between the levels runs its own spec when any module it is drawn by changes alone", () => {
+  // shell.js plays the move, levels.js holds its rules, vessel.js says
+  // where a face is drawn (`shownBox`, where the face lands).
+  for (const f of ["apps/web/shell.js", "apps/web/levels.js", "apps/web/vessel.js"]) assert.ok(pick([f]).specs.includes("shell_zoom.spec.js"), f);
+});
+
 test("with --views, a change in one of main.js's views runs that view's specs and no other's", () => {
   const got = pick(["apps/web/main.js"], { views: true, sections: { "apps/web/main.js": ["cable routing", { title: "keyboard", parent: "PICK-MODE FEEDBACK" }] } });
   assert.deepEqual(got.reached, [{ file: "apps/web/main.js", views: ["patch"], every: false, unnamed: [] }]);
