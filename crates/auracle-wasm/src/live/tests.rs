@@ -2998,16 +2998,11 @@ fn a_swap_waiting_at_the_first_render_wakes_the_new_voices() {
     assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
 }
 
-/// **The open voice wakes as a held key does, and a tracked lead keeps its
-/// own gate.** Monitored, a patch that listens holds its open voice open
-/// with no key; rested and woken, it comes back at its envelope's place
-/// (here opened partway through, so its start is not the instrument's).
-/// A tracked patch's lead holds no gate (its tracker opens it): the wake
-/// leaves it low rather than holding the voice open itself.
-#[test]
-fn the_open_voice_wakes_as_a_held_key_does() {
+/// A patch that listens, with a slow pad's envelope: an attack of ≈0.25 s
+/// time constant, a decay of ≈0.1 s, a sustain of 0.5.
+fn slow_listening_json() -> String {
     use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel};
-    let listens = serde_json::to_string(&PatchTree {
+    serde_json::to_string(&PatchTree {
         amp: AmpEnv {
             attack: 0.6,
             decay: 0.5,
@@ -3021,7 +3016,54 @@ fn the_open_voice_wakes_as_a_held_key_does() {
             channel: InputChannel::Left,
         },
     })
-    .unwrap();
+    .unwrap()
+}
+
+/// **A swap carries the open voice's envelope, as it carries a held key's.**
+/// Monitored, a patch that listens holds its open voice open; a structural
+/// edit that keeps it listening re-presses that voice on the new patch, and
+/// it goes on from its envelope's place rather than swelling in again from
+/// silence. (Rested, it is not seeded at the swap: the wake drives it from
+/// its own start, `the_open_voice_wakes_as_a_held_key_does`.)
+#[test]
+fn a_swap_carries_the_open_voices_envelope() {
+    let json = slow_listening_json();
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&json, REST_RATE, 4).expect("compiles");
+    poly.set_leveler(false);
+    poly.set_open(true);
+    for _ in 0..2_000 {
+        let _ = poly.process(128);
+    }
+    let open = |p: &LivePoly| p.open.as_ref().expect("an open voice").voice.env_phase();
+    assert!(
+        (open(&poly) - 0.5).abs() < 1e-3,
+        "on the shelf: {}",
+        open(&poly)
+    );
+    assert!(poly.set_patch(&json));
+    let mut patched = false;
+    for _ in 0..40 {
+        let _ = poly.process(128);
+        patched |= poly.poll_event() == EVENT_PATCHED;
+    }
+    assert!(patched, "the swap landed");
+    let after = open(&poly);
+    assert!(
+        (after - 0.5).abs() < 0.03,
+        "after the swap it is at {after}, not on its shelf"
+    );
+}
+
+/// **The open voice wakes as a held key does, and a tracked lead keeps its
+/// own gate.** Monitored, a patch that listens holds its open voice open
+/// with no key; rested and woken, it comes back at its envelope's place
+/// (here opened partway through, so its start is not the instrument's).
+/// A tracked patch's lead holds no gate (its tracker opens it): the wake
+/// leaves it low rather than holding the voice open itself.
+#[test]
+fn the_open_voice_wakes_as_a_held_key_does() {
+    let listens = slow_listening_json();
     let (mut a, mut b) = rest_twins(&listens, 4);
     render_both(&mut a, &mut b, 10);
     a.set_open(true);
