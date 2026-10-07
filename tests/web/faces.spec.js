@@ -4,8 +4,9 @@
 // and spread (`apps/web/faces.js`).
 //
 // - A face appears in every place a sound is named once its face lands: the
-//   bank's rows, EVOLVE's two cards, PATCH's header and its teach strip,
-//   PERFORM's sound in hand and its offer, and the warm start's cards.
+//   bank's rows, EVOLVE's two cards, PATCH's header and its teach strip, and
+//   PERFORM's sound in hand and its offer. The warm start's cards draw theirs
+//   from the app's own file of the presets' faces: faces_presets.spec.js.
 // - Its whitening is the bank's: a sound cut from the bank redraws the
 //   others, against the bank they are in now.
 // - A face is drawn in a slot its place always has: a row's name is at the
@@ -20,8 +21,9 @@
 //   faces kept back, so each is a render: faces_presets.spec.js holds the
 //   file's own).
 // - A face's render never goes ahead of a refit: with sixty of them queued
-//   (a list of presets scrolled through), a refit is answered before most of
-//   them land (an order); within 6 s is a budget (ADR-022).
+//   (posted here, more than a whole bank stored before faces asks for), a
+//   refit is answered before most of them land (an order); within 6 s is a
+//   budget (ADR-022).
 //
 // Sessions are seeded (the films' own Math.random, no `?seed`: the session's
 // seed is drawn from it), so the pool is the same run to run. What was asked
@@ -34,14 +36,13 @@ const INIT = `(() => {
   window.__pwOutline = async (img) => (img ? img.getAttribute("src") || "" : "");
 })();`;
 
-/** Boot the films' way (Math.random 20260928), the tours seen, and the warm
- *  start unless `warmed` is false; with `noFaces`, the worker's `faces`
- *  messages are kept from main (`app.hold`), so no face ever lands. Not
- *  waited for: `booted`. */
-async function boot(page, app, { warmed = true, noFaces = false } = {}) {
+/** Boot the films' way (Math.random 20260928), the tours and the warm start
+ *  seen; with `noFaces`, the worker's `faces` messages are kept from main
+ *  (`app.hold`), so no face ever lands. Not waited for: `booted`. */
+async function boot(page, app, { noFaces = false } = {}) {
   await page.addInitScript(INIT);
   if (noFaces) await app.hold("faces");
-  await app.boot({ random: 20260928, warmed, wait: false });
+  await app.boot({ random: 20260928, wait: false });
 }
 const booted = (app) => app.booted();
 
@@ -107,16 +108,6 @@ test("a face appears on every row, card and chip once its render lands", async (
   ]);
   expect(held).not.toBe("");
   expect(offer).not.toBe(held);
-});
-
-// The cards' faces come with the app (preset-faces.json), drawn once the
-// bank has faces to draw them against; faces_presets.spec.js holds that they
-// are drawn from the file, at once, on a slowed engine.
-test("the warm start's cards carry their faces", async ({ page, app }) => {
-  await boot(page, app, { warmed: false });
-  await app.engine((timeout) => expect(page.locator("#warmstart")).toBeVisible({ timeout }), { ms: 150_000 });
-  await expect(page.locator("#warm-grid .warm-item")).toHaveCount(9);
-  await app.engine((timeout) => expect(page.locator("#warm-grid .warm-item .face-slot img.face")).toHaveCount(9, { timeout }), { ms: 150_000 });
 });
 
 test("a face's whitening moves when the bank changes", async ({ page, app }) => {
@@ -254,9 +245,10 @@ test("a refit is answered promptly while sixty face renders wait", async ({ page
   }
   // The sixth pick's own refit, once its undo window has closed.
   await app.reply("fitted", { timeout: 60_000 });
-  // Sixty presets' faces, none rendered yet: sixty renders queued (a list of
-  // presets scrolled through asks for that many). What was asked and heard
-  // from here on is the tap's, after `t0`.
+  // Sixty presets' faces asked of the engine, none rendered yet: sixty
+  // renders queued (posted here: with the app's own file the PRESETS rows
+  // ask for none, and a whole bank stored before faces asks for forty).
+  // What was asked and heard from here on is the tap's, after `t0`.
   const t0 = await app.now();
   await app.post({ type: "faces", ids: [], trees: Array.from({ length: 60 }, (_, i) => ({ ref: `p${i}`, preset: i })), render: true });
   // The preset faces (each item named by its `ref`) begin to land.
