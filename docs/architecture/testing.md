@@ -195,20 +195,28 @@ each comparison was taken back to back, with the load average beside it.
   not safe here, since cargo judges freshness by file times and bakes
   `CARGO_MANIFEST_DIR` into test binaries (the main checkout once ran a
   test binary built from a copy of the workspace, which read the copy's
-  fixture). sccache keys each compile by its inputs, the `CARGO_*`
-  variables and a build script's `OUT_DIR` among them, so what comes back
-  from the cache in another worktree is crates.io's dependencies without a
-  build script; the workspace's crates, the dependencies with a build
-  script (their `OUT_DIR` is in the worktree), and what sccache never
-  caches (build scripts, procedural macros, binaries, and an incremental
-  compile: the workspace's crates under `test-fast`, clippy's) are
-  compiled again. In a second worktree 49 of the 65 compiles the test build
-  asks for were taken from the cache. The server runs the compiles, so
-  `make` starts it at `nice -n 10` when none is running, and says so when
-  it will not start (a port taken), building without it; a server someone
-  started keeps the priority and the cache size it was started with. [`docs/notes/rust-build-2026-10/`](../notes/rust-build-2026-10/README.md)
+  fixture). sccache keys each compile by its inputs, among them every
+  `CARGO_*` variable and the compile's working directory, so a workspace
+  crate (its `CARGO_MANIFEST_DIR` and directory differ in each worktree)
+  never comes back from another worktree's compile; nor does a dependency
+  that reads its build script's `OUT_DIR` (a variable the crate's dep-info
+  lists, which sccache hashes too, and a path inside the worktree). What
+  comes back is crates.io's other dependencies; the rest, and what sccache
+  never caches (build scripts, procedural macros, binaries, and an
+  incremental compile: the workspace's crates under `test-fast`,
+  clippy's), is compiled again. In a second worktree 49 of the 65 compiles
+  the test build asks for were taken from the cache. Only a goal that
+  compiles Rust (the Makefile's `RUST_GOALS`; `make` alone is `make all`)
+  looks for the server: `make serve` or `make dev-check` don't. The server
+  runs the compiles, for every checkout, until it has been idle for ten
+  minutes, so `make` starts it at a priority of 10 (`nice` 10, whatever
+  make's own; its own when that is 10 or more), and when the server does
+  not answer on its port within ten seconds it says so and builds without
+  it. A server that is already running keeps the priority and the cache
+  size it was started with: `sccache --stop-server` stops it, and the next
+  `make` starts it again. [`docs/notes/rust-build-2026-10/`](../notes/rust-build-2026-10/README.md)
   has the method and every figure; in CPU seconds (user and system, the
-  server's included; the wall time was swamped by a load average of 50 to
+  server's included; the wall time was swamped by a load average of 45 to
   140), the three builds `make check` makes from a clean `target/`
   (the tests, clippy, the wasm32 check) took 367 to 400 without it; 427 the
   first time with an empty cache; 344 in a second worktree with a warm one;
@@ -224,9 +232,14 @@ each comparison was taken back to back, with the load average beside it.
   and build command, instead of the `make wasm` it would owe (124 to 135
   CPU seconds, 330 to 530 s of wall at a load average of 100 to 130, for
   fat LTO and one codegen unit). Files are copied, never linked, so a build
-  in another checkout later can't change this one. When no checkout has one
-  it says so, and why each was passed over: `make wasm` is owed before a
-  browser run.
+  in another checkout later can't change this one, and written anew, so they
+  are newer than the sources the worktree was just checked out with (the
+  session-start hook calls an engine older than them stale). An engine that
+  no longer hashes to its stamp's `engine` (rebuilt since by a plain
+  `wasm-pack build`, which leaves `pkg/build.json` alone) is passed over,
+  and so is a stamp from before the field. When no checkout has one it says
+  so, and why each was passed over: `make wasm` is owed before a browser
+  run.
 
 ## CI tiers
 

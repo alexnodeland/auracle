@@ -92,10 +92,14 @@ crates come back as well, 17 to 25 % less.
 
 What comes back, and what can't. Of the 65 compiles the test build asks
 the server for, 49 were taken from the cache in a second worktree, and 16
-were not: the five workspace crates, and eleven more that I take to be the
-dependencies with a build script (18 of them run one in this build), whose
-`OUT_DIR`, a path inside the worktree's `target/`, is part of what sccache
-hashes; I did not check each of the eleven. sccache never caches a build script, a
+were not: the five workspace crates, whose `CARGO_MANIFEST_DIR` and working
+directory (both hashed: sccache 0.18 hashes every `CARGO_*` variable and the
+compile's directory) differ in each worktree, and eleven more that I take to
+be dependencies that read their build script's `OUT_DIR` (18 dependencies
+run a build script in this build). sccache hashes a variable that isn't
+`CARGO_*` only when the crate's dep-info lists it, as it does `OUT_DIR` for a
+crate that reads it, and `OUT_DIR` is a path inside the worktree's
+`target/`; I did not check each of the eleven. sccache never caches a build script, a
 procedural macro or a binary (27 of the test build's 120 requests: its
 `crate-type`), nor an incremental compile (12: the workspace's crates under
 `test-fast`). The cache grew from 132 MB after the first worktree's three
@@ -123,9 +127,16 @@ what is left. The engine it built was the same file, byte for byte
 
 **Adopted.** `make` compiles through sccache whenever it is installed, and
 `scripts/setup.sh` installs it; the Makefile caps the cache at 2 GB (the
-dependencies of the three builds take about 0.3 GB), starts the server at
-`nice -n 10`, and says so when the server won't start. See the testing
-guide's *The local loop*. A saving of a tenth to a fifth of a fresh
+dependencies of the three builds take about 0.3 GB), and says so when the
+server does not answer within ten seconds. Only a goal that compiles Rust
+looks for the server (`make serve` or `make dev-check` don't wait on one).
+The server runs every checkout's compiles until it has been idle for ten
+minutes, so the Makefile starts it at a priority of 10, whatever the
+priority of the make that starts it (measured: a make at 0 and one at 5
+both started it at 10; one at 15 at 15, since a priority can't be raised
+back). A server that is already running keeps the priority and the cache
+size it was started with; `sccache --stop-server` stops it, and the next
+`make` starts it again. See the testing guide's *The local loop*. A saving of a tenth to a fifth of a fresh
 worktree's compile CPU is modest; the better second worktree is the one
 that doesn't build at all (below).
 
@@ -172,6 +183,12 @@ pkg-reuse` already took the main checkout's build when its stamp
 (`apps/web/pkg/build.json`) carried the same source hash; it now takes any
 checkout's, the main one first, then the most recently built, by copy, and
 `make worktree` runs it. When there is none it says `make wasm` is owed.
+The stamp now also hashes the engine and its glue (`engine`), and an engine
+that no longer has that hash is passed over: a plain `wasm-pack build` in
+another worktree rewrites the engine and leaves the stamp alone, and its
+engine would otherwise have been copied as that stamp's release build. The
+copy's files are written anew, so they are newer than the sources a fresh
+worktree was just checked out with, which the session-start hook compares.
 Tested in `scripts/test_wasm_pkg.py`.
 
 ## 3. The `test-fast` profile
@@ -342,11 +359,6 @@ For the maintainer:
 - **The parallel front end** needs `-Z` flags, which the pinned stable
   accepts only under `RUSTC_BOOTSTRAP=1`, and changes what CI's and the
   machine's lint judge only if every job sets it: see § 5 for what it saves.
-- **sccache's priority.** A running server serves every worktree and keeps
-  the priority and the cache size it was started with. `make` starts it at
-  `nice -n 10`, so a compile the operator wants first runs at that priority
-  too when it goes through `make` and a server. `AURACLE_SCCACHE=0` is the
-  way out for one command.
 - **mold's number from a runner** is the CI-side measurement in § 4, and
   `.github/workflows` is #177's.
 

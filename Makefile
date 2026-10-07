@@ -34,39 +34,62 @@ endif
 # crates.io dependencies from one cache on this disk instead of compiling
 # them again (docs/architecture/testing.md § The local loop has what that
 # saves). It is safe with a target directory per worktree, where sharing one
-# target directory is not: sccache keys each compile by its inputs, the
-# CARGO_* variables and a build script's OUT_DIR among them, so a workspace
-# crate, or a dependency with a build script, whose path differs in each
-# worktree, never hits another worktree's entry, and an incremental compile
-# (the workspace's crates under test-fast and clippy's) is not cached at all.
+# target directory is not: sccache keys each compile by its inputs, among them
+# every CARGO_* variable and the compile's working directory, so a workspace
+# crate, whose CARGO_MANIFEST_DIR and directory differ in each worktree, never
+# hits another worktree's entry; nor does a dependency that reads its build
+# script's OUT_DIR (a variable its dep-info lists, which is hashed too, and a
+# path inside the worktree). An incremental compile (the workspace's crates
+# under test-fast, and clippy's) is not cached at all.
 # Left alone when:
 # - there is no sccache, or AURACLE_SCCACHE=0 (the builds are as they were
 #   without one), or GITHUB_ACTIONS is set (CI's runners have rust-cache), or
 #   RUSTC_WRAPPER is set, empty too, which names the wrapper;
-# - its server will not start (say a port is taken): said once, and the
-#   builds go without it, where a server that was down would fail every
-#   compile. AURACLE_SCCACHE=1 also says when there is no sccache.
-# The server, not the cargo call, runs the compiles, so it is started here,
-# at `nice -n 10` (a server that is already running keeps the priority and
-# the cache size it was started with, until it idles out after ten minutes),
-# and with the cache capped at SCCACHE_CACHE_SIZE, 2G here (sccache's own
-# default is 10G; the three builds `make check` makes put about 0.3 G in it,
-# and each worktree's own crates 0.05 G more), evicting the least recently
-# used.
+# - the goals compile no Rust (RUST_GOALS; `make` alone is `all`): `make
+#   serve`, `make dev-check` and the rest don't start a server or wait on one.
+#   A goal left out of the list compiles without sccache, as before it;
+# - its server does not answer on its port within ten seconds (a server that
+#   is stuck, or another program on the port): said once, and the builds go
+#   without it, where a server that does not answer would fail every compile.
+#   AURACLE_SCCACHE=1 also says when there is no sccache.
+# The server, not the cargo call, runs the compiles, and serves every
+# checkout until it has been idle for ten minutes, so it is started here at a
+# priority of 10 whatever the priority of the make that starts it (at its own
+# when that is already 10 or more: a priority can't be raised back), and with
+# the cache capped at SCCACHE_CACHE_SIZE, 2G here (sccache's own default is
+# 10G; the three builds `make check` makes put about 0.3 G in it, and each
+# worktree's own crates 0.05 G more), evicting the least recently used. A
+# server that is already running keeps the priority and the cache size it was
+# started with: `sccache --stop-server` stops it, and the next make starts it
+# again.
+# `make` alone makes `all` (said here, above the first target, so the list
+# below can name it).
+.DEFAULT_GOAL := all
+RUST_GOALS := all check test test-verbose test-crate test-fast-tier test-slow-tier \
+	test-search-floor test-slow-rest build lint lint-fix clippy doc wasm wasm-dev wasm-check \
+	bundle coverage coverage-run coverage-archive mutants perform-wirings preset-faces \
+	climb search-check islands budget-ab phi-stats norm-peak fit-bench closed-loop \
+	walk-payload offer-census revalidate site site-api site-tools
 ifneq ($(AURACLE_SCCACHE),0)
 ifeq ($(origin RUSTC_WRAPPER),undefined)
 ifeq ($(GITHUB_ACTIONS),)
 SCCACHE := $(firstword $(wildcard $(CARGO_BIN)/sccache) $(shell command -v sccache 2>/dev/null))
 ifneq ($(SCCACHE),)
+ifneq ($(filter $(RUST_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)
 SCCACHE_SIZE := $(or $(SCCACHE_CACHE_SIZE),2G)
+SCCACHE_PORT := $(or $(SCCACHE_SERVER_PORT),4226)
 # Whatever answers on its port is waited for ten seconds, not for ever.
 SCCACHE_WITHIN := perl -e 'alarm 10; exec @ARGV'
-SCCACHE_UP := $(shell (SCCACHE_CACHE_SIZE=$(SCCACHE_SIZE) nice -n 10 $(SCCACHE_WITHIN) $(SCCACHE) --start-server >/dev/null 2>&1; $(SCCACHE_WITHIN) $(SCCACHE) --show-stats >/dev/null 2>&1 && echo ok) 2>/dev/null)
+# The increment that brings this make's priority to 10, or 0 when it is there
+# already (`nice` on macOS can't print the priority; `ps` can).
+SCCACHE_NICE := n=$$(ps -o nice= -p $$$$ 2>/dev/null | tr -d ' '); i=$$((10 - $${n:-0})); [ "$$i" -gt 0 ] || i=0
+SCCACHE_UP := $(shell ($(SCCACHE_NICE); SCCACHE_CACHE_SIZE=$(SCCACHE_SIZE) nice -n "$$i" $(SCCACHE_WITHIN) $(SCCACHE) --start-server >/dev/null 2>&1; $(SCCACHE_WITHIN) $(SCCACHE) --show-stats >/dev/null 2>&1 && echo ok) 2>/dev/null)
 ifeq ($(SCCACHE_UP),ok)
 export RUSTC_WRAPPER := $(SCCACHE)
 export SCCACHE_CACHE_SIZE := $(SCCACHE_SIZE)
 else
-$(warning sccache is installed, but its server will not start (run: $(SCCACHE) --show-stats): building without it; AURACLE_SCCACHE=0 turns this off)
+$(warning sccache's server does not answer on port $(SCCACHE_PORT) within ten seconds: building without it. An sccache server there: `$(SCCACHE) --stop-server`, or end the process `lsof -iTCP:$(SCCACHE_PORT) -sTCP:LISTEN` names (--stop-server waits for ever on a server that does not answer). Another program: SCCACHE_SERVER_PORT=<a free port>. AURACLE_SCCACHE=0 builds without sccache and skips this wait)
+endif
 endif
 else
 ifeq ($(AURACLE_SCCACHE),1)
@@ -180,9 +203,8 @@ worktree:
 	git -C "$(MAIN_CHECKOUT)" fetch -q origin
 	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
 	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
-	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && { $(MAKE) --no-print-directory pkg-reuse SOFT=1 || \
-		printf '  no engine to reuse here: `make wasm` is owed before a browser run\n'; }
-	@[ -n "$(SCCACHE)" ] || [ "$(AURACLE_SCCACHE)" = 0 ] || [ -n "$(GITHUB_ACTIONS)" ] || [ -n "$$RUSTC_WRAPPER" ] || \
+	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && $(MAKE) --no-print-directory pkg-reuse SOFT=1
+	@[ -n "$(SCCACHE)" ] || [ "$(AURACLE_SCCACHE)" = 0 ] || [ -n "$(GITHUB_ACTIONS)" ] || [ "$(origin RUSTC_WRAPPER)" != undefined ] || \
 		printf '  no sccache: its first build compiles the dependencies in full; scripts/setup.sh installs it, and the next one takes them from its cache\n'
 	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
 
@@ -833,12 +855,13 @@ wasm-dev:
 ## again (about a second, not minutes of fat LTO): the first of this
 ## repository's checkouts and worktrees (`git worktree list`: the main
 ## checkout, then the most recently built) whose engine was built from this
-## tree's Rust and the same build command, copied, never linked; otherwise it
-## says why each was passed over, and `make wasm` is owed. `make worktree`
-## tries it. PKG_FROM=<dir> takes that checkout's only. SOFT=1 says a refusal
-## and doesn't fail on it
+## tree's Rust and the same build command, and is still the engine its stamp
+## was written for; copied, never linked, as new files; otherwise it says why
+## each was passed over, and `make wasm` is owed. `make worktree` tries it.
+## PKG_FROM=<dir> takes that checkout's only. SOFT=1 says a refusal and
+## doesn't fail on it
 pkg-reuse:
-	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED) $(if $(SOFT),|| true)
+	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED) $(if $(filter-out 0,$(SOFT)),|| true)
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
 # hash over the engine and the app scripts, so the same bytes get the same URL

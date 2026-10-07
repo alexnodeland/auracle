@@ -64,6 +64,8 @@ for a in "$@"; do
     --film) FILM=1 ;;
     --site) SITE=1 ;;
     --no-sccache) SCCACHE=0 ;;
+    # What asked for sccache when it was opt-in; it is in the base set now.
+    --sccache) ;;
     --all) FILM=1 SITE=1 ;;
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "unknown option: $a (see --help)" >&2; exit 2 ;;
@@ -112,7 +114,7 @@ fi
 # sccache (unless --no-sccache, or AURACLE_SCCACHE=0 in the environment):
 # before the engine's first build below, so that one goes through it too.
 # Built without remote storage, which a cache on this disk does not need. Its
-# server is `make`'s to start (at nice 10, with the cache capped), and `make`
+# server is `make`'s to start (at a priority of 10, with the cache capped), and `make`
 # says when the server will not start; starting one here would run it at this
 # shell's priority with sccache's own 10 GB limit, which `make` then finds
 # running and leaves be.
