@@ -1,0 +1,20 @@
+# bench_render --allocs at 0eff8f4f (a counting allocator): what one render of each tree allocates
+tree                    compile   compile KB   ticks/sample     analysis  analysis KB
+First Bass                 1514          143        0.00003         1377        35070
+Ceiling                    1718          157        0.00003         1350        34781
+Detune Dream               1346         1574        0.00003         1352        34782
+Long Way Down              2152          239        0.00003         1352        34782
+Glass Pad                  1762          225        0.00003         1259        31523
+Choirboy                   1650         1509        0.00003         1079        26293
+draw 1                      886           79        0.00002         1352        34782
+draw 2                     1490          138        0.00002         1351        34781
+draw 3                      886           79        0.00002         1081        26294
+draw 4                     1681          277        0.00002         1352        34782
+draw 5                     2030          230        0.00003         1079        26293
+draw 6                     1452          137        0.00003         1352        34782
+draw 7                     1200          122        0.00002         1079        26293
+draw 8                     2034         1560        0.00003         1352        34782
+draw 9                     3772          509        0.00004         1348        34581
+draw 10                    1896          242        0.00003         1081        26294
+draw 11                    5564          596        0.00006         1350        34781
+draw 12                    4714         1960        0.00006         1337        34261

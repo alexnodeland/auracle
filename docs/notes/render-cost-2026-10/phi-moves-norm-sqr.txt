@@ -1,0 +1,31 @@
+# phi_moves.py: 0eff8f4f against norm_sqr().sqrt() for norm() in audio.rs (analysis-norm-sqr.diff), on the 63 presets
+62 trees measured on both sides; 43 moved
+
+largest move of each coordinate, in its spread over the trees (top 15):
+   1.08e-14  motion_fast:p2               on Telegraph
+   8.83e-15  chord_flatness_delta:p2      on Jet Wash
+   7.59e-15  motion_slow:p2               on Telegraph
+   1.28e-15  motion_mid:p2                on Telegraph
+   8.90e-16  centroid_std:p2              on Two Minds
+   7.06e-16  bass_fraction:p2             on Sub & Sparkle
+   4.39e-16  flux_mean:p2                 on Coin Toss
+   2.31e-16  held_centroid_std:p2         on Solo Flight
+   2.70e-19  flatness_mean:p2             on Wobble Board
+   0.00e+00  zcr_mean:p2                  on Wrong Number
+   0.00e+00  tail_ratio:p2                on Wrong Number
+   0.00e+00  rolloff_mean:p2              on Wrong Number
+   0.00e+00  rms_std:p2                   on Wrong Number
+   0.00e+00  rms_mean:p2                  on Wrong Number
+   0.00e+00  n_wavetable                  on Wrong Number
+
+the trees that moved most (largest move of any coordinate):
+   1.08e-14  Telegraph
+   8.83e-15  Jet Wash
+   1.27e-15  Nine Against Four
+   1.10e-15  Long Way Down
+   8.90e-16  Two Minds
+   7.59e-16  Acid Line
+   7.06e-16  Sub & Sparkle
+   6.37e-16  Tine
+   6.37e-16  One Way
+   6.37e-16  Iron Bass

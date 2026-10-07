@@ -43,6 +43,9 @@
 //! - `--digest`: each tree's φ, vetting report and face as one FNV-1a hash,
 //!   and one over the set: two builds whose digests agree measured the same
 //!   numbers, bit for bit.
+//! - `--allocs`: what one render allocates (a counting allocator wraps the
+//!   system's for every mode; one relaxed atomic add per allocation): the
+//!   compile, the render's ticks per sample, and the analysis.
 //! - `--phi`: each tree's φ as JSON (`{"names": […], "rows": [{"name", "phi"}]}`),
 //!   for `docs/notes/render-cost-2026-10/phi_moves.py` to say how far a
 //!   change that moves the sound moves φ.
@@ -55,11 +58,85 @@ use auracle_features::{
     struct_features, vet, Face, PhraseSpec, RenderMemo, VetConfig, TARGET_LUFS,
 };
 use auracle_grammar::{
-    compile_follower, compile_for_render, compile_with_input, PatchGrammarPrior, PatchTree,
+    compile_follower, compile_follower_for_render, compile_for_render, compile_with_input,
+    PatchGrammarPrior, PatchTree,
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+
+/// The system allocator, counting: how many allocations and how many bytes,
+/// for `--allocs`.
+struct Counting;
+static ALLOCS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static BYTES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+// SAFETY: every call is forwarded to the system allocator unchanged.
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        ALLOCS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        BYTES.fetch_add(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        std::alloc::System.alloc(layout)
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        std::alloc::System.dealloc(ptr, layout)
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        ALLOCS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        BYTES.fetch_add(size, std::sync::atomic::Ordering::Relaxed);
+        std::alloc::System.realloc(ptr, layout, size)
+    }
+}
+#[global_allocator]
+static GLOBAL: Counting = Counting;
+
+/// Allocations and bytes `f` made.
+fn counted<T>(f: impl FnOnce() -> T) -> (usize, usize, T) {
+    let (a, b) = (
+        ALLOCS.load(std::sync::atomic::Ordering::Relaxed),
+        BYTES.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    let out = f();
+    (
+        ALLOCS.load(std::sync::atomic::Ordering::Relaxed) - a,
+        BYTES.load(std::sync::atomic::Ordering::Relaxed) - b,
+        out,
+    )
+}
+
+/// What one render of each tree allocates: compiling its voices, the
+/// render's ticks (the render less its compiles, per sample), and the
+/// analysis (vetting, loudness, φ, the face).
+fn allocs(set: &[Entry], spec: &PhraseSpec) {
+    let samples = spec.total_samples();
+    let chords: usize = spec.notes.iter().map(|n| n.chord.len()).sum();
+    println!(
+        "{:<20} {:>10} {:>12} {:>14} {:>12} {:>12}",
+        "tree", "compile", "compile KB", "ticks/sample", "analysis", "analysis KB"
+    );
+    for e in set {
+        let (ca, cb, _) = counted(|| compile_for_render(&e.tree, spec.sample_rate, None));
+        let (fa, fb, _) = counted(|| compile_follower_for_render(&e.tree, spec.sample_rate, None));
+        let (ra, _, r) = counted(|| render_phrase(&e.tree, spec).expect("renders"));
+        let compiles = ca + fa * chords;
+        let ticks = ra.saturating_sub(compiles);
+        let (aa, ab, _) = counted(|| {
+            let mut x = r.clone();
+            let cfg = VetConfig::for_spec(spec);
+            let _ = vet(&x.samples, &cfg);
+            normalize_to(&mut x.samples, x.sample_rate, TARGET_LUFS);
+            (audio_features(&x), Face::of_f64(&x.samples, x.sample_rate))
+        });
+        println!(
+            "{:<20} {:>10} {:>12.0} {:>14.5} {:>12} {:>12.0}",
+            truncate(&e.name, 20),
+            compiles,
+            (cb + fb * chords) as f64 / 1024.0,
+            ticks as f64 / samples as f64,
+            aa,
+            ab as f64 / 1024.0
+        );
+    }
+}
 
 /// PERFORM's sounds: the presets `auracle-session`'s PERFORM tests play.
 const PERFORM_SIX: [&str; 6] = [
@@ -316,6 +393,11 @@ fn main() {
 
     if flag("--nodes") {
         nodes(&set, &spec);
+        return;
+    }
+
+    if flag("--allocs") {
+        allocs(&set, &spec);
         return;
     }
 

@@ -2,8 +2,11 @@
 """Fold a V8 CPU profile of the wasm render into the profile's buckets.
 
     wasm-pack build crates/auracle-wasm --target web --out-dir /tmp/pkg-prof --profiling
-      (with RUSTFLAGS="-C link-arg=-zstack-size=8388608", as `make wasm` sets: a
-      release build that keeps the function names wasm-opt strips)
+      (with RUSTFLAGS="-C link-arg=-zstack-size=8388608", as `make wasm` sets,
+      and in a scratch copy, a `[package.metadata.wasm-pack.profile.profiling]`
+      in crates/auracle-wasm/Cargo.toml whose `wasm-opt` is the release
+      profile's list plus "-g": a release build that keeps the function names
+      wasm-opt otherwise strips)
     node --cpu-prof --cpu-prof-dir=/tmp/prof --cpu-prof-interval=500 \\
         crates/auracle-wasm/examples/bench_render.mjs --reps=2 /tmp/pkg-prof
     python3 docs/notes/render-cost-2026-10/fold_cpuprofile.py /tmp/prof/*.cpuprofile
@@ -29,7 +32,7 @@ MODULE = re.compile(r"<(?:[a-z_]+::)+([A-Za-z0-9]+)(?:<[^>]*>)? as quiver::port:
 WANTED = re.compile(r"quiver::modules::[a-z_]+::([A-Za-z0-9]+)::tick_wanted")
 BUCKETS = [
     ("graph walk", re.compile(r"quiver::graph::|quiver::port::PortValues|NodeExec")),
-    ("libm", re.compile(r"libm::")),
+    ("libm (and compiler_builtins' math)", re.compile(r"libm::|compiler_builtins::math")),
     ("φ audio", re.compile(r"auracle_features::audio::")),
     ("loudness", re.compile(r"auracle_features::loudness::")),
     ("vet", re.compile(r"auracle_features::vet::")),
@@ -54,7 +57,9 @@ def main(path):
     total = 0
     for nid, us in self_us.items():
         cf = nodes[nid]["callFrame"]
-        name = cf["functionName"] or "(anonymous)"
+        # A build that keeps its names writes each crate with its hash,
+        # `quiver[8bf69a1b18dd1802]::graph`: drop the hash.
+        name = re.sub(r"\[[0-9a-f]+\]", "", cf["functionName"] or "(anonymous)")
         url = cf.get("url", "")
         if name in ("(idle)", "(program)", "(garbage collector)", "(root)"):
             continue

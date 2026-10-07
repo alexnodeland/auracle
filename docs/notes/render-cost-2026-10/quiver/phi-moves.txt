@@ -1,0 +1,81 @@
+# phi_moves.py on bench_render --phi --bank: 0eff8f4f's φ against each ladder candidate's (63 presets; one is refused on both sides)
+== l1
+62 trees measured on both sides; 11 moved
+
+largest move of each coordinate, in its spread over the trees (top 15):
+   9.62e-02  centroid_std:p2              on Fifth Wheel
+   6.81e-03  high_ratio:p2                on Fifth Wheel
+   6.19e-03  centroid_mean:p2             on Fifth Wheel
+   3.11e-03  crest:p2                     on Fifth Wheel
+   2.99e-03  zcr_mean:p2                  on Fifth Wheel
+   2.22e-03  flux_mean:p2                 on Fifth Wheel
+   2.11e-03  held_centroid_std:p2         on Coin Toss
+   1.04e-03  motion_slow:p2               on Coin Toss
+   8.86e-04  rms_mean:p2                  on Fifth Wheel
+   7.46e-04  rolloff_mean:p2              on Fifth Wheel
+   7.09e-04  motion_mid:p2                on Coin Toss
+   4.85e-04  motion_fast:p2               on Coin Toss
+   4.04e-04  bass_fraction:p2             on Fifth Wheel
+   3.39e-04  flatness_mean:p2             on Fifth Wheel
+   2.41e-04  rms_std:p2                   on Coin Toss
+
+the trees that moved most (largest move of any coordinate):
+   9.62e-02  Fifth Wheel
+   2.11e-03  Coin Toss
+   7.93e-04  Loom
+   6.90e-04  Loudhailer
+   3.10e-04  Acid Line
+   2.16e-04  Wobble Board
+   2.12e-04  First Bass
+   6.82e-05  Deadfall
+   5.99e-06  Anvil
+   4.52e-06  Ceiling
+== l2
+62 trees measured on both sides; 11 moved
+
+largest move of each coordinate, in its spread over the trees (top 15):
+   1.93e-10  held_centroid_std:p2         on Loom
+   1.52e-10  centroid_std:p2              on Loom
+   4.45e-11  centroid_mean:p2             on Loom
+   2.23e-11  rms_mean:p2                  on Loom
+   2.14e-11  rms_std:p2                   on Deadfall
+   1.89e-11  crest:p2                     on Loom
+   1.38e-11  flux_mean:p2                 on Coin Toss
+   1.31e-11  high_ratio:p2                on Loom
+   1.04e-11  motion_mid:p2                on Wobble Board
+   8.07e-12  motion_fast:p2               on Wobble Board
+   7.49e-12  bass_fraction:p2             on Loom
+   7.12e-12  motion_slow:p2               on Loudhailer
+   1.35e-12  attack_s:p2                  on Iron Bass
+   3.18e-13  chord_flatness_delta:p2      on Coin Toss
+   1.35e-13  flatness_mean:p2             on Coin Toss
+
+the trees that moved most (largest move of any coordinate):
+   1.93e-10  Loom
+   2.14e-11  Deadfall
+   1.38e-11  Coin Toss
+   1.19e-11  Wobble Board
+   9.31e-12  Acid Line
+   8.05e-12  Fifth Wheel
+   7.12e-12  Loudhailer
+   7.10e-12  Ceiling
+   3.97e-12  First Bass
+   2.70e-12  Iron Bass
+== l20
+62 trees measured on both sides; 11 moved
+
+largest move of each coordinate, in its spread over the trees (top 15):
+   1.93e-10  held_centroid_std:p2         on Loom
+   1.52e-10  centroid_std:p2              on Loom
+   4.45e-11  centroid_mean:p2             on Loom
+   2.23e-11  rms_mean:p2                  on Loom
+   2.14e-11  rms_std:p2                   on Deadfall
+== l120
+62 trees measured on both sides; 11 moved
+
+largest move of each coordinate, in its spread over the trees (top 15):
+   9.62e-02  centroid_std:p2              on Fifth Wheel
+   6.81e-03  high_ratio:p2                on Fifth Wheel
+   6.19e-03  centroid_mean:p2             on Fifth Wheel
+   3.11e-03  crest:p2                     on Fifth Wheel
+   2.99e-03  zcr_mean:p2                  on Fifth Wheel

@@ -1,0 +1,20 @@
+--- a/crates/auracle-features/src/audio.rs
++++ b/crates/auracle-features/src/audio.rs
+@@ -340,7 +340,7 @@
+             .map(|(s, w)| Complex::new(s * w, 0.0))
+             .collect();
+         fft.process(&mut buf);
+-        let mag: Vec<f64> = buf[..bins].iter().map(|c| c.norm()).collect();
++        let mag: Vec<f64> = buf[..bins].iter().map(|c| c.norm_sqr().sqrt()).collect();
+         let power: f64 = mag.iter().map(|m| m * m).sum();
+ 
+         frame_rms
+@@ -663,7 +663,7 @@
+         fft.process(&mut buf);
+         let (mut msum, mut wsum) = (0.0, 0.0);
+         for (i, c) in buf[..MOTION_FRAME / 2].iter().enumerate() {
+-            let m = c.norm();
++            let m = c.norm_sqr().sqrt();
+             msum += m;
+             wsum += i as f64 * bin_hz * m;
+         }

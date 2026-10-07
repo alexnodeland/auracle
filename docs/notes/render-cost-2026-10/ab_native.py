@@ -2,6 +2,7 @@
 """Two builds of the native render benchmark, against each other.
 
     python3 docs/notes/render-cost-2026-10/ab_native.py BEFORE AFTER [rounds] [reps] [-- bench flags]
+    python3 docs/notes/render-cost-2026-10/ab_native.py BEFORE AFTER [rounds] [reps] -- --kinds
 
 BEFORE and AFTER are two `bench_render` binaries (`target/release/examples/
 bench_render` of two checkouts). They run alternately, `rounds` times each
@@ -13,7 +14,8 @@ sees the same spread of load, and the least is the run that waited least
 for a core. The load average is printed beside every run.
 
 Prints each tree's ms per render on both sides and the ratio, and the set's
-total.
+total. With `-- --kinds`, the rows are `bench_render --kinds`'s one voice of
+each module kind, and the figure is the live voice's ms per voice-second.
 """
 import os
 import re
@@ -21,6 +23,8 @@ import subprocess
 import sys
 
 ROW = re.compile(r"^(.{20}) +([0-9.]+) +([0-9.]+)$")
+# --kinds: kind (22), nodes, live, + on saw, render, + on saw.
+KIND = re.compile(r"^(.{22}) +([0-9]+) +([0-9.]+) +(-?[0-9.]+) +([0-9.]+) +(-?[0-9.]+)$")
 
 
 def run(binary, reps, extra):
@@ -29,9 +33,9 @@ def run(binary, reps, extra):
     ).stdout
     rows = {}
     for line in out.splitlines():
-        m = ROW.match(line)
+        m = KIND.match(line) if "--kinds" in extra else ROW.match(line)
         if m:
-            rows[m.group(1).strip()] = float(m.group(2))
+            rows[m.group(1).strip()] = float(m.group(3) if "--kinds" in extra else m.group(2))
     return rows
 
 

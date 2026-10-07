@@ -1,0 +1,28 @@
+round 1 before:     3647 ms for the set, load 90
+round 1 after :     3592 ms for the set, load 96
+round 2 before:     3787 ms for the set, load 79
+round 2 after :     3520 ms for the set, load 73
+round 3 before:     3631 ms for the set, load 77
+round 3 after :     3546 ms for the set, load 104
+
+tree                    before     after  after/before
+First Bass               308.2     238.8         0.775
+Ceiling                  340.1     277.6         0.816
+Detune Dream             104.1      99.9         0.960
+Long Way Down            210.1     201.7         0.960
+Glass Pad                215.7     209.2         0.970
+Choirboy                 143.2     141.4         0.987
+draw 1                    84.3      88.7         1.052
+draw 2                   107.2     105.0         0.979
+draw 3                    85.8      85.0         0.991
+draw 4                   127.9     120.4         0.941
+draw 5                   155.5     153.3         0.986
+draw 6                   127.7     126.1         0.987
+draw 7                    96.7      96.3         0.996
+draw 8                   189.6     179.9         0.949
+draw 9                   354.6     350.1         0.987
+draw 10                  203.0     197.7         0.974
+draw 11                  437.8     428.5         0.979
+draw 12                  296.2     302.8         1.022
+set                     3587.7    3402.4         0.948
+load average 126, after

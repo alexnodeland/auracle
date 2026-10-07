@@ -1,0 +1,26 @@
+diff -ru a/src/modules/filters.rs b/src/modules/filters.rs
+--- a/src/modules/filters.rs
++++ b/src/modules/filters.rs
+@@ -244,10 +244,20 @@
+     fn diode_sat(x: f64) -> f64 {
+         // Asymmetric tanh-like saturation mimicking diode behavior
+         if x >= 0.0 {
+-            Libm::<f64>::tanh(x * 1.2)
++            Self::tanh_pade(x * 1.2)
+         } else {
+-            Libm::<f64>::tanh(x * 0.8)
++            Self::tanh_pade(x * 0.8)
+         }
++    }
++
++    /// tanh by its (7,6) Pade approximant, clamped to [-1, 1]: within 1e-8
++    /// of tanh below |x| = 2 and 1e-4 at worst (where it clamps, |x| = 4.97).
++    #[inline]
++    fn tanh_pade(x: f64) -> f64 {
++        let x2 = x * x;
++        let n = x * (135135.0 + x2 * (17325.0 + x2 * (378.0 + x2)));
++        let d = 135135.0 + x2 * (62370.0 + x2 * (3150.0 + 28.0 * x2));
++        (n / d).clamp(-1.0, 1.0)
+     }
+ 
+     /// Run the 4-stage saturated one-pole cascade once for input `u` (volts)

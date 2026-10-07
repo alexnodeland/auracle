@@ -1,0 +1,31 @@
+bench_render (wasm, node v26.3.0): 18 trees, least of 3 over 3 rounds each, this thread's CPU ms
+before: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-head (release )
+after: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-l2 (unstamped)
+load average 168 on 16 cores, before
+round 1 before: load 171
+round 1 after: load 124
+round 2 before: load 133
+round 2 after: load 185
+round 3 before: load 188
+round 3 after: load 171
+tree                    before     after  after/before
+First Bass               342.5     241.1         0.704
+Ceiling                  377.5     275.7         0.730
+Detune Dream             148.9     146.1         0.981
+Long Way Down            270.9     278.4         1.027
+Glass Pad                261.7     272.4         1.041
+Choirboy                 176.2     182.0         1.033
+draw 1                   124.4     126.9         1.020
+draw 2                   154.6     152.5         0.986
+draw 3                   107.7     108.8         1.011
+draw 4                   172.5     177.0         1.026
+draw 5                   190.5     192.8         1.012
+draw 6                   177.4     178.7         1.007
+draw 7                   114.7     119.8         1.044
+draw 8                   222.1     221.7         0.999
+draw 9                   425.4     443.5         1.043
+draw 10                  226.7     235.1         1.037
+draw 11                  561.8     568.4         1.012
+draw 12                  379.2     369.2         0.974
+set                     4434.7    4290.2         0.967
+load average 171, after

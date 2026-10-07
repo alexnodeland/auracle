@@ -1,0 +1,79 @@
+# node --cpu-prof (500 µs) on bench_render.mjs --reps=2, the set, a profiling build of the folded engine (its render as at 5a6824d5; release
+# codegen and wasm-opt -O3 -g, so V8 has the names), node v26.3.0, load about 150 on 16 cores. Self time per function, bucketed.
+89704 ms of samples
+  41.1%  graph walk
+  27.8%  DSP (module ticks)
+  20.9%  libm (and compiler_builtins' math)
+   4.6%  other wasm
+   2.1%  FFT (rustfft)
+   1.7%  φ audio
+   0.6%  loudness
+   0.6%  render loop
+   0.2%  serde (boundary JSON)
+   0.2%  allocator, copies
+   0.2%  face
+   0.1%  compile
+   0.0%  JavaScript
+
+the module ticks, by kind (libm is apart, above):
+   4.8% of all  Adsr
+   2.5% of all  Svf
+   2.3% of all  Vca
+   2.3% of all  Limiter
+   1.4% of all  Supersaw
+   1.2% of all  Attenuverter
+   1.2% of all  ExternalInput
+   1.1% of all  ParametricEq
+   1.0% of all  StereoOutput
+   1.0% of all  DiodeLadderFilter
+   0.9% of all  Crossfader
+   0.9% of all  Offset
+   0.8% of all  Wavetable
+   0.8% of all  Chorus
+   0.7% of all  FormantOsc
+   0.6% of all  SlewLimiter
+   0.5% of all  Vibrato
+   0.5% of all  Reverb
+   0.4% of all  DelayLine
+   0.4% of all  Distortion
+
+the heaviest functions:
+  41.0%  <quiver::graph::Patch>::tick
+   6.8%  compiler_builtins::math::libm_math::fma::fma
+   4.6%  libm::math::expm1::expm1
+   4.5%  <quiver::modules::dynamics::Adsr as quiver::port::GraphModule>::tick
+   3.1%  libm::math::pow::pow
+   2.3%  <quiver::modules::filters::Svf as quiver::port::GraphModule>::tick
+   2.1%  <quiver::modules::dynamics::Limiter as quiver::port::GraphModule>::tick
+   1.9%  libm::math::tanh::tanh
+   1.9%  <quiver::modules::dynamics::Vca as quiver::port::GraphModule>::tick
+   1.6%  auracle_features::audio::audio_features
+   1.4%  rustfft::algorithm::radixn::butterfly_4::<f64, &mut [num_complex::Complex<f64>], &[num_complex::Complex<f64>]>
+   1.3%  <quiver::modules::oscillators::Supersaw as quiver::port::GraphModule>::tick
+   1.2%  libm::math::sin::sin
+   1.1%  <quiver::modules::utilities::Attenuverter as quiver::port::GraphModule>::tick
+   1.1%  <quiver::modules::filters::ParametricEq as quiver::port::GraphModule>::tick
+
+libm and compiler_builtins' math, by the first caller that is not math:
+  7.48%  auracle_features::audio::audio_features
+  6.22%  <quiver::modules::filters::DiodeLadderFilter as quiver::port::GraphModule>::tick
+  1.49%  (root)
+  1.33%  <quiver::modules::oscillators::FormantOsc as quiver::port::GraphModule>::tick
+  0.91%  <quiver::modules::filters::ParametricEq as quiver::port::GraphModule>::tick
+  0.63%  <quiver::modules::filters::Svf as quiver::port::GraphModule>::tick
+  0.55%  <quiver::modules::nonlinear::Distortion as quiver::port::GraphModule>::tick
+  0.51%  <quiver::modules::timefx::Chorus as quiver::port::GraphModule>::tick
+  0.47%  <quiver::modules::oscillators::Vco>::tick_wanted
+  0.38%  <quiver::modules::dynamics::Compressor as quiver::port::GraphModule>::tick
+  0.26%  <quiver::modules::oscillators::Wavetable as quiver::port::GraphModule>::tick
+  0.24%  <quiver::modules::oscillators::Supersaw as quiver::port::GraphModule>::tick
+
+'other wasm', the heaviest:
+  0.65%  log
+  0.36%  __multi3
+  0.22%  compileForInternalLoader
+  0.06%  it
+  0.03%  <core::hash::sip::Hasher<core::hash::sip::Sip13Rounds> as core::hash::Hasher>::write
+  0.01%  memcmp
+  0.01%  ?
+  0.00%  readSync

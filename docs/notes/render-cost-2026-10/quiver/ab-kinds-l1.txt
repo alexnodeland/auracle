@@ -1,0 +1,58 @@
+round 1 before:      858 ms for the set, load 189
+round 1 after :      816 ms for the set, load 194
+round 2 before:      871 ms for the set, load 198
+round 2 after :      841 ms for the set, load 190
+round 3 before:      843 ms for the set, load 182
+round 3 after :      834 ms for the set, load 174
+
+tree                    before     after  after/before
+saw voice                  9.8      10.4         1.061
+Vco                       10.9      11.0         1.009
+Supersaw                  12.4      11.5         0.927
+Noise                      9.5       9.5         1.000
+Mix                       15.3      14.8         0.967
+Filter SvfLp              14.0      13.7         0.979
+Filter Ladder             50.1      39.5         0.788
+Fold                      12.9      12.1         0.938
+Delay                     13.4      13.6         1.015
+Chorus                    16.9      18.0         1.065
+Reverb                    18.4      17.6         0.957
+Wavetable                 10.9      11.2         1.028
+Pluck                     11.6      11.5         0.991
+Distortion                14.3      14.9         1.042
+Bitcrush                  12.6      12.8         1.016
+Phaser                    20.2      20.2         1.000
+RingMod                   16.3      16.4         1.006
+Formant                   12.4      12.1         0.976
+Flanger                   18.0      18.8         1.044
+Tremolo                   13.8      12.9         0.935
+Vibrato                   13.3      13.8         1.038
+Eq                        18.0      18.0         1.000
+Granular                  14.9      15.5         1.040
+Shift                     13.9      14.0         1.007
+Comp                      19.7      19.0         0.964
+Duck                      18.0      16.9         0.939
+Gate                      18.5      17.7         0.957
+Vocoder                   19.5      17.4         0.892
+Silence                    9.3       9.1         0.978
+AudioIn                   11.8      12.6         1.068
+Track                     23.1      22.4         0.970
+Capture                   16.4      16.9         1.030
+mod Lfo                   16.8      17.3         1.030
+mod Env                   17.6      17.3         0.983
+mod Rand                  17.8      17.3         0.972
+mod Follow                14.7      13.6         0.925
+mod Euclid                16.1      16.6         1.031
+mod Quantize              21.6      20.0         0.926
+mod Slew                  19.3      19.2         0.995
+mod Rectify               18.6      18.6         1.000
+mod Hold                  19.5      19.9         1.021
+mod Min                   22.9      22.8         0.996
+mod Max                   19.6      20.1         1.026
+mod And                   23.4      22.9         0.979
+mod Or                    23.1      22.8         0.987
+mod Xor                   23.5      22.7         0.966
+mod Switch                24.6      23.4         0.951
+mod Steps                 20.7      18.8         0.908
+set                      829.9     809.1         0.975
+load average 167, after

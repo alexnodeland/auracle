@@ -22,9 +22,9 @@ is.
 
 | File | What it is |
 | --- | --- |
-| `crates/auracle-features/examples/bench_render.rs` | The native bench (`make bench-render`): the set in ms per render; `--stages`, `--nodes`, `--census=N`, `--kinds`, `--digest`, `--loop=N` (its header says each) |
+| `crates/auracle-features/examples/bench_render.rs` | The native bench (`make bench-render`): the set in ms per render; `--stages`, `--nodes`, `--census=N`, `--kinds`, `--allocs`, `--digest`, `--phi`, `--loop=N` (its header says each) |
 | `crates/auracle-features/examples/bench_render.json` | The set: PERFORM's six presets (the ones `auracle-session`'s PERFORM tests play) and the first twelve vetted draws of the prior from seed 20261006, frozen as trees |
-| `crates/auracle-wasm/examples/bench_render.mjs` | The wasm bench: the same trees through `farm_render` under node; two packages side by side for a before and after |
+| `crates/auracle-wasm/examples/bench_render.mjs` | The wasm bench: the same trees through `farm_render` under node; two packages side by side for a before and after; `--digest` (and `--bank`) for the same measurement, bit for bit |
 | `crates/auracle-wasm/examples/voice_cost.mjs` | One live voice of each module kind through `LivePoly`, in wasm |
 | [`ab_native.py`](ab_native.py) | Two native bench binaries, run alternately, each tree's least kept on each side |
 | [`fold_xctrace.py`](fold_xctrace.py) | A native Time Profiler trace folded into stages, the graph walk and each module kind |
@@ -35,6 +35,13 @@ is.
 | [`nodes.txt`](nodes.txt), [`census.txt`](census.txt) | What each tree of the set compiles to and walks; the same over 2000 prior draws |
 | [`voice-cost-native.txt`](voice-cost-native.txt), [`voice-cost-wasm.txt`](voice-cost-wasm.txt) | One voice of each module kind, natively and in wasm |
 | [`ab-native-fold.txt`](ab-native-fold.txt), [`ab-wasm-fold.txt`](ab-wasm-fold.txt) | Folding the knobs, before and after, natively and in wasm |
+| [`wasm-profile.txt`](wasm-profile.txt) | The wasm profile (V8, a build that keeps its names), folded, and its math split by caller |
+| [`browsers.txt`](browsers.txt) | The set in Chromium and Firefox, in a worker and on the page |
+| [`allocs.txt`](allocs.txt) | What one render allocates (`bench_render --allocs`) |
+| [`build-settings.txt`](build-settings.txt) | `simd128` and `wasm-opt -O4`, in wasm |
+| [`phi_moves.py`](phi_moves.py) | How far a change that moves the sound moves φ, in each coordinate's spread |
+| [`analysis-norm-sqr.diff`](analysis-norm-sqr.diff), [`phi-moves-norm-sqr.txt`](phi-moves-norm-sqr.txt), [`ab-native-norm-sqr.txt`](ab-native-norm-sqr.txt), [`ab-wasm-norm-sqr.txt`](ab-wasm-norm-sqr.txt) | `norm_sqr().sqrt()` for `hypot` in φ's spectral frames: the diff, how far φ moves, and its runs |
+| [`quiver/`](quiver/) | The quiver changes measured in a scratch copy (each a diff against 0.4.0) and their runs: `ab-native-*` (the set), `ab-kinds-*` (one live voice of each kind), `ab-wasm-*`, `voice-wasm-*`, `phi-moves.txt` |
 
 ## How to run it again
 
@@ -51,11 +58,22 @@ node crates/auracle-wasm/examples/bench_render.mjs --reps=3 --rounds=3 BEFORE/ap
 # the same measurement, bit for bit? (φ, the vet report, the face, the onsets)
 bench_render --digest; bench_render --digest --bank        # on each build; diff the two
 
+# a quiver change, measured without releasing quiver: in a scratch copy of the
+# workspace, append to Cargo.toml
+#   [patch.crates-io]
+#   quiver-dsp = { path = "/path/to/a/patched/quiver-dsp-0.4.0" }
+# build its bench and engine, and compare as above; bench_render --phi on both,
+# then phi_moves.py, says how far φ moves
+
 # the native profile (macOS)
 CARGO_PROFILE_RELEASE_DEBUG=line-tables-only cargo build --release -p auracle-features --example bench_render
 xctrace record --template 'Time Profiler' --output r.trace --launch -- target/release/examples/bench_render --loop=2
 xctrace export --input r.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' > r.xml
 python3 docs/notes/render-cost-2026-10/fold_xctrace.py r.xml
+
+# the wasm profile: fold_cpuprofile.py's header says how to build an engine that keeps its names
+node --cpu-prof --cpu-prof-dir=/tmp/prof crates/auracle-wasm/examples/bench_render.mjs --reps=2 /tmp/pkg-prof
+python3 docs/notes/render-cost-2026-10/fold_cpuprofile.py /tmp/prof/*.cpuprofile
 ```
 
 Run the bench without `nice`: it measures CPU time, but a niced process on a
@@ -64,29 +82,40 @@ performance core's.
 
 ## In short
 
-- **A render is its DSP: 94 to 96% of the farm's job** is ticking the patch
-  through the phrase. φ's analysis is 3%, loudness 1%, the face 0.8%, vetting
-  0.2%; compiling the tree (and the chord's second voice) is 0.03%, and the
-  JSON the farm parses and writes 0.003% ([stages](stages-before.txt)).
-- **More than half of the DSP is not the modules' DSP.** quiver walks its
-  graph every sample: for each node it gathers the inputs into a `PortValues`,
-  calls the module through `dyn GraphModule`, and scatters the outputs, and
-  that walk (`Patch::tick`, with what it inlines) is 55% of a render, against
-  39% in the modules' own `tick`s ([profile](native-profile.txt)). Inside it,
-  the biggest single cost is `PortValues`' linear scan for a port's slot
-  (17% of the whole render), then the scatter (8%) and walking the input
-  plans (6%) ([profile with line tables](native-profile-lines.txt)).
-- **About half of a patch's nodes are knobs** (354 of 606 on the set): each
-  live knob is an `ExternalInput` node the walk visits every sample to read a
-  value nothing changes during a measurement. **Built here:** a measurement
-  render folds each knob into the port it drives, so the walk visits 55% of
-  the nodes it did, with the same samples, bit for bit. A render takes 14.8%
-  less CPU natively and 17.4% less in wasm (below).
-- **The ladder is the one module that matters most.** Natively it is 8% of the
-  set's time on its own, the most of any module, from only two ladders in 606
-  nodes; per voice it adds 41 ms of CPU per voice-second to a saw voice of
-  10.5 natively, and 47 ms to 14.5 in wasm: a ladder voice costs about four
-  times a voice without one ([one voice of each kind](#one-voice-of-each-module-kind)).
+- **A render is its DSP.** Natively 94% of the farm's job is ticking the patch
+  through the phrase; φ's analysis is 3%, loudness 1%, the face 0.8%, vetting
+  0.2%, compiling the tree 0.03%, and the farm's JSON 0.003%
+  ([stages](stages-before.txt)). In wasm the analysis is about 12%, most of it
+  one function (`hypot`, below).
+- **More than half of the DSP is quiver's graph walk, not the modules.** For
+  each node, every sample, quiver gathers the inputs into a `PortValues`,
+  calls the module through `dyn GraphModule`, and scatters the outputs. That
+  walk is 55% of a render natively and 41% in wasm, against 39% and 28% in the
+  modules' own `tick`s ([native](native-profile.txt), [wasm](wasm-profile.txt)).
+- **Built here: a measurement render folds its knobs.** About half of a
+  patch's nodes are live knobs, each a node the walk visits every sample to
+  read a value nothing changes during a measurement. A render now folds each
+  into the port it drives: the same samples, bit for bit, through 55% of the
+  nodes. **A render takes 14.8% less CPU natively, 17.4% less in wasm under
+  node, and 15.4% and 19.6% less wall time in Chromium's and Firefox's
+  workers.**
+- **The ladder is the costliest module by far.** One live voice costs 10.5 ms
+  of CPU per voice-second natively and 14.5 in wasm with a saw; a ladder adds
+  41 and 47. A cheaper `tanh` in quiver's ladder (a Padé approximant) takes
+  35% off a ladder voice, natively and in wasm, and moves φ by at most 2e-10
+  of a coordinate's spread; it is quiver's to release, and the maintainer's
+  to decide ([the ladder](#the-ladder)).
+- **In wasm, 7.5% of a render is one function**: `hypot`, taken on every bin
+  of φ's spectral frames, which wasm computes with a software fused
+  multiply-add. `norm_sqr().sqrt()` in its place takes 9.2% off a wasm render
+  and moves φ by at most 1.1e-14 of a spread: the maintainer's to decide
+  ([in wasm](#in-wasm)).
+- **Firefox renders in a worker at about 1.2 times Chromium's time**, which
+  is where the app renders. On a page's main thread it took 5 to 6 times as
+  long, which the app never asks of it ([browsers](#in-the-browsers)).
+- **Build settings are spent.** Release is already fat LTO, one codegen unit,
+  `panic = "abort"` and `wasm-opt -O3`; `simd128` measured 2.2% faster in wasm
+  and `wasm-opt -O4` 1.1%, both within the spread here ([build settings](#build-settings)).
 
 ## The render, by stage
 
@@ -140,7 +169,64 @@ port, in the gather and in every module), the scatter 8.1% (`get_at`, the
 sanitize and the denormal flush per output), walking the input plans 6.1%,
 `Option<f64>` slots cleared and written 4.7% + 2.8%, `get_at` 3.6%, the
 gather's own loop 3.2%. That is quiver's per-sample engine, not auracle's
-code: it is upstream's to change (below).
+code: it is upstream's to change (below). Read those shares as where the
+walk's time is, not as what a change would save: xctrace names each sampled
+address by the innermost function inlined there, and a `PortValues` that
+finds a slot by a table instead of the scan made renders no faster
+([quiver](#quiver)).
+
+## In wasm
+
+[`wasm-profile.txt`](wasm-profile.txt): V8's profile of the wasm bench on the
+set, on a build that keeps its function names (release codegen, `wasm-opt
+-O3 -g`), the folded engine, under node:
+
+| Bucket | Share of a render |
+| --- | ---: |
+| The graph walk (`Patch::tick`) | 41.1% |
+| The modules' `tick`s, without the math they call | 27.8% |
+| libm and `compiler_builtins`' math, called by the modules (1.5% of it from a caller the profiler lost) | 13.4% |
+| `hypot`, under φ's audio features (`compiler_builtins`' software `fma`) | 7.5% |
+| The FFTs (rustfft), φ's audio features, loudness, the face | 4.6% |
+| The render loop, serde (the JSON at the boundary), the allocator, compiling | 1.1% |
+| Other (`log`, `__multi3`, the loader) | 4.5% |
+
+The ladder is 7.2% of the set's time in wasm (1.0% its own `tick`, 6.2% the
+`tanh` and `expm1` it calls) from three trees of eighteen. And φ's analysis is
+about 12% of a render in wasm against 4% natively, because of one function:
+`num_complex`'s `norm()` is a `hypot`, taken on every bin of every FFT frame
+(1024 bins by about 215 frames a render), and in wasm, which has no fused
+multiply-add, `compiler_builtins`' correctly rounded `hypot` emulates one in
+software. Natively it is the platform's. `norm_sqr().sqrt()` in its place
+([diff](analysis-norm-sqr.diff)) takes 9.2% off the set in wasm and nothing
+natively, and moves φ by at most 1.1e-14 of a coordinate's spread
+([phi-moves-norm-sqr.txt](phi-moves-norm-sqr.txt)): a rounding, but not the
+same bits, so it is the maintainer's to decide ([what is left](#what-is-left-ranked)).
+
+A render allocates nothing per sample ([allocs.txt](allocs.txt)): about seven
+allocations in a whole render's ticks (its buffers), 900 to 5,600 to compile
+its voices, and 1,080 to 1,380 allocations (26 to 35 MB) in the analysis,
+mostly a buffer per FFT frame. The analysis is 4% of a render natively, so
+reusing those buffers would be worth under 1%.
+
+## In the browsers
+
+[`browsers.txt`](browsers.txt): the set through `farm_render` in Chromium 153
+and Firefox 155, headless, through Playwright and `one_browser.sh`, the least
+of three wall-clock renders per tree after a warm-up pass (a browser has no
+CPU clock for a thread), twice each, alternating:
+
+| | Before folding | After | |
+| --- | ---: | ---: | ---: |
+| Chromium, a module worker, ms for the set | 5108 | 4322 | -15.4% |
+| Firefox, a module worker, ms for the set | 6345 | 5103 | -19.6% |
+
+In a worker, where the app renders (the farm and the engine worker), Firefox
+takes about 1.2 times Chromium's time. On a page's main thread it took 4.9 to
+6.2 times (1167 to 1482 ms a render against 239), with or without warm-up
+passes, three to ten times per tree: headless Firefox's main thread, which the
+app never renders on. Under node the folded engine's set is 4623 ms of CPU,
+close to Chromium's worker.
 
 ## One voice of each module kind
 
@@ -206,10 +292,95 @@ live voice (`LivePoly`) keeps every knob live.
 Per tree it is 5% (First Bass, whose ladder dominates) to 25% (a large prior
 draw), more where a patch has more knobs.
 
-## What is left
+Per tree it is 5% (First Bass, whose ladder dominates) to 25% (a large prior
+draw), more where a patch has more knobs. In the browsers' workers it is
+15.4% (Chromium) and 19.6% (Firefox) ([above](#in-the-browsers)).
 
-To come in this note, from the measurements still running: the wasm profile's
-split; the browsers (Chromium and Firefox); build settings (`simd128`,
-`wasm-opt`'s passes); quiver's walk (`PortValues` by index); the ladder's
-candidates (one fewer fixed-point pass, a cheaper `tanh`) with `make
-revalidate` on both sides.
+**`make revalidate`, before and after** (`c8541631`, then `5a6824d5`, in
+copies of their trees, at niceness 0): running at this writing; the tables and their diff follow in this section when both sides are done.
+
+## Build settings
+
+[`build-settings.txt`](build-settings.txt). The release profile is fat LTO,
+one codegen unit, `panic = "abort"`, and `wasm-opt -O3` with exactly the
+features rustc emits. Two more, each measured against the same Rust in wasm
+under node, alternating, the least of three rounds of three:
+
+| Setting | φ | The set |
+| --- | --- | ---: |
+| `-C target-feature=+simd128` (and `wasm-opt --enable-simd`) | the same on all 63 presets | -2.2% (per tree -8.5% to +4.1%) |
+| `wasm-opt -O4` over the `-O3` engine | the same on all 63 presets | -1.1% |
+
+Both are within what the load moves a run here. `simd128` would also set the
+app's floor at Safari 16.4, Chrome 91 and Firefox 89 (an engine built with it
+does not instantiate on an older one), for a gain this machine cannot see:
+not built, and the maintainer's to decide. The DSP is scalar `f64` through
+`dyn` calls, so there is little for LLVM to vectorize; SIMD pays only in hot
+loops written for it (quiver's, below).
+
+## The ladder
+
+quiver's `DiodeLadderFilter::tick` (quiver-dsp 0.4.0) runs its four-stage
+cascade three times a sample (two fixed-point passes for the resonance
+feedback, then the pass that commits the state), with libm's `tanh` on the
+input, on every stage's output and on the feedback each pass: 19 `tanh` a
+sample. Four candidates, each a diff against 0.4.0 in [`quiver/`](quiver/),
+patched into a scratch copy of this workspace (`[patch.crates-io]`); none
+changes quiver or its version here. Natively, against `0eff8f4f`, alternating,
+the least of three rounds of three; "a ladder voice" is the live voice of
+`--kinds` (a saw through the ladder), CPU ms per voice-second; φ's move is the
+largest change of any coordinate on any of the 63 presets, in that
+coordinate's spread over them ([phi-moves.txt](quiver/phi-moves.txt)):
+
+| Candidate | φ | The set | First Bass | Ceiling | A ladder voice | In wasm |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| L0: no saturation after the fourth stage, whose value nothing reads | the same, bit for bit | -1.8% | -3.9% | -3.9% | 50.2 to 50.0 | |
+| L1: one fixed-point pass, not two (13 `tanh`) | 0.096 of a spread (Fifth Wheel's `centroid_std`); every other move under 0.007, on 11 ladder presets | -5.2% | -22.5% | -18.4% | 50.1 to 39.5 (-21%) | |
+| L2: a Padé (7,6) `tanh`, clamped (within 1e-8 of `tanh` below 2, 1e-4 at worst) | at most 2e-10 of a spread | -6.5% | -34.1% | -28.1% | 48.8 to 31.8 (-35%) | the set -3.3%, First Bass -29.6%, Ceiling -27.0%; a ladder voice in `LivePoly` 55.9 to 36.4 (-35%) |
+| L2 and L0 | at most 2e-10 of a spread | -5.9% | -32.7% | -29.6% | 30.9 | |
+| L1, L2 and L0 | as L1's | -6.1% | -41.6% | -37.2% | 28.2 | |
+
+(The voices of the last two rows were not alternated with a before; the head
+read 49.4 in the same hour.)
+
+L2 is nearly all of the gain and moves φ by a rounding: a ladder voice costs
+a third less, which is the difference between ten ladder voices fitting and
+not (#320). With L0 too it is the candidate to release first. L1 adds about
+as much again on the ladder presets, at the price of moving one preset's
+`centroid_std` by a tenth of a spread: a sound decision, not a speed one.
+`make revalidate` on L1 and on L2 (in their scratch workspaces): running at this writing.
+
+## quiver
+
+What else is quiver's to change, measured the same way:
+
+- **`PortValues` by a table, not a scan** ([diff](quiver/portvalues-slot-table.diff)):
+  the same samples; the live voices of `--kinds` 9% cheaper natively (a saw
+  voice 22%), but renders 1.3% slower natively and 9.5% slower in wasm, and
+  a saw voice in `LivePoly` 9% slower. Not a win, and so the walk's cost is
+  not in finding a slot: it is the walk's shape (a `PortValues` per node, an
+  `Option<f64>` per port, a `dyn` call per node).
+- **The walk's shape** (not prototyped; the largest that is left): the walk is
+  41 to 55% of a render, and a voice's 13 to 90 nodes each pay it every
+  sample. Ports as plain `&[f64]` slices a module reads by index (an API
+  change for every module), a node's whole block at a time where the graph
+  has no feedback (for a chain of nodes with no loop, `tick` over 128 samples
+  instead of one), and `dyn` dispatch replaced by an enum of quiver's own
+  modules are the candidates, each bit-identical by construction where the
+  per-sample arithmetic is kept.
+
+## What is left, ranked
+
+| | Change | Where | φ | Gain, measured or estimated |
+| --- | --- | --- | --- | --- |
+| 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% |
+| 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) |
+| 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped |
+| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset | A further -15 to -20% on ladder presets |
+| 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor |
+| 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% |
+| 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear |
+
+Not measured: wasm threads (the app has no COOP and COEP headers, and the farm
+already renders on several workers), and `f32` in the DSP (quiver's modules
+are `f64` throughout; every module would change and φ would move).
