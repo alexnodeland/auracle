@@ -96,7 +96,9 @@ test("a sound opened from outside the bank has its row brought into the bank's v
   // Short enough that the full pool's 40 rows must scroll.
   await page.setViewportSize({ width: 1440, height: 700 });
   // The bank whole (`filled`), so the list is as long as it will be and
-  // nothing still arriving moves it.
+  // nothing still arriving moves it. A cold boot, not one that reuses
+  // renders (fixtures.js `reuseRenders`): card A is EVOLVE's first pair's,
+  // dealt as the app turns playable, from the sounds there are by then.
   await app.boot();
   await app.filled();
   await expect.poll(() => page.locator("#bank-list .bank-item[data-id]").count()).toBe(40);
@@ -208,9 +210,20 @@ for (const [width, height] of [[1000, 800], [1440, 900]]) {
       await at.hover();
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "under the pointer").toMatchObject(WITH_PLAY);
-      // The focus on its ▶, the pointer away.
-      await page.mouse.move(5, 5);
+      // From here to the last state the engine's replies wait (`app.hold`),
+      // and are handed to main at the end. A reply that redraws the bank
+      // rebuilds this row (the pool's `taste_views` once the fill ends, which
+      // this cold boot's can do in any of these steps, among others), and a
+      // rebuilt ▶ has lost the focus and the playing mark set on it here.
+      await app.hold({});
+      // The focus on its ▶, the pointer away: focused while the pointer is
+      // on the row, as a press would, then the pointer moved off. A hidden ▶
+      // cannot take the focus, and the strip hides `--d-press` after the
+      // pointer leaves (its `visibility`), so a focus asked for after the move
+      // stayed on the page whenever the move had hidden it first: 3 runs of
+      // 20 here, none of 40 since.
       await hear.focus();
+      await page.mouse.move(5, 5);
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "with the focus on its ▶").toMatchObject(WITH_PLAY);
       // Playing, the pointer and the focus away: the mark a ▶ pressed on a
@@ -228,6 +241,7 @@ for (const [width, height] of [[1000, 800], [1440, 900]]) {
       await expect(at).toHaveClass(/\bkbd\b/);
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "under the keyboard's cursor").toMatchObject(WITH_PLAY);
+      await app.release();
     });
   });
 }

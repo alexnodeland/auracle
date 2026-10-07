@@ -109,10 +109,12 @@ const WATCH = `(() => {
   });
 })();`;
 
-/** Boot, seeded, with the watchers on. */
-async function boot(page, app) {
+/** Boot, seeded, with the watchers on. `reuseRenders` for a test that does
+ *  nothing before the pool is whole: the boot starts with the renders an
+ *  earlier one of the seed kept (fixtures.js); one that picks first is cold. */
+async function boot(page, app, { reuseRenders = false } = {}) {
   await page.addInitScript(WATCH);
-  await app.boot({ random: 20260928 });
+  await app.boot({ random: 20260928, reuseRenders });
 }
 
 /** Boot, make six picks in EVOLVE and wait for their refit: a model with
@@ -186,7 +188,7 @@ async function landChild(app, child, { seed, generation, index = 0, reason = nul
 /** Boot to a full pool, without a fit (a state main.js reads ratings into),
  *  and go to EVOLVE, where EVOLVE POOL is. */
 async function pooled(page, app) {
-  await boot(page, app);
+  await boot(page, app, { reuseRenders: true });
   await whole(app, "status");
   await goLevel(page, "evolve");
   await expect(page.locator("#evolve-wrap")).toBeVisible();
@@ -347,7 +349,7 @@ test("a child keeps its unheard dot across a reload, and loses it when its phras
 });
 
 test("Compare shows a child beside its seed, what changed and both ratings, and plays both while both exist", async ({ page, app }) => {
-  await boot(page, app);
+  await boot(page, app, { reuseRenders: true });
   const s = await whole(app, "views");
   const [seed, kid] = [s.ranked[1], s.ranked[3]];
   // The lineage event the engine records for a bred child (`LineageEvent`):
@@ -402,7 +404,7 @@ test("Compare shows a child beside its seed, what changed and both ratings, and 
 });
 
 test("Compare opens from the keyboard: c on a bred sound in the bank, and Esc hands the keys back", async ({ page, app }) => {
-  await boot(page, app);
+  await boot(page, app, { reuseRenders: true });
   const s = await whole(app, "views");
   const [seed, kid, plain] = [s.ranked[1], s.ranked[3], s.ranked[2]];
   const ev = {
@@ -517,7 +519,7 @@ test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound i
 test("Compare lists every change a long walk made, and the list scrolls", async ({ page, app }) => {
   // A 40-step walk can change two dozen sites (26 in one review run). Compare
   // showed the first eight and "+18 more"; the release notes say every change.
-  await boot(page, app);
+  await boot(page, app, { reuseRenders: true });
   const s = await whole(app, "views");
   const [seed, kid] = [s.ranked[1], s.ranked[3]];
   const mods = Array.from({ length: 14 }, (_, i) => `mod${i + 1}`);
