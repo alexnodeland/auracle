@@ -12,14 +12,18 @@
 const { test, expect, openKeys } = require("./fixtures");
 
 /** The audio context's output timestamp on a clock of the spec's: running
- *  at `rate` of the page's (1: keeping time). And every message the page
- *  posts to the worklet, by type, in `window.__worklet`. */
+ *  at `rate` of the page's (1: keeping time), and an underrun count that
+ *  stays at 0, so the rule reads only the spec's clock: a loaded runner's own
+ *  underruns (headless Chromium counts them) would otherwise switch the
+ *  protections on in a test that says they stay off. And every message the
+ *  page posts to the worklet, by type, in `window.__worklet`. */
 const AUDIO = (rate) => `(() => {
   const t0 = performance.now();
   AudioContext.prototype.getOutputTimestamp = function () {
     const p = performance.now();
     return { contextTime: (t0 + (p - t0) * ${rate}) / 1000, performanceTime: p };
   };
+  Object.defineProperty(AudioContext.prototype, "playbackStats", { configurable: true, get: () => ({ underrunEvents: 0 }) });
   const seen = (window.__worklet = []);
   const post = MessagePort.prototype.postMessage;
   MessagePort.prototype.postMessage = function (d, ...rest) {

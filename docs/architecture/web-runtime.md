@@ -393,13 +393,14 @@ worker starts no background step (`backgroundStep`):
 - no batch of the bank's fill: the serial loop waits (`backgroundTurn`), and
   the farm's waits to hand out its next render (`runFarm`, the boot fill's
   call alone: a restore's is never held, the player waits on it);
-- no walk handed to the crew (`walkPump`) and no render of the guess's crew
+- no walk of a generation handed to the crew (`walkPump`; ⚡'s own walk,
+  `refine_from`, goes ahead of them) and no render of the guess's crew
   (`crewRenders`, which hands them out again when the hold lifts).
 
 `now` requests and `soon` work (what the player asked for and waits on: a
 pressed Offer, the measurement of the sound in hand, a figure) go on as
-ever, and so does a guess the player asked for (What goes here?, a `guess`
-with `at`: `playerAsked`). What has started finishes: a render cannot be
+ever, and so do a guess the player asked for (What goes here?, a `guess`
+with `at`: `playerAsked`) and ⚡ EVOLVE FROM THIS's walk. What has started finishes: a render cannot be
 interrupted. Nothing is held before the boot veil lifts (`veilDown`, at
 `playable`): keys played under it must not keep it up, and room asked for
 under it counts toward the cap from then. The pump is not re-armed for work

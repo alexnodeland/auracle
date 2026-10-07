@@ -397,6 +397,37 @@ test("while room is made and for a second after, no background step goes, and th
   assert.equal(p.backgroundStep(), true);
 });
 
+// `walkPump` with a crew of one ready worker, on the room clock.
+function walkRoom() {
+  const walkQueue = [];
+  const sent = [];
+  const f = { alive: true, ready: true, job: null, ctx: "c", port: { postMessage: (m) => sent.push(m) } };
+  const p = roomClock({
+    extra: [lift("walkPump")],
+    names: ["walkQueue", "walkInflight", "farm", "crewKeep", "crewReady", "crewRaising", "runOwned", "WALK_TIMEOUT_MS", "walkTimeout"],
+    values: [walkQueue, new Map(), [f], () => {}, () => true, false, (t, fn) => fn(), 1e9, () => {}],
+  });
+  return { ...p, walkQueue, walked: () => sent.filter((m) => m.type === "walk").map((m) => m.i) };
+}
+
+test("while room is made, ⚡'s own walk goes to the crew, and a generation's walks wait", () => {
+  const p = walkRoom();
+  const gen = { id: 1, request: "refine", ctx: "c", job: "g" };
+  const mine = { id: 2, request: "refine_from", ctx: "c", job: "z" };
+  p.walkQueue.push(gen, mine);
+  p.setRoom(true);
+  p.walkPump();
+  assert.deepEqual(p.walked(), [2], "⚡'s walk went, past the generation's");
+  assert.deepEqual(p.walkQueue, [gen], "the generation's walk waits for the hold to lift");
+});
+
+test("with no room asked for, walks go to the crew in the order they were asked for", () => {
+  const p = walkRoom();
+  p.walkQueue.push({ id: 1, request: "refine", ctx: "c", job: "g" }, { id: 2, request: "refine_from", ctx: "c", job: "z" });
+  p.walkPump();
+  assert.deepEqual(p.walked(), [1], "first come, first walked: ⚡ jumps the line only while room is made");
+});
+
 test("nothing is held before the boot veil lifts, and room asked for under it counts from then", () => {
   const p = roomClock({ playable: false });
   p.setRoom(true);

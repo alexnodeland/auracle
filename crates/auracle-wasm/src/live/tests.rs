@@ -2695,7 +2695,7 @@ const CENSUS_WAKE_QUANTA: usize = 8;
 /// quiver's would be. A falling envelope's arrival was an exact comparison
 /// with a level quiver hands back through its 10 V scale, so on a sustain
 /// whose `s × 10 × 0.1` rounds above `s` (0.6, 0.7, 0.85…) it never came,
-/// and on 25 of the 62 presets a wake never ended: B stayed silent and cost
+/// and on 24 of the 62 presets a wake never ended: B stayed silent and cost
 /// a render every quantum.
 #[test]
 fn every_presets_held_note_wakes_soon_and_where_it_would_be() {

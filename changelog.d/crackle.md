@@ -9,8 +9,8 @@
   your hands in silence with BLEND at home, and that work waits while you
   play and for a second after (after eight seconds of playing it goes on a
   step at a time, so the bank still fills). The things you ask for and wait
-  on (an offer you press, a sound you open, What goes here?) go ahead as
-  before. On a computer that keeps up, nothing changes (#288).
+  on (an offer you press, a sound you open, What goes here?, ⚡ EVOLVE FROM
+  THIS) go ahead as before. On a computer that keeps up, nothing changes (#288).
 - **B comes in where its notes would have been.** While it is silent, moving
   BLEND or holding PEEK brings B in about two hundredths of a second later,
   its held notes at the level they would have reached, without starting

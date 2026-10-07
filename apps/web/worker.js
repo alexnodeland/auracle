@@ -598,9 +598,12 @@ function walkPump() {
     if (!walkQueue.length) break;
     if (!f.alive || !f.ready || f.job !== null) continue;
     // Not while room is made for the audio (`backgroundStep`):
-    // `backgroundResumed` pumps again when a walk may go.
-    if (!backgroundStep(true)) break;
-    let task = walkQueue.shift();
+    // `backgroundResumed` pumps again when a walk may go. ⚡'s walk is the
+    // player's own (`refine_from`), so it goes ahead even then, as What
+    // goes here? does: only a generation's walks wait.
+    const mine = backgroundHeld() ? walkQueue.findIndex((t) => t.request === "refine_from" && !t.dead) : -1;
+    if (mine < 0 && !backgroundStep(true)) break;
+    let task = walkQueue.splice(Math.max(mine, 0), 1)[0];
     while (task && task.dead) task = walkQueue.shift();
     if (!task) break;
     if (f.ctx !== task.ctx) {
