@@ -71,8 +71,15 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.meterPtr = 0;
     // The B slot: a second instrument that follows the same hands, so an
     // offer can be heard against home by crossfade rather than by a jump.
-    // Rendered whenever it is loaded (so its envelopes and tails are in step
-    // with A when the fader moves), mixed at equal power. held mirrors the
+    // Mixed at equal power. While its mix is 0 (Blend down, PERFORM out of
+    // sight) and the ramp down to it is over, nobody hears it, so it rests
+    // (LivePoly.rest): it follows the keys and keeps time, and renders no
+    // voice, where rendering it cost the audio thread a second instrument's
+    // work a quantum, the crackle of issue 288 on a slower laptop. When the mix
+    // leaves 0 it wakes (resting() says so while it does): each held note's
+    // envelope is driven to where it would be over a few silent quanta, at
+    // a rendered quantum's cost each, and the mix waits at 0 meanwhile, so
+    // B comes in on its ramp from there with no attack. held mirrors the
     // notes under the player's fingers so a freshly loaded B joins the chord.
     this.polyB = null;
     this.mixB = 0;
@@ -393,12 +400,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     }
     if (this.poly && L) {
       const n = L.length;
+      // B rests while nobody hears it: its mix is 0 and the ramp down to it
+      // is over. So a retiring B (fading after Keep, Back or Pass, or
+      // sounding on while A takes its tree) renders until it is silent.
+      const bRests = !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;
       // The input first: the voices read it as they render this quantum.
       const inp = inputs[0];
       const hasInput = inp && inp.length > 0 && inp[0].length === n;
       if (this.monitor && hasInput) {
         this.writeInput(this.poly, inp, n, false);
-        if (this.polyB) this.writeInput(this.polyB, inp, n, true);
+        if (this.polyB && !bRests) this.writeInput(this.polyB, inp, n, true);
       }
       // Zero-allocation render: the synth fills a persistent wasm buffer;
       // we view its memory directly. The cached view is rebuilt only when
@@ -406,7 +417,17 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       const ptr = this.poly.process_ptr(n);
       // B renders after A. A wasm memory grow during B's call invalidates
       // every view but not A's data, so both views are taken after both calls.
-      const ptrB = this.polyB ? this.polyB.process_ptr(n) : 0;
+      // A quantum that starts with B resting is one of its wake's (or the
+      // rest's own): B is silent through it, so the mix waits at 0 and A is
+      // not turned down under nothing.
+      const mixTo = this.polyB && this.polyB.resting() ? 0 : this.mixB;
+      let ptrB = 0;
+      if (bRests) {
+        this.polyB.rest(n);
+        this.mixCur = 0;
+      } else if (this.polyB) {
+        ptrB = this.polyB.process_ptr(n);
+      }
       if (
         !this.view ||
         this.viewPtr !== ptr ||
@@ -417,7 +438,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         this.viewPtr = ptr;
       }
       let buf = this.view;
-      if (this.polyB) {
+      if (this.polyB && !bRests) {
         if (
           !this.viewB ||
           this.viewBPtr !== ptrB ||
@@ -433,7 +454,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         // Equal-power, smoothed per sample (~10 ms), so a Peek is a gesture
         // and not a click.
         for (let i = 0; i < n; i++) {
-          this.mixCur += (this.mixB - this.mixCur) * 0.002;
+          this.mixCur += (mixTo - this.mixCur) * 0.002;
           const th = this.mixCur * 1.5707963267948966;
           const ga = Math.cos(th);
           const gb = Math.sin(th);

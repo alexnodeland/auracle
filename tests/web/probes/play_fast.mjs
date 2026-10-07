@@ -24,7 +24,9 @@
 //                                them appended; nothing on disk changes). Not a faster-ageing copy: a
 //                                shadow lives at real time, so its voices ring and park as the real ones
 //   --offer                      after the settle, press Offer (N) and wait for B to load, then play:
-//                                the worklet then renders a second four voices every quantum
+//                                at BLEND's home B rests (the worklet renders it only while heard)
+//   --blend=0.5                  with --offer, move BLEND there before playing: B is heard, and the
+//                                worklet renders a second four voices every quantum
 //   --runs=1
 //
 // What it records, in the page's clock unless said:
@@ -45,7 +47,7 @@
 //   when the audio thread keeps up, checked in Chromium against the
 //   playbackStats' underruns), **whether B was loaded** (the `b_patch`
 //   messages the page had sent before the keys: B renders a second four voices
-//   a quantum while it is) and **note latency in
+//   a quantum while it is heard, and rests at a mix of 0) and **note latency in
 //   audio time**: for each `on`, the audio clock the worklet read when it ran
 //   `note_on` (`currentFrame`, posted back by a probe line added to
 //   live-audio.js as it is served) minus the context's `currentTime` when the
@@ -295,6 +297,12 @@ async function run(n) {
     if (flags.offer) {
       await page.keyboard.press("n");
       await page.waitForFunction(() => window.__probe.worklet.some((m) => m[1] === "b_patch"), null, { timeout: 180_000 });
+      if (flags.blend !== undefined) {
+        await page.locator(".pf-blend-in").evaluate((el, v) => {
+          el.value = String(v);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        }, Number(flags.blend));
+      }
       await sleep(1000);
     }
 
@@ -381,7 +389,7 @@ async function run(n) {
     {
       const before = {};
       for (const [t, type] of P.worklet) if (t < t1) before[type] = (before[type] || 0) + 1;
-      console.log(`  B slot before the keys: ${before.b_patch ? `loaded (${before.b_patch} b_patch, ${before.b_clear || 0} b_clear)` : "not loaded"}; page-to-worklet messages so far: ${Object.entries(before).map(([k, v]) => `${k}:${v}`).join(" ") || "none"}`);
+      console.log(`  B slot before the keys: ${before.b_patch ? `loaded (${before.b_patch} b_patch, ${before.b_clear || 0} b_clear), BLEND at ${flags.blend ?? 0} (${Number(flags.blend || 0) > 0 ? "heard: rendered" : "home: at rest"})` : "not loaded"}; page-to-worklet messages so far: ${Object.entries(before).map(([k, v]) => `${k}:${v}`).join(" ") || "none"}`);
       // render-stall proxy: offset = the page's clock at the output minus the audio clock there
       const o = P.ots.filter(([, perf]) => perf >= t1 && perf <= t2 + 300);
       if (o.length > 3) {

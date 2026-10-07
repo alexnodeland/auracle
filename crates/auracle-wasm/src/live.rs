@@ -34,6 +34,16 @@
 //!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
+//! - **Resting**: an instrument nobody hears (PERFORM's B slot at a mix of
+//!   0) is passed a quantum with [`LivePoly::rest`] instead of rendered. It
+//!   follows the hands and keeps time, and its voices' DSP, which is the whole
+//!   of a quantum's cost, stands still. The next renders wake it: each held
+//!   note's amp envelope is driven to where it would have got to (from when
+//!   its gate rose, on the instrument's frame clock), a few quanta of silence
+//!   at no more than a rendered quantum's cost each, so a Blend or a Peek
+//!   brings B in with no attack and no spike on the render thread. An offer
+//!   used to double the audio thread's work at any mix, which on a slow
+//!   laptop was the crackle of #288.
 //! - **The open voice**: a patch that listens (or tracks) is built one voice
 //!   longer, and [`LivePoly::set_open`] holds that voice open at C4
 //!   ([`OPEN_NOTE`]), outside the keys' allocation, so the input sounds
@@ -369,6 +379,37 @@ struct Voice {
     /// retriggers — otherwise the new note inherits the stolen note's
     /// envelope position and speaks with no attack.
     regate_in: u32,
+    /// When this voice's gate last rose, on the instrument's frame clock
+    /// ([`LivePoly::rest`]): how far its amp envelope has gone, for a wake
+    /// that never ticked it in between.
+    pressed_at: u64,
+    /// Where a wake is driving this voice's amp envelope ([`Seek`]).
+    seek: Seek,
+    /// The amp envelope's attack and decay times and sustain level, as this
+    /// voice's knobs hold them (`amp#attack`, `amp#decay`, `amp#sustain`):
+    /// what a wake reads to say where a held note's envelope would be, and
+    /// pins while it drives it there.
+    amp: [Arc<AtomicF64>; 3],
+}
+
+/// One voice's part in a wake ([`LivePoly::rest`]): which way its amp
+/// envelope is being driven toward where it would be had it rendered all
+/// along. quiver's ADSR keeps its level and stage to itself, so the only way
+/// to put one somewhere is to tick it there (`seed_env_phase`, which a swap
+/// uses, does the same in one go).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Seek {
+    /// Nothing to drive: awake, parked, or a tracked lead (its tracker opens
+    /// it, not a key).
+    Still,
+    /// From silence first: the next wake step resets the voice's patch,
+    /// raises its gate if a key holds it, and rises.
+    Fresh,
+    /// Rising, in quiver's Attack: to the target while the note would still
+    /// be attacking, to the peak (where quiver turns to Decay) otherwise.
+    Rise,
+    /// Falling, in quiver's Decay or Sustain: to the target.
+    Fall,
 }
 
 /// One live parameter across every voice: its trace address, its unit
@@ -508,6 +549,10 @@ enum Stage {
         built: Vec<Voice>,
     },
     FadeIn,
+    /// Silent: waking from a rest, each sounding voice's amp envelope driven
+    /// toward where it would be, at most a quantum's ticks a voice a quantum
+    /// ([`LivePoly::rest`]).
+    Wake,
 }
 
 /// Event for the worklet to relay (polled once per quantum).
@@ -628,6 +673,16 @@ pub struct LivePoly {
     /// A patch with a TRACK: the open voice leads and the keys' voices
     /// follow ([`Lead`]). `None` for any other patch.
     lead: Option<Lead>,
+    /// Frames this instrument has rendered or rested through since it was
+    /// built: the clock [`Voice::pressed_at`] is stamped on.
+    clock: u64,
+    /// Rested and not yet awake again ([`LivePoly::rest`]): the voices' DSP
+    /// is not in step with the clock, and nothing of them may be heard until
+    /// a wake has put each held note's envelope where it would be.
+    asleep: bool,
+    /// The pre-roll ticks the last wake quantum spent, over every voice: at
+    /// most a quantum's frames a voice, so a wake costs no more than a render.
+    woke_ticks: usize,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -805,6 +860,18 @@ fn build_voice(
     }
     .map_err(|e| e.to_string())?;
     voice.gate.set(0.0);
+    let knob = |addr: &str| {
+        voice
+            .params
+            .get(addr)
+            .map(|h| Arc::clone(&h.value))
+            .ok_or(NO_AMP_ENVELOPE)
+    };
+    let amp = [
+        knob("amp#attack")?,
+        knob("amp#decay")?,
+        knob("amp#sustain")?,
+    ];
     Ok(Voice {
         voice,
         note: None,
@@ -818,7 +885,182 @@ fn build_voice(
         pitch_cur: 0.0,
         pitch_tgt: 0.0,
         regate_in: 0,
+        pressed_at: 0,
+        seek: Seek::Still,
+        amp,
     })
+}
+
+/// Every compiled voice ends in its amp envelope, whose knobs a wake reads;
+/// a voice without them is not one this instrument can play.
+const NO_AMP_ENVELOPE: &str = "the patch has no amp envelope";
+
+/// quiver's `Adsr` ends an exponential segment within this of its target,
+/// then snaps to it (its own `EXP_DONE`).
+const ADSR_EXP_DONE: f64 = 1.0e-3;
+
+/// A time CV as quiver's `Adsr` reads it: 0..1 to 1 ms .. 10 s, exponential
+/// (its `cv_to_time`).
+fn adsr_time(cv: f64) -> f64 {
+    0.001 * 10_000f64.powf(cv.clamp(0.0, 1.0))
+}
+
+/// The one-pole coefficient quiver's `Adsr` runs a segment of `time` seconds
+/// with (`modules::common::env_coef`).
+fn adsr_coef(time: f64, sample_rate: f64) -> f64 {
+    let denom = time * sample_rate;
+    if denom <= 0.0 {
+        return 0.0;
+    }
+    (-1.0 / denom).exp()
+}
+
+/// Where an amp envelope is `ticks` samples after its gate rose on a silent
+/// voice, the gate held since: whether it is still in its attack, and its
+/// level (0..1). `attack` and `decay` are the time CVs and `sustain` the level,
+/// as the voice's knobs hold them (`amp#attack`, `amp#decay`, `amp#sustain`).
+///
+/// This follows quiver's exponential contour (the compiler pins `shape` high
+/// for every voice), segment by segment: the attack's one-pole toward 1 until
+/// it is within [`ADSR_EXP_DONE`], then the decay's toward the sustain level
+/// until it is as close, then the shelf. It is mirrored here only to pick the
+/// level a rested voice's envelope is driven to ([`LivePoly::rest`]); the
+/// voice still renders through quiver's own envelope, and
+/// `a_rested_voice_wakes_where_a_rendered_one_is` holds the two together.
+fn held_envelope(
+    attack: f64,
+    decay: f64,
+    sustain: f64,
+    sample_rate: f64,
+    ticks: u64,
+) -> (bool, f64) {
+    let sustain = sustain.clamp(0.0, 1.0);
+    if ticks == 0 {
+        return (true, 0.0);
+    }
+    // Attack: 1 - level shrinks by the coefficient each tick, from 1.
+    let ac = adsr_coef(adsr_time(attack), sample_rate);
+    let rise = if ac > 0.0 {
+        (ADSR_EXP_DONE.ln() / ac.ln()).ceil().max(1.0) as u64
+    } else {
+        1
+    };
+    if ticks < rise {
+        return (true, 1.0 - ac.powf(ticks as f64));
+    }
+    // Decay, from the peak the attack snapped to.
+    let dc = adsr_coef(adsr_time(decay), sample_rate);
+    let over = (1.0 - sustain) * dc.powf((ticks - rise) as f64);
+    if over <= ADSR_EXP_DONE {
+        (false, sustain)
+    } else {
+        (false, sustain + over)
+    }
+}
+
+/// Let a voice go at a wake: a release tail is not woken (a rewire drops
+/// tails too), and the voice is free for the next key.
+fn let_go(v: &mut Voice) {
+    v.voice.gate.set(0.0);
+    v.regate_in = 0;
+    v.running = false;
+    v.seek = Seek::Still;
+}
+
+/// One wake quantum of one voice of a rested instrument ([`LivePoly::rest`]),
+/// at frame `clock` (the end of the quantum): its amp envelope driven toward
+/// where it would be had the voice rendered all along, with at most `budget`
+/// ticks of its patch. True when it is there (or has nothing to drive), so it
+/// can sound on from the next quantum with no attack.
+///
+/// The drive is a pre-roll, as a swap's carry is (`seed_env_phase`): the
+/// attack and decay pinned to quiver's fastest (1 ms), the patch ticked in
+/// silence until the envelope arrives, and the two knobs put back to what
+/// they held at the start of this quantum (a knob turned meanwhile is in
+/// them). A held note on the shelf is about 630 ticks from silence, so a
+/// budget of a quantum's frames takes five quanta; a voice that has arrived
+/// follows its note on in the quanta its neighbours still need, a few ticks
+/// each.
+///
+/// Allocation free: `Patch::reset` puts each module back in place, and the
+/// knobs' handles are read and written where they stand.
+fn seek_voice(v: &mut Voice, clock: u64, sample_rate: f64, budget: usize) -> (bool, usize) {
+    if v.seek == Seek::Still {
+        return (true, 0);
+    }
+    if v.seek == Seek::Fresh {
+        if !v.running {
+            v.seek = Seek::Still;
+            return (true, 0);
+        }
+        // Every module from silence: the envelope idle, so the first tick
+        // with the gate up is a rising edge, and no filter, delay or input
+        // mid-way through what it held when the rest began. An AUDIO IN
+        // starts again with the next block written.
+        v.voice.patch.reset();
+        v.silent_run = 0;
+        // A steal waiting to re-raise its gate is a gate that rose.
+        let gated = v.regate_in > 0 || v.voice.gate.get() >= GATE_ON;
+        v.regate_in = 0;
+        if v.note.is_none() {
+            let_go(v);
+            return (true, 0);
+        }
+        // A tracked patch's lead holds no gate of its own (its tracker
+        // opens it): nothing to drive.
+        if !gated {
+            v.seek = Seek::Still;
+            return (true, 0);
+        }
+        v.voice.gate.set(GATE_ON);
+        v.seek = Seek::Rise;
+    }
+    // Let go of during the wake.
+    if v.note.is_none() {
+        let_go(v);
+        return (true, 0);
+    }
+    // Shared handles, not copies: a count goes up, nothing is allocated.
+    let [attack, decay, sustain] = v.amp.clone();
+    let (a0, d0, shelf) = (attack.get(), decay.get(), sustain.get());
+    let (attacking, level) = held_envelope(
+        a0,
+        d0,
+        shelf,
+        sample_rate,
+        clock.saturating_sub(v.pressed_at),
+    );
+    // quiver maps 0 V to its 1 ms floor (`ParamMap::Unit` on both).
+    attack.set(0.0);
+    decay.set(0.0);
+    let mut ticks = 0;
+    let there = loop {
+        let now = v.voice.env_phase();
+        if v.seek == Seek::Rise {
+            // The attack snaps to exactly 1.0 within `ADSR_EXP_DONE` of it,
+            // and turns to Decay there.
+            let peak = if attacking { level } else { 1.0 };
+            if now >= peak - ADSR_EXP_DONE {
+                if attacking {
+                    break true;
+                }
+                v.seek = Seek::Fall;
+                continue;
+            }
+        } else if now <= level || now <= shelf {
+            // Decay goes no lower than the shelf: a target under it (a knob
+            // turned mid-wake) is as near as a falling envelope gets.
+            break true;
+        }
+        if ticks == budget {
+            break false;
+        }
+        v.voice.patch.tick();
+        ticks += 1;
+    };
+    attack.set(a0);
+    decay.set(d0);
+    (there, ticks)
 }
 
 /// What a voice does with a TRACK lead as it ticks ([`Lead`]).
@@ -981,6 +1223,9 @@ impl LivePoly {
             open,
             open_on: false,
             lead,
+            clock: 0,
+            asleep: false,
+            woke_ticks: 0,
         })
         .map(|mut p| {
             p.rebuild_sync_lanes();
@@ -1311,6 +1556,7 @@ impl LivePoly {
             let n = self.voices.len().max(1);
             self.counter += 1;
             let stamp = self.counter;
+            let asleep = self.asleep;
             for i in 0..n {
                 let frac = if n > 1 {
                     (i as f64 / (n - 1) as f64) * 2.0 - 1.0
@@ -1329,7 +1575,16 @@ impl LivePoly {
                 };
                 v.voice.pitch.set(v.pitch_cur + self.bend);
                 v.voice.gate.set(GATE_ON);
-                v.regate_in = 0; // unison is deliberately mono-legato
+                // Unison is deliberately mono-legato: a gate already up does
+                // not rise again, so the envelope goes on from the note before.
+                v.regate_in = 0;
+                if v.note.is_none() {
+                    v.pressed_at = self.clock;
+                    // Mid-wake, a new note starts its voice from silence.
+                    if asleep {
+                        v.seek = Seek::Fresh;
+                    }
+                }
                 v.note = Some(note);
                 v.stamp = stamp;
                 v.running = true;
@@ -1425,6 +1680,13 @@ impl LivePoly {
         }
         v.note = Some(note);
         v.stamp = stamp;
+        v.pressed_at = self.clock;
+        // Resting or mid-wake, the note's voice wakes from silence: a voice
+        // part-way to an earlier note's level cannot fall back to the start
+        // of this one's attack.
+        if self.asleep {
+            v.seek = Seek::Fresh;
+        }
         v.running = true;
         v.silent_run = 0;
         v.vel = Self::vel_gain(vel);
@@ -1952,7 +2214,10 @@ impl LivePoly {
         }
     }
 
-    fn step(&mut self, frames: usize) {
+    /// What a quantum moves besides the voices' audio, rendered or rested:
+    /// the knobs' ramps, the arpeggiator's steps (its presses and releases),
+    /// glide and bend, and the transport.
+    fn advance(&mut self, frames: usize) {
         self.advance_smoothers();
         self.tick_arp(frames);
         self.advance_pitch(frames);
@@ -1960,8 +2225,104 @@ impl LivePoly {
         if self.sync_on {
             self.beats += frames as f64 * self.bpm / (60.0 * self.sample_rate);
         }
+    }
+
+    /// Pass `frames` frames without rendering a voice: the B slot while its
+    /// mix is 0, which nobody hears.
+    ///
+    /// The instrument keeps time and follows the hands as if it were
+    /// rendering: notes are pressed and let go (the arpeggiator steps, glide
+    /// slides, knobs ramp, the transport runs), a swap in progress goes on
+    /// (its fade out skipped, since no one hears it, and its rebuild compiles
+    /// one voice a quantum as it would), and each voice remembers when its
+    /// gate rose. Only the voices' DSP stands still, which is all of a
+    /// quantum's cost (`examples/live_cost.mjs`).
+    ///
+    /// The renders that follow wake it ([`Self::resting`] says so while they
+    /// do): every voice that was sounding starts again from silence, and a
+    /// held note's amp envelope is driven to where it would be had it
+    /// rendered all along (the pre-roll a swap's carry uses), so it sounds on
+    /// without an attack. Those quanta are silent and cost no more than a
+    /// rendered one each (a quantum's ticks a voice): five or so for a chord
+    /// held on its shelf, then the instrument fades in as after a swap. Done
+    /// in one quantum, the wake cost six rendered quanta, a glitch on the
+    /// render thread at every Blend or Peek. What does not come back is what a
+    /// swap drops too: a release tail, and a filter's, a delay's or a reverb's
+    /// memory of the rest.
+    pub fn rest(&mut self, frames: usize) {
+        self.asleep = true;
+        self.advance(frames);
+        self.clock += frames as u64;
+        match std::mem::replace(&mut self.stage, Stage::Run) {
+            // A wake under way starts again at the next render.
+            Stage::Run | Stage::Wake | Stage::FadeIn => {}
+            Stage::FadeOut { tree } => {
+                self.stage = Stage::Rebuild {
+                    tree,
+                    built: Vec::new(),
+                };
+            }
+            Stage::Rebuild { tree, built } => self.rebuild_one(tree, built),
+        }
+    }
+
+    /// Is the instrument resting, or waking from a rest and not yet heard
+    /// ([`Self::rest`])? The worklet holds B's mix at 0 while it is, so A is
+    /// not turned down under a B that has nothing to play yet.
+    pub fn resting(&self) -> bool {
+        self.asleep
+    }
+
+    /// One quantum of a wake: every voice's envelope a quantum's ticks nearer
+    /// where it would be. True once every one of them is there.
+    fn wake_step(&mut self, frames: usize) -> bool {
+        let (clock, rate) = (self.clock, self.sample_rate);
+        let mut awake = true;
+        self.woke_ticks = 0;
+        for v in self.voices.iter_mut().chain(self.open.as_mut()) {
+            let (there, ticks) = seek_voice(v, clock, rate, frames);
+            awake &= there;
+            self.woke_ticks += ticks;
+        }
+        awake
+    }
+
+    fn step(&mut self, frames: usize) {
+        if self.asleep {
+            match std::mem::replace(&mut self.stage, Stage::Run) {
+                // The first render after a rest starts the wake (a rest
+                // between two of its quanta leaves the stage at `Run`, so it
+                // starts again): every sounding voice from silence.
+                Stage::Run | Stage::FadeIn => {
+                    for v in self.voices.iter_mut().chain(self.open.as_mut()) {
+                        v.seek = Seek::Fresh;
+                    }
+                    self.stage = Stage::Wake;
+                }
+                // Nobody heard the old voices: straight to the rebuild.
+                Stage::FadeOut { tree } => {
+                    self.stage = Stage::Rebuild {
+                        tree,
+                        built: Vec::new(),
+                    }
+                }
+                stage @ (Stage::Wake | Stage::Rebuild { .. }) => self.stage = stage,
+            }
+        }
+        self.advance(frames);
+        self.clock += frames as u64;
         match std::mem::replace(&mut self.stage, Stage::Run) {
             Stage::Run => self.render_into(frames, 0),
+            Stage::Wake => {
+                if self.wake_step(frames) {
+                    self.asleep = false;
+                    self.gain = 0.0;
+                    self.stage = Stage::FadeIn;
+                } else {
+                    self.stage = Stage::Wake;
+                }
+                self.emit_silence(frames);
+            }
             Stage::FadeOut { tree } => {
                 self.render_into(frames, -1);
                 self.stage = if self.gain <= 0.0 {
@@ -2007,7 +2368,7 @@ impl LivePoly {
                 self.last_error = e;
                 self.event = EVENT_PATCH_ERROR;
                 self.pending_makeup = None;
-                self.stage = Stage::FadeIn;
+                self.stage = self.after_rebuild();
             }
             Ok(v) => {
                 built.push(v);
@@ -2022,7 +2383,7 @@ impl LivePoly {
                     .open
                     .as_ref()
                     .filter(|v| v.note.is_some())
-                    .map(|v| v.voice.env_phase());
+                    .map(|v| (v.voice.env_phase(), v.pressed_at));
                 // Where every sounding note's amp envelope had got
                 // to, read off the *outgoing* voices while they are
                 // still here. This is the whole of the envelope
@@ -2031,10 +2392,13 @@ impl LivePoly {
                 // re-swelled on every structural edit — the edit
                 // was audible as an event in its own right rather
                 // than as a change to the sound.
-                let carry: Vec<(u8, f64)> = self
+                // With it, when each note's gate rose: the re-press
+                // below is a carry, not a new note, so a rest that
+                // follows wakes it from its own start.
+                let carry: Vec<(u8, f64, u64)> = self
                     .voices
                     .iter()
-                    .filter_map(|v| Some((v.note?, v.voice.env_phase())))
+                    .filter_map(|v| Some((v.note?, v.voice.env_phase(), v.pressed_at)))
                     .collect();
                 self.voices = built;
                 // New voices, new handles: the smoothers indexed
@@ -2073,26 +2437,47 @@ impl LivePoly {
                     // *not* held (a release tail) is not carried:
                     // its voice was reallocated, and a tail cannot
                     // survive a rewire anyway.
+                    //
+                    // Asleep, nothing is seeded: the voices are not
+                    // heard, the old ones' envelopes stood still, and the
+                    // wake drives each from its note's start.
+                    let asleep = self.asleep;
                     for v in &mut self.voices {
                         let Some(note) = v.note else { continue };
-                        let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note) else {
+                        let Some(&(_, phase, at)) = carry.iter().find(|(n, ..)| *n == note) else {
                             continue;
                         };
-                        v.voice.seed_env_phase(*phase);
+                        v.pressed_at = at;
+                        if !asleep {
+                            v.voice.seed_env_phase(phase);
+                        }
                     }
                 }
                 // The new patch's open voice, if it has one and the
                 // host wants it; a patch with none has nothing to
                 // hold (the old one went with the old voices).
                 self.sync_open();
-                if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
+                if let (Some(v), Some((phase, at))) = (self.open.as_mut(), open_phase) {
                     if v.note.is_some() {
-                        v.voice.seed_env_phase(phase);
+                        v.pressed_at = at;
+                        if !self.asleep {
+                            v.voice.seed_env_phase(phase);
+                        }
                     }
                 }
                 self.event = EVENT_PATCHED;
-                self.stage = Stage::FadeIn;
+                self.stage = self.after_rebuild();
             }
+        }
+    }
+
+    /// Where a swap's rebuild goes when it ends: back in, or, asleep, to
+    /// `Run` for the next render to wake ([`Self::rest`]).
+    fn after_rebuild(&self) -> Stage {
+        if self.asleep {
+            Stage::Run
+        } else {
+            Stage::FadeIn
         }
     }
 
@@ -2235,6 +2620,7 @@ impl LivePoly {
                 lead.quiet();
             }
         }
+        let (clock, asleep) = (self.clock, self.asleep);
         let Some(v) = self.open.as_mut() else { return };
         if on && v.note.is_none() {
             v.pitch_cur = 0.0;
@@ -2244,6 +2630,10 @@ impl LivePoly {
             v.regate_in = 0;
             v.note = Some(OPEN_NOTE);
             v.stamp = at;
+            v.pressed_at = clock;
+            if asleep {
+                v.seek = Seek::Fresh;
+            }
             v.running = true;
             v.silent_run = 0;
             v.vel = Self::vel_gain(1.0);

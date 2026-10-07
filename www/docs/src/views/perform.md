@@ -511,8 +511,8 @@ for that.
 ## Blend, Peek, and B
 
 An offer is a second sound in a second set of voices that follows the same
-hands: every note you play sounds on both. You hear B by crossfading to it,
-never by a jump.
+hands: every note you play is played on both. You hear B by crossfading to
+it, never by a jump.
 
 B stands in the well beside your sound: its label (**B**, or **B · GRITTIER**
 for an [aimed offer](#amber-dashed-search-controls)), its face in amber, and
@@ -541,6 +541,14 @@ The crossfade is equal-power, so the level stays roughly steady across it,
 and B plays at matched loudness: normalized to −18 LUFS, as every sound is. A
 louder sound reliably wins a comparison, so without that the crossfade would
 be a volume knob.
+```
+
+```admonish info collapsible=true title="How it works: B while you aren’t listening"
+With BLEND at home and PEEK let go, B follows your hands without making a
+sound, so an offer adds nothing to what your computer does while you play.
+Move BLEND or hold PEEK, and B’s held notes come in where they would have
+been, about a hundredth of a second later, without starting their attack
+again. A note you let go while B was silent has no tail when it comes in.
 ```
 
 ## Wander

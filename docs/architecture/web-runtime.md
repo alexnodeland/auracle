@@ -1521,6 +1521,44 @@ synchronous compile inside the worklet. A patch swap compiles one voice per
 quantum while that node is muted. Levels follow one policy
 (`auracle-wasm/src/level.rs`) for auditions and live play.
 
+What the worklet renders each quantum (`process` in `live-audio.js`):
+
+- **A**, the sound in hand: one `LivePoly` of four voices (and the open voice
+  of a patch that listens), every quantum. Its voices are all of the audio
+  thread's work: parked voices cost nothing, and the leveler and limiter
+  well under a microsecond (`crates/auracle-wasm/examples/live_cost.mjs`).
+- **B**, PERFORM's offer: a second four-voice `LivePoly`, loaded by
+  `b_patch`, played by the same keys, and mixed with A at equal power
+  (`b_mix`, smoothed over about 10 ms). It is rendered only while it can be
+  heard. While its mix is 0 (BLEND at home and PEEK let go, or PERFORM out of
+  sight) and the ramp down to it is over, the worklet **rests** it
+  (`LivePoly::rest`): it follows the keys, the arpeggiator, glide, the knobs
+  and the transport, and a swap's rebuild goes on, but no voice is ticked.
+  It used to be rendered every quantum while an offer was shown, at any mix,
+  which doubled the audio thread's work: on a CPU 4.5 times slower than an
+  M3 Max, 47 to 50 of the 62 presets were then over a whole quantum, against
+  11 with A alone (#288).
+- **Waking B.** When the mix leaves 0, the next quanta wake B
+  (`LivePoly::resting` is true until it is done): each voice starts again
+  from silence, and a held note's amp envelope is driven to where it would
+  be had B rendered all along (from when its gate rose, on B's own frame
+  clock; `held_envelope` mirrors quiver's ADSR), by ticking the voice with
+  its attack and decay pinned to 1 ms, as a swap carries a held note. Each
+  quantum spends at most a quantum's ticks a voice on it, so a wake quantum
+  costs about what a rendered one does (a mean of 0.94 to 1.04 times, Glass
+  Pad and First Bass, one to four notes held, in wasm on an M3 Max); a chord
+  on its shelf takes five quanta, about 13 ms. Done in one quantum, the wake
+  cost 5.6 to 6.6 rendered quanta, a glitch at every BLEND or PEEK. B is
+  silent while it wakes, and a quantum that starts with B resting holds the
+  mix at 0, so A is not turned down under nothing; then B fades in on the
+  mix's ramp. What a wake does not bring back is what a swap drops too: a
+  note let go during the rest has no tail, and a filter's, a delay's or a
+  reverb's memory starts again.
+- **A retiring B** renders until it is silent, then is freed between
+  quanta: after PASS or NEXT (or a new patch under it) it fades out, and
+  after TAKE it sounds on at its mix until A has rebuilt as the offer, then
+  fades. Silent already (its mix at 0), it rests until it is freed.
+
 ## AUDIO IN
 
 The player's input in a patch (Plan-007 task 4,

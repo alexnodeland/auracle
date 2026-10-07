@@ -1324,11 +1324,17 @@ fn live_stress_survives_chaos() {
             *x = rng.gen_range(-1.0..1.0);
         }
         poly.write_input(frames, rng.gen_range(0..4));
-        let out = poly.process(128);
-        assert!(
-            out.iter().all(|s| s.is_finite() && s.abs() <= 1.5),
-            "iteration {i}: bad sample"
-        );
+        // A third of the quanta rested, as B rests at a mix of 0, in runs:
+        // a wake is started, cut short and started again.
+        if i % 9 < 3 {
+            poly.rest(128);
+        } else {
+            let out = poly.process(128);
+            assert!(
+                out.iter().all(|s| s.is_finite() && s.abs() <= 1.5),
+                "iteration {i}: bad sample"
+            );
+        }
         let _ = poly.poll_event();
     }
     // On whatever patch the chaos ended on, touch on every live knob and a
@@ -1341,7 +1347,7 @@ fn live_stress_survives_chaos() {
     poly.set_unison(false, 0.0, 0.0);
     poly.all_off();
     for _ in 0..400 {
-        if matches!(poly.stage, Stage::Run) {
+        if matches!(poly.stage, Stage::Run) && !poly.resting() {
             break;
         }
         let _ = poly.process(128);
@@ -1350,6 +1356,7 @@ fn live_stress_survives_chaos() {
         matches!(poly.stage, Stage::Run),
         "the last swap never landed"
     );
+    assert!(!poly.resting(), "the last wake never ended");
     let n = poly.voices.len();
     let every: Vec<(&str, f64, f64)> = poly
         .param_slots
@@ -2525,4 +2532,489 @@ fn a_block_longer_than_the_lead_buffer_plays_on() {
     assert!(out.iter().all(|s| s.is_finite()));
     let tail = peak(&out[LIVE_INPUT_FRAMES * 2..]);
     assert!(tail > 0.01, "the block's second half fell silent ({tail})");
+}
+
+// ---- Resting: the B slot at a mix of 0 (#288) ----
+
+/// The context rate the rest tests run at.
+const REST_RATE: f64 = 48_000.0;
+
+/// A pad whose attack climbs past its sustain level: an attack of ≈0.25 s
+/// time constant (1.7 s to the peak), a decay of ≈0.1 s, a sustain of 0.5.
+/// Each stage lasts long enough that a wake can be put inside it.
+fn slow_pad_json() -> String {
+    use auracle_grammar::term::{AmpEnv, Waveform};
+    use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    serde_json::to_string(&PatchTree {
+        amp: AmpEnv {
+            attack: 0.6,
+            decay: 0.5,
+            sustain: 0.5,
+            release: 0.4,
+        },
+        root: AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+        },
+    })
+    .unwrap()
+}
+
+/// Where the amp envelope of the voice holding `note` is.
+fn env_of(poly: &LivePoly, note: u8) -> f64 {
+    poly.voices
+        .iter()
+        .find(|v| v.note == Some(note))
+        .map(|v| v.voice.env_phase())
+        .expect("the note is held")
+}
+
+/// One instrument twice over, leveler off: the first to render every
+/// quantum (as B always did), the second to rest where the first renders.
+fn rest_twins(json: &str, voices: usize) -> (LivePoly, LivePoly) {
+    quiver::rng::seed(7);
+    let mut a = LivePoly::new(json, REST_RATE, voices).expect("compiles");
+    let mut b = LivePoly::new(json, REST_RATE, voices).expect("compiles");
+    a.set_leveler(false);
+    b.set_leveler(false);
+    (a, b)
+}
+
+/// `quanta` quanta: the first twin renders them, the second rests.
+fn rest_beside(a: &mut LivePoly, b: &mut LivePoly, quanta: usize) {
+    for _ in 0..quanta {
+        let _ = a.process(128);
+        b.rest(128);
+    }
+}
+
+/// `quanta` quanta that both twins render.
+fn render_both(a: &mut LivePoly, b: &mut LivePoly, quanta: usize) {
+    for _ in 0..quanta {
+        let _ = a.process(128);
+        let _ = b.process(128);
+    }
+}
+
+/// **The rested envelope's level is quiver's.** `held_envelope` mirrors
+/// quiver's exponential ADSR to say where a held note's envelope is after
+/// any number of samples; here it is held against the envelope itself, tick
+/// by tick, through the attack, the moment it snaps to the peak, the decay
+/// and the shelf.
+#[test]
+fn the_held_envelope_is_quivers_tick_by_tick() {
+    use auracle_grammar::term::{AmpEnv, Waveform};
+    use auracle_grammar::{AudioNode, ModNode, PatchTree};
+    quiver::rng::seed(7);
+    let json = serde_json::to_string(&PatchTree {
+        amp: AmpEnv {
+            attack: 0.4, // ≈40 ms
+            decay: 0.35, // ≈25 ms
+            sustain: 0.6,
+            release: 0.4,
+        },
+        root: AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+        },
+    })
+    .unwrap();
+    let mut poly = LivePoly::new(&json, REST_RATE, 1).unwrap();
+    let knob = |p: &LivePoly, addr: &str| p.voices[0].voice.params[addr].value.get();
+    let (attack, decay, sustain) = (
+        knob(&poly, "amp#attack"),
+        knob(&poly, "amp#decay"),
+        knob(&poly, "amp#sustain"),
+    );
+    assert_eq!(
+        held_envelope(attack, decay, sustain, REST_RATE, 0),
+        (true, 0.0)
+    );
+    poly.note_on(60, 1.0);
+    let (mut attacking, mut peaked, mut shelved) = (0, None, None);
+    for tick in 1..24_000u64 {
+        let _ = poly.process(1);
+        let real = poly.voices[0].voice.env_phase();
+        let (rising, level) = held_envelope(attack, decay, sustain, REST_RATE, tick);
+        assert!(
+            (real - level).abs() < 1e-9,
+            "tick {tick}: quiver's envelope is at {real}, the mirror says {level}"
+        );
+        if rising {
+            attacking += 1;
+        } else if peaked.is_none() {
+            peaked = Some((tick, level));
+        }
+        if shelved.is_none() && !rising && level == sustain {
+            shelved = Some(tick);
+        }
+    }
+    // The attack ends on the tick quiver snaps it to the peak, and the
+    // decay on the tick it snaps to the shelf.
+    let (peak_tick, peak_level) = peaked.expect("the attack ends");
+    assert_eq!(peak_tick, attacking + 1, "the attack is one run of ticks");
+    assert!(
+        (peak_level - 1.0).abs() < 1e-12,
+        "it ends at the peak: {peak_level}"
+    );
+    let shelf = shelved.expect("the decay reaches the shelf");
+    assert!(shelf > peak_tick && shelf < 23_000, "{shelf}");
+}
+
+/// Both twins render until the second, woken from its rest, is heard again:
+/// the quanta that took.
+fn wake_beside(a: &mut LivePoly, b: &mut LivePoly) -> usize {
+    let mut quanta = 0;
+    while b.resting() {
+        assert!(quanta < 64, "the wake never ended");
+        render_both(a, b, 1);
+        quanta += 1;
+    }
+    quanta
+}
+
+/// **A rested voice wakes where a rendered one is.** B rests while its
+/// mix is 0 and renders again when it moves, and a held note must come back
+/// at the level it would have reached had it rendered all along, in the
+/// stage it would be in: neither attacking again from silence (a pad would
+/// swell in on every Peek) nor parked on the shelf mid-attack. Woken in its
+/// attack under the shelf, in its attack past the shelf, in its decay and
+/// on the shelf, after being heard for a while first (the Blend was up), the
+/// woken envelope is within 0.03 of the rendered one when it is heard again,
+/// and 40 quanta later still is, so it is in the same stage too.
+#[test]
+fn a_rested_voice_wakes_where_a_rendered_one_is() {
+    let json = slow_pad_json();
+    for (stage, rested) in [
+        ("attack, under the shelf", 6),
+        ("attack, past the shelf", 150),
+        ("decay", 700),
+        ("on the shelf", 1_200),
+    ] {
+        let (mut a, mut b) = rest_twins(&json, 4);
+        a.note_on(60, 1.0);
+        b.note_on(60, 1.0);
+        render_both(&mut a, &mut b, 4);
+        rest_beside(&mut a, &mut b, rested);
+        assert!(b.resting(), "{stage}: resting");
+        wake_beside(&mut a, &mut b);
+        let (want, got) = (env_of(&a, 60), env_of(&b, 60));
+        assert!(
+            (want - got).abs() < 0.03,
+            "{stage}: woke at {got}, rendered all along it is at {want}"
+        );
+        render_both(&mut a, &mut b, 40);
+        let (want_later, got_later) = (env_of(&a, 60), env_of(&b, 60));
+        assert!(
+            (want_later - got_later).abs() < 0.03,
+            "{stage}: 40 quanta on, {got_later} against {want_later}"
+        );
+        // Each stage is where it is said to be: rising, falling or level.
+        let moved = want_later - want;
+        match stage {
+            "decay" => assert!(moved < -0.01, "{stage}: {want} to {want_later}"),
+            "on the shelf" => assert!(moved.abs() < 1e-9, "{stage}: {want} to {want_later}"),
+            _ => assert!(moved > 0.01, "{stage}: {want} to {want_later}"),
+        }
+    }
+}
+
+/// **A wake costs no more than a render, and is not heard until it is
+/// done.** Driving every held note's envelope to its place in one quantum
+/// cost about six rendered quanta (a chord on its shelf is some 630 ticks of
+/// each voice from silence), a glitch for everything on the render thread at
+/// every Blend or Peek. So a wake spends at most a quantum's ticks a voice a
+/// quantum, over the few quanta it takes, and is silent until it ends; then
+/// the instrument fades in, as after a swap. The rest itself renders no
+/// voice at all.
+#[test]
+fn a_wake_costs_no_more_than_a_render_and_is_silent_until_done() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for n in [48, 55, 64, 72] {
+        a.note_on(n, 1.0);
+        b.note_on(n, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 1_200);
+    assert_eq!(b.woke_ticks, 0, "nothing has woken yet");
+    let mut wake = Vec::new();
+    while b.resting() {
+        assert!(wake.len() < 64, "the wake never ended");
+        let out = b.process(128);
+        let _ = a.process(128);
+        assert!(out.iter().all(|&s| s == 0.0), "heard mid-wake");
+        wake.push(b.woke_ticks);
+    }
+    assert!(
+        wake.iter().all(|&t| t <= 4 * 128),
+        "a wake quantum spent more than four voices' quantum: {wake:?}"
+    );
+    // Four notes on the shelf, each about 630 ticks from silence: the work is
+    // all there, spread over the quanta.
+    let spent: usize = wake.iter().sum();
+    assert!(spent > 4 * 500, "{spent} ticks in all: {wake:?}");
+    assert!(
+        (5..=8).contains(&wake.len()),
+        "{} quanta: {wake:?}",
+        wake.len()
+    );
+    let (want, got) = (env_of(&a, 72), env_of(&b, 72));
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+    // Then it is heard, faded in.
+    let first = b.process(128);
+    let fading = peak(&first[..16]);
+    assert!(fading < peak(&first[112..]), "it comes in with a fade");
+    assert!(peak(&b.process(128)) > 0.01, "and is heard");
+    assert_eq!(
+        b.woke_ticks,
+        wake[wake.len() - 1],
+        "a render spends no wake"
+    );
+}
+
+/// **A rested instrument follows the hands.** A key pressed during the rest
+/// wakes at its own envelope's place, a key let go during it is let go (no
+/// tail, as a rewire drops one), and a note that stole the one voice during
+/// the rest sounds when it wakes rather than waiting for a gate that never
+/// rises.
+#[test]
+fn a_rested_instrument_follows_the_hands() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 20);
+    for p in [&mut a, &mut b] {
+        p.note_off(60);
+        p.note_on(64, 1.0);
+    }
+    rest_beside(&mut a, &mut b, 30);
+    wake_beside(&mut a, &mut b);
+    let (want, got) = (env_of(&a, 64), env_of(&b, 64));
+    assert!(want > 0.05, "the key pressed in the rest is rising: {want}");
+    assert!((want - got).abs() < 0.03, "{got} against {want}");
+    let ringing = |p: &LivePoly| p.voices.iter().filter(|v| v.running).count();
+    assert_eq!(ringing(&a), 2, "rendered, 60's tail rings beside 64");
+    assert_eq!(ringing(&b), 1, "woken, only the held key sounds");
+
+    // One voice: a key pressed over a held one steals it.
+    let (mut a, mut b) = rest_twins(&json, 1);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 10);
+    for p in [&mut a, &mut b] {
+        p.note_on(67, 1.0);
+    }
+    // Long enough for both to reach the shelf: the rendered steal attacks
+    // from the level it took over, the woken one from silence at the steal.
+    rest_beside(&mut a, &mut b, 1_200);
+    wake_beside(&mut a, &mut b);
+    let (want, got) = (env_of(&a, 67), env_of(&b, 67));
+    assert!(
+        (want - 0.5).abs() < 1e-3,
+        "the rendered steal is on the shelf: {want}"
+    );
+    assert!(
+        (want - got).abs() < 0.03,
+        "the woken steal is at {got}, not {want}"
+    );
+    assert_eq!(b.voices[0].voice.gate.get(), GATE_ON, "its gate is up");
+}
+
+/// **What the hands do while it wakes counts too.** A key pressed during
+/// the wake starts its voice from silence, where a rendered one starts its
+/// attack; a key let go during it is let go; and a rest between two of its
+/// quanta (Blend back to 0 before it was heard) starts the wake again,
+/// still landing where the notes would be.
+#[test]
+fn what_the_hands_do_while_it_wakes_counts() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+        p.note_on(67, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 1_000);
+    render_both(&mut a, &mut b, 2);
+    assert!(
+        b.resting(),
+        "two quanta into a wake of a chord on its shelf"
+    );
+    for p in [&mut a, &mut b] {
+        p.note_on(64, 1.0);
+        p.note_off(67);
+    }
+    // Blend back to 0 for a moment, then up again.
+    render_both(&mut a, &mut b, 1);
+    rest_beside(&mut a, &mut b, 3);
+    wake_beside(&mut a, &mut b);
+    for n in [60, 64] {
+        let (want, got) = (env_of(&a, n), env_of(&b, n));
+        assert!((want - got).abs() < 0.03, "{n}: woke at {got}, not {want}");
+    }
+    assert!(b.voices.iter().all(|v| v.note != Some(67)), "67 was let go");
+    let ringing = b.voices.iter().filter(|v| v.running).count();
+    assert_eq!(ringing, 2, "only the two held keys sound");
+}
+
+/// **A held note under a knob turned mid-wake still wakes.** Where the
+/// note would be is worked out from the knobs as they are, as if they had
+/// stood there since the key went down. An attack slowed to its slowest
+/// while the wake drives a note down from its peak (here as velocity's touch
+/// writes a voice's knob, at once) says the note would still be attacking,
+/// under the shelf: a fall stops at the shelf, which is where the rendered
+/// note is, rather than driving at a level a decay cannot reach for the rest
+/// of the wake.
+#[test]
+fn an_attack_slowed_mid_wake_stops_the_fall_at_the_shelf() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 1);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    render_both(&mut a, &mut b, 1);
+    rest_beside(&mut a, &mut b, 1_200);
+    // Three quanta: past the peak, falling toward the shelf.
+    render_both(&mut a, &mut b, 3);
+    assert!(b.resting());
+    assert_eq!(b.voices[0].seek, Seek::Fall);
+    for p in [&mut a, &mut b] {
+        p.voices[0].amp[0].set(1.0);
+    }
+    let quanta = wake_beside(&mut a, &mut b);
+    assert!(quanta < 16, "{quanta} quanta");
+    let (want, got) = (env_of(&a, 60), env_of(&b, 60));
+    assert!(
+        (want - 0.5).abs() < 1e-3,
+        "the rendered note is on the shelf: {want}"
+    );
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+}
+
+/// **A swap made while resting keeps each held note's start.** A new
+/// offer can land in B while its mix is 0: the swap's rebuild goes on
+/// through the rest and re-presses the held note on the new voices, but the
+/// note started before the swap, and wakes where it would be from then, not
+/// from the swap.
+#[test]
+fn a_swap_made_while_resting_keeps_each_notes_start() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 1_000);
+    assert!(a.set_patch(&json));
+    assert!(b.set_patch(&json));
+    let mut patched = 0;
+    for _ in 0..100 {
+        let _ = a.process(128);
+        b.rest(128);
+        patched += usize::from(b.poll_event() == EVENT_PATCHED);
+    }
+    assert_eq!(patched, 1, "the swap landed while resting");
+    wake_beside(&mut a, &mut b);
+    // From the swap, 0.27 s on, it would be attacking past the shelf.
+    let (want, got) = (env_of(&a, 60), env_of(&b, 60));
+    assert!(
+        (want - 0.5).abs() < 1e-3,
+        "the rendered note is on the shelf: {want}"
+    );
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+}
+
+/// **A swap that lands while it renders asleep wakes the new voices.** A
+/// render that finds a swap waiting goes to the rebuild (nobody heard the
+/// old voices fade), and the rebuild ends into a wake, not a fade in: the
+/// new voices are as far behind as the old ones were.
+#[test]
+fn a_swap_waiting_at_the_first_render_wakes_the_new_voices() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 1_000);
+    assert!(a.set_patch(&json));
+    assert!(b.set_patch(&json));
+    let mut quanta = 0;
+    while !matches!(b.stage, Stage::Wake) {
+        assert!(quanta < 16, "the rebuild never ended in a wake");
+        let out = b.process(128);
+        let _ = a.process(128);
+        assert!(out.iter().all(|&s| s == 0.0), "heard before the wake");
+        quanta += 1;
+    }
+    assert!(quanta >= 4, "the four voices were rebuilt first");
+    wake_beside(&mut a, &mut b);
+    let (want, got) = (env_of(&a, 60), env_of(&b, 60));
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+}
+
+/// **The open voice wakes as a held key does, and a tracked lead keeps its
+/// own gate.** Monitored, a patch that listens holds its open voice open
+/// with no key; rested and woken, it comes back at its envelope's place
+/// (here opened partway through, so its start is not the instrument's).
+/// A tracked patch's lead holds no gate (its tracker opens it): the wake
+/// leaves it low rather than holding the voice open itself.
+#[test]
+fn the_open_voice_wakes_as_a_held_key_does() {
+    use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel};
+    let listens = serde_json::to_string(&PatchTree {
+        amp: AmpEnv {
+            attack: 0.6,
+            decay: 0.5,
+            sustain: 0.5,
+            release: 0.4,
+        },
+        root: AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: 0,
+            gain: auracle_grammar::INPUT_GAIN_UNITY,
+            channel: InputChannel::Left,
+        },
+    })
+    .unwrap();
+    let (mut a, mut b) = rest_twins(&listens, 4);
+    render_both(&mut a, &mut b, 10);
+    a.set_open(true);
+    b.rest(128);
+    let _ = a.process(128);
+    b.set_open(true);
+    rest_beside(&mut a, &mut b, 100);
+    wake_beside(&mut a, &mut b);
+    let open = |p: &LivePoly| p.open.as_ref().expect("an open voice").voice.env_phase();
+    let (want, got) = (open(&a), open(&b));
+    assert!(want > 0.3, "the open voice is mid-attack: {want}");
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+
+    let mut lead = tracked_open(&tracked_patch());
+    for _ in 0..20 {
+        lead.rest(128);
+    }
+    let mut quanta = 0;
+    while lead.resting() {
+        assert!(quanta < 16, "the wake never ended");
+        let _ = lead.process(128);
+        quanta += 1;
+    }
+    assert_eq!(quanta, 1, "nothing to drive: awake in one quantum");
+    let gate = lead.open.as_ref().expect("the lead").voice.gate.get();
+    assert_eq!(gate, 0.0, "the lead's gate is its tracker's");
 }
