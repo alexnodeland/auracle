@@ -2906,8 +2906,9 @@ fn player_kinds() -> Vec<(String, PatchTree)> {
 /// through a gate, a pitch change and a release from the same seed of
 /// quiver's stream; the presets and the player kinds also as a chord's
 /// follower. Every knob a folded voice still has is one that could not be
-/// folded exactly (`kept_because`), so the fold is not quietly doing less.
-/// A voice left whole is counted on its own, and is one whose fold would
+/// folded exactly (`kept_because`), so the fold is not quietly doing less,
+/// and the knobs a voice lists are the knob nodes it kept. A voice left
+/// whole is counted on its own, and is one whose fold would
 /// have moved its schedule: [`two_strings`], and no preset and no player
 /// kind (a mutation that made the stand-ins refuse every fold would leave
 /// every voice whole, and every sample the same).
@@ -2939,6 +2940,22 @@ fn a_render_compile_plays_the_full_voice_bit_for_bit() {
             );
             full_nodes += full.patch.node_count();
             walked_nodes += render.patch.node_count();
+            // The knobs a render's voice lists are the knob nodes it kept
+            // (the compiler names each `…!`), every one of them, and no other.
+            // STEPS' `…:sync!` is its transport, a live handle and no knob:
+            // never listed, and never folded.
+            let listed: std::collections::BTreeSet<NodeId> =
+                render.knobs.iter().map(|(id, _)| *id).collect();
+            let left: std::collections::BTreeSet<NodeId> = render
+                .patch
+                .nodes()
+                .filter(|(_, n, _)| n.ends_with('!') && !n.ends_with(":sync!"))
+                .map(|(id, _, _)| id)
+                .collect();
+            assert_eq!(
+                listed, left,
+                "{name} (follower: {follow}): the knobs it lists"
+            );
             let mut again = compile_voice(tree, SR, None, follow).expect("compiles");
             if render.patch.node_count() == full.patch.node_count() && !again.pin_knobs() {
                 whole.push(name.clone());
