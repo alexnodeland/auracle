@@ -94,7 +94,33 @@ fn shipped_preset_wirings_are_current() {
         table.cols.contains_key("cut"),
         "the knob table knows no cutoff — {REGENERATE}"
     );
+    // The gate: judged for every palette control, and which pass is the
+    // maintainer's to know of (#290): a regeneration that moves one says so
+    // here, and the change is theirs to hear before it ships.
+    let palette = auracle_session::perform::PALETTE;
+    let judged: Vec<&str> = table.gate.keys().map(String::as_str).collect();
+    let mut names: Vec<&str> = palette.iter().map(|c| c.name).collect();
+    names.sort_unstable();
+    assert_eq!(
+        judged, names,
+        "the gate does not judge every palette control — {REGENERATE}"
+    );
+    let passing: Vec<&str> = palette
+        .iter()
+        .filter(|c| table.passes(c))
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(
+        passing, PASSING,
+        "the controls the prediction may wire moved: regenerate if the file is stale, and tell the maintainer which controls now play on a prediction (#290)"
+    );
 }
+
+/// The palette controls the shipped prediction may wire, in palette order:
+/// what `make perform-wirings` measured at 0.70 (`PREDICT_GATE`).
+const PASSING: [&str; 9] = [
+    "Bright", "Snap", "Space", "Warmth", "Thump", "Round", "Distance", "Haze", "Bite",
+];
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
 /// within [`TOLERANCE`] of their size, everything else exactly.

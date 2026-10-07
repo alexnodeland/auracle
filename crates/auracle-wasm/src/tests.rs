@@ -3748,10 +3748,11 @@ fn a_clip_is_said_for_what_it_is() {
 /// (#290): the tree's live knobs as `perform_knobs` gives them, its shape
 /// (`shape_of`, what a relative must share to lend its wiring), and the
 /// wiring the engine predicts from the knob table, in `perform_wire`'s
-/// shape and for the controls asked for, or `null`. No table until one is
-/// handed over: a file that is not JSON, holds no `knobs`, or a table over
-/// other φ names is refused and predicts nothing; the shipped file's table
-/// is taken. A tree that does not parse answers `null`.
+/// shape and for the controls asked for that its gate passes, or `null`. No
+/// table until one is handed over: a file that is not JSON, holds no
+/// `knobs`, or a table over other φ names is refused and predicts nothing;
+/// one written before the gate is taken and predicts nothing. A tree that
+/// does not parse answers `null`.
 #[test]
 fn the_first_wiring_crosses_with_its_shape_and_knobs() {
     use auracle_session::perform::{palette_controls, CONTROLS};
@@ -3784,21 +3785,38 @@ fn the_first_wiring_crosses_with_its_shape_and_knobs() {
     let col: Vec<f64> = names
         .iter()
         .map(|n| {
-            if n.starts_with("centroid_mean") || n.starts_with("rolloff_mean") {
+            let bare = n.split(':').next().unwrap_or(n);
+            if ["centroid_mean", "rolloff_mean", "flux_mean", "zcr_mean"].contains(&bare) {
                 1.0
             } else {
                 0.0
             }
         })
         .collect();
+    // Every palette control passing the gate (80 turns the named way in 100).
+    let gate: serde_json::Map<String, serde_json::Value> = auracle_session::perform::PALETTE
+        .iter()
+        .map(|c| {
+            (
+                c.name.to_string(),
+                serde_json::json!({ "wired": 100, "right": 80 }),
+            )
+        })
+        .collect();
     let file = |names: &[&str]| {
-        serde_json::json!({ "knobs": { "names": names, "cols": { site.as_str(): col } } })
+        serde_json::json!({ "knobs": { "names": names, "cols": { site.as_str(): col }, "gate": gate } })
             .to_string()
     };
     for refused in ["not json".to_string(), "{}".into(), file(&names[1..])] {
         assert!(!engine.perform_table_set(&refused), "{refused}");
         assert_eq!(first(&engine, None)["predicted"], serde_json::Value::Null);
     }
+    // A table written before the gate is taken, and its gate passes nothing.
+    let ungated =
+        serde_json::json!({ "knobs": { "names": names, "cols": { site.as_str(): col } } })
+            .to_string();
+    assert!(engine.perform_table_set(&ungated));
+    assert_eq!(first(&engine, None)["predicted"], serde_json::Value::Null);
     assert!(engine.perform_table_set(&file(&names)));
     let told = first(&engine, None);
     let p = &told["predicted"];
@@ -3814,16 +3832,28 @@ fn the_first_wiring_crosses_with_its_shape_and_knobs() {
     assert_eq!(p["values"], serde_json::json!(jac.values));
     assert_eq!(p["z"], serde_json::json!(jac.z));
     assert_eq!(p["wiring"], serde_json::to_value(&wiring).unwrap());
-    let asked = first(&engine, Some("[16, 6]"));
+    let asked = first(&engine, Some("[16, 0]"));
     let (_, bite) = engine
         .engine
-        .wire_predicted(&tree, &palette_controls(&[16, 6]), &table)
+        .wire_predicted(&tree, &palette_controls(&[16, 0]), &table)
         .expect("predicted");
     assert_eq!(
         asked["predicted"]["wiring"],
         serde_json::to_value(&bite).unwrap()
     );
-    assert_eq!(asked["predicted"]["wiring"][0]["index"], 16);
+    // On a patch whose one known knob is Bite's and Bright's gesture alike,
+    // the first asked keeps it (the measurement's `separate`), named by its
+    // palette index whichever order the set was asked in.
+    let indices = |reply: &serde_json::Value| -> Vec<u64> {
+        reply["predicted"]["wiring"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["index"].as_u64().unwrap())
+            .collect()
+    };
+    assert_eq!(indices(&asked), [16]);
+    assert_eq!(indices(&first(&engine, Some("[0, 16]"))), [0]);
     // A refused file takes the table away again.
     assert!(!engine.perform_table_set("{}"));
     assert_eq!(first(&engine, None)["predicted"], serde_json::Value::Null);
