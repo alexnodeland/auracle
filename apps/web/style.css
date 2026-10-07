@@ -4413,11 +4413,13 @@ select:focus-visible,
    Under ⌘K's button at the menu bar's right end, fixed to the window: the
    menu bar clips what hangs inside it (it keeps to one row), and a panel
    inside it was cut to the bar's height, its first field scrolled out of
-   reach as it took the focus. */
+   reach as it took the focus. A dialog on the ladder (55, the MIDI panel's
+   step), so under ⌘K's scrim (60): one left open when the list opens is
+   covered by it, and a click there closes the list, as anywhere else. */
 .scope-panel {
   position: fixed;
   right: var(--s4); top: calc(var(--menubar-h) + 6px);
-  z-index: 60;
+  z-index: 55;
   width: 300px;
   max-height: 70vh;
   overflow-y: auto;

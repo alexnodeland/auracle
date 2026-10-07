@@ -26,7 +26,8 @@
 //   your taste…, Show measurements, Booth mode, Keys and gestures, Watch the
 //   films), and so is every setting KEYS ⋯ holds; a setting says *on*, the
 //   scope's and the picture's panels open whole under the menu bar (they hung
-//   inside it, which clips them), and a level's own run as their
+//   inside it, which clips them) and stand under the list's scrim when it
+//   opens over them, and a level's own run as their
 //   controls do (Freeze Wander freezes WANDER; How the catalog works opens
 //   the catalog's walkthrough).
 // - With no query it shows five sounds, each with its face's slot; a sound
@@ -262,6 +263,17 @@ test("every item the ⋯ menu held, and every setting in KEYS ⋯, is a command"
       return !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest(sel);
     }, panel), `${panel} is what is under the point at its center`).toBe(true);
     await expect.poll(() => page.evaluate(() => document.querySelector(".menubar").scrollTop)).toBe(0);
+    // Left open, it stands under the list's scrim when ⌘K opens: a click
+    // there is the scrim's, not one on the panel's fields.
+    await page.keyboard.press("Meta+k");
+    await expect(list(page)).toBeVisible();
+    await expect.poll(() => page.evaluate((sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest("#cmdk-scrim, #cmdk")?.id || null;
+    }, panel), `the list's scrim covers ${panel}`).not.toBeNull();
+    await page.keyboard.press("Escape");
+    await expect(list(page)).toBeHidden();
+    await expect(page.locator(first), "the focus went back into the panel").toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.locator(panel)).toBeHidden();
   }
