@@ -209,6 +209,12 @@ for (const [width, height] of [[1000, 800], [1440, 900]]) {
       await at.hover();
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "under the pointer").toMatchObject(WITH_PLAY);
+      // From here to the last state the engine's replies wait (`app.hold`),
+      // and are handed to main at the end. A reply that redraws the bank
+      // rebuilds this row (the pool's `taste_views` once the fill ends, which
+      // this cold boot's can do in any of these steps, among others), and a
+      // rebuilt ▶ has lost the focus and the playing mark set on it here.
+      await app.hold({});
       // The focus on its ▶, the pointer away: focused while the pointer is
       // on the row, as a press would, then the pointer moved off. A hidden ▶
       // cannot take the focus, and the strip hides `--d-press` after the
@@ -234,6 +240,7 @@ for (const [width, height] of [[1000, 800], [1440, 900]]) {
       await expect(at).toHaveClass(/\bkbd\b/);
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "under the keyboard's cursor").toMatchObject(WITH_PLAY);
+      await app.release();
     });
   });
 }
