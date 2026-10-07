@@ -36,6 +36,9 @@ The maintainer chose a direction by ear over six rounds of auditions
   - The bed and the on-camera playing share the key and register.
   - The parts share Cathedral's room.
 - **Two marks:** Bloom opens and Reach closes. The motif is heard only in them.
+  Since 2026-10-07 (the maintainer's choice, watching the launch film) the
+  bed sounds from a film's first frame and Bloom comes two of its beats later,
+  rather than Bloom blooming out of silence (`sound.json` `form.bed_first`).
 - **The bed is N3:**
   - a drone that only breathes;
   - voice-led harmony over the F pedal;
@@ -43,7 +46,8 @@ The maintainer chose a direction by ear over six rounds of auditions
   - falling sighs in the narration's gaps.
 - **The voice is EQ'd at −18 LUFS,** with the bed at −3 LU, ducked 2 dB, and
   carved 3 dB in 1–4 kHz. The pad dips 2 dB in 300–600 Hz while the voice
-  speaks.
+  speaks. A demo is −21 LUFS with the bed 6 LU under it (from −18 and 9 LU,
+  on 2026-10-07: the launch film's demos were a bit too loud).
 - **The grammar:** explain, pause (0.7 s), demo, its tail rings out, a pause
   (0.8 s), then continue. The marks bracket the voice by about 1.75 s.
 - **One source:** `www/brand/sound.json` holds the values, generated into the

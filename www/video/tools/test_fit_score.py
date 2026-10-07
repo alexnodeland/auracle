@@ -226,7 +226,7 @@ def at(n, bpb=4):
 
 def notes(score, role=None, name=None):
     """(start, end, pitch) in seconds of film time, for a role's or a track's notes."""
-    t0 = score["_film"]["t0"]
+    t0 = score["_film"]["at"]
     out = []
     for t in score["tracks"]:
         if (role and t["role"] != role) or (name and t["name"] != name):
@@ -252,11 +252,41 @@ def sigh_length():
     return (shape[0] + shape[1]) * SPB + sound_defaults.LEAD["tail_s"]
 
 
+def with_the_bed_first(reel):
+    """The approved reel as it plays under sound.json's `form.bed_first`
+    (chosen on 2026-10-07): the bed's drone from the film's first frame and
+    Bloom `entrance_after_beats` later. Every note, fader and breath moves
+    that many beats later; the drone starts at the score's beat 0 and holds
+    that much longer, fading in over `marks.drone_fade_in`; the score is as
+    many whole bars long as the later end needs."""
+    lead = sound_defaults.MARKS["bed_first"]["entrance_after_beats"]
+    out = copy.deepcopy(reel)
+
+    def moved(bar, beat):
+        b = (bar - 1) * 4 + beat - 1 + lead
+        return [int(b // 4) + 1, round(b % 4 + 1, 6)]
+
+    for t in out["tracks"]:
+        if t["name"] == "drone":
+            t["notes"]["s"] = [[1, 1, round(n[2] + lead, 6), *n[3:]] for n in t["notes"]["s"]]
+            fade = sound_defaults.MARKS["drone_fade_in"]
+            end = fade["over_s"] / SPB
+            t["fader"] = [["s", 1, 1, float(fade["from_db"])], ["s", int(end // 4) + 1, round(end % 4 + 1, 6), 0.0]]
+        else:
+            t["notes"]["s"] = [[*moved(n[0], n[1]), *n[2:]] for n in t["notes"]["s"]]
+            if t.get("fader"):
+                t["fader"] = [[f[0], *moved(f[1], f[2]), f[3]] for f in t["fader"]]
+        for a in t.get("automation") or []:
+            a["points"] = [[p[0], *moved(p[1], p[2]), p[3]] for p in a["points"]]
+    return out
+
+
 class TheReelsMusicComesBack(unittest.TestCase):
     """Written to the final reel's timeline, the film's bed is the approved
-    reel's music (docs/notes/sound-2026-09/scores/reel.json), note for note:
-    Bloom's chord held into bar 1, the pad re-voiced for the demo, G6/F after
-    it and held to Reach, the burble, the held drone and both marks."""
+    reel's music (docs/notes/sound-2026-09/scores/reel.json), note for note,
+    with the bed first (`with_the_bed_first`): Bloom's chord held into bar 1,
+    the pad re-voiced for the demo, G6/F after it and held to Reach, the
+    burble, the held drone and both marks."""
 
     def test_every_track_but_the_demo(self):
         import test_timeline
@@ -265,7 +295,7 @@ class TheReelsMusicComesBack(unittest.TestCase):
         tl, _ = timeline.lay_out(test_timeline.reel_script(1.12), test_timeline.REEL_DURS)
         score, placed = film(tl)
         with open(os.path.join(ROOT, "docs/notes/sound-2026-09/scores/reel.json"), encoding="utf-8") as f:
-            reel = json.load(f)
+            reel = with_the_bed_first(json.load(f))
         want = {t["name"]: t for t in reel["tracks"] if t["name"] != "demo"}
         got = {t["name"]: t for t in score["tracks"]}
         self.assertEqual(sorted(got), sorted(want))
@@ -286,20 +316,26 @@ class TheReelsMusicComesBack(unittest.TestCase):
 
 
 class TheDroneIsHeld(unittest.TestCase):
-    def test_one_note_a_pitch_from_the_entrance_to_the_exits_end_breathing_once_a_cycle(self):
-        lines = [(6.25 + 12 * k, 6.25 + 12 * k + 9) for k in range(10)]
-        score, _ = film(a_film(lines))
+    def test_one_note_a_pitch_from_the_beds_start_to_the_exits_end_breathing_once_a_cycle(self):
+        lead = sound_defaults.MARKS["bed_first"]["entrance_after_s"]
+        lines = [(lead + 6.25 + 12 * k, lead + 6.25 + 12 * k + 9) for k in range(10)]
+        score, _ = film(a_film(lines, entrance=lead))
         drone = next(t for t in score["tracks"] if t["name"] == "drone")
         exit_end = score["_film"]["exit"] + sound_defaults.MARKS["length_s"]
+        # The bed sounds first, from the film's start, the entrance its lead later.
+        self.assertAlmostEqual(score["_film"]["at"], 0.0, places=3)
+        self.assertAlmostEqual(score["_film"]["t0"], lead, places=6)
         self.assertEqual([n[3] for n in drone["notes"]["s"]], sound_defaults.BED["pedal"])
         for n in drone["notes"]["s"]:
             self.assertEqual(at(n), 0)
             self.assertAlmostEqual(n[2] * SPB, exit_end, places=4)
         pts = drone["automation"][0]["points"]
         lows = [at(p[1:3]) for p in pts if p[3] == min(q[3] for q in pts)]
-        b1 = sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"] / SPB
+        b1 = (lead + sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"]) / SPB
         self.assertEqual([round(x - b1, 6) for x in lows[:4]], [0, 32, 64, 96], "lowest at each cycle's start")
-        self.assertEqual(drone["fader"][0][3], sound_defaults.MARKS["drone_fade_in"]["from_db"])
+        fade = sound_defaults.MARKS["drone_fade_in"]
+        self.assertEqual(drone["fader"][0], ["s", 1, 1, fade["from_db"]])
+        self.assertAlmostEqual(at(drone["fader"][1][1:3]) * SPB, fade["over_s"], places=4)
 
 
 class TheCycleKeepsItsTies(unittest.TestCase):

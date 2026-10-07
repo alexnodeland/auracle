@@ -43,8 +43,11 @@ marked `estimated`. A demo with neither stops the timeline. A demo line's
 
 **The marks.** A film on the N3 bed (`"music": {"bed": "n3"}`) opens with the
 entrance mark and closes with the exit mark (sound.json `marks` and
-`grammar`). The entrance starts where the first line would have, and the
-first line follows its last note by `first_word_after_entrance_s` (1.75 s);
+`grammar`). The bed sounds from the film's first frame, and the entrance
+comes `form.bed_first.entrance_after_beats` (two of the bed's beats, 1.82 s)
+after it, or where the first line would have if that is later (the bed then
+starts as far before it); the first line follows the entrance's last note by
+`first_word_after_entrance_s` (1.75 s);
 the exit starts `exit_after_last_word_s` (1.75 s) after the last line ends;
 the film ends `exit_ring_out_s` after the exit's last note. Its tempo is
 sound.json's (66 BPM), its grid starts on the bed's bar 1, and its end is not
@@ -195,7 +198,10 @@ def lay_out(script, durs=None, words=None, composed=None, measured=None):
         t += b.get("lead", 0.0)
         for l in b["lines"]:
             if n3 and "entrance" not in marks:
-                # The entrance mark sits where the first line would have.
+                # The entrance mark sits where the first line would have, and
+                # no sooner than the bed's lead after the film's start: the
+                # bed sounds first (sound.json form.bed_first).
+                t = max(t, sound_defaults.MARKS["bed_first"]["entrance_after_s"])
                 marks["entrance"] = t
                 t += marks_s + tm["first_word_after_entrance_s"]["reel"]
             d = durs.get(l["id"]) or est_duration(l["text"])
@@ -228,10 +234,12 @@ def lay_out(script, durs=None, words=None, composed=None, measured=None):
         # beat, if that is later); the bed waits for no bar, and neither does
         # the end.
         end = max(t, marks["exit"] + marks_s + tm["exit_ring_out_s"]) if "exit" in marks else t
-        start = marks.get("entrance", 0.0)
+        # The bed starts its lead before the entrance (at the film's start
+        # unless a cold open holds the entrance back).
+        start = marks["entrance"] - sound_defaults.MARKS["bed_first"]["entrance_after_s"] if marks else 0.0
         bars = max(1, math.ceil((end - start) / bar - 1e-6))
         arrangement = [{"section": "s", "bars": bars, "t0": round(start, 3)}]
-        grid_t0 = start + sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"] if marks else 0.0
+        grid_t0 = marks["entrance"] + sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"] if marks else 0.0
     else:
         # The film ends with the last beat, rounded up to a whole bar so the
         # music's last bar rings out on the grid.

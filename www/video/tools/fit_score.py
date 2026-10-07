@@ -296,9 +296,12 @@ def film_score(tl, bed, bloom, reach):
     te, tx = marks["entrance"], marks.get("exit")
     length = M["length_s"]
     into = M["into_the_bed"]
+    # The bed sounds first: the score starts its lead before the entrance
+    # (sound.json form.bed_first), at the film's start.
+    t_bed = te - M["bed_first"]["entrance_after_s"]
 
     def b(t):  # film seconds to the score's beats
-        return (t - te) / spb
+        return (t - t_bed) / spb
 
     def pos(beat):
         return int(beat // bpb) + 1, round(beat % bpb + 1, 6)
@@ -446,7 +449,7 @@ def film_score(tl, bed, bloom, reach):
     chord_at = {a: ch for spans in plan for a, _, ch in spans}
     sighs = []
     for a in changes:
-        t0 = te + a * spb
+        t0 = t_bed + a * spb
         t1 = t0 + sigh_s
         if t0 < te + length - EPS or t1 > limit + EPS:
             continue
@@ -502,7 +505,7 @@ def film_score(tl, bed, bloom, reach):
     fade = M["drone_fade_in"]
     drone = _track(drone_t, "drone", "drone", [note(0, END, p, v) for _, _, _, p, v in drone_t["notes"]["s"]], bpb)
     drone["automation"] = [{"param": drone_t["automation"][0]["param"], "points": [["s", *pos(x), v] for x, v in auto]}]
-    drone["fader"] = [["s", *pos(0), float(fade["from_db"])], ["s", *pos(b(te + fade["over_s"])), 0.0]]
+    drone["fader"] = [["s", *pos(0), float(fade["from_db"])], ["s", *pos(b(t_bed + fade["over_s"])), 0.0]]
 
     def lead(prefix, m, t_mark):
         out = []
@@ -541,9 +544,10 @@ def film_score(tl, bed, bloom, reach):
         "_film": {
             "film": tl.get("film"),
             "t0": te,
+            "at": round(t_bed, 6),
             "exit": tx,
-            "chords": [[round(te + a * spb, 3), ch] for spans in plan for a, _, ch in spans],
-            "sighs": [[round(te + a * spb, 3), ch] for a, ch in sighs],
+            "chords": [[round(t_bed + a * spb, 3), ch] for spans in plan for a, _, ch in spans],
+            "sighs": [[round(t_bed + a * spb, 3), ch] for a, ch in sighs],
         },
         "tracks": out_tracks,
     }

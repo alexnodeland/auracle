@@ -66,7 +66,7 @@ How the lead's lines are played:
 | Lead | C5 0–1.0 (0.60), B4 1.0–1.5 (0.58), A4 1.5–2.0 (0.58), E5 2.0–4.5 (0.60, swell). Bends: +1, +2, −7 semitones. |
 | Pad (0.55) | A3 0–1, B3 1–1.5, A3 1.5–4.5; C4 0–1, D4 1–1.5, C4 1.5–4.5; E4 0–1.5; G4 0–4.5. All at velocity 0.55. |
 | Harmony | Fmaj9 (0–1) \| G6/F, the Lydian B (1–1.5) \| Fmaj9 without E4 (1.5–4.5), so E5 is alone on top. It ends open, on the major 7th. |
-| Drone | F2 (0.56) and C3 (0.52) from 0, entering softly (attack 0.85; in a film, also a fader from −12 dB to 0 over 1.5 s) |
+| Drone | F2 (0.56) and C3 (0.52) from 0, entering softly (attack 0.85; in a film, also a fader from −12 dB to 0 over 1.5 s; since 2026-10-07 the film's drone starts before Bloom, below) |
 
 **Into the bed.** Bloom's last chord (A3 C4 G4, from 1.5 s) is the bed's bar 1, so the bed's bar 1 falls at 1.5 s. There is no seam:
 - **Held, not handed over:** those three notes stay on the marks' pad and are held on until a voice moves (A3 and C4 at bar 3, G4 at bar 5). The bed pad plays only the voices that move.
@@ -74,6 +74,17 @@ How the lead's lines are played:
 - **Level:** after the mark, the marks' pad eases from mark level to bed level over 4.0 s.
 - **Measured:** no dip at the seam. Round 4 handed the chord to the bed pad, whose 2.2 s attack left a 12 dB hole at about 2 s. (`scores/reel.json`, its first 12.5 s: `clips/bloom_into_n3.mp4`)
 - **The first word comes 1.5–2 s after Bloom's last note** (the rule). The bed does not wait for any bar or cycle boundary before the voice.
+
+**The bed first (2026-10-07).** The maintainer chose, watching the launch
+film, that the bed sounds from a film's first frame, under its opening
+picture, and Bloom comes a moment later: "we should come in with the sound
+bed immediately when the video starts … and then, a moment after that, the
+sound mark can play." It had been silence, then the bed and Bloom together.
+The drone now starts with the film, its fader from −12 dB to 0 over 0.25 s
+(a click's worth, no silence), and Bloom enters two of the bed's beats later
+(1.82 s at 66 BPM; `form.bed_first.entrance_after_beats`). Everything from
+Bloom on is as above, two beats later; the reel's music comes back so
+(`tools/test_fit_score.py`'s `with_the_bed_first`).
 
 ### Reach, the exit (`scores/m1_reach.json`)
 
@@ -182,8 +193,8 @@ The de-esser's settings:
 | Narration | −18 LUFS integrated |
 | Bed at rest (before the first line, in pauses, after the last) | **−21 LUFS: 3 LU under the voice** |
 | Bed under speech | Rest level −2 dB broadband, a further −3 dB in 1–4 kHz, and the pad −2 dB in 300–600 Hz (section 8) |
-| Demo | −18 LUFS integrated over its window |
-| Bed under a demo | 9 LU under the demo (about −27 LUFS). It goes down over 0.5 s from the demo's first note, and comes back over 1.0 s from its last note-off. Never ducked to silence. |
+| Demo | **−21 LUFS** integrated over its window (−18 until 2026-10-07; see below) |
+| Bed under a demo | **6 LU** under the demo (about −27 LUFS, where it was). It goes down over 0.5 s from the demo's first note, and comes back over 1.0 s from its last note-off. Never ducked to silence. |
 | Marks | −18 LUFS over their 4.5 s (section 3) |
 | Film master | The whole mix to −16 LUFS integrated, then `mix.py`'s limiter: ceiling −1.2 dBTP, 5 ms look-ahead, 80 ms release (`mix.py:133`) |
 | Cues | **None.** No whoosh, blip, shimmer or logo sting, and nothing in their place. |
@@ -199,6 +210,13 @@ The de-esser's settings:
 | Pad dip | A further −2 dB × follower in **300–600 Hz**, on the pad only |
 | App sound under the voice | None: in this grammar the instrument never plays under the narration |
 
+**2026-10-07, the maintainer, watching the launch film:** its Bright and
+Offer demos were "okay, but a bit too loud", and a little harsh. The demos
+come down 3 dB, to −21 LUFS, and the bed under them stays at about −27 LUFS
+(so 6 LU under the demo, from 9). The harshness is the demo's sound, recast
+for the launch film from the shortlist (its notes in
+`www/video/films/launch/`).
+
 ## 9. The grammar
 
 These are the rules a film follows:
@@ -207,7 +225,7 @@ These are the rules a film follows:
 2. **The first word comes 1.5–2 s after the entrance mark's last note.** The bed (the mark's last chord held on) carries the gap and does not wait for a bar or cycle boundary.
 3. The voice explains; **0.7 s** after its last word the demo starts, wherever the bed is. It is not held back for a chord change. If a re-strike would dip under the demo, the pad is re-voiced in the pause rather than waiting.
    - In the reel, the pad moves to A3 C4 on the marks' fast pad, so the demo's F3 E4 G4 A4 complete an Fmaj9 without doubling it.
-   - The bed sits 9 LU under the demo.
+   - The bed sits 9 LU under the demo (6 LU since 2026-10-07, section 7).
 4. **The demo is never cut off:** its notes ring out on their own release. If it must end sooner, its playing ends sooner.
 5. The voice waits until the demo's tail has fallen **30 dB** under its playing level, then **0.8 s** more on the bed, then continues. The bed returns over 1.0 s from note-off and resumes its cycle; in the reel, on G6/F.
 6. **The exit mark enters 1.5–2 s after the last word ends,** wherever the bed is, handing over as in section 3.

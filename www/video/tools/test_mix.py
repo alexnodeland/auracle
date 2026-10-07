@@ -56,7 +56,10 @@ class TheLadder(unittest.TestCase):
             self.assertEqual(mix.LADDER[k], src["ladder"][k], k)
         self.assertIs(mix.LADDER, sound_defaults.LADDER)
         self.assertEqual((mix.LADDER["narration_lufs"], mix.LADDER["bed_rest_lu"], mix.LADDER["demo_lufs"],
-                          mix.LADDER["marks_lufs"], mix.LADDER["master_lufs"]), (-18, -3, -18, -18, -16))
+                          mix.LADDER["marks_lufs"], mix.LADDER["master_lufs"]), (-18, -3, -21, -18, -16))
+        # The demos 3 dB under the voice, the bed under them where it was
+        # (the maintainer, 2026-10-07): about -27 LUFS either way.
+        self.assertEqual(mix.LADDER["demo_lufs"] + mix.LADDER["bed_under_demo_lu"], -27)
 
     def test_the_bed_duck_and_master_defaults_are_read_from_sound_json(self):
         # Read, not copied: a change to sound.json's ladder, duck or
@@ -350,10 +353,10 @@ class AFilmMixedToTheLadder(unittest.TestCase):
         for m in marks:
             self.assertAlmostEqual(m["span_lufs"], -18.0, delta=0.05, msg=m["mark"])
 
-    def test_the_demo_is_at_its_level_and_the_bed_nine_under_it(self):
+    def test_the_demo_is_at_its_level_and_the_bed_under_it_by_the_ladder(self):
         (d,) = self.report["demos"]
-        self.assertAlmostEqual(d["demo_lufs"], -18.0, delta=0.05)
-        self.assertAlmostEqual(d["demo_over_bed_db"], 9.0, delta=0.6)
+        self.assertAlmostEqual(d["demo_lufs"], mix.LADDER["demo_lufs"], delta=0.05)
+        self.assertAlmostEqual(d["demo_over_bed_db"], -mix.LADDER["bed_under_demo_lu"], delta=0.6)
         self.assertLess(d["bed_gain_db"], 0)
         self.assertAlmostEqual(d["tail_s"], 0.41, delta=0.06, msg="a 0.12 s time constant falls 30 dB in 0.41 s")
 
@@ -370,7 +373,7 @@ class AFilmMixedToTheLadder(unittest.TestCase):
 
     def test_on_the_grammar_the_app_is_never_ducked(self):
         said = [l for l in self.log.splitlines() if l.startswith("app:")]
-        self.assertEqual(said, ["app: 1 demo window → -18.0 LUFS; elsewhere at its gain_db"])
+        self.assertEqual(said, [f"app: 1 demo window → {mix.LADDER['demo_lufs']:.1f} LUFS; elsewhere at its gain_db"])
 
 
 @unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")

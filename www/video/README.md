@@ -94,7 +94,7 @@ The mix is the spec's (`tools/mix.py`):
 - the voice through its chain, at −18 LUFS;
 - the bed at rest 3 LU under it, ducked 2 dB under the voice, carved a
   further 3 dB in 1–4 kHz, and the pad dipped 2 dB in 300–600 Hz;
-- each demo window at −18 LUFS, with the bed 9 LU under it;
+- each demo window at −21 LUFS, with the bed 6 LU under it;
 - the marks at −18 LUFS over their 4.5 s;
 - the master at −16 LUFS, and no cues.
 
@@ -102,9 +102,11 @@ It writes what it measured to `out/<film>/ladder.json`.
 
 A film on the N3 bed (`"music": {"bed": "n3"}` in its script) is laid out and
 scored to the spec's grammar:
-- `timeline.py` puts Bloom 1.75 s before the first word and Reach 1.75 s
-  after the last, and lays each line's `demo` after it: 0.7 s, the demo, its
-  tail to −30 dB (measured, `--demos`), 0.8 s;
+- the bed sounds from the film's first frame, and `timeline.py` puts Bloom two
+  of its beats later (`form.bed_first`, 2026-10-07), the first word 1.75 s
+  after Bloom's last note and Reach 1.75 s after the last word, and lays each
+  line's `demo` after it: 0.7 s, the demo, its tail to −30 dB (measured,
+  `--demos`), 0.8 s;
 - `fit_score.py --film` writes the bed and the marks to that timeline, with
   the bed's sighs in the narration's gaps;
 - `illustrated.sh` and `walkthrough.sh` take that route for it, and mix it on
@@ -154,7 +156,7 @@ the first note to the note-off. `voice.sh`, the films' timing scripts and
 `illustrated.sh` pass `demos.json` to `timeline.py --demos` when it exists.
 The timeline marks a demo it laid out on an estimate (ESTIMATED), and
 `publish.py` refuses such a film. In the mix, the app's sound over each demo
-window goes to −18 LUFS, and the bed sits 9 LU under it.
+window goes to −21 LUFS, and the bed sits 6 LU under it.
 
 ## Setting up
 
@@ -274,7 +276,7 @@ What makes shots reliable:
 - **Order gestures** that depend on each other inside a `seq`.
 - **Let the app be the music, after the voice:** each demo plays after its
   line, never under it (a line's `demo`, § A demo), in F at 66 BPM, and the
-  bed comes down 9 LU under it by itself. On N3 nothing snaps. A film still
+  bed comes down 6 LU under it by itself. On N3 nothing snaps. A film still
   on Study keeps its chords on the bar line at 84 BPM (`"snap": "bar"`) and
   takes the bed out under its demos (`bed_db`).
 - **Show the truth.** If the app does something the guide or the film doesn't

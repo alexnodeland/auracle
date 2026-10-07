@@ -79,7 +79,7 @@ by what you hear before what they are called. Leave the maths to *The math*.
   - The bed sits under the voice throughout, with no `bed_db`.
   - Each demo plays after its line (the line's `demo`, `README.md` § A demo):
     0.7 s after the last word, its tail rung out, 0.8 s more. The bed comes
-    down 9 LU under it by itself.
+    down 6 LU under it by itself.
   - Nothing snaps to a bar.
   - The films still on the `study` bed keep the old rule until they are
     re-voiced: the bed under the title, the chapter turns and the outro, and
