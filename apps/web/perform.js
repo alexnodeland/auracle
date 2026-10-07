@@ -186,19 +186,46 @@ function keptSum(addr, wire, values) {
 // What a patch nobody has measured can borrow from a measured relative
 // (#290): of `entries` (kept wirings, oldest first, each with the `shape` and
 // panel `set` it was measured under), the youngest with the same shape as
-// `first` (the engine's `perform_first` for the tree: its `shape` and live
-// `knobs`) and the same set (`want`, `setKey`'s), so the same knobs at the
-// same addresses: a bred child whose walk moved only knobs, the source of a
-// knob edit, a preset edited. Its wiring, centred on this tree's own knob
-// values; null when none, or when a knob it turns is not this tree's. Pure,
-// so the rule is tested away from the page (tests/perform.test.mjs).
+// `first` (the engine's `perform_first` for the tree: its `shape`, live
+// `knobs` and prediction) and the same set (`want`, `setKey`'s), so the same
+// knobs at the same addresses: a bred child whose walk moved only knobs, a
+// preset edited without changing its structure. Null when none, or when a
+// knob it turns is not this tree's.
+//
+// What it lends is how its controls turn the knobs, and nothing the relative
+// measured of itself: a control that could not reach the relative is left
+// out (the panel lays it as not measured, `alignWiring`), never drawn as
+// this sound's "can't"; a half its renders closed is open again (unverified,
+// as a prediction is); and where this sound measures (`z`, each control's
+// `position`) is the engine's word on this tree (`first.predicted`) or
+// nothing (`position: null`, no dot). Centred on this tree's knob values.
+// Pure, so the rule is tested away from the page (tests/perform.test.mjs).
 export function relativeOf(first, entries, want) {
   if (!first || !first.shape) return null;
   let found = null;
   for (const v of entries) if (v && v.data && v.shape === first.shape && (v.set || "") === want) found = v;
   const at = new Map(first.knobs || []);
   if (!found || !found.data.addrs.every((a) => at.has(a))) return null;
-  return { ...found.data, values: found.data.addrs.map((a) => at.get(a)) };
+  const p = first.predicted;
+  const placed = !!(p && p.z && p.z.length);
+  const where = new Map(placed ? p.wiring.map((w) => [w.index, w.position]) : []);
+  return {
+    ...found.data,
+    values: found.data.addrs.map((a) => at.get(a)),
+    z: placed ? p.z : [],
+    wiring: found.data.wiring
+      .filter((w) => !w.search)
+      .map((w) => ({ ...w, up: null, down: null, position: where.has(w.index) ? where.get(w.index) : null })),
+  };
+}
+// A prediction (`first.predicted`) as PERFORM plays it: where the engine had
+// not measured the sound (`z` empty), no control says where it sits
+// (`position: null`, no dot) rather than sitting at the centre.
+export function predictedOf(first) {
+  const p = first && first.predicted;
+  if (!p) return null;
+  if (p.z && p.z.length) return p;
+  return { ...p, wiring: p.wiring.map((w) => ({ ...w, position: null })) };
 }
 // How far a search control has to be turned before letting go asks for
 // something (a graft or an offer). Short of it, it springs back and asks
@@ -691,13 +718,14 @@ export function createPerform(host) {
       if (w && !pending) {
         // Where the sound measures on this axis: z through a soft squash onto
         // the dial's travel, so "very bright for this bank" sits near the stop.
-        // Not drawn for a guess on a sound whose φ the engine had not measured
-        // (its `z` came empty): there is nothing to place it by.
-        const pos = Math.tanh(w.position / 2);
+        // Not drawn where nothing says (a guess's `position: null`: the
+        // engine had not measured the sound, `relativeOf`, `predictedOf`).
+        const placed = Number.isFinite(w.position);
+        const pos = placed ? Math.tanh(w.position / 2) : 0;
         const [x, y] = polar(pos * 135);
         where.setAttribute("cx", x.toFixed(2));
         where.setAttribute("cy", y.toFixed(2));
-        where.style.display = guess && !state.guessPlaced ? "none" : "";
+        where.style.display = placed ? "" : "none";
         const dotSays = `The amber dot is where this sound measures on ${w.name}, compared with the sounds in your session.`;
         where.querySelector("title").textContent = dotSays;
         // What the player can do, not where the app infers the sound sits: a
@@ -721,12 +749,12 @@ export function createPerform(host) {
         k.wrap.title = search
           ? `${w.name}: nothing in this patch makes it ${w.high} without changing something else. Turn it and it grows a variant that can.`
           : `${w.name}${guess ? ", not measured yet" : ""}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}.${toward} Long-press to hear it.`;
-        if (!guess || state.guessPlaced) k.wrap.title += `\n${dotSays}`;
+        if (placed) k.wrap.title += `\n${dotSays}`;
         // The engineer's view, on request (⋯ → Show measurements): what the
         // measurement actually said, in its own units.
         if (host.engineer?.()) {
           const halves = w.down != null ? `measured −${w.down.toFixed(2)}σ / +${w.up.toFixed(2)}σ` : `${w.reach.toFixed(2)}σ predicted`;
-          k.wrap.title += `\n\npurity ${w.purity.toFixed(2)} · reach ${w.reach.toFixed(2)}σ · ${halves} · at ${w.position.toFixed(2)}σ\n${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join("  ")}`;
+          k.wrap.title += `\n\npurity ${w.purity.toFixed(2)} · reach ${w.reach.toFixed(2)}σ · ${halves}${placed ? ` · at ${w.position.toFixed(2)}σ` : ""}\n${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join("  ")}`;
         }
       } else {
         where.style.display = "none";
@@ -1762,8 +1790,8 @@ export function createPerform(host) {
   }
   // Else the wiring the engine predicted from the knob table.
   function predictedWiring(json) {
-    const f = firsts.get(json);
-    return f && f.predicted ? { data: f.predicted, rev: "", guess: "predicted" } : null;
+    const data = predictedOf(firsts.get(json));
+    return data ? { data, rev: "", guess: "predicted" } : null;
   }
 
   function wire() {
@@ -1805,9 +1833,6 @@ export function createPerform(host) {
       }
       applyWired(structuredClone(hit.data));
       state.guess = hit.guess || null;
-      // Whether the engine knew where the sound measures (`z`), so a guess's
-      // position dot means something.
-      state.guessPlaced = !!(hit.data.z && hit.data.z.length);
       markWired(hit.guess || (hit.shipped ? "shipped" : hit.borrowed ? "borrowed" : "cached"));
       knobs.forEach(paintKnob);
       renderHood();
