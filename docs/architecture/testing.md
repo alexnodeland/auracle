@@ -821,11 +821,14 @@ from it ([Rules](#rules)).
   engine's own replies while an injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
   1.5 s), the one fixed wait. Every boot is a first visit's, cold, except
-  where a spec that waits for the whole pool before it does anything asks
-  to reuse renders (`app.boot({ reuseRenders: true })`): the render cache
-  as an earlier boot of the same seed left it, so the fill after the veil
-  is served rather than rendered, and the pool is the same
-  (`fixture_renders.spec.js`). `tests/web/AGENTS.md` § Writing a spec.
+  where a spec that waits for the whole pool before it does anything, and
+  then reads only the pool, asks to reuse renders (`app.boot({ reuseRenders:
+  true })`): the render cache as an earlier boot of the same seed left it,
+  so the fill after the veil is served rather than rendered, and the pool is
+  the same (`fixture_renders.spec.js`). The boot is not: it is playable with
+  the whole pool, so EVOLVE's first pair is dealt from all of it, and a spec
+  that reads or hears EVOLVE's table does not ask. `tests/web/AGENTS.md` §
+  Writing a spec.
 - **A script's git runs without the file-system monitor, and its tests'
   scratch repositories read no user config.** A user's `core.fsmonitor=true`
   makes every git command that reads the index (`diff`, `ls-files --others`,

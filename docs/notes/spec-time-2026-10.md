@@ -25,16 +25,21 @@ figure), every browser job through `one_browser.sh` on a port of its own.
   keeps `no-store`.
 - **No warm boot for every spec.** The veil cannot come down sooner from a
   cache: its 8 sounds are rendered with their audio, which the render cache
-  never holds (worker.js `FARM_AUDIO_AHEAD`; [the October
-  measurements](test-audit-2026-10/measurements.md#the-boot-33) found the
-  same, and that a full pool from the first second made the engine waits of
-  tests that don't wait for it longer).
-- **Renders reused where a test waits for the whole pool first**
-  (`app.boot({ reuseRenders: true })`, built): on CI 43 tests spent 13.8 of
-  84.1 test-minutes waiting for the pool to fill after the veil. For a test
-  that does nothing before the pool is whole, a filled cache removes that
-  wait and changes nothing it then sees. 16 fast-tier tests qualify, the
-  bank's; together their fill waits were 5.5 test-minutes on CI.
+  never holds (worker.js `FARM_AUDIO_AHEAD`). Here it came down at the same
+  time either way (1161 to 1222 ms reused, 1184 to 1222 ms cold, below).
+  [The October measurements](test-audit-2026-10/measurements.md#the-boot-33)
+  found the same, and that a full pool from the first second made the engine
+  waits of tests that don't wait for it longer.
+- **Renders reused where a test waits for the whole pool first, and then
+  reads only the pool** (`app.boot({ reuseRenders: true })`, built): on CI
+  43 tests spent 13.8 of 84.1 test-minutes waiting for the pool to fill after
+  the veil. For a test that does nothing before the pool is whole, a filled
+  cache removes that wait and leaves the pool as a cold boot fills it, sound
+  for sound. It does not leave the boot as it was: the hits land before the
+  app is playable, so EVOLVE's first pair is dealt from the whole pool, where
+  a cold boot deals it from its first 10 or so sounds. A test that reads or
+  hears EVOLVE's table therefore does not ask. 15 fast-tier tests qualify,
+  the bank's; together their fill waits were 5.2 test-minutes on CI.
 - **Two workers per machine: not measured.** Its condition, boots made cheap,
   did not hold: the boot is still 29.5% of the fast tier on CI, at a median
   4.7 s. Here, `one_browser.sh` already runs two suites side by side, and a
@@ -79,7 +84,7 @@ boot came to 13.8 test-minutes (16.4%), in 43 tests:
 | `session_seed.spec.js` | 1 | 56 | 72 | no: about a fresh session's pool |
 | `bank_touch.spec.js` | 2 | 41 | 55 | yes |
 | `evolve_ahead.spec.js` | 3 | 36 | 48 | no: about deals, which the fill's timing shapes |
-| `bank_row.spec.js` | 1 | 23 | 30 | yes |
+| `bank_row.spec.js` | 1 | 23 | 30 | no: reads EVOLVE's first pair, which a reused boot deals from the whole pool |
 | `evolve_truth.spec.js` | 1 | 22 | 34 | no: about deals |
 | `model_view.spec.js` | 2 | 11 | 39 | no: the warm start's fit lands while the pool fills |
 | `first_run.spec.js` | 1 | 9 | 24 | no: a first visit |
@@ -119,41 +124,68 @@ gives, bit for bit (a row is stored under the namespace and the draw's
 content address, which the engine checks against its tree), so the pool is
 the same sound for sound (`fixture_renders.spec.js` holds it to that).
 
-Who asks: a test that does nothing before the pool is whole (`bank_find`,
-`bank_touch`, `bank_row`'s sound opened from outside the bank, and
-`bank_lineage`'s tests that mark a whole pool). Who doesn't: a test about
+**The same pool, not the same boot.** One seed (20261009) booted nine times
+here, each in a context of its own, in three rounds of a cold boot and then
+two that reused its rows (load 109 to 121):
+
+| Boot | Veil down (ms) | Pool when playable | Pool whole | First pair | Draws served / rendered |
+| --- | --- | --- | --- | --- | --- |
+| Cold (3) | 1184 to 1222 | 10 | 4.4 s after the veil | 6 and 10, each time | 0 / 46 |
+| Reused (6) | 1161 to 1222 | 40 | as the veil lifts | 23 and 9, each time | 36 to 40 / 11 to 14 |
+
+Every boot ranked the same 40 sounds in the same order. What differs is
+what is dealt as the app turns playable: a cold boot has 10 sounds by then
+(10 or 11 for `SEED` in review), a reused one all 40. So EVOLVE's first
+pair, and the pair dealt behind it, are drawn from all 40: here 23 and 9
+where every cold boot dealt 6 and 10, sounds rendered without their audio
+(only the first 8 draws are rendered with it). A reused boot still renders
+those 8 and the draws the engine quarantines, which are never stored
+(farm.js). A seed's rows are kept once, as its first boot left
+them: topped up from a reused boot's store, a boot rendered as many again (11
+to 14), so the fixture does not top them up.
+
+Who asks: a test that does nothing before the pool is whole and then reads
+only the pool (`bank_find`, `bank_touch`, and `bank_lineage`'s tests that
+mark a whole pool). Who doesn't: a test that reads or hears EVOLVE's table
+(`bank_row`'s sound opened from EVOLVE, which takes card A), a test about
 boot, the fill or a render (`smoke`, `first_run`, `session_seed`, `budgets`,
 `faces`), and one that picks, teaches, deals or fits while the pool fills
 (`taste_learning`, `model_view`, `evolve_*`, `bank_lineage`'s taught tests):
 there a full pool from the start is another session, as the October
 measurements found.
 
-**Here** (the four bank specs' 21 fast-tier tests, 16 of them asking; cold
-with the fixture's switch off, a scratch edit not committed, then reused
-three times over from an empty `.renders/`, then cold again):
+**Here** (the four bank specs' 21 fast-tier tests; cold with the fixture's
+switch off, a scratch edit not committed, then reused three times over from
+an empty `.renders/`, then cold again). In these runs `bank_row`'s sound
+opened from EVOLVE asked too (6.3 and 5.6 s cold, 2.1 to 2.2 s reused).
+Review took it out, since it reads EVOLVE's card A, and it is in neither
+column:
 
-| Run | Load | The 16 that ask (s) | One of them, median (s) | The other 5 (s) |
+| Run | Load | The 15 that ask (s) | One of them, median (s) | The 5 that never asked (s) |
 | --- | --- | --- | --- | --- |
-| Cold | 101 to 132 | 136.9 | 8.4 | 27.1 |
-| Reused, first round (each seed's first test cold) | 111 to 130 | 68.4 | 3.7 | 24.6 |
-| Reused, second round | 87 to 108 | 52.3 | 3.0 | 24.3 |
-| Reused, third round | 81 to 130 | 54.5 | 3.0 | 38.8 |
-| Cold again | 115 to 135 | 136.6 | 8.5 | 26.5 |
+| Cold | 101 to 132 | 130.7 | 8.5 | 27.1 |
+| Reused, first round (each seed's first test cold) | 111 to 130 | 66.2 | 3.9 | 24.6 |
+| Reused, second round | 87 to 108 | 50.2 | 3.1 | 24.3 |
+| Reused, third round | 81 to 130 | 52.3 | 3.0 | 38.8 |
+| Cold again | 115 to 135 | 131.0 | 8.6 | 26.5 |
 
-Each of the 16 was faster reused, by its median: 5.9 to 12.8 s cold, 1.9 to
-6.4 s reused. A first run in a worktree halves their time, and once a seed's
-rows are kept (in the worker, or on disk for the next run) they take about
-40% of it. The other five, which do not ask, took the same; the one failure
-among them (the third round's 38.8 s) was a test of its own that focused a ▶
-its row's strip had already hidden, 3 runs of 20 on its own, which this
-branch fixes. `fixture_renders.spec.js` took 7.4 to 9.8 s.
+Each of the 15 was faster reused, by its median: 7.0 to 12.8 s cold, 1.9 to
+6.4 s reused (the second and third rounds). A first run in a worktree halves
+their time, and once a seed's rows are kept (in the worker, or on disk for
+the next run) they take about 40% of it. The five that never asked took the
+same; the one failure among them (the third round's 38.8 s) was a test of
+its own that focused a ▶ its row's strip had already hidden, 3 runs of 20 on
+its own, which this branch fixes. `fixture_renders.spec.js` took 7.4 to 9.8
+s.
 
 **On CI** each runner keeps its own rows, so a seed's first test on a runner
-is cold. Dealt as run 37554756597 was, 4 of the 16 tests would have found
-rows kept on their runner: 92 s of the 332 s their fill waits took, about 1.5
+is cold. Dealt as run 37554756597 was, 4 of the 15 would have found rows
+kept on their runner: 92 s of the 309 s their fill waits took, about 1.5
 test-minutes of 84. The rest needs the rows on every runner from the start:
 carried between runs as the timings are (the Actions cache, by the engine's
-hash), or a seed's tests dealt to one runner.
+hash), or a seed's tests dealt to one runner. No reused boot has been timed
+on CI yet: the figures there are the cold boots' fill waits, which reuse
+removes.
 
 ## How it was measured
 
@@ -171,4 +203,9 @@ hash), or a seed's tests dealt to one runner.
   and code caches stayed and each boot was a first visit's. Three rounds,
   the two servers interleaved.
 - **Renders reused:** the specs above through `one_browser.sh`, the split
-  reporter beside them, the runs back to back under one ticket.
+  reporter beside them, the runs back to back under one ticket. The boots
+  compared, cold and reused, were a scratch spec (not committed) that booted
+  one seed in a new context nine times through the fixture, reading when the
+  veil came down (`auracle:veil-down`), the `playable` reply and the pool it
+  carried, when `filled` landed, the first `duel` reply's pair, the farm's
+  `render_cache` tally and the ranked ids.

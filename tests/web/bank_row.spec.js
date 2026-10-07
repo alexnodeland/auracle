@@ -96,9 +96,10 @@ test("a sound opened from outside the bank has its row brought into the bank's v
   // Short enough that the full pool's 40 rows must scroll.
   await page.setViewportSize({ width: 1440, height: 700 });
   // The bank whole (`filled`), so the list is as long as it will be and
-  // nothing still arriving moves it; and nothing happens before it is, so the
-  // boot starts with the renders an earlier one kept (`reuseRenders`).
-  await app.boot({ reuseRenders: true });
+  // nothing still arriving moves it. A cold boot, not one that reuses
+  // renders (fixtures.js `reuseRenders`): card A is EVOLVE's first pair's,
+  // dealt as the app turns playable, from the sounds there are by then.
+  await app.boot();
   await app.filled();
   await expect.poll(() => page.locator("#bank-list .bank-item[data-id]").count()).toBe(40);
   const inView = (id) => page.evaluate((i) => {

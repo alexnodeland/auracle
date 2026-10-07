@@ -29,10 +29,11 @@
 //   context of the test's own (a phone beside a desktop, a second visit),
 //   whose pages' errors fail the test as the test's own context's do.
 // - **Renders reused** (`app.boot({ reuseRenders: true })`, opt-in): a spec
-//   that waits for the whole pool before it does anything starts with the
-//   render cache (`auracle-renders`) as an earlier boot of the same seed left
-//   it, so the fill after the veil is served from the cache and not rendered
-//   again (`RENDERS`, below). Every other boot is a first visit's, cold.
+//   that waits for the whole pool before it does anything, and reads only the
+//   pool, starts with the render cache (`auracle-renders`) as an earlier boot
+//   of the same seed left it, so the fill after the veil is served from the
+//   cache and not rendered again (`RENDERS`, below). Every other boot is a
+//   first visit's, cold.
 //
 // What the tap keeps, in the page (`window.__tap`):
 //   replies   what main was handed, in order: { type, at, injected, d }
@@ -194,33 +195,50 @@ const LANES = {
 // ---------- renders reused (`app.boot({ reuseRenders: true })`) ----------
 //
 // The veil lifts at 8 sounds, and those are rendered with their audio, which
-// the render cache never holds (worker.js `FARM_AUDIO_AHEAD`, farm.js), so no
-// cache moves the veil. What one can take away is the fill after it: the other
-// 30-odd draws are a hit each, where a cold boot renders them behind the test
-// (about 4 s after the veil on a 16-core M3 Max, up to 20 on a CI runner:
+// the render cache never holds (worker.js `FARM_AUDIO_AHEAD`, farm.js). What
+// a cache takes away is the fill after them: the other 30-odd draws are a hit
+// each, where a cold boot renders them behind the test (about 4 s after the
+// veil on a 16-core M3 Max, about 20 on a CI runner:
 // docs/notes/spec-time-2026-10.md). A spec that waits for the whole pool
 // before it does anything spends that time waiting, and finds the same pool
 // either way: the same draws, and a hit is the φ a render gives, bit for bit
 // (every row is stored under the namespace and the draw's content address,
 // which the engine checks against its tree before folding the row in:
-// farm.js). Such a spec asks for it in `app.boot`; every other boot is a
-// first visit's.
+// farm.js).
+//
+// The same pool, not the same boot. The hits fold in before the app turns
+// playable, so a boot that reuses renders is playable with the whole pool
+// where a cold one has about 10 sounds, and what is dealt then (EVOLVE's
+// first pair, and the pair dealt behind it) comes from all 40, sounds rendered
+// without their audio. So it is for a spec that reads only the pool, and not
+// one that reads or hears EVOLVE's table, nor one about boot, the fill or
+// the renders: those boot as a first visit does.
 //
 // The first boot that asks, for its seed, is cold. Once its pool is whole
 // (`app.filled`, `app.poolRows`, `app.fullPool`, or at the end of a test that
 // passed) the fixture keeps the store's rows, in this worker and on disk
-// (tests/web/.renders/, a file per engine binary, named by its hash), and
-// every later boot of that seed that asks starts with them: written into the
-// store, from a page of their own in the boot's context, before the app's
-// first script. A seed is the address's `?seed`, or with none the seeded
-// Math.random (`random`) that draws it; an unseeded boot keeps nothing. A
-// store stamped with another namespace is cleared by the app as it boots, so
-// rows from another φ cost a cold boot and nothing else.
+// (tests/web/.renders/, a file per engine binary, named by its hash: the
+// newest `RENDERS_KEPT` are kept), and every later boot of that seed that
+// asks starts with them: written into the store, from a page of their own in
+// the boot's context, before the app's first script. Such a boot still
+// renders the draws wanted with their audio and those the engine quarantines,
+// neither ever stored (farm.js): 11 to 14 of a reused boot's 49 to 51 draws
+// here, against 46 rendered cold. A seed's rows are kept once, as its first
+// boot left them, and never topped up: a row whose write had not landed by
+// then is rendered again by every boot that reuses them, which costs time
+// and nothing else (topped up from a reused boot's store, a boot here
+// rendered as many: 11 to 14). A seed is the address's `?seed`, or with none
+// the seeded Math.random (`random`) that draws it; an unseeded boot keeps
+// nothing. A store stamped with another namespace is cleared by the app as it
+// boots, so rows from another φ cost a cold boot and nothing else.
 const RENDERS_DIR = path.join(__dirname, ".renders");
 const ENGINE_WASM = path.join(__dirname, "../../apps/web/pkg/auracle_wasm_bg.wasm");
 /** What is kept, by seed ("seed:N", "random:N"): { ns, rows: [[key, row]] }. */
 const kept = new Map();
 let keptAt; // this binary's file under RENDERS_DIR, null without one; read once
+/** How many engine binaries' files RENDERS_DIR keeps: this one and the two
+ *  before it (a branch and main, say), each about 270 KB. */
+const RENDERS_KEPT = 3;
 
 function keptFile() {
   if (keptAt !== undefined) return keptAt;
@@ -256,6 +274,16 @@ function writeKept(drop = null) {
     fs.renameSync(tmp, file);
   } catch (_) {
     /* a cold boot next time, nothing else */
+  }
+  try {
+    const older = fs
+      .readdirSync(RENDERS_DIR)
+      .filter((f) => f.endsWith(".json") && path.join(RENDERS_DIR, f) !== file)
+      .map((f) => ({ f, at: fs.statSync(path.join(RENDERS_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.at - a.at);
+    for (const { f } of older.slice(RENDERS_KEPT - 1)) fs.rmSync(path.join(RENDERS_DIR, f), { force: true });
+  } catch (_) {
+    /* another binary's file kept a while longer */
   }
 }
 
@@ -599,8 +627,10 @@ class App {
    *  - `reuseRenders` (false): start with the render cache an earlier boot of
    *    the same seed left once its pool was whole, so the fill after the veil
    *    is served rather than rendered (`RENDERS` above). For a spec that waits
-   *    for the whole pool before it does anything, and not one about boot,
-   *    the fill or the renders;
+   *    for the whole pool before it does anything and then reads only the
+   *    pool: not one that reads or hears EVOLVE's table, which such a boot
+   *    deals from the whole pool, nor one about boot, the fill or the
+   *    renders;
    *  - `wait` (true): wait for the boot. */
   async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, workerPrefix = "", reuseRenders = false, wait = true } = {}) {
     const { page } = this;
