@@ -261,6 +261,21 @@ function sceneOpen({ stage, beat, line }) {
       // keeps its width however far the camera is from it.
       const top = svgLayer(layer);
       const trace = scope(top, { x: 0, y: 0, w: 1920, h: 1080, width: 4, points: 520, wave: voiceWave({ f: 2.2, bright: 0.45, seed: 5 }) });
+      // Until the pull-back the scope draws the bed we hear (ADR-012): its
+      // drone's F2 and C3 (sound.json key.pedal, 2:3), and from Bloom on its
+      // chord's A3, C4 and G4 over them, at the loudness the mix measured
+      // (timeline.json env.music, written by mix.py).
+      const env = stage.tl.env?.music;
+      const envAt = (tt) => (env ? stage.env(tt, "music") : clamp(tt / 1.5));
+      let envPeak = 1e-6;
+      if (env) for (let i = 0; i < Math.min(env.v.length, Math.round((l2.t0 - 0.6) * env.rate)); i++) envPeak = Math.max(envPeak, env.v[i]);
+      const te = stage.tl.marks?.entrance ?? 0;
+      const bedWave = (bloom) => (x, tt) => {
+        const ph = 2 * Math.PI * x;
+        let y = Math.sin(4 * ph + tt * 0.9) + 0.75 * Math.sin(6 * ph + 1.3 - tt * 0.6);
+        y += bloom * (0.45 * Math.sin(10.08 * ph + 0.4 + tt * 1.7) + 0.4 * Math.sin(12 * ph + 2.1 - tt * 1.2) + 0.3 * Math.sin(17.96 * ph + 0.9 + tt * 2.3));
+        return y / (1.75 + 1.15 * bloom);
+      };
 
       const shade = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
       shade.style.background = `linear-gradient(180deg, ${inkA("--bezel", 0)} 55%, ${inkA("--bezel", 0.85)} 100%)`;
@@ -313,10 +328,13 @@ function sceneOpen({ stage, beat, line }) {
         // The sound at OUT: playing, then silent while the patch is apart,
         // then back once OUT is wired, and changed by every choice.
         const live = Math.max(1 - ramp(t, pull0 + 0.3, pull0 + 1.0), draws[3]);
-        trace.wave = voiceWave({ f: 2.2 + 0.8 * fb, bright: 0.25 + 0.3 * fb + 0.35 * c1 + 0.1 * c2, detune: 0.012 + 0.03 * c2, seed: 5 });
-        const draw = ramp(t, 0.3, Math.max(0.4, l1.t0 - 0.4), E.io2);
+        const opening = t < pull0 + 0.3;
+        if (opening) {
+          trace.wave = bedWave(ramp(t, te, te + 1.5));
+        } else trace.wave = voiceWave({ f: 2.2 + 0.8 * fb, bright: 0.25 + 0.3 * fb + 0.35 * c1 + 0.1 * c2, detune: 0.012 + 0.03 * c2, seed: 5 });
+        const level = opening ? clamp(0.12 + 0.88 * Math.sqrt(clamp(envAt(t) / envPeak))) : 1;
         trace.path.setAttribute("stroke-width", lerp(4, 2.2, u));
-        trace.update(t, { draw, amp: (0.5 + 0.08 * Math.sin(t * 1.3)) * live, ox: t * 0.35, rect: { x: sx + sw * 0.05, y: sy + sh * 0.12, w: sw * 0.9, h: sh * 0.76 } });
+        trace.update(t, { draw: 1, amp: 0.55 * level * live, ox: t * 0.12, rect: { x: sx + sw * 0.05, y: sy + sh * 0.12, w: sw * 0.9, h: sh * 0.76 } });
         // The hand plugs each cable.
         const leg = (i) => {
           const c = [plates[0], plates[1], plates[2], plates[3]][i].out;
