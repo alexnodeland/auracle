@@ -23,6 +23,8 @@
 //                                rendered each quantum beside the real one (the glue is served with
 //                                them appended; nothing on disk changes). Not a faster-ageing copy: a
 //                                shadow lives at real time, so its voices ring and park as the real ones
+//   --offer                      after the settle, press Offer (N) and wait for B to load, then play:
+//                                the worklet then renders a second four voices every quantum
 //   --runs=1
 //
 // What it records, in the page's clock unless said:
@@ -37,7 +39,13 @@
 //   the playing window, per note.
 // - **the worklet's own report** (Chromium: `AudioContext.playbackStats`, the
 //   underrun events and the seconds of silence the output was short, and its
-//   latency, over the playing window), and in both browsers **note latency in
+//   latency, over the playing window); in both browsers **a render-stall proxy**
+//   (`getOutputTimestamp()` every 50 ms: how far the audio clock fell behind
+//   the page's clock over the playing window, and its worst single jump; zero
+//   when the audio thread keeps up, checked in Chromium against the
+//   playbackStats' underruns), **whether B was loaded** (the `b_patch`
+//   messages the page had sent before the keys: B renders a second four voices
+//   a quantum while it is) and **note latency in
 //   audio time**: for each `on`, the audio clock the worklet read when it ran
 //   `note_on` (`currentFrame`, posted back by a probe line added to
 //   live-audio.js as it is served) minus the context's `currentTime` when the
@@ -125,7 +133,13 @@ const BUSY = (who) => `(() => {
 // The page's side: what leaves it, what the keys do, what blocks it.
 const PAGE = (cores) => `(() => {
   try { Object.defineProperty(navigator, "hardwareConcurrency", { get: () => ${cores} }); } catch (_) {}
-  const P = (window.__probe = { worklet: [], engine: [], keys: [], long: [], loaf: [], frames: [], busy: [], onAt: [] });
+  const P = (window.__probe = { worklet: [], engine: [], keys: [], long: [], loaf: [], frames: [], busy: [], onAt: [], ots: [] });
+  setInterval(() => {
+    try {
+      const t = window.__aur.audioCtx.getOutputTimestamp();
+      if (t && t.performanceTime > 0) P.ots.push([t.contextTime, t.performanceTime]);
+    } catch (_) {}
+  }, 50);
   const wpost = MessagePort.prototype.postMessage;
   MessagePort.prototype.postMessage = function (d, ...rest) {
     if (d && typeof d.type === "string") {
@@ -278,6 +292,12 @@ async function run(n) {
     // Nothing: what the workers do while the player does nothing.
     const t0 = await page.evaluate(() => performance.now());
     await sleep(SETTLE * 1000);
+    if (flags.offer) {
+      await page.keyboard.press("n");
+      await page.waitForFunction(() => window.__probe.worklet.some((m) => m[1] === "b_patch"), null, { timeout: 180_000 });
+      await sleep(1000);
+    }
+
     const t1 = await page.evaluate(() => {
       const s = window.__aur.audioCtx.playbackStats;
       window.__stats0 = s ? { ...s.toJSON() } : null;
@@ -357,6 +377,21 @@ async function run(n) {
       console.log(`  output (AudioContext.playbackStats, over the playing window): underrun events ${d("underrunEvents")}, ${f(d("underrunDuration") * 1000, 0)} ms short of ${f(d("totalDuration"), 1)} s; latency avg ${f(stats.s.averageLatency * 1000, 0)} max ${f(stats.s.maximumLatency * 1000, 0)} ms (baseLatency ${f(stats.base * 1000, 0)}, outputLatency ${f(stats.out * 1000, 0)} ms)`);
     } else {
       console.log(`  output: no playbackStats in this browser (baseLatency ${f(stats.base * 1000, 0)}, outputLatency ${f(stats.out * 1000, 0)} ms)`);
+    }
+    {
+      const before = {};
+      for (const [t, type] of P.worklet) if (t < t1) before[type] = (before[type] || 0) + 1;
+      console.log(`  B slot before the keys: ${before.b_patch ? `loaded (${before.b_patch} b_patch, ${before.b_clear || 0} b_clear)` : "not loaded"}; page-to-worklet messages so far: ${Object.entries(before).map(([k, v]) => `${k}:${v}`).join(" ") || "none"}`);
+      // render-stall proxy: offset = the page's clock at the output minus the audio clock there
+      const o = P.ots.filter(([, perf]) => perf >= t1 && perf <= t2 + 300);
+      if (o.length > 3) {
+        const off = o.map(([c, perf]) => perf - c * 1000);
+        let jump = 0;
+        for (let i = 1; i < off.length; i++) jump = Math.max(jump, off[i] - off[i - 1]);
+        console.log(`  audio clock vs the page's clock over the playing window (getOutputTimestamp, ${o.length} samples): fell behind by ${f(off.at(-1) - off[0], 0)} ms in all, worst single jump ${f(jump, 0)} ms, spread ${f(Math.max(...off) - Math.min(...off), 0)} ms (a clock that keeps up holds within a few ms)`);
+      } else {
+        console.log(`  audio clock vs the page's clock: too few getOutputTimestamp samples (${o.length})`);
+      }
     }
     {
       // note latency in audio time: the worklet's clock at note_on minus the context's when posted
