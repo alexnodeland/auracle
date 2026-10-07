@@ -63,6 +63,11 @@ not framed). ADR-017 records §6 Q1.
   notes, folded by a press outside the dock or Esc.
 - A focused stop walks the rail with the plain arrows and Home/End, which is
   where the tab list's arrow keys went.
+- The stops' names, which §1 shows on hover or focus, were built and then
+  taken out at the maintainer's request (#286): pointing at the cross put
+  every name over the level. Nothing is drawn beside the cross; a stop's
+  name and key are its `title` (the browser's tooltip), its `aria-label` and
+  its `aria-keyshortcuts`, and `#where` names the level once you are there.
 - The film shots' raw `.viewtab` selectors (26 lines in six `shots.json`) and
   their keybar ids now inside KEYS ⋯ are owed with the Wave 3 re-records, as
   §3 says; `footage.mjs`'s `view` op already uses the rail.

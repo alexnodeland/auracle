@@ -1377,8 +1377,8 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
 /* ---- the levels: where you are (shell.js) ----
    A cross at the stage's right edge, to the prototype: out to in, LEARNING,
    TASTE, PERFORM and PATCH, with EVOLVE branching left of PERFORM. The
-   current stop is lit green; a stop's name shows while the rail is pointed
-   at or a stop has the keyboard's focus. */
+   current stop is lit green. A stop's name and key are its tooltip (its
+   `title`): nothing is drawn beside the cross, over the level. */
 .rail {
   position: absolute;
   right: 8px;
@@ -1409,36 +1409,9 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   background: var(--panel-hi);
   box-shadow: 0 0 0 4px var(--phos-a-06), 0 0 18px -2px var(--phos-a-35);
 }
-.rail-stop .rl {
-  position: absolute;
-  right: 52px;
-  top: 50%;
-  transform: translate(4px, -50%);
-  pointer-events: none;
-  white-space: nowrap;
-  font-size: var(--t-label);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  text-rendering: geometricPrecision;
-  color: var(--silk-dim);
-  background: var(--panel-hi);
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  padding: var(--s1) var(--s3);
-  opacity: 0;
-  transition: opacity var(--d-state), transform var(--d-state) var(--e-settle);
-}
-.rail:hover .rl, .rail-stop:focus-visible .rl { opacity: 1; transform: translate(0, -50%); }
 .rail-mid { display: flex; align-items: center; }
 .rail-stop.aside { width: 34px; height: 34px; }
 .rail-stop.aside svg { width: 15px; height: 15px; }
-/* EVOLVE's name stands under it, between PERFORM's and PATCH's rows (above,
-   in the prototype, it sat on TASTE's name), and PERFORM's name stands left
-   of EVOLVE's stop rather than over it. */
-.rail-mid .rail-stop:not(.aside) .rl { right: 98px; }
-.rail-stop.aside .rl { right: auto; left: 50%; top: 40px; transform: translate(-50%, -4px); }
-.rail:hover .rail-stop.aside .rl, .rail-stop.aside:focus-visible .rl { transform: translate(-50%, 0); }
 .rail-line { width: 1px; height: 26px; margin-right: calc(var(--s4) + 3.5px); background: var(--plate-edge); }
 .rail-branch { width: 12px; height: 1px; background: var(--plate-edge); }
 .rail-hint { font-family: var(--font-mono); font-size: var(--t-label); color: var(--silk-dim); margin: var(--s1) var(--s3) var(--s1) 0; }
@@ -1450,11 +1423,8 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   .rail { right: 6px; }
   .rail-stop { width: 32px; height: 32px; }
   .rail-stop svg { width: 16px; height: 16px; }
-  .rail-stop .rl { right: 42px; }
-  .rail-mid .rail-stop:not(.aside) .rl { right: 76px; }
   .rail-stop.aside { width: 28px; height: 28px; }
   .rail-stop.aside svg { width: 13px; height: 13px; }
-  .rail-stop.aside .rl { top: 32px; }
   .rail-branch { width: 6px; }
   .rail-line { height: 20px; margin-right: calc(var(--s3) + 3.5px); }
   .rail-hint { margin-right: var(--s2); }

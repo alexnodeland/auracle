@@ -15,7 +15,13 @@
 //   module search and in the tempo field changes no level. A modal dialog
 //   keeps them too. ⌥ alone is taken (Firefox and Edge on Windows open the
 //   window's menu on it).
-// - A stop's name shows while the rail is pointed at.
+// - Pointing at the levels puts no names over the stage: pointed at each
+//   stop, the cross draws nothing it did not draw at rest (its boxes span the
+//   same width, and no style draws more `content`), and each stop holds its
+//   icon alone. A stop's name and key are its tooltip (`title`; which keys
+//   it prints on each platform is keys_for_the_platform.spec.js's claim),
+//   and its name, line and key a screen reader's (`aria-label`,
+//   `aria-keyshortcuts`).
 // - Space plays the sound in hand at every level (ADR-016): the output
 //   sounds, the header's ▶ lights, and Space again stops it.
 // - A reload comes back to the level you were at; a link with a level's hash
@@ -85,7 +91,7 @@ async function expectAt(page, level) {
   await expect(page.locator("#where .where-d")).toHaveText(WHERE[level][1]);
 }
 
-test("the rail and the level keys move between the levels, and the header says where you are", async ({ page, app }) => {
+test("the rail and the level keys move between the levels, the header says where you are, and ⌥ alone is taken", async ({ page, app }) => {
   await boot(page, app);
   // At rest is PERFORM.
   await expectAt(page, "perform");
@@ -135,13 +141,66 @@ test("the rail and the level keys move between the levels, and the header says w
   await page.evaluate(() => { window.__pwAlt.length = 0; });
   await page.keyboard.press("Alt");
   expect(await page.evaluate(() => window.__pwAlt)).toEqual([true]);
+});
 
-  // A stop's name shows while the rail is pointed at.
-  const label = page.locator('.rail-stop[data-level="taste"] .rl');
-  await page.mouse.move(400, 400);
-  await expect(label).toHaveCSS("opacity", "0");
-  await page.locator('.rail-stop[data-level="taste"]').hover();
-  await expect(label).toHaveCSS("opacity", "1");
+// The cross as it is drawn, once every transition in it has run (a name that
+// fades in is measured faded in): the width its shown boxes span (a box
+// shows when it has a size and neither it nor anything between it and the
+// cross is transparent or hidden), and each `content` a style draws in it,
+// which no box measures (a name drawn with `::after` would be one).
+const DRAWN = async () => {
+  const rail = document.getElementById("rail");
+  const running = (a) => a.effect?.target && rail.contains(a.effect.target) && a.effect.getComputedTiming().endTime !== Infinity;
+  await Promise.all(document.getAnimations().filter(running).map((a) => a.finished.catch(() => {})));
+  const shows = (el) => {
+    if (getComputedStyle(el).visibility === "hidden") return false;
+    for (let e = el; e && e !== rail.parentElement; e = e.parentElement) {
+      if (Number(getComputedStyle(e).opacity) === 0) return false;
+    }
+    return true;
+  };
+  let left = Infinity;
+  let right = -Infinity;
+  const content = [];
+  for (const el of [rail, ...rail.querySelectorAll("*")]) {
+    for (const p of ["::before", "::after"]) {
+      const c = getComputedStyle(el, p).content;
+      if (c !== "none" && c !== "normal") content.push(`${el.getAttribute("data-level") || el.getAttribute("class")}${p} ${c}`);
+    }
+    const b = el.getBoundingClientRect();
+    if (!b.width || !b.height || !shows(el)) continue;
+    left = Math.min(left, b.left);
+    right = Math.max(right, b.right);
+  }
+  return { width: Math.round(right - left), content };
+};
+
+// The names that popped up beside every stop while the levels were pointed at
+// (#286) are gone: a stop's name and key are its tooltip, and its name, line
+// and key a screen reader's.
+test("pointing at the levels puts no names over the stage, and each stop keeps its name and key", async ({ page, app }) => {
+  await boot(page, app);
+  // At rest, the pointer clear of the cross.
+  await page.mouse.move(10, 400);
+  const rest = await page.evaluate(DRAWN);
+  expect(rest.content, "no style draws words in the cross").toEqual([]);
+  const KEY = { perform: 1, patch: 2, evolve: 3, taste: 4, learning: 5 };
+  for (const [level, n] of Object.entries(KEY)) {
+    const [name, line] = WHERE[level];
+    const stop = page.locator(`.rail-stop[data-level="${level}"]`);
+    await stop.hover();
+    await expect.poll(() => stop.evaluate((el) => el.matches(":hover")), `${level}'s stop is pointed at`).toBe(true);
+    // Pointed at, the cross draws nothing it did not at rest, the stop holds
+    // its icon alone, and the levels hold no words but their ends' (out, in).
+    await expect.poll(() => page.evaluate(DRAWN), `the cross pointed at ${level}'s stop, against at rest`).toEqual(rest);
+    await expect(stop).toHaveText("");
+    await expect(page.locator("#rail")).toHaveText(/^\s*out\s*in\s*$/);
+    // Its tooltip names it and its key: "Taste · ⌥4" on a Mac, "Taste · Alt 4"
+    // elsewhere (keys_for_the_platform.spec.js holds which, on each).
+    await expect(stop).toHaveAttribute("title", new RegExp(`^${name} · (⌥|Alt )${n}$`));
+    await expect(stop).toHaveAttribute("aria-label", `${name}: ${line}`);
+    await expect(stop).toHaveAttribute("aria-keyshortcuts", `Alt+${n}`);
+  }
 });
 
 test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page, app }) => {
