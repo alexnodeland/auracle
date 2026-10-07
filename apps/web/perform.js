@@ -3384,14 +3384,22 @@ export function createPerform(host) {
     // after a Take. "listening to this patch…" is for a patch with no wiring
     // yet, whose dials really are waiting.
     else if (state.measuring && !state.wire) parts.push("listening to this sound…");
-    else if (state.wire) {
+    else if (state.wire && state.guess) {
+      // Playing on a wiring nobody measured on this sound (#290): a count of
+      // the controls that reach it would read as a measurement's, so it waits
+      // for the measurement. The line says it is listening, naming the
+      // controls still waiting for it, or that the measurement failed.
+      const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length).map((w) => w.name);
+      if (state.wireError && !state.revalidating && !state.measuring) parts.push(state.wireError);
+      else parts.push(unheard.length ? `listening to ${unheard.join(", ")}…` : "listening…");
+    } else if (state.wire) {
       const n = state.wire.filter(turns).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
       // A control placed on the panel and not measured on this sound yet is
       // named while its measurement is out: the controls beside it play on.
       const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length && !state.carried).map((w) => w.name);
       if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
-      else if (state.revalidating || state.measuring) parts.push(state.guess ? "listening…" : "re-checking");
+      else if (state.revalidating || state.measuring) parts.push("re-checking");
       // The last measurement asked of it failed (the engine's own words are
       // its toast), and none is out now.
       else if (state.wireError) parts.push(state.wireError);

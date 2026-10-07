@@ -2,9 +2,10 @@
 // once (#290): opened from the pool (which goes to PATCH), and once the rack
 // holds it, PERFORM shown, until the app's own `perform-wired` mark for that
 // sound, which says how it was wired ("predicted" from the knob table,
-// "borrowed" from a measured relative, or "measured"), and the page showing
-// it ("controls reach", none of the six unwired). Then the measurement PERFORM
-// asked for, until its reply lands: the time a guess stands, by knob count.
+// "borrowed" from a measured relative, or "measured"). Every sound the engine
+// could predict (its `first` on `bench_opening`) is played on its guess. Then
+// the measurement PERFORM asked for, until its reply lands: the time a guess
+// stands, by knob count.
 //
 // PERFORM shown → its controls play is a budget, 100 ms (ADR-022): before
 // #290 it was the whole first measurement, 3 to 53 s at this machine's own
@@ -51,45 +52,37 @@ const STATS = `(() => {
 
 // One take: the pool row at `at` opened (which goes to PATCH), and once the
 // rack holds it, PERFORM shown, until its controls play: the app's own
-// `perform-wired` mark for that sound, which says how it was wired, and the
-// page showing it ("controls reach", none of the six unwired). What the
-// engine did meanwhile, from the `wirestat` posts.
+// `perform-wired` mark for that sound, which says how it was wired. Whether
+// the engine could predict it (the `first` its open carried), and whether
+// PERFORM had wired it before. What the engine did meanwhile, from the
+// `wirestat` posts.
 async function take(page, app, at) {
   const row = page.locator("#bank-list .bank-item[data-id]").nth(at);
   const name = (await row.locator(".bi-name").textContent()).trim();
   await row.scrollIntoViewIfNeeded();
+  const clicked = await app.now();
+  const before = (await app.marks("perform-wired")).some((m) => m.detail?.name === name);
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: LIMIT_MS });
+  const opening = (await app.replies("bench_opening", { after: clicked })).pop();
+  const predicted = !!(opening && opening.first && opening.first.predicted);
   const since = await app.now();
-  const r = await app.engine(
-    () =>
-      page.evaluate(async ([name, limit]) => {
-        const live = () =>
-          document.querySelector(".pf-name")?.textContent === name &&
-          /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
-          ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired"));
-        const t0 = performance.now();
-        const wired = () => performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name);
-        document.querySelector('.rail-stop[data-level="perform"]').click();
-        const said = document.querySelector(".pf-status")?.textContent || "";
-        let tLive = null;
-        while (performance.now() - t0 < limit && !(wired() && tLive != null)) {
-          if (tLive == null && live()) tLive = performance.now() - t0;
-          await new Promise((r) => setTimeout(r, 5));
-        }
-        const mark = wired();
-        return {
-          at: t0,
-          t0: t0 + performance.timeOrigin,
-          tEnd: performance.now() - t0,
-          tMark: mark ? mark.startTime - t0 : null,
-          how: mark ? mark.detail.how : null,
-          tLive,
-          said,
-        };
-      }, [name, LIMIT_MS]),
-    { ms: LIMIT_MS + 60_000 },
-  );
+  const r = await page.evaluate(async ([name, limit]) => {
+    const t0 = performance.now();
+    const wired = () => performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name);
+    document.querySelector('.rail-stop[data-level="perform"]').click();
+    const said = document.querySelector(".pf-status")?.textContent || "";
+    while (!wired() && performance.now() - t0 < limit) await new Promise((r) => setTimeout(r, 5));
+    const mark = wired();
+    return {
+      at: t0,
+      t0: t0 + performance.timeOrigin,
+      tEnd: performance.now() - t0,
+      tMark: mark ? mark.startTime - t0 : null,
+      how: mark ? mark.detail.how : null,
+      said,
+    };
+  }, [name, LIMIT_MS]);
   // The measurement PERFORM asked for, and when its reply landed: at once
   // for a sound measured before, in the background behind a guess.
   const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
@@ -111,7 +104,7 @@ async function take(page, app, at) {
     .join(", ");
   const ms = (t) => (t == null ? "never" : `${Math.round(t)} ms`);
   console.log(
-    `${name}: ${knobs} knobs, ${reach} reach · PERFORM shown ("${r.said}") → wired (${r.how}) ${ms(r.tMark)}, controls live ${ms(r.tLive)}, measured ${ms(tMeasured)}\n  engine calls until measured: ${calls}`,
+    `${name}: ${knobs} knobs, ${reach} reach · PERFORM shown ("${r.said}") → wired (${r.how}) ${ms(r.tMark)}, measured ${ms(tMeasured)}\n  engine calls until measured: ${calls}`,
   );
   // What the page shows at the end of the window, and what passed between
   // the page and the engine meanwhile (WIRE_DEBUG=1).
@@ -121,7 +114,7 @@ async function take(page, app, at) {
   }
   if (r.tMark != null) app.budget(`${name} (${knobs} knobs, ×${SLOW || 1}): PERFORM shown → its controls play`, r.tMark, 100);
   await app.level("perform");
-  return { name, knobs, reach, ms: r.tMark, how: r.how };
+  return { name, knobs, reach, ms: r.tMark, how: r.how, predicted, before };
 }
 
 test("a pool sound's controls play soon after it is taken into PERFORM", { tag: "@slow" }, async ({ page, app }) => {
@@ -137,38 +130,43 @@ test("a pool sound's controls play soon after it is taken into PERFORM", { tag: 
   const picks = [...new Set(Array.from({ length: TAKES }, (_, i) => Math.round(((i + 0.5) * n) / TAKES)))];
   const out = [];
   for (const at of picks) out.push(await take(page, app, at));
-  expect(out.filter((t) => t.how).length).toBeGreaterThan(0);
+  expect(out.filter((t) => !t.how).map((t) => t.name), "PERFORM wired every sound taken").toEqual([]);
+  // A sound PERFORM had not wired before, which the engine could predict, is
+  // played on its guess, not on its measurement.
+  const fresh = out.filter((t) => t.predicted && !t.before);
+  expect(fresh.length, "a sound the engine could predict was taken").toBeGreaterThan(0);
+  expect(fresh.filter((t) => !["predicted", "borrowed"].includes(t.how)).map((t) => `${t.name}: ${t.how}`)).toEqual([]);
 });
 
 // A sound playing on a guess whose measurement then fails keeps playing on
 // it, and says it was never measured: "couldn't re-check" is for a wiring
-// that was. The engine's failure is handed to main (the tap's engine_error,
-// as the worker sends one it could not run) while the measurement is still
-// out. And a guess is never kept as a measurement: once another sound's
-// measurement lands and the kept wirings are written, none is a guess.
+// that was. The measurement is failed as the worker fails one it could not
+// run (the tap's `fail`, set before PERFORM asks for it). And a guess is
+// never kept as a measurement: once another sound's measurement lands and the
+// kept wirings are written, none is a guess.
 test("a sound playing on a guess whose measurement fails keeps playing, says it couldn't measure it, and is not kept", { tag: "@slow" }, async ({ page, app }) => {
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.level("perform");
   await app.fullPool();
   await app.reached();
   await bankTab(page, "pool");
-  const open = async (at) => {
+  // A pool row opened, and once the rack holds it, `prepare`, then PERFORM.
+  const open = async (at, prepare = async () => {}) => {
     const row = page.locator("#bank-list .bank-item[data-id]").nth(at);
     const name = (await row.locator(".bi-name").textContent()).trim();
     await row.click();
     await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
     const since = await app.now();
+    await prepare();
     await app.level("perform");
     return since;
   };
-  const since = await open(5);
+  const since = await open(5, () => app.fail("perform_wire", { once: true }));
   const status = page.locator(".pf-status");
-  // Listening, and naming the controls the gate left out to the measurement.
-  await expect(status, "it plays on a guess while it is measured").toHaveText(/controls reach this patch · listening( to [^·]+)?…$/);
-  await expect(page.locator(".pf-knob.guess").first(), "drawn as a guess").toBeAttached();
-  const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
-  await app.inject({ type: "engine_error", request: "perform_wire", id: null, req: asked.req, message: "RuntimeError: injected for the test" });
-  await expect(status).toHaveText(/controls reach this patch · couldn’t measure this patch$/);
+  // The measurement was asked for, and failed: no count, as a measured
+  // wiring's would be, and nothing still listening.
+  await expect.poll(async () => (await app.sent({ type: "perform_wire" }, { after: since })).length, { message: "the measurement was asked for" }).toBeGreaterThan(0);
+  await expect(status).toHaveText("couldn’t measure this patch");
   await expect(page.locator(".pf-knob.waiting"), "no control still says listening…").toHaveCount(0);
   await expect(page.locator(".pf-knob.guess").first(), "still playing on its guess").toBeAttached();
   // Another sound, measured: its measurement is kept (written 1.5 s after it
@@ -208,9 +206,11 @@ test("a predicted panel plays the controls the gate passes and listens on the re
     const t0 = performance.now();
     document.querySelector('.rail-stop[data-level="perform"]').click();
     const wired = () => performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name);
-    while (!wired()) await new Promise((r) => setTimeout(r, 2));
+    // Wired from the guess in the show's own task, as a rule; bounded, so a
+    // sound that is never wired fails here and not at the test's timeout.
+    while (!wired() && performance.now() - t0 < 10_000) await new Promise((r) => setTimeout(r, 2));
     return {
-      how: wired().detail.how,
+      how: wired()?.detail.how ?? "never wired",
       knobs: [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => ({
         index: Number(k.dataset.index),
         guess: k.classList.contains("guess"),
@@ -221,7 +221,7 @@ test("a predicted panel plays the controls the gate passes and listens on the re
       })),
     };
   }, name);
-  expect(shown.how).toBe("predicted");
+  expect(shown.how, "PERFORM wired the sound from its prediction").toBe("predicted");
   const turning = shown.knobs.filter((k) => k.guess);
   const listening = shown.knobs.filter((k) => !k.guess);
   expect(turning.map((k) => k.index).sort((a, b) => a - b), "the gate's controls turn, and only they").toEqual(predicted);
