@@ -13,7 +13,7 @@
 //   its name and its line.
 // - A text field keeps ⌥ and an arrow (there it moves by word): ⌥↑ in PATCH's
 //   module search and in the tempo field changes no level. A modal dialog
-//   keeps them too. ⌥ alone is taken (Firefox and Edge on Windows open the
+//   (⌘K's list) keeps them too. ⌥ alone is taken (Firefox and Edge on Windows open the
 //   window's menu on it).
 // - Pointing at the levels puts no names over the stage: pointed at each
 //   stop, the cross draws nothing it did not draw at rest (its boxes span the
@@ -230,13 +230,14 @@ test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page, a
   await expect(page.locator("#bpm")).toBeFocused();
   await page.locator("#arp-btn").click();
 
-  // The ? card is modal: the level behind it does not move.
+  // ⌘K's list is modal: the level behind it does not move.
   await page.locator("#view-patch").click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("?");
-  await expect(page.locator("#help")).toBeVisible();
+  await expect(page.locator("#cmdk")).toBeVisible();
   await page.keyboard.press("Alt+ArrowUp");
   await expectAt(page, "patch");
-  await page.locator("#help-close").click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#cmdk")).toBeHidden();
   await page.keyboard.press("Alt+ArrowUp");
   await expectAt(page, "perform");
 });

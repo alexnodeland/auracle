@@ -24,8 +24,6 @@
 //   live region.
 // - In PERFORM, Space plays after a drag on a control, a click on the XY pad,
 //   and a click on a pad (FREEZE stays frozen).
-// - The ⋯ menu's two file items (<label>s) open their file dialog on Enter and
-//   on Space, as a click does; no key did.
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as patch_audible.spec.js does. What it does
@@ -232,19 +230,4 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   await expect(wander).toHaveAttribute("data-frozen", "true");
   await spacePlays(page, "after a tap on Wander");
   await expect(wander, "Space did not tap Wander again").toHaveAttribute("data-frozen", "true");
-});
-
-test("the ⋯ menu's file items open their dialog on Enter and on Space", async ({ page, app }) => {
-  await boot(page, app);
-  for (const [name, key] of [["Open a taste file", "Enter"], ["Open a patch file", " "]]) {
-    await page.locator("#ovf-btn").click();
-    const item = page.locator("#ovf-menu label.ovf-item", { hasText: name });
-    await item.focus();
-    const [chooser] = await Promise.all([
-      page.waitForEvent("filechooser", { timeout: 5_000 }),
-      page.keyboard.press(key),
-    ]);
-    expect(chooser, `${key.trim() || "Space"} on ${name}…`).toBeTruthy();
-    await expect(page.locator("#ovf-menu")).toBeHidden();
-  }
 });

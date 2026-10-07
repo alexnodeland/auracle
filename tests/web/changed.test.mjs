@@ -109,7 +109,8 @@ test("main.js's headings name their views, the narrow rules before the broad", (
   assert.deepEqual(viewsOf("what a generation does: its seeds, and what it may replace"), ["evolve"]);
   assert.deepEqual(viewsOf("duel flow"), ["evolve"]);
   assert.deepEqual(viewsOf("differential flow"), ["patch"]);
-  assert.deepEqual(viewsOf("overflow menu"), ["shell"]);
+  assert.deepEqual(viewsOf("⌘K: the commands (shell.js `cmd`, Plan-008 §2.4)"), ["shell"]);
+  assert.deepEqual(viewsOf("the films and the guide"), ["shell"]);
   assert.equal(viewsOf("worker protocol"), null);
 });
 

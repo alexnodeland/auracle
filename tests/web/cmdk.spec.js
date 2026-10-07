@@ -23,7 +23,10 @@
 //   films), and so is every setting KEYS ⋯ holds.
 // - With no query it shows five sounds, each with its face's slot; a sound
 //   picked from it is the sound in hand, at the level you were at.
-const { test, expect, commandRow, runCommand } = require("./fixtures");
+// - ? over a PERFORM control asks about it (explain.js, which claims the
+//   key first); ? anywhere else opens the list; and the list's What does
+//   BRIGHT do? opens BRIGHT's answer as ? over it does.
+const { test, expect, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
 
 const list = (page) => page.locator("#cmdk");
 const field = (page) => page.locator("#cmdk-input");
@@ -210,4 +213,29 @@ test("five sounds with no query, each with its face's slot, and one picked is in
   await page.keyboard.press("Enter");
   await app.engine((timeout) => expect(page.locator("#live-label")).toHaveText(name, { timeout }), { ms: 30_000 });
   await expect(page.locator('.rail-stop[data-level="perform"]')).toHaveAttribute("aria-current", "location");
+});
+
+test("? over a control asks about it, and anywhere else opens the list", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("patch");
+  await app.openOnPerform("Reese");
+  const knob = page.locator('.pf-knob[data-i="0"]');
+  await knob.hover();
+  await page.keyboard.press("?");
+  await expect(page.locator(".xp.on")).toBeVisible();
+  await expect(list(page)).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".xp.on")).toHaveCount(0);
+  await page.mouse.move(5, 5);
+  await page.keyboard.press("?");
+  await expect(list(page)).toBeVisible();
+  await expect(field(page)).toBeFocused();
+  // Typed into the field, ? is a letter like any other.
+  await page.keyboard.press("?");
+  await expect(field(page)).toHaveValue("?");
+  await page.keyboard.press("Escape");
+  // The list's way to the same answer.
+  await runCommand(page, "What does BRIGHT do?");
+  await expect(page.locator(".xp.on")).toBeVisible();
+  await expect(page.locator(".xp.on #xp-title")).toHaveText("Bright · what it does");
 });

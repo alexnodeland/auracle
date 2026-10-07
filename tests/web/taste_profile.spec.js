@@ -1,5 +1,5 @@
-// The taste profile's three menu items say what they do, and Reset keeps what
-// is yours.
+// The taste profile's three commands in ⌘K say what they do, and Reset keeps
+// what is yours.
 //
 // - Reset asked "Every pick, star and generation is forgotten", kept no copy,
 //   and deleted the whole saved record — the saved patches (MY PATCHES) with
@@ -11,7 +11,7 @@
 // Downloads are Playwright's `download` event; the file is read back to check
 // it holds the picks the question counted. The engine's replies are read
 // through the fixture's tap (fixtures.js).
-const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { test, expect, goLevel, bankTab, runCommand } = require("./fixtures");
 const fs = require("fs");
 
 // The first-run marks are set once per tab, not on every load: after a reset
@@ -43,11 +43,6 @@ async function pick(page, app, n) {
   }
 }
 
-async function menu(page, id) {
-  await page.locator("#ovf-btn").click();
-  await page.locator(`#${id}`).click();
-}
-
 const readJson = async (download) => JSON.parse(fs.readFileSync(await download.path(), "utf8"));
 
 test("Reset asks with the counts, downloads the profile first, and keeps the saved patches", async ({ page, app }) => {
@@ -70,7 +65,7 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   // "keep it" keeps it. Its sentence for any counts is words.js's
   // (`resetQuestion`, apps/web/tests/words.test.mjs); here, that this
   // session's counts reach it.
-  await menu(page, "taste-reset-btn");
+  await runCommand(page, "Reset your taste…");
   const alarm = page.locator("#alarm");
   const question = await page.evaluate(async () =>
     (await import("/words.js")).resetQuestion({ picks: 2, stars: 0, cuts: 0, generations: 0, saved: 1 }));
@@ -82,7 +77,7 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await expect(page.locator("#duel-count")).toHaveText("2");
 
   // "download & reset": the copy first, holding the two picks, then the reload.
-  await menu(page, "taste-reset-btn");
+  await runCommand(page, "Reset your taste…");
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 30_000 }),
     alarm.locator("button", { hasText: "download & reset" }).click(),
@@ -110,7 +105,7 @@ test("Save taste profile says what it downloaded", async ({ page, app }) => {
   await pick(page, app, 1);
   // The pick's undo window closes and it joins the log the file is made from.
   await app.reply("status", { where: { status: { observations: 1 } }, timeout: 30_000 });
-  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), menu(page, "export-btn")]);
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), runCommand(page, "Download your taste")]);
   expect(download.suggestedFilename()).toBe("auracle-profile.json");
   expect((await readJson(download)).log.observations.length).toBe(1);
   await expect(page.locator("#toasts .toast-msg", { hasText: "Downloaded your taste" })).toHaveText(
@@ -126,7 +121,7 @@ test("Reset takes ?seed off the address and keeps the rest of it", async ({ page
   await page.addInitScript(FIRST_RUN);
   await app.boot({ warmed: false, seen: false, seed: 4242, query: "?farm=2" });
   expect(new URL(page.url()).searchParams.get("seed")).toBe("4242");
-  await menu(page, "taste-reset-btn");
+  await runCommand(page, "Reset your taste…");
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 30_000 }),
     page.locator("#alarm button", { hasText: "download & reset" }).click(),

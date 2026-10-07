@@ -22,7 +22,7 @@
 //   catalog wait for the next press.
 // - The selection follows the module, not its address: an insert before it
 //   moves its key, and it stays selected.
-const { test, expect, openCatalog, openKeys } = require("./fixtures");
+const { test, expect, openCatalog, openKeys, runCommand } = require("./fixtures");
 const { openPreset } = require("./patch_page");
 
 const active = (page) => page.evaluate(() => {
@@ -152,8 +152,7 @@ test("Esc walks out one thing at a time: the module, the catalog, then a new pat
   // patch.
   const floats = [
     ["the scope panel", "#scope-panel", async () => {
-      await page.locator("#ovf-btn").click();
-      await page.locator("#scope-btn").click();
+      await runCommand(page, "Scope & analyzer…");
       await expect(page.locator("#scope-panel")).toBeVisible();
       await page.keyboard.press("Shift+Tab");
       await expect(page.locator("#scope-close")).toBeFocused();

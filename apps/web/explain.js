@@ -574,8 +574,8 @@ export function createExplain(host) {
   chip.addEventListener("click", () => current && ask(current));
 
   // ? asks about what holds focus or is under the pointer; Esc closes. In
-  // the capture phase, ahead of the app's own ? (the keys card), which it
-  // leaves alone when nothing askable is in reach.
+  // the capture phase, ahead of the app's own ? (⌘K's list, shell.js), which
+  // it leaves alone when nothing askable is in reach.
   document.addEventListener(
     "keydown",
     (e) => {
@@ -593,12 +593,12 @@ export function createExplain(host) {
       }
       if (e.key !== "?" || e.metaKey || e.ctrlKey || e.target.closest?.("input, textarea, select, [contenteditable]")) return;
       // The control under the pointer, or one the keyboard put focus on: a
-      // control a mouse turned keeps focus, but ? over somewhere else is the
-      // key map's.
+      // control a mouse turned keeps focus, but ? over somewhere else is
+      // ⌘K's list's.
       const focused = document.activeElement?.closest?.("[data-ask]");
       const t = (focused && focused === keyFocus ? focused : null) || (current && current.matches(":hover") ? current : null);
       if (!t) {
-        // With an answer or the lesson open, ? never puts the key map over it.
+        // With an answer or the lesson open, ? never puts the list over it.
         if (pop.classList.contains("on") || lesson.classList.contains("on")) {
           e.preventDefault();
           e.stopPropagation();

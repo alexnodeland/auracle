@@ -645,9 +645,9 @@ export function createShell(host = {}) {
   // in the bubble phase, after every handler on the page has had it, and not
   // when one of them closed something with it (`defaultPrevented`: a menu,
   // a bank row's ★, the selection, the catalog, a module in hand, a guess
-  // asked for a place, a new patch; PERFORM's XY or How it works, the ? card,
-  // the scope and picture panels, TASTE's selected point) or stopped it on
-  // its way (a plate, a knob, a dialog). So Esc walks out one thing a press,
+  // asked for a place, a new patch; PERFORM's XY or How it works, the scope
+  // and picture panels, TASTE's selected point) or stopped it on its way (a
+  // plate, a knob, a dialog, ⌘K's list). So Esc walks out one thing a press,
   // at every level, and the view outlasts it. In a text field Esc is the
   // field's (Find a sound clears), and the view stays, as it does for a
   // press in a drop-down (`typing`).
@@ -826,8 +826,9 @@ export function createShell(host = {}) {
   // typing: what this level does (This level), what any does (Anywhere: the
   // levels, the keys bar, files, your taste, the films, the guide's keys and
   // gestures), and the sounds (pool, saved, presets). ⌘K or Ctrl K opens
-  // it, as its button in the menu bar does. It is
-  // drawn from what the page already holds, never asking the engine: a
+  // it, as its button in the menu bar does, and `?` too wherever explain.js
+  // has no control to ask about (ADR-017). It is drawn from what the page
+  // already holds, never asking the engine: a
   // sound's face is the one the page has drawn, or an empty slot until it
   // has one. While it is open the keys are the field's: nothing behind it
   // hears them, so no note plays and no level moves.
@@ -1057,6 +1058,16 @@ export function createShell(host = {}) {
     },
     true,
   );
+  // ? opens it where explain.js had nothing to ask about: explain hears ? in
+  // the capture phase and claims it over a control (`preventDefault`), so it
+  // is read here after, in the bubble phase. Not in a text field, where ? is
+  // typed, nor under a modal dialog.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "?" || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || kOpen()) return;
+    if (typing(e.target) || (host.blocked && host.blocked())) return;
+    e.preventDefault();
+    kShow();
+  });
   // The levels, each one a command, with the key that goes straight there.
   BY_DIGIT.forEach((level, i) => {
     cmd({

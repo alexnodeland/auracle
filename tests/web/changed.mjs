@@ -96,7 +96,7 @@ export const ENGINE_SPECS = ["boot_agrees"];
 
 // main.js's sections, by their headings, and the views each draws. The first
 // rule a heading matches wins, so the narrow rules come first, and a word a
-// broader heading holds is anchored (`flow` alone is in "overflow menu"):
+// broader heading holds is anchored (`flow` alone would be in "overflow"):
 // every alternative must win a heading of main.js, or changed.test.mjs
 // fails. A heading no rule matches (the state, the worker protocol, boot)
 // reaches every view.
@@ -115,7 +115,7 @@ export const SECTIONS = [
     /^undo\/redo|workbench|bench|^layout$|freeform|FREEFORM|^touch$|readout flash|cable|differential flow|flow animation|mod-slot|MOTION|focus retention|CANVAS|level of detail|silkscreen|fits and moves|minimap|pointer and wheel|plate|auto-pan|frame changed|structural edits|^locks|tree rewrites|sockets|SOCKETS|structure menu|destructive verbs|floating menu|knob geometry|rack keyboard|MODULE TABLE|patch-tree|held modules|NODE BANK|AUDITION|catalog|CONNECTION GRAMMAR|PICK-MODE|wire drawing|SCOPE|scope|IMAGE EXPORT|^selection$|^fonts$|style inlining|PNG tEXt|^an open reaches the voices/,
     ["patch"],
   ],
-  [/^the levels$|^the face carried between the levels|^a sound taken up from the bank|toast|^next step$|job slot|^help overlay$|^overflow menu$|^⌘K|engine failing/, ["shell"]],
+  [/^the levels$|^the face carried between the levels|^a sound taken up from the bank|toast|^next step$|job slot|^the films and the guide$|^⌘K|engine failing/, ["shell"]],
 ];
 // The files whose section headings say which views a change reaches.
 export const SECTIONED = ["apps/web/main.js"];

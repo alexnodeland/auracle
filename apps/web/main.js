@@ -168,7 +168,7 @@ const shell = createShell({
   modelTag: () => words.modelTag({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
   // A modal dialog keeps the level keys: the level behind it must not change
   // unseen.
-  // Any modal one showing: the warm start, the commit pair, the ? card,
+  // Any modal one showing: the warm start, the commit pair, ⌘K's list,
   // PERFORM's stage mode, explain's lesson. A non-modal panel (MIDI, KEYS ⋯,
   // the scope's settings, Compare) does not keep them.
   blocked: () => modalUp(),
@@ -188,7 +188,7 @@ const shell = createShell({
   sounds: () => cmdkSounds(),
   paintSounds: (root) => paintFaces(root),
 });
-/** Is a modal dialog showing (the warm start, the commit pair, the ? card,
+/** Is a modal dialog showing (the warm start, the commit pair, ⌘K's list,
  *  stage mode, explain's lesson)? It keeps the level keys and PERFORM's pad
  *  keys: what is behind it must not change unseen. */
 function modalUp() {
@@ -4801,7 +4801,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
     if (activate) items[j].click();
   });
 }
-wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
 
 // ---------- audio helpers ----------
 function ensureAudio() {
@@ -5279,15 +5278,13 @@ try {
   engineerMode = false;
 }
 function paintEngineer() {
-  $("engineer-btn").setAttribute("aria-checked", String(engineerMode));
-  $("engineer-btn").textContent = engineerMode ? "Show measurements: on" : "Show measurements";
-  // The same switch holds back the engine's own vocabulary everywhere else:
+  // ⌘K's Show measurements says "on" from `engineerMode`. The same switch holds back the engine's own vocabulary everywhere else:
   // patch ids and topology signatures in the bank, the PATCH header and the
   // duel cards (CSS, keyed on this class), and the structural budget until it
   // is close to a ceiling (`renderBudget`).
   document.documentElement.classList.toggle("engineer", engineerMode);
 }
-$("engineer-btn").onclick = () => toggleEngineer();
+/** ⌘K's Show measurements: on, or off. */
 function toggleEngineer() {
   engineerMode = !engineerMode;
   try {
@@ -5485,9 +5482,6 @@ async function bootBooth() {
     // Booth mode reserves the attract band's row, so the band can come and go
     // without moving anything a visitor might be reaching for.
     document.documentElement.classList.toggle("booth", booth.on);
-    $("booth-btn").setAttribute("aria-checked", String(booth.on));
-    $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
-    $("booth-reset-btn").classList.toggle("hidden", !booth.on);
     pointFilmChip();
   };
   toggleBooth = () => {
@@ -5497,8 +5491,6 @@ async function bootBooth() {
       ? platformKeys("Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; ⇧Esc starts a new visitor.")
       : "Booth mode off.");
   };
-  $("booth-btn").onclick = () => toggleBooth();
-  $("booth-reset-btn").onclick = () => boothResetVisitor();
   paintBooth();
 }
 
@@ -5790,19 +5782,14 @@ function escFloats() {
     [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
     [() => compareId != null, closeCompare],
     [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
-    [() => shown("ovf-menu"), () => {
-      $("ovf-menu").classList.add("hidden");
-      $("ovf-btn").setAttribute("aria-expanded", "false");
-      $("ovf-btn").focus();
-    }],
     // The scope and picture panels, never by listeners of their own: those
     // heard Esc after this chain had put PATCH's selected module down for
-    // the same press. The focus goes back to ⋯, which they hang off (the
-    // item that opened each is in the menu, hidden now).
+    // the same press. The focus goes to ⌘K's button, which they hang off
+    // (the row that opened each is in the list, closed now).
     [() => panelOpen("scope-panel") || panelOpen("image-panel"), () => {
       closeScopePanel();
       closeImagePanel();
-      $("ovf-btn").focus();
+      $("cmdk-btn").focus();
     }],
     [() => shown("bank-tour"), () => { endBankTour(); $("bank-tour-btn").focus(); }],
     [keysPopOpen, () => {
@@ -9122,13 +9109,6 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn") &&
       Date.now() - menuOpenedAt > 350) {
     closeMenu();
-  }
-  // One dismissal law for every popover: a click that is not inside it closes
-  // it. The ovf button used to stopPropagation, which kept THIS handler from
-  // ever seeing the click — so opening one popover left the other one up.
-  if (!e.target.closest(".ovf")) {
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
   }
 });
 
@@ -21466,7 +21446,6 @@ function panelOpen(id) {
 
 function closeScopePanel() {
   $("scope-panel")?.classList.add("hidden");
-  $("scope-btn")?.setAttribute("aria-expanded", "false");
 }
 
 /** The scope's settings, opened (the focus on its first setting) or closed. */
@@ -21475,7 +21454,6 @@ function toggleScopePanel() {
   if (!panel) return;
   closeImagePanel();
   const shut = panel.classList.toggle("hidden");
-  $("scope-btn")?.setAttribute("aria-expanded", String(!shut));
   if (!shut) $("sp-mode").focus();
 }
 
@@ -21507,17 +21485,11 @@ function scopePanelInit() {
   bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
   const close = closeScopePanel;
   $("scope-close").onclick = close;
-  $("scope-btn").onclick = (ev) => {
-    ev.stopPropagation();
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-    toggleScopePanel();
-  };
-  // The same dismissals the ⋯ menu itself honours, so the panel never
-  // outlives the gesture that opened it.
+  // A press anywhere else puts it away, so the panel never outlives the
+  // gesture that opened it.
   document.addEventListener("pointerdown", (ev) => {
     if (panel.classList.contains("hidden")) return;
-    if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
+    if (panel.contains(ev.target)) return;
     close();
   });
   // Esc closes it in main's Esc chain, with whatever else floats.
@@ -22111,7 +22083,6 @@ function lineageChanges(diff) {
 }
 
 // ---------- profile ----------
-$("export-btn").onclick = () => send({ type: "export" });
 // Importing a profile *replaces* the taste log — every pick, star and cut —
 // and the autosave 2.5 s later made that permanent. It used to happen on the
 // file pick, with no question asked and no copy kept. Now it asks, and the
@@ -22150,9 +22121,9 @@ $("import-input").onchange = async (e) => {
   $("alarm").appendChild(keep);
 };
 
-// The warm start stays reachable after a skip, and the profile can start
-// over — previously the only reset was clearing site data by hand.
-$("warm-rerun-btn").onclick = () => openWarmStart();
+// The warm start stays reachable after a skip (⌘K's Re-run the three-pick
+// warm start), and the profile can start over — previously the only reset
+// was clearing site data by hand.
 // Reset forgets the taste, and keeps what is yours. It used to delete the whole
 // saved record and reload, which also took every saved patch (MY PATCHES),
 // the modules set aside, the dock settings and the pins — none of which the
@@ -22177,8 +22148,7 @@ function resetQuestion() {
     saved: ((views && views.ranked) || []).filter((r) => r.pinned).length,
   });
 }
-$("taste-reset-btn").onclick = () => askReset();
-/** Reset your taste…: the question, with the counts (or what a crashed
+/** Reset your taste… (⌘K): the question, with the counts (or what a crashed
  *  engine costs), and its answers. */
 function askReset() {
   if (saveBlocked === "crashed") {
@@ -22335,8 +22305,7 @@ function saveBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
-$("patch-export-btn").onclick = () => downloadPatch();
-/** Download this patch: the sound in hand as a patch file. */
+/** ⌘K's Download this patch: the sound in hand as a patch file. */
 function downloadPatch() {
   const body = patchSidecar();
   if (!body) return note("Open a sound first: there’s no patch to download.");
@@ -23196,7 +23165,6 @@ function openSoundCard() {
   imageSave();
   $("scope-panel")?.classList.add("hidden");
   panel.classList.remove("hidden");
-  $("image-btn")?.setAttribute("aria-expanded", "true");
   imageSync();
   $("ix-scope").focus();
 }
@@ -23304,7 +23272,6 @@ async function runCardExport() {
 
 function closeImagePanel() {
   $("image-panel")?.classList.add("hidden");
-  $("image-btn")?.setAttribute("aria-expanded", "false");
 }
 
 /** Download as a picture…: its panel, opened (the focus on what it draws)
@@ -23314,7 +23281,6 @@ function toggleImagePanel() {
   if (!panel) return;
   closeScopePanel();
   const shut = panel.classList.toggle("hidden");
-  $("image-btn")?.setAttribute("aria-expanded", String(!shut));
   if (!shut) { imageSync(); $("ix-scope").focus(); }
 }
 
@@ -23333,24 +23299,16 @@ function imagePanelInit() {
   bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
   bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
   const close = closeImagePanel;
-  // Focus goes back to the ⋯, not to the menu item that opened this: the item
-  // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
-  // and `focus()` on a `display:none` element is a no-op that drops the
-  // keyboard on the body. The ⋯ is the visible control this panel hangs off.
-  // (Esc does the same, in main's Esc chain, for this panel and the scope's.)
-  const dismiss = () => { close(); $("ovf-btn")?.focus(); };
+  // Focus goes back to ⌘K's button, which this panel hangs off: the row of
+  // the list that opened it is gone with the list. (Esc does the same, in
+  // main's Esc chain, for this panel and the scope's.)
+  const dismiss = () => { close(); $("cmdk-btn")?.focus(); };
   $("image-close").onclick = dismiss;
   $("ix-go").onclick = runImageExport;
-  $("image-btn").onclick = (ev) => {
-    ev.stopPropagation();
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-    toggleImagePanel();
-  };
   // The same dismissals every other popover in the header honours.
   document.addEventListener("pointerdown", (ev) => {
     if (panel.classList.contains("hidden")) return;
-    if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
+    if (panel.contains(ev.target)) return;
     close();
   });
 }
@@ -23685,15 +23643,14 @@ function closeWarmStart(mark = true) {
 
 $("warm-skip").onclick = () => {
   // Straight to the instrument. Stacking the help dialog behind this one made
-  // the first thing a new user did be dismissing two modals in a row; the
-  // keymap is one click away in ⋯ and the next-step chip says what to do.
-  // A skip DEFERS the warm start rather than destroying it — it is the
+  // the first thing a new user did be dismissing two modals in a row; every
+  // command and its key is one ⌘K away, and the next-step chip says what to
+  // do. A skip DEFERS the warm start rather than destroying it — it is the
   // highest-value-per-second elicitation in the product, so it is re-offered
-  // once after a few duels and stays reachable from the ⋯ menu.
+  // once after a few duels and stays reachable from ⌘K.
   localStorage.setItem("auracle-warm-deferred", "1");
-  localStorage.setItem("auracle-helped", "1");
   closeWarmStart(false);
-  note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
+  note(platformKeys("Press a key to hear it. ⌘K lists what you can do, with its keys."));
 };
 
 $("warm-go").onclick = () => {
@@ -23784,59 +23741,14 @@ function warmStartDone(m) {
   });
 }
 
-// ---------- overflow menu ----------
-$("ovf-btn").onclick = () => {
-  const menu = $("ovf-menu");
-  const open = menu.classList.toggle("hidden");
-  $("ovf-btn").setAttribute("aria-expanded", String(!open));
-  if (!open) menu.querySelector(".ovf-item")?.focus();
-};
-$("ovf-menu").addEventListener("click", (e) => {
-  if (e.target.closest("button, label")) {
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-  }
-});
-// The two file items are <label>s, which no key activates by itself: Enter
-// or Space opens the file dialog, as a click does.
-$("ovf-menu").addEventListener("keydown", (e) => {
-  const item = e.target.closest?.("label.ovf-item");
-  if (!item || (e.key !== "Enter" && e.key !== " ")) return;
-  e.preventDefault();
-  e.stopPropagation();
-  item.click();
-});
-
-// ---------- help overlay ----------
-let helpReturnFocus = null;
-
-function showHelp(on) {
-  const el = $("help");
-  const wasOpen = !el.classList.contains("hidden");
-  el.classList.toggle("hidden", !on);
-  if (on) pointHelpFilm();
-  if (on && !wasOpen) {
-    // A modal that doesn't move focus is a modal a keyboard user cannot reach
-    // or leave.
-    helpReturnFocus = document.activeElement;
-    // Focus without scrolling to it: GOT IT is the card's last line, and
-    // focusing it scrolled a card taller than the window to its foot, so the
-    // dialog opened with its title cut off at every window size.
-    const card = el.querySelector(".help-card");
-    if (card) card.scrollTop = 0;
-    $("help-close").focus({ preventScroll: true });
-  } else if (!on && wasOpen) {
-    if (helpReturnFocus && helpReturnFocus.focus) helpReturnFocus.focus();
-    helpReturnFocus = null;
-  }
-}
-// The films live in the guide beside the instrument (/play/ → /docs/). The
-// help card's link is the in-depth film of the view it was opened from, on
-// that view's page; ⋯ opens the index of all of them. A local build has no
-// site around it, so it links to the published one. Both links stay hidden
-// (index.html) until the films are published: publish.py un-hides them when
-// it puts the films beside the site. A request asking the site whether they
-// exist would log a 404 in every console until then.
+// ---------- the films and the guide ----------
+// The films live in the guide beside the instrument (/play/ → /docs/), and so
+// does the keymap (⌘K's Keys and gestures). ⌘K's Watch ‹LEVEL› in depth is
+// the in-depth film of the level you are at, on that level's page, offered
+// only once publish.py has listed it in the film chip's data-films (a request
+// asking the site whether it exists would log a 404 in every console until
+// then); its Watch the films opens the index of all of them. A local build
+// has no site around it, so it links to the published one.
 const FILMS_DOCS = location.pathname.includes("/play/")
   ? new URL("../docs/", location.href).href
   : "https://auracle.alexnodeland.com/docs/";
@@ -23848,15 +23760,7 @@ const VIEW_FILMS = {
 };
 const viewFilmHref = (v) => `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
 const TOUR_HREF = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
-function pointHelpFilm() {
-  const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
-  const a = $("help-film");
-  a.href = viewFilmHref(v);
-  a.lastChild.textContent = ` watch ${v.name} in depth`;
-}
-$("films-link").href = `${FILMS_DOCS}films.html`;
 $("warm-tour").href = TOUR_HREF;
-pointHelpFilm();
 
 // The film of the view you are in, in the menu bar. The first time you open a
 // view it says so in words ("new to PATCH? watch it in depth · 5:40"), and
@@ -23965,7 +23869,7 @@ $("fc-close").onclick = foldFilmChip;
 // Opened in a new tab: the note has done its job here.
 $("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
 // Each platform's own keys (www/brand/voice.md): the markup writes chords
-// with the Mac's symbols (the ? card, the booth menu, a tooltip), and off
+// with the Mac's symbols (⌘K's button, a tooltip), and off
 // Apple platforms they read Ctrl, Alt and Shift. They used to read ⌘
 // everywhere, though the app takes Ctrl wherever it takes ⌘. Strings built
 // later go through `platformKeys` where they are built.
@@ -23977,27 +23881,6 @@ for (const el of document.querySelectorAll("[title]")) {
   const t = platformKeys(el.title);
   if (t !== el.title) el.title = t;
 }
-$("help-btn").onclick = () => showHelp(true);
-$("help-open").onclick = () => showHelp(true);
-$("help-close").onclick = () => {
-  showHelp(false);
-  localStorage.setItem("auracle-helped", "1");
-};
-$("help").addEventListener("click", (e) => {
-  if (e.target === $("help")) showHelp(false);
-});
-document.addEventListener("keydown", (e) => {
-  // Same optional-chaining as the note-key guard: a keydown targeting the
-  // document has no `closest`, and the throw stopped `?` opening help.
-  if (e.key === "?" && !e.target?.closest?.("input")) showHelp(true);
-  // Only a press that closed it is spent (`preventDefault`): with the card
-  // away, Esc goes on to what it closes elsewhere, the model view last.
-  if (e.key === "Escape" && !$("help").classList.contains("hidden")) {
-    e.preventDefault();
-    showHelp(false);
-  }
-});
-
 // ---------- resize ----------
 let resizeTimer = null;
 window.addEventListener("resize", () => {
