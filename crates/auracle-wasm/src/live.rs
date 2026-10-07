@@ -683,6 +683,8 @@ pub struct LivePoly {
     /// The pre-roll ticks the last wake quantum spent, over every voice: at
     /// most a quantum's frames a voice, so a wake costs no more than a render.
     woke_ticks: usize,
+    /// Quanta the wake under way has run (`WAKE_MAX_QUANTA` at most).
+    wake_quanta: usize,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -899,6 +901,12 @@ const NO_AMP_ENVELOPE: &str = "the patch has no amp envelope";
 /// then snaps to it (its own `EXP_DONE`).
 const ADSR_EXP_DONE: f64 = 1.0e-3;
 
+/// The most quanta a wake runs ([`LivePoly::rest`]): a held note on its
+/// shelf arrives in six, and past this the wake ends wherever its voices
+/// stand and the instrument fades in, as a swap's carry stops at its own
+/// bound. 43 ms at 48 kHz.
+const WAKE_MAX_QUANTA: usize = 16;
+
 /// A time CV as quiver's `Adsr` reads it: 0..1 to 1 ms .. 10 s, exponential
 /// (its `cv_to_time`).
 fn adsr_time(cv: f64) -> f64 {
@@ -1014,8 +1022,7 @@ fn seek_voice(v: &mut Voice, clock: u64, sample_rate: f64, budget: usize) -> (bo
         let_go(v);
         return (true, 0);
     }
-    // Shared handles, not copies: a count goes up, nothing is allocated.
-    let [attack, decay, sustain] = v.amp.clone();
+    let [attack, decay, sustain] = &v.amp;
     let (a0, d0, shelf) = (attack.get(), decay.get(), sustain.get());
     let (attacking, level) = held_envelope(
         a0,
@@ -1041,9 +1048,15 @@ fn seek_voice(v: &mut Voice, clock: u64, sample_rate: f64, budget: usize) -> (bo
                 v.seek = Seek::Fall;
                 continue;
             }
-        } else if now <= level || now <= shelf {
-            // Decay goes no lower than the shelf: a target under it (a knob
-            // turned mid-wake) is as near as a falling envelope gets.
+        } else if now - level <= ADSR_EXP_DONE || now - shelf <= ADSR_EXP_DONE {
+            // Arrived by quiver's own rule for a segment's end: within
+            // `ADSR_EXP_DONE`. Never by an exact comparison: the level comes
+            // back through quiver's 10 V scale (`env_phase`), and on a sustain
+            // whose `s × 10 × 0.1` rounds above `s` (0.6, 0.7, 0.85…) the shelf
+            // read back is over the shelf asked for, so a wake waited for a
+            // level it never reached. Decay goes no lower than the shelf: a
+            // target under it (a knob turned mid-wake) is as near as a falling
+            // envelope gets.
             break true;
         }
         if ticks == budget {
@@ -1220,6 +1233,7 @@ impl LivePoly {
             clock: 0,
             asleep: false,
             woke_ticks: 0,
+            wake_quanta: 0,
         })
         .map(|mut p| {
             p.rebuild_sync_lanes();
@@ -2291,6 +2305,7 @@ impl LivePoly {
                     for v in self.voices.iter_mut().chain(self.open.as_mut()) {
                         v.seek = Seek::Fresh;
                     }
+                    self.wake_quanta = 0;
                     self.stage = Stage::Wake;
                 }
                 // Nobody heard the old voices: straight to the rebuild.
@@ -2308,7 +2323,14 @@ impl LivePoly {
         match std::mem::replace(&mut self.stage, Stage::Run) {
             Stage::Run => self.render_into(frames, 0),
             Stage::Wake => {
-                if self.wake_step(frames) {
+                let awake = self.wake_step(frames);
+                self.wake_quanta += 1;
+                if awake || self.wake_quanta >= WAKE_MAX_QUANTA {
+                    // Arrived, or out of time: whatever has not arrived is
+                    // let be where it stands, and the instrument fades in.
+                    for v in self.voices.iter_mut().chain(self.open.as_mut()) {
+                        v.seek = Seek::Still;
+                    }
                     self.asleep = false;
                     self.gain = 0.0;
                     self.stage = Stage::FadeIn;

@@ -2681,6 +2681,103 @@ fn wake_beside(a: &mut LivePoly, b: &mut LivePoly) -> usize {
     quanta
 }
 
+/// The most quanta a held note's wake takes in the census below: a note on
+/// its shelf is about 630 ticks of pre-roll (five quanta's budget), and one
+/// more quantum starts it. Under `WAKE_MAX_QUANTA`, so the bound that ends
+/// any wake cannot pass a wake that never arrived.
+const CENSUS_WAKE_QUANTA: usize = 8;
+
+/// **Every preset's held note wakes, soon and where it would be.** The
+/// census of the library: each preset with a note held, rested for 16 s
+/// (past every preset's attack and decay but the slowest, which are woken
+/// where they are), then rendered. Each wake ends by arriving, within
+/// `CENSUS_WAKE_QUANTA`, and the note's envelope is within 0.03 of where
+/// quiver's would be. A falling envelope's arrival was an exact comparison
+/// with a level quiver hands back through its 10 V scale, so on a sustain
+/// whose `s × 10 × 0.1` rounds above `s` (0.6, 0.7, 0.85…) it never came,
+/// and on 25 of the 62 presets a wake never ended: B stayed silent and cost
+/// a render every quantum.
+#[test]
+fn every_presets_held_note_wakes_soon_and_where_it_would_be() {
+    quiver::rng::seed(7);
+    let mut wrong = Vec::new();
+    for (name, tree) in auracle_grammar::presets() {
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut b = LivePoly::new(&json, REST_RATE, 4).expect("compiles");
+        b.set_leveler(false);
+        b.note_on(48, 0.8);
+        let _ = b.process(128);
+        for _ in 0..6_000 {
+            b.rest(128);
+        }
+        let mut quanta = 0;
+        while b.resting() && quanta <= CENSUS_WAKE_QUANTA {
+            let _ = b.process(128);
+            quanta += 1;
+        }
+        if b.resting() || quanta > CENSUS_WAKE_QUANTA {
+            wrong.push(format!("{name}: still waking after {quanta} quanta"));
+            continue;
+        }
+        let v = b
+            .voices
+            .iter()
+            .find(|v| v.note == Some(48))
+            .expect("the note is held");
+        let [attack, decay, sustain] = &v.amp;
+        let (_, want) = held_envelope(
+            attack.get(),
+            decay.get(),
+            sustain.get(),
+            REST_RATE,
+            b.clock - v.pressed_at,
+        );
+        let got = v.voice.env_phase();
+        if (want - got).abs() >= 0.03 {
+            wrong.push(format!("{name}: woke at {got}, not {want}"));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "{} of the presets:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}
+
+/// **A wake that cannot arrive still ends.** A wake is bounded, as a swap's
+/// carry is (`seed_env_phase` stops at its own bound): after
+/// `WAKE_MAX_QUANTA` quanta it ends wherever its voices stand and the
+/// instrument fades in, so no envelope that never arrives can keep B silent
+/// and costing a render for good. Quanta of no frames give the drive no
+/// ticks to spend, so the held note can never get there.
+#[test]
+fn a_wake_that_cannot_arrive_still_ends() {
+    let json = slow_pad_json();
+    let (_, mut b) = rest_twins(&json, 4);
+    b.note_on(60, 1.0);
+    let _ = b.process(128);
+    for _ in 0..1_200 {
+        b.rest(128);
+    }
+    let mut quanta = 0;
+    while b.resting() {
+        assert!(quanta < 2 * WAKE_MAX_QUANTA, "the wake never ended");
+        let _ = b.process(0);
+        quanta += 1;
+    }
+    assert_eq!(quanta, WAKE_MAX_QUANTA, "it ended at its bound");
+    assert_eq!(b.woke_ticks, 0, "with no frames, nothing was driven");
+    assert!(
+        b.voices.iter().all(|v| v.seek == Seek::Still),
+        "every voice is let be"
+    );
+    assert!(
+        matches!(b.stage, Stage::FadeIn),
+        "and the instrument fades in"
+    );
+}
+
 /// **A rested voice wakes where a rendered one is.** B rests while its
 /// mix is 0 and renders again when it moves, and a held note must come back
 /// at the level it would have reached had it rendered all along, in the
