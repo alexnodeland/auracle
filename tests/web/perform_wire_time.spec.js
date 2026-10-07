@@ -290,3 +290,58 @@ test("a Body graft on Acid Line is judged on its measurement: it still can't, an
   expect(r.offers, "an offer grows instead").toBe(1);
   expect(r.how, "the grafted tree was measured, and played on no guess").toEqual(["measured"]);
 });
+
+// A hand on a control is never moved by the switch from a guess to the
+// measurement (#290's Done when). A control of a predicted sound is turned
+// and held still while the sound's measurement lands: nothing it shows moves
+// while it is held, however long, and the measured wiring takes over only
+// 1.5 s after it is let go. Read on the app's clock: the moment the
+// pointer is released and the moment the control stops being a guess.
+test("a control held still while its sound's measurement lands is not moved, and the switch waits for its release", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("perform");
+  await app.fullPool();
+  await app.reached();
+  await bankTab(page, "pool");
+  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  const since = await app.now();
+  await app.level("perform");
+  const control = page.locator(".pf-knob.guess").first();
+  await expect(control, "a control plays on the prediction").toBeAttached();
+  const index = await control.getAttribute("data-index");
+  const held = page.locator(`.pf-knob[data-index="${index}"]`);
+  // On the page: when it stops being a guess, and the pointer's release.
+  await held.evaluate((k) => {
+    window.__switch = { settled: null, released: null, valueAtRelease: null };
+    new MutationObserver(() => {
+      if (window.__switch.settled == null && !k.classList.contains("guess")) window.__switch.settled = performance.now();
+    }).observe(k, { attributes: true, attributeFilter: ["class"] });
+    window.addEventListener("pointerup", () => {
+      window.__switch.released = performance.now();
+      window.__switch.valueAtRelease = k.getAttribute("aria-valuenow");
+    }, { capture: true, once: true });
+  });
+  const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+  const b = await held.boundingBox();
+  const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 30, { steps: 5 });
+  const turned = await held.getAttribute("aria-valuenow");
+  expect(Number(turned), "the hand turned it").not.toBe(0);
+  // Held still while the measurement lands, and for longer than the 1.5 s a
+  // let-go control waits.
+  await app.replyTo(asked);
+  await app.quiet();
+  await expect(held, "still a guess under the hand").toHaveClass(/\bguess\b/);
+  await expect(held).toHaveAttribute("aria-valuenow", turned);
+  await page.mouse.up();
+  await expect(page.locator(".pf-knob.guess"), "the measurement takes over once the hand is off").toHaveCount(0);
+  const at = await page.evaluate(() => window.__switch);
+  expect(at.valueAtRelease, "nothing moved under the hand").toBe(turned);
+  expect(at.settled, "it settled after the release").toBeGreaterThan(at.released);
+  expect(at.settled - at.released, "1.5 s after the release, not after the last move").toBeGreaterThanOrEqual(1500);
+});

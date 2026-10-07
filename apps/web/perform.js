@@ -1000,6 +1000,10 @@ export function createPerform(host) {
     const end = (e) => {
       clearTimeout(hearTimer);
       k.held = false;
+      // Letting go is a touch: a background result waits 1.5 s from here
+      // (`handsBusy`), not from the last move, which a hand held still
+      // left behind long ago.
+      if (k.spec.kind !== "wander") touch();
       queueMicrotask(panelLater);
       const held = k.wrap.hasPointerCapture(e.pointerId);
       if (held) k.wrap.releasePointerCapture(e.pointerId);
@@ -1059,6 +1063,11 @@ export function createPerform(host) {
     state.lastTouch = performance.now();
     renderWander();
   }
+  // A re-measured wiring (a re-check, a guess's measurement) waits while a
+  // hand is on the controls: a control or the XY pad held, however still,
+  // and for 1.5 s after the last touch or release (#290: "a hand on a
+  // control is never moved by the switch"). #304 makes this the app's rule.
+  const handsBusy = () => knobs.some((k) => k.held) || xyHeld || performance.now() - state.lastTouch < 1500;
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
   }
@@ -1974,7 +1983,7 @@ export function createPerform(host) {
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
     if (state.visible && incoming !== (state.incoming || null)) renderStatus();
-    if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
+    if (state.deferredWire && !handsBusy()) {
       const d = state.deferredWire;
       state.deferredWire = null;
       applyRechecked(d);
@@ -2705,7 +2714,7 @@ export function createPerform(host) {
         // measurement still out (the panel's new set) keeps it re-checking.
         state.revalidating = inFlight("perform_wire");
         if (m.data) {
-          if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
+          if (handsBusy()) state.deferredWire = m.data;
           else applyRechecked(m.data);
         } else if (p.cacheAs.carried) {
           // A wiring borrowed from another sound is not this patch's: with no
@@ -4292,6 +4301,8 @@ export function createPerform(host) {
   });
   const xyEnd = (e) => {
     xyHeld = false;
+    touch(); // letting go of the pad is a touch, as a knob's is
+
     queueMicrotask(panelLater);
     if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
     for (const i of [XY.x, XY.y]) logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
