@@ -46,9 +46,28 @@ const STEPS = 120;
 // untouched. AURACLE_CPU_THROTTLE and `slowEngine` slow the engine worker
 // only; a reference profile (profile.js) prefixes it onto farm.js too, where
 // the glue instantiates main's shared module and gets an Instance back.
+//
+// What it did is kept in the worker, so a spec can see that the wasm it timed
+// ran through it, at its rate: `self.__slowEngine`, one entry per slowdown
+// served ({ rate, instances, calls }: the instances it wrapped and the calls
+// it slowed), a second one (a spec's own, after the fixture's) after the
+// first. A page that holds the worker asks with `{ type: "__slow_engine" }`
+// and is answered `{ type: "__slow_engine", slowed }`; no other message is
+// touched (reference_profile.spec.js asks a farm worker it spawned).
 const SLOW_ENGINE = (rate) => `(() => {
   const RATE = ${rate};
+  const seen = { rate: RATE, instances: 0, calls: 0 };
+  const all = (self.__slowEngine = self.__slowEngine || []);
+  all.push(seen);
+  if (all.length === 1) {
+    self.addEventListener("message", (e) => {
+      if (!e.data || e.data.type !== "__slow_engine") return;
+      e.stopImmediatePropagation();
+      self.postMessage({ type: "__slow_engine", slowed: all.map((s) => ({ ...s })) });
+    });
+  }
   const slow = (fn) => function (...args) {
+    seen.calls++;
     const t = performance.now();
     const out = fn.apply(this, args);
     const until = performance.now() + (performance.now() - t) * (RATE - 1);
@@ -56,6 +75,7 @@ const SLOW_ENGINE = (rate) => `(() => {
     return out;
   };
   const wrap = (inst) => {
+    seen.instances++;
     const ex = {};
     for (const [k, v] of Object.entries(inst.exports)) ex[k] = typeof v === "function" ? slow(v) : v;
     const fake = Object.create(WebAssembly.Instance.prototype);

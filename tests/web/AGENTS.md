@@ -296,9 +296,11 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does, on
     the reference profile ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md),
     `profile.js`), in Chromium and in Firefox. A test that booted on a
-    profile names it beside each budget's figure (`… ms of 100 ms on air in
-    chromium, ×4.4`) and carries the annotation `profile`, what its
-    calibration measured.
+    profile names it beside each budget's figure, with the rates its boot
+    ran at (`… ms of 100 ms on air in chromium (engine, farm and page
+    ×4.4)`, or `(engine ×4, farm and page ×1)` where a spec's `slowEngine`
+    is more than the profile's), and carries the annotation `profile`, what
+    its calibration measured and those rates.
   - *The reference profile* is the reference machine (a 2018 or 2019
     MacBook Air, an Intel 1.6 GHz dual-core i5, in Firefox) as near as this
     one can make it: `app.boot({ profile: "air" })`, or every boot with
@@ -306,17 +308,25 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     farm worker until a render takes the reference's time, boots with
     `?farm=2` unless the spec's own `query` names a width, and in Chromium
     throttles the page by the same rate (Firefox has no throttle for a page).
-    The rate is measured once a run, at its first boot that asks: one
-    preset's render here, against its time on the reference; a machine as
-    slow or slower is not slowed. `app.profile` says what was measured. The
-    engine takes the largest of the profile's rate, `slowEngine` and
-    `AURACLE_CPU_THROTTLE` (which by hand slows the engine's wasm and
-    throttles the page, and leaves the farm at full speed).
-    `AURACLE_BROWSER=firefox` runs the specs in Firefox. A spec's own route
-    for `worker.js` or `farm.js` and a profile's cannot both hold (the one
-    registered last answers; `patch_guess.spec.js` slows boot's crew that
-    way, and on a profile it is the profile's): give the engine's code to
-    `workerPrefix`, which a profile keeps.
+    The rate is measured once a run, at its first boot that asks (in UI
+    mode, which keeps the output directory, once a session and engine
+    build): one preset's render here, against its time on the reference; a
+    machine as slow or slower is not slowed, though the slowdown is still
+    served, at ×1, so `reference_profile.spec.js` can read from the workers
+    that their wasm went through it. `app.profile` says what was measured
+    and the rates the boot runs at. The engine takes the largest of the
+    profile's rate, `slowEngine` and `AURACLE_CPU_THROTTLE` (which by hand
+    slows the engine's wasm and throttles the page, and leaves the farm at
+    full speed), and the page the larger of the profile's and the throttle.
+    `AURACLE_BROWSER=firefox` runs the specs in Firefox, in a project named
+    `firefox` (the gate's is `chromium`); on Linux Firefox's AudioContext
+    starts only with an audio server running (PulseAudio: with none, as in
+    Playwright's image, it stays suspended and every level reads silence),
+    which the nightly job starts. A spec's own route for `worker.js` or
+    `farm.js` and a profile's cannot both hold (the one registered last
+    answers; `patch_guess.spec.js` slows boot's crew that way, and on a
+    profile it is the profile's): give the engine's code to `workerPrefix`,
+    which a profile keeps.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its

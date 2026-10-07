@@ -118,15 +118,17 @@ const PERF = process.env.AURACLE_PERF === "1";
  *  ask for one in its own `app.boot({ profile })`. Unset: none. */
 const PROFILE = process.env.AURACLE_PROFILE || null;
 if (PROFILE) profiles.profileOf(PROFILE);
-/** The profile each test booted on (TestInfo → its calibration), named beside
- *  each budget the test records. */
+/** The profile each test booted on (TestInfo → `app.profile`: its
+ *  calibration and the rates its last boot ran at), named beside each budget
+ *  the test records. */
 const profiled = new WeakMap();
 
 /** A measurement of the machine's speed against the limit the app was built
  *  to (ADR-022's third kind): how long something took, in ms. Recorded as the
  *  test's annotation `budget` ("<name> <measured> ms of <limit> ms", then the
- *  profile the test booted on when it booted on one, "on air in chromium,
- *  ×4.6", then "(over)" when it is), which the run's merged report shows. With
+ *  profile the test booted on when it booted on one and the rates it ran
+ *  at, "on air in firefox (engine and farm ×3.75, page ×1)", then "(over)"
+ *  when it is), which the run's merged report shows. With
  *  AURACLE_PERF=1 it is judged too, as a soft assertion, so a test's every
  *  budget is measured. A measurement that is not a number (a loop that gave
  *  up, a moment never seen) is over. True when it is within its limit.
@@ -619,10 +621,10 @@ class App {
     this.ENGINE_MS = ENGINE_MS;
     this.ENGINE_CAP_MS = ENGINE_CAP_MS;
     this.QUIET_MS = QUIET_MS;
-    // The profile `boot` put the page on (profile.js `calibrated`): the rate
-    // its engine and farm are slowed by, the page's (`pageRate`: the same in
-    // Chromium, 1 in Firefox), and how many workers it served (`served`);
-    // null for none.
+    // The profile `boot` put the page on: its calibration (profile.js
+    // `calibrated`), the rates this boot runs at (`engineRate`, `farmRate`,
+    // and `pageRate`, the throttle CDP took, 1 in Firefox), and how many
+    // workers it served (`served`); null for none.
     this.profile = null;
   }
 
@@ -655,8 +657,10 @@ class App {
    *    worker slowed until a render takes the reference machine's time,
    *    `?farm=2` unless `query` names a width, and in Chromium the page
    *    throttled by the same rate. The engine takes the largest of the
-   *    profile's rate, `slowEngine` and the throttle. Calibrated once a
-   *    run, on the first boot that asks; `app.profile` says what it measured;
+   *    profile's rate, `slowEngine` and the throttle, and the page the
+   *    larger of the profile's and the throttle. Calibrated once a run, on
+   *    the first boot that asks; `app.profile` says what it measured and the
+   *    rates this boot runs at;
    *  - `workerPrefix`: a spec's own code to run in the engine worker ahead of
    *    worker.js (a slowdown of its own, switched on by a message). The
    *    fixture serves the worker with it, after its own: a spec that routed
@@ -677,15 +681,14 @@ class App {
     if (random != null) await page.addInitScript(RANDOM(random));
     await page.addInitScript(SEEN({ warmed, seen }));
     const on = profile ? await this.engine(() => profiles.calibrated(profile, this.where)) : null;
-    this.profile = on && { ...on, pageRate: this.where.browserName === "chromium" ? on.rate : 1, served: { worker: 0, farm: 0 } };
-    if (on) {
-      profiled.set(base.test.info(), on);
-      base.test.info().annotations.push({ type: "profile", description: profiles.calibrationLine(on) });
-    }
     const throttle = Number(process.env.AURACLE_CPU_THROTTLE || 0);
     const rate = Math.max(slowEngine || 0, throttle > 1 ? throttle : 0, on ? on.rate : 0);
-    if (busy || rate > 1 || workerPrefix || on) {
-      const prefix = (busy ? BUSY : "") + (rate > 1 ? performBudget.SLOW_ENGINE(rate) : "") + workerPrefix;
+    this.profile = on && { ...on, engineRate: Math.max(1, rate), farmRate: on.rate, pageRate: 1, served: { worker: 0, farm: 0 } };
+    // On a profile the slowdown is served at every rate, ×1 included, so a
+    // spec can see that the wasm it timed ran through it (`SLOW_ENGINE`).
+    const slowed = rate > 1 || on;
+    if (busy || slowed || workerPrefix) {
+      const prefix = (busy ? BUSY : "") + (slowed ? performBudget.SLOW_ENGINE(Math.max(1, rate)) : "") + workerPrefix;
       await page.route(profiles.WORKER_JS, async (route) => {
         const resp = await route.fetch();
         await route.fulfill({ response: resp, body: prefix + (await resp.text()), contentType: "text/javascript" });
@@ -696,19 +699,27 @@ class App {
     // `slowEngine` aside. Counted, so a spec can see that every farm worker
     // the page started was served this way.
     if (on) {
-      const farmPrefix = on.rate > 1 ? performBudget.SLOW_ENGINE(on.rate) : "";
+      const slowFarm = performBudget.SLOW_ENGINE(on.rate);
       await page.route(profiles.FARM_JS, async (route) => {
         const resp = await route.fetch();
-        await route.fulfill({ response: resp, body: farmPrefix + (await resp.text()), contentType: "text/javascript" });
+        await route.fulfill({ response: resp, body: slowFarm + (await resp.text()), contentType: "text/javascript" });
         if (this.profile) this.profile.served.farm++;
       });
     }
     // CDP throttles a Chromium page; Firefox has none, and there the page runs
-    // at this machine's speed.
+    // at this machine's speed. `pageRate` is the rate CDP took.
     const pageRate = Math.max(throttle > 1 ? throttle : 0, on ? on.rate : 0);
     if (pageRate > 1 && this.where.browserName === "chromium") {
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: pageRate });
+      if (this.profile) this.profile.pageRate = pageRate;
+    }
+    if (on) {
+      const info = base.test.info();
+      profiled.set(info, this.profile);
+      // Once a test, however many pages it boots the same way.
+      const description = profiles.profileLine(this.profile);
+      if (!info.annotations.some((a) => a.type === "profile" && a.description === description)) info.annotations.push({ type: "profile", description });
     }
     const params = new URLSearchParams(query.replace(/^\?/, ""));
     if (on && !params.has("farm")) params.set("farm", String(on.farm));
