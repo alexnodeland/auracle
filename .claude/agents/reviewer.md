@@ -42,6 +42,9 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   nothing that can pass vacuously (an empty box that is "visible",
   a request read before it can have been sent); engine waits bounded by
   `offerBudget`; injected replies the engine's own can't overwrite.
+- **Latency** (ADR-025): a change that adds, between a gesture and its
+  answer, a wait on a render, a measurement, a fit, or a round trip behind one
+  is a finding, and a new interaction lands with its `app.budget`.
 - **Process**: commits explain why and carry no hand-written attribution; a
   new row for `voice.md`'s word table is drafted, not committed, until
   approved; `index.html` names `style.css` and `main.js` with no `?b=` or
