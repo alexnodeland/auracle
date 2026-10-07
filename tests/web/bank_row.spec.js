@@ -209,9 +209,14 @@ for (const [width, height] of [[1000, 800], [1440, 900]]) {
       await at.hover();
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "under the pointer").toMatchObject(WITH_PLAY);
-      // The focus on its ▶, the pointer away.
-      await page.mouse.move(5, 5);
+      // The focus on its ▶, the pointer away: focused while the pointer is
+      // on the row, as a press would, then the pointer moved off. A hidden ▶
+      // cannot take the focus, and the strip hides `--d-press` after the
+      // pointer leaves (its `visibility`), so a focus asked for after the move
+      // stayed on the page whenever the move had hidden it first: 3 runs of
+      // 20 here, none of 40 since.
       await hear.focus();
+      await page.mouse.move(5, 5);
       await expect(acts).toHaveCSS("opacity", "1");
       expect(inPoolFacts(await presetRowDrawn(at)), "with the focus on its ▶").toMatchObject(WITH_PLAY);
       // Playing, the pointer and the focus away: the mark a ▶ pressed on a
