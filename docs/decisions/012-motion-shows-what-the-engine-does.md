@@ -12,10 +12,7 @@ superseded_by: null
 
 ## Status
 
-Accepted. Amended by [ADR-025](025-every-interaction-answers-at-once.md) on
-2026-10-06: a value the engine predicted and has not yet measured (a wiring,
-a filter curve, a forecast) is drawn as a guess, with words that say so,
-until its measurement replaces it.
+Accepted
 
 ## Context
 

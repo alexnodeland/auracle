@@ -14,7 +14,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | Directory | Holds | Changes |
 | --- | --- | --- |
 | [`architecture/`](architecture/) | How the system fits together, as it is now | Living: kept current with the code |
-| [`decisions/`](decisions/) | ADRs: an engineering decision, its context and its consequences | Immutable once accepted; superseded, never edited (the one edit is a note in its Status that a later ADR amends it) |
+| [`decisions/`](decisions/) | ADRs: an engineering decision, its context and its consequences | Immutable once accepted; superseded, never edited |
 | [`proposals/`](proposals/) | RFCs: a change worth deciding before building | `draft → in-review → accepted / rejected / superseded` |
 | [`plans/`](plans/) | How an accepted proposal gets built, decomposed into tasks | `active → complete / abandoned` |
 | [`runbooks/`](runbooks/) | What to do when a known thing breaks | Living |
