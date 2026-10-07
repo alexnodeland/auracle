@@ -171,8 +171,9 @@ combination of the retained columns isolates either, so the equation cannot be
 reconstructed. `n_dynamics` supplies three of the six binary terms and nothing
 supplies the other three.
 
-Confirmed empirically: on the 1,200-draw sweep every structural coordinate came
-back well under 10, with `n_dynamics` at **1.9**.
+Confirmed empirically: on the 1,200-draw sweep every structural coordinate comes
+back well under 10, with `n_dynamics` at **1.7** (1.9 when this was first
+measured).
 
 ### `depth`, a weaker but real argument
 
@@ -182,9 +183,11 @@ per-feature weights as though they were. Dropped.
 
 ## Health of the retained set
 
-Every family coordinate came back **at 4.1 or under** on the 1,200-draw sweep,
-the highest being `mod_depth_mean`. That is the reason the families exist;
-forty separate module columns would not have managed it.
+Every family count comes back **at 3.0 or under** on the 1,200-draw sweep, the
+highest being `n_noise`. That is the reason the families exist; forty separate
+module columns would not have managed it. The term-level numbers run higher,
+and still well under 10: `amp_attack` is the highest of all twenty-six at 6.3,
+then `mod_density` 4.6, `amp_release` 4.3 and `mod_depth_mean` 4.1.
 
 When the three most recent additions arrived they measured `n_mod_shape` 1.6,
 `n_mod_logic` 1.3 and `mod_depth_mean` 3.8, with `mod_density` rising from 2.7
