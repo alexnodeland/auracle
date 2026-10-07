@@ -669,9 +669,11 @@ function box(parent, x, y, w, h, r, attrs = {}) {
 // the vessel's widths can differ a little from a recording's. A recording's
 // own face, logged from the page (`.pf-face .face`), is drawn as it is.
 let SHIPPED = null;
-try {
+{
+  // A film without the faces would draw empty wells and rows: stop instead.
   const r = await fetch(new URL("../../../apps/web/preset-faces.json", import.meta.url));
-  if (r.ok) {
+  if (!r.ok) throw new Error(`kit: no apps/web/preset-faces.json (${r.status}); run \`make preset-faces\``);
+  {
     const file = await r.json();
     const byName = new Map();
     for (const p of file.presets || []) {
@@ -682,9 +684,8 @@ try {
       if (f) byName.set(p.name, f);
     }
     SHIPPED = { byName, names: [...byName.keys()], stats: bankStats([...byName.values()]) };
+    if (!SHIPPED.stats) throw new Error("kit: apps/web/preset-faces.json holds too few faces to draw against");
   }
-} catch {
-  SHIPPED = null;
 }
 /** The presets the app ships, in the bank's order. */
 export const PRESETS = SHIPPED ? SHIPPED.names : [];
@@ -1342,7 +1343,7 @@ export const SLOW_WEATHER_RACK = [
  * lead into its tab, and OUT with the sound's face. `knob(m, i, u, text)`
  * turns a knob; `ghost(m, i, u)` draws where PERFORM is playing it.
  */
-export function patchView(scr, { sound = SLOW_WEATHER, rack = SLOW_WEATHER_RACK, faceSrc = null } = {}) {
+export function patchView(scr, { sound = SLOW_WEATHER, rack = SLOW_WEATHER_RACK, faceSrc = null, teach = null } = {}) {
   const { svg, under } = scr;
   const g = el("g", {}, svg);
   say(g, 304, 92, "Patch", { size: TYPE.label });
@@ -1442,7 +1443,8 @@ export function patchView(scr, { sound = SLOW_WEATHER, rack = SLOW_WEATHER_RACK,
   say(g, 402, 921, "+", { size: TYPE.label, anchor: "middle", fill: ink("--silk-dim") });
   say(g, 441, 921, "Map", { size: TYPE.label, anchor: "middle", fill: ink("--silk-dim"), track: 0.16 });
   say(g, 476, 921, "Chain ▾", { size: TYPE.label, fill: ink("--silk-dim"), track: 0.16 });
-  say(g, 1777, 921, "Teach · 6 picks ▸", { size: TYPE.label, anchor: "end", fill: ink("--phos-b"), track: 0.16 });
+  // The teach strip says what the session says (`#pt-teach`), or nothing.
+  if (teach) say(g, 1777, 921, teach, { size: TYPE.label, anchor: "end", fill: ink("--phos-b"), track: 0.16 });
   return {
     g, plates, out,
     knob(mi, ki, u, text = null) {

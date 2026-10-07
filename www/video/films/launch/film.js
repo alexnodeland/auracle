@@ -6,11 +6,17 @@
 // PATCH are drawn where the app puts every part at 1920 × 1080, in its type
 // and colours, with the sounds' own faces (kit.js `appScreen` and the views).
 // Three beats cross from the drawing into the real app, recorded on the same
-// window and camera (shots.json, tools/footage.mjs): play (Bright turned,
-// Wander gliding the knobs), offer (Blend and Take) and depth (PATCH's
-// cutoff turned from PERFORM). Each take logs what the app showed (its faces,
-// its controls and knobs, its bank), and the drawing before each insert is
-// drawn from those logs, so the cut lands on the same picture.
+// window and camera (shots.json, written by gen_shots.py; tools/footage.mjs):
+// play (Bright opening up, Wander let go and drifting), offer (Blend past half
+// and Take) and depth (in to PATCH with the face carried, the cutoff turned
+// from PERFORM, out to TASTE and LEARNING). Each take logs what the app
+// showed (its faces, controls, knobs, bank), and the drawing before each cut
+// is drawn from those logs, so the cut lands on the same picture.
+//
+// The sound is ADR-014's (the N3 bed, Bloom and Reach, no cues): the app is
+// heard only in the demos after play2, play3 and offer2 (timeline.json
+// `demos`), each the instrument alone, and the cut into the app lands as the
+// first demo begins. Elsewhere the takes are a picture under the voice.
 //
 // The takes are read from out/launch/shots/ (`?dry` reads a rehearsal's
 // logs and draws no footage, `?nofootage` neither), and a missing take stops
@@ -185,49 +191,22 @@ function onFrame([z, fx, fy], x, y) {
 }
 
 // ---------------------------------------------------------------------------
-// OPEN — a sound, then the wall of knobs it is hidden in.
+// OPEN — a sound; then the circuit it lives in: the modules to wire together,
+// where the feedback goes, and how each choice shapes the sound.
 
-function wall(g, { cols = 8, rows = 5, margin = 34, gap = 16, seed = 3, center = [3, 2] }) {
-  const r = rng(seed);
-  const pw = (1920 - 2 * margin - (cols - 1) * gap) / cols;
-  const ph = (1080 - 2 * margin - (rows - 1) * gap) / rows;
-  const names = ["supersaw", "filter", "vca", "lfo", "env / out", "mixer", "delay", "reverb", "fold", "s&h", "slew", "noise", "ladder", "chorus", "phaser", "drive", "steps", "crush", "ring", "grain"];
-  const knobs = [];
-  let screen = null;
-  for (let j = 0; j < rows; j++) {
-    for (let i = 0; i < cols; i++) {
-      const x = margin + i * (pw + gap);
-      const y = margin + j * (ph + gap);
-      const pg = el("g", {}, g);
-      el("rect", { x, y, width: pw, height: ph, rx: 8, fill: ink("--plate-hi"), stroke: ink("--hairline"), "stroke-width": 1.2 }, pg);
-      el("rect", { x: x + 1, y: y + 1, width: pw - 2, height: 22, rx: 7, fill: inkA("--white", 0.035) }, pg);
-      say(pg, x + 16, y + 30, names[Math.floor(r() * names.length)], { size: 15, weight: 500, fill: ink("--silk-dim") });
-      const isCenter = i === center[0] && j === center[1];
-      if (isCenter) {
-        screen = { x: x + 14, y: y + 44, w: pw - 28, h: ph - 58 };
-        el("rect", { x: screen.x, y: screen.y, width: screen.w, height: screen.h, rx: 5, fill: ink("--bezel"), stroke: ink("--black"), "stroke-width": 1 }, pg);
-        continue;
-      }
-      // Six small knobs, 3×2, and a jack row.
-      for (let kj = 0; kj < 2; kj++) {
-        for (let ki = 0; ki < 3; ki++) {
-          const cx = x + (pw * (ki + 1)) / 4;
-          const cy = y + 70 + kj * 58;
-          const k = knob(pg, { cx, cy, r: 15, glow: false, dim: true });
-          const v = 0.1 + r() * 0.8;
-          k.set(v, { lit: 0.55 });
-          knobs.push({ k, v, cx, cy });
-        }
-      }
-      for (let q = 0; q < 4; q++) {
-        const jx = x + (pw * (q + 1)) / 5;
-        el("circle", { cx: jx, cy: y + ph - 22, r: 6.5, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 1.6 }, pg);
-        el("circle", { cx: jx, cy: y + ph - 22, r: 2.5, fill: "none", stroke: inkA("--white", 0.18) }, pg);
-      }
-    }
-  }
-  return { knobs, screen };
-}
+// The circuit, as PATCH lays one out: an oscillator into a filter, a delay
+// and the output, its delay fed back into the filter's second input (a
+// cable that runs backwards, routed as PATCH routes one: out, down to a bus
+// under the plates, back, and up into the socket), and the sound at OUT.
+const OPEN_RACK = [
+  { name: "supersaw", x: 110, w: 300, knobs: 3, labels: ["detune", "mix", "oct"], values: ["60%", "55%", "0"] },
+  { name: "filter", kind: "ladder", x: 500, w: 300, knobs: 3, labels: ["cutoff", "res", "mod"], values: ["632 Hz", "Q 0.8", "50%"] },
+  { name: "delay", x: 890, w: 300, knobs: 3, labels: ["time", "feedback", "mix"], values: ["0.72 s", "35%", "35%"] },
+  { name: "env / out", x: 1280, w: 240, knobs: 2, labels: ["attack", "release"], values: ["1.45 s", "1.58 s"] },
+];
+const OPEN_Y = 420;
+const OPEN_H = 180;
+const OUT_SCREEN = { x: 1600, y: 400, w: 250, h: 220 };
 
 function sceneOpen({ stage, beat, line }) {
   const b = beat("open");
@@ -240,80 +219,124 @@ function sceneOpen({ stage, beat, line }) {
     post: 1.0,
     fout: 1.0,
     build(layer) {
-      const svg = svgLayer(layer);
-      const world = el("g", {}, svg);
-      const { knobs, screen } = wall(world, {});
-      // Screen-space overlay: the trace keeps a constant line width however far
-      // the camera is pulled back.
+      const world = el("div", { class: "layer" }, layer);
+      world.style.transformOrigin = "0 0";
+      const ground = place(el("div", {}, world), { x: 0, y: 0, w: 1920, h: 1080 });
+      ground.style.background = `radial-gradient(60% 55% at 55% 45%, ${inkA("--white", 0.035)}, transparent 70%), linear-gradient(180deg, ${ink("--panel-lo")}, ${ink("--rack")})`;
+      const under = el("div", { class: "layer" }, world);
+      const svg = svgLayer(world);
+      for (let x = 12; x < 1920; x += 24) for (let y = 12; y < 1080; y += 24) el("circle", { cx: x, cy: y, r: 1.05, fill: inkA("--white", 0.025) }, svg);
+      const plates = OPEN_RACK.map((m, i) => plate(under, svg, { x: m.x, y: OPEN_Y, w: m.w, h: OPEN_H, name: m.name, kind: m.kind || "", knobs: m.knobs, labels: m.labels, values: m.values, seed: 40 + i }));
+      // OUT: its jack, and the scope the sound draws on.
+      const S0 = OUT_SCREEN;
+      say(svg, 1560, OPEN_Y + OPEN_H / 2 - 22, "out", { size: 22, weight: 500, anchor: "middle", fill: ink("--silk-dim") });
+      const outJack = [1560, OPEN_Y + OPEN_H / 2];
+      el("circle", { cx: outJack[0], cy: outJack[1], r: 9, fill: ink("--bezel"), stroke: ink("--phos-a"), "stroke-width": 2 }, svg);
+      const scr = place(el("div", { class: "screen" }, under), S0);
+      void scr;
+      // The cables: the chain, then the delay's feedback into the filter.
+      const chain = [
+        cable(svg, { p0: plates[0].out, p1: plates[1].in, sag: 8, width: 4 }),
+        cable(svg, { p0: plates[1].out, p1: plates[2].in, sag: 8, width: 4 }),
+        cable(svg, { p0: plates[2].out, p1: plates[3].in, sag: 8, width: 4 }),
+        cable(svg, { p0: plates[3].out, p1: outJack, sag: 4, width: 4 }),
+      ];
+      const fbIn = [plates[1].in[0], OPEN_Y + OPEN_H * 0.8];
+      el("circle", { cx: fbIn[0], cy: fbIn[1], r: 8, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 2 }, svg);
+      const fbOut = [plates[2].out[0], OPEN_Y + OPEN_H * 0.8];
+      el("circle", { cx: fbOut[0], cy: fbOut[1], r: 8, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 2 }, svg);
+      const bus = OPEN_Y + OPEN_H + 46;
+      const fbD = `M${fbOut[0]} ${fbOut[1]} H${fbOut[0] + 26} V${bus} H${fbIn[0] - 26} V${fbIn[1]} H${fbIn[0]}`;
+      const fbG = el("g", {}, svg);
+      fbG.style.filter = `drop-shadow(1px 3px 3px ${inkA("--black", 0.55)})`;
+      const fbCase = el("path", { d: fbD, fill: "none", stroke: inkA("--black", 0.5), "stroke-width": 9.6, "stroke-linejoin": "round" }, fbG);
+      const fbLine = el("path", { d: fbD, fill: "none", stroke: inkA("--phos-a", 0.82), "stroke-width": 4, "stroke-linejoin": "round" }, fbG);
+      const fbLen = fbLine.getTotalLength();
+      for (const p of [fbCase, fbLine]) p.setAttribute("stroke-dasharray", `${fbLen} ${fbLen}`);
+      const fbPulse = el("path", { d: fbD, fill: "none", stroke: ink("--phos-a-pulse"), "stroke-width": 2, "stroke-dasharray": `26 ${fbLen}`, opacity: 0 }, fbG);
+      const fbTag = say(svg, (fbIn[0] + fbOut[0]) / 2, bus + 34, "delay → filter · feedback", { size: 20, mono: true, anchor: "middle", fill: ink("--silk-dim") });
+      const ptr = pointer(svg);
+
+      // The sound at OUT, on its scope: drawn in screen space, so the trace
+      // keeps its width however far the camera is from it.
       const top = svgLayer(layer);
       const trace = scope(top, { x: 0, y: 0, w: 1920, h: 1080, width: 4, points: 520, wave: voiceWave({ f: 2.2, bright: 0.45, seed: 5 }) });
-      const ptr = pointer(top);
 
-      // The two voice lines.
       const shade = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      shade.style.background = `linear-gradient(180deg, ${inkA("--bezel", 0)} 45%, ${inkA("--bezel", 0.85)} 100%)`;
+      shade.style.background = `linear-gradient(180deg, ${inkA("--bezel", 0)} 55%, ${inkA("--bezel", 0.85)} 100%)`;
       const t1 = textBlock(layer, { x: 960, y: 230, w: 1600, cls: "voice", size: 84, align: "center", ax: 0.5, ay: 0.5 });
       const w1 = words(t1, "Every synthesizer has a sound in it\nthat's *yours*.");
-      const t2 = textBlock(layer, { x: 960, y: 900, w: 1700, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5 });
-      const w2 = words(t2, "Finding it means turning hundreds of knobs, *one at a time*.");
-      const counter = textBlock(layer, { x: 1860, y: 1030, w: 600, cls: "mono", size: 22, align: "right", ax: 1, ay: 1 });
+      const t2 = textBlock(layer, { x: 960, y: 900, w: 1720, cls: "voice", size: 52, align: "center", ax: 0.5, ay: 0.5 });
+      const w2 = words(t2, "Finding it means knowing your circuit: which *modules* to wire together, where the _feedback_ goes, and how each choice *shapes the sound*.");
 
-      // Camera: starts inside the centre plate's screen, pulls back to the wall.
-      const sc = { cx: screen.x + screen.w / 2, cy: screen.y + screen.h / 2 };
-      // Inside the scope: the screen overfills the frame, so no bezel shows.
-      const z0 = Math.max(1920 / screen.w, 1080 / screen.h) * 1.04;
-      const pull0 = l2.t0 - b.t0 - 0.35;
-      const pull1 = pull0 + 3.2;
-
-      // The knobs the hand turns, one after another.
-      const hand = [knobs[27], knobs[33], knobs[70]];
-
-      return (tl) => {
-        const u = ramp(tl, pull0, pull1, E.io4);
+      // The camera: inside the scope at OUT, pulling back to the rack as the
+      // second line begins. The sound fades as the patch comes apart, and
+      // comes back as it is wired again.
+      const sc = { cx: S0.x + S0.w / 2, cy: S0.y + S0.h / 2 };
+      const z0 = Math.max(1920 / S0.w, 1080 / S0.h) * 1.04;
+      const T = (spec) => at(stage, b, spec);
+      const pull0 = l2.t0 - 0.6;
+      const pull1 = pull0 + 2.6;
+      const tWire = [T("open2:modules"), T("open2:wire"), T("open2:together"), T("open2:together") + 0.55];
+      const tFb = T("open2:feedback") - 0.2;
+      const tChoice = T("open2:choice") - 0.1;
+      const tShapes = T("open2:shapes") - 0.1;
+      return (tl, t) => {
+        const u = ramp(t, pull0, pull1, E.io4);
         const s = Math.exp(lerp(Math.log(z0), 0, u));
         const fx = lerp(sc.cx, 960, u);
         const fy = lerp(sc.cy, 540, u);
-        world.setAttribute("transform", `translate(960 540) scale(${s}) translate(${-fx} ${-fy})`);
-        world.style.opacity = 0.35 + 0.65 * u;
-        // Where the centre screen sits on the frame now.
-        const sx = 960 + s * (screen.x - fx);
-        const sy = 540 + s * (screen.y - fy);
-        const sw = s * screen.w;
-        const sh = s * screen.h;
-        const draw = ramp(tl, 0.3, 2.2, E.io2);
-        const amp = 0.55 + 0.1 * Math.sin(tl * 1.3);
-        trace.path.setAttribute("stroke-width", lerp(4, 2, u));
-        trace.update(tl, { draw, amp, ox: tl * 0.35, rect: { x: sx + sw * 0.04, y: sy + sh * 0.1, w: sw * 0.92, h: sh * 0.8 } });
-
-        // Line one: over the trace, then gone before the pull-back.
-        t1.style.opacity = fade(tl, l1.t0 - b.t0 - 0.3, l1.t0 - b.t0 + 0.2, pull0 - 0.6, pull0 + 0.2);
-        reveal(w1, tl + b.t0, l1.t0, l1.t1);
-        // Line two: over the wall.
-        shade.style.opacity = ramp(tl, pull0 + 0.8, pull1);
-        t2.style.opacity = ramp(tl, l2.t0 - b.t0 - 0.2, l2.t0 - b.t0 + 0.3);
-        reveal(w2, tl + b.t0, l2.t0, l2.t1);
-
-        // The hand, turning knobs one at a time once the wall is in view.
-        const h0 = pull1 - 0.6;
-        const seg = 1.05;
-        let lit = -1;
-        const path = [[h0 - 0.8, 1500, 1150]];
-        hand.forEach((k, i) => {
-          path.push([h0 + i * seg, k.cx + 6, k.cy + 10]);
-          path.push([h0 + i * seg + 0.7, k.cx + 6, k.cy + 10]);
-        });
-        const p = glide(tl, path);
-        const idx = Math.floor((tl - h0) / seg);
-        for (let i = 0; i < hand.length; i++) {
-          const k = hand[i];
-          const turning = ramp(tl, h0 + i * seg + 0.05, h0 + i * seg + 0.7, E.io2);
-          if (tl >= h0 + i * seg) lit = i;
-          const on = tl >= h0 + i * seg;
-          k.k.set(k.v + 0.22 * turning * (i % 2 ? -1 : 1), { lit: on ? 1 : 0.55, glowOn: on });
-        }
-        ptr.update({ x: p.x, y: p.y, o: ramp(tl, h0 - 0.8, h0 - 0.3), click: idx >= 0 && idx < hand.length ? (tl - h0 - idx * seg) / 0.5 : null, scale: 1.1 });
-        counter.textContent = lit >= 0 ? `knob ${String(lit + 1).padStart(3, " ")} of ${knobs.length}` : "";
-        counter.style.opacity = ramp(tl, h0, h0 + 0.3);
+        world.style.transform = `translate(${960 - s * fx}px, ${540 - s * fy}px) scale(${s})`;
+        // Where the scope sits on the frame now.
+        const sx = 960 + s * (S0.x - fx);
+        const sy = 540 + s * (S0.y - fy);
+        const sw = s * S0.w;
+        const sh = s * S0.h;
+        // The cables, one by one under the words, each plugged by the hand.
+        const draws = tWire.map((a) => ramp(t, a - 0.35, a + 0.25, E.io2));
+        chain.forEach((c, i) => c.update(t, { draw: draws[i], flow: ramp(t, tWire[i] + 0.25, tWire[i] + 0.8) }));
+        plates.forEach((p, i) => (p.opacity = ramp(t, pull0 + 0.6 + i * 0.15, pull0 + 1.2 + i * 0.15)));
+        const fb = ramp(t, tFb, tFb + 0.9, E.io2);
+        const off = fbLen * (1 - fb);
+        fbCase.setAttribute("stroke-dashoffset", off);
+        fbLine.setAttribute("stroke-dashoffset", off);
+        fbPulse.setAttribute("opacity", fb >= 1 ? 0.85 : 0);
+        fbPulse.setAttribute("stroke-dashoffset", -((t * 380) % (fbLen + 26)) + 26);
+        fbTag.setAttribute("opacity", ramp(t, tFb + 0.6, tFb + 1.0));
+        // Each choice shapes the sound: the filter opens, the feedback rises.
+        const c1 = ramp(t, tChoice, tChoice + 0.9, E.io3);
+        const c2 = ramp(t, tShapes, tShapes + 0.9, E.io3);
+        plates[1].knobs[0].k.set(0.4 + 0.35 * c1, { glowOn: c1 > 0 && c1 < 1 });
+        plates[1].knobs[0].lbl[0].textContent = c1 > 0.5 ? "2.4 kHz" : "632 Hz";
+        plates[2].knobs[1].k.set(0.35 + 0.3 * c2, { glowOn: c2 > 0 && c2 < 1 });
+        plates[2].knobs[1].lbl[0].textContent = c2 > 0.5 ? "62%" : "35%";
+        // The sound at OUT: playing, then silent while the patch is apart,
+        // then back once OUT is wired, and changed by every choice.
+        const live = Math.max(1 - ramp(t, pull0 + 0.3, pull0 + 1.0), draws[3]);
+        trace.wave = voiceWave({ f: 2.2 + 0.8 * fb, bright: 0.25 + 0.3 * fb + 0.35 * c1 + 0.1 * c2, detune: 0.012 + 0.03 * c2, seed: 5 });
+        const draw = ramp(t, 0.3, Math.max(0.4, l1.t0 - 0.4), E.io2);
+        trace.path.setAttribute("stroke-width", lerp(4, 2.2, u));
+        trace.update(t, { draw, amp: (0.5 + 0.08 * Math.sin(t * 1.3)) * live, ox: t * 0.35, rect: { x: sx + sw * 0.05, y: sy + sh * 0.12, w: sw * 0.9, h: sh * 0.76 } });
+        // The hand plugs each cable.
+        const leg = (i) => {
+          const c = [plates[0], plates[1], plates[2], plates[3]][i].out;
+          const d = i < 3 ? [plates[i + 1].in[0], plates[i + 1].in[1]] : outJack;
+          return [[tWire[i] - 0.4, c[0], c[1]], [tWire[i] + 0.25, d[0], d[1]]];
+        };
+        const path = [[tWire[0] - 1.2, 300, 1150], ...[0, 1, 2, 3].flatMap(leg), [tFb - 0.1, fbOut[0], fbOut[1]], [tFb + 0.9, fbIn[0], fbIn[1]],
+          [tChoice - 0.05, plates[1].knobs[0].cx + 6, plates[1].knobs[0].cy + 10], [tChoice + 0.9, plates[1].knobs[0].cx + 6, plates[1].knobs[0].cy - 20],
+          [tShapes - 0.05, plates[2].knobs[1].cx + 6, plates[2].knobs[1].cy + 10], [tShapes + 0.9, plates[2].knobs[1].cx + 6, plates[2].knobs[1].cy - 20],
+          [tShapes + 2.0, plates[2].knobs[1].cx + 120, plates[2].knobs[1].cy + 160]];
+        const p = glide(t, path);
+        const held = draws.some((d) => d > 0 && d < 1) || (fb > 0 && fb < 1) || (c1 > 0 && c1 < 1) || (c2 > 0 && c2 < 1);
+        ptr.update({ x: p.x, y: p.y, o: fade(t, tWire[0] - 1.2, tWire[0] - 0.7, tShapes + 1.4, tShapes + 2.0), click: held ? 0.1 : null, scale: 1.1 });
+        // The words.
+        t1.style.opacity = fade(t, l1.t0 - 0.3, l1.t0 + 0.2, pull0 - 0.3, pull0 + 0.3);
+        reveal(w1, t, l1.t0, l1.t1);
+        shade.style.opacity = ramp(t, pull0 + 0.8, pull1);
+        t2.style.opacity = ramp(t, l2.t0 - 0.2, l2.t0 + 0.3);
+        reveal(w2, t, l2.t0, l2.t1);
+        void tl;
       };
     },
   });
@@ -605,7 +628,8 @@ function sceneGrow({ stage, beat, line }) {
 }
 
 // ---------------------------------------------------------------------------
-// PLAY — PERFORM drawn, then the app itself: Bright turned, Wander gliding.
+// PLAY — PERFORM drawn, then the app itself: Bright opening up in its demo,
+// Wander let go on its line and drifting in its demo.
 
 /** The app's window, drawn and recorded: a drawn screen and, when the take
  *  is in, its footage in the same window under the same camera. */
@@ -616,11 +640,31 @@ function appWindow(layer, take, opts) {
   return { scr, clip };
 }
 
+/** A demo by id (timeline.json `demos`): its first note, last note-off, and
+ *  where the next line may start. */
+function demoOf(stage, id) {
+  const d = (stage.tl.demos || []).find((x) => x.id === id);
+  if (!d) throw new Error(`no demo "${id}" in the timeline`);
+  return d;
+}
+
+/** Cross from the drawing to the take over [x0, x1], and keep the take's
+ *  frame in step with the film. */
+function crossToTake(stage, scr, clip, ck, t, c, x0, x1) {
+  if (!clip) return;
+  const u = ramp(t, x0, x1, E.io2);
+  clip.wrap.style.opacity = u;
+  scr.wrap.style.opacity = 1 - ramp(t, x1, x1 + 0.1);
+  if (u > 0) stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
+}
+
 function scenePlay({ stage, beat, line, takes }) {
   const b = beat("play");
   const take = takes["l-play"];
   const ck = take ? takeClock(stage, take) : null;
-  const [l1, l2, l3] = ["play1", "play2", "play3"].map(line);
+  const l1 = line("play1");
+  const dB = demoOf(stage, "bright");
+  const dW = demoOf(stage, "wander");
   stage.scene({
     id: "play",
     t0: b.t0,
@@ -636,68 +680,65 @@ function scenePlay({ stage, beat, line, takes }) {
       const { svg, over } = stack(layer);
       const ptr = pointer(svg);
       const cap = captions(over, stage, ["play1", "play2", "play3"], b.t1 + 0.4);
-      // The cut into the app: once the chord is down and the line is said.
-      const x0 = l1.t1 + 0.1;
-      const x1 = x0 + 0.6;
-      const tTurn = at(stage, b, "play2:Turn");
+      // The drawing, until the instrument is heard: the cut into the app
+      // lands as Bright's demo begins.
+      const x1 = dB.t0;
+      const x0 = x1 - 0.6;
+      const tTurn = dB.t0 + 0.5;
       const tLet = at(stage, b, "play3:Let");
       const bright = ck?.mark("bright") || [V.knobs[0].cx, V.knobs[0].cy];
       const wander = ck?.mark("wander") || [V.wander.cx, V.wander.cy];
       const cam = camera([
         [b.t0 - 0.4, 1.0, 960, 540],
-        [x1, 1.0, 960, 540],
-        [tTurn - 0.2, 1.5, 1300, 560],
-        [tLet - 0.3, 1.5, 1300, 560],
-        [tLet + 0.5, 1.45, 1300, 700],
-        [b.t1 + 1, 1.45, 1300, 700],
+        [l1.t1, 1.0, 960, 540],
+        [dB.t0 - 0.8, 1.45, 1300, 560],
+        [dB.off + 0.6, 1.45, 1300, 560],
+        [tLet - 0.2, 1.4, 1300, 700],
+        [b.t1 + 1, 1.4, 1300, 700],
       ]);
       const chord = new Set([60, 64, 67]);
       return (tl, t) => {
         const c = cam(t);
         scr.cam(...c);
-        // Drawn: the chord on the keys under the first line.
-        const down = t >= at(stage, b, "play1:Then") - 0.3;
-        scr.keys.update(down ? chord : new Set());
-        V.scope.update(t, { amp: down ? 0.5 : 0.05, ox: t * 0.3 });
-        if (clip) {
-          const u = ramp(t, x0, x1, E.io2);
-          clip.wrap.style.opacity = u;
-          scr.wrap.style.opacity = 1 - ramp(t, x1, x1 + 0.1);
-          if (u > 0) stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
-        }
-        // The hand: Bright up 70 px over 1.6 s, then Wander up 95 px.
+        // Drawn: the keys under the first line, and the pointer on its way to Bright.
+        scr.keys.update(t >= l1.t0 && t < l1.t1 + 0.6 ? chord : new Set());
+        V.scope.update(t, { amp: t >= l1.t0 ? 0.35 : 0.05, ox: t * 0.3 });
+        crossToTake(stage, scr, clip, ck, t, c, x0, x1);
+        // The hand: Bright up 70 px over 3 s in its demo, then Wander up 95 px
+        // on "Let it wander".
         const [bx, by] = bright;
         const [wx, wy] = wander;
         const pts = [
-          [tTurn - 0.9, 1700, 1000],
+          [x0 - 1.0, 1700, 1000],
           [tTurn, bx, by],
-          [tTurn + 1.6, bx, by - 70],
-          [tTurn + 2.0, bx, by - 70],
+          [tTurn + 3.0, bx, by - 70],
+          [tTurn + 3.5, bx, by - 70],
           [tLet, wx, wy],
           [tLet + 0.7, wx, wy - 95],
           [tLet + 1.4, wx + 120, wy - 60],
         ];
         const p = glide(t, pts);
         const [px, py] = onFrame(c, p.x, p.y);
-        const held = (t >= tTurn && t < tTurn + 1.6) || (t >= tLet && t < tLet + 0.7);
-        ptr.update({ x: px, y: py, o: fade(t, tTurn - 0.9, tTurn - 0.5, tLet + 1.0, tLet + 1.5), click: held ? 0.1 : null, scale: 1.1 });
+        const held = (t >= tTurn && t < tTurn + 3.0) || (t >= tLet && t < tLet + 0.7);
+        ptr.update({ x: px, y: py, o: fade(t, x0 - 1.0, x0 - 0.5, tLet + 1.0, tLet + 1.5), click: held ? 0.1 : null, scale: 1.1 });
         cap(t);
         void tl;
-        void l2;
-        void l3;
+        void dW;
       };
     },
   });
 }
 
 // ---------------------------------------------------------------------------
-// OFFER — Offer grows B from the sound in hand; then the app: Blend, Take.
+// OFFER — Offer grows B from the sound in hand (drawn, with the take's own
+// faces); then the app: Blend past half and Take, in the offer's demo.
 
 function sceneOffer({ stage, beat, line, takes }) {
   const b = beat("offer");
   const take = takes["l-offer"];
   const ck = take ? takeClock(stage, take) : null;
-  const [o1, o2] = ["offer1", "offer2"].map(line);
+  const o2 = line("offer2");
+  const dO = demoOf(stage, "blend");
   stage.scene({
     id: "offer",
     t0: b.t0,
@@ -715,11 +756,10 @@ function sceneOffer({ stage, beat, line, takes }) {
       const ptr = pointer(svg);
       const cap = captions(over, stage, ["offer1", "offer2"], b.t1 + 0.4);
       const tPress = at(stage, b, "offer1:Press");
-      const tGrows = at(stage, b, "offer1:grows");
-      // The app's own wait, as the take timed it (its cut keeps the last 0.8 s).
-      const ready = take?.meta?.stamps?.ready != null ? ck.filmAt(take.meta.stamps.ready) : tGrows + 0.8;
-      const tBlend = at(stage, b, "offer2:Blend");
-      const tTake = at(stage, b, "offer2:Take");
+      // The app's own wait for B, as the take timed it.
+      const ready = take?.meta?.stamps?.ready != null ? ck.filmAt(take.meta.stamps.ready) : tPress + 4;
+      const tBlend = dO.t0 + 0.4;
+      const tTake = dO.t0 + 4.2;
       const x0 = o2.t0 - 0.7;
       const x1 = o2.t0 - 0.1;
       const offerPad = ck?.mark("offer") || V.pads.offer.pos;
@@ -728,28 +768,23 @@ function sceneOffer({ stage, beat, line, takes }) {
         [b.t0 - 0.6, 1.0, 960, 540],
         [tPress - 0.3, 1.28, 1100, 640],
         [x1, 1.28, 1100, 640],
-        [tBlend + 0.2, 1.32, 1080, 760],
-        [b.t1 + 1, 1.32, 1080, 760],
+        [tBlend - 0.2, 1.32, 1080, 760],
+        [tTake + 0.2, 1.32, 1080, 760],
+        [tTake + 1.2, 1.0, 960, 540],
+        [b.t1 + 1, 1.0, 960, 540],
       ]);
-      const chord = new Set([60, 64, 67]);
       return (tl, t) => {
         const c = cam(t);
         scr.cam(...c);
-        scr.keys.update(chord);
-        V.scope.update(t, { amp: 0.5, ox: t * 0.3 });
+        V.scope.update(t, { amp: 0.05, ox: t * 0.3 });
         // Drawn: Offer pressed, "growing an offer…", then B.
         V.pads.offer.set({ down: fade(t, tPress, tPress + 0.08, tPress + 0.25, tPress + 0.45) });
         V.moved(t >= tPress + 0.2);
         growing.setAttribute("opacity", fade(t, tPress + 0.2, tPress + 0.4, ready - 0.2, ready));
         V.offered(ramp(t, ready - 0.1, ready + 0.6, E.lin));
         V.blend(0);
-        if (clip) {
-          const u = ramp(t, x0, x1, E.io2);
-          clip.wrap.style.opacity = u;
-          scr.wrap.style.opacity = 1 - ramp(t, x1, x1 + 0.1);
-          if (u > 0) stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
-        }
-        // The hand: Offer, then Blend from home toward B, then Take.
+        crossToTake(stage, scr, clip, ck, t, c, x0, x1);
+        // The hand: Offer, then (in the demo) Blend from home past half, then Take.
         const bl = ck?.meta?.rects?.blend;
         const bx0 = bl ? bl.x + bl.w / 2 - 140 : 545;
         const by = bl ? bl.y + bl.h / 2 : 948;
@@ -757,28 +792,29 @@ function sceneOffer({ stage, beat, line, takes }) {
           [tPress - 0.9, 1700, 1050],
           [tPress, ...offerPad],
           [tPress + 0.6, ...offerPad],
-          [tBlend - 0.2, bx0, by],
+          [tBlend - 0.5, bx0, by],
           [tBlend, bx0, by],
-          [tBlend + 0.8, bx0 + 175, by],
+          [tBlend + 1.4, bx0 + 215, by],
+          [tTake - 0.6, bx0 + 215, by],
           [tTake, ...takePad],
           [tTake + 1.2, takePad[0] + 80, takePad[1] + 120],
         ];
         const p = glide(t, pts);
         const [px, py] = onFrame(c, p.x, p.y);
         const ckAt = [tPress, tTake].find((x) => t >= x && t < x + 0.5);
-        const held = t >= tBlend && t < tBlend + 0.8;
+        const held = t >= tBlend && t < tBlend + 1.4;
         ptr.update({ x: px, y: py, o: fade(t, tPress - 0.9, tPress - 0.5, tTake + 0.8, tTake + 1.2), click: ckAt != null ? (t - ckAt) / 0.5 : held ? 0.1 : null, scale: 1.1 });
         cap(t);
         void tl;
-        void o1;
       };
     },
   });
 }
 
 // ---------------------------------------------------------------------------
-// DEPTH — the sound in PATCH, its cutoff turned from PERFORM; then the model
-// that bets on every choice and keeps score.
+// DEPTH — the app itself, seen and not heard: in to PATCH (the face carried
+// from PERFORM's well to OUT), the cutoff turned from PERFORM; then out to
+// TASTE and LEARNING, where its forecasts are the session's own.
 
 function sceneDepth({ stage, beat, line, takes }) {
   const b = beat("depth");
@@ -796,99 +832,60 @@ function sceneDepth({ stage, beat, line, takes }) {
     fout: 0.6,
     build(layer) {
       const ch = take?.chrome || {};
-      const { scr, clip } = appWindow(layer, take, { level: "patch", taught: Number(ch.taught || 0), bankRows: ch.bank || null, tabs: ch.tabs || null });
-      const V = patchView(scr, { faceSrc: take?.logs?.face || null });
-      const { under, svg, over } = stack(layer);
+      // Without a take, PATCH drawn (a preview); with one, the app throughout.
+      const hasClip = !!(take && take.frames);
+      const { scr, clip } = appWindow(layer, take, { level: hasClip ? "perform" : "patch", taught: Number(ch.taught || 0), bankRows: ch.bank || null, tabs: ch.tabs || null });
+      const V = clip ? performView(scr, { sound: soundOf(take), faceA: take?.logs?.face || null }) : patchView(scr, { teach: ch.teach || null });
+      if (clip) clip.wrap.style.opacity = 1;
+      const { svg, over } = stack(layer);
+      const ptr = pointer(svg);
+      const tOpen = at(stage, b, "depth1:Open");
       const tEvery = at(stage, b, "depth1:Every");
       const tWatch = at(stage, b, "depth1:watch");
-      const x0 = tEvery - 0.6;
-      const x1 = tEvery;
-      // Where the cutoff knob is: the filter plate's first knob.
-      const fp = V.plates[1].knobs[0];
+      const tUnder = at(stage, b, "depth2:Underneath");
+      const tKeeps = at(stage, b, "depth2:keeps") - 0.8;
+      const rail = (lv) => ck?.mark(lv);
+      // The cutoff knob on the filter plate, as the take measured the plate.
+      const fr = take?.meta?.rects?.filter;
+      const cutoff = fr ? [fr.x + 39, fr.y + 58] : V.plates ? [V.plates[1].knobs[0].cx, V.plates[1].knobs[0].cy] : [705, 508];
       const cam = camera([
         [b.t0 - 0.6, 1.0, 960, 540],
-        [x0, 1.12, 1000, 560],
-        [tWatch - 0.6, 1.9, 760, 520],
-        [l2.t0 - 0.5, 1.9, 760, 520],
+        [tEvery - 0.4, 1.0, 960, 540],
+        [tEvery + 0.4, 1.7, 780, 520],
+        [tUnder - 0.7, 1.7, 780, 520],
+        [tUnder - 0.1, 1.0, 960, 540],
+        [tKeeps + 1.4, 1.0, 960, 540],
+        [tKeeps + 2.4, 1.35, 1450, 800],
+        [b.t1 + 1, 1.35, 1450, 800],
       ]);
       const tag = callout(over, svg, { x: 0, y: 0, tx: 0, ty: 0, text: "◂ Bright, in PERFORM", color: "b" });
-      const cap1 = captions(over, stage, ["depth1"], l2.t0 - 0.2);
-      // The model: its bet before you answer, and its forecasts kept in public
-      // (LEARNING's ITS FORECASTS).
-      const fc = el("div", { class: "layer" }, over);
-      const fsvg = svgLayer(fc);
-      const panel = (x, y, w, h, title) => {
-        const d = place(el("div", {}, under), { x, y, w, h });
-        Object.assign(d.style, { border: `1px solid ${ink("--hairline")}`, borderRadius: "var(--r2)", background: ink("--panel"), boxShadow: `0 30px 80px ${inkA("--black", 0.6)}` });
-        say(fsvg, x + 24, y + 42, title, { size: 21, track: 0.18, fill: ink("--silk-dim") });
-        return d;
-      };
-      const pA = panel(150, 250, 720, 470, "EVOLVE · before you pick");
-      const pB = panel(950, 250, 820, 470, "LEARNING · its forecasts");
-      // The bet: the pair's two faces, and the model leaning to one of them.
-      const fA = face(fc, { x: 210, y: 300, w: 220, h: 300, name: PAIRS[1][0], kind: "evolve" });
-      const fB = face(fc, { x: 590, y: 300, w: 220, h: 300, name: PAIRS[1][1], kind: "evolve" });
-      say(fsvg, 320, 640, PAIRS[1][0], { size: 24, caps: false, anchor: "middle" });
-      say(fsvg, 700, 640, PAIRS[1][1], { size: 24, caps: false, anchor: "middle" });
-      el("rect", { x: 210, y: 670, width: 600, height: 8, rx: 4, fill: ink("--gauge-track") }, fsvg);
-      const bet = el("rect", { x: 510, y: 670, width: 0, height: 8, rx: 4, fill: ink("--phos-b") }, fsvg);
-      bet.style.filter = GLOW.b;
-      el("line", { x1: 510, y1: 662, x2: 510, y2: 686, stroke: ink("--silk-dim"), "stroke-width": 2 }, fsvg);
-      const betT = say(fsvg, 810, 706, "it bets", { size: 22, mono: true, anchor: "end", fill: ink("--phos-b") });
-      // The forecasts against what you picked: on the line is honest.
-      const rx0 = 1010;
-      const ry0 = 300;
-      const rw = 700;
-      const rh = 330;
-      el("line", { x1: rx0, y1: ry0 + rh, x2: rx0 + rw, y2: ry0 + rh, stroke: ink("--hairline"), "stroke-width": 2 }, fsvg);
-      const diag = el("line", { x1: rx0, y1: ry0 + rh, x2: rx0 + rw, y2: ry0, stroke: ink("--phos-b-deep"), "stroke-width": 2, "stroke-dasharray": "6 8" }, fsvg);
-      [["0%", 0], ["50%", 0.5], ["100% for the one picked", 1]].forEach(([s, u]) => say(fsvg, rx0 + u * rw, ry0 + rh + 34, s, { size: 20, mono: true, anchor: u === 0 ? "start" : u === 1 ? "end" : "middle", fill: ink("--silk-dim") }));
-      // Drawn for the film: the shape a fitted model's forecasts take, not a session's.
-      const pts = [[0.14, 0.2, 7], [0.3, 0.26, 9], [0.47, 0.52, 13], [0.62, 0.57, 10], [0.78, 0.83, 8], [0.9, 0.86, 6]];
-      const dots = pts.map(([fx, fy, r]) => {
-        const c = el("circle", { cx: rx0 + fx * rw, cy: ry0 + rh - fy * rh, r, fill: ink("--phos-b"), opacity: 0 }, fsvg);
-        c.style.filter = GLOW.b;
-        return c;
-      });
-      say(fsvg, rx0 + rw, ry0 + 6, "an illustration", { size: 18, mono: true, anchor: "end", fill: ink("--silk-mute") });
-      const cap2 = captions(over, stage, ["depth2"], b.t1 + 0.5);
+      const cap = captions(over, stage, ["depth1", "depth2"], b.t1 + 0.5);
       return (tl, t) => {
         const c = cam(t);
         scr.cam(...c);
-        scr.keys.update(t >= l1.t0 && t < l2.t0 ? new Set([48, 55, 60, 64]) : new Set());
-        if (clip && ramp(t, x0, x1, E.io2) > 0) stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
-        // The window gives way to the model at the second line.
-        const away = ramp(t, l2.t0 - 0.5, l2.t0 + 0.2, E.io2);
-        for (const w of [scr.wrap, clip?.wrap].filter(Boolean)) {
-          w.style.transform = `scale(${lerp(1, 0.94, away)})`;
-          w.style.filter = away > 0 ? `blur(${(6 * away).toFixed(1)}px)` : "none";
+        if (clip) {
+          scr.wrap.style.opacity = 0;
+          stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
         }
-        const winO = 1 - 0.85 * away;
-        const inClip = clip ? ramp(t, x0, x1, E.io2) : 0;
-        scr.wrap.style.opacity = (clip ? 1 - ramp(t, x1, x1 + 0.1) : 1) * winO;
-        if (clip) clip.wrap.style.opacity = inClip * winO;
+        // The hand on the levels' cross: in to PATCH, then out to TASTE and LEARNING.
+        const stops = [[tOpen, rail("patch")], [tUnder, rail("taste")], [tKeeps, rail("learning")]].filter(([, p]) => p);
+        if (stops.length) {
+          const pts = [[tOpen - 0.9, 1860, 900]];
+          for (const [tt, p] of stops) pts.push([tt - 0.05, ...p], [tt + 0.6, ...p]);
+          pts.push([tKeeps + 1.4, 1880, 960]);
+          const p = glide(t, pts);
+          const [px, py] = onFrame(c, p.x, p.y);
+          const ckAt = stops.map(([tt]) => tt).find((x) => t >= x && t < x + 0.5);
+          ptr.update({ x: px, y: py, o: fade(t, tOpen - 0.9, tOpen - 0.5, tKeeps + 0.9, tKeeps + 1.4) * (1 - ramp(t, tOpen + 0.7, tOpen + 1.0) + ramp(t, tUnder - 0.8, tUnder - 0.4)), click: ckAt != null ? (t - ckAt) / 0.5 : null, scale: 1.1 });
+        } else ptr.update({ x: 0, y: 0, o: 0 });
         // PERFORM's hand on the cutoff, named.
-        const [kx, ky] = onFrame(c, fp.cx, fp.cy);
+        const [kx, ky] = onFrame(c, ...cutoff);
         tag.move(kx + 22 * c[0], ky - 6, kx + 120, ky - 120);
-        tag.update(ramp(t, tWatch - 0.2, tWatch + 0.6, E.io2) * (1 - ramp(t, l2.t0 - 0.6, l2.t0 - 0.2)));
-        // The model.
-        const fin = ramp(t, l2.t0 - 0.1, l2.t0 + 0.5);
-        fc.style.opacity = fin * (1 - ramp(t, b.t1 + 0.2, b.t1 + 0.6));
-        for (const p of [pA, pB]) p.style.opacity = fc.style.opacity;
-        const g = ramp(t, l2.t0 + 0.6, l2.t0 + 1.8, E.io3);
-        bet.setAttribute("width", (230 * g).toFixed(1));
-        betT.textContent = g > 0.5 ? `it bets on ${PAIRS[1][1]}` : "it bets";
-        fA.wrap.style.opacity = 0.5;
-        fB.wrap.style.opacity = 0.6 + 0.4 * g;
-        diag.setAttribute("opacity", ramp(t, l2.t0 + 2.2, l2.t0 + 2.7));
-        dots.forEach((d, i) => {
-          const u = ramp(t, l2.t0 + 2.6 + i * 0.3, l2.t0 + 3.0 + i * 0.3, E.outBack);
-          d.setAttribute("opacity", clamp(u));
-          d.setAttribute("r", pts[i][2] * clamp(u, 0, 1.3));
-        });
-        cap1(t);
-        cap2(t);
+        tag.update(ramp(t, tWatch - 0.2, tWatch + 0.6, E.io2) * (1 - ramp(t, tUnder - 0.8, tUnder - 0.4)));
+        cap(t);
         void tl;
+        void l1;
+        void l2;
       };
     },
   });
