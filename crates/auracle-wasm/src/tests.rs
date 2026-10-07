@@ -365,6 +365,62 @@ fn status_counts_picks_stars_and_cuts_apart() {
     );
 }
 
+/// The status names the standardizer the session's φ lives under
+/// (`std_rev`): nothing before the pool is filled, the fingerprint of its
+/// audio coordinates after; a pick leaves it, and so does a fit over the
+/// same sounds, while a fit after a new sound joined the pool moves it; the
+/// same pool and log give the same one. PERFORM keys a kept wiring's staleness
+/// to it, so a pick no longer makes every kept wiring stale (#290). The
+/// fingerprint is pinned: it is stored with kept wirings.
+#[test]
+fn the_status_names_the_standardizer_a_fit_moves_and_a_pick_does_not() {
+    let rev = |e: &WasmEngine| -> String {
+        serde_json::from_str::<serde_json::Value>(&e.status()).unwrap()["std_rev"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let n = auracle_features::AudioFeatures::NAMES.len();
+    let d = auracle_features::Features::phi_names().len();
+    let unit = auracle_taste::Standardizer {
+        mean: vec![0.0; d],
+        std: vec![1.0; d],
+    };
+    assert_eq!(standardizer_rev(&unit), "0f1d499deb612405");
+    let mut wider = unit.clone();
+    wider.std[n - 1] = 2.0;
+    assert_ne!(standardizer_rev(&wider), standardizer_rev(&unit));
+    let mut past_audio = unit.clone();
+    past_audio.std[n] = 2.0;
+    assert_eq!(
+        standardizer_rev(&past_audio),
+        standardizer_rev(&unit),
+        "only the audio coordinates"
+    );
+
+    let mut engine = WasmEngine::new(3, 6);
+    assert_eq!(rev(&engine), "");
+    while engine.fill_step(3) > 0 {}
+    let filled = rev(&engine);
+    assert_eq!(
+        filled,
+        standardizer_rev(engine.engine.standardizer().unwrap())
+    );
+    let mut twin = WasmEngine::new(3, 6);
+    while twin.fill_step(3) > 0 {}
+    assert_eq!(rev(&twin), filled);
+    let ids = pool_ids(&engine);
+    for i in 0..4 {
+        assert!(engine.record_duel(ids[i], ids[i + 1], i % 2 == 0));
+    }
+    assert_eq!(rev(&engine), filled, "a pick leaves the scale");
+    engine.fit();
+    assert_eq!(rev(&engine), filled, "a fit over the same sounds leaves it");
+    assert!(engine.load_preset(0) > 0);
+    engine.fit();
+    assert_ne!(rev(&engine), filled, "a fit over a new sound moves it");
+}
+
 /// A taught engine with a unit-test budget. The shipped refinement budget
 /// is a minute and more of walks per generation natively, which a unit
 /// test cannot pay; the machinery under test does not depend on it.
@@ -3686,4 +3742,89 @@ fn a_clip_is_said_for_what_it_is() {
         status["note"].as_str().unwrap().contains("didn't load"),
         "{status}"
     );
+}
+
+/// PERFORM's first wiring of a tree crosses as `{knobs, predicted, shape}`
+/// (#290): the tree's live knobs as `perform_knobs` gives them, its shape
+/// (`shape_of`, what a relative must share to lend its wiring), and the
+/// wiring the engine predicts from the knob table, in `perform_wire`'s
+/// shape and for the controls asked for, or `null`. No table until one is
+/// handed over: a file that is not JSON, holds no `knobs`, or a table over
+/// other φ names is refused and predicts nothing; the shipped file's table
+/// is taken. A tree that does not parse answers `null`.
+#[test]
+fn the_first_wiring_crosses_with_its_shape_and_knobs() {
+    use auracle_session::perform::{palette_controls, CONTROLS};
+    let mut engine = WasmEngine::new(3, 6);
+    while engine.fill_step(3) > 0 {}
+    let id = pool_ids(&engine)[0];
+    let json = engine.tree_json_of(id);
+    let tree: PatchTree = serde_json::from_str(&json).unwrap();
+    let first = |e: &WasmEngine, controls: Option<&str>| -> serde_json::Value {
+        serde_json::from_str(&e.perform_first(&json, controls.map(String::from))).unwrap()
+    };
+    let none = first(&engine, None);
+    assert_eq!(none["shape"], auracle_session::predict::shape_of(&tree));
+    assert_eq!(
+        none["knobs"],
+        serde_json::from_str::<serde_json::Value>(&engine.perform_knobs(&json)).unwrap()
+    );
+    assert!(none["knobs"].as_array().is_some_and(|k| !k.is_empty()));
+    assert_eq!(none["predicted"], serde_json::Value::Null);
+    assert_eq!(engine.perform_first("not a tree", None), "null");
+
+    let names: Vec<&str> = auracle_features::AudioFeatures::NAMES.to_vec();
+    let site = none["knobs"][0][0]
+        .as_str()
+        .unwrap()
+        .rsplit('#')
+        .next()
+        .unwrap()
+        .to_string();
+    let col: Vec<f64> = names
+        .iter()
+        .map(|n| {
+            if n.starts_with("centroid_mean") || n.starts_with("rolloff_mean") {
+                1.0
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let file = |names: &[&str]| {
+        serde_json::json!({ "knobs": { "names": names, "cols": { site.as_str(): col } } })
+            .to_string()
+    };
+    for refused in ["not json".to_string(), "{}".into(), file(&names[1..])] {
+        assert!(!engine.perform_table_set(&refused), "{refused}");
+        assert_eq!(first(&engine, None)["predicted"], serde_json::Value::Null);
+    }
+    assert!(engine.perform_table_set(&file(&names)));
+    let told = first(&engine, None);
+    let p = &told["predicted"];
+    let table: auracle_session::predict::KnobTable = serde_json::from_value(
+        serde_json::from_str::<serde_json::Value>(&file(&names)).unwrap()["knobs"].clone(),
+    )
+    .unwrap();
+    let (jac, wiring) = engine
+        .engine
+        .wire_predicted(&tree, &CONTROLS, &table)
+        .expect("predicted");
+    assert_eq!(p["addrs"], serde_json::json!(jac.addrs));
+    assert_eq!(p["values"], serde_json::json!(jac.values));
+    assert_eq!(p["z"], serde_json::json!(jac.z));
+    assert_eq!(p["wiring"], serde_json::to_value(&wiring).unwrap());
+    let asked = first(&engine, Some("[16, 6]"));
+    let (_, bite) = engine
+        .engine
+        .wire_predicted(&tree, &palette_controls(&[16, 6]), &table)
+        .expect("predicted");
+    assert_eq!(
+        asked["predicted"]["wiring"],
+        serde_json::to_value(&bite).unwrap()
+    );
+    assert_eq!(asked["predicted"]["wiring"][0]["index"], 16);
+    // A refused file takes the table away again.
+    assert!(!engine.perform_table_set("{}"));
+    assert_eq!(first(&engine, None)["predicted"], serde_json::Value::Null);
 }

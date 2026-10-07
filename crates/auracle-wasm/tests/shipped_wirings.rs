@@ -9,7 +9,10 @@
 //!
 //! - `shipped_preset_wirings_are_current` compares fingerprints of the presets
 //!   and of the measurement's named inputs (phrase, render namespace, feature
-//!   names, controls, PERFORM's constants). It renders nothing.
+//!   names, controls, PERFORM's constants), each preset's shape (what a knob
+//!   edit of it must share to borrow its wiring), and that the knob table a
+//!   first wiring is predicted from (#290) is over today's audio φ. It
+//!   renders nothing.
 //! - `shipped_preset_wirings_measure_the_same_today` catches what no
 //!   fingerprint sees (feature maths, loudness normalization, vetting,
 //!   compiler, DSP, the pool the standardizer is fitted to, PERFORM's solver)
@@ -71,7 +74,26 @@ fn shipped_preset_wirings_are_current() {
             "{}: tree text",
             p.name
         );
+        let tree: auracle_grammar::PatchTree =
+            serde_json::from_str(row["tree"].as_str().unwrap_or("")).expect("a tree");
+        assert_eq!(
+            row["shape"].as_str(),
+            Some(auracle_session::predict::shape_of(&tree).as_str()),
+            "{}'s shape is not today's — {REGENERATE}",
+            p.name
+        );
     }
+    let table: auracle_session::predict::KnobTable =
+        serde_json::from_value(file["knobs"].clone()).expect("a knob table");
+    let names: Vec<&str> = auracle_features::AudioFeatures::NAMES.to_vec();
+    assert_eq!(
+        table.names, names,
+        "the knob table is over other φ names — {REGENERATE}"
+    );
+    assert!(
+        table.cols.contains_key("cut"),
+        "the knob table knows no cutoff — {REGENERATE}"
+    );
 }
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
