@@ -34,8 +34,8 @@
 // `referenceMs` is ADR-025's estimate, not yet a measurement on the Air: a
 // phrase render about 240 ms on an M3 Max and 1 to 1.2 s on the Air. On the
 // Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
-// profile.spec.js` prints the calibration render there ("one render … here"),
-// which is the figure to set.
+// reference_profile.spec.js` prints the calibration render there ("one
+// render of Solo Flight … ms here"), which is the figure to set.
 const fs = require("node:fs");
 const path = require("node:path");
 const performBudget = require("./perform_budget");
@@ -168,7 +168,7 @@ function label(c) {
   return `on ${c.name} in ${c.browser}, ×${c.rate}`;
 }
 
-// ---- What the profile spec measures (profile.spec.js) ----
+// ---- What the profile spec measures (reference_profile.spec.js) ----
 
 /** A spec's own code in the engine worker (`app.boot`'s `workerPrefix`):
  *  `__profile_render` renders a preset there `runs` times after one to warm
