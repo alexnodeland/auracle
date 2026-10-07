@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -76,4 +76,41 @@ test("a wiring's key: the patch, then the clip for a sound that listens, then th
   assert.equal(wireKeyOf(quiet, [16], "c1"), `${JSON.stringify({ kind: "Vco" })}#controls=16`);
   const composed = wireKeyOf(listening, [16], "c1");
   assert.equal(wireKeyOf(composed, undefined, "c1"), composed);
+});
+
+// A kept wiring: measured on a tree of shape `shape`, for the panel set `set`
+// ("" is the six), turning `addrs` and measured at `values`.
+const kept = (shape, set, addrs, values, tag) => ({ shape, set, data: { addrs, values, z: [tag], wiring: [wiring("Bright", addrs[0], 0.5)] } });
+
+test("a patch nobody measured borrows the youngest relative of its shape", () => {
+  // This tree: shape s1, its own knob values.
+  const first = { shape: "s1", knobs: [["f#cut", 0.7], ["amp#attack", 0.1]] };
+  const older = kept("s1", "", ["f#cut", "amp#attack"], [0.2, 0.2], "older");
+  const younger = kept("s1", "", ["f#cut", "amp#attack"], [0.4, 0.4], "younger");
+  const other = kept("s2", "", ["f#cut", "amp#attack"], [0.5, 0.5], "other");
+  const data = relativeOf(first, [older, younger, other], "");
+  // The youngest of its shape, centred on this tree's own values.
+  assert.deepEqual(data.z, ["younger"]);
+  assert.deepEqual(data.addrs, ["f#cut", "amp#attack"]);
+  assert.deepEqual(data.values, [0.7, 0.1]);
+  assert.deepEqual(data.wiring, younger.data.wiring);
+  // The relative's own values are left as they were.
+  assert.deepEqual(younger.data.values, [0.4, 0.4]);
+});
+
+test("a relative of another shape, another set, or a knob this tree lacks lends nothing", () => {
+  const first = { shape: "s1", knobs: [["f#cut", 0.7]] };
+  assert.equal(relativeOf(first, [kept("s2", "", ["f#cut"], [0.2], "x")], ""), null);
+  assert.equal(relativeOf(first, [kept("s1", "6,7", ["f#cut"], [0.2], "x")], ""), null);
+  assert.deepEqual(relativeOf(first, [kept("s1", "6,7", ["f#cut"], [0.2], "x")], "6,7").values, [0.7]);
+  // A kept entry from before sets were kept with it is the six's.
+  const unset = kept("s1", undefined, ["f#cut"], [0.2], "x");
+  assert.deepEqual(relativeOf(first, [unset], "").values, [0.7]);
+  assert.equal(relativeOf(first, [kept("s1", "", ["f#cut", "f#res"], [0.2, 0.3], "x")], ""), null);
+  // Without the engine's word on this tree, or its shape: nothing.
+  assert.equal(relativeOf(null, [kept("s1", "", ["f#cut"], [0.2], "x")], ""), null);
+  assert.equal(relativeOf({ knobs: [["f#cut", 0.7]] }, [kept("s1", "", ["f#cut"], [0.2], "x")], ""), null);
+  assert.equal(relativeOf({ shape: "s1" }, [kept("s1", "", ["f#cut"], [0.2], "x")], ""), null);
+  // A kept entry with no data is passed over.
+  assert.deepEqual(relativeOf(first, [kept("s1", "", ["f#cut"], [0.2], "x"), { shape: "s1", set: "" }], "").values, [0.7]);
 });

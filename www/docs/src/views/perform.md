@@ -65,9 +65,12 @@ On the right, what you turn:
 
 - **CONTROLS**, with **ARRANGE** (see [the palette](#the-palette)) and
   **HOW IT WORKS** (see [How it works](#how-it-works)), then a status line
-  saying what PERFORM is doing with the sound: *listening to this sound…*
-  while it measures a new one, then *4 of 6 controls reach this patch*, with
-  *re-checking* after it while it measures again in the background, or
+  saying what PERFORM is doing with the sound: *4 of 6 controls reach this
+  patch*, with *listening…* after it while a sound you haven't played is
+  measured behind controls that already turn (see
+  [a sound you haven't played](#a-sound-you-havent-played)), *listening to
+  this sound…* when there is nothing to start it on yet, *re-checking* while
+  it measures again in the background, or
   *listening to Bite…* while it measures a control you just placed. If the
   engine fails partway, it says so instead: *couldn’t measure this patch*,
   or, after the count, *couldn’t re-check this patch* when the controls
@@ -122,7 +125,7 @@ A small amber dot on a control’s outer ring shows where the sound measures on
 that axis, compared with the sounds in your session. A sound that is already
 very bright has its BRIGHT dot near the right stop.
 
-A named control is in one of four states, each with its own look:
+A named control is in one of five states, each with its own look:
 
 | Look | Line under it | What it means |
 |---|---|---|
@@ -130,6 +133,23 @@ A named control is in one of four states, each with its own look:
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
 | Amber, a dashed ring | *turn to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |
+| A thin, dim travel, the pointer lit | the knobs it turns | Turning before this sound is measured, on a start (see [a sound you haven't played](#a-sound-you-havent-played)) |
+
+#### A sound you haven't played
+
+A sound plays its controls the moment it is in PERFORM, measured or not.
+Measuring a sound takes a render for every knob and a few more for each
+control, seconds on a fast computer and a minute or more on a slow one, so a
+sound you haven't played starts on a wiring PERFORM has without rendering: a
+sound with the same modules that it has measured (the one a sound was bred
+from, a preset you changed only by turning its knobs), or else what each kind
+of knob usually does to the sound, learned from measuring the presets. Its
+controls turn at once, their travel drawn thin and dim, and the status line
+says *listening…* while the sound's own measurement runs. When it lands the
+controls settle on what the sound really does, without moving what you hear
+or where any control sits. The start is right more often than not, and less
+often for **Motion** and **Body**: a control that turns the wrong way on a
+start turns the right way once it settles.
 
 ### The palette
 

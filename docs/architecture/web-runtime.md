@@ -1344,6 +1344,25 @@ scale, or a new build whose DSP or featurizer measures differently) is played
 at once and re-measured. It used to be stamped with the observation count, so
 every pick made every kept wiring stale (#290).
 
+A sound nobody has measured plays at once too (#290). With a tree on its way
+to the voices (`bench_opening`, `tree_json`) the worker sends `first`, the
+engine's `perform_first`: the tree's shape (`shape_of`, its trace without the
+continuous choices), its live knobs, and a wiring predicted from the knob
+table (`predict::KnobTable`, the `knobs` of `perform-wirings.json`, which the
+worker hands the engine at init with `perform_table_set`) for the controls
+the last `perform_wire` named. Main hands it to PERFORM (`firstKnown`), and
+`wire` plays, in order: the wiring kept for this tree, one kept for another
+set of it (`borrowWiring`), one kept for a relative of the same shape
+(`relativeOf`: a child bred by knobs alone, a preset or a sound edited
+without changing its structure), centred on this tree's knob values, and the
+predicted one. A borrowed or predicted wiring is a guess (`state.guess`): its
+controls turn, their travel wears the not-measured look (thin and dim, never
+the dashed amber of a search control), the status line says *listening…*,
+and the measurement is asked for in `soon`. It lands through
+`applyRechecked`'s rebase whatever knobs each control turns, so nothing you
+hear moves and no control re-centres, and it waits for the hand as a
+re-check does.
+
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
 binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without

@@ -390,7 +390,31 @@ wired by a table that had seen it.
 | Wired from the best leave-one-out per-site table | 0.23 | 0.16 | 0.09 |
 
 The same knob does different things in different patches. That is the reason
-the grammar exists, and it is the reason the table is not used.
+the grammar exists, and it is the reason the table is never the last word.
+
+It is the first one, though (#290). A first measurement is 8 to 71 renders, a
+minute and more on a slow computer, and a sound nobody has measured plays its
+controls at once on a wiring that costs none: one kept for a sound of the same
+shape (the same modules and selectors, so the same knobs; `predict::shape_of`)
+if one was measured, and otherwise one predicted from a table of how each
+kind of module's knob moves φ (`predict::KnobTable`: the median measured
+column per module kind, site, modulation target and third of the range,
+backing off to coarser keys), run through the same solve. The measurement
+then lands on it by a rebase, so nothing heard moves. `make perform-wirings`
+learns the table from the presets' and the standard pool's Jacobians.
+Judged against each sound's own Jacobian, held out
+(`examples/wire_predict.rs`, 240 pool sounds from six sessions):
+
+| Table learned from | Wires | Turns the named way | Covers the measured reach |
+|---|---|---|---|
+| The presets | 767 | 70% | 53% |
+| The presets and one session's pool (shipped) | 688 | 76% | 56% |
+| The presets and five sessions' pools | 579 | 79% | 50% |
+
+By control (the shipped table): Space 99%, Bright and Snap 79%, Motion 65%,
+Body 51%. A purity row like the one above would read lower: "the named way" is
+the sign of the movement along the control's own direction, not how much else
+moves with it.
 
 **Grit and Space** measure a median purity of about zero by knobs alone on most
 presets, because most patches contain no drive or reverb to turn. They are the

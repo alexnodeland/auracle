@@ -2631,6 +2631,8 @@ worker.onmessage = (e) => {
       }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
+      // What PERFORM can play this tree on before it is measured (#290).
+      if (perform && m.first) perform.firstKnown(m.json, m.first);
       setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
         // The bench speaking early: the worker posts the edited tree the
@@ -2655,6 +2657,7 @@ worker.onmessage = (e) => {
       if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
       if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
       if (earlyOpen && earlyOpen.id === m.id) break; // voiced from memory already
+      if (perform && m.first) perform.firstKnown(m.json, m.first);
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }

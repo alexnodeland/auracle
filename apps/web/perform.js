@@ -183,6 +183,23 @@ function keptSum(addr, wire, values) {
   });
   return v;
 }
+// What a patch nobody has measured can borrow from a measured relative
+// (#290): of `entries` (kept wirings, oldest first, each with the `shape` and
+// panel `set` it was measured under), the youngest with the same shape as
+// `first` (the engine's `perform_first` for the tree: its `shape` and live
+// `knobs`) and the same set (`want`, `setKey`'s), so the same knobs at the
+// same addresses: a bred child whose walk moved only knobs, the source of a
+// knob edit, a preset edited. Its wiring, centred on this tree's own knob
+// values; null when none, or when a knob it turns is not this tree's. Pure,
+// so the rule is tested away from the page (tests/perform.test.mjs).
+export function relativeOf(first, entries, want) {
+  if (!first || !first.shape) return null;
+  let found = null;
+  for (const v of entries) if (v && v.data && v.shape === first.shape && (v.set || "") === want) found = v;
+  const at = new Map(first.knobs || []);
+  if (!found || !found.data.addrs.every((a) => at.has(a))) return null;
+  return { ...found.data, values: found.data.addrs.map((a) => at.get(a)) };
+}
 // How far a search control has to be turned before letting go asks for
 // something (a graft or an offer). Short of it, it springs back and asks
 // nothing; the dial draws a notch there while it is being turned.
@@ -283,6 +300,11 @@ export function createPerform(host) {
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
     playableAt: 0, // when the current wiring landed (see growSpare)
+    // The wiring playing is a guess until this patch's measurement lands
+    // (#290): "borrowed" from a measured relative of the same shape, or
+    // "predicted" from the knob table; null once measured. Drawn as a guess
+    // (ADR-012), and the measurement lands on it by a rebase.
+    guess: null,
     lastTouch: 0,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
@@ -646,6 +668,8 @@ export function createPerform(host) {
       k.wrap.classList.toggle("waiting", waiting);
       if (k.wait.textContent !== (waiting ? "listening…" : "")) k.wait.textContent = waiting ? "listening…" : "";
       k.wrap.classList.toggle("search", search);
+      // A guess until this patch's measurement lands (#290, ADR-012).
+      k.wrap.classList.toggle("guess", !!state.guess && turns(w));
       k.wrap.classList.toggle("unwired", pending);
       k.wrap.classList.toggle("pending", pending);
       const [lo, hi] = rangeOf(w);
@@ -1629,7 +1653,7 @@ export function createPerform(host) {
         const f = r.ok ? await r.json() : null;
         for (const p of (f && f.presets) || []) {
           if (!p || typeof p.tree !== "string" || !p.data) continue;
-          shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true });
+          shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true, shape: p.shape, set: "" });
           shippedByName.set(p.name, p.tree);
         }
       })();
@@ -1689,7 +1713,7 @@ export function createPerform(host) {
     const key = wireKey(json, set);
     wireCache.delete(key);
     while (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
-    wireCache.set(key, { data: structuredClone(data), rev });
+    wireCache.set(key, { data: structuredClone(data), rev, shape: firsts.get(json)?.shape, set: setKey(set) });
     clearTimeout(wireSaveTimer);
     wireSaveTimer = setTimeout(writeWirings, 1500);
   }
@@ -1703,6 +1727,29 @@ export function createPerform(host) {
     if (document.visibilityState === "hidden") flushWirings();
   });
 
+  // What the engine said each tree could play on before it is measured
+  // (#290; the worker's `performFirst`, riding with the tree to the voices):
+  // its shape, its live knobs and a wiring predicted from the knob table, by
+  // tree text, the last few.
+  const firsts = new Map();
+  function firstKnown(json, first) {
+    firsts.delete(json);
+    firsts.set(json, first);
+    while (firsts.size > 8) firsts.delete(firsts.keys().next().value);
+  }
+  // A wiring for a patch nobody has measured, from a measured relative of
+  // the same shape (`relativeOf`), the player's cache over the shipped file:
+  // a guess until its own measurement lands.
+  function relativeWiring(json, set) {
+    const data = relativeOf(firsts.get(json), [...shipped.values(), ...wireCache.values()], setKey(set));
+    return data ? { data, rev: "", guess: "borrowed" } : null;
+  }
+  // Else the wiring the engine predicted from the knob table.
+  function predictedWiring(json) {
+    const f = firsts.get(json);
+    return f && f.predicted ? { data: f.predicted, rev: "", guess: "predicted" } : null;
+  }
+
   function wire() {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
@@ -1712,7 +1759,9 @@ export function createPerform(host) {
     // set measured of this patch, control by control (`borrowWiring`): the
     // controls they share play at once, and the rest listen until the
     // panel's set is measured.
-    const hit = first ? knownWiring(key) || borrowWiring(state.cur.json, set) : null;
+    const hit = first
+      ? knownWiring(key) || borrowWiring(state.cur.json, set) || relativeWiring(state.cur.json, set) || predictedWiring(state.cur.json)
+      : null;
     if (first && !hit && !shippedLoaded) {
       // The shipped file is a local fetch of a few milliseconds, begun when
       // PERFORM was built; a patch asked about before it lands waits for it
@@ -1738,12 +1787,14 @@ export function createPerform(host) {
         wireCache.set(key, hit);
       }
       applyWired(structuredClone(hit.data));
-      markWired(hit.shipped ? "shipped" : hit.borrowed ? "borrowed" : "cached");
+      state.guess = hit.guess || null;
+      markWired(hit.guess || (hit.shipped ? "shipped" : hit.borrowed ? "borrowed" : "cached"));
       knobs.forEach(paintKnob);
       renderHood();
-      if (!hit.shipped && !hit.borrowed && hit.rev === wireRev()) return;
-      // Playable now; the fresh measurement lands when it lands.
-      if (!heldForOpen("revalidate")) revalidate(!!hit.borrowed);
+      if (!hit.shipped && !hit.borrowed && !hit.guess && hit.rev === wireRev()) return;
+      // Playable now; the fresh measurement lands when it lands. A guess's
+      // is the player's to wait on.
+      if (!heldForOpen("revalidate")) revalidate(!!hit.borrowed || !!hit.guess);
       return;
     }
     if (heldForOpen("measure")) {
@@ -2391,6 +2442,7 @@ export function createPerform(host) {
   function applyWired(data) {
     state.measuring = false;
     state.carried = false;
+    state.guess = null;
     state.wireError = null;
     // Where the sound is *now* becomes the new centre and the controls
     // return to zero there, so nothing audibly moves. Now, not when the
@@ -2466,7 +2518,9 @@ export function createPerform(host) {
     const old = state.wire;
     const fresh = alignWiring(data.wiring);
     const addrs = state.cur ? [...state.cur.knobs.keys()].sort().join("|") : "";
-    if (!state.cur || state.carried || !sameKnobs(old, fresh) || [...data.addrs].sort().join("|") !== addrs) {
+    // A guess (#290) is rebased onto the measurement whatever knobs each
+    // turns: nothing you hear moves, and no control moves either.
+    if (!state.cur || state.carried || (!state.guess && !sameKnobs(old, fresh)) || [...data.addrs].sort().join("|") !== addrs) {
       applyWired(data);
       return;
     }
@@ -2490,6 +2544,7 @@ export function createPerform(host) {
     state.wiredAt = new Map(data.addrs.map((a, i) => [a, data.values[i]]));
     state.wire = fresh;
     state.carried = false;
+    state.guess = null;
     state.measuring = false;
     state.wireError = null;
     push();
@@ -2796,6 +2851,7 @@ export function createPerform(host) {
     state.changedAt = performance.now();
     state.revalidating = false;
     state.carried = false;
+    state.guess = null;
     state.wireError = null;
     // An offer still growing for the old patch is consumed when it lands (its
     // generation is stale), so B must say so now: it used to keep "growing an
@@ -3260,7 +3316,7 @@ export function createPerform(host) {
       // named while its measurement is out: the controls beside it play on.
       const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length && !state.carried).map((w) => w.name);
       if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
-      else if (state.revalidating || state.measuring) parts.push("re-checking");
+      else if (state.revalidating || state.measuring) parts.push(state.guess ? "listening…" : "re-checking");
       // The last measurement asked of it failed (the engine's own words are
       // its toast), and none is out now.
       else if (state.wireError) parts.push(state.wireError);
@@ -4662,6 +4718,7 @@ export function createPerform(host) {
     },
     ensureWired,
     patchChanged,
+    firstKnown,
     // The live patch was renamed (auto-names follow the pool).
     relabel() {
       renderHeadWords();

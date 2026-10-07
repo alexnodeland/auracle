@@ -1235,6 +1235,7 @@ function postLiveTree(edited, why, makeup) {
     json,
     makeup: makeup != null ? makeup : engine.edit_makeup(),
     knobs,
+    first: performFirst(json),
     why: why || undefined,
   });
 }
@@ -2259,6 +2260,42 @@ function poolTrim(m) {
     gone = [];
   }
   if (gone.length) answer(m, { type: "pool_trimmed", more: true, retired: gone, views: tasteViews(), status: status() });
+}
+
+// The table PERFORM predicts a sound's first wiring from (#290): the `knobs`
+// of the wirings the app ships, how each kind of module's knob moved φ in
+// the presets' and the standard pool's measurements. Fetched once, at init,
+// and never awaited: a tree that reaches the voices before it lands carries
+// no prediction, and PERFORM measures it as it always has.
+function knobTableFetch() {
+  if (typeof engine.perform_table_set !== "function") return;
+  fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href))
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (text && !poisoned) engine.perform_table_set(text);
+    })
+    .catch(() => {
+      /* a prediction is a head start, never load-bearing */
+    });
+}
+
+// The palette controls PERFORM's panel holds, as its last measurement asked
+// for them (`perform_wire`'s `controls`; the six when it named none): the
+// set a first wiring is predicted for.
+let performControls;
+
+// What PERFORM can play `json` on before it is measured (#290; the engine's
+// `perform_first`: the tree's shape, its live knobs and the wiring the knob
+// table predicts), riding with a tree on its way to the voices, so the
+// controls play in the task the tree lands in. Undefined from a binary
+// without it, or when it throws: PERFORM then measures as it always has.
+function performFirst(json) {
+  if (typeof engine.perform_first !== "function") return undefined;
+  try {
+    return JSON.parse(engine.perform_first(json, performControls));
+  } catch (_) {
+    return undefined;
+  }
 }
 
 // Every preset's measurement, for the presets nearest a sound of your own:
@@ -3369,6 +3406,7 @@ async function dispatch(m) {
         glue = mod;
         WasmEngine = mod.WasmEngine;
         engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
+        knobTableFetch();
         // The structural ceilings a hand-built patch must respect, from the
         // grammar itself. The app used to restate them as literals, and the
         // two depth ceilings moved when they were derived from the prior's
@@ -3951,7 +3989,7 @@ async function dispatch(m) {
       // one render sooner. The `bench` reply that follows vets it.
       const early = engine.tree_json_of(m.id);
       if (early && early !== "null") {
-        post({ type: "bench_opening", more: true, id: m.id, json: early, makeup: engine.makeup_of(m.id) });
+        post({ type: "bench_opening", more: true, id: m.id, json: early, makeup: engine.makeup_of(m.id), first: performFirst(early) });
       }
       const ok = engine.edit_begin(m.id);
       if (ok) postBench({ subject: m.id });
@@ -4084,6 +4122,7 @@ async function dispatch(m) {
     // tracks each request until its reply lands, and a missing reply would
     // leave (say) an offer "in flight" forever and refuse the next one.
     case "perform_wire": {
+      performControls = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
       await holdFloor(m, () => measure(m));
       break;
     }
