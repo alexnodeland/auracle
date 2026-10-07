@@ -819,11 +819,14 @@ from it ([Rules](#rules)).
   `-c core.fsmonitor=false`, as `tests/web/changed.mjs` and
   `scripts/ops/ship_pr.sh` do, and the scripts' tests run their scratch
   repositories with `GIT_CONFIG_GLOBAL=/dev/null` and
-  `GIT_CONFIG_NOSYSTEM=1` (or a `HOME` of their own; a script that drops the
-  caller's other `GIT_*` variables keeps those, `CONFIG_VARS`). A command
-  that reads only refs and objects (`log`, `tag`, `show`, `rev-parse`,
-  `merge-base`) never asks, so a script that runs only those needs none of
-  this.
+  `GIT_CONFIG_NOSYSTEM=1` (or a `HOME` of their own). `changes.py` and
+  `coverage_gate.py` drop the caller's other `GIT_*` variables but keep
+  those (`CONFIG_VARS`), so a test's "no config" reaches their git;
+  `wasm_pkg.py` drops them too and keeps the monitor out with its `-c`
+  alone. A command that reads only refs and objects (`log`, `tag`, `show`,
+  `rev-parse`, `merge-base`) never asks, so a script that runs only those
+  needs no `-c`; its tests still build their repositories with `add` and
+  `commit`, which do ask, so they still read no user config.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.
 - **Time in a test is one of three kinds**
