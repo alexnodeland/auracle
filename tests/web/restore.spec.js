@@ -103,9 +103,9 @@ async function returningVisit(page, app) {
     lifted: shown.some((e) => e.down),
     // Each count the line said while the veil was up, in order.
     said: shown.filter((e) => RECALLING.test(e.said || "")).map((e) => Number(RECALLING.exec(e.said)[1])),
-    // The bar's width at each step of the restore, from its first line to
-    // the veil lifting.
-    bar: shown.slice(shown.findIndex((e) => RECALLING.test(e.said || ""))).filter((e) => e.bar != null).map((e) => e.bar),
+    // The bar's width as each of those lines was said: main moves the bar,
+    // then says the line, so a step that moved it has its width just before.
+    bar: shown.flatMap((e, i) => (RECALLING.test(e.said || "") && i > 0 && shown[i - 1].bar != null ? [shown[i - 1].bar] : [])),
     cache: cache || null,
     tookMs: down.t - start.t,
     longestStepMs: Math.max(...gaps),
@@ -125,8 +125,8 @@ test("a returning visit with no farm says each sound on the veil as it comes bac
   expect(visit.restored).toBe(40);
   // Sound by sound on the veil, before it lifted, the bar moving with each.
   expect(visit.said, "the veil did not say each sound as it came back").toEqual(counting(visit.restored));
-  expect(visit.bar.length, "the bar did not move with each sound").toBeGreaterThanOrEqual(visit.restored);
-  expect(rising(visit.bar), `the bar went back: ${visit.bar.join(", ")}`).toBe(true);
+  expect(visit.bar, "the bar did not move with each sound").toHaveLength(visit.restored);
+  expect(rising(visit.bar), `the bar did not rise with each sound: ${visit.bar.join(", ")}`).toBe(true);
   // The farm's renders were read, not made again: the first eight too, which
   // it rendered with their audio (farm.js `onJob` keeps every render's row).
   expect(visit.cache, "the restore said nothing of the render store").not.toBeNull();
@@ -146,8 +146,8 @@ test("a returning visit with no farm and nothing in the render store renders eac
   expect(visit.lifted, "the veil never lifted").toBe(true);
   expect(visit.restored).toBe(40);
   expect(visit.said, "the veil did not say each sound as it came back").toEqual(counting(visit.restored));
-  expect(visit.bar.length, "the bar did not move with each sound").toBeGreaterThanOrEqual(visit.restored);
-  expect(rising(visit.bar), `the bar went back: ${visit.bar.join(", ")}`).toBe(true);
+  expect(visit.bar, "the bar did not move with each sound").toHaveLength(visit.restored);
+  expect(rising(visit.bar), `the bar did not rise with each sound: ${visit.bar.join(", ")}`).toBe(true);
   expect(visit.cache, "the restore said nothing of the render store").not.toBeNull();
   expect([visit.cache.served, visit.cache.rendered]).toEqual([0, visit.restored]);
 
