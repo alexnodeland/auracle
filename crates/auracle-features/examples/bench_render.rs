@@ -708,11 +708,15 @@ fn census(n: usize, spec: &PhraseSpec) {
     let prior = PatchGrammarPrior::default();
     let mut rng = StdRng::seed_from_u64(POOL_SEED);
     let (mut full, mut walked, mut fell, mut knobbed) = (0, 0, 0, 0);
-    // Live knobs (the nodes the compiler names `…!`) in the voices a render
-    // folds, and how many of them it folded.
+    // Live knobs (the nodes the compiler names `…!`, but for STEPS'
+    // transport, `…:sync!`, a live handle that is no knob and is never
+    // folded) in the voices a render folds, and how many of them it folded.
     let (mut knobs, mut folded) = (0, 0);
-    let knob_count =
-        |p: &quiver::prelude::Patch| p.nodes().filter(|(_, n, _)| n.ends_with('!')).count();
+    let knob_count = |p: &quiver::prelude::Patch| {
+        p.nodes()
+            .filter(|(_, n, _)| n.ends_with('!') && !n.ends_with(":sync!"))
+            .count()
+    };
     for i in 0..n {
         let tree = prior.sample_with_rng(&mut rng);
         let Ok(voice) = compile_with_input(&tree, spec.sample_rate, None) else {

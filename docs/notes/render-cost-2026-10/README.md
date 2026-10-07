@@ -272,9 +272,11 @@ with two sources, costs more than most processors.
 `render_phrase` for the main voice and the chord's: each live knob whose one
 cable reaches a control input exactly as a default would (unit gain, no other
 cable on the port, not normalled) is removed, and the port's default set to
-what the cable delivered, quiver's arithmetic mirrored (`cabled_value`): 86.7%
-of the knobs over 2000 prior draws, every other one sharing its port with a
-modulation's cable ([census.txt](census.txt)). Folding a knob can move the
+what the cable delivered, quiver's arithmetic mirrored (`cabled_value`): 87.2%
+of the knobs over 2000 prior draws ([census.txt](census.txt)); in the review's
+census of 2062 trees, every knob kept was kept because a modulation's cable
+shares its port. STEPS' transport (`…:sync!`) is a live handle and no knob,
+and is never folded. Folding a knob can move the
 other nodes in quiver's execution order, and the order of the modules that
 draw from quiver's thread-wide random stream (`noise` and `karplus_strong`;
 `Granular` seeds a stream of its own) and the patch's feedback breaks (its
