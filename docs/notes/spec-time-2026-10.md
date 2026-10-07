@@ -133,16 +133,16 @@ two that reused its rows (load 109 to 121):
 | Cold (3) | 1184 to 1222 | 10 | 4.4 s after the veil | 6 and 10, each time | 0 / 46 |
 | Reused (6) | 1161 to 1222 | 40 | as the veil lifts | 23 and 9, each time | 36 to 40 / 11 to 14 |
 
-Every boot ranked the same 40 sounds in the same order. What differs is
-what is dealt as the app turns playable: a cold boot has 10 sounds by then
-(10 or 11 for `SEED` in review), a reused one all 40. So EVOLVE's first
-pair, and the pair dealt behind it, are drawn from all 40: here 23 and 9
-where every cold boot dealt 6 and 10, sounds rendered without their audio
-(only the first 8 draws are rendered with it). A reused boot still renders
-those 8 and the draws the engine quarantines, which are never stored
-(farm.js). A seed's rows are kept once, as its first boot left
-them: topped up from a reused boot's store, a boot rendered as many again (11
-to 14), so the fixture does not top them up.
+Every boot ranked the same 40 sounds in the same order. What differs is what
+is dealt as the app turns playable: a cold boot has 10 sounds by then (10 or
+11 for `SEED` in review), a reused one all 40. So EVOLVE's first pair, and
+the pair dealt behind it, are drawn from all 40: here 23 and 9 where every
+cold boot dealt 6 and 10, sounds rendered without their audio (only the
+first 8 draws are rendered with it). A reused boot still renders those 8 and
+the draws the engine quarantines, which are never stored (farm.js). A seed's
+rows are kept once, as its first boot left them: topped up from a reused
+boot's store, a boot served one to four draws more but rendered 11 to 14
+(against 13 to 14), so the fixture does not top them up.
 
 Who asks: a test that does nothing before the pool is whole and then reads
 only the pool (`bank_find`, `bank_touch`, and `bank_lineage`'s tests that

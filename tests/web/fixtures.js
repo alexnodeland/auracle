@@ -197,7 +197,7 @@ const LANES = {
 // The veil lifts at 8 sounds, and those are rendered with their audio, which
 // the render cache never holds (worker.js `FARM_AUDIO_AHEAD`, farm.js). What
 // a cache takes away is the fill after them: the other 30-odd draws are a hit
-// each, where a cold boot renders them behind the test (about 4 s after the
+// each, where a cold boot renders them behind the test (about 4.4 s after the
 // veil on a 16-core M3 Max, about 20 on a CI runner:
 // docs/notes/spec-time-2026-10.md). A spec that waits for the whole pool
 // before it does anything spends that time waiting, and finds the same pool
@@ -226,11 +226,12 @@ const LANES = {
 // here, against 46 rendered cold. A seed's rows are kept once, as its first
 // boot left them, and never topped up: a row whose write had not landed by
 // then is rendered again by every boot that reuses them, which costs time
-// and nothing else (topped up from a reused boot's store, a boot here
-// rendered as many: 11 to 14). A seed is the address's `?seed`, or with none
-// the seeded Math.random (`random`) that draws it; an unseeded boot keeps
-// nothing. A store stamped with another namespace is cleared by the app as it
-// boots, so rows from another φ cost a cold boot and nothing else.
+// and nothing else (topped up from a reused boot's store, a boot here served
+// one to four draws more and rendered 11 to 14, against 13 to 14). A seed is
+// the address's `?seed`, or with none the seeded Math.random (`random`) that
+// draws it; an unseeded boot keeps nothing. A store stamped with another
+// namespace is cleared by the app as it boots, so rows from another φ cost a
+// cold boot and nothing else.
 const RENDERS_DIR = path.join(__dirname, ".renders");
 const ENGINE_WASM = path.join(__dirname, "../../apps/web/pkg/auracle_wasm_bg.wasm");
 /** What is kept, by seed ("seed:N", "random:N"): { ns, rows: [[key, row]] }. */
