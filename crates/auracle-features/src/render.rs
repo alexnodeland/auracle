@@ -185,33 +185,34 @@ pub(crate) fn render_built<O: VoiceObserver>(
     let mut spans = Vec::with_capacity(spec.notes.len());
     obs.start(&voice);
 
-    let tick_all = |voice: &mut CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
-        let (l, r) = voice.patch.tick();
-        let mut s = (l + r) * 0.5 / 5.0;
-        for cv in chord.iter_mut().filter(|cv| !cv.parked) {
-            // A chord voice plays the note the main voice's TRACKs hear
-            // this frame (a no-op for a patch without one).
-            voice.lead(&cv.voice);
-            let (cl, cr) = cv.voice.patch.tick();
-            let c = (cl + cr) * 0.5 / 5.0;
-            s += c;
-            if !cv.gated {
-                if c.abs() < PARK_ABS {
-                    cv.quiet_run += 1;
-                    if cv.quiet_run >= PARK_RUN {
-                        cv.parked = true;
+    let tick_all =
+        |voice: &mut auracle_grammar::CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
+            let (l, r) = voice.patch.tick();
+            let mut s = (l + r) * 0.5 / 5.0;
+            for cv in chord.iter_mut().filter(|cv| !cv.parked) {
+                // A chord voice plays the note the main voice's TRACKs hear
+                // this frame (a no-op for a patch without one).
+                voice.lead(&cv.voice);
+                let (cl, cr) = cv.voice.patch.tick();
+                let c = (cl + cr) * 0.5 / 5.0;
+                s += c;
+                if !cv.gated {
+                    if c.abs() < PARK_ABS {
+                        cv.quiet_run += 1;
+                        if cv.quiet_run >= PARK_RUN {
+                            cv.parked = true;
+                        }
+                    } else {
+                        cv.quiet_run = 0;
                     }
-                } else {
-                    cv.quiet_run = 0;
                 }
             }
-        }
-        // Every voice has read this frame; the next tick reads the next.
-        if let Some(stream) = &input {
-            stream.advance();
-        }
-        s
-    };
+            // Every voice has read this frame; the next tick reads the next.
+            if let Some(stream) = &input {
+                stream.advance();
+            }
+            s
+        };
 
     for note in &spec.notes {
         // Retire the previous note's chord voices only once parked; a voice
