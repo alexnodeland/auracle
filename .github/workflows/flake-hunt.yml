@@ -133,12 +133,14 @@ jobs:
   # spec's own slowed worker.js is kept on it (the fixture serves a spec's
   # `workerPrefix` after its own slowed engine; patch_audible's, #166).
   # In Chromium and in Firefox (D10): Firefox has no throttle for a page, so
-  # there the engine and the farm are slowed and the page is not. Three
-  # runners a browser, where two ran at the runner's own speed (about twenty
-  # minutes each): the profile slows what waits on the engine on a runner
-  # faster than the reference, and a shard must end inside its 40 minutes.
-  # Two at a time, as before the Firefox run, so the night's count above
-  # holds.
+  # there the engine and the farm are slowed and the page is not, and it
+  # needs an audio server the image lacks (a step below starts one). The
+  # run's project is named for its browser, so the merged report says which
+  # each test ran in. Three runners a browser, where two ran at the runner's
+  # own speed (about twenty minutes each): the profile slows what waits on
+  # the engine on a runner faster than the reference, and a shard must end
+  # inside its 40 minutes. Two at a time, as before the Firefox run, so the
+  # night's count above holds.
   #
   # TODO(#288): the audio thread's budget, `live_cost.mjs --sweep-only
   # --gate=<ms>` (crates/auracle-wasm/examples/, on #288's branch), judged
@@ -154,6 +156,13 @@ jobs:
     timeout-minutes: 45
     env:
       AURACLE_GLOBAL_TIMEOUT_MIN: 40
+      # The image runs as root, and a container job's HOME (/github/home)
+      # belongs to the runner's user: Firefox will not start under a HOME it
+      # does not own ("Running Nightly as root in a regular user's session is
+      # not supported"), and every test of a Firefox shard failed at launch.
+      # For the whole job, since the `playwright` action writes git's
+      # safe.directory under HOME and Playwright's git reads it there.
+      HOME: /root
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -169,6 +178,30 @@ jobs:
           path: apps/web/pkg
 
       - uses: ./.github/actions/playwright
+
+      # Firefox on Linux sounds through a PulseAudio server, and Playwright's
+      # image has none: there its AudioContext never leaves `suspended`
+      # (the graph falls back to the system clock, and the context waits on
+      # the audio stream), so every spec that reads a level reads silence.
+      # A server with no hardware gives a null sink, and Firefox runs on it.
+      # Chromium needs none. This is the one apt step in a browser job (the
+      # `playwright` action says why the others went): about 2 MB, cut at
+      # three minutes with a message naming the mirror, and on this nightly
+      # job's Firefox shards only.
+      - name: An audio server for Firefox
+        if: matrix.browser == 'firefox'
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          if ! timeout -k 10 180 bash -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends pulseaudio' > /tmp/apt.log 2>&1; then
+            tail -20 /tmp/apt.log
+            echo "::error::Installing PulseAudio took over three minutes or failed: Ubuntu's mirror is slow or unreachable from this runner, not the change. Re-run the job."
+            exit 1
+          fi
+          pulseaudio --daemonize --exit-idle-time=-1 2>&1 | grep -v "not intended to be run as root" || true
+          pactl info | grep -E "^(Server String|Default Sink)" || { echo "::error::PulseAudio did not start, so Firefox would read no level"; exit 1; }
+
+      - name: Which browser this shard runs
+        run: echo "Speed budgets in ${{ matrix.browser }}, shard ${{ matrix.shard }}." >> "$GITHUB_STEP_SUMMARY"
 
       - name: The specs that record a budget
         id: files
