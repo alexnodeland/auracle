@@ -3,7 +3,7 @@
 - **A random seed in the address deals the same pairs however fast its pool
   fills.** EVOLVE hands you a pair once eight sounds have arrived and fills
   the rest of the pool while you pick. Each pair is dealt at once from the
-  sounds that have arrived, so a pick never waits for the fill, but that
+  sounds that have arrived, so a pick never waits for more, but that
   meant the same random seed (`?seed=`) dealt other pairs on a faster
   machine. Now a session opened with `?seed=` deals by a fixed schedule
   while its pool fills: the first deal is from the first eight sounds, the

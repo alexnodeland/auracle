@@ -167,7 +167,7 @@ random seed, and repeat when the same things happen in the same order. A pair
 dealt before the pool has finished filling is dealt from the sounds that arrived
 first and waits for any not there yet, so the machine's speed can't change it
 either. (Without `?seed`, a pair is dealt at once from the sounds that have
-arrived, and never waits for the fill.) A saved session comes back as it was.
+arrived, and never waits for more.) A saved session comes back as it was.
 Which side of the table a sound stands on, and the warm start's nine cards,
 are shuffled either way, so no side or card is favored. **Reset your taste…**
 and a booth's next visitor take `?seed` off the address as they start over,

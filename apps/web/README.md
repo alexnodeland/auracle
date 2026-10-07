@@ -193,7 +193,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   and wait in `dealsWaiting` for any not yet folded in, so a seed deals the
   same pairs at any machine speed; a bank restored whole has no schedule.
   An ordinary session has none either: its deals are drawn at once from the
-  sounds that have joined, so a pick never waits for the fill (#211,
+  sounds that have joined, so a pick never waits for more to join (#211,
   ADR-025).
 
   **The player first.** Requests are served in three lanes, most urgent

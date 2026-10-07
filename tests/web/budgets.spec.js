@@ -21,7 +21,7 @@
 // - A pick puts the next pair up in the click's own task, with no deal
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
 //   sounds fetched, ahead. Within 0.3 s and 0.15 s, in a seeded session and
-//   in one with no seed, whose deals never wait for the fill (#211).
+//   in one with no seed, whose deals never wait for more sounds (#211).
 //
 // The order is asserted; the seconds are budgets (ADR-022, `app.budget`):
 // each recorded as the test's annotation, with the insert's share in its

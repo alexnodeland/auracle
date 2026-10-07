@@ -1548,8 +1548,8 @@ unbiased probes stay one in `duel_check_every` of the pairs the player saw.
 The app is handed over at eight sounds (`playable`) and the rest of the
 pool fills behind the player. An ordinary session deals at once, over
 however many sounds have joined when the deal is drawn, so a pick never
-waits for the fill: a deal is a `now` request, served between two of the
-fill's steps. That depends on the machine's speed, and gave the same seed
+waits for more to join: a deal is a `now` request, served between two of
+the fill's steps. That depends on the machine's speed, and gave the same seed
 other pairs on a faster machine (#211: 4,10, then 4,11, then 5,6 across
 boots of seed 20260928). So a session opened with a seed in the address
 (`?seed=`: the specs, a seed someone shared; main's
@@ -1833,7 +1833,7 @@ that pick commits (`settleFit`), so it keeps its window too.
   ([Deals while the pool fills](#deals-while-the-pool-fills)); a sound the
   player adds while it fills can. (A session with no seed in the address
   deals at once from the sounds that have joined, so its picks never wait
-  for the fill.) Timing can still move each PERFORM walk,
+  for more to join.) Timing can still move each PERFORM walk,
   which takes its draw when it begins. A saved session comes back as it was
   saved; only what is dealt after boot follows it. A reset is a fresh start: Reset your taste and the booth's
   next visitor reload without `?seed` (`reloadAfresh`), keeping the rest of

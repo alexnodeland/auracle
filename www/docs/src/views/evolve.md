@@ -99,7 +99,7 @@ took.
 
 When the pool is still filling as the app opens (a new session, or a saved
 one that came back with sounds missing), each pair is dealt at once from the
-sounds that have arrived, so a pick never waits for the fill. Which sounds
+sounds that have arrived, so a pick never waits for more. Which sounds
 those are depends on how fast the pool fills, so a session opened with a
 random seed in the address
 (`?seed=`, [Running locally](../getting-started/running-locally.md#overrides))

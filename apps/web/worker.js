@@ -3315,7 +3315,7 @@ async function dispatch(m) {
         // A schedule there would deal the first pairs of every visit from the
         // oldest sounds. An ordinary session (no seed in the address) has no
         // schedule either: its deals are drawn at once, over the sounds that
-        // have joined, so a pick never waits for the fill.
+        // have joined, so a pick never waits for more to join.
         dealSchedule = m.seeded && st.pool < st.pool_target ? playableAt : 0;
         if (typeof engine.set_deal_schedule === "function") {
           engine.set_deal_schedule(dealSchedule);

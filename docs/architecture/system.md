@@ -129,7 +129,7 @@ had got does not change them, on any machine. A session restored with its
 pool full has no fill and no schedule, and its duels draw from the whole
 pool. An ordinary session (no seed in the address) has no schedule either:
 its duels are drawn at once from the sounds that have joined, so a pick
-never waits for the fill, and how far the fill had got can change them
+never waits for more to join, and how far the fill had got can change them
 ([web-runtime.md](web-runtime.md#deals-while-the-pool-fills)). What a
 player does while the pool fills can change the duels: a sound they add
 (the warm start's picks, a preset opened) joins wherever the fill has got

@@ -23971,7 +23971,7 @@ function seedOverride() {
  *  pool fills: `init` says so (`seeded`), and the worker keeps its deals to
  *  the fill's schedule, a deal waiting for the sounds it names (#211). An
  *  ordinary session deals at once from the sounds that have arrived, so a
- *  pick never waits for the fill. */
+ *  pick never waits for more to arrive. */
 const addressSeed = seedOverride();
 
 /** Reload as a fresh start: Reset your taste and a booth's next visitor.
@@ -24191,7 +24191,8 @@ bootMidi();
       // every boot deals a new one.
       seed: addressSeed ?? Math.floor(Math.random() * 2 ** 31),
       // Only a seed from the address deals by the fill's schedule
-      // (`addressSeed`): an ordinary session's deals never wait for the fill.
+      // (`addressSeed`): an ordinary session's deals never wait for more
+      // sounds to arrive.
       seeded: addressSeed != null,
       poolSize: 40,
       // Hand the app over at 8 vetted patches and let the other 32 land behind

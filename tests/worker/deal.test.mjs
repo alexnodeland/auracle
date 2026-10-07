@@ -10,7 +10,7 @@
 // whole has no fill, and deals from the whole pool from its first pair. An
 // ordinary session (no seed in the address) has no schedule: its deals are
 // drawn at once, over the sounds that have joined, so a pick never waits for
-// the fill.
+// more to join.
 //
 // worker.js runs here as it is, over the built engine, with no page
 // (harness.mjs), filling serially (no farm), two sounds a step. The claims

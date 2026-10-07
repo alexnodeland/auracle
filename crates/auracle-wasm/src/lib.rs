@@ -1403,8 +1403,8 @@ impl WasmEngine {
     /// over at, so the first deal waits for nothing, or to 0 when the pool is
     /// already full (a saved bank that came back whole has no fill to keep
     /// to). Every other session it sets to 0: an ordinary session deals at
-    /// once from the sounds that have joined, so a pick never waits for the
-    /// fill. Counts deals from 0 again; `0` is no schedule.
+    /// once from the sounds that have joined, so a pick never waits for more
+    /// to join. Counts deals from 0 again; `0` is no schedule.
     pub fn set_deal_schedule(&mut self, step: usize) {
         self.deals = DealSchedule::new(step);
     }
