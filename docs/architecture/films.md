@@ -17,7 +17,7 @@ through these steps.
 
 | Kind | Picture | Examples | Built by |
 | --- | --- | --- | --- |
-| **Illustrated** | Drawn on the deterministic stage (`stage/stage.js`, `kit.js`) from the engine's own data | launch, taste, math, dsp, engine | `tools/illustrated.sh` (`make film`) |
+| **Illustrated** | Drawn on the deterministic stage (`stage/stage.js`, `kit.js`) from the engine's own data; it may cut to takes of the real app (launch) | launch, taste, math, dsp, engine | `tools/illustrated.sh` (`make film`) |
 | **Walkthrough** | Recordings of the real app in a browser, framed and captioned by `stage/walk.js` | playing, composing, sounddesign, tour, view-* | `tools/walkthrough.sh` (`make film-record`) |
 
 Both share the voice, the score, the mix and publishing.
@@ -28,7 +28,10 @@ Both share the voice, the score, the mix and publishing.
 script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/*.wav
                  (Kokoro TTS, then an ASR round trip that must read every line back)
      │
-     ├─ illustrated: film.js draws beats on the timeline
+     ├─ illustrated: film.js draws beats on the timeline; with a shots.json
+     │                (launch) it cuts to takes of the app (footage.mjs, as below),
+     │                recorded first and again when their shot or timing changes,
+     │                heard only in its demos (app_audio.py --demos)
      │
      └─ walkthrough: gen_shots.py ──► shots.json (actions timed to words and stamps)
                         │
@@ -38,7 +41,8 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
                         └─ footage.mjs       the recording: video and the app's own sound per shot
                               └─ takes.py    each take's errors, paint rate and sound
 score:   fit_score.py --film (a film on N3: its bed and marks, written to the timeline), or
-         fit_score.py sound/study.json (Study, stretched) → the engine plays it (examples/score.rs) → music/
+         the bed the script names (sound/<bed>.json, else Study), fitted to its
+         arrangement → the engine plays it (examples/score.rs) → music/
 mix:     mix.py voice + bed + marks + app sound, to the ladder, −16 LUFS, captions (.vtt), ladder.json
 render:  render.mjs → part-*.mkv + picture.ffconcat (frames, in parallel)
 encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -preview.mp4, .jpg, .webp
@@ -87,10 +91,10 @@ shortlist in `www/brand/sound.json` (`shotgen.CAST`, `pick("cast")`), and an
 offer it grows is grown from one and logged. A generated shot that must
 keep another preset says why in its `"uncast"`: its line names the preset or
 describes its circuit, so it changes only with the script. `shotgen.dump`
-refuses anything else. The four walkthroughs written by hand are not cast,
-and `tools/test_shotgen.py` lists why: launch's three footage shots are seen,
-not heard, until launch moves to N3; `circuit` and `perform` are replaced by
-the view films; `zzprobe` is a rehearsal probe. The test (in `make
+refuses anything else. The three walkthroughs written by hand are not cast,
+and `tools/test_shotgen.py` lists why: `circuit` and `perform` are replaced by
+the view films; `zzprobe` is a rehearsal probe. The launch film's takes are
+generated (`films/launch/gen_shots.py`) and cast. The test (in `make
 dev-check`) holds every committed `shots.json` to this. What the session deals (the pool, a duel, the warm
 start's other cards) is logged, not cast, until the sonic floor (RFC-005).
 
