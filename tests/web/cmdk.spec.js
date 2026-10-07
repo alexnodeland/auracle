@@ -24,7 +24,8 @@
 //   Open a taste file…, Download this patch, Download as a picture…, Open a
 //   patch file…, Scope & analyzer…, Re-run the three-pick warm start, Reset
 //   your taste…, Show measurements, Booth mode, Keys and gestures, Watch the
-//   films), and so is every setting KEYS ⋯ holds; a setting says *on*, the
+//   films), and so is every setting KEYS ⋯ holds; Show measurements and
+//   Booth mode keep the ⋯ items' tooltips; a setting says *on*, the
 //   scope's and the picture's panels open whole under the menu bar (they hung
 //   inside it, which clips them) and stand under the list's scrim when it
 //   opens over them, and a level's own run as their
@@ -255,6 +256,9 @@ test("every item the ⋯ menu held, and every setting in KEYS ⋯, is a command"
     "Taller keybed, for fingers rather than a mouse", "How much of the keybed to show: fewer octaves, wider keys", "Silence all voices",
     "Master volume: live keys and every ▶", "MIDI: devices, knob mapping, clock", "Record what you play; stop to download a WAV",
   ]) expect(anywhere, label).toContain(label);
+  // What a label can't say is its row's tooltip, as it was the ⋯ item's.
+  await expect(commandRow(page, "Show measurements")).toHaveAttribute("title", /engine’s own bookkeeping/);
+  await expect(commandRow(page, "Booth mode")).toHaveAttribute("title", /For a kiosk/);
   // A setting says its state, and running it changes it.
   await page.keyboard.type("hold: latch");
   await page.keyboard.press("Enter");

@@ -833,13 +833,15 @@ export function createShell(host = {}) {
   // has one. While it is open the keys are the field's: nothing behind it
   // hears them, so no note plays and no level moves.
   const cmdList = [];
-  /** A command: `{id, level?, label, key?, hint?, run, when?}`. `level` puts
-   *  it under This level, at that level only; without one it is Anywhere.
-   *  `label` and `hint` may be functions, read each time the list is drawn
-   *  (a setting's state), and `when()` false leaves it out. `key` is the
-   *  key that does the same (a string, or several), printed for this
-   *  platform; `hint` is said where a command has no key. Registering an
-   *  `id` again replaces it. */
+  /** A command: `{id, level?, label, key?, hint?, title?, run, when?}`.
+   *  `level` puts it under This level, at that level only; without one it
+   *  is Anywhere. `label` and `hint` may be functions, read each time the
+   *  list is drawn (a setting's state), and `when()` false leaves it out.
+   *  `key` is the key that does the same (a string, or several), printed
+   *  for this platform; `hint` is said where a command has no key. `title`
+   *  is the row's tooltip, for a command whose label can't say what it does
+   *  (Show measurements: which numbers). Registering an `id` again replaces
+   *  it. */
   function cmd(c) {
     if (!c || !c.id || typeof c.run !== "function") return;
     const i = cmdList.findIndex((x) => x.id === c.id);
@@ -880,7 +882,7 @@ export function createShell(host = {}) {
         return false;
       }
     });
-    const shown = (c) => ({ ...c, label: String(val(c.label) || ""), hint: val(c.hint) || "", key: val(c.key) || null });
+    const shown = (c) => ({ ...c, label: String(val(c.label) || ""), hint: val(c.hint) || "", key: val(c.key) || null, title: val(c.title) || "" });
     let sounds = [];
     try {
       sounds = host.sounds ? host.sounds() : [];
@@ -955,6 +957,7 @@ export function createShell(host = {}) {
           hint.append(kb);
         }
         li.append(ico, lab, hint);
+        if (item.title) li.title = item.title;
         const at = kRows.length;
         li.addEventListener("click", () => kRun(at));
         li.addEventListener("pointermove", (e) => {

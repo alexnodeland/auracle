@@ -24267,9 +24267,31 @@ shell.cmd({ id: "patch-open", label: "Open a patch file…", run: () => $("patch
 shell.cmd({ id: "scope", label: "Scope & analyzer…", run: () => { if (!panelOpen("scope-panel")) toggleScopePanel(); } });
 shell.cmd({ id: "warm-rerun", label: "Re-run the three-pick warm start", run: () => openWarmStart() });
 shell.cmd({ id: "taste-reset", label: "Reset your taste…", run: () => askReset() });
-shell.cmd({ id: "measurements", label: "Show measurements", hint: () => (engineerMode ? "on" : ""), run: () => toggleEngineer() });
-shell.cmd({ id: "booth", label: "Booth mode", hint: () => (booth?.on ? "on" : ""), when: () => !!toggleBooth, run: () => toggleBooth() });
-shell.cmd({ id: "booth-next", label: "New visitor", key: "⇧Esc", when: () => !!booth?.on, run: () => boothResetVisitor() });
+// Each with the ⋯ menu's tooltip for it: its label alone doesn't say what
+// it does.
+shell.cmd({
+  id: "measurements",
+  label: "Show measurements",
+  title: "Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget",
+  hint: () => (engineerMode ? "on" : ""),
+  run: () => toggleEngineer(),
+});
+shell.cmd({
+  id: "booth",
+  label: "Booth mode",
+  title: "For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over",
+  hint: () => (booth?.on ? "on" : ""),
+  when: () => !!toggleBooth,
+  run: () => toggleBooth(),
+});
+shell.cmd({
+  id: "booth-next",
+  label: "New visitor",
+  title: "Forget this visitor’s taste and start again (booth mode keeps its settings)",
+  key: "⇧Esc",
+  when: () => !!booth?.on,
+  run: () => boothResetVisitor(),
+});
 shell.cmd({ id: "keys-guide", label: "Keys and gestures", hint: "↗", run: () => openOut(`${FILMS_DOCS}keyboard.html`) });
 shell.cmd({ id: "films", label: "Watch the films", hint: "↗", run: () => openOut(`${FILMS_DOCS}films.html`) });
 // The film of the level you're at, where it is published, as the film chip
