@@ -20,7 +20,7 @@
 // claim is about the step, whatever it is.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { workerFor, outOf } from "./harness.mjs";
+import { workerFor, startWorker, outOf } from "./harness.mjs";
 
 const SEED = 20260928;
 const STEP = 4;
@@ -121,22 +121,36 @@ test("an ordinary session's deal asked for while the pool fills is answered at o
   await w.close();
 });
 
-test("a seeded session's saved bank that comes back whole deals from the whole pool from its first pair, and one that comes back short keeps to the schedule", { timeout: TIMEOUT }, async (t) => {
-  // A bank of POOL sounds, saved; its order is the pool's.
-  const first = await workerFor(t, { seed: SEED, seeded: true, poolSize: POOL, playableAt: STEP });
-  const [{ json: saved }] = await first.send({ type: "save" });
-  await first.close();
-  const order = JSON.parse(saved).bank.map((e) => e.id);
+// The bank both saved-bank tests restore: POOL sounds of a seeded session,
+// saved, and its order (the pool's). Made once for the file, by whichever of
+// them runs first, so neither pays for a fill and two restores (a restore
+// with no farm measures its sounds one at a time, here).
+let saving = null;
+function savedBank() {
+  saving ??= (async () => {
+    const w = await startWorker({ seed: SEED, seeded: true, poolSize: POOL, playableAt: STEP });
+    try {
+      const [{ json }] = await w.send({ type: "save" });
+      return { saved: json, order: JSON.parse(json).bank.map((e) => e.id) };
+    } finally {
+      await w.close();
+    }
+  })();
+  return saving;
+}
+
+test("a seeded session's saved bank that comes back whole deals from the whole pool from its first pair", { timeout: TIMEOUT }, async (t) => {
+  const { saved, order } = await savedBank();
   assert.equal(order.length, POOL);
   const at = (id) => order.indexOf(id);
 
-  // Back whole: there is no fill, so no schedule, though the session is
-  // seeded. Booted with a step of 2, the k-th deal under one would hold only
-  // the first 2·(k+1) sounds (the first deal the first two); the first deals
-  // here reach past that. (Drawn from the whole pool, the first falls within
-  // its first two sounds one time in 66, the second within four one in 11,
-  // the third within six one in 4: a seed whose three all do would be a seed
-  // to change.)
+  // There is no fill, so no schedule, though the session is seeded. Booted
+  // with a step of 2, the k-th deal under one would hold only the first
+  // 2·(k+1) sounds (the first deal the first two); the first deals here reach
+  // past that. (Drawn from the whole pool, the first falls within its first
+  // two sounds one time in 66, the second within four one in 11, the third
+  // within six one in 4: a seed whose three all do would be a seed to
+  // change.)
   const whole = await workerFor(t, { seed: SEED, seeded: true, poolSize: POOL, playableAt: 2, saved });
   const wide = [];
   for (let k = 0; k < 3; k++) {
@@ -148,7 +162,11 @@ test("a seeded session's saved bank that comes back whole deals from the whole p
     `a bank that came back whole dealt by the schedule: its first pairs reached ${wide.map((n) => n + 1).join(", ")} sounds in`,
   );
   await whole.close();
+});
 
+test("a seeded session's saved bank that comes back short of its pool keeps to the schedule", { timeout: TIMEOUT }, async (t) => {
+  const { saved, order } = await savedBank();
+  const at = (id) => order.indexOf(id);
   // Back short of a larger pool: the rest fills behind it, so its deals keep
   // to the schedule, and the first is the bank's first two sounds.
   const short = await workerFor(t, { seed: SEED, seeded: true, poolSize: POOL + 2, playableAt: 2, saved });
