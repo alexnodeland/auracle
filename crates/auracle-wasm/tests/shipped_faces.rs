@@ -15,11 +15,13 @@
 //! - `shipped_preset_faces_render_the_same_today` renders every preset again
 //!   and compares the whole file with what `make preset-faces` writes today,
 //!   byte for byte: anything that moves a face (the compiler, the DSP, the
-//!   normalization, the face's analysis) fails it. A few seconds on four
-//!   cores. The built wasm renders the same bytes as the native build (every
-//!   preset when this was written, `face_of_tree` under node), and
-//!   `tests/web/faces_presets.spec.js` compares one preset's face in the page
-//!   with the engine's.
+//!   normalization, the face's analysis) fails it. About 14 s of one core's
+//!   time, spread over every core.
+//!
+//! This is the native half. The page's engine is wasm, and the page draws
+//! the file's face in place of the one its engine would render, so
+//! `tests/web/boot_agrees.spec.js` renders every preset in the built wasm
+//! and fails while a face differs from the file's by a byte.
 
 use auracle_features::{cache_namespace, render_key, PhraseSpec};
 use auracle_grammar::preset_bank;

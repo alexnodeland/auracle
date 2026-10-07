@@ -141,9 +141,13 @@ was rendered under and each preset’s render key. The page draws a preset’s
 face from it, filed under the same key, without asking the engine, where the
 namespace is the session’s and, for a preset with an AUDIO IN, while the
 session hears the reference clip; anywhere else the engine renders it as
-above. A test renders every preset again and fails while the file differs by
-a byte (`crates/auracle-wasm/tests/shipped_faces.rs`), and the built wasm
-renders the same bytes as the native build.
+above. A test renders every preset again natively and fails while the file
+differs by a byte (`crates/auracle-wasm/tests/shipped_faces.rs`), and
+another renders every preset in the built wasm, as the worker renders a
+preset’s face, and fails while one of them differs from the file’s, or is
+filed under another key (`tests/web/boot_agrees.spec.js`): a face is
+quantized to half a decibel, so a last-digit difference between the two
+builds could move one preset’s band by a step.
 
 **The stage’s live outline** (PERFORM’s stage mode) is measured as a face
 is: the output’s latest 2048 samples, through the same Hann frame and FFT,
