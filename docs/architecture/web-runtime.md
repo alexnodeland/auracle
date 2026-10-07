@@ -1362,13 +1362,22 @@ and that it can reach; the rest are left out, and read *listening…* until the
 measurement, as before. A borrowed wiring is not gated: it was measured. A
 borrowed or predicted wiring is a guess (`state.guess`): its controls turn,
 their travel wears the not-measured look (thin and dim, never the dashed
-amber of a search control), their tooltip and `aria-description` say *not
-measured yet*, the status line says *listening…*, and the measurement is
-asked for in `soon`. It lands through
-`applyRechecked`'s rebase whatever knobs each control turns, so nothing you
-hear moves and a turned control keeps its place (unless the measurement
-closed the half it is on, where it stops at the centre), and it waits for
-the hand as a re-check does.
+amber of a search control: ADR-012's dashed amber for a guess is, in PERFORM,
+already a search control's *can't*, so #297's D2 is applied there with the
+not-measured look), their tooltip and `aria-description` say *not measured
+yet*, the status line says *listening…* (naming the controls still waiting)
+with no count of the controls that reach the sound until the measurement
+lands, and the measurement is asked for in `soon`. A borrowed wiring lends
+only how the relative's controls turn its knobs (`relativeOf`): a control
+that could not reach the relative is left out, both halves are open, and
+where the sound sits is the engine's prediction of it or nothing. A tree a
+graft just committed is not played on a guess (`grafting()`): the graft is
+judged on its measurement. A Take carries a guess over as a guess. The
+measurement lands through `applyRechecked`'s rebase whatever knobs each
+control turns, so nothing you hear moves and a turned control keeps its
+place (unless the measurement closed the half it is on, where it stops at
+the centre), and never while a control or the XY pad is held, nor within
+1.5 s of the last touch or release (`handsBusy`).
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every

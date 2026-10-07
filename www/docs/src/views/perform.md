@@ -66,10 +66,11 @@ On the right, what you turn:
 - **CONTROLS**, with **ARRANGE** (see [the palette](#the-palette)) and
   **HOW IT WORKS** (see [How it works](#how-it-works)), then a status line
   saying what PERFORM is doing with the sound: *4 of 6 controls reach this
-  patch*, with *listening…* after it while a sound you haven't played is
-  measured behind controls that already turn, naming the ones still waiting
-  for it (*listening to Motion, Body…*; see
-  [a sound you haven't played](#a-sound-you-havent-played)), *listening to
+  patch* once it is measured; *listening…* while a sound you haven't played
+  is measured behind controls that already turn, naming the ones still
+  waiting for it (*listening to Motion, Body…*), with the count once the
+  measurement lands (see
+  [a sound you haven't played](#a-sound-you-havent-played)); *listening to
   this sound…* when there is nothing to start it on yet, *re-checking* while
   it measures again in the background, or
   *listening to Bite…* while it measures a control you just placed. If the
@@ -138,17 +139,20 @@ A named control is in one of five states, each with its own look:
 
 #### A sound you haven't played
 
-A sound plays its controls the moment it is in PERFORM, measured or not.
 Measuring a sound takes a render for every knob and a few more for each
 control, seconds on a fast computer and a minute or more on a slow one, so a
 sound you haven't played starts on a wiring PERFORM has without rendering: a
-sound with the same modules that it has measured (the one a sound was bred
-from, a preset you changed only by turning its knobs), or else what each kind
+sound of the same shape that it has measured (the same modules, selectors
+included: the one a sound was bred from, a preset you changed only by turning
+its knobs), lending how its controls turn the knobs, or else what each kind
 of knob usually does to the sound, learned from measuring the presets and
 sounds like the ones in your pool. That second kind plays only the controls
 it gets right well more often than not, **Bright**, **Snap** and **Space**
 among the six today; the others say *listening…* until the sound is measured,
-as before. The controls that play turn at once, their travel drawn thin and
+as before. Some sounds still wait for their measurement with every control
+listening: one none of whose controls PERFORM can start this way, one
+changed in PATCH by a selector or an undo whose render is still on its way,
+and one a graft just changed (the graft is judged on what it really does). The controls that play turn at once, their travel drawn thin and
 dim, and their tooltip says *not measured yet*, while the status line says
 *listening…* as the sound's own measurement runs. When it lands the controls
 settle on what the sound really does, without moving what you hear; a control
