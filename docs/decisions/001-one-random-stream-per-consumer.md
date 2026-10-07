@@ -53,7 +53,19 @@ the same ordering problem.
 
 ### Positive
 
-- A seeded session deals, fits and breeds the same way whatever the timing.
+- A seeded session deals, fits and breeds the same way whatever the timing,
+  given the same requests in the same order. Streams alone left two
+  exceptions, both while the pool fills. A deal was drawn over however many
+  sounds had joined, so a faster machine dealt other pairs; the deals of a
+  session opened with a seed in the address whose pool fills at boot now
+  keep to a fixed schedule and wait for its sounds (#211,
+  [web-runtime.md](../architecture/web-runtime.md#deals-while-the-pool-fills)).
+  A session with no seed in the address deals at once from the sounds that
+  have joined, so its picks never wait for more to join, and its pairs still
+  depend on how fast it filled.
+  A fit made then re-fits the standardizer over the pool as it stands, so a
+  refit armed before the pool is full can still differ with the machine's
+  speed.
 - Rehearsals predict recordings; seeds in bug reports replay.
 
 ### Negative

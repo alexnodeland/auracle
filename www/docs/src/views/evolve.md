@@ -97,10 +97,33 @@ after that is dealt behind it. Pairs go up in the order they were dealt, so a
 seeded session shows the same pairs in the same order however long each deal
 took.
 
+When the pool is still filling as the app opens (a new session, or a saved
+one that came back with sounds missing), each pair is dealt at once from the
+sounds that have arrived, so a pick never waits for more. Which sounds
+those are depends on how fast the pool fills, so a session opened with a
+random seed in the address
+(`?seed=`, [Running locally](../getting-started/running-locally.md#overrides))
+deals by a fixed schedule instead. Its first four deals each reach eight
+sounds further, in the order the pool fills: the first deal is from its
+first eight sounds, the next from the first 16, then 24 and 32, even if the
+pool has filled by then. Every deal after that is from the whole pool. (A
+pair that can’t go up, such as the pair just put away, is dealt again, and
+that counts as a deal.) A deal whose sounds haven’t all arrived waits for
+them, so the same seed and the same picks deal the same pairs on any
+machine, however fast its pool fills. Pick very fast in the first seconds of
+such a session and the next pair can take a moment, longer on a slower
+computer; the cards then say *dealing: the engine is filling the pool
+(16/40)*, with how many sounds have arrived. A saved session that comes
+back with its whole pool has nothing to fill, and every deal is from all of
+it.
+
 The next pair is chosen before your pick is known. That changes nothing,
 because pairs are dealt at random and your pick is held for its seven seconds
 anyway. A sound you cut meanwhile is never put up: that pair is dropped and
-dealt again, and so is one that lost a sound to a generation.
+dealt again, and so is one that lost a sound to a generation. A cut changes
+no pair but one holding the sound you cut. After <kbd>⌘Z</kbd>, picking
+again or **ANOTHER PAIR** shows the same pairs, however fast their sounds
+arrived.
 
 Those renders wait behind what you ask for: a sound you open, a ▶ you press,
 and PERFORM’s offers and first measurements. When no pair is waiting (right
@@ -113,6 +136,11 @@ deal. The cards stay dimmed, with **▶ PLAY**, **PICK A**, **PICK B**,
 **⇄ CIRCUIT**, **↓ PATCH** and **ANOTHER PAIR** off, and say *Nothing to
 pair. Fewer than two sounds are left to deal.* They deal again by themselves
 when a cut is taken back or the pool changes.
+
+If the engine can’t deal a pair, the cards stay dimmed with **▶ PLAY**,
+**PICK A**, **PICK B**, **⇄ CIRCUIT** and **↓ PATCH** off, and say
+*Couldn’t deal a pair. ANOTHER PAIR tries again.* **ANOTHER PAIR** (or
+<kbd>N</kbd>) deals again.
 ```
 
 ```admonish info collapsible=true title="How it works: between refits"
