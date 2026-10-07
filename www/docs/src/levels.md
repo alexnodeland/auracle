@@ -39,7 +39,8 @@ As you move, the face of the sound you’re playing flies from where one level
 draws it to where the next does: PERFORM’s well, the face at **OUT** in
 PATCH, its mark on TASTE’s map, its ring on LEARNING’s, and the card in
 EVOLVE that holds it, if one does. Where a level doesn’t draw it, the face
-fades instead of flying. A light travels along the levels from the stop you
+fades instead of flying. Played as it flies, the face keeps drawing what you
+hear over it ([while you play it](./faces.md#while-you-play-it)). A light travels along the levels from the stop you
 left to the one you reach, and at either end of the zoom the levels nod and
 nothing moves. With reduced motion set on your system every move is
 instant.

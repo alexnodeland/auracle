@@ -1038,9 +1038,45 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   height, with its glow and reflection, on a still layer drawn again only
   when the face, the bank or the size changes; what sounds is drawn over it
   on a second canvas (`st-trail`), measured as a face is (`createLiveMeter`:
-  the analyser's time-domain samples through the face's Hann frame and band
+  the output's time-domain samples through the face's Hann frame and band
   weights, in buffers made once) against the same bank, fading like phosphor
-  and cleared in silence.
+  and cleared in silence. The moving layer is `live-face.js`'s trace
+  (`traceFade`, `traceHear`, `traceDraw`) at full size, the one every live
+  face draws.
+- **Live faces** (`live-face.js` `createLiveFaces`, `bootLiveFaces` in
+  `main.js`): the face of a sound being played draws stage mode's moving
+  layer over it, inline at its own size, on a canvas laid over the face
+  (`.face-live`, absolutely placed in the slot, or in the map's well, so it
+  never moves anything): PERFORM's well (the sound in hand, and B while it
+  holds an offer; not while the well shows XY or How it works), PATCH's face
+  at OUT, the EVOLVE card whose sound is played, and the sound's mark on
+  TASTE's map and in LEARNING's ring (where it is drawn this frame,
+  `taste.anchor(level, {drawn: true})`); and the face in flight between the
+  levels (`drawFlyingFace`, `liveFaces.flight`), which takes up what the face
+  it left was showing, so it never stops answering. Lines and glow scale with
+  the face's box (`traceScale`: stage mode's at 600 px tall, a tenth at
+  least), and a face under 40 px tall only brightens its outline. Each face
+  hears its own sound's signal (ADR-012): the sound in hand's faces the
+  voices' share (`shareA`, [Audio](#audio)) and Space's phrase (`playingKey`
+  `"inhand"`); B's face B's share; an EVOLVE card its own ▶ (`"duel:<id>"`),
+  and the keys and Space when it is the sound in hand's face (its render key
+  is `heldFace`'s); a map's mark the sound in hand's signals when it is that
+  sound's face, and a ▶ of it from the bank or EVOLVE. Loudness is read as
+  heard: the taps are before the master, so its gain is added. One
+  animation frame serves every face: each signal a face on screen hears is
+  read once (`getFloatTimeDomainData`), one quieter than −60 dBFS is not
+  measured, and each sound (a set of signals heard together, summed) is
+  measured once however many faces show it, into buffers made once. The
+  loop runs only while something is played (a key down or sustained, a
+  phrase, a monitored input) or a trail still fades, and is woken by
+  `ensureAudio` (every key, phrase and monitor), a level change and stage
+  mode closing; in silence the trail is cleared and the frame is not asked
+  for again. Under reduced motion it never runs, and the faces are still;
+  while stage mode is open the inline faces are cleared (it draws its own).
+  The meter's first run is made while the page is idle, so the first key's
+  frame does not pay for it. On the reference profile in Chromium (the page
+  throttled ×3.1), a key held at PERFORM costs the loop about 0.8 ms a frame
+  (median), about 6% of the main thread (`tests/web/live_faces.spec.js`).
 - **TASTE's map** draws each sound as its face (`host.drawFace`, main's
   `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
   per bank and size; a dot until the face lands, and the map is redrawn as
@@ -1809,6 +1845,15 @@ What the worklet renders each quantum (`process` in `live-audio.js`):
   after TAKE it sounds on at its mix until A has rebuilt as the offer, then
   fades. Silent already (its mix at 0, the audio struggling), it rests until
   it is freed.
+- **Each one's share, apart.** A and B are mixed inside the worklet, so no
+  analyser after it can tell them apart. Beside what is heard (the first
+  output, stereo, to the master), the worklet writes A's share of it and
+  B's (each mono, at the mix's own gains, `shareA` and `shareB`) to a second
+  and a third output, each through a gain that follows the voices' own (so
+  a muted instrument's share is silent) to an analyser and nowhere else.
+  They are what the faces read ([Faces](#faces), the live faces). The
+  phrases a ▶ plays reach the master through a bus of their own
+  (`phraseBus` in `main.js`), read apart the same way.
 
 ### Is the audio struggling?
 

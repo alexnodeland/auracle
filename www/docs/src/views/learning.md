@@ -68,7 +68,8 @@ until it first fits*.
 ## Where liking rises
 
 The pool on the map, each sound glowing by how much the model guesses you’d
-like it, with the sound you’re playing ringed and named. The arrow is the way
+like it, with the sound you’re playing ringed and named. While you play it,
+its face’s outline lights up on the ring, as loud as it sounds. The arrow is the way
 liking rises across the map: a summary fit, made by the model, of each
 sound’s liking on the map’s two axes, and the legend gives that fit’s r², how
 much of the glow one direction explains (*the arrow: liking rises · explains
