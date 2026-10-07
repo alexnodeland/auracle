@@ -563,10 +563,10 @@ class OwnEnv(Tree):
 class NoFileSystemMonitor(Tree):
     """A config that turns the file-system monitor on (a user's global
     core.fsmonitor=true, which the script's git reads when it is named by
-    GIT_CONFIG_GLOBAL, as OwnEnv's) does not reach the script's git: `diff`
-    and `ls-files --others` would ask a daemon, and start one for each
-    scratch repository, to outlive it and hold up a later git there. The
-    monitor here is a hook that records that it was asked (git runs one
+    GIT_CONFIG_GLOBAL, as OwnEnv's) does not make the script's git ask it:
+    `diff` and `ls-files --others` would ask a daemon, and start one for
+    each scratch repository, to outlive it and hold up a later git there.
+    The monitor here is a hook that records that it was asked (git runs one
     for the same two commands, without starting a daemon), so a test that
     fails does so without leaving one behind."""
 
@@ -579,7 +579,6 @@ class NoFileSystemMonitor(Tree):
         with open(hook, "w") as f:
             f.write(f'#!/bin/sh\necho asked >> "{self.asked}"\nprintf "\\0"\n')
         os.chmod(hook, 0o755)
-        self.hook = hook
         self.cfg = os.path.join(self.outside, "global.gitconfig")
         with open(self.cfg, "w") as f:
             f.write(f"[core]\n\tfsmonitor = {hook}\n")
@@ -595,15 +594,6 @@ class NoFileSystemMonitor(Tree):
         if asked:
             os.remove(self.asked)
         return asked
-
-    def test_the_script_turns_the_monitor_off_whatever_the_config_says(self):
-        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": self.cfg}):
-            plain = subprocess.run(
-                ["git", "-C", self.root, "config", "core.fsmonitor"], env=C.own_env(), capture_output=True, text=True
-            )
-            ours = C.git(["config", "core.fsmonitor"], self.root, check=False)
-        self.assertEqual(plain.stdout.strip(), self.hook, "the sentinel config reaches a git that is given no -c")
-        self.assertEqual(ours.strip(), "false")
 
     def test_the_changed_lines_are_read_without_asking_the_monitor(self):
         with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": self.cfg}):
