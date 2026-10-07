@@ -63,7 +63,9 @@ export const MODULES = {
   "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in", "perform_struggling_audio"],
   // Whether the audio is struggling: the protections main switches on.
   "apps/web/strain.js": ["perform_struggling_audio"],
-  "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing"],
+  // The profile's spec hands a farm worker of its own its boot, phrase and
+  // job, as main and the engine do.
+  "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "reference_profile"],
   // Both workers open the render cache's store through it, at boot; the
   // fixture writes and reads the store through it too (`reuseRenders`).
   "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
@@ -89,12 +91,14 @@ export const VIEWS = {
     sample: ["smoke", "failure_flows", "shell_levels"],
   },
 };
-// Specs no view draws: the fixture's own tests (its tap, and the renders a
-// boot reuses), and the engine's, which opens no page (the browser's engine
-// deals what the native one deals). A change to the engine runs the last
-// beside the samples.
-export const NO_VIEW = ["fixture_tap", "fixture_renders", "boot_agrees"];
-export const ENGINE_SPECS = ["boot_agrees"];
+// Specs no view draws: the fixture's own tests (its tap, the renders a boot
+// reuses, and the reference profile it boots the budgets on), and the
+// engine's, which opens no page (the browser's engine deals what the native
+// one deals). A change to the engine runs the engine's beside the samples,
+// and the profile's, which renders through the engine's exports and the
+// address worker.js imports them from.
+export const NO_VIEW = ["fixture_tap", "fixture_renders", "reference_profile", "boot_agrees"];
+export const ENGINE_SPECS = ["boot_agrees", "reference_profile"];
 
 // main.js's sections, by their headings, and the views each draws. The first
 // rule a heading matches wins, so the narrow rules come first, and a word a

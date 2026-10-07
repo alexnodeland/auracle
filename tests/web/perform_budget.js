@@ -28,7 +28,8 @@
 // A spec reaches it as `app.offerBudget` (fixtures.js). The fixture's tap keeps
 // the engine worker (`window.__pbEngine`) and the tree of the last
 // `perform_wire` the page asked for, the patch on PERFORM (`window.__pbTree`),
-// and `app.boot` applies AURACLE_CPU_THROTTLE (`SLOW_ENGINE` below).
+// and `app.boot` applies AURACLE_CPU_THROTTLE and a reference profile
+// (`SLOW_ENGINE` below; profile.js).
 const { test } = require("@playwright/test");
 
 const FLOOR_MS = process.env.CI ? 240_000 : 90_000;
@@ -42,10 +43,31 @@ const STEPS = 120;
 // function the engine's wasm instance exports so that a call taking d ms
 // then spins for (rate - 1) d more. A render, a step and a measurement take
 // `rate` times as long; the page's protocol, its lanes and its order are
-// untouched. The farm's workers are not slowed.
+// untouched. AURACLE_CPU_THROTTLE and `slowEngine` slow the engine worker
+// only; a reference profile (profile.js) prefixes it onto farm.js too, where
+// the glue instantiates main's shared module and gets an Instance back.
+//
+// What it did is kept in the worker, so a spec can see that the wasm it timed
+// ran through it, at its rate: `self.__slowEngine`, one entry per slowdown
+// served ({ rate, instances, calls }: the instances it wrapped and the calls
+// it slowed), a second one (a spec's own, after the fixture's) after the
+// first. A page that holds the worker asks with `{ type: "__slow_engine" }`
+// and is answered `{ type: "__slow_engine", slowed }`; no other message is
+// touched (reference_profile.spec.js asks a farm worker it spawned).
 const SLOW_ENGINE = (rate) => `(() => {
   const RATE = ${rate};
+  const seen = { rate: RATE, instances: 0, calls: 0 };
+  const all = (self.__slowEngine = self.__slowEngine || []);
+  all.push(seen);
+  if (all.length === 1) {
+    self.addEventListener("message", (e) => {
+      if (!e.data || e.data.type !== "__slow_engine") return;
+      e.stopImmediatePropagation();
+      self.postMessage({ type: "__slow_engine", slowed: all.map((s) => ({ ...s })) });
+    });
+  }
   const slow = (fn) => function (...args) {
+    seen.calls++;
     const t = performance.now();
     const out = fn.apply(this, args);
     const until = performance.now() + (performance.now() - t) * (RATE - 1);
@@ -53,6 +75,7 @@ const SLOW_ENGINE = (rate) => `(() => {
     return out;
   };
   const wrap = (inst) => {
+    seen.instances++;
     const ex = {};
     for (const [k, v] of Object.entries(inst.exports)) ex[k] = typeof v === "function" ? slow(v) : v;
     const fake = Object.create(WebAssembly.Instance.prototype);
