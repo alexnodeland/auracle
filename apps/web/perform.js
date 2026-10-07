@@ -2653,8 +2653,9 @@ export function createPerform(host) {
           state.carried = false;
           state.wireError = "couldn’t measure this patch";
         } else if (m.error) {
-          // The wiring in hand still plays; it just wasn't re-checked.
-          state.wireError = "couldn’t re-check this patch";
+          // The wiring in hand still plays; it just wasn't re-checked. A
+          // guess was never measured, so it says that (#290).
+          state.wireError = state.guess ? "couldn’t measure this patch" : "couldn’t re-check this patch";
         }
         knobs.forEach(paintKnob);
         renderHood();

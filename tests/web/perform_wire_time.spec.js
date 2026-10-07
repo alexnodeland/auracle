@@ -139,3 +139,30 @@ test("a pool sound's controls play soon after it is taken into PERFORM", { tag: 
   for (const at of picks) out.push(await take(page, app, at));
   expect(out.filter((t) => t.how).length).toBeGreaterThan(0);
 });
+
+// A sound playing on a guess whose measurement then fails keeps playing on
+// it, and says it was never measured: "couldn't re-check" is for a wiring
+// that was. Slowed, so the measurement is still out when the engine's
+// failure is handed to main (the tap's engine_error, as the worker sends
+// one it could not run).
+test("a sound playing on a guess whose measurement fails keeps playing, and says it couldn't measure it", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, slowEngine: 4 });
+  await app.level("perform");
+  await app.fullPool();
+  await app.reached();
+  await bankTab(page, "pool");
+  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  const since = await app.now();
+  await app.level("perform");
+  const status = page.locator(".pf-status");
+  await expect(status, "it plays on a guess while it is measured").toHaveText(/controls reach this patch · listening…$/);
+  await expect(page.locator(".pf-knob.guess").first(), "drawn as a guess").toBeAttached();
+  const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+  await app.inject({ type: "engine_error", request: "perform_wire", id: null, req: asked.req, message: "RuntimeError: injected for the test" });
+  await expect(status).toHaveText(/controls reach this patch · couldn’t measure this patch$/);
+  await expect(page.locator(".pf-knob.waiting"), "no control still says listening…").toHaveCount(0);
+  await expect(page.locator(".pf-knob.guess").first(), "still playing on its guess").toBeAttached();
+});
