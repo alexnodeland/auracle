@@ -2073,6 +2073,33 @@ impl WasmEngine {
         .to_string()
     }
 
+    /// Which way your taste leans along each named control at the performed
+    /// state (`tree` plus knob `overrides`), for PERFORM under the model view:
+    /// JSON `[{index, name, mean, std}]`, one per control in the order asked
+    /// (`controls` as for [`Self::perform_wire`], the six when left out),
+    /// `index` the control's palette index. `mean` and `std` are the posterior
+    /// slope of the utility along the control's direction at that sound,
+    /// through the lens that claims it in each draw
+    /// (`auracle_session::Engine::lean`); a lean whose `mean ± std` crosses
+    /// zero is a guess. `null` before the first fit, and for a tree that does
+    /// not parse or vet. One featurization through the memo: the tree PERFORM
+    /// measured renders nothing.
+    pub fn perform_lean(
+        &self,
+        tree_json: &str,
+        overrides_json: &str,
+        controls: Option<String>,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        let set = palette_set(controls.as_deref());
+        match self.engine.lean(&tree, &set) {
+            Some(leans) => json_or(&leans, "null"),
+            None => "null".into(),
+        }
+    }
+
     /// The knobs of `tree_json` the voices can take live, as `[[addr, value],
     /// …]` (`auracle_session::perform::live_knobs`): a compile, no render.
     /// Rides with a tree on its way to the voices, so PERFORM can keep playing

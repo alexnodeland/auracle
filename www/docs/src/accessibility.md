@@ -40,7 +40,9 @@ once as the view comes up. In PATCH, the belief line in the subtitle is a
 status too, and the readout at the well's foot (a polite live region) reads
 what the model makes of the selection; each worth chip names its family and
 figure in its text, and each of the guess's runners-up is an image named for
-its rank, its module and its lower bound.
+its rank, its module and its lower bound. In PERFORM, each control's lean is
+its description while the view is up, read with the control (*it leans
+brighter*, with a **?** while it is a guess).
 
 **PERFORM.** Its pads have keys, printed on each and given in
 `aria-keyshortcuts`: <kbd>n</kbd> OFFER (NEXT), hold <kbd>b</kbd> PEEK,

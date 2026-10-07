@@ -124,3 +124,34 @@ test("a pick made while a spare offer grows is answered before the spare's next 
   assert.ok(!callsBetween(trace, left.arrived, left.answered).includes("perform_job_step"), "the spare stepped after the page left it");
   await w.close();
 });
+
+test("PERFORM's lean is nothing before a fit, and after one each control asked for by its index, answered during the measurement by one engine call", { timeout: TIMEOUT }, async (t) => {
+  const w = await workerFor(t, { seed: SEED });
+  const tree = await treeOf(w, 1);
+  // Before a fit: answered, with nothing to draw.
+  const [cold] = await w.send({ type: "perform_lean", req: 1, tree, overrides: [] });
+  assert.equal(cold.type, "perform_leaned");
+  assert.equal(cold.req, 1, "the reply names PERFORM's request");
+  assert.equal(cold.lean, null);
+
+  await taught(w);
+  // The model view comes up during the measurement's third render.
+  const ask = { type: "perform_lean", req: 3, tree, overrides: [], controls: [16, 3] };
+  w.post(ask, { during: { call: "memo_render", nth: 3 } });
+  const [wired] = await w.send({ type: "perform_wire", req: 2, tree, overrides: [] });
+  const [leaned] = await w.answers(ask);
+  assert.ok(wired.data, "the measurement landed whole");
+  assert.equal(leaned.req, 3);
+  assert.deepEqual(leaned.lean.map((l) => [l.index, l.name]), [[16, "Bite"], [3, "Body"]], "the controls asked for, in that order");
+  for (const l of leaned.lean) assert.ok(Number.isFinite(l.mean) && l.std >= 0, `${l.name}: ${l.mean} ± ${l.std}`);
+  // The six, when none are named.
+  const [six] = await w.send({ type: "perform_lean", req: 4, tree, overrides: [] });
+  assert.deepEqual(six.lean.map((l) => l.index), [0, 1, 2, 3, 4, 5]);
+
+  const trace = await w.trace();
+  const { posted, arrived, answered } = served(trace, "perform_lean", leaned);
+  assert.deepEqual(callsBetween(trace, posted, arrived), [], "the lean waited for more than the render in progress");
+  assert.deepEqual(callsBetween(trace, arrived, answered), ["perform_lean"], "the lean took more than its own call");
+  assert.ok(callsBetween(trace, answered, outOf(trace, wired)).includes("memo_render"), "the measurement was over");
+  await w.close();
+});

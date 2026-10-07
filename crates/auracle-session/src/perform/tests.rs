@@ -1453,3 +1453,115 @@ fn verification_counts_a_point_that_does_not_vet_as_no_movement() {
     assert!(plan.iter().all(|(k, _)| !failed.contains(k)));
     assert!(!plan.is_empty());
 }
+
+/// **A control leans the way the lens that claims the sound slopes.** Before
+/// a fit there is no lean, and none for a sound that does not vet. With a
+/// posterior, each control asked for gets one, in the order asked, carrying
+/// its palette index: the posterior slope of the utility along the control's
+/// direction at the sound in hand, through the lens that rates the sound
+/// highest in each draw. Here the sound sits one σ up `n_filter` and at the
+/// mean of everything else, so the lens that likes filters claims it in both
+/// draws: lens 0 in the first, lens 1 in the second. That lens likes
+/// brightness in both and is split on bass, so Bright leans up clear of zero
+/// and Body crosses it, while the other lens's dislike of brightness, and the
+/// claiming lens's own liking for filters (a structure no control moves),
+/// lean nothing.
+#[test]
+fn a_control_leans_the_way_the_lens_that_claims_the_sound_slopes() {
+    use crate::engine::{phi_names, Engine, SessionConfig};
+    use auracle_taste::{TasteConfig, TastePosterior, TasteSample};
+    let mut engine = Engine::new(
+        auracle_grammar::PatchGrammarPrior::default(),
+        SessionConfig::default(),
+    );
+    let spec = engine.cfg.phrase.clone();
+    let tree = preset_named("Folded Lead");
+    let names = phi_names();
+    let at = |bare: &str| {
+        names
+            .iter()
+            .position(|n| n.split(':').next() == Some(bare))
+            .unwrap()
+    };
+    let (bright, bass, filters) = (at("centroid_mean"), at("bass_fraction"), at("n_filter"));
+    let raw = featurize_memo(&tree, &spec, engine.memo(), false)
+        .unwrap()
+        .0
+        .features
+        .phi();
+    let mut mean = raw;
+    mean[filters] -= 1.0;
+    engine.standardizer = Some(Arc::new(Standardizer {
+        mean,
+        std: vec![1.0; names.len()],
+    }));
+    assert!(
+        engine.lean(&tree, &CONTROLS).is_none(),
+        "a lean before a fit"
+    );
+
+    let lens = |w: &[(usize, f64)]| {
+        let mut theta = vec![0.0; names.len()];
+        for &(i, x) in w {
+            theta[i] = x;
+        }
+        theta
+    };
+    let claims = |b: f64| lens(&[(filters, 2.0), (bright, 1.0), (bass, b)]);
+    let dark = lens(&[(bright, -5.0)]);
+    let draw = |theta: Vec<Vec<f64>>| TasteSample {
+        theta,
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.0],
+    };
+    engine.posterior = Some(Arc::new(TastePosterior {
+        cfg: TasteConfig::mixture(names.len(), 2),
+        samples: vec![
+            draw(vec![claims(1.0), dark.clone()]),
+            draw(vec![dark, claims(-1.0)]),
+        ],
+        weights: Vec::new(),
+    }));
+
+    let leans = engine.lean(&tree, &CONTROLS).expect("a lean once fitted");
+    let asked: Vec<(Option<usize>, &str)> =
+        leans.iter().map(|l| (l.index, l.name.as_str())).collect();
+    let want: Vec<(Option<usize>, &str)> = CONTROLS
+        .iter()
+        .enumerate()
+        .map(|(k, c)| (Some(k), c.name))
+        .collect();
+    assert_eq!(asked, want);
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-12;
+    // Bright is centroid and rolloff at 1/√2 each: the claiming lens's 1 on
+    // centroid, in both draws.
+    let up = &leans[0];
+    assert!(
+        near(up.mean, 0.5f64.sqrt()) && near(up.std, 0.0),
+        "Bright {up:?}"
+    );
+    // Body is bass alone: +1 in one draw, −1 in the other.
+    let body = &leans[3];
+    assert!(near(body.mean, 0.0) && near(body.std, 1.0), "Body {body:?}");
+    // Nothing the claiming lens weighs moves Grit, Snap, Motion or Space.
+    for l in [&leans[1], &leans[2], &leans[4], &leans[5]] {
+        assert!(near(l.mean, 0.0) && near(l.std, 0.0), "{l:?}");
+    }
+    // Asked for in another order, from the palette: that order, each with its
+    // index, and the same lean for the same control.
+    let other = engine.lean(&tree, &palette_controls(&[16, 3])).unwrap();
+    assert_eq!(
+        other.iter().map(|l| l.index).collect::<Vec<_>>(),
+        vec![Some(16), Some(3)]
+    );
+    assert_eq!(other[1], leans[3]);
+
+    // A sound that does not vet has no lean; nor, without a scale, does any.
+    let silent = PatchTree {
+        amp: tree.amp.clone(),
+        root: AudioNode::Silence { uid: Uid::NEW },
+    };
+    assert!(engine.lean(&silent, &CONTROLS).is_none());
+    engine.standardizer = None;
+    assert!(engine.lean(&tree, &CONTROLS).is_none());
+}

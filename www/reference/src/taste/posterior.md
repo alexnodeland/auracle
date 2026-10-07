@@ -298,8 +298,9 @@ Alignment is **exhaustive over permutations**, which is fine because $K \le 5$
 and $5! = 120$. No-op at $K = 1$.
 
 Call it before `theta_mean`, `theta_std`, `style_share`, or anything else
-per-style. Aggregate quantities (`utility_mix`, `prob_prefers`) are
-permutation-invariant and do not need it.
+per-style. Aggregate quantities (`utility_mix`, `prob_prefers`, and `slope`,
+which names each draw's style by its rating) are permutation-invariant and do
+not need it.
 
 ## What the summaries are
 
@@ -312,6 +313,7 @@ All weighted by the importance weights:
 | `utility_mix(z)` | $(\text{mean}, \text{sd})$ of $u$: glow and size on the map |
 | `responsibilities(z)` | $\sum_s w_s \mathbb{1}[\text{best style of } z \text{ under } \theta_s = k]$ |
 | `style_share(Z)` | `responsibilities` averaged over candidates |
+| `slope(z, ê)` | $(\text{mean}, \text{sd})$ of $\theta_{k^\star}^\top \hat e$, $k^\star$ each draw’s best style of $z$: PERFORM’s [lean](../search/perform.md#which-way-your-taste-leans) |
 | `prob_prefers(a,b)` | $\sum_s w_s\, \sigma(u_s(a) - u_s(b))$ |
 
 `prob_prefers` marginalizes $\theta$ **and** the weights **and** the

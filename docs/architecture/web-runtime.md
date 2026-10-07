@@ -110,7 +110,32 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   It is asked when the view comes up, on each `placePair`, and again on
   `fitted`, so a refit between deal and pick cannot leave an old number; a pick
   clears it. The cards' style badges show only under the view.
-- **PERFORM**: nothing per control; no engine call yet says a control's lean.
+- **PERFORM**: `perform.modelViewChanged(on)`. Each control carries its
+  lean, which way your taste leans along it at the sound in hand: the
+  worker's `perform_lean` (`Engine::lean`, in `now`), asked of the tree
+  PERFORM measures with no overrides (a memo hit once PERFORM has measured
+  it or the bench has opened it; otherwise one render, as ▶ costs) for the
+  panel's set, and
+  answered `{lean: [{index, name, mean, std}]}`, the posterior slope of the
+  utility along each control's direction through the lens that claims the
+  sound, or `lean: null` with no posterior (before the first fit, and after a
+  taste file is opened until its refit lands). `paintLean` draws it on the
+  dial (`.pf-k-lean`, an arc from 12 o'clock toward the end it leans to with
+  its ±σ interval, on one scale for the panel: taste-geom's `leanMarks`) and
+  the model's words over the caption (`.pf-k-leanw`, `words.leanWord`: *it
+  leans brighter*), and a lean whose interval crosses zero as the guess
+  `pullMark` makes it (dashed, faint, its words ending in "?"). CSS shows it
+  only under the view. It is asked when the view comes up over PERFORM,
+  when PERFORM comes into sight with the view up, when the sound or the
+  panel changes (a sound that listens included, when main reports a new
+  audition clip: `perform.clipChanged` on `audition_clip`), and when main
+  reports the posterior moved (`perform.posteriorChanged`: on `fitted`, on
+  a `status` carrying `ratings`, and on `imported`, whose engine has no
+  posterior until its refit); once per sound, posterior and panel
+  (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the clip is
+  part of a listening sound's key), never per frame. A lean of the same
+  sound stays drawn until a newer one lands; one asked under another
+  posterior or panel is not shown when the view comes up.
 
 ## The worker's lanes
 
@@ -118,7 +143,8 @@ Requests are served in three lanes, most urgent first and first come, first
 served within a lane (`laneOf` in `worker.js`):
 
 - **now**: the player's gestures and everything that must stay in order with
-  them (edits, votes, opens, auditions, saves, logs). A render main asks for
+  them (edits, votes, opens, auditions, saves, logs, and the model view's
+  questions: EVOLVE's guess before a pick, PERFORM's lean). A render main asks for
   in the background (`render` with `bg`: the sounds of a pair just dealt)
   waits here behind every gesture, and before one starts, and again after it
   ends, the worker lets in anything that arrived during the last call
@@ -211,9 +237,9 @@ arrived during that call first. And end to end by
 engine and posts the request while a given engine call runs: during
 PERFORM's measurement, the guess's renders and a spare offer's steps, the
 request is handed over when that call ends, before any other, and answered
-before the job's next one; `tests/worker/warm_start.test.mjs` does the same
-for *teach it* while two loops serve the lane, one of them measuring the
-warm start's cards.
+before the job's next one (PERFORM's lean by its one call);
+`tests/worker/warm_start.test.mjs` does the same for *teach it* while two
+loops serve the lane, one of them measuring the warm start's cards.
 
 ### Offers and drifts are jobs
 
@@ -1350,9 +1376,10 @@ the voices' input in the worklet, and the clip in the engine.
   engine worker, in the `now` lane. The reply is `audition_clip` with `ok`,
   the engine's `note`, `clip`, `remeasured` and `unmeasured`, `farmResent`
   (how many farm workers were handed the new phrase) and, when listeners were
-  measured again, `views` and `status`; main applies them and saves the
-  session, which carries the clip. Restores and `ready` post `audition_clip`
-  with the status only.
+  measured again, `views` and `status`; main applies them, tells PERFORM
+  (`perform.clipChanged`: the lean of a sound in hand that listens is asked
+  again under the model view) and saves the session, which carries the clip.
+  Restores and `ready` post `audition_clip` with the status only.
 - **The farm's phrase.** The phrase carries the clip, so the worker sends the
   `phrase` handshake again to the crew standing after a clip is taken
   (`farmResendPhrase`), and in a staged restore right after

@@ -24,6 +24,7 @@ import {
   pickSaid,
   refitSaid,
   weightSaid,
+  leanWord,
   weightsMore,
   directionLegend,
   forecastNote,
@@ -352,6 +353,26 @@ test("TASTE's and LEARNING's sentences are in the voice", () => {
   assert.equal(weightSaid("grit", -0.12, 0.3, true), "grit: likes less, −0.12 ± 0.30, still a guess");
   assert.equal(directionLegend({ r2: 0.16 }), "the arrow: liking rises · explains 16%");
   assert.equal(plateGuess(0.59), "would like: 59% · leaning", "a percentage, never alone: with its word");
+});
+
+test("a PERFORM control's lean says it in the palette's comparative, and a guess says so", () => {
+  const [bright, snap, motion, body, , space] = PALETTE;
+  assert.equal(leanWord(bright.aim, 0.42, false), "it leans brighter");
+  assert.equal(leanWord(bright.aim, -0.42, false), "it leans darker");
+  assert.equal(leanWord(snap.aim, -0.05, true), "it leans softer?", "a guess: the side its mean is on, with a ?");
+  assert.equal(leanWord(body.aim, 0.05, true), "it leans fuller?");
+  assert.equal(leanWord(motion.aim, 0.3, false), "it leans more restless", "a comparative of two words reads the same");
+  for (const c of PALETTE) {
+    for (const mean of [1, -1]) {
+      for (const guess of [false, true]) {
+        const s = leanWord(c.aim, mean, guess);
+        assert.equal(s, `it leans ${c.aim[mean >= 0 ? 1 : 0]}${guess ? "?" : ""}`, c.name);
+        voiced(s);
+        assert.ok(!/\b(lens|posterior|slope|vote|duel)\b/i.test(s), `the word table: ${s}`);
+      }
+    }
+  }
+  assert.equal(leanWord(space.aim, 1, false), "it leans farther");
 });
 
 test("the math states the engine's numbers, and nothing else", () => {

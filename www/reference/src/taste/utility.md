@@ -147,6 +147,7 @@ every $K$.
 | `utility(z, k)` | Style $k$’s rating specifically |
 | `best_style(z)` | Which style claims this candidate: the hue on the map |
 | `responsibilities(z)` | Posterior probability that each style is the best one for this candidate |
+| `slope(z, ê)` | The slope of $u$ along a direction $\hat e$ at $z$, through the style that claims $z$ in each draw: PERFORM’s [lean](../search/perform.md#which-way-your-taste-leans) on a control |
 | `style_share(pool)` | Per-style share of the pool, averaged over candidates |
 | `prob_prefers(a, b)` | $\E_\theta\,[\sigma(u(a) - u(b))]$: the forecast the app shows for a pair |
 

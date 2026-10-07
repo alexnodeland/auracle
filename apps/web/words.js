@@ -663,6 +663,16 @@ export function refitSaid() {
   return "It fitted your taste again. Every rating settled.";
 }
 
+/** A PERFORM control's lean under the model view, in the model's voice: the
+ *  way your taste leans at the sound in hand, in the palette's comparative
+ *  for that side (`aim`, [lower, higher]: "it leans brighter"; the side by
+ *  the sign of the slope's `mean`), and while it is a guess (its interval
+ *  crosses zero) the same with the "?" a guess carries in LEARNING's
+ *  weights. */
+export function leanWord(aim, mean, guess) {
+  return `it leans ${mean >= 0 ? aim[1] : aim[0]}${guess ? "?" : ""}`;
+}
+
 /** A weight row's words for a screen reader: the quality, which way it
  *  leans, the weight and its spread, and whether it is still a guess. */
 export function weightSaid(word, mean, std, guess) {

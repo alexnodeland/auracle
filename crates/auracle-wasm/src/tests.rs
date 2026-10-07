@@ -1480,6 +1480,75 @@ fn perform_wire_measures_the_palette_controls_asked_for() {
     );
 }
 
+/// PERFORM's lean under the model view (`perform_lean`): `null` before the
+/// first fit and for a tree it cannot read; after it, one `{index, name,
+/// mean, std}` per control asked, in the order asked, each named back by its
+/// palette `index` (asked for Bite then Body, position 0 is Bite), and the
+/// six when none is named. The reply is the engine's own answer, serialized
+/// as it is declared.
+#[test]
+fn perform_lean_answers_each_control_asked_for_by_its_index() {
+    use auracle_session::perform::{palette_controls, CONTROLS};
+    let mut engine = WasmEngine::new(3, 6);
+    while engine.fill_step(3) > 0 {}
+    let ids = pool_ids(&engine);
+    let tree = engine.tree_json_of(ids[0]);
+    assert_eq!(engine.perform_lean(&tree, "[]", None), "null", "no fit yet");
+    engine.engine.cfg.mcmc_samples = 1_000;
+    engine.engine.cfg.mcmc_warmup = 500;
+    assert!(engine.record_duel(ids[0], ids[1], true));
+    engine.fit();
+
+    let parsed: PatchTree = serde_json::from_str(&tree).unwrap();
+    let asked = engine.perform_lean(&tree, "[]", Some("[16, 3]".into()));
+    let own = engine
+        .engine
+        .lean(&parsed, &palette_controls(&[16, 3]))
+        .unwrap();
+    assert_eq!(asked, serde_json::to_string(&own).unwrap());
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&asked).unwrap();
+    let shape: Vec<(Vec<&str>, u64, &str)> = rows
+        .iter()
+        .map(|r| {
+            let keys = r.as_object().unwrap().keys().map(String::as_str).collect();
+            (
+                keys,
+                r["index"].as_u64().unwrap(),
+                r["name"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        vec![
+            (vec!["index", "mean", "name", "std"], 16, "Bite"),
+            (vec!["index", "mean", "name", "std"], 3, "Body"),
+        ]
+    );
+    assert!(asked.starts_with(r#"[{"index":16,"name":"Bite","mean":"#));
+    assert!(rows
+        .iter()
+        .all(|r| r["mean"].is_f64() && r["std"].as_f64().is_some_and(|s| s >= 0.0)));
+
+    // None named: the six, each at its own index.
+    let six: Vec<serde_json::Value> =
+        serde_json::from_str(&engine.perform_lean(&tree, "[]", None)).unwrap();
+    let named: Vec<(u64, &str)> = six
+        .iter()
+        .map(|r| (r["index"].as_u64().unwrap(), r["name"].as_str().unwrap()))
+        .collect();
+    let want: Vec<(u64, &str)> = CONTROLS
+        .iter()
+        .enumerate()
+        .map(|(k, c)| (k as u64, c.name))
+        .collect();
+    assert_eq!(named, want);
+
+    for bad in ["{", "null"] {
+        assert_eq!(engine.perform_lean(bad, "[]", None), "null");
+    }
+}
+
 /// A search control's offer says how far it moved the way it was turned
 /// (ADR-008): `moved`, a number in σ that is the engine's own measure of the
 /// move along that control's direction. A palette index names the same

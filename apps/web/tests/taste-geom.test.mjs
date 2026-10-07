@@ -15,6 +15,8 @@ import {
   pullMark,
   pullLabel,
   countPulls,
+  LEAN_HALF,
+  leanMarks,
   liking,
   haloOf,
   mapFrame,
@@ -190,6 +192,41 @@ test("pull: a small cell draws the same mark on its own width (the node bank's 1
 test("pull: counts for a caption", () => {
   assert.deepEqual(countPulls([{ guess: true }, { guess: false }, { guess: true }]), { settled: 1, guesses: 2 });
   assert.deepEqual(countPulls([]), { settled: 0, guesses: 0 });
+});
+
+// ---------- PERFORM: a control's lean ----------
+
+test("lean: the panel's leans share one scale on the dial's half-travel, each the mark of a pull", () => {
+  // Bright leans up and is sure of it; Body could go either way; Grit leans
+  // down and is sure; Motion's lean did not come back.
+  const rows = [{ mean: 0.42, std: 0.1 }, { mean: 0.05, std: 0.3 }, null, { mean: -0.2, std: 0.05 }];
+  const marks = leanMarks(rows);
+  assert.equal(LEAN_HALF, 135, "12 o'clock to either end of a control's dial");
+  assert.equal(marks.length, 4);
+  assert.equal(marks[2], null, "a control the engine said nothing of has no mark");
+  const scale = directionsScale(rows.filter(Boolean), LEAN_HALF);
+  rows.forEach((r, i) => r && assert.deepEqual(marks[i], pullMark(r, scale, LEAN_HALF)));
+  const [bright, body, , grit] = marks;
+  assert.equal(bright.guess, false);
+  assert.ok(bright.len > 0 && bright.lo > 0, "clockwise, toward its high end, its interval clear of 12 o'clock");
+  assert.equal(body.guess, true, "an interval across zero is a guess");
+  assert.ok(body.lo < 0 && body.hi > 0, "and it crosses 12 o'clock");
+  assert.equal(grit.guess, false);
+  assert.ok(grit.len < 0 && grit.hi < 0, "counter-clockwise, toward its low end");
+  // One scale: the steeper slope draws the longer arc, and the widest
+  // interval reaches the end of the travel and no further.
+  assert.ok(Math.abs(bright.len) > Math.abs(grit.len));
+  // Bright's 0.42 + 0.1 is the widest reach here.
+  assert.ok(Math.abs(bright.hi - LEAN_HALF) < 1e-9, `the widest reach ends at the stop (${bright.hi})`);
+  for (const m of marks.filter(Boolean)) assert.ok(m.lo >= -LEAN_HALF && m.hi <= LEAN_HALF);
+  // Another half-travel is the same marks scaled to it.
+  const wide = leanMarks(rows, 270);
+  assert.ok(Math.abs(wide[0].len - 2 * bright.len) < 1e-9);
+});
+
+test("lean: before the first fit there is nothing to mark", () => {
+  assert.deepEqual(leanMarks([null, null]), [null, null]);
+  assert.deepEqual(leanMarks([]), []);
 });
 
 // ---------- TASTE's map and LEARNING ----------
