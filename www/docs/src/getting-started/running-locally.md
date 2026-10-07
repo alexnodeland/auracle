@@ -139,7 +139,13 @@ hover-to-reveal means never.
   workers, or two if the device reports 4 GB of memory or less. Add `?farm=0`
   to the address to boot without them.
 - **While you play:** four voices of modular sound on a real-time audio thread.
-  Modest, but heavy work in another tab can cause dropouts.
+  Modest, but heavy work in another tab can cause dropouts. An offer in
+  PERFORM’s B adds four more only while you listen to it (BLEND off home, or
+  PEEK held). On a machine with four processor threads or fewer, what the
+  instrument does on its own (filling the bank, a generation’s walks,
+  Wander, measuring in the background) waits while notes sound and for a
+  second after, and with notes held past eight seconds goes on a step a
+  second, so the audio thread has the processor to itself.
 - **At a refit:** seconds of work, off the audio thread. You can keep playing
   through it.
 - **Storage:** your session, in IndexedDB. Tens of megabytes at most, mostly

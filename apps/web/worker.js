@@ -594,6 +594,9 @@ function walkPump() {
   for (const f of farm) {
     if (!walkQueue.length) break;
     if (!f.alive || !f.ready || f.job !== null) continue;
+    // Not while notes sound (`backgroundStep`): `backgroundResumed` pumps
+    // again when a walk may go.
+    if (!backgroundStep()) break;
     let task = walkQueue.shift();
     while (task && task.dead) task = walkQueue.shift();
     if (!task) break;
@@ -811,8 +814,10 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
             progressed = true;
           }
         }
+        // Not while notes sound (`backgroundStep`): the farm's renders wait,
+        // and `backgroundResumed` wakes this pump when they may go.
         for (const f of idle) {
-          if (!queue.length) break;
+          if (!queue.length || !backgroundStep()) break;
           issue(f, queue.shift());
           progressed = true;
         }
@@ -1931,6 +1936,9 @@ function crewRenders(jobs, ms) {
       for (const f of farm) {
         if (!queue.length) break;
         if (!f.alive || !f.ready || f.job !== null) continue;
+        // Not while notes sound (`backgroundStep`): the budget runs out
+        // meanwhile, and the floor's renders (`guessRun`) wait their turn.
+        if (!backgroundStep()) break;
         const job = queue.shift();
         const i = ++guessSeq;
         ids.add(i);
@@ -2836,10 +2844,106 @@ function seenFaceWaiting(lanes) {
   return lanes[FACES].some((q) => q.seen && !blocked(q));
 }
 
+// ---------- background work steps aside while notes sound ----------
+//
+// On a machine with four threads or fewer (a two-core laptop: two renderers on
+// the farm, this worker, the page and the audio thread), the voices ran short
+// while this worker and the farm rendered beside them: the crackle of issue
+// 288 came before any offer was shown. So main says when notes start sounding and
+// when the last one stops (`playing`, never answered; only on such a machine,
+// main.js `playingChanged`), and until a second after that last note
+// (`PLAY_TAIL_MS`: its tail), no background work starts: nothing from `later`
+// or the faces lane (`nextLong`; a `later` job holding the floor gives way at
+// its next breath, `breathe`), no background render in `now` (`serveNow`: a
+// dealt pair's sounds, a warm-start card), no batch of the fill (the serial
+// fill's loop, `backgroundTurn`, and the farm's, `runFarm`), and no walk handed
+// to the crew (`walkPump`). The player's requests are served as ever, and
+// `soon` work (what the player asked for and waits on: a pressed Offer, the
+// measurement of the sound in hand) starts as ever. What has started finishes:
+// a render cannot be interrupted.
+//
+// The hold latch and the sustain pedal can keep notes sounding for good, and
+// with two cores the fill would then never finish. So after `PLAY_CAP_MS` of
+// sounding (gaps under the tail count as sounding), one background step goes
+// through every `PLAY_TRICKLE_MS`, across all of those places: one job started
+// or one piece of one, one background render, one batch of the fill, one
+// render or one walk handed to the farm.
+const PLAY_TAIL_MS = 1000;
+const PLAY_CAP_MS = 8000;
+const PLAY_TRICKLE_MS = 1000;
+let playSince = null; // when notes began sounding (a gap under the tail included), or null
+let playTail = null; // the timer that ends the hold a tail after the last note
+let trickledAt = -Infinity; // when the last step went through past the cap
+let trickleTimer = null; // the timer for the next step past the cap
+const backgroundWaiters = []; // the serial fill, waiting for its turn
+
+/** Main's word: notes are sounding (`on`), or the last one has stopped. */
+function setPlaying(on) {
+  if (on) {
+    if (playTail) clearTimeout(playTail);
+    playTail = null;
+    if (playSince == null) playSince = performance.now();
+    return;
+  }
+  if (playSince == null || playTail) return;
+  playTail = setTimeout(() => {
+    playTail = null;
+    playSince = null;
+    if (trickleTimer) clearTimeout(trickleTimer);
+    trickleTimer = null;
+    backgroundResumed();
+  }, PLAY_TAIL_MS);
+}
+
+/** Is background work held back now, with no step it may take? */
+function backgroundHeld() {
+  if (playSince == null) return false;
+  const now = performance.now();
+  return now - playSince < PLAY_CAP_MS || now - trickledAt < PLAY_TRICKLE_MS;
+}
+
+/** May a background step start now? Past the cap, a step that may is
+ *  counted, so the next waits its turn; one that may not wakes everything
+ *  held back when its turn comes. */
+function backgroundStep() {
+  if (backgroundHeld()) {
+    backgroundLater();
+    return false;
+  }
+  if (playSince != null) trickledAt = performance.now();
+  return true;
+}
+
+/** Wake what is held back when the next step past the cap may go. */
+function backgroundLater() {
+  if (trickleTimer || playSince == null) return;
+  const at = Math.max(playSince + PLAY_CAP_MS, trickledAt + PLAY_TRICKLE_MS);
+  trickleTimer = setTimeout(() => {
+    trickleTimer = null;
+    backgroundResumed();
+  }, Math.max(0, at - performance.now()));
+}
+
+/** Background work may go on: start whatever was held back where it waits. */
+function backgroundResumed() {
+  schedulePump();
+  if (farmSink) farmSink.wake();
+  walkPump();
+  for (const resume of backgroundWaiters.splice(0)) resume();
+}
+
+/** Wait until a background step may start (the serial fill's batches). */
+async function backgroundTurn() {
+  while (!backgroundStep()) await new Promise((resume) => backgroundWaiters.push(resume));
+}
+
 // The first request in `soon`, then `later` (a measurement nobody is waiting
 // on last, after a face the player is looking at), then the faces lane, that
 // may start now. PERFORM's own measurement of the sound it plays is not
 // `idleOnly`, so it still goes before any face.
+//
+// While notes sound, nothing from `later` or the faces lane starts
+// (`backgroundStep`); `soon` work does.
 function nextLong() {
   if (floor) return null;
   for (const lane of [SOON, LATER, FACES]) {
@@ -2848,7 +2952,9 @@ function nextLong() {
       if (seenFaceWaiting(lanes)) continue;
       i = lanes[LATER].findIndex((q) => !blocked(q));
     }
-    if (i >= 0) return lanes[lane].splice(i, 1)[0];
+    if (i < 0) continue;
+    if (lane !== SOON && !backgroundStep()) return null;
+    return lanes[lane].splice(i, 1)[0];
   }
   return null;
 }
@@ -2857,8 +2963,17 @@ function nextLong() {
 // or blocked behind a walk job, is not: the floor's release and the job's end
 // schedule the pump, and re-arming it meanwhile would spin a timer every few
 // milliseconds for as long as they run.
-const runnable = () =>
-  lanes[NOW].length > 0 || (!floor && [SOON, LATER, FACES].some((l) => lanes[l].some((q) => !blocked(q))));
+// Background work held back while notes sound is not either: its turn
+// (`backgroundLater`: the hold's end, or the next step past the cap) wakes the
+// pump.
+function runnable() {
+  const ready = (lane) => lanes[lane].some((q) => !blocked(q));
+  if (lanes[NOW].some((q) => !q.bg) || (!floor && ready(SOON))) return true;
+  if (!lanes[NOW].length && (floor || !(ready(LATER) || ready(FACES)))) return false;
+  if (!backgroundHeld()) return true;
+  backgroundLater();
+  return false;
+}
 
 // Serve the `now` lane: gestures first come, first served, and a background
 // render (`bg`) only when no gesture is waiting. Each such render is one
@@ -2875,16 +2990,18 @@ const runnable = () =>
 // do. Not to a serial generation's walks (`breed_step`), which follow one
 // another for minutes: the pair on the table would stay silent through it.
 const bgWaits = () => !floor && lanes[SOON].some((q) => q.type !== "breed_step" && !blocked(q));
+//
+// While notes sound, a background render waits (`backgroundStep`).
 async function serveNow() {
   while (lanes[NOW].length) {
     let i = lanes[NOW].findIndex((q) => !q.bg);
     let background = false;
     if (i < 0) {
-      if (bgWaits()) break;
+      if (bgWaits() || backgroundHeld()) break;
       await yieldToQueue();
       i = lanes[NOW].findIndex((q) => !q.bg);
       if (i < 0) {
-        if (!lanes[NOW].length || bgWaits()) break;
+        if (!lanes[NOW].length || bgWaits() || !backgroundStep()) break;
         i = 0;
         background = true;
       }
@@ -2928,11 +3045,13 @@ async function runMessage(m) {
 
 // Between two pieces of a long job: let every message that arrived during the
 // last piece be delivered, answer the player's at once, and say whether a
-// background job must give the floor up to long work the player asked for.
+// background job must give the floor up: to long work the player asked for,
+// or because notes are sounding (`backgroundStep`).
 async function breathe(lane) {
   await yieldToQueue();
   await serveNow();
-  return lane === LATER && lanes[SOON].some((q) => !blocked(q));
+  if (lane !== LATER) return false;
+  return lanes[SOON].some((q) => !blocked(q)) || !backgroundStep();
 }
 
 // Run `job` for message `m` holding the floor; the floor is released however
@@ -2950,6 +3069,12 @@ async function holdFloor(m, job) {
 
 self.onmessage = (e) => {
   const m = e.data;
+  // Notes started or stopped sounding (`setPlaying`): taken on arrival, the
+  // engine up or not (the fill is background work too), and never answered.
+  if (m.type === "playing") {
+    setPlaying(!!m.on);
+    return;
+  }
   // Everything but `init` needs the engine, and `init` is async: it imports the
   // wasm, instantiates it and fills a pool. Any request that arrives inside
   // that window used to throw on a null `engine`, and the throw was *silent* —
@@ -3368,6 +3493,8 @@ async function dispatch(m) {
             st = status();
             if (engine.fill_cursor() !== from) continue;
           }
+          // Not while notes sound (`backgroundTurn`).
+          await backgroundTurn();
           const added = engine.fill_step(2);
           st = status();
           news({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });

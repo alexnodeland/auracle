@@ -166,7 +166,10 @@ a child beside its seed.
 
 A generation takes from under a minute to a few, depending on how many cores
 your machine has to spare. On a busy four-core machine it takes about two to
-three and a half minutes. The instrument goes on answering while it breeds. A
+three and a half minutes. On a machine with four processor threads or fewer,
+the walks not yet under way wait while notes sound, and go on a second after
+the last one. The
+instrument goes on answering while it breeds. A
 pick deals its next pair at once, a ▶ plays, a sound opens, and PERFORM
 measures and grows offers.
 

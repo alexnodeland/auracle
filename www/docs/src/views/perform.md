@@ -578,7 +578,10 @@ The line under WANDER says what it is doing:
 - *frozen* while it is frozen;
 - *nothing better nearby* when the walk finds nothing it prefers, and stays.
 
-Wander runs only while PERFORM is on screen.
+Wander runs only while PERFORM is on screen. On a machine with four
+processor threads or fewer, a walk waits while notes sound, so the line reads
+*walking…* longer: it starts a second after your last note, and with notes
+held past eight seconds it goes on a step a second.
 
 **Structure never changes on its own.** Drift and roam move knob values only,
 and they respect the locks you set in PATCH. A new module only ever arrives as

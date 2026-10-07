@@ -372,6 +372,50 @@ before the job's next one (PERFORM's lean by its one call);
 `tests/worker/warm_start.test.mjs` does the same for *teach it* while two
 loops serve the lane, one of them measuring the warm start's cards.
 
+### While notes sound
+
+On a machine with four threads or fewer (`navigator.hardwareConcurrency`;
+the 2018 MacBook Air of #288 has two cores and four threads, so a farm of
+two), the audio thread shares two cores with the page, this worker and the
+farm, and the voices ran short while the workers rendered: the crackle came
+before any offer was shown. So main tells the worker when notes start
+sounding and when the last one stops (`playing` with `on`, from
+`playingChanged` in `main.js` as `heldNotes` fills and empties, the hold
+latch's and the sustain pedal's notes included; never answered, and never
+sent on a larger machine), and from then until a second after the last note
+(`PLAY_TAIL_MS`, for its tail) the worker starts no background step
+(`backgroundStep`):
+
+- nothing from `later` or the faces lane (`nextLong`), and a `later` job
+  holding the floor gives way at its next breath (`breathe`), as it does to
+  `soon` work, going back to the front of `later`;
+- no background render in `now` (`serveNow`: a dealt pair's sounds, a warm
+  start's card);
+- no batch of the bank's fill: the serial loop waits (`backgroundTurn`), and
+  the farm's waits to hand out its next render (`runFarm`);
+- no walk handed to the crew (`walkPump`) and no render of the guess's crew
+  (`crewRenders`).
+
+`now` requests and `soon` work (what the player asked for and waits on: a
+pressed Offer, the measurement of the sound in hand, a figure) go on as
+ever, and what has started finishes: a render cannot be interrupted. The
+pump is not re-armed for work held back (`runnable`); the hold's end wakes
+it, the farm's sink and the walk queue (`backgroundResumed`).
+
+The hold latch and the sustain pedal can keep notes sounding for good, and on
+two cores the bank would then never fill. So past `PLAY_CAP_MS` (8 s) of
+sounding, gaps shorter than the tail included, one background step goes
+through every `PLAY_TRICKLE_MS` (1 s), across all of those places (one job or
+one piece of one, one background render, one batch, one render or one walk
+handed out), and each turn wakes what waits. Wander's drift and PERFORM's
+spare offers are `later` work, so on such a machine Wander waits while notes
+sound (its line reads *walking…* meanwhile), and goes on a step a second past
+the cap. The rules run as written in `apps/web/tests/worker-lanes.test.mjs`
+(the clock, `runnable`, `nextLong`, `breathe`, `serveNow`) and end to end in
+`tests/worker/playing.test.mjs` (a cable probe and a pair's sound held while
+a gesture and `soon` work are answered, the cap letting the probe through,
+and the fill waiting between batches).
+
 ### Offers and drifts are jobs
 
 An offer is 20 steps (40 in *roam*), times up to four under locks, and an aimed
@@ -514,7 +558,9 @@ number:
   go. Nothing failed, so no toast says so.
 
 Never answered, by design: `log_edit`, `log_event`, `duel_shown`,
-`set_style_name` and `warm_cards` (main waits on none of them), `farm_lost`
+`set_style_name`, `warm_cards` and `playing` (main waits on none of them; the
+last is taken on arrival, the engine up or not: [While notes
+sound](#while-notes-sound)), `farm_lost`
 and `farm_ports` (the farm's plumbing), and the
 requests that act on others, whose effect is the other request's own last
 reply: `promote`, `retire`, `explain_cancel`, `refine_stop` and

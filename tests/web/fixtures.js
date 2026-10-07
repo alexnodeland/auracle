@@ -174,14 +174,15 @@ const PERFORM_SEED = (() => {
 
 /** What main sends that the worker never answers, by design: a log line, a
  *  count of a pair shown, a style's name, the farm's plumbing, the warm
- *  start's cards to measure while the player chooses, and the requests that
+ *  start's cards to measure while the player chooses, whether notes are
+ *  sounding (`playing`, on a small machine), and the requests that
  *  act on others (a stop, `retire`, `promote`, a cancel), whose effect is the
  *  other request's own last reply. `app.answered` does not wait for these.
  *  apps/web/tests/worker-protocol.test.mjs holds the worker to this list, and
  *  docs/architecture/web-runtime.md (The worker's replies) names them. */
 const UNANSWERED = [
   "duel_shown", "log_edit", "log_event", "set_style_name",
-  "farm_lost", "farm_ports", "warm_cards",
+  "farm_lost", "farm_ports", "warm_cards", "playing",
   "promote", "retire", "explain_cancel", "refine_stop", "refine_from_stop",
 ];
 /** The lanes `app.answered` knows by name, as the request types in them.
@@ -692,6 +693,16 @@ class App {
       kept.set(key, store);
       writeKept();
     }
+  }
+
+  /** Wait until the live voice is up (the worklet registered and the
+   *  instrument built), so a key played is a note: until it is, main plays
+   *  nothing (`liveNoteOn`). An engine wait, 60 s at most. */
+  liveUp() {
+    return this.engine(
+      (timeout) => this.page.waitForFunction(() => window.__aur && window.__aur.getLive && window.__aur.getLive() != null, null, { timeout }),
+      { ms: 60_000 },
+    );
   }
 
   /** Reload, and wait for the boot. */

@@ -433,7 +433,41 @@ let liveLabelText = "no sound";
 let playOnSettle = false;
 let octShift = 0;
 let hold = false;
-const heldNotes = new Set(); // midi numbers currently sounding
+// The notes sounding under the player's hands (the hold latch's and the
+// sustain pedal's too), by MIDI number. On a machine with four threads or
+// fewer, the engine worker hears when the first starts and the last stops
+// (`playingChanged`), so its background work and the farm's step aside while
+// notes sound: with two cores, two renderers and the engine worker beside
+// the audio thread, the voices ran short (issue 288).
+class HeldNotes extends Set {
+  add(n) {
+    super.add(n);
+    playingChanged();
+    return this;
+  }
+  delete(n) {
+    const had = super.delete(n);
+    playingChanged();
+    return had;
+  }
+  clear() {
+    super.clear();
+    playingChanged();
+  }
+}
+const heldNotes = new HeldNotes();
+const SMALL_MACHINE = (navigator.hardwareConcurrency || 2) <= 4;
+let playingSaid = false;
+/** Tell the engine worker, on a small machine, when notes start sounding and
+ *  when the last one stops (`playing`, never answered; worker.js
+ *  `setPlaying`). The worker holds its background work back from then until
+ *  a second after. */
+function playingChanged() {
+  const on = heldNotes.size > 0;
+  if (!SMALL_MACHINE || on === playingSaid) return;
+  playingSaid = on;
+  send({ type: "playing", on });
+}
 
 // ---------- faces (Plan-005 task 3) ----------
 // Every row, chip and card carries its sound's face: the engine's measurement
