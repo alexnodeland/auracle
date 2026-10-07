@@ -58,7 +58,7 @@ panic = "abort"
 # one-statement edit to a plain function, the rebuild took 9 to 13 CPU seconds
 # against 31 to 41; the fast tier's tests took as long (1,069 and 1,105 CPU
 # seconds against 1,078 and 1,083); a build from nothing took the same without
-# incremental state (CI's) and about a tenth more with it
+# incremental state (CI's) and 7 % more with it
 # (docs/notes/rust-build-2026-10/). The dependencies below keep 16: they are
 # compiled once, and the render loop runs in them.
 [profile.test-fast]
