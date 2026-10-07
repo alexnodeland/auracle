@@ -1335,11 +1335,14 @@ wirings by tree text (`wireKey`), keeps the old wiring working while a new one
 is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
-A kept wiring is stamped with the observation count and the render namespace
-the worker reports in its `ready` (`cache_namespace`: the stimulus,
-`RENDER_EPOCH` and the quiver version), because it holds φ; a stamp that no
-longer matches (a refit, or a new build whose DSP or featurizer measures
-differently) is played at once and re-measured.
+A kept wiring is stamped with the standardizer the session's φ lives under
+(the status's `std_rev`, which a fit over new sounds moves and a pick does
+not) and the render namespace the worker reports in its `ready`
+(`cache_namespace`: the stimulus, `RENDER_EPOCH` and the quiver version),
+because it holds φ; a stamp that no longer matches (a refit that moved the
+scale, or a new build whose DSP or featurizer measures differently) is played
+at once and re-measured. It used to be stamped with the observation count, so
+every pick made every kept wiring stale (#290).
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every

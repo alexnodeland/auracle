@@ -5215,9 +5215,11 @@ async function bootPerform() {
     newestId: () => newestSeenId,
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
-    // Wirings are measured against the taste model; a new observation can
-    // move the standardizer they were measured in, so it keys their cache.
-    tasteRev: () => status.observations,
+    // Wirings are measured in the standardizer's units, which a fit moves
+    // when the sounds the session has met changed (the engine's `std_rev`),
+    // and a pick does not: it keys their cache (#290). It was the
+    // observation count, which made every kept wiring stale at every pick.
+    tasteRev: () => status.std_rev ?? status.observations,
     // …and in φ, as this binary renders it: a wiring measured under another
     // render namespace (a new quiver, a new featurizer) is re-measured.
     renderNs: () => renderNs,
@@ -5338,7 +5340,7 @@ async function bootPerform() {
     send,
     perform: () => perform,
     label: () => liveLabelText,
-    tasteRev: () => status.observations,
+    tasteRev: () => status.std_rev ?? status.observations,
     audio: { ctx: audioCtx, out: master },
     analyser: outAnalyser,
     // The bank's faces' mean and spread: a figure's and the lesson's face is

@@ -330,10 +330,12 @@ rather than closing.
 Total cost for a patch with $n$ knobs and $r$ reachable controls is $n + 1 + 4r$
 renders, plus two for each retry, all through the memo. In the browser that is
 around 20–30 renders, and the page caches each measurement by tree, stamped
-with the vote count and the render namespace (`cache_namespace`: the
+with the standardizer's revision and the render namespace (`cache_namespace`: the
 featurizer's `RENDER_EPOCH` and the quiver version), so returning to a patch
 costs none. A stamp that no longer matches is played at once and re-measured
-in the background. Every preset’s measurement also
+in the background. The stamp is the standardizer's revision (the status's
+`std_rev`), not the vote count: the scale moves when a fit runs over sounds
+the session had not met, and a pick alone left every kept wiring stale. Every preset’s measurement also
 ships with the app (`apps/web/perform-wirings.json`, made natively through the
 same `WasmEngine` calls by `make perform-wirings`), so a preset is playable the
 moment it lands; the page re-measures it in the background, because the file
