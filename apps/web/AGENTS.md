@@ -88,6 +88,12 @@ the long-form notes are this directory's `README.md`.
   symbol in a comment beside it. What the engine doesn't record isn't drawn,
   or is drawn as a guess (dashed amber). Plan-005 rebuilds the views as one
   space to RFC-006.
+- **Every interaction answers at once**
+  ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md)):
+  a background result waits while a control is held and for 1.5 s after, and
+  while the pointer is over the region it would move (the bank, the map, the
+  rack, LEARNING's bars), where it applies on pointer-leave or after 1 s of
+  rest.
 - **One voice** ([ADR-013](../../docs/decisions/013-one-voice.md)): copy
   follows [`www/brand/voice.md`](../../www/brand/voice.md). That means:
   - silk labels, plain toasts and status lines, the model's italic for the
