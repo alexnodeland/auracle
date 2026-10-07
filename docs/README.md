@@ -75,7 +75,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md) | Time in a test: wait for the engine's reply, assert the app's own order, record the machine's speed as a budget; a slow runner may make a test slower, never wrong |
 | [023](decisions/023-the-gate-runs-in-the-queue.md) | The gate runs in the queue: a fast lane on the PR, the full gate on the batch that lands (amends ADR-021) |
 | [024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md) | A review's in-area findings are fixed in the PR, and a wave runs more than two streams (amends ADR-020's rule 2 and ADR-019's rule 5) |
-| [025](decisions/025-every-interaction-answers-at-once.md) | Every interaction answers at once, on the slowest machine we support: direct manipulation at the next quantum and frame, anything else within 100 ms, budgets on a slow profile (amends ADR-022 and ADR-012) |
+| [025](decisions/025-every-interaction-answers-at-once.md) | Every interaction answers at once, on the reference machine: direct manipulation at the next audio quantum and frame, anything else within 100 ms, budgets on a reference profile (amends ADR-022; applies ADR-012 to predictions) |
 
 ## Proposals
 
