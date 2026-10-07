@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile_follower, compile_with_input, PatchTree};
+use auracle_grammar::{compile_follower_for_render, compile_for_render, CompiledVoice, PatchTree};
 use quiver::{AudioInputStream, PatchError};
 
 use crate::phrase::PhraseSpec;
@@ -82,8 +82,12 @@ const PARK_RUN: usize = 1024;
 /// [`crate::phrase::PhraseSpec::max_voices`]. Chord voices tick from their
 /// note's onset (cold start, like live voice allocation), share the note's
 /// gate, and after release keep ticking until their output parks on silence
-/// so a long tail is never truncated into a click. A chord voice of a patch
-/// with a TRACK is a follower (`auracle_grammar::compile_follower`): it plays
+/// so a long tail is never truncated into a click. Every voice is compiled
+/// with its live knobs folded into the ports they drive
+/// (`auracle_grammar::compile_for_render`): nothing turns a knob during a
+/// render, the samples are the same, bit for bit, and each sample walks
+/// about half the nodes. A chord voice of a patch with a TRACK is a follower
+/// (`auracle_grammar::compile_follower_for_render`): it plays
 /// the note the main voice's tracker hears that frame, from its first, and its
 /// amp keeps the chord note's gate, so it starts on the tracked note and stops
 /// with its key. Tick order per sample is
@@ -112,11 +116,52 @@ impl VoiceObserver for () {
     fn tick(&mut self, _: &auracle_grammar::CompiledVoice) {}
 }
 
+/// How a render builds its voices. A measurement folds each live knob it can
+/// into the port it drives (`Folded`, what [`render_phrase`] does); the tests also
+/// render with every knob live (`Live`, the voices the instrument plays), to
+/// hold the two to the same samples.
+#[derive(Clone, Copy)]
+pub(crate) enum Build {
+    Folded,
+    #[cfg(test)]
+    Live,
+}
+
+impl Build {
+    /// `tree`'s main voice, or with `follow` a chord's follower, on `input`.
+    fn voice(
+        self,
+        tree: &PatchTree,
+        sample_rate: f64,
+        input: Option<&Arc<AudioInputStream>>,
+        follow: bool,
+    ) -> Result<CompiledVoice, PatchError> {
+        match (self, follow) {
+            (Build::Folded, false) => compile_for_render(tree, sample_rate, input),
+            (Build::Folded, true) => compile_follower_for_render(tree, sample_rate, input),
+            #[cfg(test)]
+            (Build::Live, false) => auracle_grammar::compile_with_input(tree, sample_rate, input),
+            #[cfg(test)]
+            (Build::Live, true) => auracle_grammar::compile_follower(tree, sample_rate, input),
+        }
+    }
+}
+
 /// [`render_phrase`], with `obs` watching the main voice.
 pub(crate) fn render_phrase_observed<O: VoiceObserver>(
     tree: &PatchTree,
     spec: &PhraseSpec,
     obs: &mut O,
+) -> Result<RenderedPhrase, PatchError> {
+    render_built(tree, spec, obs, Build::Folded)
+}
+
+/// [`render_phrase_observed`], its voices built as `build` says.
+pub(crate) fn render_built<O: VoiceObserver>(
+    tree: &PatchTree,
+    spec: &PhraseSpec,
+    obs: &mut O,
+    build: Build,
 ) -> Result<RenderedPhrase, PatchError> {
     // Determinism: fix the stochastic-module RNG for this render — **before**
     // anything is compiled. quiver's RNG is one thread-local stream, and some
@@ -130,7 +175,7 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
     // The clip, for a patch that listens: one stream every voice reads, on
     // this render's clock (see the module doc).
     let input = tree.listens().then(|| audition_stream(spec));
-    let mut voice = compile_with_input(tree, spec.sample_rate, input.as_ref())?;
+    let mut voice = build.voice(tree, spec.sample_rate, input.as_ref(), false)?;
     // Chord voices for the note being (or last) played. Compiled lazily at
     // the first chord note; a mono spec pays nothing.
     let mut chord_voices: Vec<ChordVoice> = Vec::new();
@@ -181,7 +226,7 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
                 // on the tracked note, not on C4 while a cold tracker settles)
                 // and its amp keeps this note's gate, so it stops with the
                 // dyad. For a patch with no TRACK it is the same voice.
-                let v = compile_follower(tree, spec.sample_rate, input.as_ref())?;
+                let v = build.voice(tree, spec.sample_rate, input.as_ref(), true)?;
                 v.pitch.set(voct);
                 v.gate.set(5.0);
                 chord_voices.push(ChordVoice {

@@ -1,0 +1,1 @@
+2000 draws: 62207 nodes compiled, 34363 walked by a render (55%); 2 left whole (the fold would have moved the schedule); in the 1998 folded, 27844 of 31930 knobs folded (87.2%)

@@ -1,0 +1,195 @@
+# The set in Chromium and Firefox, headless, through Playwright and one_browser.sh, on the folded engine (built at 1f081285) against
+# c8541631's (pkg-base): farm_render in a module worker, as the app renders, after one warm-up pass, the least
+# of 3 wall ms per tree (a browser has no thread CPU clock). Then the same on the page's main thread.
+chromium pkg-base: 5108 ms for the set, mean 283.8 (least of 3 wall ms per tree, after 1 warm-up passes), load 132 -> 123; Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36 (worker)
+  First Bass              369.8
+  Ceiling                 393.1
+  Detune Dream            184.4
+  Long Way Down           306.6
+  Glass Pad               299.4
+  Choirboy                199.7
+  draw 1                  136.7
+  draw 2                  171.1
+  draw 3                  118.0
+  draw 4                  197.0
+  draw 5                  212.8
+  draw 6                  209.9
+  draw 7                  134.4
+  draw 8                  255.8
+  draw 9                  537.1
+  draw 10                 271.4
+  draw 11                 641.2
+  draw 12                 469.4
+chromium pkg-head: 4357 ms for the set, mean 242.0 (least of 3 wall ms per tree, after 1 warm-up passes), load 123 -> 121; Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36 (worker)
+  First Bass              337.6
+  Ceiling                 367.9
+  Detune Dream            147.0
+  Long Way Down           255.2
+  Glass Pad               263.7
+  Choirboy                172.9
+  draw 1                  124.2
+  draw 2                  160.4
+  draw 3                  111.9
+  draw 4                  170.5
+  draw 5                  192.3
+  draw 6                  173.5
+  draw 7                  112.0
+  draw 8                  219.1
+  draw 9                  416.0
+  draw 10                 228.8
+  draw 11                 539.6
+  draw 12                 364.2
+chromium pkg-base: 5214 ms for the set, mean 289.7 (least of 3 wall ms per tree, after 1 warm-up passes), load 121 -> 117; Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36 (worker)
+  First Bass              361.4
+  Ceiling                 402.9
+  Detune Dream            190.3
+  Long Way Down           314.6
+  Glass Pad               312.3
+  Choirboy                204.5
+  draw 1                  136.0
+  draw 2                  169.8
+  draw 3                  120.9
+  draw 4                  213.0
+  draw 5                  226.1
+  draw 6                  212.7
+  draw 7                  131.3
+  draw 8                  251.1
+  draw 9                  566.9
+  draw 10                 269.8
+  draw 11                 655.9
+  draw 12                 475.0
+chromium pkg-head: 4322 ms for the set, mean 240.1 (least of 3 wall ms per tree, after 1 warm-up passes), load 117 -> 112; Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36 (worker)
+  First Bass              334.3
+  Ceiling                 369.6
+  Detune Dream            147.8
+  Long Way Down           268.5
+  Glass Pad               256.1
+  Choirboy                176.2
+  draw 1                  122.2
+  draw 2                  151.0
+  draw 3                  104.7
+  draw 4                  168.4
+  draw 5                  185.6
+  draw 6                  170.2
+  draw 7                  110.4
+  draw 8                  216.5
+  draw 9                  411.4
+  draw 10                 228.1
+  draw 11                 535.4
+  draw 12                 365.5
+firefox pkg-base: 6466 ms for the set, mean 359.2 (least of 3 wall ms per tree, after 1 warm-up passes), load 111 -> 118; Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0 (worker)
+  First Bass              416.0
+  Ceiling                 456.0
+  Detune Dream            226.0
+  Long Way Down           388.0
+  Glass Pad               372.0
+  Choirboy                254.0
+  draw 1                  174.0
+  draw 2                  218.0
+  draw 3                  157.0
+  draw 4                  260.0
+  draw 5                  287.0
+  draw 6                  268.0
+  draw 7                  172.0
+  draw 8                  314.0
+  draw 9                  718.0
+  draw 10                 366.0
+  draw 11                 804.0
+  draw 12                 616.0
+firefox pkg-head: 5142 ms for the set, mean 285.7 (least of 3 wall ms per tree, after 1 warm-up passes), load 118 -> 111; Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0 (worker)
+  First Bass              376.0
+  Ceiling                 403.0
+  Detune Dream            172.0
+  Long Way Down           313.0
+  Glass Pad               307.0
+  Choirboy                204.0
+  draw 1                  148.0
+  draw 2                  179.0
+  draw 3                  129.0
+  draw 4                  201.0
+  draw 5                  223.0
+  draw 6                  215.0
+  draw 7                  138.0
+  draw 8                  263.0
+  draw 9                  503.0
+  draw 10                 280.0
+  draw 11                 637.0
+  draw 12                 451.0
+firefox pkg-base: 6345 ms for the set, mean 352.5 (least of 3 wall ms per tree, after 1 warm-up passes), load 111 -> 106; Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0 (worker)
+  First Bass              408.0
+  Ceiling                 450.0
+  Detune Dream            226.0
+  Long Way Down           393.0
+  Glass Pad               366.0
+  Choirboy                248.0
+  draw 1                  178.0
+  draw 2                  212.0
+  draw 3                  164.0
+  draw 4                  262.0
+  draw 5                  279.0
+  draw 6                  262.0
+  draw 7                  165.0
+  draw 8                  318.0
+  draw 9                  685.0
+  draw 10                 344.0
+  draw 11                 777.0
+  draw 12                 608.0
+firefox pkg-head: 5103 ms for the set, mean 283.5 (least of 3 wall ms per tree, after 1 warm-up passes), load 106 -> 120; Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0 (worker)
+  First Bass              367.0
+  Ceiling                 397.0
+  Detune Dream            170.0
+  Long Way Down           314.0
+  Glass Pad               298.0
+  Choirboy                199.0
+  draw 1                  146.0
+  draw 2                  176.0
+  draw 3                  129.0
+  draw 4                  203.0
+  draw 5                  223.0
+  draw 6                  214.0
+  draw 7                  138.0
+  draw 8                  257.0
+  draw 9                  502.0
+  draw 10                 274.0
+  draw 11                 650.0
+  draw 12                 446.0
+
+# On the main thread (index.html), after two warm-up passes:
+chromium pkg-head: 4310 ms for the set, mean 239.4 (least of 3 wall ms per tree, after 2 warm-up passes), load 80 -> 75; Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36
+  First Bass              318.4
+  Ceiling                 372.0
+  Detune Dream            149.7
+  Long Way Down           266.1
+  Glass Pad               249.8
+  Choirboy                170.4
+  draw 1                  118.2
+  draw 2                  154.2
+  draw 3                  108.4
+  draw 4                  166.7
+  draw 5                  184.8
+  draw 6                  170.5
+  draw 7                  110.4
+  draw 8                  215.8
+  draw 9                  416.2
+  draw 10                 226.7
+  draw 11                 553.5
+  draw 12                 358.2
+firefox pkg-head: 26674 ms for the set, mean 1481.9 (least of 3 wall ms per tree, after 2 warm-up passes), load 74 -> 104; Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0
+  First Bass             1878.0
+  Ceiling                1861.0
+  Detune Dream            506.0
+  Long Way Down          1159.0
+  Glass Pad              1555.0
+  Choirboy                693.0
+  draw 1                  482.0
+  draw 2                  980.0
+  draw 3                  566.0
+  draw 4                 1081.0
+  draw 5                 1519.0
+  draw 6                  631.0
+  draw 7                 1118.0
+  draw 8                 1503.0
+  draw 9                 3277.0
+  draw 10                1132.0
+  draw 11                4296.0
+  draw 12                2437.0

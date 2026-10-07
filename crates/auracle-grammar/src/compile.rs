@@ -491,6 +491,9 @@ pub struct CompiledVoice {
     pub taps: HashMap<String, (String, PortId)>,
     /// The amp envelope ([`AmpEnvelope`]).
     amp: AmpEnvelope,
+    /// Every live knob's node and its atomic ([`Compiler::knobs`]); emptied
+    /// of the ones [`Self::pin_knobs`] folds away.
+    knobs: Vec<(NodeId, Arc<AtomicF64>)>,
 }
 
 /// A gate that stays high for at most [`TAKE_SECONDS`] after it rises: a
@@ -598,8 +601,10 @@ impl Tracker {
     }
 
     /// Its three signals after the last tick: by slot while the routing is
-    /// the one they were resolved against, by name otherwise (nothing rebuilds
-    /// a compiled voice's routing, so that is a guard, not a path).
+    /// the one they were resolved against, by name otherwise. A measurement
+    /// render's fold rebuilds the routing and resolves them again
+    /// ([`CompiledVoice::pin_knobs`]), and nothing else rebuilds a compiled
+    /// voice's, so the second is a guard, not a path.
     fn read(&self, patch: &Patch) -> [f64; 3] {
         let fresh = patch.routing_generation() == self.generation;
         let mut out = [0.0; 3];
@@ -614,7 +619,269 @@ impl Tracker {
     }
 }
 
+/// The module kinds the grammar compiles that draw from quiver's thread-wide
+/// random stream as they tick (each holds a `ModuleRng` no one seeds): their
+/// draws interleave in execution order, so that order is part of what a patch
+/// renders. quiver's `Granular` is not one: its constructor seeds its own
+/// stream (`seed(42)`), so where it ticks draws nothing anyone else reads.
+/// `the_stream_drawers_are_the_kinds_that_draw` holds the list to exactly the
+/// kinds that draw, one voice of each kind the grammar compiles.
+const STREAM_DRAWERS: [&str; 2] = ["noise", "karplus_strong"];
+
+/// What decides a compiled patch's samples beyond its modules and cables:
+/// the order its [`STREAM_DRAWERS`] tick in, and its feedback breaks (each
+/// cable whose source runs at or after its destination, so the destination
+/// reads it a sample late). Two compiles of a patch with the same schedule
+/// render the same samples ([`CompiledVoice::pin_knobs`]).
+#[derive(Debug, PartialEq)]
+struct Schedule {
+    drawers: Vec<NodeId>,
+    feedback: std::collections::HashSet<(PortRef, PortRef)>,
+}
+
+impl Schedule {
+    /// `patch`'s schedule, its nodes named by `id`: the identity for a
+    /// voice's own patch, the voice's node each stands in for in a
+    /// [`StandIn`] patch, so the two compare.
+    fn of(patch: &Patch, id: impl Fn(NodeId) -> NodeId) -> Schedule {
+        let port = |p: PortRef| PortRef {
+            node: id(p.node),
+            port: p.port,
+        };
+        let order = patch.execution_order();
+        let pos: HashMap<NodeId, usize> =
+            order.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+        let draws: std::collections::HashSet<NodeId> = patch
+            .nodes()
+            .filter(|(_, _, m)| STREAM_DRAWERS.contains(&m.type_id()))
+            .map(|(id, _, _)| id)
+            .collect();
+        Schedule {
+            drawers: order
+                .iter()
+                .copied()
+                .filter(|n| draws.contains(n))
+                .map(&id)
+                .collect(),
+            feedback: patch
+                .cables()
+                .iter()
+                .filter(|c| pos.get(&c.from.node) >= pos.get(&c.to.node))
+                .map(|c| (port(c.from), port(c.to)))
+                .collect(),
+        }
+    }
+}
+
+/// A module standing in for one of a voice's, in the patch
+/// [`CompiledVoice::pin_knobs`] tries a fold on before it folds the voice:
+/// its ports, whether it breaks a feedback cycle, and its kind. Those are
+/// all quiver's scheduler and `set_param_by_id` read of a module, so a patch
+/// of stand-ins schedules, and takes a fold, exactly as the voice's does. It
+/// makes no sound, holds no state and draws nothing, so trying a fold on it
+/// leaves the voice, and quiver's stream, as they were.
+struct StandIn {
+    spec: PortSpec,
+    breaks: bool,
+    kind: &'static str,
+}
+
+impl GraphModule for StandIn {
+    fn port_spec(&self) -> &PortSpec {
+        &self.spec
+    }
+    fn tick(&mut self, _: &PortValues, _: &mut PortValues) {}
+    fn reset(&mut self) {}
+    fn set_sample_rate(&mut self, _: f64) {}
+    fn breaks_feedback_cycle(&self) -> bool {
+        self.breaks
+    }
+    fn type_id(&self) -> &'static str {
+        self.kind
+    }
+}
+
+/// A voice's patch as [`StandIn`]s ([`Stand::of`]), with the map from each
+/// of the voice's nodes to its stand-in, and back.
+struct Stand {
+    patch: Patch,
+    to: HashMap<NodeId, NodeId>,
+    back: HashMap<NodeId, NodeId>,
+}
+
+impl Stand {
+    /// `patch` as [`StandIn`]s: its nodes in the order they were added and
+    /// its cables in the order they were connected, which is everything
+    /// quiver's scheduler orders by. `None` if a cable would not connect,
+    /// which no cable of a compiled patch fails to.
+    fn of(patch: &Patch) -> Option<Stand> {
+        let mut stand = Patch::new(patch.sample_rate());
+        stand.set_validation_mode(ValidationMode::Warn);
+        let (mut to, mut back) = (HashMap::new(), HashMap::new());
+        for (id, name, m) in patch.nodes() {
+            let s = stand
+                .add(
+                    name,
+                    StandIn {
+                        spec: m.port_spec().clone(),
+                        breaks: m.breaks_feedback_cycle(),
+                        kind: m.type_id(),
+                    },
+                )
+                .id();
+            to.insert(id, s);
+            back.insert(s, id);
+        }
+        let port = |p: PortRef| PortRef {
+            node: to[&p.node],
+            port: p.port,
+        };
+        let connected = patch
+            .cables()
+            .iter()
+            .all(|c| stand.connect(port(c.from), port(c.to)).is_ok());
+        connected.then_some(Stand {
+            patch: stand,
+            to,
+            back,
+        })
+    }
+}
+
+/// The fold, made on `patch`, whose nodes `id` names: each knob's node
+/// removed and each port it drove given its value as its default, then the
+/// patch compiled. Whether every step took.
+fn fold(patch: &mut Patch, folds: &[Fold], id: impl Fn(NodeId) -> NodeId) -> bool {
+    folds.iter().all(|f| {
+        patch.remove(id(f.node)).is_ok()
+            && f.ports
+                .iter()
+                .all(|(target, name)| patch.set_param_by_id(id(*target), name, f.value))
+    }) && patch.compile().is_ok()
+}
+
+/// A knob [`CompiledVoice::pin_knobs`] folds: its node, the ports it drives
+/// (by name, which `set_param_by_id` takes), and the value they will hold.
+struct Fold {
+    node: NodeId,
+    ports: Vec<(NodeId, String)>,
+    value: f64,
+}
+
+/// What a live knob's one cable delivers to the port it drives, per sample,
+/// when the knob holds `v`: quiver's scatter writes the knob's output through
+/// `sanitize_audio` (a value that is not finite reads 0) and `flush_denorm`
+/// (one under 1e-20 in magnitude reads 0), both private to quiver 0.4.0 and
+/// mirrored here; and gather sums the one edge, `v * 1.0 + 0.0`, onto `0.0`,
+/// which turns a `-0.0` into `+0.0`. A port default set to this value is what
+/// the cable would have given it, bit for bit
+/// ([`CompiledVoice::pin_knobs`]).
+fn cabled_value(v: f64) -> f64 {
+    let v = if v.is_finite() { v } else { 0.0 };
+    let v = if v.abs() < 1e-20 { 0.0 } else { v };
+    0.0 + v
+}
+
 impl CompiledVoice {
+    /// Fold each live knob into the default of the port it drives, for a
+    /// render that turns no knob while it runs: the patch then walks one node
+    /// fewer per knob every sample, which is about half of a patch's nodes
+    /// (`auracle-features`' `examples/bench_render.rs --nodes`).
+    ///
+    /// A knob is folded only where its cable's arithmetic is reproduced
+    /// exactly by a default: every cable it drives is at unit gain with no
+    /// offset, into a control input that no other cable reaches and that is
+    /// not normalled to a sibling (gather reads the sibling, not the default,
+    /// for an unpatched normalled input). Its port's default becomes
+    /// [`cabled_value`] of the knob's value. The others keep their node.
+    /// (A knob always drives a port: [`Compiler::knob_to`] cables it, or the
+    /// build fails. One that drove none would be folded away harmlessly.)
+    ///
+    /// The rest of the patch must still render what it rendered, and folding
+    /// a knob can move the other nodes in quiver's execution order (a node
+    /// whose only inputs were knobs becomes a source). Every module reads
+    /// only its inputs and its own state, so in an order that keeps the same
+    /// feedback breaks (the cables that run against the order, which a node
+    /// reads a sample late) every input arrives on the same sample as before.
+    /// The one state modules share is quiver's thread-wide random stream
+    /// ([`STREAM_DRAWERS`]), so those modules must also keep their order.
+    /// [`Schedule`] is both. The fold is tried first on the voice's patch as
+    /// [`StandIn`]s, and made on the voice only if it takes there and the
+    /// schedule holds; otherwise the voice is left whole and `false` says so.
+    /// Either way the voice was compiled once: a render seeds quiver's stream
+    /// and then compiles, so a module whose constructor draws from it draws
+    /// what it would for the whole voice (`render.rs` says why that seed
+    /// comes first). Each handle in [`Self::params`] stays, and turning a
+    /// folded one changes nothing. A TRACK's slots are resolved again on the
+    /// folded routing, so [`Self::lead`] reads them by slot.
+    fn pin_knobs(&mut self) -> bool {
+        let folds = self.foldable();
+        let before = Schedule::of(&self.patch, |n| n);
+        let holds = Stand::of(&self.patch).is_some_and(|mut stand| {
+            fold(&mut stand.patch, &folds, |n| stand.to[&n])
+                && Schedule::of(&stand.patch, |n| stand.back[&n]) == before
+        });
+        if !holds {
+            return false;
+        }
+        // The steps the stand-ins took, on the same structure: they take
+        // here too, and the schedule holds (the grammar's tests check it).
+        let folded = fold(&mut self.patch, &folds, |n| n);
+        #[cfg(test)]
+        assert!(
+            folded && Schedule::of(&self.patch, |n| n) == before,
+            "a fold the stand-ins took did not take on the voice"
+        );
+        self.knobs
+            .retain(|(node, _)| !folds.iter().any(|f| f.node == *node));
+        self.trackers = std::mem::take(&mut self.trackers)
+            .into_iter()
+            .map(|t| Tracker::new(&self.patch, t.key, t.id))
+            .collect();
+        folded
+    }
+
+    /// The live knobs a default can stand in for, each with the ports it
+    /// drives and the value they will hold: those whose every cable is at
+    /// unit gain with no offset, into a control input no other cable
+    /// reaches and that is not normalled ([`Self::pin_knobs`]).
+    fn foldable(&self) -> Vec<Fold> {
+        let mut fan_in: HashMap<PortRef, usize> = HashMap::new();
+        for c in self.patch.cables() {
+            *fan_in.entry(c.to).or_default() += 1;
+        }
+        let specs: HashMap<NodeId, &PortSpec> = self
+            .patch
+            .nodes()
+            .map(|(id, _, m)| (id, m.port_spec()))
+            .collect();
+        self.knobs
+            .iter()
+            .filter_map(|(node, value)| {
+                let ports: Option<Vec<(NodeId, String)>> = self
+                    .patch
+                    .cables()
+                    .iter()
+                    .filter(|c| c.from.node == *node)
+                    .map(|c| {
+                        let def = specs.get(&c.to.node)?.input_by_id(c.to.port)?;
+                        let exact = c.attenuation.unwrap_or(1.0) == 1.0
+                            && c.offset.unwrap_or(0.0) == 0.0
+                            && fan_in.get(&c.to) == Some(&1)
+                            && def.kind != SignalKind::Audio
+                            && def.normalled_to.is_none();
+                        exact.then(|| (c.to.node, def.name.clone()))
+                    })
+                    .collect();
+                Some(Fold {
+                    node: *node,
+                    ports: ports?,
+                    value: cabled_value(value.get()),
+                })
+            })
+            .collect()
+    }
+
     /// Hand this voice's tracked signals, as they stand after its last tick,
     /// to `follower`'s TRACKs (matched by node key). Call it every frame,
     /// after this voice ticks and before the follower does, and the follower
@@ -1317,6 +1584,10 @@ struct Compiler {
     /// ([`Self::take_fault`]). Never a panic: the wasm engine compiles every
     /// patch, and a panic there aborts the engine.
     fault: Option<PatchError>,
+    /// Every live knob's node and the atomic it reads, in the order
+    /// [`Self::knob_to`] added them: what [`CompiledVoice::pin_knobs`] may
+    /// fold into port defaults for a render nothing turns a knob in.
+    knobs: Vec<(NodeId, Arc<AtomicF64>)>,
 }
 
 impl Compiler {
@@ -1350,6 +1621,7 @@ impl Compiler {
             #[cfg(test)]
             pins: Vec::new(),
             fault: None,
+            knobs: Vec::new(),
         }
     }
 
@@ -1467,6 +1739,7 @@ impl Compiler {
             ExternalInput::cv(Arc::clone(&value))
         };
         let n = self.patch.add(format!("{key}:{site}!"), input);
+        self.knobs.push((n.id(), Arc::clone(&value)));
         for target in targets {
             // A port this compiler named on its own patch, in Warn mode: no
             // tree makes this fail, and if the compiler ever does, the build
@@ -3568,12 +3841,60 @@ pub fn compile_follower(
     compile_voice(tree, sample_rate, input, true)
 }
 
+/// [`compile_with_input`] for a render that turns no knob while it runs,
+/// such as `auracle_features`' measurement of a patch on the phrase: the same
+/// voice, rendering the same samples bit for bit, with every live knob it can
+/// fold folded into the port it drives, so each sample walks fewer nodes
+/// (`CompiledVoice::pin_knobs`). The knobs' handles in
+/// [`CompiledVoice::params`] are still there, and turning a folded one
+/// changes nothing: never give one to a player.
+pub fn compile_for_render(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
+    compile_pinned(tree, sample_rate, input, false)
+}
+
+/// [`compile_follower`], for a render that turns no knob while it runs, as
+/// [`compile_for_render`] is.
+pub fn compile_follower_for_render(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
+    compile_pinned(tree, sample_rate, input, true)
+}
+
+/// A voice with its knobs folded, or, where folding would change what it
+/// renders, the voice as [`compile_voice`] builds it: compiled once either
+/// way ([`CompiledVoice::pin_knobs`]).
+fn compile_pinned(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+    follow: bool,
+) -> Result<CompiledVoice, PatchError> {
+    let mut voice = compile_voice(tree, sample_rate, input, follow)?;
+    voice.pin_knobs();
+    Ok(voice)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many voices this thread has compiled: what
+    /// `a_render_compiles_each_voice_once` counts.
+    static COMPILED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn compile_voice(
     tree: &PatchTree,
     sample_rate: f64,
     input: Option<&Arc<AudioInputStream>>,
     follow: bool,
 ) -> Result<CompiledVoice, PatchError> {
+    #[cfg(test)]
+    COMPILED.with(|c| c.set(c.get() + 1));
     let nesting = tree.root.depth() + tree.root.max_mod_depth();
     if nesting > COMPILE_MAX_NESTING {
         return Err(PatchError::CompilationFailed(format!(
@@ -3686,6 +4007,7 @@ fn compile_voice(
         sustain: c.params["amp#sustain"].clone(),
     };
     let params = std::mem::take(&mut c.params);
+    let knobs = std::mem::take(&mut c.knobs);
     let records = std::mem::take(&mut c.records);
     let track_feeds = std::mem::take(&mut c.track_feeds);
     let recorded = std::mem::take(&mut c.taps);
@@ -3728,6 +4050,7 @@ fn compile_voice(
         warnings,
         taps,
         amp,
+        knobs,
     })
 }
 

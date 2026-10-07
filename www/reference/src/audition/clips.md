@@ -103,8 +103,9 @@ phrase falls silent at its end.
 A patch that does not listen gets no stream at all, so its render, and every
 row cached from it, is the same whatever clip the session holds.
 
-The compiler binds the stream: `compile_with_input` builds every AUDIO IN in
-the patch on the stream it is given, and `compile` builds them on a stream
+The compiler binds the stream: `compile_with_input` (and `compile_for_render`,
+the same voice with its knobs folded, which a measurement render uses) builds
+every AUDIO IN in the patch on the stream it is given, and `compile` builds them on a stream
 nothing writes (silent), which is the same voice for any patch that does not
 listen. The live instrument, `LivePoly`, binds its own stream: quiver’s cursor
 mode, built once in `LivePoly::new`, which the worklet calls in its port

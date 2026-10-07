@@ -988,7 +988,8 @@ pub enum AudioNode {
     /// What it is for comes from where it is patched, not from a mode: into a
     /// filter or a delay it is processed, into a follower it modulates. It
     /// compiles to quiver's `AudioInput`, bound to whatever stream the caller
-    /// hands [`crate::compile_with_input`]: the session's **audition clip** in
+    /// hands [`crate::compile_with_input`] (or [`crate::compile_for_render`],
+    /// the voice a measurement render plays): the session's **audition clip** in
     /// a measurement render (so a patch that listens is measured, rated and
     /// bred like any other; see `auracle_features::clip`), and the live input
     /// in the instrument.

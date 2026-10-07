@@ -1,0 +1,203 @@
+# make revalidate, phi-stats and norm-peak: c8541631 (before folding), in a copy of its tree, niceness 0, load 60 to 175. Cargo's lines, the run's header and /usr/bin/time's block stripped; nothing else.
+== composition over 2000 prior draws (no render) ==
+mean size 3.16   mean depth 2.61   mean trace sites 28.7   mean mod slots filled 58.7%
+mean mod-tree depth 1.094 (over filled slots)   patches with a shaped mod term 18.1%
+source kind per patch     share in ≥1 patch
+  vco           0.475     34.6%       42.3%
+  supersaw      0.341     24.8%       31.4%
+  noise         0.172     12.6%       16.2%
+  wavetable     0.172     12.6%       16.2%
+  pluck         0.111      8.1%       10.7%
+  formant       0.093      6.8%        9.0%
+  silence       0.007      0.5%        0.7%
+  audio in      0.000      0.0%        0.0%
+  (total)       1.372
+op kind     per patch     share in ≥1 patch
+  mix           0.252     14.0%       17.8%
+  filter        0.425     23.7%       29.8%
+  fold          0.139      7.8%       12.6%
+  delay         0.146      8.2%       13.7%
+  chorus        0.134      7.5%       11.8%
+  reverb        0.082      4.6%        7.5%
+  distortion     0.141      7.8%       12.4%
+  bitcrush      0.035      2.0%        3.5%
+  phaser        0.033      1.8%        3.1%
+  ringmod       0.033      1.8%        3.1%
+  flanger       0.048      2.7%        4.5%
+  tremolo       0.050      2.8%        4.8%
+  vibrato       0.046      2.6%        4.3%
+  eq            0.086      4.8%        7.6%
+  granular      0.022      1.2%        2.1%
+  shift         0.033      1.8%        3.2%
+  comp          0.028      1.6%        2.8%
+  duck          0.021      1.1%        2.1%
+  gate          0.020      1.1%        1.9%
+  vocoder       0.019      1.1%        1.9%
+  (total)       1.790
+mod kind    per patch     share in ≥1 patch
+  lfo           0.512     28.0%       37.9%
+  env           0.588     32.1%       41.0%
+  rand          0.175      9.6%       15.4%
+  follow        0.233     12.7%       19.8%
+  euclid        0.087      4.8%        8.0%
+  op            0.106      5.8%        9.4%
+  pair          0.039      2.1%        3.6%
+  steps         0.091      5.0%        8.8%
+  (total)       1.831
+modop kind  per patch     share in ≥1 patch
+  quantize      0.025     23.0%        2.4%
+  slew          0.030     28.6%        3.0%
+  rectify       0.022     21.1%        2.2%
+  hold          0.029     27.2%        2.8%
+  (total)       0.106
+pairop kind per patch     share in ≥1 patch
+  min           0.004     10.3%        0.4%
+  max           0.007     19.2%        0.8%
+  and           0.006     15.4%        0.6%
+  or            0.005     14.1%        0.5%
+  xor           0.009     21.8%        0.9%
+  switch        0.007     19.2%        0.8%
+  (total)       0.039
+== pipeline over 1200 prior draws ==
+featurized:    1168 (97%)
+quarantined:   silent=31 overlevel=0 dc=1 nonfinite=0
+base quarantine rate: 2.7%
+kind         in N draws   quarantined    vs base
+vco                455          1.5%      -1.1
+supersaw           359          2.5%      -0.2
+noise              206          1.0%      -1.7
+wavetable          212          1.4%      -1.3
+pluck              116          1.7%      -0.9
+formant            135          3.0%      +0.3
+silence             14         71.4%     +68.8  <-- silenced
+audio in             0             —          —
+mix                198          1.0%      -1.7
+filter             387          5.7%      +3.0
+fold               144          4.9%      +2.2
+delay              166          3.6%      +0.9
+chorus             126          4.8%      +2.1
+reverb              99          2.0%      -0.6
+distortion         148          1.4%      -1.3
+bitcrush            40          0.0%      -2.7
+phaser              53          0.0%      -2.7
+ringmod             34          2.9%      +0.3
+flanger             37          5.4%      +2.7
+tremolo             69          4.3%      +1.7
+vibrato             50          6.0%      +3.3
+eq                  97          3.1%      +0.4
+granular            21          4.8%      +2.1
+shift               55          3.6%      +1.0
+comp                43          2.3%      -0.3
+duck                29          3.4%      +0.8
+gate                17          0.0%      -2.7
+vocoder             19         10.5%      +7.9
+lfo                457          3.1%      +0.4
+env                513          2.9%      +0.3
+rand               176          2.3%      -0.4
+follow             242          3.3%      +0.6
+euclid             104          2.9%      +0.2
+steps               92          4.3%      +1.7
+quantize            48          0.0%      -2.7
+slew                28          0.0%      -2.7
+rectify             31          3.2%      +0.6
+hold                40          5.0%      +2.3
+min                  8          0.0%      -2.7
+max                  8         12.5%      +9.8
+and                  6          0.0%      -2.7
+or                   7          0.0%      -2.7
+xor                 13         15.4%     +12.7  <-- silenced
+switch               7          0.0%      -2.7
+feature                min      mean       max
+centroid_mean:p2     0.052     0.649     0.957
+centroid_std:p2      0.001     0.037     0.302
+rolloff_mean:p2      0.021     0.542     0.991
+flatness_mean:p2     0.000     0.049     0.565
+flux_mean:p2         0.003     0.034     0.206
+zcr_mean:p2          0.000     0.465     0.942
+rms_mean:p2          0.003     0.075     0.213
+rms_std:p2           0.003     0.061     0.250
+crest:p2             0.511     1.854     4.126
+attack_s:p2         -5.298    -1.326     0.660
+tail_ratio:p2       -6.908    -4.935     0.576
+bass_fraction:p2     0.000     0.310     1.000
+held_centroid_std:p2     0.000     0.015     0.389
+high_ratio:p2       -5.600    -0.323     3.632
+chord_flatness_delta:p2    -0.119     0.001     0.142
+motion_slow:p2      -6.644    -4.913     1.536
+motion_mid:p2       -6.644    -5.127     1.804
+motion_fast:p2      -6.644    -5.481     1.529
+n_vco                0.000     0.441     3.000
+n_supersaw           0.000     0.318     3.000
+n_noise              0.000     0.185     2.000
+n_wavetable          0.000     0.192     3.000
+n_pluck              0.000     0.102     2.000
+n_formant            0.000     0.116     2.000
+n_silence            0.000     0.003     1.000
+n_filter             0.000     0.521     6.000
+n_drive              0.000     0.333     6.000
+n_time               0.000     0.224     4.000
+n_mod_fx             0.000     0.292     4.000
+n_reverb             0.000     0.085     2.000
+n_dynamics           0.000     0.080     3.000
+n_lfo                0.000     0.525     5.000
+n_env                0.000     0.607     5.000
+n_rand               0.000     0.241     3.000
+n_follow             0.000     0.221     3.000
+n_mod_shape          0.000     0.131     3.000
+n_mod_logic          0.000     0.130     4.000
+mod_density          0.000     0.593     1.000
+mod_depth_mean       0.000     0.854     3.000
+amp_attack           0.000     0.497     1.000
+amp_sustain          0.000     0.482     0.998
+amp_release          0.000     0.501     1.000
+chain_balance        0.667     0.971     1.000
+frac_sidechained     0.000     0.121     1.000
+feature                VIF
+rolloff_mean:p2       19.7  <-- collinear
+zcr_mean:p2           12.9  <-- collinear
+motion_mid:p2          7.2
+centroid_std:p2        6.3
+amp_attack             6.1
+centroid_mean:p2       6.1
+attack_s:p2            5.6
+tail_ratio:p2          5.2
+rms_mean:p2            4.7
+mod_density            4.6
+motion_fast:p2         4.6
+amp_release            4.3
+mod_depth_mean         4.1
+held_centroid_std:p2       4.1
+motion_slow:p2         4.0
+flatness_mean:p2       3.6
+bass_fraction:p2       3.3
+crest:p2               3.2
+n_noise                3.0
+n_env                  2.9
+n_vco                  2.8
+n_lfo                  2.8
+rms_std:p2             2.5
+n_filter               2.4
+n_supersaw             2.3
+chain_balance          2.3
+frac_sidechained       2.3
+flux_mean:p2           2.3
+high_ratio:p2          2.2
+n_wavetable            1.9
+n_mod_shape            1.8
+n_follow               1.7
+n_dynamics             1.7
+n_rand                 1.7
+n_drive                1.7
+n_mod_fx               1.7
+n_formant              1.6
+n_pluck                1.6
+n_time                 1.6
+amp_sustain            1.3
+n_reverb               1.2
+n_silence              1.2
+n_mod_logic            1.2
+chord_flatness_delta:p2       1.1
+featurized 144/150
+peak: min 0.022  p50 0.551  p90 0.999  p99 1.000  max 1.000   (ceiling 1.00)
+over ceiling: 0/144 (0%)   over 1.25 (clips at master 0.8): 0/144 (0%)
+pulled down to clear the ceiling: 15/144 (10%)  mean 3.8 dB  worst 8.9 dB

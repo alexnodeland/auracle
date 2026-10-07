@@ -479,3 +479,140 @@ fn a_ringing_chord_voice_keeps_its_tail_into_the_next_chord() {
     let parked = tail(2.0);
     assert_eq!(parked, 0.0, "a parked chord voice still sounded");
 }
+
+/// **A measurement render plays what the instrument's voices play, bit for
+/// bit** (#298). A render's voices are compiled with their live knobs folded
+/// into the ports they drive (`Build::Folded`); here each tree is rendered
+/// again with every knob live (`Build::Live`) on the standard phrase, whose
+/// dyad compiles a chord voice mid-render, and the samples, the onsets and
+/// the spans are the same. Over what only a render exercises: a TRACK in
+/// each band, whose dyad is a follower fed by the main voice through
+/// `CompiledVoice::lead` every frame; an AUDIO IN and a CAPTURE playing a
+/// take, on the audition clip; the tree whose fold is refused (two plucked
+/// strings, one under an LFO, which would draw each other's noise if
+/// folded); and two presets as they are.
+#[test]
+fn a_folded_render_is_the_live_render() {
+    use auracle_grammar::term::{CaptureMode, PitchBand};
+    use auracle_grammar::{Take, TRACK_SENSITIVITY_DEFAULT};
+    let spec = PhraseSpec::default();
+    let presets: Vec<PatchTree> = auracle_grammar::presets()
+        .into_iter()
+        .map(|(_, t)| t)
+        .take(3)
+        .collect();
+    let input = || AudioNode::AudioIn {
+        uid: Uid::NEW,
+        input: 0,
+        gain: INPUT_GAIN_UNITY,
+        channel: InputChannel::Both,
+    };
+    let around = |root: AudioNode| PatchTree {
+        amp: presets[0].amp.clone(),
+        root,
+    };
+    let mix = |a: AudioNode, b: AudioNode| AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: Box::new(a),
+        b: Box::new(b),
+    };
+    let tone: Vec<f32> = (0..4_000)
+        .map(|i| {
+            (0.3 + 0.5 * (i as f64 * 330.0 * std::f64::consts::TAU / spec.sample_rate).sin()) as f32
+        })
+        .collect();
+    let take = Take::from_samples(&tone, spec.sample_rate).expect("a take");
+    let string = |modulation| AudioNode::Pluck {
+        uid: Uid::NEW,
+        octave: 0,
+        damping: 0.4,
+        brightness: 0.6,
+        mod_depth: 0.5,
+        modulation,
+    };
+    let mut trees: Vec<(String, PatchTree)> = Vec::new();
+    for (band, preset) in [PitchBand::Low, PitchBand::Mid, PitchBand::High]
+        .into_iter()
+        .zip(&presets)
+    {
+        let mut t = preset.clone();
+        t.root = AudioNode::Track {
+            uid: Uid::NEW,
+            band,
+            sensitivity: TRACK_SENSITIVITY_DEFAULT,
+            dynamics: 0.5,
+            input: Box::new(preset.root.clone()),
+            listen: Box::new(input()),
+        };
+        trees.push((format!("TRACK {band:?}"), t));
+    }
+    trees.push((
+        "AUDIO IN".to_string(),
+        around(mix(presets[1].root.clone(), input())),
+    ));
+    trees.push((
+        "CAPTURE".to_string(),
+        around(mix(
+            presets[2].root.clone(),
+            AudioNode::Capture {
+                uid: Uid::NEW,
+                play: CaptureMode::Loop,
+                input: Box::new(input()),
+                take,
+            },
+        )),
+    ));
+    trees.push((
+        "two strings".to_string(),
+        around(mix(
+            string(ModNode::Lfo {
+                wave: Waveform::Sine,
+                rate: 0.3,
+                uid: Uid::NEW,
+            }),
+            string(ModNode::None),
+        )),
+    ));
+    trees.push(("a preset".to_string(), presets[0].clone()));
+    trees.push(("another".to_string(), presets[1].clone()));
+    let spans = |r: &RenderedPhrase| -> Vec<(u64, usize, usize, usize)> {
+        r.spans
+            .iter()
+            .map(|s| (s.voct.to_bits(), s.chord, s.on_start, s.on_end))
+            .collect()
+    };
+    // Each tree on a thread of its own: quiver's stream is a thread's, and a
+    // render seeds it before it compiles.
+    let rendered: Vec<(String, RenderedPhrase, RenderedPhrase)> = std::thread::scope(|s| {
+        let handles: Vec<_> = trees
+            .iter()
+            .map(|(name, tree)| {
+                let spec = &spec;
+                s.spawn(move || {
+                    let folded = render_built(tree, spec, &mut (), Build::Folded);
+                    let live = render_built(tree, spec, &mut (), Build::Live);
+                    (
+                        name.clone(),
+                        folded.expect("renders"),
+                        live.expect("renders"),
+                    )
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("renders"))
+            .collect()
+    });
+    for (name, folded, live) in &rendered {
+        let bits = |r: &RenderedPhrase| r.samples.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+        assert!(bits(folded) == bits(live), "{name}: other samples");
+        assert_eq!(folded.note_onsets, live.note_onsets, "{name}");
+        assert_eq!(spans(folded), spans(live), "{name}");
+        assert!(
+            folded.samples.iter().any(|x| x.abs() > 1e-3),
+            "{name}: silent, so the comparison proves nothing"
+        );
+    }
+}

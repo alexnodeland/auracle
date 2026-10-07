@@ -1,0 +1,29 @@
+# 0eff8f4f's bench against norm_sqr().sqrt() for norm() in audio.rs (analysis-norm-sqr.diff), natively
+round 1 before:     3574 ms for the set, load 156
+round 1 after :     3612 ms for the set, load 158
+round 2 before:     3592 ms for the set, load 179
+round 2 after :     3639 ms for the set, load 201
+round 3 before:     3604 ms for the set, load 199
+round 3 after :     3620 ms for the set, load 209
+
+tree                    before     after  after/before
+First Bass               309.8     300.5         0.970
+Ceiling                  340.0     332.5         0.978
+Detune Dream             100.7     101.4         1.007
+Long Way Down            197.0     201.6         1.023
+Glass Pad                208.0     213.6         1.027
+Choirboy                 145.2     151.2         1.041
+draw 1                    84.3      83.3         0.988
+draw 2                   108.7     109.0         1.003
+draw 3                    82.1      81.1         0.988
+draw 4                   120.8     119.1         0.986
+draw 5                   151.0     158.5         1.050
+draw 6                   129.7     129.2         0.996
+draw 7                    93.0      93.9         1.010
+draw 8                   182.7     192.9         1.056
+draw 9                   352.6     346.8         0.984
+draw 10                  199.4     201.5         1.011
+draw 11                  438.2     425.6         0.971
+draw 12                  301.4     308.9         1.025
+set                     3544.6    3550.6         1.002
+load average 197, after

@@ -1,0 +1,57 @@
+tree                  nodes  knobs pinnable  cables rendered
+First Bass               22     12       10      24       13
+Ceiling                  25     13       11      27       15
+Detune Dream             23     15       13      24       11
+Long Way Down            33     17       15      35       19
+Glass Pad                28     16       14      32       15
+Choirboy                 25     14       11      28       15
+draw 1                   13      7        5      13        9
+draw 2                   23     12        9      24       15
+draw 3                   13      7        5      13        9
+draw 4                   28     17       13      29       16
+draw 5                   32     18       15      32       18
+draw 6                   23     14       11      25       13
+draw 7                   18     10        8      19       11
+draw 8                   31     18       14      36       18
+draw 9                   68     47       40      72       30
+draw 10                  29     17       15      31       16
+draw 11                  91     49       41      97       51
+draw 12                  81     51       45      86       38
+set: 606 nodes, 354 knobs (58%), 295 pinnable (49%)
+   354  external_input
+    36  attenuverter
+    31  adsr
+    21  limiter
+    21  vca
+    20  offset
+    18  stereo_output
+    14  lfo
+    12  svf
+     7  noise
+     6  slew_limiter
+     6  vco
+     5  sample_hold
+     5  supersaw
+     5  wavetable
+     4  chorus
+     4  crossfader
+     3  distortion
+     3  formant_osc
+     3  vibrato
+     2  auracle_steps
+     2  clock
+     2  delay_line
+     2  diode_ladder
+     2  envelope_follower
+     2  euclidean
+     2  parametric_eq
+     2  reverb
+     2  scale_quantizer
+     2  tremolo
+     2  wavefolder
+     1  bitcrusher
+     1  compressor
+     1  karplus_strong
+     1  max
+     1  noise_gate
+     1  rectifier
