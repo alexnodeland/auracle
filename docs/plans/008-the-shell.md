@@ -535,8 +535,12 @@ into C2a and C2b; round 2's decisions govern PATCH):
   | The film chip | Kept, folded after `#where` (§8), and *Watch ‹LEVEL› in depth* |
   | The catalog's walkthrough `?` | Kept, and *How the catalog works* at PATCH |
 
-  The scope's and the picture's panels hang under ⌘K's button, and their
-  Esc gives the focus to it. `publish.py`'s `APP_LINKS` no longer un-hides
+  The scope's and the picture's panels stand under ⌘K's button, fixed to
+  the window outside the menu bar, and their Esc gives the focus to it. They
+  and ⋯'s menu had hung inside the bar since PR A made it one row with
+  `overflow: hidden`: measured on C3's head, the point at the centre of ⋯'s
+  open menu (478 px tall) and of the scope panel (397 px) was not theirs,
+  and taking the focus scrolled the bar's contents 46 and 82 px. `publish.py`'s `APP_LINKS` no longer un-hides
   `#films-link` and `#help-film`, which are gone; ⌘K reads `data-films`.
 - **Not built here:** BREED TOWARD IT, which waits for the own-sound card
   (#133); `preview.html`, §4's palette capture (the PR shows the list on the

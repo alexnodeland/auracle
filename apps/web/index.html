@@ -123,129 +123,15 @@
          by its face (shell.js, Plan-008 §2.4). Ctrl K off Apple platforms;
          ? opens it too, wherever no control is there to ask about. What the
          ⋯ menu and the ? card held are its commands; the two files it opens
-         and the two panels it shows hang here. -->
-    <div class="cmdk-anchor">
-      <button class="cmdk-btn" id="cmdk-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cmdk" aria-keyshortcuts="Meta+K Control+K" aria-label="Find or do anything" title="Find or do anything · ⌘K"><svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg><span class="cmdk-word">Find or do anything</span><kbd>⌘K</kbd></button>
-      <!-- Open a taste file… and Open a patch file…: the pickers ⌘K's two
-           commands open. One import for a patch's three kinds of file: the
-           .json sidecar, and the .png/.svg that carry the very same sidecar
-           inside them (an exported picture *is* an exported patch). -->
-      <input id="import-input" type="file" accept=".json" hidden>
-      <input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden>
-      <!-- The scope's own panel (⌘K's Scope & analyzer…). It hangs off the
-           menu bar's ⌘K rather than growing a second gear icon on the
-           rack, and everything in it is persisted: a scope you have to
-           re-aim on every reload is a scope you stop configuring. -->
-      <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
-        <div class="sp-head">
-          <span class="sp-title">scope &amp; analyzer</span>
-          <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
-        </div>
-        <div class="sp-grid">
-          <label class="sp-row"><span>mode</span>
-            <select id="sp-mode">
-              <option value="off">off</option>
-              <option value="scope">waveform</option>
-              <option value="spectrum">spectrum</option>
-            </select></label>
-          <label class="sp-row"><span>tap</span>
-            <select id="sp-tap">
-              <option value="pre">pre-master</option>
-              <option value="post">post-master</option>
-            </select></label>
-          <label class="sp-row"><span>fft size</span>
-            <select id="sp-fft">
-              <option value="512">512</option>
-              <option value="1024">1024</option>
-              <option value="2048">2048</option>
-              <option value="4096">4096</option>
-            </select></label>
-          <label class="sp-row"><span>window</span>
-            <select id="sp-smooth">
-              <option value="0">none</option>
-              <option value="0.35">light</option>
-              <option value="0.6">medium</option>
-              <option value="0.85">heavy</option>
-            </select></label>
-          <label class="sp-row"><span>color</span>
-            <select id="sp-colour">
-              <option value="green">phosphor</option>
-              <option value="amber">amber</option>
-            </select></label>
-          <label class="sp-row"><span>corner</span>
-            <select id="sp-corner">
-              <option value="tl">top left</option>
-              <option value="tr">top right</option>
-              <option value="bl">bottom left</option>
-              <option value="br">bottom right</option>
-            </select></label>
-          <label class="sp-row"><span>size</span>
-            <select id="sp-size">
-              <option value="S">small</option>
-              <option value="M">medium</option>
-              <option value="L">large</option>
-            </select></label>
-          <label class="sp-row"><span>park after</span>
-            <select id="sp-park">
-              <option value="0.5">½ s</option>
-              <option value="1.5">1½ s</option>
-              <option value="4">4 s</option>
-              <option value="600">never</option>
-            </select></label>
-          <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
-            <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
-          <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
-            <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
-        </div>
-        <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
-      </div>
-      <!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
-           screenshot key; a design tool asks the four questions it cannot
-           guess — how much of the patch, at what size, on what, and in
-           which format — and then tells you exactly what you are about to
-           get. It hangs off ⌘K beside the scope panel and wears the
-           same shell, because it is the same kind of thing: a preference
-           you set once and a command you run often. -->
-      <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
-        <div class="sp-head">
-          <span class="sp-title">download a picture</span>
-          <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
-        </div>
-        <div class="sp-grid">
-          <label class="sp-row"><span>scope</span>
-            <select id="ix-scope">
-              <option value="all">whole patch</option>
-              <option value="sel">selection</option>
-              <option value="card">the sound's card</option>
-            </select></label>
-          <label class="sp-row"><span>size</span>
-            <select id="ix-scale">
-              <option value="1">1×</option>
-              <option value="2">2×</option>
-              <option value="3">3×</option>
-            </select></label>
-          <label class="sp-row"><span>background</span>
-            <select id="ix-bg">
-              <option value="solid">solid</option>
-              <option value="transparent">transparent</option>
-            </select></label>
-          <label class="sp-row"><span>format</span>
-            <select id="ix-fmt">
-              <option value="png">PNG</option>
-              <option value="svg">SVG</option>
-            </select></label>
-        </div>
-        <!-- Figma's readout, and for the same reason: the one number you
-             want before you press the button is the one you get afterwards
-             by opening the file. -->
-        <div class="ix-dims mono" id="ix-dims">·</div>
-        <button class="ix-go" id="ix-go">download</button>
-        <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
-      </div>
-    </div>
+         wait here, and the two panels it shows (below, after the list)
+         stand under it. -->
+    <button class="cmdk-btn" id="cmdk-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cmdk" aria-keyshortcuts="Meta+K Control+K" aria-label="Find or do anything" title="Find or do anything · ⌘K"><svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg><span class="cmdk-word">Find or do anything</span><kbd>⌘K</kbd></button>
+    <!-- Open a taste file… and Open a patch file…: the pickers ⌘K's two
+         commands open. One import for a patch's three kinds of file: the
+         .json sidecar, and the .png/.svg that carry the very same sidecar
+         inside them (an exported picture *is* an exported patch). -->
+    <input id="import-input" type="file" accept=".json" hidden>
+    <input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden>
   </header>
 
   <!-- ===================== deck: bank + stage ===================== -->
@@ -1025,6 +911,121 @@
   <ul class="cmdk-list" id="cmdk-list" role="listbox" aria-label="What it found"></ul>
   <div class="cmdk-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>↵</kbd> do it</span><span><kbd>esc</kbd> close</span><span class="cmdk-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author" target="_blank">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle" target="_blank" rel="noopener">source</a></span></div>
 </section>
+
+<!-- The scope's own panel (⌘K's Scope & analyzer…). It stands under the
+     menu bar's ⌘K rather than growing a second gear icon on the rack, and
+     everything in it is persisted: a scope you have to re-aim on every
+     reload is a scope you stop configuring. Out of the menu bar, which
+     clips what hangs off it (it keeps to one row). -->
+<div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
+  <div class="sp-head">
+    <span class="sp-title">scope &amp; analyzer</span>
+    <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
+  </div>
+  <div class="sp-grid">
+    <label class="sp-row"><span>mode</span>
+      <select id="sp-mode">
+        <option value="off">off</option>
+        <option value="scope">waveform</option>
+        <option value="spectrum">spectrum</option>
+      </select></label>
+    <label class="sp-row"><span>tap</span>
+      <select id="sp-tap">
+        <option value="pre">pre-master</option>
+        <option value="post">post-master</option>
+      </select></label>
+    <label class="sp-row"><span>fft size</span>
+      <select id="sp-fft">
+        <option value="512">512</option>
+        <option value="1024">1024</option>
+        <option value="2048">2048</option>
+        <option value="4096">4096</option>
+      </select></label>
+    <label class="sp-row"><span>window</span>
+      <select id="sp-smooth">
+        <option value="0">none</option>
+        <option value="0.35">light</option>
+        <option value="0.6">medium</option>
+        <option value="0.85">heavy</option>
+      </select></label>
+    <label class="sp-row"><span>color</span>
+      <select id="sp-colour">
+        <option value="green">phosphor</option>
+        <option value="amber">amber</option>
+      </select></label>
+    <label class="sp-row"><span>corner</span>
+      <select id="sp-corner">
+        <option value="tl">top left</option>
+        <option value="tr">top right</option>
+        <option value="bl">bottom left</option>
+        <option value="br">bottom right</option>
+      </select></label>
+    <label class="sp-row"><span>size</span>
+      <select id="sp-size">
+        <option value="S">small</option>
+        <option value="M">medium</option>
+        <option value="L">large</option>
+      </select></label>
+    <label class="sp-row"><span>park after</span>
+      <select id="sp-park">
+        <option value="0.5">½ s</option>
+        <option value="1.5">1½ s</option>
+        <option value="4">4 s</option>
+        <option value="600">never</option>
+      </select></label>
+    <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
+      <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
+    <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
+      <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
+  </div>
+  <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
+</div>
+<!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
+     screenshot key; a design tool asks the four questions it cannot
+     guess — how much of the patch, at what size, on what, and in
+     which format — and then tells you exactly what you are about to
+     get. It hangs off ⌘K beside the scope panel and wears the
+     same shell, because it is the same kind of thing: a preference
+     you set once and a command you run often. -->
+<div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
+  <div class="sp-head">
+    <span class="sp-title">download a picture</span>
+    <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
+  </div>
+  <div class="sp-grid">
+    <label class="sp-row"><span>scope</span>
+      <select id="ix-scope">
+        <option value="all">whole patch</option>
+        <option value="sel">selection</option>
+        <option value="card">the sound's card</option>
+      </select></label>
+    <label class="sp-row"><span>size</span>
+      <select id="ix-scale">
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="3">3×</option>
+      </select></label>
+    <label class="sp-row"><span>background</span>
+      <select id="ix-bg">
+        <option value="solid">solid</option>
+        <option value="transparent">transparent</option>
+      </select></label>
+    <label class="sp-row"><span>format</span>
+      <select id="ix-fmt">
+        <option value="png">PNG</option>
+        <option value="svg">SVG</option>
+      </select></label>
+  </div>
+  <!-- Figma's readout, and for the same reason: the one number you
+       want before you press the button is the one you get afterwards
+       by opening the file. -->
+  <div class="ix-dims mono" id="ix-dims">·</div>
+  <button class="ix-go" id="ix-go">download</button>
+  <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
+</div>
 
 <!-- handheld gate — the only thing rendered when html.handheld is set -->
 <section id="handheld" class="handheld-gate">

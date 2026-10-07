@@ -24294,7 +24294,8 @@ shell.cmd({ id: "pf-take", level: "perform", label: "Take the offer in B", key: 
 shell.cmd({ id: "pf-pass", level: "perform", label: "Pass on the offer in B", when: () => !!perform, run: () => perform.pad("pass") });
 shell.cmd({ id: "pf-keep", level: "perform", label: "Keep: make the sound home", key: "↵", when: () => !!perform && perform.moved(), run: () => perform.pad("keep") });
 shell.cmd({ id: "pf-back", level: "perform", label: "Back: glide back to the last sound you kept", key: "⇧⌫", when: () => !!perform && perform.moved(), run: () => perform.pad("back") });
-shell.cmd({ id: "pf-wander", level: "perform", label: "Freeze Wander", hint: () => (document.querySelector("#view-perform .pf-wander")?.dataset.frozen === "true" ? "frozen" : ""), when: () => performHas(".pf-wander"), run: performPress(".pf-wander") });
+// Wander freezes on a tap or Enter, not on a click (perform.js): its `hold`.
+shell.cmd({ id: "pf-wander", level: "perform", label: "Freeze Wander", hint: () => (document.querySelector("#view-perform .pf-wander")?.dataset.frozen === "true" ? "frozen" : ""), when: () => !!perform && performHas(".pf-wander"), run: () => perform.pad("hold") });
 shell.cmd({ id: "pf-arrange", level: "perform", label: "Arrange your controls", when: () => !!perform, run: () => perform.openPalette() });
 shell.cmd({ id: "pf-how", level: "perform", label: "How it works", when: () => performHas(".pf-why-btn"), run: performPress(".pf-why-btn") });
 shell.cmd({ id: "pf-xy", level: "perform", label: "XY pad: two controls under one finger", when: () => performHas(".pf-xy-btn"), run: performPress(".pf-xy-btn") });

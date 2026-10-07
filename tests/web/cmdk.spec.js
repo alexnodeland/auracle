@@ -20,13 +20,17 @@
 //   Open a taste file…, Download this patch, Download as a picture…, Open a
 //   patch file…, Scope & analyzer…, Re-run the three-pick warm start, Reset
 //   your taste…, Show measurements, Booth mode, Keys and gestures, Watch the
-//   films), and so is every setting KEYS ⋯ holds.
+//   films), and so is every setting KEYS ⋯ holds; a setting says *on*, the
+//   scope's and the picture's panels open whole under the menu bar (they hung
+//   inside it, which clips them), and a level's own run as their
+//   controls do (Freeze Wander freezes WANDER; How the catalog works opens
+//   the catalog's walkthrough).
 // - With no query it shows five sounds, each with its face's slot; a sound
 //   picked from it is the sound in hand, at the level you were at.
 // - ? over a PERFORM control asks about it (explain.js, which claims the
 //   key first); ? anywhere else opens the list; and the list's What does
 //   BRIGHT do? opens BRIGHT's answer as ? over it does.
-const { test, expect, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
+const { test, expect, goLevel, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
 
 const list = (page) => page.locator("#cmdk");
 const field = (page) => page.locator("#cmdk-input");
@@ -195,10 +199,37 @@ test("every item the ⋯ menu held, and every setting in KEYS ⋯, is a command"
   await expect(options(page).first().locator(".cmdk-hint")).toHaveText("on");
   await page.keyboard.press("Enter");
   await expect(page.locator("#hold-btn")).toHaveAttribute("aria-pressed", "false");
-  // A panel a command opens takes the focus.
-  await runCommand(page, "Scope & analyzer…");
-  await expect(page.locator("#scope-panel")).toBeVisible();
-  await expect(page.locator("#sp-mode")).toBeFocused();
+  // A panel a command opens takes the focus, whole under the menu bar: it
+  // hung inside the bar, which clips to its one row, and taking the focus
+  // scrolled the bar's own contents out of place.
+  for (const [label, panel, first] of [["Scope & analyzer…", "#scope-panel", "#sp-mode"], ["Download as a picture…", "#image-panel", "#ix-scope"]]) {
+    await runCommand(page, label);
+    await expect(page.locator(first)).toBeFocused();
+    await expect(page.locator(panel)).toBeInViewport({ ratio: 1 });
+    await expect.poll(() => page.evaluate((sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest(sel);
+    }, panel), `${panel} is what is under the point at its center`).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.querySelector(".menubar").scrollTop)).toBe(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(panel)).toBeHidden();
+  }
+  // A level's own: PERFORM's Freeze Wander, as a tap on WANDER freezes it,
+  // and PATCH's walkthrough of the catalog.
+  const wander = page.locator("#view-perform .pf-wander");
+  await expect(wander).not.toHaveAttribute("data-frozen", "true");
+  await runCommand(page, "Freeze Wander");
+  await expect(wander).toHaveAttribute("data-frozen", "true");
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("freeze wander");
+  await expect(options(page).first().locator(".cmdk-hint")).toHaveText("frozen");
+  await page.keyboard.press("Escape");
+  await goLevel(page, "patch");
+  await page.keyboard.press("Meta+k");
+  await expect.poll(() => rowsUnder(page, "This level")).toContain("How the catalog works");
+  await page.keyboard.press("Escape");
+  await runCommand(page, "How the catalog works");
+  await expect(page.locator("#nb-tour")).toBeVisible();
 });
 
 test("five sounds with no query, each with its face's slot, and one picked is in your hands at this level", async ({ page, app }) => {

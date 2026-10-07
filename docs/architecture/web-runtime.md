@@ -252,8 +252,10 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   what held it before (none, when a pointer's click on its button opened
   it), then runs the row, in the same task as the key or the click, so a
   file's command (`#import-input`, `#patch-import-input`, kept in the page)
-  opens its picker. The scope's and the picture's panels hang under the
-  button (`.cmdk-anchor`), and their Esc gives the focus to it.
+  opens its picker. The scope's and the picture's panels stand under the
+  button, fixed to the window outside the menu bar (which clips to its one
+  row, and scrolled its own contents when a panel inside it took the
+  focus), and their Esc gives the focus to it.
 
 ## The worker's lanes
 
