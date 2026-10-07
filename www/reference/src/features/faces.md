@@ -124,14 +124,26 @@ A face is filed under its render namespace and render key,
 engine worker copies a face out of the memo (a least-recently-used map a
 generation’s walks churn) the first time it is asked for, and keeps it in
 memory and in an IndexedDB store stamped with the namespace: a build whose
-renders differ cannot read another’s faces. Only what the worker holds in
-memory is answered at once; the memo, a resident audition and the store are
-looked up in its background lane, and a face none of them has is rendered in
-a lane of its own below that, after the bank has finished arriving, behind a
-refit, a guess or a cable probe, and dropped if the row asking for it has
-left the view. Such a render is not kept, so it pushes no audition out of
-the cache. A face’s render already running (about half a second) is the most
-it can hold anything up by.
+renders differ cannot read another’s faces. What the worker holds in memory,
+what the memo holds and what a resident audition gives are answered at once;
+the store is looked up in its background lane, and a face none of them has
+is rendered in a lane of its own below that, after the bank has finished
+arriving, behind a refit, a guess or a cable probe, and dropped if the row
+asking for it has left the view. Such a render is not kept, so it pushes no
+audition out of the cache. A face’s render already running (about half a
+second) is the most it can hold anything up by.
+
+**The presets’ faces ship with the app.** A preset’s render is fixed, so
+every preset’s face is rendered ahead of time, natively, through the same
+engine surface the worker uses, into `apps/web/preset-faces.json`
+(`make preset-faces`), with the render namespace and the reference clip it
+was rendered under and each preset’s render key. The page draws a preset’s
+face from it, filed under the same key, without asking the engine, where the
+namespace is the session’s and, for a preset with an AUDIO IN, while the
+session hears the reference clip; anywhere else the engine renders it as
+above. A test renders every preset again and fails while the file differs by
+a byte (`crates/auracle-wasm/tests/shipped_faces.rs`), and the built wasm
+renders the same bytes as the native build.
 
 **The stage’s live outline** (PERFORM’s stage mode) is measured as a face
 is: the output’s latest 2048 samples, through the same Hann frame and FFT,

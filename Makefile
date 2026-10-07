@@ -804,7 +804,7 @@ pkg-reuse:
 # Every app script, not a list: a module main.js imports with `?v=` (perform.js,
 # midi.js) that was left out would keep its old URL when it changed and be
 # served from cache.
-WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json apps/web/preset-faces.json
 wasm-prebuilt:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  WASM_PREBUILT=1 but apps/web/pkg has no engine\n'; exit 1; }
 	@$(MAKE) --no-print-directory wasm-stamp

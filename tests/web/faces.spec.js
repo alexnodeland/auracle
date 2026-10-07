@@ -16,7 +16,9 @@
 // - A face is a pure function of the render: the same session reloaded (its
 //   faces now from the worker's store) draws every row the same.
 // - A preset row's face, on its way when the bank redraws (a play, a load),
-//   still lands, without a scroll.
+//   still lands, without a scroll (with the app's own file of the presets'
+//   faces kept back, so each is a render: faces_presets.spec.js holds the
+//   file's own).
 // - A face's render never goes ahead of a refit: with sixty of them queued
 //   (a list of presets scrolled through), a refit is answered before most of
 //   them land (an order); within 6 s is a budget (ADR-022).
@@ -107,14 +109,13 @@ test("a face appears on every row, card and chip once its render lands", async (
   expect(offer).not.toBe(held);
 });
 
-// About 85 to 135 s on CI, most of it the bank arriving behind the warm
-// start's renders: the slow tier's (tests/web/AGENTS.md § The two tiers).
-test("the warm start's cards carry their faces", { tag: "@slow" }, async ({ page, app }) => {
-  test.setTimeout(180_000);
+// The cards' faces come with the app (preset-faces.json), drawn once the
+// bank has faces to draw them against; faces_presets.spec.js holds that they
+// are drawn from the file, at once, on a slowed engine.
+test("the warm start's cards carry their faces", async ({ page, app }) => {
   await boot(page, app, { warmed: false });
   await app.engine((timeout) => expect(page.locator("#warmstart")).toBeVisible({ timeout }), { ms: 150_000 });
   await expect(page.locator("#warm-grid .warm-item")).toHaveCount(9);
-  // Their renders wait for the bank to arrive, then each lands.
   await app.engine((timeout) => expect(page.locator("#warm-grid .warm-item .face-slot img.face")).toHaveCount(9, { timeout }), { ms: 150_000 });
 });
 
@@ -279,6 +280,9 @@ test("a refit is answered promptly while sixty face renders wait", async ({ page
 });
 
 test("a preset's face still lands after the bank redraws while it was on its way", async ({ page, app }) => {
+  // The app's own file of the presets' faces kept back: each row's face is
+  // then a render, on its way while the bank redraws.
+  await page.route("**/preset-faces.json*", (r) => r.abort());
   await boot(page, app);
   await booted(app);
   await bankDrawn(page, app);
