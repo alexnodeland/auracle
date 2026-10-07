@@ -10,9 +10,11 @@ const { test, expect, bankTab } = require("./fixtures");
 // A tablet: a coarse pointer and touch, wide enough to have no gate.
 test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
 
-/** Boot past the handheld gate if it shows, and wait for the whole pool. */
+/** Boot past the handheld gate if it shows, and wait for the whole pool:
+ *  with the renders an earlier boot of the seed kept, since nothing here
+ *  happens before the pool is whole (fixtures.js `reuseRenders`). */
 async function boot(page, app) {
-  await app.boot({ wait: false });
+  await app.boot({ wait: false, reuseRenders: true });
   const anyway = page.locator("#hg-anyway");
   if (await anyway.isVisible().catch(() => false)) await anyway.click();
   await app.booted();

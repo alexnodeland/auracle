@@ -28,6 +28,11 @@
 // - **`newContext(options)`** (only when a test asks for it) makes another
 //   context of the test's own (a phone beside a desktop, a second visit),
 //   whose pages' errors fail the test as the test's own context's do.
+// - **Renders reused** (`app.boot({ reuseRenders: true })`, opt-in): a spec
+//   that waits for the whole pool before it does anything starts with the
+//   render cache (`auracle-renders`) as an earlier boot of the same seed left
+//   it, so the fill after the veil is served from the cache and not rendered
+//   again (`RENDERS`, below). Every other boot is a first visit's, cold.
 //
 // What the tap keeps, in the page (`window.__tap`):
 //   replies   what main was handed, in order: { type, at, injected, d }
@@ -78,7 +83,10 @@
 // marks (`app.marks`).
 const base = require("@playwright/test");
 const { expect } = base;
+const crypto = require("node:crypto");
+const fs = require("node:fs");
 const os = require("node:os");
+const path = require("node:path");
 const shell = require("./shell");
 const performBudget = require("./perform_budget");
 
@@ -182,6 +190,148 @@ const UNANSWERED = [
 const LANES = {
   bench: ["edit_param", "edit_structure", "edit_set_tree"],
 };
+
+// ---------- renders reused (`app.boot({ reuseRenders: true })`) ----------
+//
+// The veil lifts at 8 sounds, and those are rendered with their audio, which
+// the render cache never holds (worker.js `FARM_AUDIO_AHEAD`, farm.js), so no
+// cache moves the veil. What one can take away is the fill after it: the other
+// 30-odd draws are a hit each, where a cold boot renders them behind the test
+// (about 4 s after the veil on a 16-core M3 Max, up to 20 on a CI runner). A
+// spec that waits for the whole pool before it does anything spends that time
+// waiting, and finds the same pool either way: the same draws, and a hit is
+// the φ a render gives, bit for bit (every row is stored under the namespace
+// and the draw's content address, which the engine checks against its tree
+// before folding the row in: farm.js). Such a spec asks for it in
+// `app.boot`; every other boot is a first visit's.
+//
+// The first boot that asks, for its seed, is cold. Once its pool is whole
+// (`app.filled`, `app.poolRows`, `app.fullPool`, or at the end of a test that
+// passed) the fixture keeps the store's rows, in this worker and on disk
+// (tests/web/.renders/, a file per engine binary, named by its hash), and
+// every later boot of that seed that asks starts with them: written into the
+// store, from a page of their own in the boot's context, before the app's
+// first script. A seed is the address's `?seed`, or with none the seeded
+// Math.random (`random`) that draws it; an unseeded boot keeps nothing. A
+// store stamped with another namespace is cleared by the app as it boots, so
+// rows from another φ cost a cold boot and nothing else.
+const RENDERS_DIR = path.join(__dirname, ".renders");
+const ENGINE_WASM = path.join(__dirname, "../../apps/web/pkg/auracle_wasm_bg.wasm");
+/** What is kept, by seed ("seed:N", "random:N"): { ns, rows: [[key, row]] }. */
+const kept = new Map();
+let keptAt; // this binary's file under RENDERS_DIR, null without one; read once
+
+function keptFile() {
+  if (keptAt !== undefined) return keptAt;
+  try {
+    const id = crypto.createHash("sha256").update(fs.readFileSync(ENGINE_WASM)).digest("hex").slice(0, 16);
+    keptAt = path.join(RENDERS_DIR, `${id}.json`);
+  } catch (_) {
+    keptAt = null; // no engine: the specs say so themselves
+  }
+  try {
+    if (keptAt) for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(keptAt, "utf8")))) kept.set(k, v);
+  } catch (_) {
+    /* nothing kept for this binary yet */
+  }
+  return keptAt;
+}
+
+/** The file again, with `kept` over what another run wrote there meanwhile. */
+function writeKept(drop = null) {
+  const file = keptFile();
+  if (!file) return;
+  try {
+    fs.mkdirSync(RENDERS_DIR, { recursive: true });
+    let onDisk = {};
+    try {
+      onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    } catch (_) {
+      /* none yet */
+    }
+    if (drop) delete onDisk[drop];
+    const tmp = `${file}.${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify({ ...onDisk, ...Object.fromEntries(kept) }));
+    fs.renameSync(tmp, file);
+  } catch (_) {
+    /* a cold boot next time, nothing else */
+  }
+}
+
+/** The seed a boot's pool is drawn from, as the kept rows are filed: the
+ *  address's `?seed`, or the seeded Math.random that draws one; null when the
+ *  boot is unseeded. */
+function rendersKey(params, random) {
+  if (params.has("seed")) return `seed:${params.get("seed")}`;
+  return random != null ? `random:${random}` : null;
+}
+
+/** Forget the rows kept for a boot of `seed`, or `random` with no seed (as
+ *  `app.boot` takes them), here and on disk: the next boot of it that asks to
+ *  reuse renders is cold. For the fixture's own spec. */
+function forgetRenders({ seed = null, random = null } = {}) {
+  const key = rendersKey(new URLSearchParams(seed != null ? { seed: String(seed) } : {}), random);
+  keptFile();
+  kept.delete(key);
+  writeKept(key);
+}
+
+/** Write `rows` into the render store of `context`'s origin, stamped `ns`,
+ *  from a page of its own (served by a route, so it runs nothing of the
+ *  app's) through the app's own store rules (render-store.js). */
+async function fillRenderStore(context, { ns, rows }) {
+  const page = await context.newPage();
+  try {
+    const at = new URL("/__render-store", base.test.info().project.use.baseURL).href;
+    await page.route(at, (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>render store</title>" }));
+    await page.goto(at);
+    await page.evaluate(async ([ns, rows]) => {
+      const store = await import("/render-store.js");
+      const db = await store.renderStoreOpen(indexedDB, ns);
+      if (!db) throw new Error("the render store would not open");
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(store.RENDER_ROWS, "readwrite");
+        const put = tx.objectStore(store.RENDER_ROWS);
+        for (const [k, v] of rows) put.put(v, k);
+        tx.oncomplete = resolve;
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+    }, [ns, rows]);
+  } finally {
+    await page.close();
+  }
+}
+
+/** The render store of the page's origin, read in the page: { ns, rows }, or
+ *  null with none. Opens it without creating it. */
+async function readRenderStore() {
+  const store = await import("/render-store.js");
+  const done = (r) => new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+  const open = indexedDB.open(store.RENDER_DB);
+  open.onupgradeneeded = () => open.transaction.abort();
+  let db;
+  try {
+    db = await done(open);
+  } catch (_) {
+    return null;
+  }
+  try {
+    if (!db.objectStoreNames.contains(store.RENDER_ROWS) || !db.objectStoreNames.contains(store.RENDER_META)) return null;
+    const tx = db.transaction([store.RENDER_ROWS, store.RENDER_META], "readonly");
+    const [ns, keys, values] = await Promise.all([
+      done(tx.objectStore(store.RENDER_META).get("ns")),
+      done(tx.objectStore(store.RENDER_ROWS).getAllKeys()),
+      done(tx.objectStore(store.RENDER_ROWS).getAll()),
+    ]);
+    return { ns, rows: keys.map((k, i) => [k, values[i]]) };
+  } finally {
+    db.close();
+  }
+}
 
 // The tap, installed before the page's scripts on every navigation. One
 // wrapper of `Worker`: whatever a spec adds later wraps it.
@@ -416,6 +566,9 @@ class App {
     // Settings made with no tap to take them (before boot, mid-navigation),
     // each replayed on every load from then on by an init script (`config`).
     this.settings = 0;
+    // The seed whose renders this page's boot reuses and keeps (`RENDERS`),
+    // or null: a boot that did not ask.
+    this.renders = null;
     this.ENGINE_MS = ENGINE_MS;
     this.ENGINE_CAP_MS = ENGINE_CAP_MS;
     this.QUIET_MS = QUIET_MS;
@@ -442,8 +595,13 @@ class App {
    *    fixture serves the worker with it, after its own: a spec that routed
    *    worker.js itself lost its prefix whenever the fixture routed it too,
    *    as every throttled run does (#166);
+   *  - `reuseRenders` (false): start with the render cache an earlier boot of
+   *    the same seed left once its pool was whole, so the fill after the veil
+   *    is served rather than rendered (`RENDERS` above). For a spec that waits
+   *    for the whole pool before it does anything, and not one about boot,
+   *    the fill or the renders;
    *  - `wait` (true): wait for the boot. */
-  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, workerPrefix = "", wait = true } = {}) {
+  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, workerPrefix = "", reuseRenders = false, wait = true } = {}) {
     const { page } = this;
     if (seed === undefined) seed = random === undefined ? DEFAULT_SEED : null;
     if (random === undefined) random = DEFAULT_SEED;
@@ -464,6 +622,16 @@ class App {
     }
     const params = new URLSearchParams(query.replace(/^\?/, ""));
     if (seed != null && !params.has("seed")) params.set("seed", String(seed));
+    this.renders = reuseRenders ? rendersKey(params, random) : null;
+    if (this.renders) {
+      keptFile();
+      const reused = kept.get(this.renders);
+      base.test.info().annotations.push({
+        type: "renders",
+        description: reused ? `${reused.rows.length} rows kept for ${this.renders}` : `none kept for ${this.renders}: a cold boot, whose rows are kept`,
+      });
+      if (reused) await fillRenderStore(page.context(), reused);
+    }
     const q = params.toString();
     await page.goto(`/${q ? `?${q.replace(/=(?=&|$)/g, "")}` : ""}`);
     if (wait) await this.booted();
@@ -471,7 +639,27 @@ class App {
 
   /** Wait until the boot veil is down (`#boot.done`), as an engine wait. */
   booted() {
-    return this.engine((timeout) => expect(this.page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout }));
+    return this.engine((timeout) => expect(this.page.locator("#boot"), "the boot veil lifted").toHaveClass(/\bdone\b/, { timeout }));
+  }
+
+  /** On a boot that asked to reuse renders, with the pool whole and nothing
+   *  kept yet for its seed: keep the render store's rows for the next boot of
+   *  that seed that asks (`RENDERS`). Otherwise nothing. */
+  async keepRenders() {
+    const key = this.renders;
+    if (!key) return;
+    keptFile();
+    if (kept.has(key)) return;
+    const whole = await this.page.evaluate(() => {
+      const s = window.__tap && window.__tap.facts.status;
+      return !!s && s.pool_target > 0 && s.pool >= s.pool_target;
+    });
+    if (!whole) return;
+    const store = await this.page.evaluate(readRenderStore);
+    if (store && store.ns && store.rows.length) {
+      kept.set(key, store);
+      writeKept();
+    }
   }
 
   /** Reload, and wait for the boot. */
@@ -922,22 +1110,24 @@ class App {
           return !!(f.status && f.ranked && f.status.pool_target > 0 && f.ranked.length >= f.status.pool_target);
         }), { timeout: ms, message: "the pool's whole list never came after filled" })
         .toBe(true));
+    await this.keepRenders();
     return done;
   }
 
   /** The bank's list showing `n` rows of the pool (all 40 by default), as
    *  the engine fills it: an engine wait. */
-  poolRows(n = 40, { timeout = ENGINE_MS } = {}) {
-    return this.engine(
-      (ms) => expect.poll(() => this.page.locator("#bank-list .bank-item[data-id]").count(), { timeout: ms }).toBe(n),
+  async poolRows(n = 40, { timeout = ENGINE_MS } = {}) {
+    await this.engine(
+      (ms) => expect.poll(() => this.page.locator("#bank-list .bank-item[data-id]").count(), { timeout: ms, message: `the pool's ${n} rows in the bank` }).toBe(n),
       { ms: timeout },
     );
+    await this.keepRenders();
   }
 
   /** The pool at its size, as the engine's status says (a refill after a
    *  cut or a generation included). */
-  fullPool({ timeout = ENGINE_MS } = {}) {
-    return this.engine(
+  async fullPool({ timeout = ENGINE_MS } = {}) {
+    await this.engine(
       (ms) =>
         expect
           .poll(() => this.page.evaluate(() => {
@@ -947,6 +1137,7 @@ class App {
           .toBe(true),
       { ms: timeout },
     );
+    await this.keepRenders();
   }
 
   /** Answer the requests matching `match` as the worker answers one it could
@@ -1020,7 +1211,14 @@ const test = base.test.extend({
     { auto: true },
   ],
   app: async ({ page }, use, testInfo) => {
-    await use(await openApp(page));
+    const app = await openApp(page);
+    await use(app);
+    // A boot that asked to reuse renders keeps its store's rows, if its test
+    // passed with the pool whole and none were kept yet (`RENDERS`): a spec
+    // whose own wait for the pool is not the fixture's.
+    if (testInfo.status === "passed" && !page.isClosed()) {
+      await Promise.race([app.keepRenders().catch(() => {}), new Promise((r) => setTimeout(r, 5_000))]);
+    }
     // A failed test carries what the tap saw: every toast, and the counts of
     // what was sent and heard.
     if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
@@ -1057,4 +1255,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect, openApp, budget, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, UNANSWERED, LANES, ...shell };
+module.exports = { test, expect, openApp, budget, forgetRenders, ENGINE_MS, ENGINE_CAP_MS, QUIET_MS, SEED, PERFORM_SEED, UNANSWERED, LANES, ...shell };

@@ -177,6 +177,20 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
     slows the engine's wasm, `workerPrefix` runs a spec's own code in the
     engine worker ahead of `worker.js`, kept on a throttled run too).
+    `reuseRenders: true` boots with the render cache (`auracle-renders`) as
+    an earlier boot of the same seed left it once its pool was whole, so the
+    fill after the veil is served, not rendered: the veil lifts no sooner
+    (its 8 sounds are rendered with their audio, which the cache never
+    holds), but the pool is whole about 4 s sooner here and 20 s on CI. It
+    is for a test that waits for the whole pool before it does anything
+    (`app.filled`, `app.poolRows(40)`, `app.fullPool`, a wait of its own),
+    which then finds the pool a cold boot fills, sound for sound; never for
+    one about boot, the fill or the renders, nor one that picks, teaches or
+    deals while the pool fills. The first such boot of a seed in a run is
+    cold and keeps its rows once the pool is whole, in the worker and in
+    `.renders/` here (ignored by git: a file per engine binary, named by its
+    hash); an unseeded boot keeps nothing. `fixture_renders.spec.js` holds
+    the fixture to it. The bank's specs that wait for the pool ask for it.
     PERFORM's specs boot with `{ seed:
     PERFORM_SEED, random: PERFORM_SEED }` instead, a seed whose first offer
     on Glass Pad is a typical one (SEED's is unusually light).
