@@ -366,9 +366,12 @@ class EngineWorker {
   }
 
   /** Boot the engine as main does (`init`), and wait until the pool is full.
-   *  `farmPorts` are boot's crew (`fakeCrew`). */
-  async boot({ seed = 1, poolSize = 12, playableAt = 8, saved = null, farmPorts = [] } = {}) {
-    const after = this.post({ type: "init", seed, poolSize, playableAt, saved, farmPorts }, { transfer: farmPorts });
+   *  `farmPorts` are boot's crew (`fakeCrew`). `seeded` is a session opened
+   *  with a seed in the address (`?seed=`), whose deals keep to the fill's
+   *  schedule (#211); by default the seed is the session's own, as main's is
+   *  without one, and its deals are drawn at once. */
+  async boot({ seed = 1, seeded = false, poolSize = 12, playableAt = 8, saved = null, farmPorts = [] } = {}) {
+    const after = this.post({ type: "init", seed, seeded, poolSize, playableAt, saved, farmPorts }, { transfer: farmPorts });
     const r = await this.until((x) => x.type === "filled" || x.type === "boot_failed", { after });
     if (r.type === "boot_failed") throw new Error(`boot failed: ${r.error}`);
     return r;

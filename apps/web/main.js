@@ -23966,6 +23966,14 @@ function seedOverride() {
   return bootParams.seedOverride(location.search, (said) => console.warn(said));
 }
 
+/** The address's seed (`?seed=N`), or null, read once at boot. A session
+ *  opened with one deals the same pairs on any machine, however fast its
+ *  pool fills: `init` says so (`seeded`), and the worker keeps its deals to
+ *  the fill's schedule, a deal waiting for the sounds it names (#211). An
+ *  ordinary session deals at once from the sounds that have arrived, so a
+ *  pick never waits for the fill. */
+const addressSeed = seedOverride();
+
 /** Reload as a fresh start: Reset your taste and a booth's next visitor.
  *  The address keeps what it says, the level's hash aside (`keepHash`),
  *  but not `?seed`, which dealt the session being left: a reset deals a new
@@ -24181,7 +24189,10 @@ bootMidi();
       type: "init",
       // `?seed=N` deals a session that can be shared or replayed; otherwise
       // every boot deals a new one.
-      seed: seedOverride() ?? Math.floor(Math.random() * 2 ** 31),
+      seed: addressSeed ?? Math.floor(Math.random() * 2 ** 31),
+      // Only a seed from the address deals by the fill's schedule
+      // (`addressSeed`): an ordinary session's deals never wait for the fill.
+      seeded: addressSeed != null,
       poolSize: 40,
       // Hand the app over at 8 vetted patches and let the other 32 land behind
       // it. A duel needs a bank wide enough to hold an interesting question, not
