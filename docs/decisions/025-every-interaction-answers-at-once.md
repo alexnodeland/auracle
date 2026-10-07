@@ -67,10 +67,10 @@ above is what those issues are written to.
    - **Direct manipulation** (a knob or slider drag, the XY pad, a key, a MIDI
      note or CC, Peek, Blend) is heard at the next audio quantum after the
      event and seen in the next frame. Nothing between the event and the
-     voices waits on the engine worker. That includes the audio thread: its
-     work per quantum stays under half a quantum on the reference machine.
+     voices waits on the engine worker. The target includes the audio thread:
+     its work per quantum stays under half a quantum on the reference machine.
      #288 and #298 make that true, and #299 judges it nightly with the gate of
-     `live_cost.mjs` (#288).
+     `live_cost.mjs` (#288; not yet on `main`).
    - **Every other input shows what it asked for within 100 ms:** the sound
      playing, the controls live, the rack drawn, the pair dealt, the offer in
      B. 100 ms is the default. Each interaction's own limit is a row of #297's
@@ -85,11 +85,10 @@ above is what those issues are written to.
      a face landing, a refit's posterior, a spare offer. One rule serves the
      whole app (D8, the maintainer's):
      - a control is held while it is held, and for 1.5 s after it is
-       released;
+       released: a result waits, and applies when that time is up;
      - a region (the bank, the map, the rack, LEARNING's bars) is held while
-       the pointer is over it;
-     - a result waits for either, and applies on pointer-leave or after 1 s of
-       rest.
+       the pointer is over it: a result waits, and applies on pointer-leave or
+       after 1 s of rest.
 3. **The answer is the thing, not a sign.** A pending state ("opening…", a
    dimmed ▶) counts only where the player asked for work that takes time: a
    generation, ⚡, a recording, a clip capture. Elsewhere a pending state is an
