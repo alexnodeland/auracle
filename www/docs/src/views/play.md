@@ -435,7 +435,8 @@ At PATCH, [⌘K’s list](../levels.md#k-find-anything) starts with THIS LEVEL,
 each with its key where it has one: *Add a module* (<kbd>/</kbd>), *How the
 catalog works* (its walkthrough), *How to read this patch*, *⚡ Evolve from this* and the three locks of its ▾ (*Lock
 knobs*, *Lock wiring*, *Clear locks*), *Keep as new* and *Undo to as opened*
-once you have edited, *Redo an edit* (<kbd>⇧⌘Z</kbd>), the camera (*Fit the
+once you have edited, *Undo an edit* (<kbd>⌘Z</kbd>, one step) and *Redo an
+edit* (<kbd>⇧⌘Z</kbd>), the camera (*Fit the
 whole patch* <kbd>⇧Home</kbd>, *Fit what you’re on* <kbd>.</kbd>, *Actual
 size* <kbd>⌘0</kbd>, *Zoom out on the patch* <kbd>⌘−</kbd>, *Zoom in on the
 patch* <kbd>⌘=</kbd>, *Show the minimap*), the three layouts, *The first

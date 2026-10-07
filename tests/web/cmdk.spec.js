@@ -9,7 +9,8 @@
 //   (ADR-025: within 100 ms on the reference machine, a budget here).
 // - Typing ranks a label's start first: "patch" puts PATCH's level first,
 //   ahead of the commands that only hold the word.
-// - ↵ runs the row chosen (the arrows choose), and the list closes; Tab
+// - ↵ runs the row chosen (the arrows choose), and the list closes; with
+//   nothing found, ↵ leaves the list open with what was typed; Tab
 //   walks the field and the foot's links (the author, the source) and stays
 //   in the list; Esc closes it and gives the focus back where it was, and
 //   that press ends nothing behind it (a tapped model view stays).
@@ -17,6 +18,8 @@
 //   same gesture.
 // - While it is open the keys are its field's: a note key plays no note,
 //   ⌥↑ moves no level, ⌘Z takes nothing back.
+// - At PATCH, "undo" finds Undo an edit first, with ⌘Z, and ↵ on it takes
+//   back the last edit, not every one (Undo to as opened does that).
 // - Every item the ⋯ menu held is a command in it (Download your taste,
 //   Open a taste file…, Download this patch, Download as a picture…, Open a
 //   patch file…, Scope & analyzer…, Re-run the three-pick warm start, Reset
@@ -32,6 +35,7 @@
 //   key first); ? anywhere else opens the list; and the list's What does
 //   BRIGHT do? opens BRIGHT's answer as ? over it does.
 const { test, expect, goLevel, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
+const patchPage = require("./patch_page.js");
 
 const list = (page) => page.locator("#cmdk");
 const field = (page) => page.locator("#cmdk-input");
@@ -153,6 +157,41 @@ test("Esc closes the list and gives the focus back, and ends nothing behind it",
   await page.locator("#cmdk-scrim").click({ position: { x: 5, y: 5 } });
   await expect(list(page)).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+test("at PATCH, undo finds Undo an edit first, and ↵ takes back the last edit, not every one", async ({ page, app }) => {
+  await app.boot();
+  await patchPage.openPreset(app, "Glass Pad");
+  await patchPage.settled(app);
+  // Two edits: a nudge on each of two knobs, each a step of its own.
+  const addrs = await page.evaluate(() =>
+    [...document.querySelectorAll("#rack-svg g[data-addr]")]
+      .filter((g) => g.querySelector(":scope > .knob-hit") && Number(g.getAttribute("aria-valuenow")) < 0.9)
+      .slice(0, 2)
+      .map((g) => g.dataset.addr));
+  expect(addrs).toHaveLength(2);
+  const knob = (addr) => page.locator(`#rack-svg g[data-addr="${addr}"]`);
+  const was = [];
+  for (const addr of addrs) {
+    const before = await knob(addr).getAttribute("aria-valuenow");
+    was.push(before);
+    await knob(addr).focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(knob(addr)).not.toHaveAttribute("aria-valuenow", before);
+    await patchPage.settled(app);
+  }
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("undo");
+  await expect(options(page).first().locator(".cmdk-lab")).toHaveText("Undo an edit");
+  await expect(options(page).first().locator("kbd")).toHaveText(/Z$/);
+  await expect(commandRow(page, "Undo to as opened")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(list(page)).toBeHidden();
+  // The restore is an edit in the bench lane: the rack is drawn from its
+  // reply once the lane has settled.
+  await patchPage.settled(app);
+  await expect(knob(addrs[1]), "the last edit was taken back").toHaveAttribute("aria-valuenow", was[1]);
+  await expect(knob(addrs[0]), "the edit before it stayed").not.toHaveAttribute("aria-valuenow", was[0]);
 });
 
 test("a file's command opens its picker", async ({ page, app }) => {

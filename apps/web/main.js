@@ -24310,6 +24310,11 @@ patchCmd("pt-how", "How to read this patch", "pt-how");
 patchCmd("pt-evolve", "⚡ Evolve from this", "rack-evolve");
 patchCmd("pt-commit", "Keep as new", "rack-commit");
 patchCmd("pt-revert", "Undo to as opened", "pt-revert");
+// The edit undo, one step, as ⌘Z is at PATCH once no pick or cut is still in
+// its window (Anywhere's *Take back your last pick or cut* is ⌘Z's first
+// meaning). It runs the edit undo itself, so it does what it says inside
+// that window too; Undo to as opened takes back every edit at once.
+shell.cmd({ id: "pt-undo", level: "patch", label: "Undo an edit", key: "⌘Z", run: () => doUndo() });
 shell.cmd({ id: "pt-redo", level: "patch", label: "Redo an edit", key: "⇧⌘Z", run: () => undoKey(true) });
 // ⚡'s ▾ menu's items, pressed where the menu holds them, open or not.
 for (const [id, btn, label] of [["pt-lock-knobs", "lock-knobs", "Lock knobs"], ["pt-lock-wiring", "lock-structure", "Lock wiring"], ["pt-lock-clear", "lock-clear", "Clear locks"]]) {
