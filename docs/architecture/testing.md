@@ -296,7 +296,8 @@ scripts/ops/rows_resolve.py keeps both. -->
   bank, the shell) its changed lines are drawn in, told by their section
   headings, and each view's sample for a section no view names; for
   `worker.js` and the engine, each view's sample (a spec or three per view,
-  end to end) and `boot_agrees.spec.js`; for the page, the samples. Before
+  end to end), `boot_agrees.spec.js` and `reference_profile.spec.js`; for
+  the page, the samples. Before
   the push it runs the spec files the branch adds or edits three times
   each, and the rest once (`REPEAT=3`, the `ship` skill), on the release
   engine (`make wasm`, or `make pkg-reuse` in a worktree that changed no

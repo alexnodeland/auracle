@@ -90,8 +90,9 @@ views (`changed.mjs --views`):
   (the state, the worker protocol, boot) reaches every view, and adds each
   view's sample.
 - **`worker.js` and the engine** (a crate, `Cargo.*`, the toolchain): each
-  view's sample (a spec or three per view that goes through it end to end)
-  and `boot_agrees.spec.js`.
+  view's sample (a spec or three per view that goes through it end to end),
+  `boot_agrees.spec.js` and `reference_profile.spec.js` (which renders
+  through the engine's exports, at the address `worker.js` loads them from).
 - **The page's markup and styles, the config, the packages:** each view's
   sample.
 
