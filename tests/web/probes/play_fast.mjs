@@ -27,6 +27,11 @@
 //                                at BLEND's home B rests (the worklet renders it only while heard)
 //   --blend=0.5                  with --offer, move BLEND there before playing: B is heard, and the
 //                                worklet renders a second four voices every quantum
+//   --b-always                   the worklet as it was before #288's fix: B rendered every quantum while
+//                                it holds an offer, at any mix (live-audio.js served with B never resting)
+//   --no-pause                   the page as it was before #288's fix: the engine worker is never told
+//                                notes are sounding (every `playing` message dropped), so its background
+//                                work and the farm's go on while you play
 //   --runs=1
 //
 // What it records, in the page's clock unless said:
@@ -133,8 +138,9 @@ const BUSY = (who) => `(() => {
 `;
 
 // The page's side: what leaves it, what the keys do, what blocks it.
-const PAGE = (cores) => `(() => {
+const PAGE = (cores, noPause) => `(() => {
   try { Object.defineProperty(navigator, "hardwareConcurrency", { get: () => ${cores} }); } catch (_) {}
+  const NO_PAUSE = ${!!noPause};
   const P = (window.__probe = { worklet: [], engine: [], keys: [], long: [], loaf: [], frames: [], busy: [], onAt: [], ots: [] });
   setInterval(() => {
     try {
@@ -153,6 +159,7 @@ const PAGE = (cores) => `(() => {
   const epost = Worker.prototype.postMessage;
   Worker.prototype.postMessage = function (d, ...rest) {
     if (d && typeof d.type === "string") P.engine.push([performance.now(), d.type]);
+    if (NO_PAUSE && d && d.type === "playing") return undefined;
     return epost.call(this, d, ...rest);
   };
   addEventListener("keydown", (e) => { if (!e.repeat) P.keys.push([e.timeStamp, performance.now(), e.key]); }, true);
@@ -249,7 +256,7 @@ async function run(n) {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await ctx.newPage();
     page.on("pageerror", (e) => console.log(`  [pageerror] ${e.message}`));
-    await page.addInitScript(PAGE(CORES));
+    await page.addInitScript(PAGE(CORES, flags["no-pause"]));
     for (const [pat, who] of [[/\/worker\.js(\?|$)/, "engine"], [/\/farm\.js(\?|$)/, "farm"]]) {
       await page.route(pat, async (route) => {
         const resp = await route.fetch();
@@ -258,11 +265,16 @@ async function run(n) {
     }
     await page.route(/\/live-audio\.js(\?|$)/, async (route) => {
       const resp = await route.fetch();
-      const src = (await resp.text()).replace(
+      let src = (await resp.text()).replace(
         "this.held.set(m.note, vel);",
         'this.held.set(m.note, vel); this.port.postMessage({ type: "probe_on", frame: currentFrame, sr: sampleRate });',
       );
       if (!src.includes("probe_on")) throw new Error("live-audio.js has no `this.held.set(m.note, vel);` to hang the probe on");
+      if (flags["b-always"]) {
+        const rests = "const bRests = !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;";
+        if (!src.includes(rests)) throw new Error("live-audio.js has no B rest to switch off");
+        src = src.replace(rests, "const bRests = false;");
+      }
       await route.fulfill({ response: resp, body: src, contentType: "text/javascript" });
     });
     if (SLOWDOWN > 1) {
