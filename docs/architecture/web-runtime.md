@@ -1552,7 +1552,8 @@ waits for more to join: a deal is a `now` request, served between two of
 the fill's steps. That depends on the machine's speed, and gave the same seed
 other pairs on a faster machine (#211: 4,10, then 4,11, then 5,6 across
 boots of seed 20260928). So a session opened with a seed in the address
-(`?seed=`: the specs, a seed someone shared; main's
+(`?seed=`: a spec that pins a seed's pairs, such as
+`evolve_seeded_deals.spec.js`, or a seed someone shared; main's
 `addressSeed`, sent as `init`'s `seeded`) keeps its deals to a fixed
 schedule (`DealSchedule` in `auracle-session`'s `engine/deal.rs`) while its
 pool fills at boot: the k-th deal draws only from the first 8·(k+1) sounds

@@ -16,9 +16,10 @@
 // so when an answer landed changed what a seeded session showed. A pick
 // taken back used to throw away the deal behind the pair it put back, when
 // that deal had been asked for, so how long that pair's sounds took changed
-// the pair after it (#211, the last tests here). In a seeded session, what
-// the engine deals while the pool fills keeps to a schedule and does not
-// depend on how far it has got (evolve_seeded_deals.spec.js).
+// the pair after it (#211, the last tests here). A session with a seed in
+// the address deals by the fill's schedule, so its deals don't depend on how
+// far the fill has got (evolve_seeded_deals.spec.js). These tests boot with
+// `random` alone, so they are not: they deal at once from what has arrived.
 //
 // "At once" is the app's own order, not a time (ADR-022): the cards show the
 // next pair, live, before the click's own task ends (`placePair` is
@@ -28,7 +29,8 @@
 //
 // The engine worker is reached through the fixture's tap (fixtures.js), to
 // see which deals were asked for ahead, and to hold what the engine says
-// while a deal is out. Sessions are seeded.
+// while a deal is out. The page's random draws are seeded (`random`); the
+// engine's deals are not (no seed in the address).
 const { test, expect, goLevel } = require("./fixtures");
 
 const AHEAD = { type: "duel", ahead: true };
@@ -177,11 +179,15 @@ test("a patch cut while its pair waits ahead is never put up", async ({ page, ap
 const tableKey = async (page) => [...(await cardIds(page))].sort((x, y) => x - y).join();
 const key = (p) => [...p].sort((x, y) => x - y).join();
 
-// An answer main may not put up (deal.js `usable`: the pair on the table,
-// the pair just put away, the pick held in its undo window) is dealt again,
-// one deal per refused answer, by design. So "the pair dealt next" is the
-// first answer main may put up: the order holds, and a refused answer is
-// skipped.
+// Which pair a deal returns depends on the pool when it is dealt, and the
+// pool is still filling while these tests deal (no seed in the address, so
+// no schedule), so it depends on the machine's speed: the same deal came
+// back [3,6] on one CI run, [3,12] on another and [3,7], the pair just put on
+// the table, on a third. An answer main may not put up (deal.js `usable`:
+// the pair on the table, the pair just put away, the pick held in its undo
+// window) is dealt again, one deal per refused answer, by design. So "the
+// pair dealt next" is the first answer main may put up: the order holds, and
+// a refused answer is skipped.
 /** Index of the first pair in `pairs`, from `from`, whose key is none of
  *  `refused`; -1 if there is none yet. */
 const firstUsable = (pairs, refused, from = 0) => {

@@ -166,6 +166,7 @@ test("a seeded session's saved bank that comes back whole deals from the whole p
 
 test("a seeded session's saved bank that comes back short of its pool keeps to the schedule", { timeout: TIMEOUT }, async (t) => {
   const { saved, order } = await savedBank();
+  assert.equal(order.length, POOL);
   const at = (id) => order.indexOf(id);
   // Back short of a larger pool: the rest fills behind it, so its deals keep
   // to the schedule, and the first is the bank's first two sounds.

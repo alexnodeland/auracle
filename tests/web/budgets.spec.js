@@ -205,6 +205,10 @@ for (const [title, session, as] of [
   ["in a session with no seed, a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", { seed: null, random: null }, "no seed: "],
 ]) test(title, async ({ page, app }) => {
   await app.boot(session);
+  // Only a seed in the address deals by the fill's schedule (#211): the
+  // page says which it is with `init`.
+  const [init] = await app.sent({ type: "init" });
+  expect(init.seeded, "seeded only with a seed in the address").toBe(session.seed !== null);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
   const deals = [];

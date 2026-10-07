@@ -147,7 +147,7 @@ themselves (`film_chip.spec.js`).
 ## Known
 
 - **A film's deals made while the pool fills can differ between takes**
-  (ADR-001, #211). A seed in the address (`?seed=`, as every spec boots)
+  (ADR-001, #211). A seed in the address (`?seed=`, as the specs that pin a seed's pairs boot)
   keeps a session's deals to the fill's schedule: the k-th deal of a fresh
   session draws only from the first 8·(k+1) sounds in the order the seed
   fills the pool, and waits for them, so it deals the same pairs at any

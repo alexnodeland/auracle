@@ -2903,8 +2903,9 @@ async function pump() {
 }
 
 // Deals waiting for the sounds the fill's schedule names (#211). In a
-// session opened with a seed in the address (`init`'s `seeded`: the specs,
-// a shared seed) whose pool fills at boot, the k-th deal draws only from the
+// session opened with a seed in the address (`init`'s `seeded`: a spec that
+// pins a seed's pairs, a shared seed; a spec booted with `random` alone is
+// not seeded) whose pool fills at boot, the k-th deal draws only from the
 // first `playableAt`·(k+1) sounds of the pool, in the order the seed's fill
 // folds them in (`set_deal_schedule`, at boot; none on a pool already full),
 // and a deal asked for before they have all joined waits here, in the order
