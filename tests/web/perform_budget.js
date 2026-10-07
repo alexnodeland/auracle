@@ -28,7 +28,8 @@
 // A spec reaches it as `app.offerBudget` (fixtures.js). The fixture's tap keeps
 // the engine worker (`window.__pbEngine`) and the tree of the last
 // `perform_wire` the page asked for, the patch on PERFORM (`window.__pbTree`),
-// and `app.boot` applies AURACLE_CPU_THROTTLE (`SLOW_ENGINE` below).
+// and `app.boot` applies AURACLE_CPU_THROTTLE and a reference profile
+// (`SLOW_ENGINE` below; profile.js).
 const { test } = require("@playwright/test");
 
 const FLOOR_MS = process.env.CI ? 240_000 : 90_000;
@@ -42,7 +43,9 @@ const STEPS = 120;
 // function the engine's wasm instance exports so that a call taking d ms
 // then spins for (rate - 1) d more. A render, a step and a measurement take
 // `rate` times as long; the page's protocol, its lanes and its order are
-// untouched. The farm's workers are not slowed.
+// untouched. AURACLE_CPU_THROTTLE and `slowEngine` slow the engine worker
+// only; a reference profile (profile.js) prefixes it onto farm.js too, where
+// the glue instantiates main's shared module and gets an Instance back.
 const SLOW_ENGINE = (rate) => `(() => {
   const RATE = ${rate};
   const slow = (fn) => function (...args) {

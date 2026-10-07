@@ -89,11 +89,11 @@ export const VIEWS = {
     sample: ["smoke", "failure_flows", "shell_levels"],
   },
 };
-// Specs no view draws: the fixture's own tests (its tap, and the renders a
-// boot reuses), and the engine's, which opens no page (the browser's engine
-// deals what the native one deals). A change to the engine runs the last
-// beside the samples.
-export const NO_VIEW = ["fixture_tap", "fixture_renders", "boot_agrees"];
+// Specs no view draws: the fixture's own tests (its tap, the renders a boot
+// reuses, and the reference profile it boots the budgets on), and the
+// engine's, which opens no page (the browser's engine deals what the native
+// one deals). A change to the engine runs the last beside the samples.
+export const NO_VIEW = ["fixture_tap", "fixture_renders", "reference_profile", "boot_agrees"];
 export const ENGINE_SPECS = ["boot_agrees"];
 
 // main.js's sections, by their headings, and the views each draws. The first

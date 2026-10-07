@@ -181,8 +181,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     run to run; with the warm start and the tours marked seen
     (`{ warmed: false }` shows the warm start, `seed: null, random: null`
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
-    slows the engine's wasm, `workerPrefix` runs a spec's own code in the
-    engine worker ahead of `worker.js`, kept on a throttled run too).
+    slows the engine's wasm, `profile: "air"` boots on the reference profile
+    (below), `workerPrefix` runs a spec's own code in the engine worker ahead
+    of `worker.js`, kept on a throttled run and on a profile too).
     `reuseRenders: true` boots with the render cache (`auracle-renders`) as
     an earlier boot of the same seed left it once its pool was whole, so the
     fill after the veil is served, not rendered (by the farm: a fill that
@@ -292,16 +293,29 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     <ms> ms of <limit> ms` on the test (the merged report shows it, and the
     run's summary lists those over) and never fails the gate;
     `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does (at
-    `AURACLE_CPU_THROTTLE=1`). [ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md)
-    moves where budgets are judged to a reference profile, which #299 builds:
-    the wasm slowed in the engine worker and in every farm worker until a
-    phrase render takes about what it takes on the reference machine,
-    `?farm=2`, and in Chromium the page throttled. No spec or job runs on it
-    yet. By hand, `AURACLE_CPU_THROTTLE=4` slows the engine's wasm and
-    throttles the page, and `query: "?farm=2"` in the spec's `app.boot` gives
-    two renderers; the farm's workers stay at full speed, and `slowEngine`
-    adds nothing there (`app.boot` takes the larger of it and the throttle).
-    The nightly judges at throttle 1 today.
+    `AURACLE_CPU_THROTTLE=1`). A test that booted on a reference profile
+    ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md),
+    `profile.js`) names it beside each budget's figure (`… ms of 100 ms on air in
+    chromium, ×4.4`) and carries the annotation `profile`, what its
+    calibration measured.
+  - *The reference profile* is the reference machine (a 2018 or 2019
+    MacBook Air, an Intel 1.6 GHz dual-core i5, in Firefox) as near as this
+    one can make it: `app.boot({ profile: "air" })`, or every boot with
+    `AURACLE_PROFILE=air`, slows the wasm in the engine worker and in every
+    farm worker until a render takes the reference's time, boots with
+    `?farm=2` unless the spec's own `query` names a width, and in Chromium
+    throttles the page by the same rate (Firefox has no throttle for a page).
+    The rate is measured once a run, at its first boot that asks: one
+    preset's render here, against its time on the reference; a machine as
+    slow or slower is not slowed. `app.profile` says what was measured. The
+    engine takes the largest of the profile's rate, `slowEngine` and
+    `AURACLE_CPU_THROTTLE` (which by hand slows the engine's wasm and
+    throttles the page, and leaves the farm at full speed).
+    `AURACLE_BROWSER=firefox` runs the specs in Firefox. A spec's own route
+    for `worker.js` or `farm.js` and a profile's cannot both hold (the one
+    registered last answers; `patch_guess.spec.js` slows boot's crew that
+    way, and on a profile it is the profile's): give the engine's code to
+    `workerPrefix`, which a profile keeps.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its

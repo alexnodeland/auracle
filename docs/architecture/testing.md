@@ -785,6 +785,7 @@ from it ([Rules](#rules)).
 | `restore.spec.js` | A returning visit with no farm (`?farm=0`) and the engine slowed fourfold says each sound on the veil as it comes back ("recalling n of m sounds…", every n from 1, before the veil lifts), the bar moving with each; after a visit whose farm filled the pool, every sound is read from the render store and none rendered (the farm keeps the rows of the sounds it rendered with their audio too); with nothing in the store (`@slow`), every sound is rendered and still said. The seconds from boot to the veil, and the longest step between two sounds, are budgets |
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels, then an offer from that pool, the taste fitted to the duels' picks and a ⚡ walk) equals what native `shipped::boot_probe` pins in `boot_probe.json`; every preset's face, rendered in the built wasm as the worker renders a preset's (`preset_tree_json`, `face_of_tree`, an engine of its own each), is the shipped file's byte for byte, under the key the worker files it by (`farm_key`), a test per family, and the file lists the library in its order; opens no page, about twenty renders and a 500-step fit for the probe (25 to 32 s measured on a 16-core machine at a load near 150) and 20 s of CPU for the faces under Node |
+| `reference_profile.spec.js` | The reference profile (`tests/web/profile.js`, ADR-025) the nightly judges the budgets on: on it a render of the calibration's preset in the engine worker and one on a farm worker the page spawns each take at least half the reference machine's time (how far over it a budget), the farm has two renderers and every farm worker was served the profile's slowed `farm.js`; in Chromium a fixed piece of work on the page takes at least half the profile's rate times what it takes on a page with no profile (in Firefox, which has no throttle for a page, the page's rate is 1) |
 | `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1`; on a worker that answers as `worker.js` does, a request's last reply (`app.replyTo`) is the one carrying its number without `more`, not the first of its type nor the engine's own news, `app.answered` waits while a request it covers has none and names it when it gives up, by type or lane, never for a request the worker never answers or one main did not number, and a reply `app.answer` or `app.fail` gives for a request carries its number; `app.visit` is a new load of the seeded address with a level's hash, even when only the hash changed; a page error in a context `newContext` made fails the test, and the context has the project's `use` |
 | `fixture_renders.spec.js` | The fixture's reused renders (`app.boot({ reuseRenders: true })`): a boot of a seed with nothing kept is cold (no rows in the render cache as its page starts, none served) and keeps its rows once its pool is whole; a boot of that seed in another context then has them in the store before the app's first script, the engine serves its fill from them (its `render_cache` tally, which only the farm keeps: a fill that fell back to serial fails it, by name), and its pool is the cold boot's, sound for sound (id, name and patch); a boot of the same seed that does not ask starts with no rows. A store that cannot be read fails it rather than counting as empty |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
@@ -940,10 +941,27 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   gesture's own task, order through the tap, the app's marks, `page.clock`,
   `AudioContext` time); a measurement of the machine's speed is a budget
   (`tests/web/fixtures.js` `budget`, `app.budget`). A budget is recorded as
-  the test's annotation (`budget: <name> <ms> ms of <limit> ms`) and never
-  fails the gate; with `AURACLE_PERF=1` it is judged, as the nightly *Speed
-  budgets* job does. A wait that remains keeps 1.5 s or more of slack, and a
-  spec accepts the app being faster than when it was written.
+  the test's annotation (`budget: <name> <ms> ms of <limit> ms`, then the
+  profile the test booted on, if any) and never fails the gate; with
+  `AURACLE_PERF=1` it is judged, as the nightly *Speed budgets* job does.
+  A wait that remains keeps 1.5 s or more of slack, and a spec accepts the
+  app being faster than when it was written.
+- **The reference profile** ([ADR-025](../decisions/025-every-interaction-answers-at-once.md),
+  `tests/web/profile.js`) is the reference machine, a 2018 or 2019 MacBook
+  Air (an Intel 1.6 GHz dual-core i5) in Firefox, as near as the machine
+  under the run can make it. `app.boot({ profile: "air" })`, or every boot
+  with `AURACLE_PROFILE=air`, slows the wasm in the engine worker and in
+  every farm worker until a render takes the reference's time, boots with
+  `?farm=2` (unless the spec's own address names a width), and in Chromium
+  throttles the page by the same rate (CDP); Firefox has no throttle for a
+  page. The rate is measured once a run, on its first boot that asks: one
+  preset's render here, unslowed, against its time on the reference (1.1 s,
+  ADR-025's estimate until it is measured on the Air), and 1 on a machine as
+  slow as the reference or slower. On a 16-core M3 Max that render takes
+  0.24 to 0.26 s in Chromium and 0.29 s in Firefox, so the rate is about 4.4
+  and 3.8, and on the profile a render took 1.1 to 1.2 s in the engine
+  worker and on the farm. `AURACLE_BROWSER=firefox` runs the specs in
+  Firefox.
 - **A wait on PERFORM's engine growth uses `offerBudget`**
   (`tests/web/perform_budget.js`): an offer, a drift, or work queued ahead of
   one is renders, about a quarter of a second each on a 16-core M3 Max and 1.5 to
@@ -952,10 +970,11 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   and it grows the test's timeout by one budget per wait. What must not wait
   for an offer (a pick, a Keep, NEXT) keeps its own bound from a measured step.
   The fixture's `app.boot` also applies `AURACLE_CPU_THROTTLE` to the page
-  (CDP) and to the engine worker's wasm calls (`perform_budget.js`
+  (CDP, in Chromium) and to the engine worker's wasm calls (`perform_budget.js`
   `SLOW_ENGINE`), which CDP's throttling does not reach: with
   `AURACLE_CPU_THROTTLE=4` a step measures 1.8 to 2.4 s on a 16-core M3 Max,
-  about a CI runner's, against 0.3 s without it.
+  about a CI runner's, against 0.3 s without it. It leaves the farm's
+  workers at full speed; the reference profile (above) slows them too.
 
 ## Budgets
 

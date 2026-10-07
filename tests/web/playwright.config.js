@@ -39,6 +39,17 @@ if (PROFILE !== "release") {
 const OWN_PORT = process.env.AURACLE_TEST_PORT;
 const PORT = OWN_PORT || "8642";
 
+// The browser: Chromium, as the gate runs, unless AURACLE_BROWSER says
+// firefox, as the nightly *Speed budgets* job's Firefox run does: ADR-025's
+// reference machine runs the app in Firefox. Each is told not to wait for a
+// gesture before a WebAudio context may sound, in its own way.
+const BROWSER = process.env.AURACLE_BROWSER || "chromium";
+const LAUNCH = {
+  chromium: { args: ["--autoplay-policy=no-user-gesture-required"] },
+  firefox: { firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.block-webaudio": false } },
+};
+if (!LAUNCH[BROWSER]) throw new Error(`AURACLE_BROWSER=${BROWSER}: the specs run in ${Object.keys(LAUNCH).join(" or ")}`);
+
 module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
@@ -86,11 +97,9 @@ module.exports = defineConfig({
     // Wider than the handheld gate (min dimension ≥ 620 and a fine pointer),
     // or index.html never injects main.js at all.
     viewport: { width: 1440, height: 900 },
-    browserName: "chromium",
-    launchOptions: {
-      // A WebAudio context must not wait for a gesture nobody will make.
-      args: ["--autoplay-policy=no-user-gesture-required"],
-    },
+    browserName: BROWSER,
+    // A WebAudio context must not wait for a gesture nobody will make.
+    launchOptions: LAUNCH[BROWSER],
     // A failed test's trace, kept. On a workstation without its DOM snapshots:
     // saving them there (Playwright 1.56, macOS) hung a failed test's teardown
     // until its timeout and left a trace that would not open. CI's traces keep
