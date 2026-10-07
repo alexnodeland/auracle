@@ -2269,7 +2269,8 @@ function poolTrim(m) {
 // no prediction, and PERFORM measures it as it always has.
 function knobTableFetch() {
   if (typeof engine.perform_table_set !== "function") return;
-  fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href))
+  Promise.resolve()
+    .then(() => fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href)))
     .then((r) => (r.ok ? r.text() : null))
     .then((text) => {
       if (text && !poisoned) engine.perform_table_set(text);
