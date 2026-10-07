@@ -136,7 +136,9 @@ function budget(name, measured, limit) {
  *  sides. What the engine deals later (pairs, fits, walks, offers) repeats
  *  when the same requests reach it in the same order, which timing can still
  *  change: the order PERFORM's walks begin in. (A deal made while the pool
- *  is filling keeps to a schedule, and waits for its sounds: #211.)
+ *  is filling keeps to a schedule, and waits for its sounds, in a session
+ *  with `?seed=`; with none it is dealt at once from the sounds that have
+ *  joined: #211.)
  *  `AURACLE_SEED=random` boots unseeded (no `?seed`, Math.random
  *  as the browser has it), as the nightly flake hunt does; `AURACLE_SEED=N`
  *  boots with N. Either changes the default only: a spec that names its own

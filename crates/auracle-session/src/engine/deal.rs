@@ -10,7 +10,10 @@
 //! every machine), until that reaches the pool's size; every deal after it
 //! draws from the whole pool. A caller that waits until those members have
 //! joined before it deals ([`Engine::deal_need`]) deals the same pairs however
-//! fast the pool filled.
+//! fast the pool filled. The wait costs a fast picker time, so the app sets a
+//! schedule only for a session opened with a seed in the address, the one
+//! kind whose pairs must be the same on every machine; every other session
+//! deals with none, at once, from the members that have joined.
 //!
 //! **A cut sound.** A deal used to draw over the sounds not cut, by index, so
 //! a cut anywhere in the pool moved every deal after it, even one that dealt

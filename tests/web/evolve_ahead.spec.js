@@ -16,9 +16,9 @@
 // so when an answer landed changed what a seeded session showed. A pick
 // taken back used to throw away the deal behind the pair it put back, when
 // that deal had been asked for, so how long that pair's sounds took changed
-// the pair after it (#211, the last tests here). What the engine deals while
-// the pool fills keeps to a schedule and does not depend on how far it has
-// got (evolve_seeded_deals.spec.js).
+// the pair after it (#211, the last tests here). In a seeded session, what
+// the engine deals while the pool fills keeps to a schedule and does not
+// depend on how far it has got (evolve_seeded_deals.spec.js).
 //
 // "At once" is the app's own order, not a time (ADR-022): the cards show the
 // next pair, live, before the click's own task ends (`placePair` is

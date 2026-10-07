@@ -146,23 +146,30 @@ themselves (`film_chip.spec.js`).
 
 ## Known
 
-- **Seeded deals made while the pool fills** used to differ between runs
-  (ADR-001): each was drawn over however many sounds had joined, and the
-  duel stream's draws depend on that number (range sampling rejects draws).
-  Since #211 the k-th deal of a fresh session draws only from the first
-  8·(k+1) sounds in the order the seed fills the pool, and waits for them, so a
-  seeded take deals the same pairs at any machine speed; a sound added while
-  the pool fills (the warm start's picks, a preset opened) still joins
-  wherever the fill has got to. That changed the first four pairs a seed
-  deals, so re-check patch names in a recording against the new deal. The
-  films' taught set-up still re-deals to the fifth pair (`shotgen.REDEAL`),
-  and no line depends on which pair shows. (A draw of wasm's 32-bit `usize`
-  used to read the stream differently from a native one.
-  `auracle_grammar::rng::gen_index` pins it for the pool and the random-rule
-  duels; taste fits, walks and PERFORM's offers still differ across targets
-  until `fugue-ppl` draws its site as a `u64`. That fix changed what a seed
-  deals in the browser too: a film's seeded session, and every seeded spec,
-  dealt a different pool than before it.)
+- **A film's deals made while the pool fills can differ between takes**
+  (ADR-001, #211). A seed in the address (`?seed=`, as every spec boots)
+  keeps a session's deals to the fill's schedule: the k-th deal of a fresh
+  session draws only from the first 8·(k+1) sounds in the order the seed
+  fills the pool, and waits for them, so it deals the same pairs at any
+  machine speed, however fast its pool fills. A film opens `?film` and
+  seeds the page's `Math.random` (`shotgen.INIT`), which draws the engine's
+  seed, but puts no seed in the address, so it deals as an ordinary session
+  does: at once, over however many sounds have joined. The duel stream's
+  draws depend on that number (range sampling rejects draws), so the first
+  deals, and the deals after them, can differ between takes. The films'
+  taught set-up re-deals to the fifth pair (`shotgen.REDEAL`), and no line
+  depends on which pair shows, but takes can still land on different pairs.
+  Fix: open the films with a seed in the address (the page then draws no
+  engine seed from `Math.random`, so every later draw of the page moves:
+  the warm start's cards and the sides change too, and every patch name in a
+  recording needs re-checking), or let `?film` deal by the schedule as
+  well. The maintainer's call. (A draw of
+  wasm's 32-bit `usize` used to read the stream differently from a native
+  one. `auracle_grammar::rng::gen_index` pins it for the pool and the
+  random-rule duels; taste fits, walks and PERFORM's offers still differ
+  across targets until `fugue-ppl` draws its site as a `u64`. That fix
+  changed what a seed deals in the browser too: a film's seeded session, and
+  every seeded spec, dealt a different pool than before it.)
 - **Published films with stale details** (`taste`, `math`, `dsp`, and the
   unpublished `sounddesign`): six callouts or cards describe the app before
   Wave 1 (for example the TASTE film's inset shows bare bars where the app now

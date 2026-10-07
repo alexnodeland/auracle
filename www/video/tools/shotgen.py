@@ -190,13 +190,11 @@ def taught(votes=0, picks=(0, 4, 7), redeal=True):
 # for the table's sounds and for the pair behind it to be dealt (a skip before
 # that deal lands would race it). One fixed skip was enough while a pair was
 # dealt only once the one before it was answered. Run in any view: it presses
-# the app's own skip button. A deal from the filling pool used to draw from
-# the engine's duel stream a number of times that depended on the pool's
-# size (rejection sampling), so a take whose early deals met a smaller pool
-# could deal other pairs later (the tour rehearsal of 29 September: 11 taught
-# takes agreed, one did not). Since #211 each deal made while the pool fills
-# draws from a fixed number of its first sounds and waits for them, so the
-# early deals are the same in every take too. Its log lists every deal.
+# the app's own skip button. Not yet exact: a deal from the filling pool
+# draws from the engine's duel stream a number of times that depends on the
+# pool's size (rejection sampling), so a take whose early deals met a
+# smaller pool can deal other pairs later (the tour rehearsal of 29
+# September: 11 taught takes agreed, one did not). Its log lists every deal.
 REDEAL_AT = 5
 REDEAL = {"op": "log", "name": "redeal", "js": r"""(async () => {
 const K = %d;

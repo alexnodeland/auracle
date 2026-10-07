@@ -3,13 +3,15 @@
 // The app hands the player a pair at eight sounds and fills the rest of the
 // pool behind them. Each deal used to draw over however many sounds had
 // joined by then, so the same seed dealt other pairs on a faster machine. Now
-// the k-th deal of a session whose pool fills at boot draws only from the
-// first 8·(k+1) sounds, in the order the seed's fill folds them in, and the
-// worker holds a deal until they have joined (worker.js `dealsWaiting`). The
-// worker's half is
-// tests/worker/deal.test.mjs; here it is the page's: the same gestures on two
-// boots of one seed, one dealt from a full pool and one held at its first
-// eight sounds while ANOTHER PAIR asks for the next, show the same pairs.
+// the k-th deal of a session opened with a seed in the address (`?seed=`, as
+// both boots here are) whose pool fills at boot draws only from the first
+// 8·(k+1) sounds, in the order the seed's fill folds them in, and the worker
+// holds a deal until they have joined (worker.js `dealsWaiting`). A session
+// with no seed in the address still deals at once from the sounds that have
+// joined. The worker's half, both kinds, is tests/worker/deal.test.mjs; here
+// it is the page's: the same gestures on two boots of one seed, one dealt
+// from a full pool and one held at its first eight sounds while ANOTHER PAIR
+// asks for the next, show the same pairs.
 //
 // The hold is a gate on the fill, prefixed onto the engine worker
 // (`FILL_GATE`), on a boot with no render farm (`?farm=0`), so the pool grows

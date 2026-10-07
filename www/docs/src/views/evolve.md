@@ -98,16 +98,22 @@ seeded session shows the same pairs in the same order however long each deal
 took.
 
 When the pool is still filling as the app opens (a new session, or a saved
-one that came back with sounds missing), its first four deals each reach
-eight sounds further, in the order the pool fills: the first deal is from
-its first eight sounds, the next from the first 16, then 24 and 32, even if
-the pool has filled by then. Every deal after that is from the whole pool.
-(A pair that can’t go up, such as the pair just put away, is dealt again,
-and that counts as a deal.) A deal whose sounds haven’t all arrived waits
-for them, so the same random seed and the same picks deal the same pairs on
-any machine. Pick very fast in the first seconds and the next pair can take
-a moment. A saved session that comes back with its whole pool has nothing
-to fill, and every deal is from all of it.
+one that came back with sounds missing), each pair is dealt at once from the
+sounds that have arrived, so a pick never waits for the fill. Which sounds
+those are depends on how fast the pool fills, so a session opened with a
+random seed in the address
+(`?seed=`, [Running locally](../getting-started/running-locally.md#overrides))
+deals by a fixed schedule instead. Its first four deals each reach eight
+sounds further, in the order the pool fills: the first deal is from its
+first eight sounds, the next from the first 16, then 24 and 32, even if the
+pool has filled by then. Every deal after that is from the whole pool. (A
+pair that can’t go up, such as the pair just put away, is dealt again, and
+that counts as a deal.) A deal whose sounds haven’t all arrived waits for
+them, so the same seed and the same picks deal the same pairs on any
+machine, however fast its pool fills. Pick very fast in the first seconds of
+such a session and the next pair can take a moment. A saved session that
+comes back with its whole pool has nothing to fill, and every deal is from
+all of it.
 
 The next pair is chosen before your pick is known. That changes nothing,
 because pairs are dealt at random and your pick is held for its seven seconds

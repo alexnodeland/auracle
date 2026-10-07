@@ -323,15 +323,13 @@ return out.join(', ');
 """ % (love, hate))
 
 
-# The first pair is dealt at "playable", while the pool is still filling, and
-# the pair the app deals ahead behind it as soon as the first pair's sounds
-# are in. Which pairs those were used to depend on how far the fill got; since
-# #211 each deal made while the pool fills draws from a fixed number of its
-# first sounds and waits for them, so they are the same in every take.
+# The first pair is dealt at "playable", while the pool is still filling, so
+# which pair it is depends on how far the fill got; and so, now, does the pair
+# the app deals ahead behind it, as soon as the first pair's sounds are in.
 # Skipped twice once the pool is full (skip records nothing), the pair on the
-# table is the one dealt behind those two, and every later deal is the same in
-# every take. (One skip used to be enough, when a pair was dealt only once the
-# one before it was answered.)
+# table is the one dealt behind those two, from the full pool, and every later
+# deal is the same in every take. (One skip used to be enough, when a pair was
+# dealt only once the one before it was answered.)
 REDEAL = js(r"""
 await until(dealt, 120000, 'a pair');
 const out = [nameOf('a') + ' | ' + nameOf('b')];

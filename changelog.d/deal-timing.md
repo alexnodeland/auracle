@@ -1,16 +1,17 @@
 ### Fixed: the same random seed deals the same pairs on any machine
 
-- **A seeded session deals the same pairs however fast its pool fills.**
-  EVOLVE hands you a pair once eight sounds have arrived and fills the rest
-  of the pool while you pick. Each pair used to be dealt from however many
-  sounds had arrived by then, so the same random seed (`?seed=`) dealt other
-  pairs on a faster machine. Now, in a session that opens with its pool
-  filling (every new one), the first four deals each reach eight sounds
-  further, in the order the pool fills: the first deal is from the first
-  eight sounds, the next from the first 16, then 24 and 32, even if the pool
-  has filled by then, and every deal after that is from the whole pool. A
-  deal whose sounds haven’t all arrived waits for them, so if you pick very
-  fast in the first seconds, the next pair can take a moment. A saved
+- **A random seed in the address deals the same pairs however fast its pool
+  fills.** EVOLVE hands you a pair once eight sounds have arrived and fills
+  the rest of the pool while you pick. Each pair is dealt at once from the
+  sounds that have arrived, so a pick never waits for the fill, but that
+  meant the same random seed (`?seed=`) dealt other pairs on a faster
+  machine. Now a session opened with `?seed=` deals by a fixed schedule
+  while its pool fills: the first deal is from the first eight sounds, the
+  next from the first 16, then 24 and 32, even if the pool has filled by
+  then, and every deal after that is from the whole pool. A deal whose
+  sounds haven’t all arrived waits for them, so in such a session, if you
+  pick very fast in the first seconds, the next pair can take a moment. A
+  session with no seed in the address deals at once, as before. A saved
   session that comes back with its whole pool deals from all of it from the
   first pair, as before (`evolve_seeded_deals.spec.js`,
   `tests/worker/deal.test.mjs`, #211).
