@@ -46,8 +46,8 @@ the face.
 - **The menu bar**, beside the name of the sound you’re playing, at every
   level: the face of what the keys play.
 - **[The bank](./bank.md)**, on every row, in a column left of the row’s two
-  lines. A preset’s face comes with the app, so a preset row has its face as
-  soon as you scroll to it.
+  lines. A preset’s face comes with the app, so a preset row never waits for
+  a render of its own.
 - **[EVOLVE](./views/evolve.md)**, beside each card’s name.
 - **[PATCH](./views/play.md)**, at OUT past the amp (a click on it plays the
   sound), on **A** and **B** in TEACH at the well's foot, in a module's sheet

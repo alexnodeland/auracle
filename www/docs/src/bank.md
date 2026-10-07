@@ -273,8 +273,8 @@ Sixty-two hand-made sounds in seven families (bass, lead, keys, pad, texture,
 perc, and weird), browsed in place under each family’s name and count. A
 preset’s description is its name’s tooltip. Each row carries the preset’s
 [face](./faces.md), from a render of the preset itself made ahead of time
-and shipped with the app, so each row has its face as soon as it is in view,
-however busy the engine is.
+and shipped with the app, so no row waits for a render of its own: each has
+its face as soon as your bank has faces to draw it against.
 
 1. Open **PRESETS**.
 2. Point at a row and press **▶** to hear it (on a touch screen the **▶** is
