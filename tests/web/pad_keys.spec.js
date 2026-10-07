@@ -120,13 +120,15 @@ test("the pad keys yield to a text field and a modal, the note keys still play, 
   await expect(find).toHaveValue("nb");
   await find.fill("");
   await expect(page.locator(".pf-pad", { hasText: "Peek" })).not.toHaveClass(/\bdown\b/);
-  // Under the ? card (a modal): nothing either.
+  // Under ⌘K's list (a modal, opened here by ?): nothing either; the n is
+  // the list's field's.
   await blur(page);
   await page.keyboard.press("?");
-  await expect(page.locator("#help")).toBeVisible();
+  await expect(page.locator("#cmdk")).toBeVisible();
   await page.keyboard.press("n");
+  await expect(page.locator("#cmdk-input")).toHaveValue("n");
   await page.keyboard.press("Escape");
-  await expect(page.locator("#help")).toBeHidden();
+  await expect(page.locator("#cmdk")).toBeHidden();
   // An offer is asked for in the keydown itself, so none asked by now is none.
   expect(await offersAsked(app), "no offer asked for from a text field or under a modal").toBe(n0);
   // The note keys still play in PERFORM, beside the pad keys.

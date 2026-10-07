@@ -488,7 +488,7 @@ test("the lesson says why a render failed, draws nothing for it, and never plays
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
 });
 
-test("? is the key map's once the pointer has left a control a mouse turned, and never over an open answer", async ({ page, app }) => {
+test("? opens ⌘K's list once the pointer has left a control a mouse turned, and never over an open answer", async ({ page, app }) => {
   await boot(page, app);
   await openOnPerform(app, "Reese");
   // Turn SNAP with the mouse: it keeps focus, but not keyboard focus.
@@ -499,16 +499,16 @@ test("? is the key map's once the pointer has left a control a mouse turned, and
   await page.mouse.up();
   await page.mouse.move(5, 5);
   await page.keyboard.press("?");
-  await expect(page.locator("#help")).not.toHaveClass(/\bhidden\b/);
+  await expect(page.locator("#cmdk")).toBeVisible();
   await expect(page.locator(".xp.on")).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
-  // An answer open, the pointer elsewhere: ? leaves the key map closed.
+  await expect(page.locator("#cmdk")).toBeHidden();
+  // An answer open, the pointer elsewhere: ? leaves the list closed.
   await askAbout(page, app, 0);
   await page.mouse.move(5, 5);
   await page.keyboard.press("?");
   await expect(page.locator(".xp.on")).toBeVisible();
-  await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
+  await expect(page.locator("#cmdk")).toBeHidden();
 });
 
 test("a long press on a touch screen opens the answer, and a turn does not", async ({ page, app }) => {

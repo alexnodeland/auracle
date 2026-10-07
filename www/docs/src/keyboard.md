@@ -1,7 +1,7 @@
 # Keyboard and MIDI map
 
 <p class="lede">Every key and MIDI message Auracle answers to, in one place.
-Press <kbd>?</kbd> in the app for the same map without leaving it.</p>
+In the app, <kbd>⌘K</kbd> lists every command with its key beside it.</p>
 
 The keys below use the Mac’s ⌘ and ⌥. On Windows and Linux, use Ctrl where
 you see ⌘ and Alt where you see ⌥: <kbd>⌘Z</kbd> is Ctrl Z and <kbd>⌥↑</kbd>
@@ -31,7 +31,7 @@ view after a moment; a key pressed while it is down (<kbd>⌥↑</kbd>, say) is
 that key instead, and the model view doesn’t come up. In a text field they stay the
 field’s: on a Mac <kbd>⌥←</kbd> there moves by a word, and on Windows and Linux
 Alt ← is the browser’s Back, so it can leave the page from a field (elsewhere
-the app takes it). With a modal dialog up (the warm start, the ? card, stage
+the app takes it). With a modal dialog up (the warm start, ⌘K’s list, stage
 mode, a lesson) they do nothing; a panel that leaves the page usable (MIDI,
 **KEYS ⋯**, the scope’s settings, Compare) doesn’t stop them. Clicking a stop puts the keyboard in that level. If you reach the
 levels with <kbd>Tab</kbd>, the arrow keys walk them as they are drawn (<kbd>↑</kbd>
@@ -63,8 +63,8 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 | <kbd>z</kbd> / <kbd>x</kbd> | Octave down / up |
 
 ```admonish note
-Note letters stop only while a text field or a drop-down has focus, so typing
-a name doesn’t play a melody. Everywhere else they play, even with a button or
+Note letters stop only while a text field or a drop-down has focus, or ⌘K’s
+list is open, so typing a name doesn’t play a melody. Everywhere else they play, even with a button or
 knob focused, which is why the save key is <kbd>m</kbd> rather than
 <kbd>s</kbd>. Two letters are the exception, where something focused uses
 them: <kbd>p</kbd> in the presets list plays the preset, and <kbd>L</kbd> on a
@@ -83,8 +83,23 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>m</kbd> | Save the sound you’re on |
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
-| <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
+| <kbd>⌘K</kbd> | [The one list](./levels.md#k-find-anything): every command, with its key, and every sound, found by typing. <kbd>⌘K</kbd> again or <kbd>Esc</kbd> closes it |
+| <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, ⌘K’s list |
 | <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first, and a tapped [model view](./reading-the-model.md#the-model-view) goes last. In PATCH it walks out one thing at a time: a menu or panel, a knob, the module, the catalog, then a new patch |
+
+## In ⌘K’s list
+
+| | |
+|---|---|
+| Type | Narrow the list: a name’s start ranks first, then a word’s start, then the letters anywhere |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Choose a row |
+| <kbd>↵</kbd> | Do it (or click it). With nothing found it does nothing, and what you typed stays |
+| <kbd>Tab</kbd> | Between its field and the two links at its foot (the author, the source) |
+| <kbd>Esc</kbd>, or <kbd>⌘K</kbd> | Close it, with the focus back where it was |
+
+Everything else you press while it is open goes into its field: no note
+plays and no level moves. [One space](./levels.md#k-find-anything) says what
+it lists.
 
 ## In EVOLVE
 
@@ -208,7 +223,7 @@ The pads’ keys, printed on each pad:
 | <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and at every other level <kbd>⇧F</kbd> is the accented F |
 
 None of them acts while you type in a field, while a dialog is open (the
-warm start, the ? card, stage mode, a lesson), or with <kbd>⌘</kbd>,
+warm start, ⌘K’s list, stage mode, a lesson), or with <kbd>⌘</kbd>,
 <kbd>Ctrl</kbd> or <kbd>⌥</kbd> held. With the sound at home, <kbd>↵</kbd>
 and <kbd>⇧⌫</kbd> say there is nothing to keep or go back to. **PASS** and
 freezing WANDER have no key: PASS is a pass without another, and a tap on

@@ -1,6 +1,6 @@
 # Playing it
 
-<p class="lede">The sound you’re playing is always live, in every view. This
+<p class="lede">The sound you’re playing is always live, at every level. This
 page is about the three ways to play it, the controls on the keybed, the
 arpeggiator, and recording what you play.</p>
 

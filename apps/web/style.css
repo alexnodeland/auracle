@@ -137,8 +137,7 @@
   --toast-hi: #21262e;            /* a toast's top */
   --tray-empty-edge: #1c2027;     /* an empty tray's edge */
   --tray-edge: #3a4048;           /* the tray's dashed edge */
-  --kbd-face: #1d222a;            /* a key cap in the ? card */
-  --kbd-edge: #333a45;            /*   …and its edge */
+  --kbd-edge: #333a45;            /* a printed key's edge: Z and X on the keys bar */
   --plate-edge: #2c313a;          /* the edge of a plate or well; the scrollbar's thumb */
   --screw-rim: #30343c;           /* a screw's rim on the menu bar and the dock */
   --knob-ring: #343a44;           /* a rack knob's ring */
@@ -406,7 +405,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
    switch re-wraps paragraphs, and there is no gap there to close. */
 .panel-label, .tab, .counter-label, .util-btn, .hw-btn, .toggle,
 .pc-cap, .pf-k-name, .pf-pad, .pf-xy-cap, .pf-hood-h,
-.help-h, .sp-title, .midi-h, .toast-undo, .tray-label, .ce-title {
+.sp-title, .midi-h, .toast-undo, .tray-label, .ce-title {
   text-rendering: geometricPrecision;
 }
 
@@ -645,22 +644,38 @@ button, input, select, textarea { font: inherit; color: inherit; }
 body.model-view .model-tag { opacity: 1; transform: translate(-50%, 0); }
 body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, -4px); }
 
-/* A quiet square button: ? and ⋯ in the bar. */
-.iconbtn {
+
+/* ⌘K in the bar (the mock's): a glass, the words, its key. The words go
+   under 1240 px, as the mock's do, and the key on a touch screen. */
+.cmdk-btn {
   flex: none;
-  width: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
   height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid transparent;
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--hairline);
   border-radius: var(--r2);
-  background: none;
+  background: var(--rack);
   color: var(--silk-dim);
-  font-size: var(--t-body);
-  line-height: 1;
+  font-size: var(--t-value);
+  white-space: nowrap;
   cursor: pointer;
+  transition: color var(--d-state), border-color var(--d-state);
 }
-.iconbtn:hover, .iconbtn[aria-expanded="true"] { color: var(--silk); border-color: var(--hairline); }
+.cmdk-btn:hover, .cmdk-btn[aria-expanded="true"] { color: var(--silk); border-color: var(--plate-edge); }
+.cmdk-glass { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.cmdk-btn kbd, .cmdk-hint kbd, .cmdk-foot kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+  padding: 0 var(--s1);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  line-height: 1.4;
+}
+@media (max-width: 1240px) { .cmdk-btn .cmdk-word { display: none; } }
+@media (pointer: coarse) { .cmdk-btn kbd, .cmdk-hint kbd, .cmdk-foot > span:not(.cmdk-fine) { display: none; } }
 
 /* The job slot: long work, only while it runs. Amber, because it is the
    model's work; the fill is the share done; stop is a small raised button.
@@ -777,7 +792,7 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 }
 @media (max-width: 560px) {
   /* A phone that chose "look around anyway": the bar keeps the wordmark,
-     the sound in hand, its count and ? and ⋯. */
+     the sound in hand, its count and ⌘K (its glass alone). */
   .where { display: none; }
   .menubar { gap: var(--s2); }
 }
@@ -1037,8 +1052,8 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 .bank-item .bi-name.custom { color: var(--phos-b); }
 .bank-item.live .bi-name.custom { color: var(--phos-a); }
 /* A patch id ("#43") and a topology signature ("saw-ladr") are the engine's
-   bookkeeping, not anything a player chose or can hear: they wait behind ⋯ ›
-   Show measurements (`html.engineer`, set in main.js). */
+   bookkeeping, not anything a player chose or can hear: they wait behind
+   ⌘K's Show measurements (`html.engineer`, set in main.js). */
 .bank-item .bi-id, .preset-item .pb-sig { flex: none; font-family: var(--font-mono); font-size: var(--t-label); color: var(--silk-dim); }
 html:not(.engineer) .bank-item .bi-id,
 html:not(.engineer) .preset-item .pb-sig { display: none; }
@@ -2684,8 +2699,8 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
    just as readily. Text you might legitimately want — the patch name you are
    renaming, anything typed — opts back in below.
 
-   Deliberately not applied app-wide: readouts, the lineage log and the help
-   card are prose, and a synth is not a reason to make prose uncopyable. */
+   Deliberately not applied app-wide: readouts, the lineage log and LEARNING
+   are prose, and a synth is not a reason to make prose uncopyable. */
 .keybar, .piano, .rack-scroll, .tray, .bank-item, .stage-toolbar, .duel-controls {
   -webkit-user-select: none;
   user-select: none;
@@ -3969,7 +3984,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   .nb-note { display: none; }
   /* Same rule for the search field: at the clamp minimum the placeholder is
      the teaching, and 18px of keycap is what pushes it into an ellipsis. The
-     shortcut is still in the help overlay. */
+     shortcut is still in ADD MODULE's title and ⌘K's Add a module. */
   .nb-slash { display: none; }
   .nb-q { padding-right: var(--s2); }
 }
@@ -4066,58 +4081,92 @@ body.model-view .style-badge { visibility: visible; opacity: 1; }
    patch's name. */
 .pd-side .pd-wait { color: var(--silk-dim); }
 
-/* ---------- help overlay ---------- */
-.help-overlay {
-  position: fixed; inset: 0; z-index: 60;
-  background: var(--scrim-82); backdrop-filter: blur(3px);
-  display: flex; align-items: center; justify-content: center;
+/* ---------- ⌘K: the one list (shell.js) ----------
+   Over everything at a level, under a dialog that opens from it: a field,
+   then what it finds in three groups, the row chosen lit. */
+.cmdk-scrim { position: fixed; inset: 0; z-index: 60; background: var(--scrim-82); }
+.cmdk-scrim.hidden, .cmdk.hidden { display: none; }
+.cmdk {
+  position: fixed;
+  left: 50%;
+  top: 14vh;
+  z-index: 61;
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  max-height: 72vh;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  animation: cmdk-in var(--d-state) var(--e-settle);
 }
-.help-card {
-  max-width: 820px; width: min(92vw, 820px); padding: var(--s5) var(--s5) var(--s4); position: relative;
-  /* Taller than a short window: the content scrolls inside the card, so the
-     screws stay at its corners and GOT IT stays in reach below it. */
-  max-height: calc(100vh - 48px);
-  display: flex; flex-direction: column;
+@keyframes cmdk-in { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
+.cmdk-q {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--silk-mute);
 }
-.help-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: var(--s1); }
-.help-foot {
-  flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--s4);
-  margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--hairline);
+.cmdk-q input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--silk);
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
 }
-/* Green: a film is something you hear. Quiet until pointed at. */
-.help-film {
-  margin-right: auto;
-  font-family: var(--font-mono);
+.cmdk-q input:focus-visible { outline: none; }
+.cmdk-q input::placeholder { color: var(--silk-mute); }
+.cmdk-list { list-style: none; margin: 0; padding: var(--s1); overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.cmdk-list.none { display: none; }
+.cmdk-grp {
+  padding: var(--s3) var(--s3) var(--s1);
+  font-family: var(--font-silk);
   font-size: var(--t-label);
-  color: var(--phos-a-dim);
-  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-mute);
 }
-.help-film:hover { color: var(--phos-a); }
-a.ovf-item { text-decoration: none; }
-/* Prose in the panel face at reading size; keys and values stay in mono. */
-.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1) var(--s5); font-size: var(--t-body); line-height: 1.55; }
-.help-cols p { margin: var(--s1) 0 var(--s2); color: var(--silk); }
-.help-cols b { color: var(--phos-a); font-weight: 600; }
-.help-h {
-  color: var(--phos-b); font-size: var(--t-label); letter-spacing: 0.14em;
-  text-transform: uppercase; margin-top: var(--s2);
+.cmdk-it {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 40px;
+  padding: 0 var(--s3);
+  border-radius: var(--r2);
+  color: var(--silk);
+  font-size: var(--t-body);
+  cursor: pointer;
 }
+.cmdk-it[aria-selected="true"] { background: var(--plate-hi); }
+.cmdk-it mark { background: none; color: var(--phos-a); }
+.cmdk-ico { flex: none; width: 24px; display: grid; place-items: center; color: var(--silk-dim); font-size: var(--t-value); }
+.cmdk-ico .face-slot { display: block; }
+.cmdk-lab { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-hint { flex: none; margin-left: auto; display: flex; align-items: center; gap: var(--s1); color: var(--silk-mute); font-size: var(--t-value); }
+.cmdk-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--hairline);
+  color: var(--silk-mute);
+  font-size: var(--t-label);
+}
+.cmdk-fine { margin-left: auto; }
+.cmdk-fine a { color: var(--silk-mute); }
+.cmdk-fine a:hover { color: var(--phos-a); }
+@media (pointer: coarse) { .cmdk-it { min-height: 48px; } }
+
 /* Keys are named in the readout face everywhere, not the browser's monospace. */
 kbd { font-family: var(--font-mono); }
-.help-cols kbd {
-  background: var(--kbd-face); border: 1px solid var(--kbd-edge); border-bottom-width: 2px;
-  border-radius: 3px; padding: 0 var(--s1); font-size: var(--t-label);
-}
-/* The instrument's only About surface. Quiet enough that it never competes with
-   the thing a reader opened this card for. */
-.help-fine {
-  margin: var(--s3) 0 0; font-size: var(--t-value); letter-spacing: 0.06em;
-  color: var(--silk-dim); border-top: 1px solid var(--hairline); padding-top: var(--s3);
-}
-.help-fine a { color: var(--silk-dim); }
-.help-fine a:hover { color: var(--phos-a); }
-#help-close { margin-top: var(--s3); }
-@media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
 
 /* ---------- touch pass ----------
    A coarse pointer is a real input, not a degraded mouse. Everything here is
@@ -4226,7 +4275,6 @@ kbd { font-family: var(--font-mono); }
 .nb-inline:focus-visible,
 .nb-collapse:focus-visible,
 .cm-item:focus-visible,
-.ovf-item:focus-visible,
 .warm-item:focus-visible,
 .bank-item:focus-visible,
 .bank-list:focus-visible,
@@ -4257,41 +4305,6 @@ select:focus-visible,
      every keyboard step. */
 }
 [data-addr]:focus-visible .knob-body { stroke: var(--phos-a); stroke-width: 2; }
-
-/* ---------- menubar: the overflow menu ---------- */
-.ovf { position: relative; }
-.ovf-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
-  min-width: 214px;
-  padding: var(--s1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r1);
-  background: var(--surface-pop);
-  box-shadow: var(--shadow-pop);
-}
-.ovf-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  font-size: var(--t-body);
-  color: var(--silk);
-  background: none;
-  border: none;
-  border-radius: var(--r1);
-  padding: var(--s2);
-  cursor: pointer;
-}
-.ovf-item:hover { background: var(--phos-a-09); color: var(--phos-a); }
-.ovf-item kbd {
-  float: right;
-  font-family: var(--font-mono);
-  font-size: var(--t-value);
-  color: var(--silk-dim);
-}
-.ovf-sep { height: 1px; background: var(--hairline); margin: var(--s1); }
 
 /* ---------- next step ----------
    Nothing in the app ever answered "what now?". This always does: over
@@ -4395,11 +4408,17 @@ select:focus-visible,
   text-shadow: 0 0 4px var(--bezel), 0 0 8px var(--bezel);
 }
 
-/* ---------- the scope's settings panel ---------- */
+/* ---------- the scope's settings panel ----------
+   Under ⌘K's button at the menu bar's right end, fixed to the window: the
+   menu bar clips what hangs inside it (it keeps to one row), and a panel
+   inside it was cut to the bar's height, its first field scrolled out of
+   reach as it took the focus. A dialog on the ladder (55, the MIDI panel's
+   step), so under ⌘K's scrim (60): one left open when the list opens is
+   covered by it, and a click there closes the list, as anywhere else. */
 .scope-panel {
-  position: absolute;
-  right: 0; top: calc(100% + 6px);
-  z-index: 60;
+  position: fixed;
+  right: var(--s4); top: calc(var(--menubar-h) + 6px);
+  z-index: 55;
   width: 300px;
   max-height: 70vh;
   overflow-y: auto;
@@ -4835,10 +4854,10 @@ html:not(.engineer) .dn-sig { display: none; }
 /* The primary teaching affordances, and every control that holds a state,
    sit above transient chrome — always — and below anything that opens over
    them. The ladder: toasts 30 < this lift 35 < popovers and tours (40–45:
-   the ⋯ menu, the bank tour, the arp drawer, the map tip, the booth banner)
-   < dialogs (55+). At 50 this lift put PERFORM's FREEZE pad over the ⋯
-   menu's last item (a click on it froze) and bank rows' save buttons over
-   the bank tour. */
+   the bank tour, the arp drawer, the map tip, the booth banner) < dialogs
+   (55+, ⌘K's list among them). At 50 this lift put PERFORM's FREEZE pad over
+   the old ⋯ menu's last item (a click on it froze) and bank rows' save
+   buttons over the bank tour. */
 .play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 35; }
 /* …which lifts a warm-start card (it holds its pick in aria-pressed) over its
    own ▶, so the button painted under the card and a click on it cast a pick
@@ -5430,7 +5449,8 @@ input[type="range"]::-moz-range-thumb {
 html.handheld .app,
 html.handheld #boot,
 html.handheld #warmstart,
-html.handheld #help,
+html.handheld #cmdk,
+html.handheld #cmdk-scrim,
 html.handheld #wire-overlay { display: none !important; }
 /* The app is a fixed, non-scrolling instrument (html, body { overflow: hidden }).
    This screen is a document — it has to scroll on a phone in landscape. */

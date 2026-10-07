@@ -5,7 +5,8 @@ liking rises on the map, how its guesses have scored, your taste as JSON, and
 the math behind all of it.</p>
 
 LEARNING only shows; nothing here changes the model, except a style’s name.
-It is the level above [TASTE](./taste.md), for when you want to see inside.
+It is [the level](../levels.md) above [TASTE](./taste.md), out at the top,
+for when you want to see inside.
 
 1. Make a few picks in [EVOLVE](./evolve.md). LEARNING fills in once the model
    first fits: at the sixth pick, or right after the warm start.
@@ -126,8 +127,8 @@ in the reference has the math.
 it: what it learned from, the math’s numbers, every style’s weights, every
 sound’s rating, every forecast, and the calibration. Where the browser won’t
 let a page write to the clipboard, the JSON appears in a box below to select
-and copy. Nothing is downloaded; **Download your taste** in the ⋯ menu saves
-the whole record as a file.
+and copy. Nothing is downloaded; *Download your taste*, in
+[⌘K](../levels.md#k-find-anything), saves the whole record as a file.
 
 ## The math
 
@@ -145,6 +146,12 @@ read from the engine:
 
 “Things it learns from” are what **TAUGHT** counts: picks, stars and cuts.
 The [reference](../../reference/taste/utility.html) goes further.
+
+## In ⌘K
+
+At LEARNING, [⌘K’s list](../levels.md#k-find-anything) starts with THIS
+LEVEL: *Replay what it weighs* (<kbd>R</kbd>), *Copy as JSON*, and *The
+math* (it says *open* while the math is open).
 
 ## What to try next
 

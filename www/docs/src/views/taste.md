@@ -12,7 +12,8 @@ one level up, in [LEARNING](./learning.md).
 
 1. Make a few picks in [EVOLVE](./evolve.md). The glows light once the model
    first fits: at the sixth pick, or right after the warm start.
-2. Go to **TASTE**: its stop above PERFORM’s, or <kbd>⌥↑</kbd> from PERFORM.
+2. Go to **TASTE**: its stop above PERFORM’s, <kbd>⌥↑</kbd> from PERFORM, or
+   <kbd>⌥4</kbd> ([the levels](../levels.md)).
 3. Point at a sound to see its card, and click it to open it.
 
 On the way, the face of the sound you’re playing flies to its mark on the
@@ -82,8 +83,8 @@ refits the two can differ.
 
 From the keyboard: Tab to the map, then the arrow keys move to the nearest
 sound in that direction, <kbd>Enter</kbd> opens it, and <kbd>Esc</kbd> closes
-its card. <kbd>Space</kbd> plays the sound you’re playing, as it does in
-every view.
+its card. <kbd>Space</kbd> plays the sound you’re playing, as it does at
+every level.
 
 ## Taste over time
 
@@ -153,6 +154,12 @@ number as the percentage on its card. After a pick, that is the rating under
 the model’s draws reweighted by the pick, which the engine posts with its
 reply to the pick. The dot’s size is how far that rating could be off.
 ```
+
+## In ⌘K
+
+At TASTE, [⌘K’s list](../levels.md#k-find-anything) starts with THIS LEVEL:
+*Color by taste* (it says *on* while the map is colored by taste) and
+*Replay how your taste moved*, the track’s ▶.
 
 ## What to try next
 

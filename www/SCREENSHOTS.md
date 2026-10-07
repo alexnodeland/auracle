@@ -77,7 +77,7 @@ debris rather than dressing up the product:
 | `styles.png` | TASTE › STYLES | — |
 | `directions.png` | TASTE › DIRECTIONS | — |
 | `trust.png` | TASTE › TRUST | — |
-| `warmstart.png` | — | the three-pick card, nothing picked: **⋯** → *Re-run the three-pick warm start*, re-dealt until every row is two lines (the size the crop is cut to), dismissed with **SKIP**, which records nothing |
+| `warmstart.png` | — | the three-pick card, nothing picked: ⌘K's *Re-run the three-pick warm start*, re-dealt until every row is two lines (the size the crop is cut to), dismissed with **SKIP**, which records nothing |
 | `perform.png` | PERFORM | `Ceiling`, measured, a chord latched on HOLD, the first steps done, an offer waiting in B |
 
 A shot of a broken app is worse than no shot, and the app logs its own failures

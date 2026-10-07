@@ -43,12 +43,12 @@ make serve   # http://localhost:8642
 `make setup` is idempotent: run it again after pulling. Open
 <http://localhost:8642>, let the pool fill, and play from your computer keys
 (`a w s e d f t g y h u j …`), a MIDI keyboard, or the keys on screen. Press
-<kbd>?</kbd> in the app for the key map and gestures.
+<kbd>⌘K</kbd> (Ctrl K) in the app for every command, with its key.
 
 ## Read more
 
-- **[The guide](https://auracle.alexnodeland.com/docs/)**: playing it. The four
-  views, teaching it your taste, reading what it learned, the key map,
+- **[The guide](https://auracle.alexnodeland.com/docs/)**: playing it. The five
+  levels, teaching it your taste, reading what it learned, the key map,
   accessibility, and troubleshooting. Start at
   [your first session](https://auracle.alexnodeland.com/docs/getting-started/first-session.html).
 - **[The reference](https://auracle.alexnodeland.com/reference/)**: how it
@@ -167,7 +167,7 @@ inference), all from crates.io.
 
 While the version is 0.x, the public API and the save format may change between
 commits. Sessions written by older builds are migrated on load, but migrations
-are code: **⋯ → Download your taste** before updating is the only backup there
+are code: **⌘K › Download your taste** before updating is the only backup there
 is. See [Your data](https://auracle.alexnodeland.com/docs/your-data.html).
 
 ## Development

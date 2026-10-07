@@ -44,6 +44,19 @@ its rank, its module and its lower bound. In PERFORM, each control's lean is
 its description while the view is up, read with the control (*it leans
 brighter*, with a **?** while it is a guess).
 
+**⌘K.** <kbd>⌘K</kbd> (Ctrl K), **Find or do anything** in the menu bar, or
+<kbd>?</kbd> away from PERFORM’s controls opens [one list of every
+command](./levels.md#k-find-anything), so nothing the app does is only a
+pointer’s. It is a modal dialog (`role="dialog"`, `aria-modal`) holding a
+combobox: the focus stays in it (<kbd>Tab</kbd> walks its field and the two
+links at its foot, the author and the source), the field names the row
+<kbd>↑</kbd> and <kbd>↓</kbd> choose (`aria-activedescendant` over a
+`listbox` of options), <kbd>↵</kbd> does it, and <kbd>Esc</kbd> closes it
+and gives the focus back where it was (opened with a click on its button, it
+leaves none, so <kbd>Space</kbd> plays after it). Each row’s name is its words and the
+key that does the same, so the list reads the keys aloud as you walk it.
+While it is open the keys are its field’s: nothing behind it hears them.
+
 **PERFORM.** Its pads have keys, printed on each and given in
 `aria-keyshortcuts`: <kbd>n</kbd> OFFER (NEXT), hold <kbd>b</kbd> PEEK,
 <kbd>⇧↵</kbd> TAKE, and, once the sound has moved, <kbd>↵</kbd> KEEP with

@@ -323,9 +323,13 @@ records it in `films.json` (chapters from `CHAPTER_NAMES`, the transcript
 from the timeline), regenerates the guide's Films page, fills every
 `<!-- film:<name> -->` marker in the guide and the reference, fills the
 landing page's and README's markers, and makes the silent loop for the home
-page from `LOOPS` / `VIEW_LOOPS`. It also un-hides the app's film links
-(the ⋯ menu, the help card, the warm start's tour link) once the film each
-opens exists. `make site` then places the one copy wherever it is embedded.
+page from `LOOPS` / `VIEW_LOOPS`. It also un-hides the app's one film link
+in the page, the warm start's tour link, once the tour is out. It writes the
+published tour and view films, with their lengths, into the film chip's
+`data-films`, and un-hides the chip once a view has its film; the chip and
+⌘K's *Watch ‹LEVEL› in depth* read that list (⌘K's *Watch the films* opens
+the guide's Films page). `make site` then places the one copy wherever it is
+embedded.
 
 ## The tools
 

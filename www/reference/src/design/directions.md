@@ -96,7 +96,7 @@ a backlog item, and it is the single most consequential thing on this page.
 
 **The mechanism already exists.** A [`Profile`](../persistence.md) is the log
 plus its standardizer: self-contained, portable, raw $\varphi$ stored by name,
-already exposed as *⋯ → Download your taste*. What is missing is a
+already exposed as ⌘K’s *Download your taste*. What is missing is a
 **destination**, not a format.
 
 **What this must not become.** The decisions log keeps implicit signals out of

@@ -6,14 +6,15 @@ properly, change it, and aim the next breeding at it.</p>
 
 <!-- film:view-patch --><!-- /film:view-patch -->
 
-PATCH shows the sound you’re playing as its patch, every knob at its true
-position, on a rounded canvas: the well. Sound flows left to right, from the
+PATCH is [the level](../levels.md) zoomed in from PERFORM (<kbd>⌥↓</kbd>,
+or <kbd>⌥2</kbd>): it shows the sound you’re playing as its patch, every knob
+at its true position, on a rounded canvas: the well. Sound flows left to right, from the
 sources to the amp, out through **OUT** into the sound’s
 [face](../faces.md). It runs live the whole time: turn a knob and you hear it
 on the next note you play.
 
 <figure>
-<img src="../img/play.webp" alt="The PATCH view: the bank on the left, the patch's head (its family, its name, how many modules it has) above the well, the modules in signal order across the well into OUT and the sound's face, and the keybed docked below." loading="eager" width="1440" height="900">
+<img src="../img/play.webp" alt="PATCH: the bank on the left, the patch's head (its family, its name, how many modules it has) above the well, the modules in signal order across the well into OUT and the sound's face, and the keybed docked below." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The bank on the left, the head and the
 well in the middle, the keybed below. Everything here is live while you edit
 it.</figcaption>
@@ -269,8 +270,8 @@ down. [Adding a module](../wiring.md).
 - **TEACH · 6 PICKS ▸,** bottom right, while a pair is dealt: see
   [TEACH](#teach).
 
-**The scope** is put away until you ask for it: **⋯** › *Scope & analyzer…*
-sets it up (waveform or spectrum, where it listens, FFT size, color, corner,
+**The scope** is put away until you ask for it: *Scope & analyzer…* in
+[⌘K](../levels.md#k-find-anything) sets it up (waveform or spectrum, where it listens, FFT size, color, corner,
 size, trigger, and freeze) and brings it into its corner of the well, tracing
 the output while you play. It steps out of the way of any module it would
 cover.
@@ -402,7 +403,7 @@ next waits its turn and then happens: its module is outlined, and the
 subtitle says *1 edit waiting*.
 
 <kbd>⌘Z</kbd> (Ctrl Z) undoes the last thing you did, even while the engine
-is still catching up. **⋯** › **Show measurements** adds the sound’s id and a
+is still catching up. **Show measurements**, in ⌘K, adds the sound’s id and a
 short structural summary to the subtitle, and all three budget ceilings
 (*8/24 modules · 4/6 depth · 1/3 mod depth*).
 ```
@@ -427,6 +428,22 @@ waiting for it: a selected module, then the catalog) reopens the sound you
 started from. A new patch with modules in it waits: **NEW PATCH** from that
 sound brings it back. <kbd>⌘Z</kbd> past the start, or opening another sound,
 also ends it.
+
+## In ⌘K
+
+At PATCH, [⌘K’s list](../levels.md#k-find-anything) starts with THIS LEVEL,
+each with its key where it has one: *Add a module* (<kbd>/</kbd>), *How the
+catalog works* (its walkthrough), *How to read this patch*, *⚡ Evolve from this* and the three locks of its ▾ (*Lock
+knobs*, *Lock wiring*, *Clear locks*), *Keep as new* and *Undo to as opened*
+once you have edited, *Undo an edit* (<kbd>⌘Z</kbd>, one step) and *Redo an
+edit* (<kbd>⇧⌘Z</kbd>), the camera (*Fit the
+whole patch* <kbd>⇧Home</kbd>, *Fit what you’re on* <kbd>.</kbd>, *Actual
+size* <kbd>⌘0</kbd>, *Zoom out on the patch* <kbd>⌘−</kbd>, *Zoom in on the
+patch* <kbd>⌘=</kbd>, *Show the minimap*), the three layouts, *The first
+module* (<kbd>Home</kbd>) and *The last module, at OUT* (<kbd>End</kbd>),
+*Set aside: the shelf* and *Teach it your taste* while they show, and *New
+patch* (or *Clear the patch* and *Back to* the sound you started from, in a
+new patch).
 
 ## The three things PATCH is for
 

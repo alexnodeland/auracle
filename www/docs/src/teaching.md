@@ -82,7 +82,7 @@ Your three are saved, so no generation replaces them: they take 3 of your 10
 saves, and the toast that ends the warm start says so. The first of them opens
 in PERFORM, ready to play.
 
-1. Open **⋯**.
+1. Open [⌘K](./levels.md#k-find-anything).
 2. Choose *Re-run the three-pick warm start*, any time, to teach it 18 more.
 
 ## When it learns

@@ -578,8 +578,10 @@ async function shotWarmstart(page) {
   // dealt otherwise is dismissed with SKIP (which records nothing) and dealt
   // again.
   for (let deal = 1; ; deal++) {
-    await page.click("#ovf-btn");
-    await page.click("#warm-rerun-btn");
+    // ⌘K's Re-run the three-pick warm start (Ctrl K on every platform).
+    await page.keyboard.press("Control+k");
+    await page.fill("#cmdk-input", "Re-run the three-pick warm start");
+    await page.keyboard.press("Enter");
     // Answered by the engine, which may be busy measuring the bench for PERFORM.
     await until(page, () => !document.getElementById("warmstart").classList.contains("hidden") &&
       document.querySelectorAll(".warm-cell").length === 9, null, "the warm start card", 300_000);

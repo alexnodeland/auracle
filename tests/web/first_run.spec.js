@@ -11,7 +11,7 @@
 // the next: the ▶ on a warm-start card has to be the element under the
 // pointer (a card lifted over it turned "hear this" into "pick this"), and
 // PERFORM has to name the patch that is playing, not the one before it.
-const { test, expect, goLevel } = require("./fixtures");
+const { test, expect, goLevel, runCommand } = require("./fixtures");
 
 /** A warm-start card heard before choosing, between its ▶ and its stop: a
  *  listener's pace. */
@@ -66,7 +66,7 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page, app }
 // Someone who walks up cold gets the whole loop in three moves, each ticked off
 // when it happens, and then the levels' two (shell_zoom, guide_pill); an
 // engineer gets the numbers behind the controls on request.
-test("PERFORM's first steps tick off as they happen; measurements are one menu item away", async ({ page, app }) => {
+test("PERFORM's first steps tick off as they happen; measurements are one command away", async ({ page, app }) => {
   await firstVisit(app);
   await page.locator("#warm-skip").click();
   // The preset can land after the tab opens: until PERFORM names it, "controls
@@ -90,8 +90,7 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await expect(page.locator(".pf-step.now")).toContainText(/zoom out to TASTE/);
   // engineer mode
-  await page.locator("#ovf-btn").click();
-  await page.locator("#engineer-btn").click();
+  await runCommand(page, "Show measurements");
   const t = await page.locator(".pf-knob[data-i='0']").getAttribute("title");
   expect(t).toContain("purity");
 });

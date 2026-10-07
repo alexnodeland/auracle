@@ -437,11 +437,11 @@ def fill_readme(reg):
     fill(README, "films:readme", body)
 
 
-# The app's two ways to the films, and the film each needs before it leads
-# anywhere: the menu's "Watch the films" opens the guide's page of them (any
-# film writes it); the help card's link opens the film of the view it was
-# opened from (main.js), so it waits for the four views' films.
-APP_LINKS = {"films-link": None, "help-film": "view-perform", "warm-tour": "tour"}
+# The app's link to a film, and the film it needs before it leads anywhere:
+# the warm start's "new here? take the tour". ⌘K's Watch the films and Watch
+# ‹LEVEL› in depth are commands, not links in the page: the second reads the
+# film chip's data-films (`fill_film_chip`, below), as the chip does.
+APP_LINKS = {"warm-tour": "tour"}
 
 
 def unhide_app_links(reg):

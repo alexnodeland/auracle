@@ -47,7 +47,7 @@
 // sits over the controls the tests click. AU-S2 says `console.error` on
 // purpose (both threads log the deliberate error), so console errors are not
 // counted here: an uncaught exception still fails any test.
-const { test, expect, goLevel } = require("./fixtures");
+const { test, expect, goLevel, runCommand } = require("./fixtures");
 const fs = require("fs");
 const path = require("path");
 
@@ -316,7 +316,7 @@ test("AU-S9: importing a profile over an existing log asks first, and exports th
   await expect(duelCount).toHaveText("1");
   const [export1] = await Promise.all([
     page.waitForEvent("download"),
-    page.evaluate(() => document.getElementById("export-btn").click()),
+    runCommand(page, "Download your taste"),
   ]);
   expect(export1.suggestedFilename()).toBe("auracle-profile.json");
   const profileAtOne = fs.readFileSync(await export1.path(), "utf8");

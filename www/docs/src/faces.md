@@ -102,7 +102,7 @@ Faces are redrawn in place. Nothing in a face moves on its own.
 ## Share a sound as a card
 
 1. Open the sound.
-2. Choose **Download as a picture…** from the **⋯** menu.
+2. Choose *Download as a picture…* in [⌘K](./levels.md#k-find-anything).
 3. Set the first box to **the sound’s card**.
 4. Press **DOWNLOAD**.
 
