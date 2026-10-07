@@ -34,7 +34,8 @@
 //   picked from it is the sound in hand, at the level you were at.
 // - ? over a PERFORM control asks about it (explain.js, which claims the
 //   key first); ? anywhere else opens the list; and the list's What does
-//   BRIGHT do? opens BRIGHT's answer as ? over it does.
+//   BRIGHT do? opens BRIGHT's answer as ? over it does, printing no key,
+//   since ? away from BRIGHT is the list's.
 const { test, expect, goLevel, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
 const patchPage = require("./patch_page.js");
 
@@ -340,7 +341,12 @@ test("? over a control asks about it, and anywhere else opens the list", async (
   await page.keyboard.press("?");
   await expect(field(page)).toHaveValue("?");
   await page.keyboard.press("Escape");
-  // The list's way to the same answer.
+  // The list's way to the same answer. It prints no key: ? asks about
+  // BRIGHT only over it, and from here opens this list.
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("What does BRIGHT do?");
+  await expect(commandRow(page, "What does BRIGHT do?")).toHaveCount(1);
+  await expect(commandRow(page, "What does BRIGHT do?").locator("kbd")).toHaveCount(0);
   await runCommand(page, "What does BRIGHT do?");
   await expect(page.locator(".xp.on")).toBeVisible();
   await expect(page.locator(".xp.on #xp-title")).toHaveText("Bright · what it does");

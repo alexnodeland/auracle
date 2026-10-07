@@ -1461,7 +1461,9 @@ export function createExplain(host) {
     openLesson,
     /** Its two commands for ⌘K (shell.js `cmd`): BRIGHT's answer, at
      *  PERFORM while BRIGHT is on its panel, as ? over it opens it; and the
-     *  lesson, wherever there is a sound in hand to hear it on. */
+     *  lesson, wherever there is a sound in hand to hear it on. BRIGHT's
+     *  prints no key: ? asks about BRIGHT only with the pointer over it or
+     *  the focus on it, and anywhere else opens ⌘K's list. */
     cmds() {
       const bright = () => {
         const p = perf();
@@ -1469,7 +1471,7 @@ export function createExplain(host) {
         return bi < 0 ? null : document.querySelector(`#view-perform .pf-knob[data-i="${bi}"]`);
       };
       return [
-        { id: "ask-bright", level: "perform", label: "What does BRIGHT do?", key: "?", when: () => !!bright(), run: () => ask(bright()) },
+        { id: "ask-bright", level: "perform", label: "What does BRIGHT do?", when: () => !!bright(), run: () => ask(bright()) },
         { id: "lesson", label: LESSON_BUTTON, hint: LESSON_LENGTH, when: () => !!perf()?.sounding(), run: openLesson },
       ];
     },
