@@ -1414,8 +1414,9 @@ control or expression offset, a Wander or Back glide, or a drift not yet kept.
 The app marks its own moments with `performance.mark("auracle:<name>")`:
 `boot-start`, `veil-down`, `first-sound`, `pool-full`, `perform-wired` (with
 how: shipped, cached or measured), `patch-opened`, `pair-dealt`, `fitted`,
-and for a move between the levels `level-landed` and `taken-up` (where the
-face's flight ended; [The levels](#the-levels)).
+for a move between the levels `level-landed` and `taken-up` (where the
+face's flight ended; [The levels](#the-levels)), and `cmdk-open` (⌘K's list
+drawn, with how many rows; [⌘K, the one list](#k-the-one-list)).
 `window.__aur.marks()` lists them in the page's clock. The film recorder
 (`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
 `perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
