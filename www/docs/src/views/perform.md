@@ -133,7 +133,7 @@ A named control is in one of five states, each with its own look:
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
 | Amber, a dashed ring | *turn to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |
-| A thin, dim travel, the pointer lit | the knobs it turns | It turns, before this sound is measured (see [a sound you haven't played](#a-sound-you-havent-played)) |
+| A thin, dim travel, the pointer lit | the knobs it turns; its tooltip says *not measured yet* | It turns, before this sound is measured (see [a sound you haven't played](#a-sound-you-havent-played)) |
 
 #### A sound you haven't played
 
@@ -143,15 +143,17 @@ control, seconds on a fast computer and a minute or more on a slow one, so a
 sound you haven't played starts on a wiring PERFORM has without rendering: a
 sound with the same modules that it has measured (the one a sound was bred
 from, a preset you changed only by turning its knobs), or else what each kind
-of knob usually does to the sound, learned from measuring the presets. Its
-controls turn at once, their travel drawn thin and dim, and the status line
-says *listening…* while the sound's own measurement runs. When it lands the
-controls settle on what the sound really does, without moving what you hear;
-a control left turned a way the measurement finds it can't go stops at the
-center on that side, as a drag into a stop does. That wiring is right more
-often than not, and less
-often for **Motion** and **Body**: a control that turns the wrong way
-before the measurement lands turns the right way once it settles.
+of knob usually does to the sound, learned from measuring the presets and
+sounds like the ones in your pool. That second kind plays only the controls
+it gets right well more often than not, **Bright**, **Snap** and **Space**
+among the six today; the others say *listening…* until the sound is measured,
+as before. The controls that play turn at once, their travel drawn thin and
+dim, and their tooltip says *not measured yet*, while the status line says
+*listening…* as the sound's own measurement runs. When it lands the controls
+settle on what the sound really does, without moving what you hear; a control
+left turned a way the measurement finds it can't go stops at the center on
+that side, as a drag into a stop does. A control that turned the wrong way
+before the measurement landed turns the right way once it settles.
 
 ### The palette
 

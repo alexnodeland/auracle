@@ -180,3 +180,65 @@ test("a sound playing on a guess whose measurement fails keeps playing, says it 
   await expect.poll(async () => (await kept()).length, { message: "its measurement is kept" }).toBeGreaterThan(before);
   expect((await kept()).filter(([, v]) => v && v.guess), "no guess among the kept wirings").toEqual([]);
 });
+
+// The prediction plays only the controls its gate passes (the engine's
+// `wire_predicted`, `KnobTable::passes`): on a pool sound nobody has played,
+// the controls the engine's `first` wired turn at once and say they are not
+// measured yet (in the tooltip and to a screen reader), and every other
+// control on the panel waits for the measurement, saying listening…. When the
+// measurement lands, none is a guess any more. Which controls pass is the
+// shipped table's (`shipped_wirings.rs` pins them); this is the page's half.
+test("a predicted panel plays the controls the gate passes and listens on the rest", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("perform");
+  await app.fullPool();
+  await app.reached();
+  await bankTab(page, "pool");
+  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  const since = await app.now();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  // What the engine said it could play this sound on: the gate's controls.
+  const opening = (await app.replies("bench_opening", { after: since })).pop();
+  const predicted = opening.first.predicted.wiring.map((w) => w.index).sort((a, b) => a - b);
+  // PERFORM shown, and the panel read in the task its wiring is marked in.
+  const shown = await page.evaluate(async (name) => {
+    const t0 = performance.now();
+    document.querySelector('.rail-stop[data-level="perform"]').click();
+    const wired = () => performance.getEntriesByName("auracle:perform-wired").find((e) => e.startTime >= t0 && e.detail?.name === name);
+    while (!wired()) await new Promise((r) => setTimeout(r, 2));
+    return {
+      how: wired().detail.how,
+      knobs: [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => ({
+        index: Number(k.dataset.index),
+        guess: k.classList.contains("guess"),
+        unwired: k.classList.contains("unwired"),
+        waiting: k.querySelector(".pf-k-wait").textContent,
+        title: k.title,
+        said: k.getAttribute("aria-description"),
+      })),
+    };
+  }, name);
+  expect(shown.how).toBe("predicted");
+  const turning = shown.knobs.filter((k) => k.guess);
+  const listening = shown.knobs.filter((k) => !k.guess);
+  expect(turning.map((k) => k.index).sort((a, b) => a - b), "the gate's controls turn, and only they").toEqual(predicted);
+  expect(turning.length, "some control plays on the prediction").toBeGreaterThan(0);
+  expect(listening.length, "some control waits for the measurement").toBeGreaterThan(0);
+  for (const k of turning) {
+    expect(k.unwired, `${k.index} turns`).toBe(false);
+    expect(k.title, `${k.index}'s tooltip`).toContain("not measured yet");
+    expect(k.said, `${k.index} to a screen reader`).toBe("not measured yet");
+  }
+  for (const k of listening) {
+    expect(k.unwired, `${k.index} turns nothing`).toBe(true);
+    expect(k.waiting, `${k.index} says it is waiting`).toBe("listening…");
+  }
+  // The measurement lands: nothing is a guess, and nothing says so.
+  const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+  await app.replyTo(asked);
+  await expect(page.locator(".pf-knob.guess")).toHaveCount(0);
+  await expect(page.locator('.pf-knob[aria-description="not measured yet"]')).toHaveCount(0);
+  await expect(page.locator(".pf-knob[data-index]").first()).not.toHaveAttribute("title", /not measured yet/);
+});

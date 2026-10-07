@@ -668,8 +668,15 @@ export function createPerform(host) {
       k.wrap.classList.toggle("waiting", waiting);
       if (k.wait.textContent !== (waiting ? "listening…" : "")) k.wait.textContent = waiting ? "listening…" : "";
       k.wrap.classList.toggle("search", search);
-      // A guess until this patch's measurement lands (#290, ADR-012).
-      k.wrap.classList.toggle("guess", !!state.guess && turns(w));
+      // A guess until this patch's measurement lands (#290, ADR-012): it
+      // turns, and says it is not measured yet.
+      const guess = !!state.guess && turns(w);
+      k.wrap.classList.toggle("guess", guess);
+      const guessSaid = guess ? "not measured yet" : null;
+      if (guessSaid !== k.guessSaid) {
+        k.guessSaid = guessSaid;
+        describeKnob(k);
+      }
       k.wrap.classList.toggle("unwired", pending);
       k.wrap.classList.toggle("pending", pending);
       const [lo, hi] = rangeOf(w);
@@ -684,11 +691,13 @@ export function createPerform(host) {
       if (w && !pending) {
         // Where the sound measures on this axis: z through a soft squash onto
         // the dial's travel, so "very bright for this bank" sits near the stop.
+        // Not drawn for a guess on a sound whose φ the engine had not measured
+        // (its `z` came empty): there is nothing to place it by.
         const pos = Math.tanh(w.position / 2);
         const [x, y] = polar(pos * 135);
         where.setAttribute("cx", x.toFixed(2));
         where.setAttribute("cy", y.toFixed(2));
-        where.style.display = "";
+        where.style.display = guess && !state.guessPlaced ? "none" : "";
         const dotSays = `The amber dot is where this sound measures on ${w.name}, compared with the sounds in your session.`;
         where.querySelector("title").textContent = dotSays;
         // What the player can do, not where the app infers the sound sits: a
@@ -711,8 +720,8 @@ export function createPerform(host) {
         const toward = halfLo ? ` It only turns toward ${w.high} on this patch.` : halfHi ? ` It only turns toward ${w.low} on this patch.` : "";
         k.wrap.title = search
           ? `${w.name}: nothing in this patch makes it ${w.high} without changing something else. Turn it and it grows a variant that can.`
-          : `${w.name}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}.${toward} Long-press to hear it.`;
-        k.wrap.title += `\n${dotSays}`;
+          : `${w.name}${guess ? ", not measured yet" : ""}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}.${toward} Long-press to hear it.`;
+        if (!guess || state.guessPlaced) k.wrap.title += `\n${dotSays}`;
         // The engineer's view, on request (⋯ → Show measurements): what the
         // measurement actually said, in its own units.
         if (host.engineer?.()) {
@@ -800,9 +809,16 @@ export function createPerform(host) {
     const said = at && host.modelOn?.() ? at.words : null;
     if (said !== k.leanSaid) {
       k.leanSaid = said;
-      if (said) k.wrap.setAttribute("aria-description", said);
-      else k.wrap.removeAttribute("aria-description");
+      describeKnob(k);
     }
+  }
+  // A control's aria-description: *not measured yet* while it plays on a
+  // wiring borrowed or predicted (#290, `paintKnob`), then the model view's
+  // lean, each said when it holds.
+  function describeKnob(k) {
+    const said = [k.guessSaid, k.leanSaid].filter(Boolean).join(" · ");
+    if (said) k.wrap.setAttribute("aria-description", said);
+    else k.wrap.removeAttribute("aria-description");
   }
   // What the lean in hand was asked for: the posterior, and the sound and
   // the panel's set as its wiring is keyed (`wireKey`: the tree PERFORM
@@ -1789,13 +1805,18 @@ export function createPerform(host) {
       }
       applyWired(structuredClone(hit.data));
       state.guess = hit.guess || null;
+      // Whether the engine knew where the sound measures (`z`), so a guess's
+      // position dot means something.
+      state.guessPlaced = !!(hit.data.z && hit.data.z.length);
       markWired(hit.guess || (hit.shipped ? "shipped" : hit.borrowed ? "borrowed" : "cached"));
       knobs.forEach(paintKnob);
       renderHood();
       if (!hit.shipped && !hit.borrowed && !hit.guess && hit.rev === wireRev()) return;
       // Playable now; the fresh measurement lands when it lands. A guess's
-      // is the player's to wait on.
+      // is the player's to wait on, and the controls it left out say they
+      // are waiting for it.
       if (!heldForOpen("revalidate")) revalidate(!!hit.borrowed || !!hit.guess);
+      if (hit.guess) knobs.forEach(paintKnob);
       return;
     }
     if (heldForOpen("measure")) {

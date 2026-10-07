@@ -1355,10 +1355,16 @@ the last `perform_wire` named. Main hands it to PERFORM (`firstKnown`), and
 set of it (`borrowWiring`), one kept for a relative of the same shape
 (`relativeOf`: a child bred by knobs alone, a preset or a sound edited
 without changing its structure), centred on this tree's knob values, and the
-predicted one. A borrowed or predicted wiring is a guess (`state.guess`): its
-controls turn, their travel wears the not-measured look (thin and dim, never
-the dashed amber of a search control), the status line says *listening…*,
-and the measurement is asked for in `soon`. It lands through
+predicted one. The predicted one holds only the controls the table's gate
+passes (`KnobTable::passes`: how often the prediction turned the control the
+named way on held-out pool sounds, its Wilson lower bound at `PREDICT_GATE`)
+and that it can reach; the rest are left out, and read *listening…* until the
+measurement, as before. A borrowed wiring is not gated: it was measured. A
+borrowed or predicted wiring is a guess (`state.guess`): its controls turn,
+their travel wears the not-measured look (thin and dim, never the dashed
+amber of a search control), their tooltip and `aria-description` say *not
+measured yet*, the status line says *listening…*, and the measurement is
+asked for in `soon`. It lands through
 `applyRechecked`'s rebase whatever knobs each control turns, so nothing you
 hear moves and a turned control keeps its place (unless the measurement
 closed the half it is on, where it stops at the centre), and it waits for
