@@ -145,20 +145,22 @@ each comparison was taken back to back, with the load average beside it.
   profile, where its own time limit comes first. Which tier a test is in is
   still the `Makefile`'s (`SEARCH_FLOOR`, `SLOW_TESTS`).
 - **Test builds are incremental** (`incremental = true` in
-  `[profile.test-fast]`). After an edit to a function's body, the test binaries rebuild in 10 s
-  instead of 61 (an edit to the grammar, which three other crates build
-  on) and in 11 s instead of 41 (the session crate): medians of six each,
-  at a load average of 77 to 136. The tests run as fast: six of the
-  heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
-  whole. It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
-  The workspace's crates build in 256 codegen units (cargo's own number for
-  an incremental build; the dependencies keep 16): an edit dirties a 256th of
-  a crate where it dirtied a sixteenth, and the rebuild after an edit to a
-  plain function's body took 9 to 13 CPU seconds against 31 to 41 at 16
-  (seven runs each, at a load average of 100 to 190, 29 to 54 s of wall
-  against 16 to 33), the tests the same time. An edit to an `#[inline]`
-  function that the crates call costs more, since every caller compiles it
-  again (87 to 102 CPU seconds at 16 units).
+  `[profile.test-fast]`). The workspace's crates build in 256 codegen units
+  (cargo's own number for an incremental build; the dependencies keep 16):
+  an edit dirties a 256th of a crate where it dirtied a sixteenth. After a
+  one-statement edit to the body of a plain function, the test binaries
+  rebuilt in 9 to 13 CPU seconds, against 31 to 41 at 16 units (seven runs
+  each, at a load average of 100 to 190: 16 to 33 s of wall against 29 to
+  54), and the tests ran as long (the fast tier took 1,069 and 1,105 CPU
+  seconds against 1,078 and 1,083). An edit to an `#[inline]` function that
+  the crates call costs more, since every caller compiles it again (87 to
+  102 CPU seconds at 16 units). At 16 units, the first measurement of the
+  loop (#294) took a different edit, at a load average of 77 to 136: the test
+  binaries rebuilt in 10 s instead of 61 (an edit to the grammar, which
+  three other crates build on) and in 11 s instead of 41 (the session
+  crate), medians of six each, with the tests as fast as built whole (six of
+  the heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
+  whole). It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
   CI sets `CARGO_INCREMENTAL=0`, which overrides it, since every build
   there starts from a cache that the incremental state would only bloat;
   `make coverage` sets it too, since each of its runs starts clean.
