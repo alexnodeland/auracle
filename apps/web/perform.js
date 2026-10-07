@@ -820,7 +820,7 @@ export function createPerform(host) {
       rows.forEach((r, i) => {
         const c = PALETTE[r.index];
         if (!c || !marks[i]) return;
-        by.set(r.index, { mark: marks[i], words: leanWord(c.low, c.high, r.mean, marks[i].guess) });
+        by.set(r.index, { mark: marks[i], words: leanWord(c.aim, r.mean, marks[i].guess) });
       });
       state.lean = { gen: state.gen, marks: by };
     }

@@ -419,8 +419,8 @@ it leans to, just outside the ring, and the line under the control says it in
 the model’s words:
 
 ```text
-it leans bright
-it leans bloom?
+it leans brighter
+it leans softer?
 ```
 
 The longer the arc, the more the model’s rating of a sound changes as it moves

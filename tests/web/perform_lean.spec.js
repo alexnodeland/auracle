@@ -4,7 +4,7 @@
 // utility along the control's direction, through the lens that claims the
 // sound), and the page draws it on the dial: an amber arc from 12 o'clock
 // toward the end it leans to, its interval behind it, and the model's words
-// in place of the caption, *it leans bright*. A lean whose interval crosses
+// in place of the caption, *it leans brighter*. A lean whose interval crosses
 // zero is a guess: its arc dashed, its words ending in "?". Before the first
 // fit the engine has no lean, and nothing is drawn. It is asked when the view
 // comes up over PERFORM and again when the posterior moves (a pick's
@@ -76,29 +76,30 @@ test("under the model view each of PERFORM's controls carries its lean, a guess 
   await expect(bright).toHaveClass(/\bleaning\b/);
   await expect(bright).not.toHaveClass(/\blean-guess\b/);
   await expect(bright.locator(".pf-k-lean")).toBeVisible();
-  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans bright");
+  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans brighter");
   await expect(bright.locator(".pf-k-leanw")).toBeVisible();
   await expect(bright.locator(".pf-k-sub")).toBeHidden();
   await expect(bright.locator(".pf-k-lean-bar")).toHaveCSS("stroke-dasharray", "none");
-  await expect(bright).toHaveAttribute("aria-description", "it leans bright");
+  await expect(bright).toHaveAttribute("aria-description", "it leans brighter");
   const dot = (k) => knob(page, k).locator(".pf-k-lean-at").evaluate((c) => Number(c.getAttribute("cx")));
   expect(await dot(0), "toward bright, the dial's right").toBeGreaterThan(0);
   // Body leans down, settled: counter-clockwise, toward thin.
-  await expect(knob(page, 3).locator(".pf-k-leanw")).toHaveText("it leans thin");
+  await expect(knob(page, 3).locator(".pf-k-leanw")).toHaveText("it leans thinner");
   expect(await dot(3), "toward thin, the dial's left").toBeLessThan(0);
   // Snap could go either way: a guess, dashed and said with a "?".
   const snap = knob(page, 1);
   await expect(snap).toHaveClass(/\blean-guess\b/);
-  await expect(snap.locator(".pf-k-leanw")).toHaveText("it leans bloom?");
+  await expect(snap.locator(".pf-k-leanw")).toHaveText("it leans softer?");
   await expect(snap.locator(".pf-k-lean-bar")).not.toHaveCSS("stroke-dasharray", "none");
   // The engine's own leans (Motion, Grit, Space), each drawn as what it is.
   const own = reply.lean.filter((x) => ![0, 1, 3].includes(x.index));
   expect(own.map((l) => l.index)).toEqual([2, 4, 5]);
   for (const l of own) {
     const k = knob(page, l.index);
-    const [low, high] = (await k.locator(".pf-k-ends").textContent()).split(" · ");
+    // The palette's comparative for each end (words.js `aim`), read as the page has it.
+    const [lower, higher] = await page.evaluate(async (i) => (await import("/words.js")).PALETTE[i].aim, l.index);
     await expect(k).toHaveClass(/\bleaning\b/);
-    await expect(k.locator(".pf-k-leanw")).toHaveText(`it leans ${l.mean >= 0 ? high : low}${crosses(l) ? "?" : ""}`);
+    await expect(k.locator(".pf-k-leanw")).toHaveText(`it leans ${l.mean >= 0 ? higher : lower}${crosses(l) ? "?" : ""}`);
     await expect.poll(() => k.evaluate((e) => e.classList.contains("lean-guess")), { message: `${l.name} ${l.mean} ± ${l.std}` }).toBe(crosses(l));
   }
 
@@ -119,7 +120,7 @@ test("under the model view each of PERFORM's controls carries its lean, a guess 
   await app.reply("status", { where: (r) => !!r.ratings, after: t1, timeout: 30_000 });
   const again = await leanAfter(app, t1);
   expect(again.reply.lean.map((l) => l.index)).toEqual(SIX);
-  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans dark");
+  await expect(bright.locator(".pf-k-leanw")).toHaveText("it leans darker");
   expect(await dot(0), "toward dark, the dial's left").toBeLessThan(0);
 
   // At rest, none of it: the arcs and words go, the captions come back.

@@ -141,7 +141,7 @@ It shows only what the engine has:
   lower bounds ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
 - **PERFORM:** which way your taste leans along each control, from the sound
   in your hands: an amber arc toward the end it leans to, and *it leans
-  bright* under the control; dashed, with a **?**, while it is still a guess
+  brighter* under the control; dashed, with a **?**, while it is still a guess
   ([which way your taste leans](./views/perform.md#which-way-your-taste-leans)).
   Nothing before the first fit.
 

@@ -123,7 +123,7 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   dial (`.pf-k-lean`, an arc from 12 o'clock toward the end it leans to with
   its ±σ interval, on one scale for the panel: taste-geom's `leanMarks`) and
   the model's words over the caption (`.pf-k-leanw`, `words.leanWord`: *it
-  leans bright*), and a lean whose interval crosses zero as the guess
+  leans brighter*), and a lean whose interval crosses zero as the guess
   `pullMark` makes it (dashed, faint, its words ending in "?"). CSS shows it
   only under the view. It is asked when the view comes up over PERFORM,
   when PERFORM comes into sight with the view up, when the sound or the
@@ -237,9 +237,9 @@ arrived during that call first. And end to end by
 engine and posts the request while a given engine call runs: during
 PERFORM's measurement, the guess's renders and a spare offer's steps, the
 request is handed over when that call ends, before any other, and answered
-before the job's next one (PERFORM's lean by its one call); `tests/worker/warm_start.test.mjs` does the same
-for *teach it* while two loops serve the lane, one of them measuring the
-warm start's cards.
+before the job's next one (PERFORM's lean by its one call);
+`tests/worker/warm_start.test.mjs` does the same for *teach it* while two
+loops serve the lane, one of them measuring the warm start's cards.
 
 ### Offers and drifts are jobs
 

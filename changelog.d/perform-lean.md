@@ -5,7 +5,7 @@
   and hold MODEL) and an amber arc runs from 12 o'clock toward the end of
   the control your taste leans to, with a thin arc behind it for how far
   that could be off, and the line under the control says it in the model's
-  words: *it leans bright*. When the model can't yet tell which way you
+  words: *it leans brighter*. When the model can't yet tell which way you
   lean, the arc is dashed and faint and the words end in a *?*, as LEARNING
   marks a guess; before the model has learned anything, nothing is drawn.
   The model view showed what the model believes everywhere else (the bank,
