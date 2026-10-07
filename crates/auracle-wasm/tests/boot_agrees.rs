@@ -36,8 +36,11 @@
 //! `kept` or `draws_consumed` means a render or a vetting decision did, and
 //! `spread` alone means the features differ in the last digits. In `offer`,
 //! `taste` or `walk` (each of which the pool feeds, so read them after it), a
-//! `shape` means a Metropolis step chose differently, and a number alone the
-//! arithmetic after it; the offer reads no taste, so an offer that parts is
+//! number just past the tolerance is the arithmetic, a last digit grown; a
+//! `shape`, or a number far off, means a chain drew otherwise. The taste has
+//! no `shape`, so a fit whose chain chose another site shows only as a
+//! utility far off (a member read 0.487 natively and −0.644 in wasm on
+//! `fugue-ppl` 0.2.2). The offer reads no taste, so an offer that parts is
 //! the walk's kernel, not the fit.
 
 use auracle_wasm::shipped::{boot_probe, boot_probe_difference};

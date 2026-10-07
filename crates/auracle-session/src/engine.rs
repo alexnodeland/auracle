@@ -2106,7 +2106,7 @@ impl Engine {
     /// is scored under the same tilted prior, `RefineKeep::Best` ranks under
     /// it, and the parsimony mass the walk climbs is the tilted one. A tilt
     /// that left the target alone would need a custom site proposal with its
-    /// own Hastings correction, which fugue 0.2.2 does not offer for `usize`
+    /// own Hastings correction, which fugue 0.2.3 does not offer for `usize`
     /// sites (only `PriorResample`). Since refinement hill-climbs rather than
     /// samples, the practical effect is the one intended — the climb finds the
     /// kinds the listener likes sooner — but what "best" means is under the

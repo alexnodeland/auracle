@@ -39,10 +39,12 @@
 // draw's digest is the stream itself (a draw whose width depends on the
 // target), `kept` or `draws_consumed` a render or a vetting decision,
 // `spread` alone the features in their last digits; in `offer`, `taste` or
-// `walk`, a `shape` is a Metropolis step that chose otherwise, and a number
-// alone the arithmetic after it. If a family's faces fail and
-// shipped_faces.rs passes, the wasm renders those presets otherwise than the
-// native build, and the page draws them from a face its engine does not make.
+// `walk`, a number just past the tolerance is the arithmetic, a last digit
+// grown, and a `shape` or a number far off is a chain that drew otherwise.
+// The taste has no `shape`: a fit whose chain chose another site shows only
+// as a utility far off. If a family's faces fail and shipped_faces.rs
+// passes, the wasm renders those presets otherwise than the native build,
+// and the page draws them from a face its engine does not make.
 //
 // The one spec off the fixture (./fixtures): its automatic `pageErrors`
 // watches the test's browser context, so a test taking `test` from there

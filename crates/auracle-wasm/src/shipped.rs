@@ -261,11 +261,11 @@ fn take_numbers(v: &mut serde_json::Value, numbers: &mut Vec<serde_json::Value>)
 /// numbers apart: the digest of the reply with every number blanked, and the
 /// numbers in order.
 ///
-/// A walk moves a knob by a Gaussian step, so a knob's value has been
-/// through the target's `ln` and `exp`, which may differ in the last digit
-/// between a native `libm` and wasm's. Listed, the comparison holds each
-/// number to [`TOLERANCE`] and names the one that parts; inside a digest the
-/// last digit would read as another tree.
+/// A walk moves a knob by a Gaussian step, drawn through `ln` and `cos`
+/// (Box–Muller), which may differ in the last digit between a native `libm`
+/// and wasm's. Listed, the comparison holds each number to [`TOLERANCE`] and
+/// names the one that parts; inside a digest the last digit would read as
+/// another tree.
 fn shape(mut v: serde_json::Value) -> serde_json::Value {
     strip_uids(&mut v);
     let mut numbers = Vec::new();
