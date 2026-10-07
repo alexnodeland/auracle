@@ -345,6 +345,18 @@ fn the_gate_counts_held_out_turns_that_go_the_named_way() {
     );
     // A learned table carries no gate of its own: the generator adds it.
     assert!(KnobTable::learn(&measured).gate.is_empty());
+    // Held out of exactly TABLE_MIN sounds, a sound leaves its key one
+    // column short (`TABLE_MIN - 1`), so nothing predicts the cutoff and
+    // Bright is wired on none; one more sound, and every hold-out keeps
+    // TABLE_MIN columns.
+    assert_eq!(
+        KnobTable::agreement(&measured[..TABLE_MIN], &[0, 1, 2], &CONTROLS)["Bright"],
+        Agreement::default()
+    );
+    assert_eq!(
+        KnobTable::agreement(&measured[..=TABLE_MIN], &[0, 1, 2], &CONTROLS)["Bright"].wired,
+        3
+    );
     // Held out against the three that brighten, a sound whose cutoff moves
     // nothing along Bright is not turned the named way (no movement is not
     // the named way), and nor is one that darkens a little while its crest
