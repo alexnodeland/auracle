@@ -642,6 +642,8 @@ export function createPerform(host) {
     input.addEventListener("pointerdown", () => (k.held = true));
     const up = () => {
       k.held = false;
+      // Letting go is a touch, as a dial's and the XY pad's are (`handsBusy`).
+      touch();
       queueMicrotask(panelLater);
       // As a dial's: a pointer's slide leaves no focus, so the pad keys and
       // ↵ KEEP work straight after it.
@@ -4340,7 +4342,6 @@ export function createPerform(host) {
   const xyEnd = (e) => {
     xyHeld = false;
     touch(); // letting go of the pad is a touch, as a knob's is
-
     queueMicrotask(panelLater);
     if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
     for (const i of [XY.x, XY.y]) logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
