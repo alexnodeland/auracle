@@ -425,24 +425,41 @@ export async function workerFor(t, options) {
  *  engine worker.
  *
  *  `ready: false` keeps them quiet until `crew.ready()`, as workers still
- *  starting are on a slow machine. `render(tree, phrase)` answers a render
- *  with what it returns (`{ok, cached}`, as farm.js's `farm_render` gives),
- *  `phrase` the last one the engine worker handed that worker. */
-export function fakeCrew(n, { ready = true, render = null } = {}) {
+ *  starting are on a slow machine; an array says it worker by worker
+ *  (`[true, true, false]`), and `crew.ready(k)` readies worker `k` alone.
+ *  `render(tree, phrase)` answers a render with what it returns (`{ok,
+ *  cached}`, as farm.js's `farm_render` gives), `phrase` the last one the
+ *  engine worker handed that worker.
+ *
+ *  `job(k, job)` decides worker `k`'s answer to a job, for a crew whose
+ *  workers do not all behave: `undefined` for the render above, a reply to
+ *  send instead (`{type: "cannot", …}`, as farm.js's says when its instance
+ *  is broken), or `null` to sit on the job until the test answers it with
+ *  `crew.answer(k, reply)`. `answered(k, reply)` hears each answer just
+ *  after worker `k` sent it. */
+export function fakeCrew(n, { ready = true, render = null, job = null, answered = null } = {}) {
   const heard = [];
   const ports = [];
   const ends = [];
+  const readyAtStart = (k) => (Array.isArray(ready) ? !!ready[k] : !!ready);
+  const send = (k, reply) => {
+    ends[k].postMessage(reply);
+    if (answered) answered(k, reply);
+  };
   for (let k = 0; k < n; k++) {
     const { port1, port2 } = new MessageChannel();
     const got = [];
     heard.push(got);
     port1.on("message", (m) => {
       got.push(m);
-      if (ready && m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
+      if (readyAtStart(k) && m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
       if (m.type !== "job") return;
+      const decided = job ? job(k, m) : undefined;
+      if (decided === null) return;
+      if (decided) return send(k, decided);
       const phrase = got.findLast((x) => x.type === "phrase");
       const r = render && phrase ? render(m.tree, phrase.json) : { ok: false };
-      port1.postMessage({ type: "done", i: m.i, ok: !!r.ok, ...(r.ok ? { cached: r.cached } : {}) });
+      send(k, { type: "done", i: m.i, ok: !!r.ok, ...(r.ok ? { cached: r.cached } : {}) });
     });
     ends.push(port1);
     ports.push(port2);
@@ -450,7 +467,8 @@ export function fakeCrew(n, { ready = true, render = null } = {}) {
   return {
     ports,
     heard,
-    ready: () => ends.forEach((p) => p.postMessage({ type: "ready", build: V })),
+    ready: (k) => (k == null ? ends : [ends[k]]).forEach((p) => p.postMessage({ type: "ready", build: V })),
+    answer: send,
     close: () => ends.forEach((p) => p.close()),
   };
 }
