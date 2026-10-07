@@ -2871,6 +2871,37 @@ fn what_the_hands_do_while_it_wakes_counts() {
     assert_eq!(ringing, 2, "only the two held keys sound");
 }
 
+/// **A unison note pressed while resting wakes on every voice.** Unison
+/// plays one note on all four voices; pressed during the rest, each of them
+/// wakes from silence at that note's place, as each would have rendered.
+#[test]
+fn a_unison_note_pressed_while_resting_wakes_on_every_voice() {
+    let json = slow_pad_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.set_unison(true, 0.3, 0.7);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 10);
+    for p in [&mut a, &mut b] {
+        p.note_on(60, 1.0);
+    }
+    assert!(
+        b.voices.iter().all(|v| v.seek == Seek::Fresh),
+        "each voice wakes from silence"
+    );
+    rest_beside(&mut a, &mut b, 200);
+    wake_beside(&mut a, &mut b);
+    for (i, (va, vb)) in a.voices.iter().zip(&b.voices).enumerate() {
+        let (want, got) = (va.voice.env_phase(), vb.voice.env_phase());
+        assert!(want > 0.3, "voice {i} is rising: {want}");
+        assert!(
+            (want - got).abs() < 0.03,
+            "voice {i}: woke at {got}, not {want}"
+        );
+    }
+}
+
 /// **A held note under a knob turned mid-wake still wakes.** Where the
 /// note would be is worked out from the knobs as they are, as if they had
 /// stood there since the key went down. An attack slowed to its slowest

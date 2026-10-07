@@ -906,13 +906,10 @@ fn adsr_time(cv: f64) -> f64 {
 }
 
 /// The one-pole coefficient quiver's `Adsr` runs a segment of `time` seconds
-/// with (`modules::common::env_coef`).
+/// with (`modules::common::env_coef`). Its guard for a time of 0 is not
+/// needed here: [`adsr_time`] is a millisecond at the least.
 fn adsr_coef(time: f64, sample_rate: f64) -> f64 {
-    let denom = time * sample_rate;
-    if denom <= 0.0 {
-        return 0.0;
-    }
-    (-1.0 / denom).exp()
+    (-1.0 / (time * sample_rate)).exp()
 }
 
 /// Where an amp envelope is `ticks` samples after its gate rose on a silent
@@ -938,13 +935,10 @@ fn held_envelope(
     if ticks == 0 {
         return (true, 0.0);
     }
-    // Attack: 1 - level shrinks by the coefficient each tick, from 1.
+    // Attack: 1 - level shrinks by the coefficient each tick, from 1, and
+    // the attack snaps to the peak on the tick it is within `ADSR_EXP_DONE`.
     let ac = adsr_coef(adsr_time(attack), sample_rate);
-    let rise = if ac > 0.0 {
-        (ADSR_EXP_DONE.ln() / ac.ln()).ceil().max(1.0) as u64
-    } else {
-        1
-    };
+    let rise = (ADSR_EXP_DONE.ln() / ac.ln()).ceil().max(1.0) as u64;
     if ticks < rise {
         return (true, 1.0 - ac.powf(ticks as f64));
     }
