@@ -810,6 +810,26 @@ from it ([Rules](#rules)).
   engine's own replies while an injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
   1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
+- **A script's git runs without the file-system monitor, and its tests'
+  scratch repositories read no user config.** A user's `core.fsmonitor=true`
+  makes every git command that reads the index (`diff`, `ls-files --others`,
+  `status`) ask a daemon, and start one for a repository that has none. In a
+  scratch repository that is a daemon to outlive the test, and one run of
+  `scripts/test_coverage_gate.py` inside the pre-commit hook waited minutes
+  on a daemon's socket with hundreds running (#328). On a loaded machine a
+  daemon that has fallen behind also calls an edited file unchanged. So
+  `changes.py`, `coverage_gate.py` and `wasm_pkg.py` pass
+  `-c core.fsmonitor=false`, as `tests/web/changed.mjs` and
+  `scripts/ops/ship_pr.sh` do, and the scripts' tests run their scratch
+  repositories with `GIT_CONFIG_GLOBAL=/dev/null` and
+  `GIT_CONFIG_NOSYSTEM=1` (or a `HOME` of their own). `changes.py` and
+  `coverage_gate.py` drop the caller's other `GIT_*` variables but keep
+  those (`CONFIG_VARS`), so a test's "no config" reaches their git;
+  `wasm_pkg.py` drops them too and keeps the monitor out with its `-c`
+  alone. A command that reads only refs and objects (`log`, `tag`, `show`,
+  `rev-parse`, `merge-base`) never asks, so a script that runs only those
+  needs no `-c`; its tests still build their repositories with `add` and
+  `commit`, which do ask, so they still read no user config.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.
 - **Time in a test is one of three kinds**
