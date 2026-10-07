@@ -361,7 +361,8 @@ smoke-tools:
 ## worker-test: the worker-protocol tests (tests/worker): apps/web/worker.js
 ## run as it is in a Node worker thread over the built engine, with no page,
 ## for what it answers and in what order (its lanes). Needs `make wasm` first.
-## Its four files run side by side on any machine (CI's job limit counts on it).
+## Its files run four at a time on any machine (`--test-concurrency=4`), and a
+## test fails at 150 s: CI's job limit counts on both.
 ## With COVERAGE=1, what they ran of apps/web as well, in target/js-cov/worker.lcov
 worker-test:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine in apps/web/pkg: run `make wasm` first\n'; exit 1; }
@@ -588,11 +589,14 @@ mutants-installed:
 
 # DIFF=1's diff: the Rust in crates/ changed since the merge base with BASE,
 # to the working tree (so uncommitted changes count). Empty when none did.
+# The diff reads the index, so it runs without the file-system monitor, as
+# changes.py's git does: in a worktree it waited on the monitor's socket for
+# over a minute.
 mutants-diff:
 	@git rev-parse --verify --quiet "$(BASE)^{commit}" >/dev/null || { \
 		printf '  %s is not here to diff against: run `git fetch origin` first (or name another BASE=)\n' "$(BASE)"; exit 1; }
 	@mkdir -p target
-	@git diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
+	@git -c core.fsmonitor=false diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
 
 ## mutants: mutation testing against the fast tier: `make mutants CRATE=auracle-taste`
 ## for one crate, `make mutants DIFF=1` for the code changed since BASE
@@ -824,7 +828,7 @@ perform-wirings:
 
 ## preset-faces: render every preset's face natively, the way the worker
 ## renders a preset's, into apps/web/preset-faces.json (one render per preset,
-## about 15 s on one core; commit the file). The page draws a preset's face
+## about 14 s of one core's time; commit the file). The page draws a preset's face
 ## from it without asking the engine. `make test` fails while it is stale: a
 ## preset, the render namespace, the reference clip or the face's encoding
 ## changed, or a face renders differently today. Owed by every φ change.
