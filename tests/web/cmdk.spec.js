@@ -9,9 +9,10 @@
 //   (ADR-025: within 100 ms on the reference machine, a budget here).
 // - Typing ranks a label's start first: "patch" puts PATCH's level first,
 //   ahead of the commands that only hold the word.
-// - ↵ runs the row chosen (the arrows choose), and the list closes; Esc
-//   closes it and gives the focus back where it was, and that press ends
-//   nothing behind it (a tapped model view stays).
+// - ↵ runs the row chosen (the arrows choose), and the list closes; Tab
+//   walks the field and the foot's links (the author, the source) and stays
+//   in the list; Esc closes it and gives the focus back where it was, and
+//   that press ends nothing behind it (a tapped model view stays).
 // - A file's command (Open a taste file…) opens the file's picker, in the
 //   same gesture.
 // - While it is open the keys are its field's: a note key plays no note,
@@ -131,6 +132,17 @@ test("Esc closes the list and gives the focus back, and ends nothing behind it",
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
   await page.keyboard.press("Meta+k");
   await expect(field(page)).toBeFocused();
+  // Tab walks the field and the foot's two links, and stays in the list.
+  const foot = page.locator("#cmdk .cmdk-foot a");
+  await page.keyboard.press("Tab");
+  await expect(foot.first()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(foot.last()).toHaveText("source");
+  await expect(foot.last()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(field(page)).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(foot.last()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(list(page)).toBeHidden();
   await expect(page.locator("#model-btn")).toBeFocused();

@@ -245,8 +245,8 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   (`openOnBench`, or `openPreset` with no move), at the level shown.
 - **The keys** while it is open are its own, taken on the window in the
   capture phase with `stopPropagation`: ↑/↓ choose
-  (`aria-activedescendant`), ↵ runs, Esc and ⌘K close, Tab stays in the
-  field, and every other key is typed into it and reaches nothing behind it
+  (`aria-activedescendant`), ↵ runs, Esc and ⌘K close, Tab walks the field
+  and the foot's two links (the ? card's © line moved there), and every other key is typed into it and reaches nothing behind it
   (no note, level key, ⌘Z, pad key or Esc for the model view). A press in
   the dialog keeps the focus in the field. Closing gives the focus back to
   what held it before (none, when a pointer's click on its button opened

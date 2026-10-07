@@ -48,7 +48,8 @@ brighter*, with a **?** while it is a guess).
 <kbd>?</kbd> away from PERFORM’s controls opens [one list of every
 command](./levels.md#k-find-anything), so nothing the app does is only a
 pointer’s. It is a modal dialog (`role="dialog"`, `aria-modal`) holding a
-combobox: the focus stays in its field, the field names the row
+combobox: the focus stays in it (<kbd>Tab</kbd> walks its field and the two
+links at its foot, the author and the source), the field names the row
 <kbd>↑</kbd> and <kbd>↓</kbd> choose (`aria-activedescendant` over a
 `listbox` of options), <kbd>↵</kbd> does it, and <kbd>Esc</kbd> closes it
 and gives the focus back where it was (opened with a click on its button, it

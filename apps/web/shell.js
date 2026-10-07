@@ -1003,7 +1003,7 @@ export function createShell(host = {}) {
     const back = kFrom;
     kFrom = null;
     if (back && document.contains(back) && back.focus) back.focus({ preventScroll: true });
-    else if (document.activeElement === K.input) K.input.blur();
+    else if (K.el.contains(document.activeElement)) document.activeElement.blur();
     kRows = [];
     K.list.replaceChildren();
   }
@@ -1027,9 +1027,9 @@ export function createShell(host = {}) {
   // ⌘K or Ctrl K, from anywhere but under another modal dialog; taken
   // before anything on the page (Firefox takes Ctrl K for its search bar).
   // While the list is open every key is its own: the arrows choose, Enter
-  // runs, Esc closes, Tab stays in the field, and the rest are typed into
-  // it, heard by nothing behind (no note, no ⌘Z, no level key, no Esc for
-  // the model view).
+  // runs, Esc closes, Tab walks the field and the foot's links and stays in
+  // the list, and the rest are typed into it, heard by nothing behind (no
+  // note, no ⌘Z, no level key, no Esc for the model view).
   window.addEventListener(
     "keydown",
     (e) => {
@@ -1045,6 +1045,15 @@ export function createShell(host = {}) {
       if (isK || e.key === "Escape") {
         e.preventDefault();
         kHide();
+      } else if (e.key === "Tab") {
+        // Tab walks the field and the foot's two links (the author, the
+        // source), and stays in the list.
+        e.preventDefault();
+        const stops = [K.input, ...K.el.querySelectorAll(".cmdk-foot a[href]")];
+        const at = stops.indexOf(document.activeElement);
+        stops[(Math.max(0, at) + (e.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
+      } else if (e.target !== K.input) {
+        // A foot link keeps its own Enter.
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         if (kRows.length) kMark((kSel + (e.key === "ArrowDown" ? 1 : -1) + kRows.length) % kRows.length);
@@ -1052,8 +1061,6 @@ export function createShell(host = {}) {
         if (e.isComposing) return;
         e.preventDefault();
         if (!e.repeat) kRun(kSel);
-      } else if (e.key === "Tab") {
-        e.preventDefault();
       }
     },
     true,
