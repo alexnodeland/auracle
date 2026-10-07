@@ -3055,6 +3055,39 @@ fn a_swap_carries_the_open_voices_envelope() {
     );
 }
 
+/// **A swap made while resting keeps the open voice's start, as a held
+/// key's.** An offer that listens, swapped for another while B rests with
+/// its input monitored: the new open voice is not seeded at the swap (no
+/// one hears it), and wakes from when the old one opened.
+#[test]
+fn a_swap_made_while_resting_keeps_the_open_voices_start() {
+    let json = slow_listening_json();
+    let (mut a, mut b) = rest_twins(&json, 4);
+    for p in [&mut a, &mut b] {
+        p.set_open(true);
+    }
+    render_both(&mut a, &mut b, 4);
+    rest_beside(&mut a, &mut b, 2_000);
+    assert!(a.set_patch(&json));
+    assert!(b.set_patch(&json));
+    let mut patched = 0;
+    for _ in 0..40 {
+        let _ = a.process(128);
+        b.rest(128);
+        patched += usize::from(b.poll_event() == EVENT_PATCHED);
+    }
+    assert_eq!(patched, 1, "the swap landed while resting");
+    let open = |p: &LivePoly| p.open.as_ref().expect("an open voice").voice.env_phase();
+    assert_eq!(open(&b), 0.0, "not seeded at the swap");
+    wake_beside(&mut a, &mut b);
+    let (want, got) = (open(&a), open(&b));
+    assert!(
+        (want - 0.5).abs() < 1e-3,
+        "the rendered open voice is on its shelf: {want}"
+    );
+    assert!((want - got).abs() < 0.03, "woke at {got}, not {want}");
+}
+
 /// **The open voice wakes as a held key does, and a tracked lead keeps its
 /// own gate.** Monitored, a patch that listens holds its open voice open
 /// with no key; rested and woken, it comes back at its envelope's place
