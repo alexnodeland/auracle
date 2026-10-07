@@ -142,9 +142,16 @@ jobs:
   # inside its 40 minutes. Two at a time, as before the Firefox run, so the
   # night's count above holds.
   #
-  # TODO(#288): the audio thread's budget, `live_cost.mjs --sweep-only
-  # --gate=<ms>` (crates/auracle-wasm/examples/, on #288's branch), judged
-  # here as a budget (never an expect) once it is on main.
+  # TODO(#288): the audio thread's budget is not judged here yet.
+  # `live_cost.mjs --sweep-only --gate=<ms>` (crates/auracle-wasm/examples/,
+  # on main) times the live voice's CPU per 128-frame quantum, but its limit
+  # is not chosen for a runner: the default, 0.59 ms, is the M3 Max's for a
+  # CPU 4.5 times slower, with 11 of the 62 presets over it there; ADR-025
+  # asks for under half a quantum on the reference machine, which is 0.30
+  # ms as measured on the M3 Max, with 50 over; and a runner measures 1.5 to
+  # 2 times the M3 Max.
+  # Wired in as a step with either, the job would go red every night on
+  # presets already known to be over, so it waits for the limit to be chosen.
   perf:
     name: Speed budgets (${{ matrix.browser }} ${{ matrix.shard }})
     needs: engine
