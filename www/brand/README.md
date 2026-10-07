@@ -115,7 +115,7 @@ rasters), the 404, and the film stage. It holds:
   | `type` | One ratio, 1.2, from the value size: `--t-value` 12 px (mono values, readouts), `--t-body` 14 (prose, names), `--t-voice` 17 (the model speaking, in Newsreader italic, and nothing else), `--t-title` 21 (a sound's name, a card's heading, the wordmark), `--t-display` 52 (a level's one headline). Each is 12 × 1.2ⁿ rounded, and the check holds them to it. `--t-label` 11 px (silk caps) sits under the scale and is the page's floor. `--t-canvas` 12 px is the floor for text a canvas draws. |
   | `space` | `--s1` to `--s7`: 4, 8, 12, 16, 24, 32, 48 px. 1 to 3 px is an optical nudge, not a space, and is written as it is. |
   | `radius` | `--r1` 4 px (a row, a chip), `--r2` 8 (a button, a pad, a card), `--r3` 14 (the well, a sheet). A circle is `50%` and a pill `999px`. |
-  | `motion` | `--d-press` 90 ms, `--d-state` 180 ms, `--d-move` 320 ms; `--e-settle` (arriving and coming to rest) and `--e-swap` (one thing giving way to another). Under `prefers-reduced-motion` every duration is 0 ms. A loop's period is none of these. |
+  | `motion` | `--d-press` 90 ms, `--d-state` 180 ms, `--d-move` 320 ms, `--d-zoom` 620 ms (a move between the levels, the specimen's morph, a literal in its `core.js`); `--e-settle` (arriving and coming to rest) and `--e-swap` (one thing giving way to another). Under `prefers-reduced-motion` every duration is 0 ms. A loop's period is none of these. |
 
 - **each surface's own sizes**: the rack's type tier in the app (`--t-rack-*`,
   drawn through its camera and sized at zoom 1), the landing page's display

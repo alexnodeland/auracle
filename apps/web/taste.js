@@ -1473,6 +1473,37 @@ export function createTaste(host) {
   });
 
   return {
+    /** Where the level showing marks the sound you're playing, for the face
+     *  carried between the levels (shell.js): its mark on TASTE's map, where
+     *  the map puts it (`taste_map`, as it will rest when a settle moves it),
+     *  at the size the map draws it; its ring on LEARNING's small map, which
+     *  draws a dot there, not a face (the face lands small on the ring, and
+     *  the dot is what is left once the move lands). In
+     *  the page's pixels, `{id, x, y, size}` (the mark's centre, and its
+     *  size as `host.drawFace` takes it), or null: not showing, or the sound
+     *  is not on the map (an offer, a preset not yet in the pool). */
+    anchor(level) {
+      if (visible !== level) return null;
+      const id = host.subjectId();
+      if (id == null || host.isCut(id)) return null;
+      if (level === "taste") {
+        const q = target.get(id);
+        if (!q || !W) return null;
+        const r = cv.getBoundingClientRect();
+        const pts = poolPoints();
+        const unsure = geom.mapUnsureScale(pts.map((p) => stdNow.get(p.id)));
+        const dot = geom.mapDotRadius(fitted() ? unsure(stdNow.get(id)) : 0.5);
+        return { id, x: r.left + q.x, y: r.top + q.y, size: dot * 2 };
+      }
+      if (level === "learning") {
+        const q = miniPositions().get(id);
+        if (!q || !MW) return null;
+        const r = mdCv.getBoundingClientRect();
+        // Inside its ring (9 px).
+        return { id, x: r.left + q.x, y: r.top + q.y, size: 8 };
+      }
+      return null;
+    },
     /** Which view is showing. Called by `showView`. */
     setView(name) {
       const was = visible;

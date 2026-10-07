@@ -312,10 +312,10 @@
       <!-- ------------- PERFORM: the sound under your hands ------------- -->
       <!-- Built by perform.js. Nothing in it opens a modal: a player in the
            middle of a phrase cannot answer a dialog. -->
-      <section id="view-perform" class="view perform hidden" aria-label="Perform"></section>
+      <section id="view-perform" class="view perform" aria-label="Perform"></section>
 
       <!-- ------------- PATCH: what the sound is made of ------------- -->
-      <section id="view-patch" class="view hidden" aria-label="Patch">
+      <section id="view-patch" class="view" aria-label="Patch">
         <!-- The head, to the specimen (Plan-008 C2a, `z-desk-patch.png`):
              the cap (PATCH, and the family where the engine has one), the
              name at the display size, and the subtitle the rack counts
@@ -605,7 +605,7 @@
       </section>
 
       <!-- ------------- EVOLVE: duels + generations ------------- -->
-      <section id="view-evolve" class="view hidden" aria-label="Evolve">
+      <section id="view-evolve" class="view" aria-label="Evolve">
         <!-- To the specimen (Plan-008 C1, `z-desk-evolve.png`): the head (the
              level's cap with its generations, the question, the pips and the
              teaching line), a small TASTE map at its right, two cards each
@@ -739,7 +739,7 @@
            The map (taste.js): every sound in the pool where the engine's map
            puts it, the model's liking an amber halo behind it. A pick draws
            an arrow from the sound passed to the sound picked. -->
-      <section id="view-taste" class="view hidden" aria-label="Taste">
+      <section id="view-taste" class="view" aria-label="Taste">
         <div class="ts">
           <header class="ts-head">
             <span class="lv-eyebrow">taste</span>
@@ -770,7 +770,7 @@
       <!-- ------------- LEARNING: the model room -------------
            What it weighs, which way liking rises on the map, its forecasts,
            the data as JSON, and the math (taste.js). -->
-      <section id="view-learning" class="view hidden" aria-label="Learning">
+      <section id="view-learning" class="view" aria-label="Learning">
         <div class="md">
           <header class="md-head">
             <span class="lv-eyebrow">learning</span>
@@ -821,7 +821,9 @@
            stop is lit (`aria-current=location`); a stop's name and key are its
            tooltip (`title`) and its name, line and key a screen reader's
            (`aria-label`, `aria-keyshortcuts`), and nothing pops up over the
-           stage; a click goes there, and so do the level keys (ADR-017). -->
+           stage; a click goes there, and so do the level keys (ADR-017).
+           On a move a light (the puck, shell.js) travels from the stop you left
+           to the one you reach. -->
       <nav class="rail" id="rail" aria-label="Where you are">
         <span class="rail-hint" aria-hidden="true">out</span>
         <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg></button>
@@ -1038,7 +1040,7 @@
         <p><b>Offer</b> (<kbd>n</kbd>) grows a new version of what you are playing into <b>B</b>, beside it in the well. Hold <b>Peek</b> (or <kbd>b</kbd>) to hear it, slide <b>Blend</b> under the two to move between them, and <b>Take</b> (<kbd>⇧↵</kbd>) to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next; <b>Pass</b> passes without another. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
         <p><b>Wander</b>, at the start of the pads, lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing; tap it to freeze it. When the sound has moved from where you last kept it, <b>moved · keep · back</b> shows by its name: <b>Keep</b> (<kbd>↵</kbd>, with nothing focused) marks where you are and <b>Back</b> (<kbd>⇧⌫</kbd>) returns there. <b>XY</b> in the well’s corner puts two controls under one finger, <b>Arrange</b> chooses what your velocity plays, and a MIDI controller’s first eight knobs claim the first eight controls.</p>
         <div class="help-h">the levels</div>
-        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING · hold <kbd>⌥</kbd> (or <b>model</b>) for the model view: what it believes, over any level; a tap on <b>model</b> keeps it, <kbd>Esc</kbd> ends it</p>
+        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING · <kbd>⌥</kbd> and the wheel zoom too, one level a turn, and over a list that can still scroll they scroll it · <kbd>Ctrl</kbd> and the wheel, or a trackpad’s pinch, zoom the same way, except over the patch, which keeps them · on a touch screen, spread two fingers to zoom in and pinch to zoom out · at either end the levels nod · hold <kbd>⌥</kbd> (or <b>model</b>) for the model view: what it believes, over any level; a tap on <b>model</b> keeps it, <kbd>Esc</kbd> ends it</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>Space</kbd> hear the sound you’re playing · in PERFORM, <kbd>n</kbd> offer, hold <kbd>b</kbd> to peek, <kbd>⇧↵</kbd> take, <kbd>↵</kbd> keep, <kbd>⇧⌫</kbd> back, <kbd>⇧F</kbd> stage mode, and <kbd>?</kbd> on a control shows what it does to this sound, measured (BRIGHT’s has a lesson on filters) · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>

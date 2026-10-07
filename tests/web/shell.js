@@ -5,12 +5,23 @@
 const { expect } = require("@playwright/test");
 
 /** Go to a level by its stop on the rail, as a player does, and wait until
- *  the rail says you are there. `level` is perform, patch, evolve, taste or
+ *  the rail says you are there and the move has landed: its level alone on,
+ *  nothing scaled or flying (shell.js `settle`), so what a spec reads next
+ *  is where it rests. `level` is perform, patch, evolve, taste or
  *  learning. */
 async function goLevel(page, level) {
   const stop = page.locator(`.rail-stop[data-level="${level}"]`);
   await stop.click();
   await expect(stop).toHaveAttribute("aria-current", "location");
+  await landed(page);
+}
+
+/** The move between the levels in flight has landed (shell.js `settle`):
+ *  one level on, the rail's puck home, and no face in flight. */
+async function landed(page) {
+  await expect(page.locator("section.view.on")).toHaveCount(1);
+  await expect(page.locator("#rail")).not.toHaveClass(/\btraveling\b/);
+  await expect(page.locator(".zoom-face.on")).toHaveCount(0);
 }
 
 /** Open KEYS ⋯, where HOLD, UNI, ARP, SYNC, glide, the keybed's size, panic
@@ -47,4 +58,4 @@ async function openCatalog(page) {
   await expect(cat).toBeVisible();
 }
 
-module.exports = { goLevel, openKeys, bankTab, modelView, openCatalog };
+module.exports = { goLevel, landed, openKeys, bankTab, modelView, openCatalog };

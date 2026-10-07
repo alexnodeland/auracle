@@ -42,15 +42,15 @@ export const MODULES = {
   "apps/web/takes.js": ["audio_in_takes"],
   "apps/web/explain.js": ["explain"],
   "apps/web/faces.js": ["faces", "evolve_cards", "bank_row"],
-  "apps/web/vessel.js": ["faces", "perform_stage"],
+  "apps/web/vessel.js": ["faces", "perform_stage", "shell_zoom"],
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],
   "apps/web/bank-find.js": ["bank_find"],
   "apps/web/marks.js": ["bank_lineage", "bank_kept"],
   "apps/web/params.js": ["session_seed"],
   "apps/web/warm.js": ["first_run", "faces", "text_fits"],
-  "apps/web/shell.js": ["shell_levels", "model_view", "guide_pill"],
-  "apps/web/levels.js": ["shell_levels"],
+  "apps/web/shell.js": ["shell_levels", "shell_zoom", "model_view", "guide_pill"],
+  "apps/web/levels.js": ["shell_levels", "shell_zoom"],
   "apps/web/midi.js": ["midi_announced"],
   "apps/web/booth.js": ["booth"],
   "apps/web/words.js": ["text_fits", "evolve_feedback", "taste_profile"],
@@ -75,7 +75,7 @@ export const VIEWS = {
   bank: { specs: ["bank_"], sample: ["bank_row"] },
   shell: {
     specs: [
-      "shell_levels", "model_view", "guide_pill", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
+      "shell_levels", "shell_zoom", "model_view", "guide_pill", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "budgets", "smoke", "failure_flows",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
@@ -108,7 +108,7 @@ export const SECTIONS = [
     /^undo\/redo|workbench|bench|^layout$|freeform|FREEFORM|^touch$|readout flash|cable|differential flow|flow animation|mod-slot|MOTION|focus retention|CANVAS|level of detail|silkscreen|fits and moves|minimap|pointer and wheel|plate|auto-pan|frame changed|structural edits|^locks|tree rewrites|sockets|SOCKETS|structure menu|destructive verbs|floating menu|knob geometry|rack keyboard|MODULE TABLE|patch-tree|held modules|NODE BANK|AUDITION|catalog|CONNECTION GRAMMAR|PICK-MODE|wire drawing|SCOPE|scope|IMAGE EXPORT|^selection$|^fonts$|style inlining|PNG tEXt|^an open reaches the voices/,
     ["patch"],
   ],
-  [/^the levels$|toast|^next step$|job slot|^help overlay$|^overflow menu$|engine failing/, ["shell"]],
+  [/^the levels$|^the face carried between the levels|^a sound taken up from the bank|toast|^next step$|job slot|^help overlay$|^overflow menu$|engine failing/, ["shell"]],
 ];
 // The files whose section headings say which views a change reaches.
 export const SECTIONED = ["apps/web/main.js"];

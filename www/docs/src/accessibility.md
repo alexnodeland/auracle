@@ -125,7 +125,13 @@ mouse finds by hovering (knob lock dots, a bank row’s actions) is shown
 outright on a touch screen, because on a tablet, hover-to-reveal means never:
 every bank row shows its actions (and every preset its **▶**) at rest, on a
 line under its name, so a sound can be heard, rated, saved or cut without
-opening it. **MODEL**’s press and hold is the model view under a finger.
+opening it. **MODEL**’s press and hold is the model view under a finger, and
+two fingers spread or pinched on the stage zoom between the levels (two
+that start on PATCH’s patch move no level); a tap on a stop in the levels
+does the same. The stage keeps a pinch for the levels, so the browser does
+not zoom the page there, by a pinch or by a double tap. A pinch still
+zooms the page over the bank, the menu bar and the keys, and your system’s
+own zoom works everywhere.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
 desktop is unchanged.
 
@@ -156,16 +162,27 @@ The rack is the exception, because it’s drawn to its zoom. Its labels are 9 to
 left off, unless detail is set to full. A glyph on a button (▶, ✓) is sized to
 its button.
 
+Your browser’s own zoom (<kbd>⌘+</kbd> and <kbd>⌘−</kbd>; Ctrl + and Ctrl −
+off a Mac) scales the whole page. Over the stage, <kbd>Ctrl</kbd> and the
+wheel and a pinch don’t: they move between the levels there, and zoom the
+patch in PATCH.
+
 ## Motion
 
 The rack pulses modulation cables at their modulator’s rate. That pulse is
 information, not decoration.
 
+Moving between the levels, the level you leave fades and the one you reach
+comes in from the other side while the face of the sound you’re playing
+travels between them, for about two thirds of a second, with a light along
+the levels from the stop you left to the one you reach.
+
 Auracle follows your system’s reduced-motion setting, and follows it live if
 you change it with the app open. With it on, the cable pulses, glows, and
-transitions stop; the rack jumps to a new layout or view instead of gliding,
-and the bank’s rows jump to the model view’s order rather than glide; and a
-card waiting for its sound stops sweeping. The scope still moves,
+transitions stop; a move between the levels is instant, with no face
+traveling and no light along the levels; the rack jumps to a new layout or
+view instead of gliding, and the bank’s rows jump to the model view’s order
+rather than glide; and a card waiting for its sound stops sweeping. The scope still moves,
 because what it shows is the sound, but it redraws ten times a second rather
 than every frame. The guide and the reference follow the setting too.
 

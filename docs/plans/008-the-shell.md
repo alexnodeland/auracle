@@ -4,7 +4,7 @@ number: 8
 status: accepted
 author: Claude Code
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-06
 originating_proposal: 6
 related_adrs: [4, 9, 11, 12, 16, 17]
 ---
@@ -34,7 +34,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
 | C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
 | Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | built on `claude/preset-faces` with #153's C2b follow-ups, in review |
-| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
+| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | built on `claude/shell-c3`, in review |
 | D: ⌘K, and the guide for the levels | #132 | not started |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
 | PATCH's specs on the shared fixture | #136 | merged (#168) |
@@ -414,6 +414,77 @@ into C2a and C2b; round 2's decisions govern PATCH):
   `bank_row.spec.js` and `patch_model_view.spec.js` gain tests;
   `patch_facts.spec.js` checks the ✕'s place; `worker-faces.test.mjs` is
   new, `worker-lanes.test.mjs` gains the preset face's place in the lanes.
+
+**PR C3, as built, where it differs from §2.3 and §6:**
+- **`.on`, not `.hidden`.** A level's section is shown by `.on`
+  (`.view:not(.on)` is `display: none`), so the one being left can stay on
+  screen while it fades: it is `.leaving` and `inert` until `settle`. Every
+  move leaves the mark `level-landed` (`{from, to, dir, cut, flew}`), which
+  `shell_zoom.spec.js` reads for where the face's flight ended.
+- **Which face, and which places.** The face is the bench's render's
+  (`heldFace`), none while an open or an edit is still at the engine, and a
+  level's `anchor()` returns its place with the render key of the face drawn
+  there: a place showing another face (PATCH hearing A or B, TASTE's mark for
+  a pool sound since edited) is no place for it. EVOLVE's anchor is the card
+  whose face is the sound's (opened with ↓ patch and unedited) rather than
+  always null, as the plan had it; TASTE's is where the map puts the mark
+  (its `taste_map` place, where a settle will leave it), LEARNING's its ring.
+  Where one end has no place, the face fades in where it lands or fades out
+  drifting the way you went, rather than flying from or to a spot made up
+  (the mock flew it in from beside the destination).
+- **Rapid moves.** A level key, a stop or a link lands the move in flight
+  and starts the next at once; a step of the wheel or a pinch while one is
+  in flight moves nothing, as the mock's `zoom` has it. The mock's wheel "lockout" (`lastT = now + 500`) only
+  delayed the count's reset; the app's is one: 500 ms after a move, the
+  rest of the turn moves nothing (`wheelStep`).
+- **⌥ and the wheel over a scroller.** §2.3 has ⌥ and the wheel anywhere on
+  `.stage`; review found that took the scroll from PATCH's catalog,
+  PERFORM's hood and a level taller than the window while ⌥ held the model
+  view up, and dropped the view. A turn that starts over something that
+  can still scroll that way (not the rack, Q9) is that scroller's to its
+  end (`wheelOwner`), and the view stays; any other turn is the levels'.
+- **The rack.** ctrl and the wheel over `#rack-scroll` are its camera's
+  (Q9), and ⌥ and the wheel over it, which used to pan it, move a level.
+  The rack has no touch pinch of its own; two fingers that start on it move
+  no level, leaving the gesture to it. Elsewhere on the stage ctrl and the
+  wheel move a level, so the browser's ctrl-wheel and pinch page zoom no
+  longer work over the stage (⌘+ and ⌘− do, as does either over the bank,
+  the menu bar and the keys); `.stage` is `touch-action: pan-x pan-y`.
+- **The rail.** The puck travels the stops (`railPath`) while the current
+  stop is unlit (`.traveling`); during a pinch it leans toward the level
+  the fingers would reach (the mock leaned the phone bar's line, which the
+  desktop cross does not have). A level key at the end of the axis nods the
+  rail too, not only a gesture.
+- **`takeUp`** is armed by a bank row's open (click, Enter, a preset) and
+  flies when the engine has opened the sound and the level draws its face,
+  not at the click (an open is a render; flying at once would land a face
+  before the level shows it), from the row as it is then, steered each frame
+  onto the destination (PATCH's camera fits the new patch with a tween), or
+  to the menu bar's chip at a level with no place for it. A pool row's click
+  also moves to PATCH; that move cross-fades, since the sound being put
+  down is not the one arriving. TASTE's map and EVOLVE's ↓ patch open sounds
+  without a take-up (not in this PR's brief).
+- **The guide pill** shows PERFORM's five steps: its three, then *Press ⌥↑
+  to zoom out to TASTE, the sound among all sounds* (ticked by arriving at
+  TASTE by any move the player chose) and *Hold ⌥ to see what the model
+  believes* (ticked as the view comes up), with a pinch and MODEL on a touch
+  screen; the words await voice.md's approval with the first steps row. A
+  player who had done the first three (and not pressed ×) sees the pill
+  again for the last two, and its closing line again after them: kept, as
+  the way to teach the levels to those who learned PERFORM before them, and
+  said in the changelog.
+- **Not built here:** the mock's arrivals that wait for the move to land
+  (TASTE's pulses, LEARNING's replay start as they did, during it); a
+  `?b=` stamp on `style.css` and `main.js` (there is none to bump: the
+  build stamp hashes the scripts, `make -s wasm-stamp`).
+- **The films:** `footage.mjs`'s `view` op clicks a stop, so a shot right
+  after it now sees a 620 ms move rather than the level at rest (owed with
+  the Wave 3 re-records).
+- **Specs:** `shell_zoom.spec.js` is new; `shell_levels.spec.js` reads one
+  section `.on` with a waiting assertion, and `goLevel` waits for the move to
+  land (`landed`); `guide_pill.spec.js` and `first_run.spec.js` changed
+  meaning (PERFORM's five steps, the loop's line after the fifth);
+  `type_scale.spec.js` reads `--d-zoom` too (mechanical).
 
 ## 1. Delta inventory (mock vs app)
 

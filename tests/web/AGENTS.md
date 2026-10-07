@@ -293,7 +293,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
 - **A test's timeout** is the config's 90 s unless it needs more: a test
   over about 45 s on CI says so with `test.setTimeout` (and over 40 s is
   tagged `@slow`, above).
-- **Go to a level with `goLevel(page, level)`** (or `app.level`), into KEYS ⋯
+- **Go to a level with `goLevel(page, level)`** (or `app.level`), which
+  waits for the move to land (`landed(page)`: one section `.on`, nothing
+  flying; a move between the levels animates for `--d-zoom`), into KEYS ⋯
   with `openKeys(page)`, to a bank with `bankTab(page,
   "pool"|"saved"|"presets")` and into the model view with `modelView(page,
   on)`, from `shell.js` (re-exported by `fixtures.js`). A bank row's guess
