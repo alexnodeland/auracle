@@ -14,31 +14,50 @@ const { test, expect, openApp, forgetRenders } = require("./fixtures");
 // A seed no other spec boots, so what this keeps reaches no one else's boot.
 const SEED_HERE = 20261007;
 
-// The rows in the render store as the page's first script runs.
+// The rows in the render store as the page's first script runs: 0 when there
+// is no store yet (the open upgrades from nothing, and is aborted, so it
+// creates none) or it has no rows; `{ error }` when it could not be read,
+// which `atStart` fails on rather than taking for an empty store.
 const AT_START = `(() => {
   window.__rendersAtStart = new Promise((resolve) => {
+    const failed = (what, e) => resolve({ error: what + ": " + String((e && (e.name || e.message)) || e) });
     let open;
     try {
       open = indexedDB.open("auracle-renders");
-    } catch (_) {
-      return resolve(0);
+    } catch (e) {
+      return failed("indexedDB.open threw", e);
     }
-    open.onupgradeneeded = () => open.transaction.abort();
-    open.onerror = () => resolve(0);
+    let absent = false;
+    open.onupgradeneeded = () => {
+      absent = true;
+      open.transaction.abort();
+    };
+    open.onerror = () => (absent ? resolve(0) : failed("the store would not open", open.error));
     open.onsuccess = () => {
       const db = open.result;
       if (!db.objectStoreNames.contains("rows")) {
         db.close();
         return resolve(0);
       }
-      const count = db.transaction("rows").objectStore("rows").count();
+      let count;
+      try {
+        count = db.transaction("rows").objectStore("rows").count();
+      } catch (e) {
+        db.close();
+        return failed("the rows could not be counted", e);
+      }
       count.onsuccess = () => { db.close(); resolve(count.result); };
-      count.onerror = () => { db.close(); resolve(0); };
+      count.onerror = () => { db.close(); failed("the rows could not be counted", count.error); };
     };
   });
 })();`;
 
-const atStart = (page) => page.evaluate(() => window.__rendersAtStart);
+/** The rows in the render store as the page started, read once it has. */
+async function atStart(page) {
+  const n = await page.evaluate(() => window.__rendersAtStart);
+  expect(typeof n, `the render store as the page started was read (${JSON.stringify(n)})`).toBe("number");
+  return n;
+}
 
 /** The pool once whole: each sound's id, its name and its patch. */
 async function poolOf(app) {
@@ -47,8 +66,16 @@ async function poolOf(app) {
   return [...ranked].sort((a, b) => a.id - b.id).map((r) => `${r.id} ${r.name} ${r.sexpr}`);
 }
 
-/** The engine's tally of the boot's fill: draws served from the cache, and rendered. */
-const tally = (app) => app.reply("log", { where: { kind: "render_cache" } });
+/** The engine's tally of the boot's fill: draws served from the cache, and
+ *  rendered. Only the farm keeps one (worker.js `runFarm`), and only the farm
+ *  reads the cache: a boot whose farm did not come up in time fills serially,
+ *  serving nothing and saying nothing, so that is checked first, by the
+ *  renderers its fill's progress counted (asked once the pool is whole). */
+async function tally(app) {
+  const farmed = await app.replies("fill_progress", { where: { workers: true } });
+  expect(farmed.length, "the farm came up for the fill (a fill_progress counting its renderers): without it the fill is serial, and serves nothing from the cache").toBeGreaterThan(0);
+  return app.reply("log", { where: { kind: "render_cache" } });
+}
 
 test("a boot that reuses renders starts with what a boot of its seed kept, serves its fill from it and fills the same pool; one that does not ask starts with none", async ({ page, app, newContext }) => {
   forgetRenders({ seed: SEED_HERE });
