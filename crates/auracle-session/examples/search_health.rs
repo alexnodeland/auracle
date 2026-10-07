@@ -16,10 +16,12 @@
 //! cargo run -p auracle-session --example search_health --release -- --routing
 //! cargo run -p auracle-session --example search_health --release -- --climb 16
 //! cargo run -p auracle-session --example search_health --release -- --tail
+//! cargo run -p auracle-session --example search_health --release -- --hits 16
 //! ```
 //!
 //! `--tail` is measurements 4 and 3 alone — the back half of the default run,
-//! and the expensive half.
+//! and the expensive half. `--hits` is measurement 3 alone, whose per-seed
+//! rows pair two runs of a change seed for seed.
 //!
 //! `--climb` runs measurement 1 alone, at whatever seed count is asked for,
 //! and prints the **per-seed** final utilities as well as the mean. That is
@@ -1051,7 +1053,11 @@ fn tail_report(seeds: &[u64]) {
         100.0 * kept as f64 / chances.max(1) as f64
     );
     println!();
+    hits_report(seeds);
+}
 
+/// Measurement 3, the locked `refine_from` hit rate, with each seed's count.
+fn hits_report(seeds: &[u64]) {
     println!("== 3. locked refine_from hit rate ==");
     println!("(a third of each seed's knobs locked at random; a hit is a new patch that beats the evictee)");
     println!(
@@ -1059,7 +1065,13 @@ fn tail_report(seeds: &[u64]) {
         "steps", "landed", "rate", "beat parent", "rate"
     );
     let shipped = SessionConfig::default().refine_steps;
-    for steps in [shipped / 2, shipped, 2 * shipped, 4 * shipped] {
+    let budgets = [shipped / 2, shipped, 2 * shipped, 4 * shipped];
+    // Each budget's (landed, beat parent, tries) per seed, in seed order:
+    // the per-seed rows below are what two runs (two arms of a change) are
+    // paired on, seed for seed, since the totals pool seeds that share a
+    // pool across every budget.
+    let mut by_seed: Vec<Vec<(usize, usize, usize)>> = Vec::new();
+    for steps in budgets {
         let rs: Vec<(usize, usize, usize)> = std::thread::scope(|s| {
             let hs: Vec<_> = seeds
                 .iter()
@@ -1079,8 +1091,22 @@ fn tail_report(seeds: &[u64]) {
             format!("{i}/{t}"),
             100.0 * i as f64 / t.max(1) as f64,
         );
+        by_seed.push(rs);
     }
     println!("(* = shipped SessionConfig::refine_steps)");
+    println!("\nbeat parent, per seed (of each seed's tries), by steps:");
+    print!("{:<8}", "seed");
+    for steps in budgets {
+        print!(" {steps:>5}");
+    }
+    println!();
+    for (k, seed) in seeds.iter().enumerate() {
+        print!("{seed:<8x}");
+        for row in &by_seed {
+            print!(" {:>2}/{:<2}", row[k].1, row[k].2);
+        }
+        println!();
+    }
 }
 
 fn main() {
@@ -1089,6 +1115,7 @@ fn main() {
     let routing_only = args.iter().any(|a| a == "--routing");
     let climb_only = args.iter().any(|a| a == "--climb");
     let tail_only = args.iter().any(|a| a == "--tail");
+    let hits_only = args.iter().any(|a| a == "--hits");
     let islands_only = args.iter().any(|a| a == "--islands");
     KEEP_BEST.store(args.iter().any(|a| a == "--keep-best"), Ordering::Relaxed);
     if KEEP_BEST.load(Ordering::Relaxed) {
@@ -1114,6 +1141,10 @@ fn main() {
     }
     if tail_only {
         tail_report(&seeds);
+        return;
+    }
+    if hits_only {
+        hits_report(&seeds);
         return;
     }
     if islands_only {

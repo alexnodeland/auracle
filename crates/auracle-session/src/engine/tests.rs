@@ -487,9 +487,16 @@ fn the_memo_does_not_change_the_pool() {
 /// fit — with a ground truth that lives *only* on the two band
 /// coordinates, so every bit of recovered correlation had to come through
 /// them.
+///
+/// **Gated on the means over five seeds**, as
+/// [`closed_loop_learns_synthetic_taste`] is, and for its reason: one run
+/// is one draw over the pool, the answers and the chain. Its per-seed
+/// floors used to be the gate, set under three seeds' values, and they
+/// were a lottery: over seeds 0xE05 and 0x1–0xF, 4 of 16 fell under one,
+/// with the octave prior of #62 and without it alike.
 #[test]
 fn closed_loop_learns_motion_rate() {
-    const SEEDS: [u64; 3] = [0xE05, 0x1, 0x2];
+    const SEEDS: [u64; 5] = [0xE05, 0x1, 0x2, 0x3, 0x4];
     fn user() -> SyntheticUser {
         let names = Features::phi_names();
         let mut theta = vec![0.0; names.len()];
@@ -557,23 +564,37 @@ fn closed_loop_learns_motion_rate() {
     for (seed, (r, lift, spread)) in &rows {
         println!("motion seed {seed:#x}: r = {r:.3}  top-5 lift = {lift:+.2}σ  truth spread = {spread:.3}");
     }
-    for (seed, (r, lift, _)) in &rows {
-        assert!(*r > MOTION_R_FLOOR, "seed {seed:#x}: r = {r:.3}");
+    for (seed, (r, _, _)) in &rows {
         assert!(
-            *lift > MOTION_LIFT_FLOOR,
-            "seed {seed:#x}: top-5 lift {lift:+.2}σ"
+            *r > MOTION_R_SEED_FLOOR,
+            "seed {seed:#x}: r = {r:.3} under the per-seed floor"
         );
     }
+    let mean = |f: fn(&(f64, f64, f64)) -> f64| {
+        rows.iter().map(|(_, row)| f(row)).sum::<f64>() / rows.len() as f64
+    };
+    let (r, lift) = (mean(|row| row.0), mean(|row| row.1));
+    assert!(r > MOTION_R_FLOOR, "mean r = {r:.3}");
+    assert!(lift > MOTION_LIFT_FLOOR, "mean top-5 lift {lift:+.2}σ");
 }
 
-/// Per-seed floors for [`closed_loop_learns_motion_rate`], set under the
-/// measured values with margin. Measured when the bands shipped (3 seeds,
-/// 60 duels, shipped MCMC budget): r = 0.631 / 0.594 / 0.434 and top-5
-/// lift = +1.02 / +0.60 / +0.97σ over a truth spread of ~1.6. Chance is
-/// r ≈ 0 and lift ≈ 0.
+/// Floors for [`closed_loop_learns_motion_rate`]'s means over its five
+/// seeds. Chance is r ≈ 0 and lift ≈ 0. Swept over seeds 0xE05 and
+/// 0x1–0xF (60 duels, the shipped MCMC budget), with the grammar's octave
+/// weights (#62) and with the uniform octave it had before: a seed's r ran
+/// 0.222 to 0.733 (mean 0.46 either way) and its top-5 lift −0.03 to
+/// +1.53σ (mean +0.84σ before, +0.70σ after; paired, −0.14 ± 0.11). Five
+/// seeds drawn from those 32 runs put a mean under these floors 0.1 % of
+/// the time. (When the bands shipped, three seeds measured r = 0.631 /
+/// 0.594 / 0.434 and lift = +1.02 / +0.60 / +0.97σ.)
 const MOTION_R_FLOOR: f64 = 0.25;
 
 const MOTION_LIFT_FLOOR: f64 = 0.2;
+
+/// The per-seed floor of [`closed_loop_learns_motion_rate`]: this seed
+/// learned *something*. Under the worst of the 32 swept runs (r = 0.222);
+/// not the gate.
+const MOTION_R_SEED_FLOOR: f64 = 0.15;
 
 /// M4 gate: the headless closed loop. Fill a pool through the real
 /// pipeline, run rounds of acquisition-chosen duels answered by the
@@ -1481,14 +1502,22 @@ fn a_child_the_pool_would_not_take_is_refused_and_leaves_no_trace() {
         cached: None,
     };
     let twin = landing(engine.pool[ranked[1].0].tree.clone());
-    // The lowest member with one knob moved, rating no higher than it: the
-    // member the child would displace, with the seed spared.
+    // The lowest member with one knob of its envelope moved, rating no
+    // higher than it: the member the child would displace, with the seed
+    // spared. Which knob and which setting do that depends on the member
+    // and the taste, so every envelope knob is tried at a spread of settings.
     let sz = engine.standardizer.clone().unwrap();
-    let under = [0.002, 0.03, 0.2, 0.5, 0.9]
-        .iter()
-        .map(|&a| {
+    let settings = [0.002, 0.03, 0.2, 0.5, 0.9];
+    let under = (0..4)
+        .flat_map(|knob| settings.iter().map(move |&v| (knob, v)))
+        .map(|(knob, v)| {
             let mut t = low.tree.clone();
-            t.amp.attack = a;
+            match knob {
+                0 => t.amp.attack = v,
+                1 => t.amp.decay = v,
+                2 => t.amp.sustain = v,
+                _ => t.amp.release = v,
+            }
             t
         })
         .find(|t| {
@@ -4599,10 +4628,14 @@ fn the_proposal_leans_toward_taste_only_when_taught_and_asked() {
     let plain = draws(&PatchGrammarPrior::default());
     let untaught = Engine::new(PatchGrammarPrior::default(), fast());
     assert_eq!(draws(&untaught.biased_prior()), plain);
+    // Taught, the tables a walk draws kinds from are not the grammar's. Not
+    // its forty draws: a tilt of a few percent moved none of them on 4 of 12
+    // taught engines measured, and many on the rest.
+    let tables = |p: &PatchGrammarPrior| (p.source_weights, p.op_weights, p.mod_weights);
     let mut engine = taught(0xB1B);
     assert_ne!(
-        draws(&engine.biased_prior()),
-        plain,
+        tables(&engine.biased_prior()),
+        tables(&PatchGrammarPrior::default()),
         "the taste tilted nothing"
     );
     engine.cfg.proposal_tilt = 0.0;
@@ -4691,8 +4724,12 @@ fn a_restore_mends_what_it_can_and_says_what_it_mended() {
     let mut poisoned = vec![0.5; names.len()];
     poisoned[at] = 1e30;
     let (mut saved, _) = with_corrupt_take(&engine, id);
+    // The release, clamped to its longest, which only lengthens a tail: an
+    // attack clamped to its longest (ten seconds) can leave a sound too
+    // quiet in the phrase to vet, and which members of a pool survive that
+    // is a fact about the pool, not about the count.
     for e in saved["bank"].as_array_mut().unwrap() {
-        e["tree"]["amp"]["attack"] = 5.0.into();
+        e["tree"]["amp"]["release"] = 5.0.into();
     }
     saved["events"] = serde_json::json!([{
         "kind": "revert", "id": 0, "value": 1.0, "session": 0, "detail": "",

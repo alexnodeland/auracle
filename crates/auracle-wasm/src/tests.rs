@@ -1308,6 +1308,12 @@ fn a_listening_seed_evolves_on_the_farm_with_its_clip_and_take() {
     }
     let (a, b) = (ids[0], ids[1]);
     assert!(a > 0 && b > 0, "the listening patch was not admitted");
+    // Room in each pool for every child the walks land, so that one lands
+    // whenever a walk moves: whether a child of this seed would rate above a
+    // pool's lowest member is a fact about the pool, not about the farm.
+    for e in [&mut serial, &mut farmed] {
+        e.engine.cfg.pool_size = e.engine.pool.len() + 4;
+    }
     let phrase: serde_json::Value = serde_json::from_str(&farmed.phrase_json()).unwrap();
     assert!(
         !phrase["clip"].is_null(),

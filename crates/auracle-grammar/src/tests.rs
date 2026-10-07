@@ -1582,6 +1582,55 @@ fn the_prior_draws_small_patches_most_often() {
     );
 }
 
+/// **Three draws in four sit at octave 0 or above.** Of the prior's draws
+/// that hold an oscillator, between a fifth and three tenths put their lowest
+/// one below octave 0, in both samplers (the plain RNG deals the pool, the
+/// program grows the walks). Register comes from the lowest oscillator, and
+/// below octave 0 most of a patch's energy at C4 is under 200 Hz, where a
+/// laptop's speakers barely play (#62). The share is under three tenths
+/// because the octave draw favours 0 and +1 ([`prior::OCTAVE_WEIGHTS`]); a
+/// uniform draw puts it near a half. It is over a fifth because −1 and −2
+/// stay drawn: bass is rarer, not gone.
+///
+/// The band comes from a sweep: 4,000 draws on each of seeds 0 to 299, in
+/// each sampler, put the share between 0.2205 and 0.2667 (median 0.246,
+/// binomial σ ≈ 0.008), and under a uniform octave between 0.4378 and
+/// 0.4915.
+#[test]
+fn the_prior_puts_three_draws_in_four_at_octave_zero_or_above() {
+    let lowest_octave = |t: &PatchTree| -> Option<i8> {
+        t.to_trace()
+            .choices
+            .iter()
+            .filter(|(a, _)| a.as_str().ends_with("#oct"))
+            .filter_map(|(_, c)| c.value.as_usize())
+            .min()
+            .map(|i| i as i8 - 2)
+    };
+    let prior = PatchGrammarPrior::default();
+    for program in [false, true] {
+        let mut rng = StdRng::seed_from_u64(0x62);
+        let (mut below, mut held) = (0usize, 0usize);
+        for _ in 0..4_000 {
+            let tree = if program {
+                draw(&prior, &mut rng).0
+            } else {
+                prior.sample_with_rng(&mut rng)
+            };
+            if let Some(octave) = lowest_octave(&tree) {
+                held += 1;
+                below += usize::from(octave < 0);
+            }
+        }
+        let share = below as f64 / held as f64;
+        assert!(
+            (0.20..0.30).contains(&share),
+            "by the {}: {share:.3} of {held} draws with an oscillator reach below octave 0",
+            if program { "program" } else { "RNG" }
+        );
+    }
+}
+
 /// **R6.** A refined child must inherit its seed's identities wherever the
 /// structure survived.
 ///

@@ -449,11 +449,21 @@ test("after the engine crashes, PERFORM asks it nothing more: no spare grows, an
   expect(await walks(), "an offer sent to the crashed engine").toBe(0);
 });
 
+// The first preset whose shipped wiring makes Body a search control, which
+// has a module to give (the tone EQ). Read from the file: which presets those
+// are moves with the standardizer the file was measured under (a new octave
+// prior dealt that pool differently, and Body came to turn Glass Pad).
+const bodySearches = () =>
+  JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/perform-wirings.json"), "utf8")).presets.find((p) =>
+    p.data.wiring.some((c) => c.name === "Body" && c.search),
+  ).name;
+
 test("a module the engine fails to add is said to have failed, and no offer grows in its place", async ({ page, app }) => {
+  const name = bodySearches();
   await boot(page, app);
-  await app.openOnPerform("Glass Pad", { wired: true });
+  await app.openOnPerform(name, { wired: true });
   const body = page.locator('.pf-knob[data-i="3"]');
-  await expect(body, "Body is a search control on Glass Pad, with a module to give").toHaveClass(/\bsearch\b/);
+  await expect(body, `Body is a search control on ${name}, with a module to give`).toHaveClass(/\bsearch\b/);
   // The next graft throws in the worker instead (a non-fatal engine_error).
   await app.fail("perform_graft", { message: "Error: injected for the test", once: true });
   const turnedAt = await app.now();

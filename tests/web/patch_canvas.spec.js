@@ -228,7 +228,8 @@ test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clea
 // Read once the open has landed on its fit (`openPreset` waits for the rack
 // at rest): the camera travels there from the sound before's fit, and mid-way
 // its zoom is between the two's. From a sound before larger than Reese (the
-// seeded boot's has fifteen modules) every label is under the floor there.
+// seeded boot's has fourteen modules with its amp, Reese six) every label is
+// under the floor there.
 test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", async ({ page, app }) => {
   await app.boot();
   await openPreset(app, "Reese");

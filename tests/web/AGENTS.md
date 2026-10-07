@@ -206,7 +206,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     bank's specs that wait for the pool and read only it ask for it.
     PERFORM's specs boot with `{ seed:
     PERFORM_SEED, random: PERFORM_SEED }` instead, a seed whose first offer
-    on Glass Pad is a typical one (SEED's is unusually light).
+    on Glass Pad was a typical one when it was chosen (SEED's was unusually
+    light); both were measured while octaves were drawn uniformly, and not
+    again under #62's octave weights (`fixtures.js` has the table).
     `AURACLE_SEED=random` boots every spec that names no seed of its own
     unseeded, PERFORM's too (the nightly flake hunt does), and
     `AURACLE_SEED=N` with N. `app.visit(path, { seed })` loads it again at

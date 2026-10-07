@@ -84,6 +84,33 @@ fn a_max_depth_mod_term_can_still_draw_steps() {
     );
 }
 
+/// An RNG whose every word is `w`: `gen::<f64>()` is 0 for 0 and the
+/// largest value below 1 for `u64::MAX`.
+struct Fixed(u64);
+impl rand::RngCore for Fixed {
+    fn next_u32(&mut self) -> u32 {
+        self.0 as u32
+    }
+    fn next_u64(&mut self) -> u64 {
+        self.0
+    }
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        dest.fill(self.0 as u8);
+    }
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl Fixed {
+    /// The RNG whose `gen::<f64>()` is `u` (to 53 bits): rand reads an
+    /// `f64` as the top 53 bits of one `u64`, over 2⁵³.
+    fn at(u: f64) -> Self {
+        Fixed(((u * (1u64 << 53) as f64) as u64) << 11)
+    }
+}
+
 /// A kind at weight 0 is never drawn by the RNG sampler, at either edge
 /// of the unit interval: not by a draw of exactly 0 when it comes first,
 /// and not by the rounding sliver past the last boundary when it comes
@@ -91,24 +118,6 @@ fn a_max_depth_mod_term_can_still_draw_steps() {
 /// land on it.
 #[test]
 fn a_kind_at_weight_zero_is_never_drawn() {
-    /// An RNG whose every word is `w`: `gen::<f64>()` is 0 for 0 and the
-    /// largest value below 1 for `u64::MAX`.
-    struct Fixed(u64);
-    impl rand::RngCore for Fixed {
-        fn next_u32(&mut self) -> u32 {
-            self.0 as u32
-        }
-        fn next_u64(&mut self) -> u64 {
-            self.0
-        }
-        fn fill_bytes(&mut self, dest: &mut [u8]) {
-            dest.fill(self.0 as u8);
-        }
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
-            self.fill_bytes(dest);
-            Ok(())
-        }
-    }
     // Weights whose sum rounds so that the top of the interval falls past
     // the last positive boundary.
     assert_eq!(
@@ -284,4 +293,181 @@ fn the_grammars_own_distributions_clone_into_the_same_distribution() {
             assert_eq!(copy.sample(&mut a), d.sample(&mut b), "{site}");
         }
     }
+}
+
+/// The octave of a tree's root oscillator, read through the trace codec
+/// (`#oct` holds `octave + 2`); `None` for a root with no octave.
+fn root_octave(tree: &PatchTree) -> Option<i8> {
+    tree.to_trace()
+        .get_usize(&fugue::addr!("node", "oct"))
+        .map(|i| i as i8 - 2)
+}
+
+/// A prior whose every draw is one leaf of source kind `src`: the root is
+/// at the depth bound, and the source table is all on `src`.
+fn only_source(src: usize) -> PatchGrammarPrior {
+    let mut source_weights = [0.0; N_SOURCES];
+    source_weights[src] = 1.0;
+    PatchGrammarPrior {
+        max_depth: 0,
+        source_weights,
+        ..PatchGrammarPrior::default()
+    }
+}
+
+/// The share of each octave −2 … +2 among `n` root oscillators drawn by
+/// `prior` from `seed`: by the program when `program`, else by the plain
+/// RNG. `None` when the source has no octave.
+fn octave_shares(
+    prior: &PatchGrammarPrior,
+    program: bool,
+    seed: u64,
+    n: usize,
+) -> Option<[f64; 5]> {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut counts = [0usize; 5];
+    for _ in 0..n {
+        let tree = if program {
+            crate::tests::draw(prior, &mut rng).0
+        } else {
+            prior.sample_with_rng(&mut rng)
+        };
+        counts[(root_octave(&tree)? + 2) as usize] += 1;
+    }
+    Some(counts.map(|c| c as f64 / n as f64))
+}
+
+/// **Every oscillator scores its octave by [`OCTAVE_WEIGHTS`].** Each source
+/// the codec writes an `#oct` for (every source kind, placed as a patch's
+/// root, whose trace holds one) is set to each octave −2 … +2 and scored by
+/// the program against its own trace: the log-probability at its `#oct` is
+/// `ln` of that octave's weight, in every one of the program's five arms,
+/// and finite at both edges, so a patch at ±2 stays inside the support.
+#[test]
+fn every_oscillator_scores_its_octave_by_the_weights() {
+    use crate::edit::{set_param, ParamValue};
+    use crate::mutate::{apply_struct_op, NodeKind, StructOp};
+    use fugue::runtime::interpreters::ScoreGivenTrace;
+    let prior = PatchGrammarPrior::default();
+    let at = fugue::addr!("node", "oct");
+    let base = crate::presets::presets()[0].1.clone();
+    let mut scored_kinds = Vec::new();
+    for kind in NodeKind::ALL.into_iter().filter(|k| k.is_source()) {
+        let op = StructOp::Replace {
+            key: "node".into(),
+            kind,
+        };
+        let placed = apply_struct_op(&base, &op).expect("a source replaces the root");
+        if root_octave(&placed).is_none() {
+            continue;
+        }
+        scored_kinds.push(kind);
+        for (i, w) in OCTAVE_WEIGHTS.iter().enumerate() {
+            let octave = i as i8 - 2;
+            let tree =
+                set_param(&placed, "node#oct", ParamValue::Index(i)).expect("an octave knob");
+            assert_eq!(root_octave(&tree), Some(octave));
+            let (_, scored) = run(
+                ScoreGivenTrace {
+                    base: tree.to_trace(),
+                    trace: Trace::default(),
+                },
+                prior.model(),
+            );
+            let lp = scored.choices.get(&at).map(|c| c.logp);
+            assert!(
+                lp.is_some_and(|lp| (lp - w.ln()).abs() < 1e-12),
+                "{kind:?} at octave {octave:+}: #oct scores {lp:?}, its weight's log is {}",
+                w.ln()
+            );
+            assert!(
+                scored.log_prior.is_finite(),
+                "{kind:?} at octave {octave:+}"
+            );
+        }
+    }
+    // The five oscillators, one per `#oct` arm of the program: a source
+    // whose octave the codec stopped writing would drop out of this list,
+    // and a new oscillator joins it here.
+    assert_eq!(
+        scored_kinds,
+        [
+            NodeKind::Vco,
+            NodeKind::Supersaw,
+            NodeKind::Wavetable,
+            NodeKind::Pluck,
+            NodeKind::Formant,
+        ],
+        "the sources whose octave was scored"
+    );
+}
+
+/// **The two samplers map the unit interval onto octaves alike.** The
+/// program's categorical and the plain RNG's [`draw_octave`] each read one
+/// `f64`; at a thousand evenly spaced values of it (each at the middle of
+/// its thousandth, so none sits on a boundary between octaves), they draw
+/// the same octave, and each octave takes exactly its weight's share of
+/// them: the weights are whole thousandths. So the RNG sampler draws
+/// [`OCTAVE_WEIGHTS`] exactly, not near them, and draws what the program
+/// draws from the same value.
+#[test]
+fn the_two_octave_draws_map_the_unit_interval_alike() {
+    use fugue::Distribution;
+    let steps = 1000;
+    let mut counts = [0usize; 5];
+    for k in 0..steps {
+        let u = (k as f64 + 0.5) / steps as f64;
+        let by_rng = draw_octave(&mut Fixed::at(u));
+        let by_program = octave_cat().sample(&mut Fixed::at(u)) as i8 - 2;
+        assert_eq!(by_rng, by_program, "at {u}");
+        counts[(by_rng + 2) as usize] += 1;
+    }
+    let want = OCTAVE_WEIGHTS.map(|w| (w * steps as f64).round() as usize);
+    assert_eq!(counts, want);
+    // The edges of the interval: 0 draws the lowest octave, the largest
+    // value below 1 the highest, in both.
+    for (bits, octave) in [(0, -2), (u64::MAX, 2)] {
+        assert_eq!(draw_octave(&mut Fixed(bits)), octave);
+        assert_eq!(octave_cat().sample(&mut Fixed(bits)) as i8 - 2, octave);
+    }
+}
+
+/// **Both samplers draw every oscillator's octave by [`OCTAVE_WEIGHTS`].**
+/// For each source kind with an octave, alone in the table, 4,000 trees
+/// from each sampler: every octave's share is within 0.04 of its weight.
+/// A sampler arm that drew its octave any other way (uniformly, as all ten
+/// did before #62, or shifted) misses by 0.2 or more.
+///
+/// The bound is a sweep's. Over 500 seeds, the largest of the 50 deviations
+/// a seed tests was 0.0160 at the median, 0.0270 at the 99th percentile and
+/// 0.0328 at most; 0.04 is 5.2 standard errors of the busiest share
+/// (`√(0.4 · 0.6 / 4000)` ≈ 0.0077).
+#[test]
+fn both_samplers_draw_every_octave_by_its_weight() {
+    let mut tested = Vec::new();
+    for (src, label) in SOURCE_LABELS.into_iter().enumerate() {
+        let prior = only_source(src);
+        for program in [false, true] {
+            let Some(shares) = octave_shares(&prior, program, 0x0C7A + src as u64, 4000) else {
+                continue;
+            };
+            tested.push((label, program));
+            for (i, (got, want)) in shares.iter().zip(OCTAVE_WEIGHTS).enumerate() {
+                assert!(
+                    (got - want).abs() < 0.04,
+                    "{label} by the {}: octave {:+} drawn {got:.4} of the time, weight {want}",
+                    if program { "program" } else { "RNG" },
+                    i as i8 - 2
+                );
+            }
+        }
+    }
+    // Both samplers' arm for each of the five oscillators: an arm whose
+    // draws stopped carrying an octave would drop out of this list.
+    let oscillators = ["vco", "supersaw", "wavetable", "pluck", "formant"];
+    let every_arm: Vec<_> = oscillators
+        .into_iter()
+        .flat_map(|s| [(s, false), (s, true)])
+        .collect();
+    assert_eq!(tested, every_arm, "the sampler arms tested");
 }

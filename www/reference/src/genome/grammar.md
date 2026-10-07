@@ -52,7 +52,8 @@ probabilistic choices at path-keyed addresses:
 | modulation kind | `<p>/m#mod` | $\mathrm{Categorical}(w_{\text{mod}})$, 9 kinds |
 | CV-processor kind | `<p>/m#modop` | Uniform over `ModOp::ALL` |
 | CV-combiner kind | `<p>/m#pairop` | Uniform over `PairOp::ALL` |
-| discrete params | `<p>#wave`, `#oct`, `#color`, `#fkind`, `#table`, `#dmode`, `#channel` | Uniform categoricals |
+| oscillator octave | `<p>#oct` | $\mathrm{Categorical}(w_{\text{oct}})$ over −2…+2 (see [Discrete sites](parameters.md#discrete-sites)) |
+| discrete params | `<p>#wave`, `#color`, `#fkind`, `#table`, `#dmode`, `#channel` | Uniform categoricals |
 | input slot | `<p>#input` | `PlayerInput`: draws slot 0, scores every slot alike (see [AUDIO IN](#audio-in-the-players-input)) |
 | continuous params | `<p>#cut`, `#res`, `#det`, … | $\mathrm{Uniform}(0,1)$ |
 
