@@ -345,6 +345,33 @@ fn the_gate_counts_held_out_turns_that_go_the_named_way() {
     );
     // A learned table carries no gate of its own: the generator adds it.
     assert!(KnobTable::learn(&measured).gate.is_empty());
+    // Held out against the three that brighten, a sound whose cutoff moves
+    // nothing along Bright is not turned the named way (no movement is not
+    // the named way), and nor is one that darkens a little while its crest
+    // moves a lot: only the movement along the control's direction counts.
+    for (still, why) in [
+        (col(&[]), "moves nothing"),
+        (
+            col(&[("centroid_mean", -0.2), ("crest", 3.0)]),
+            "darkens a little",
+        ),
+    ] {
+        let odd = measured_acid(still);
+        let four: Vec<Measured> = sounds[..3]
+            .iter()
+            .chain(std::iter::once(&odd))
+            .map(|(tree, jac)| Measured {
+                tree,
+                jac,
+                spread: &spread,
+            })
+            .collect();
+        assert_eq!(
+            KnobTable::agreement(&four, &[3], &CONTROLS)["Bright"],
+            Agreement { wired: 1, right: 0 },
+            "{why}"
+        );
+    }
 }
 
 /// **A control below the gate is not wired from the prediction, and one
