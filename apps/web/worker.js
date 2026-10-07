@@ -395,7 +395,9 @@ function farmCrew() {
 }
 
 // Resolve once at least one farm worker is ready, or the handshake window
-// closes. Zero ready ports means today's serial path, verbatim.
+// closes. False when none is ready by then: boot starts the restore or the
+// fill in this worker, and a worker of the crew that reports ready later
+// takes the rest (`init`, #285).
 function farmHandshake(ms) {
   if (farm.length === 0) return Promise.resolve(false);
   if (farmUsable()) return Promise.resolve(true);
