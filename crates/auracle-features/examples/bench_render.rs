@@ -43,6 +43,9 @@
 //! - `--digest`: each tree's φ, vetting report and face as one FNV-1a hash,
 //!   and one over the set: two builds whose digests agree measured the same
 //!   numbers, bit for bit.
+//! - `--phi`: each tree's φ as JSON (`{"names": […], "rows": [{"name", "phi"}]}`),
+//!   for `docs/notes/render-cost-2026-10/phi_moves.py` to say how far a
+//!   change that moves the sound moves φ.
 //! - `--write-set`: write the set file again from today's presets and prior.
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -313,6 +316,32 @@ fn main() {
 
     if flag("--nodes") {
         nodes(&set, &spec);
+        return;
+    }
+
+    if flag("--phi") {
+        #[derive(Serialize)]
+        struct Row<'a> {
+            name: &'a str,
+            phi: Option<Vec<f64>>,
+        }
+        let rows: Vec<Row> = set
+            .iter()
+            .map(|e| Row {
+                name: &e.name,
+                phi: featurize(&e.tree, &spec).ok().map(|v| v.features.phi()),
+            })
+            .collect();
+        #[derive(Serialize)]
+        struct Phi<'a> {
+            names: Vec<&'static str>,
+            rows: Vec<Row<'a>>,
+        }
+        let out = Phi {
+            names: auracle_features::Features::phi_names(),
+            rows,
+        };
+        println!("{}", serde_json::to_string(&out).expect("serializes"));
         return;
     }
 

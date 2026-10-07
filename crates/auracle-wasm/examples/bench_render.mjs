@@ -11,6 +11,10 @@
 //                patches of a fill do: the f32 buffer is copied out to JS
 //   --set=PATH   the trees (default: auracle-features/examples/bench_render.json,
 //                the native bench's set, so the two read the same trees)
+//   --bank       every preset instead of the set
+//   --digest     time nothing: hash each tree's reply (φ, the vet report, the face,
+//                the onsets, as the farm posts them) and the set's, for each package,
+//                so two builds can be shown to measure the same, bit for bit
 //
 // A package is a directory `make wasm` wrote (default: apps/web/pkg). With
 // two, the first is "before" and the second "after": each round runs the set
@@ -79,12 +83,44 @@ async function open(dir) {
   return { mod, phrase, dir: abs, build };
 }
 
-const set = JSON.parse(readFileSync(SET, "utf8")).trees.map((t) => ({
-  name: t.name,
-  json: JSON.stringify(t.tree),
-}));
 const sides = [];
 for (const dir of pkgs) sides.push(await open(dir));
+// The bank, as the engine lists it (`preset_list`, `preset_tree_json`).
+function bank(side) {
+  const e = new side.mod.WasmEngine(1n, 1);
+  const rows = JSON.parse(e.preset_list()).map((p) => ({ name: p.name, json: e.preset_tree_json(p.index) }));
+  e.free();
+  return rows;
+}
+const set = flags.bank
+  ? bank(sides[0])
+  : JSON.parse(readFileSync(SET, "utf8")).trees.map((t) => ({
+      name: t.name,
+      json: JSON.stringify(t.tree),
+    }));
+
+if (flags.digest) {
+  // FNV-1a, 64-bit, over each reply's text.
+  const fnv = (h, text) => {
+    for (const b of Buffer.from(text, "utf8")) {
+      h ^= BigInt(b);
+      h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+    }
+    return h;
+  };
+  for (const side of sides) {
+    let all = 0xcbf29ce484222325n;
+    for (const tree of set) {
+      const job = side.mod.farm_render(tree.json, side.phrase, false);
+      const h = fnv(0xcbf29ce484222325n, job.ok ? job.cached : "refused");
+      job.free();
+      all = fnv(all, h.toString(16));
+      console.log(`${h.toString(16).padStart(16, "0")}  ${tree.name}`);
+    }
+    console.log(`${all.toString(16).padStart(16, "0")}  the set, on ${side.dir} (${side.build})`);
+  }
+  process.exit(0);
+}
 
 // One render of `tree` on `side`: [CPU ms, wall ms].
 function once(side, tree) {
