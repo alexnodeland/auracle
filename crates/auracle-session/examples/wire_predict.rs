@@ -36,9 +36,9 @@
 //!
 //! `--shipped` judges what the app plays instead, by ear: the knob table in
 //! `apps/web/perform-wirings.json` on a fresh session's pool of 40, each
-//! predicted control rendered turned fully up and fully down (as verification
-//! renders a measured one), against the sound's own measurement
-//! (`Engine::wire_named`). "Up" is the sound moving toward the control's high
+//! control the gated prediction wires (`Engine::wire_predicted`) rendered
+//! turned fully up and fully down (as verification renders a measured one),
+//! against the sound's own measurement (`Engine::wire_named`). "Up" is the sound moving toward the control's high
 //! word when turned up, "both" moving the named way at both ends, "audible"
 //! by at least half the reach floor.
 use std::collections::{HashMap, HashSet};
@@ -580,6 +580,8 @@ fn shipped(seed: u64, threads: usize) {
     let tally = Mutex::new([[0usize; 6]; 6]);
     let next = Mutex::new(0usize);
     let (e, spec) = (&e, e.cfg.phrase.clone());
+    let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+    let names = &names;
     std::thread::scope(|sc| {
         for _ in 0..threads {
             sc.spawn(|| loop {
@@ -590,9 +592,8 @@ fn shipped(seed: u64, threads: usize) {
                 };
                 let Some(tree) = trees.get(i) else { return };
                 let std = e.standardizer().expect("a standardizer");
-                let Some((jac, wiring)) = e.wire_predicted(tree, &CONTROLS, &table) else {
-                    continue;
-                };
+                // The gated prediction: only the controls the table may wire.
+                let predicted = e.wire_predicted(tree, &CONTROLS, &table);
                 let measured = e
                     .wire_named(tree, &CONTROLS, &HashSet::new())
                     .map(|(_, w)| w);
@@ -601,7 +602,7 @@ fn shipped(seed: u64, threads: usize) {
                         auracle_features::featurize_memo(t, &spec, e.memo(), false).ok()?;
                     let z = standardized_audio(&cf.features, std);
                     Some(
-                        direction(&CONTROLS[c], &jac.names)
+                        direction(&CONTROLS[c], names)
                             .iter()
                             .zip(&z)
                             .map(|(a, b)| a * b)
@@ -615,7 +616,13 @@ fn shipped(seed: u64, threads: usize) {
                     if reaches {
                         rows[c][4] += 1;
                     }
-                    if wiring[c].search || base.is_none() {
+                    let Some((jac, wiring)) = predicted.as_ref() else {
+                        continue;
+                    };
+                    let Some(k) = wiring.iter().position(|w| w.name == CONTROLS[c].name) else {
+                        continue;
+                    };
+                    if base.is_none() {
                         continue;
                     }
                     rows[c][0] += 1;
@@ -623,10 +630,10 @@ fn shipped(seed: u64, threads: usize) {
                         rows[c][5] += 1;
                     }
                     let at = |turn: f64| -> Option<f64> {
-                        let mut cs = vec![0.0; 6];
-                        cs[c] = turn;
+                        let mut cs = vec![0.0; wiring.len()];
+                        cs[k] = turn;
                         let mut t = tree.clone();
-                        for (a, v) in apply(&jac, &wiring, &cs) {
+                        for (a, v) in apply(jac, wiring, &cs) {
                             t = set_param(&t, &a, ParamValue::Continuous(v)).ok()?;
                         }
                         along(&t, c)
