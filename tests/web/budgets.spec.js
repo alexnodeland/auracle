@@ -20,7 +20,8 @@
 //   render in progress when "teach it" arrives (#221).
 // - A pick puts the next pair up in the click's own task, with no deal
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
-//   sounds fetched, ahead. Within 0.3 s and 0.15 s.
+//   sounds fetched, ahead. Within 0.3 s and 0.15 s, in a seeded session and
+//   in one with no seed, whose deals never wait for the fill (#211).
 //
 // The order is asserted; the seconds are budgets (ADR-022, `app.budget`):
 // each recorded as the test's annotation, with the insert's share in its
@@ -194,8 +195,16 @@ test("a warm-start pick's controls are live within a second of teach it", async 
   app.budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
 });
 
-test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", async ({ page, app }) => {
-  await boot(app);
+// The session a player opens has no seed in the address, and its deals are
+// drawn at once from the sounds that have arrived, while the pool fills too;
+// only a seeded session's keep to the fill's schedule and wait for its
+// sounds (#211). So the same picks are measured in both, with the same
+// budgets, the second's named for it.
+for (const [title, session, as] of [
+  ["a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", {}, ""],
+  ["in a session with no seed, a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", { seed: null, random: null }, "no seed: "],
+]) test(title, async ({ page, app }) => {
+  await app.boot(session);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
   const deals = [];
@@ -260,7 +269,7 @@ test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 
     plays.push(p.ms);
     await page.locator("#play-a").click(); // stop
   }
-  console.log(`pick → next pair (ms): ${deals.map((x) => x.toFixed(0)).join(", ")}; ▶ → sounding (ms): ${plays.map((x) => x.toFixed(0)).join(", ")}`);
-  deals.forEach((ms, i) => app.budget(`pick ${i + 1} → the next pair on the table`, ms, 300));
-  plays.forEach((ms, i) => app.budget(`▶ after pick ${i + 1} → sounding`, ms, 150));
+  console.log(`${as}pick → next pair (ms): ${deals.map((x) => x.toFixed(0)).join(", ")}; ▶ → sounding (ms): ${plays.map((x) => x.toFixed(0)).join(", ")}`);
+  deals.forEach((ms, i) => app.budget(`${as}pick ${i + 1} → the next pair on the table`, ms, 300));
+  plays.forEach((ms, i) => app.budget(`${as}▶ after pick ${i + 1} → sounding`, ms, 150));
 });
