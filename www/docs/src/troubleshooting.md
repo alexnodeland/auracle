@@ -34,9 +34,15 @@ tablet whose shorter side is 620 px or more starts in either orientation.
 ## Boot is slow, or stalls
 
 - **The first load compiles the engine.** Once; later loads are much faster.
-- **Restoring a large session** renders your saved sounds again. This runs
-  across workers and the bar moves, but a big session can take tens of
-  seconds.
+- **Coming back to a session** brings your sounds back one at a time, and the
+  bar counts them: *recalling 12 of 40 sounds…*. A sound this browser has
+  measured before is read back rather than rendered, so a return is usually
+  quick. One it hasn’t (after an update that changes how sounds are
+  measured, or once the site’s data is cleared) is rendered again, across
+  the render workers where there are some. On a slow machine with no
+  workers, that can take a minute, with the bar moving all the way.
+- **Render workers slow to start** don’t hold the boot up: the engine starts
+  on its own, and each worker joins the work once it’s ready.
 - **Safari limits the render workers**, and boots more slowly than Chrome.
   That’s expected.
 - **A worker that fails** hands its work to the engine, over the same draws,

@@ -41,8 +41,9 @@ It is kept as you play:
 AUDIO IN’s input is played and measured in the tab, and only the clip is kept.
 Monitoring is never kept: it starts off every time.
 
-A large session comes back without a long stall: restoring it runs across the
-background workers.
+A session comes back one sound at a time, with the bar counting them. A sound
+this browser has measured before is read back rather than rendered again, so a
+return is usually quick, with or without the background workers.
 
 ## Download and open
 

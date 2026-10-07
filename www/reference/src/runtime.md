@@ -130,6 +130,15 @@ stream**: a worker that never initializes, one killed mid-boot, a build-stamp
 mismatch, and a browser that cannot structured-clone a `WebAssembly.Module`. So
 parallelism costs time and never content.
 
+Boot waits `FARM_HANDSHAKE_MS` (5 s, in `worker.js`) for a farm worker to
+report ready. When none has, a crew with a worker still starting is kept: the
+fill (or a [restore](./persistence.md#restore-goes-sound-by-sound)) begins in
+the engine worker, asks before each batch (each entry) whether a worker has
+reported ready since, and hands it the rest from there. A slow machine
+instantiating the engine in several workers at once can miss the window, and
+before this its crew sat out the whole boot. The two paths fold the same
+stream from the same cursor, so the pool is the same whichever took which part.
+
 A draw retired after two attempts (`MAX_TRIES`, in `worker.js`) is recorded,
 not hidden, but in the app’s own log (`window.__aurLog`) rather than as a
 console warning. It is a designed degradation, and the console gate holds a

@@ -241,7 +241,15 @@ to a pinned `role="alert"` strip that stays until resolved.
   buffer ever touches the UI thread. No nested workers (Safari shipped those
   only in 16.4), no SharedArrayBuffer, no COOP/COEP, no build or server
   change. Override with `?farm=k` or `localStorage["auracle-renderers"]`;
-  `0` is today's serial path exactly.
+  `0` is the serial path, which builds the same pool.
+
+  Boot waits `FARM_HANDSHAKE_MS` (5 s) for a worker to report ready. A crew
+  with a worker still starting then is kept: the fill or the restore begins
+  in the engine worker, and a worker that reports ready later takes the
+  rest. A restore goes one bank entry at a time either way, and the engine
+  worker's own reads each entry from the render store (`bankPass`), as a
+  farm worker does, so a returning visit renders only what this browser has
+  not measured before.
 
   Boot's crew is reaped when boot ends. A generation or ⚡ raises a **walk
   crew** on demand: the engine worker posts `farm_want`, main spawns
