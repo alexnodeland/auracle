@@ -20,9 +20,9 @@
 //                     many ms of CPU a quantum (the least of the sweep's repeats), naming them.
 //                     0.59 ms is a whole 48 kHz quantum on a CPU 4.5x slower than the M3 Max
 //                     these figures were taken on; 11 of the 62 presets (the ladders) are over it.
-//                     While an offer in B is heard (BLEND off home, PEEK held) the worklet renders
-//                     eight voices, so the same number is then 0.30 for four (half of it: 50 of 62
-//                     presets are over); at a mix of 0 B rests and costs nothing. The figures are
+//                     While an offer is in B the worklet renders eight voices, so the same number is
+//                     then 0.30 for four (half of it: 50 of 62 presets are over); only while the
+//                     audio is struggling does B rest at a mix of 0, and cost nothing. The figures are
 //                     this machine's: a CI runner measures 1.5-2x as much, so a runner's limit is
 //                     its own baseline. Time is a budget, never an expect (ADR-022): run it where
 //                     it is judged (the speed budgets job), not in the gate.
@@ -47,9 +47,9 @@
 //
 // - **steady**: 1, 2, 3 and 4 voices held (the worklet builds `LivePoly(tree,
 //   rate, 4)`, so four is the voice limit), then A and B both at four (an offer
-//   in PERFORM's B slot is a second `LivePoly`, rendered every quantum while it
-//   is heard), and A at four beside a B at rest (`rest`, what the worklet does
-//   with B while its mix is 0), with each quantum going through the worklet's
+//   in PERFORM's B slot is a second `LivePoly`, rendered every quantum), and A
+//   at four beside a B at rest (`rest`, what the worklet does with B at a mix
+//   of 0 while the audio is struggling), with each quantum going through the worklet's
 //   own JS: `process_ptr` (or `rest`), the view, the copy out and `poll_event`.
 // - **fast**: a run of notes, a new pitch every 1/rate second, each let go after
 //   60% of the gap, so release tails keep every voice running and every press
@@ -342,11 +342,11 @@ console.log(`  top five: ${sweep.slice(-5).reverse().map((s) => `${s.name} ${f(s
 const over = (x) => sweep.filter((s) => s.cpu > x).length;
 console.log(`  over 25% of the budget: ${over(BUDGET_MS * 0.25)}, over 50%: ${over(BUDGET_MS * 0.5)}, over 100%: ${over(BUDGET_MS)} (of ${sweep.length})`);
 // What a CPU SLOWDOWN times slower would make of it: a preset's four voices at
-// SLOWDOWN × their cost here, and eight (a B slot heard beside A) at twice that.
+// SLOWDOWN × their cost here, and eight (a B slot rendered beside A) at twice that.
 // How many voices fit in TARGET of a quantum there, if the cost is the same per voice.
 const share = (cost, voices) => (cost * (voices / 4) * SLOWDOWN) / BUDGET_MS;
 const count = (voices, limit) => sweep.filter((s) => share(s.cpu, voices) > limit).length;
-console.log(`  on a CPU ${SLOWDOWN}x slower (4 voices | 8 with a B slot heard): over the whole quantum ${count(4, 1)} | ${count(8, 1)}, over ${TARGET * 100}% ${count(4, TARGET)} | ${count(8, TARGET)}, over 25% ${count(4, 0.25)} | ${count(8, 0.25)} of ${sweep.length}`);
+console.log(`  on a CPU ${SLOWDOWN}x slower (4 voices | 8 with a B slot rendered): over the whole quantum ${count(4, 1)} | ${count(8, 1)}, over ${TARGET * 100}% ${count(4, TARGET)} | ${count(8, TARGET)}, over 25% ${count(4, 0.25)} | ${count(8, 0.25)} of ${sweep.length}`);
 const fit = sweep.map((s) => Math.floor((TARGET * BUDGET_MS) / (SLOWDOWN * (s.cpu / 4))));
 const hist = [0, 1, 2, 3, 4].map((n) => fit.filter((v) => (n === 4 ? v >= 4 : v === n)).length);
 console.log(`  voices that fit in ${TARGET * 100}% of a quantum there: ${hist.map((c, n) => `${n === 4 ? "4+" : n}: ${c} presets`).join(", ")}`);
@@ -382,7 +382,7 @@ if (POOL > 0) {
   picked.set(`pool patch #${heavy.id}`, heavy.tree);
 }
 
-console.log(`\nSTEADY  cpu ms/quantum, voices held (the worklet's voice limit is 4 per LivePoly, 8 with a B slot heard; at rest B renders none)   load ${load()}`);
+console.log(`\nSTEADY  cpu ms/quantum, voices held (the worklet's voice limit is 4 per LivePoly, 8 with a B slot; at rest B renders none)   load ${load()}`);
 for (const [name, tree] of picked) printSteady(name, steadyRow(name, tree));
 
 console.log(`\nFAST  notes per second, 4 voices, each note let go after 60% of the gap   load ${load()}`);

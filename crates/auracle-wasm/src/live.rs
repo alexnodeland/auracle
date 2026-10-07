@@ -35,15 +35,15 @@
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
 //! - **Resting**: an instrument nobody hears (PERFORM's B slot at a mix of
-//!   0) is passed a quantum with [`LivePoly::rest`] instead of rendered. It
-//!   follows the hands and keeps time, and its voices' DSP, which is the whole
-//!   of a quantum's cost, stands still. The next renders wake it: each held
-//!   note's amp envelope is driven to where it would have got to (from when
-//!   its gate rose, on the instrument's frame clock), a few quanta of silence
-//!   at no more than a rendered quantum's cost each, so a Blend or a Peek
-//!   brings B in with no attack and no spike on the render thread. An offer
-//!   used to double the audio thread's work at any mix, which on a slow
-//!   laptop was the crackle of #288.
+//!   0, while the page says the audio is struggling) is passed a quantum with
+//!   [`LivePoly::rest`] instead of rendered. It follows the hands and keeps
+//!   time, and its voices' DSP, which is the whole of a quantum's cost, stands
+//!   still. The next renders wake it: each held note's amp envelope is driven
+//!   to where it would have got to (from when its gate rose, on the
+//!   instrument's frame clock), a few quanta of silence at about a rendered
+//!   quantum's cost each, so a Blend or a Peek brings B in with no attack and
+//!   no spike on the render thread. An offer doubles the audio thread's work
+//!   at any mix, which on a slow laptop was the crackle of #288.
 //! - **The open voice**: a patch that listens (or tracks) is built one voice
 //!   longer, and [`LivePoly::set_open`] holds that voice open at C4
 //!   ([`OPEN_NOTE`]), outside the keys' allocation, so the input sounds
@@ -2250,13 +2250,18 @@ impl LivePoly {
     /// do): every voice that was sounding starts again from silence, and a
     /// held note's amp envelope is driven to where it would be had it
     /// rendered all along (the pre-roll a swap's carry uses), so it sounds on
-    /// without an attack. Those quanta are silent and cost no more than a
-    /// rendered one each (a quantum's ticks a voice): five or so for a chord
-    /// held on its shelf, then the instrument fades in as after a swap. Done
-    /// in one quantum, the wake cost six rendered quanta, a glitch on the
-    /// render thread at every Blend or Peek. What does not come back is what a
-    /// swap drops too: a release tail, and a filter's, a delay's or a reverb's
-    /// memory of the rest.
+    /// without an attack. Those quanta are silent and cost about a rendered
+    /// one each (a quantum's ticks a voice; the first, which resets each
+    /// voice's patch, 1.04 to 1.46 times): five or six for a chord held on its
+    /// shelf, `WAKE_MAX_QUANTA` at the most, then the instrument fades in as
+    /// after a swap. Done in one quantum, the wake cost six rendered quanta, a
+    /// glitch on the render thread at every Blend or Peek. What does not come
+    /// back is what a swap drops too: a release tail, and a filter's, a
+    /// delay's or a reverb's memory of the rest. The modulation starts again
+    /// with the reset: an LFO and an unsynced step sequencer from the top, and
+    /// a modulation envelope gated by the keys from its attack (quiver's ADSR
+    /// has no level to seed), a brighter blip of up to about 50 ms as B comes
+    /// in on the sounds that carry one.
     pub fn rest(&mut self, frames: usize) {
         self.asleep = true;
         self.advance(frames);

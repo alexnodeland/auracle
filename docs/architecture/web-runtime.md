@@ -372,19 +372,18 @@ before the job's next one (PERFORM's lean by its one call);
 `tests/worker/warm_start.test.mjs` does the same for *teach it* while two
 loops serve the lane, one of them measuring the warm start's cards.
 
-### While notes sound
+### Making room for the audio
 
-On a machine with four threads or fewer (`navigator.hardwareConcurrency`;
-the 2018 MacBook Air of #288 has two cores and four threads, so a farm of
-two), the audio thread shares two cores with the page, this worker and the
-farm, and the voices ran short while the workers rendered: the crackle came
-before any offer was shown. So main tells the worker when notes start
-sounding and when the last one stops (`playing` with `on`, from
-`playingChanged` in `main.js` as `heldNotes` fills and empties, the hold
-latch's and the sustain pedal's notes included; never answered, and never
-sent on a larger machine), and from then until a second after the last note
-(`PLAY_TAIL_MS`, for its tail) the worker starts no background step
-(`backgroundStep`):
+On a slow laptop (the 2018 MacBook Air of #288: two cores, so a farm of two)
+the audio thread shares two cores with the page, this worker and the farm,
+and the voices ran short while the workers rendered: the crackle came before
+any offer was shown. So while the audio is struggling ([Is the audio
+struggling?](#is-the-audio-struggling)) and notes sound, main tells the worker
+to make room (`make_room` with `on`, from `roomChanged` in `main.js` as
+`heldNotes` fills and empties, the hold latch's and the sustain pedal's notes
+included, and as the struggle comes and goes; never answered), and from then
+until a second after its word ends (`ROOM_TAIL_MS`, for a note's tail) the
+worker starts no background step (`backgroundStep`):
 
 - nothing from `later` or the faces lane (`nextLong`), and a `later` job
   holding the floor gives way at its next breath (`breathe`), as it does to
@@ -392,29 +391,39 @@ sent on a larger machine), and from then until a second after the last note
 - no background render in `now` (`serveNow`: a dealt pair's sounds, a warm
   start's card);
 - no batch of the bank's fill: the serial loop waits (`backgroundTurn`), and
-  the farm's waits to hand out its next render (`runFarm`);
+  the farm's waits to hand out its next render (`runFarm`, the boot fill's
+  call alone: a restore's is never held, the player waits on it);
 - no walk handed to the crew (`walkPump`) and no render of the guess's crew
-  (`crewRenders`).
+  (`crewRenders`, which hands them out again when the hold lifts).
 
 `now` requests and `soon` work (what the player asked for and waits on: a
 pressed Offer, the measurement of the sound in hand, a figure) go on as
-ever, and what has started finishes: a render cannot be interrupted. The
-pump is not re-armed for work held back (`runnable`); the hold's end wakes
-it, the farm's sink and the walk queue (`backgroundResumed`).
+ever, and so does a guess the player asked for (What goes here?, a `guess`
+with `at`: `playerAsked`). What has started finishes: a render cannot be
+interrupted. Nothing is held before the boot veil lifts (`veilDown`, at
+`playable`): keys played under it must not keep it up, and room asked for
+under it counts toward the cap from then. The pump is not re-armed for work
+held back (`runnable`); the hold's end wakes it, the farm's sink, the walk
+queue and whatever waits for its turn (`backgroundResumed`).
 
-The hold latch and the sustain pedal can keep notes sounding for good, and on
-two cores the bank would then never fill. So past `PLAY_CAP_MS` (8 s) of
-sounding, gaps shorter than the tail included, one background step goes
-through every `PLAY_TRICKLE_MS` (1 s), across all of those places (one job or
-one piece of one, one background render, one batch, one render or one walk
-handed out), and each turn wakes what waits. Wander's drift and PERFORM's
-spare offers are `later` work, so on such a machine Wander waits while notes
-sound (its line reads *walking…* meanwhile), and goes on a step a second past
-the cap. The rules run as written in `apps/web/tests/worker-lanes.test.mjs`
-(the clock, `runnable`, `nextLong`, `breathe`, `serveNow`) and end to end in
-`tests/worker/playing.test.mjs` (a cable probe and a pair's sound held while
-a gesture and `soon` work are answered, the cap letting the probe through,
-and the fill waiting between batches).
+Notes can sound for good (a long passage, the hold latch, the sustain pedal),
+and on two cores the bank would then never fill. So past `ROOM_CAP_MS` (8 s)
+of making room, gaps shorter than the tail included, background work goes on
+one step at a time, each starting `ROOM_REST_MS` (1 s) after the last one
+ended, across all of those places (one job or one piece of one, one
+background render, one batch, one render or one walk handed out), so the
+engine never renders back to back. A step on this thread has ended by the
+time the thread asks again; one on the farm ends when its answer comes
+(`backgroundStepDone`), or is taken as ended after `ROOM_STEP_STALE_MS` (5 s,
+a lost worker). Wander's drift and PERFORM's spare offers are `later` work, so
+while room is made Wander waits (its line reads *walking…* meanwhile), and
+OFFER's next offer is not grown ahead. The rules run as written in
+`apps/web/tests/worker-lanes.test.mjs` (the clock, `veilDown`, `runnable`,
+`nextLong`, `breathe`, `serveNow`, over a clock the test moves) and end to
+end in `tests/worker/room.test.mjs` (a cable probe and a pair's sound held
+while a gesture and `soon` work are answered, the cap letting the probe
+through, and the fill going on under the veil and waiting between batches
+after it).
 
 ### Offers and drifts are jobs
 
@@ -558,9 +567,9 @@ number:
   go. Nothing failed, so no toast says so.
 
 Never answered, by design: `log_edit`, `log_event`, `duel_shown`,
-`set_style_name`, `warm_cards` and `playing` (main waits on none of them; the
-last is taken on arrival, the engine up or not: [While notes
-sound](#while-notes-sound)), `farm_lost`
+`set_style_name`, `warm_cards` and `make_room` (main waits on none of them;
+the last is taken on arrival, the engine up or not: [Making room for the
+audio](#making-room-for-the-audio)), `farm_lost`
 and `farm_ports` (the farm's plumbing), and the
 requests that act on others, whose effect is the other request's own last
 reply: `promote`, `retire`, `explain_cancel`, `refine_stop` and
@@ -1575,35 +1584,86 @@ What the worklet renders each quantum (`process` in `live-audio.js`):
   well under a microsecond (`crates/auracle-wasm/examples/live_cost.mjs`).
 - **B**, PERFORM's offer: a second four-voice `LivePoly`, loaded by
   `b_patch`, played by the same keys, and mixed with A at equal power
-  (`b_mix`, smoothed over about 10 ms). It is rendered only while it can be
-  heard. While its mix is 0 (BLEND at home and PEEK let go, or PERFORM out of
-  sight) and the ramp down to it is over, the worklet **rests** it
-  (`LivePoly::rest`): it follows the keys, the arpeggiator, glide, the knobs
-  and the transport, and a swap's rebuild goes on, but no voice is ticked.
-  It used to be rendered every quantum while an offer was shown, at any mix,
-  which doubled the audio thread's work: on a CPU 4.5 times slower than an
-  M3 Max, 47 to 50 of the 62 presets were then over a whole quantum, against
-  11 with A alone (#288).
-- **Waking B.** When the mix leaves 0, the next quanta wake B
-  (`LivePoly::resting` is true until it is done): each voice starts again
-  from silence, and a held note's amp envelope is driven to where it would
-  be had B rendered all along (from when its gate rose, on B's own frame
-  clock; `held_envelope` mirrors quiver's ADSR), by ticking the voice with
-  its attack and decay pinned to 1 ms, as a swap carries a held note. Each
-  quantum spends at most a quantum's ticks a voice on it, so a wake quantum
-  costs about what a rendered one does (a mean of 0.94 to 1.04 times, Glass
-  Pad and First Bass, one to four notes held, in wasm on an M3 Max); a chord
-  on its shelf takes five quanta, about 13 ms. Done in one quantum, the wake
-  cost 5.6 to 6.6 rendered quanta, a glitch at every BLEND or PEEK. B is
-  silent while it wakes, and a quantum that starts with B resting holds the
-  mix at 0, so A is not turned down under nothing; then B fades in on the
-  mix's ramp. What a wake does not bring back is what a swap drops too: a
-  note let go during the rest has no tail, and a filter's, a delay's or a
-  reverb's memory starts again.
+  (`b_mix`, smoothed over about 10 ms). It is rendered every quantum while it
+  holds an offer, at any mix, so its envelopes and tails are in step with A
+  and PEEK or BLEND is heard at the next quantum (ADR-025). That doubles the
+  audio thread's work: on a CPU 4.5 times slower than an M3 Max, 47 to 50 of
+  the 62 presets are then over a whole quantum, against 11 with A alone
+  (#288). So only while the audio is struggling ([Is the audio
+  struggling?](#is-the-audio-struggling)), and while its mix is 0 (BLEND at
+  home and PEEK let go, or PERFORM out of sight) and the ramp down to it is
+  over, the worklet **rests** B (`strain`, `LivePoly::rest`): it follows the
+  keys, the arpeggiator, glide, the knobs and the transport, and a swap's
+  rebuild goes on, but no voice is ticked.
+- **Waking B.** When the mix leaves 0 (or the struggle ends), the next
+  quanta wake B (`LivePoly::resting` is true until it is done): each voice
+  starts again from silence, and a held note's amp envelope is driven to
+  where it would be had B rendered all along (from when its gate rose, on
+  B's own frame clock; `held_envelope` mirrors quiver's ADSR), by ticking
+  the voice with its attack and decay pinned to 1 ms, as a swap carries a
+  held note, until it is there by quiver's own rule for a segment's end
+  (within `ADSR_EXP_DONE`). Each quantum spends at most a quantum's ticks a
+  voice on it, so a wake quantum costs about what a rendered one does: 1.04
+  to 1.46 times for the first (it resets each voice's patch), less after
+  (ten presets, four notes held, in wasm on an M3 Max at a load of 225). A
+  chord on its shelf takes five or six quanta, and a wake ends after
+  `WAKE_MAX_QUANTA` (16, 43 ms) wherever its voices stand; every preset's
+  held note arrives within eight (`live/tests.rs`' census). Done in one
+  quantum, the wake cost 5.6 to 6.6 rendered quanta, a glitch at every BLEND
+  or PEEK. B is silent while it wakes, and a quantum that starts with B
+  resting holds the mix at 0, so A is not turned down under nothing; then B
+  fades in on the mix's ramp, so it is heard about two hundredths of a second
+  after the gesture, not at the next quantum. What a wake does not bring back
+  is what a swap drops too: a note let go during the rest has no tail, and a
+  filter's, a delay's or a reverb's memory starts again (a sound with a long
+  reverb is thinner for a moment). The modulation starts again too, since
+  `Patch::reset` puts every module back: an LFO and a step sequencer not
+  synced to the transport from the top, and a modulation envelope gated by
+  the keys (`ModNode::Env`) from its attack, since quiver gives it no level
+  to seed. 15 of the 62 presets carry one, and on them B comes in with a
+  brighter blip for up to about 50 ms (the review counted 18 sounds whose
+  modulation the key restarts). A mod envelope that could be seeded is an
+  upstream issue for quiver; accepting the blip meanwhile is the operator's
+  call.
 - **A retiring B** renders until it is silent, then is freed between
   quanta: after PASS or NEXT (or a new patch under it) it fades out, and
   after TAKE it sounds on at its mix until A has rebuilt as the offer, then
-  fades. Silent already (its mix at 0), it rests until it is freed.
+  fades. Silent already (its mix at 0, the audio struggling), it rests until
+  it is freed.
+
+### Is the audio struggling?
+
+Every `STRAIN_TICK_MS` (250 ms) while the live voice is up, main reads how
+far the audio clock fell behind the page's since the last reading
+(`getOutputTimestamp`: its `performanceTime` gone by, less its
+`contextTime`; zero, within a millisecond, while the audio keeps up) and,
+where the browser counts them, the underruns since (`playbackStats`, in
+Chromium), and hands each reading to `strain.js` (`createStrain`,
+unit-tested in `apps/web/tests/strain.test.mjs`). Nothing in the worklet can
+time a quantum (its scope has no clock but the audio's), so this is read from
+outside. The rule, its thresholds named there as judgment, not measurement:
+
+- nothing counts until the audio has run `STRAIN_WARMUP_MS` (4 s): the
+  worklet compiles the engine, and an offer's first voices, on the audio
+  thread, and either reads as the clock falling behind on any machine; a
+  suspended context or a page out of sight starts the warm-up again;
+- a reading is late when the clock fell more than `STRAIN_LATE_MS` (4 ms)
+  behind, or the browser counted an underrun; two late readings within
+  `STRAIN_WINDOW_MS` (4 s) put the protections on (one is a hiccup, such as
+  a compile);
+- they stay on until `STRAIN_HOLD_MS` (30 s) have gone by with no late
+  reading, the hold doubling each time they come on again in a session, up
+  to `STRAIN_HOLD_MAX_MS` (8 min). With them on the struggle is hidden, so
+  leaving is a probe: if the audio still needs them, they come back within
+  a window, and stay longer.
+
+While they are on, main tells the worklet (`strain`: B rests at a mix of 0)
+and, while notes sound, the engine worker ([Making room for the
+audio](#making-room-for-the-audio)), and notes it in the app's log
+(`audio_strain`). A browser with neither reading never turns them on. On a
+machine with headroom they never come on, and B renders always. What it costs
+there: nothing but the readings. Where they come on, the first notes of a
+struggle are heard before them.
 
 ## AUDIO IN
 

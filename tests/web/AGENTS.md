@@ -345,6 +345,25 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
 
+## Probes
+
+`probes/` holds scripts that measure and print, and gate nothing
+([`docs/architecture/testing.md` § Probes](../../docs/architecture/testing.md#probes)
+says what each measures): `play_fast.mjs` (a fast run of keys: the page, the
+workers and the worklet, #288), `wasm_speed.mjs` and `wasm_tierup.mjs`. They
+are not specs (the suite matches `*.spec.js`) and the lint reads them as Node
+tools. Run one as a browser job, through the queue, against a server of its
+own on your port, which it does not start:
+
+```bash
+(cd apps/web && exec python3 serve.py 8823) &   # from the root; stop it by its PID after
+cd tests/web && AURACLE_TEST_PORT=8823 \
+  ../../www/video/tools/one_browser.sh node probes/play_fast.mjs --audio-slowdown=4.5 --offer
+```
+
+A probe prints the load average beside every run, because every time it
+reads stretches with it. What it finds that a test can hold goes in a test.
+
 ## The lint
 
 `make spec-lint` (part of `make web-check`, and so of CI's Web job) runs

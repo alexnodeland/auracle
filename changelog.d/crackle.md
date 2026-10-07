@@ -1,16 +1,19 @@
 ### Fixed: playing on a slower laptop crackles less
 
-- **An offer you are not listening to no longer doubles the sound's work.**
-  With an offer in PERFORM's B, the instrument played a second set of four
-  voices all the time, even with BLEND at home, so on a slower laptop the
-  sound under your hands ran short and crackled as soon as an offer showed.
-  B now follows your hands in silence until you move BLEND or hold PEEK, and
-  then comes in where its notes would have been, about a hundredth of a
-  second later, without starting their attack again (#288).
-- **On a computer with four processor threads or fewer, background work
-  steps aside while you play.** Filling the bank, a generation's walks,
-  Wander, and measuring sounds in the background wait while notes sound and
-  for a second after, so the sound has the processor it needs. Anything you
-  ask for, an offer you press or a sound you open, goes ahead as before.
-  Notes held for more than eight seconds (with HOLD or the sustain pedal) let
-  that work go on a step a second (#288).
+- **When the sound starts to fall behind, Auracle protects it.** On a slower
+  laptop the sound under your hands could run short and crackle: with an
+  offer in PERFORM's B, the instrument played a second set of four voices
+  all the time, and the work Auracle does on its own (filling the bank,
+  Wander, growing the next offer, a generation) ran beside it. Auracle now
+  listens for the sound falling behind, and only while it does, B follows
+  your hands in silence with BLEND at home, and that work waits while you
+  play and for a second after (after eight seconds of playing it goes on a
+  step at a time, so the bank still fills). The things you ask for and wait
+  on (an offer you press, a sound you open, What goes here?) go ahead as
+  before. On a computer that keeps up, nothing changes (#288).
+- **B comes in where its notes would have been.** While it is silent, moving
+  BLEND or holding PEEK brings B in about two hundredths of a second later,
+  its held notes at the level they would have reached, without starting
+  their attack again. A note let go while B was silent has no tail, and a
+  modulation envelope in B starts again, which on some sounds is a brief
+  brighter blip as B comes in (#288).

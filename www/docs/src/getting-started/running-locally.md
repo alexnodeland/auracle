@@ -138,14 +138,14 @@ hover-to-reveal means never.
 - **At boot:** about 40 renders, spread across `min(cores − 2, 6)` background
   workers, or two if the device reports 4 GB of memory or less. Add `?farm=0`
   to the address to boot without them.
-- **While you play:** four voices of modular sound on a real-time audio thread.
-  Modest, but heavy work in another tab can cause dropouts. An offer in
-  PERFORM’s B adds four more only while you listen to it (BLEND off home, or
-  PEEK held). On a machine with four processor threads or fewer, what the
-  instrument does on its own (filling the bank, a generation’s walks,
-  Wander, measuring in the background) waits while notes sound and for a
-  second after, and with notes held past eight seconds goes on a step a
-  second, so the audio thread has the processor to itself.
+- **While you play:** four voices of modular sound on a real-time audio thread,
+  and four more while PERFORM’s B holds an offer. Modest, but heavy work in
+  another tab can cause dropouts. When the sound starts to fall behind (a
+  slower laptop), Auracle protects it for as long as that lasts: B stays
+  silent at BLEND’s home, and what the instrument does on its own (filling
+  the bank, a generation’s walks, Wander, measuring in the background) waits
+  while notes sound and for a second after, going on a step at a time after
+  eight seconds of playing.
 - **At a refit:** seconds of work, off the audio thread. You can keep playing
   through it.
 - **Storage:** your session, in IndexedDB. Tens of megabytes at most, mostly
