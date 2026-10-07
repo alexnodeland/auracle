@@ -1,0 +1,35 @@
+bench_render (wasm, node v26.3.0): 18 trees, least of 3 over 3 rounds each, this thread's CPU ms
+before: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-base (release )
+after: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-pin (release 0be9b99ed410)
+load average 130 on 16 cores, before
+round 1 before: load 133
+round 1 after: load 130
+round 2 before: load 76
+round 2 after: load 112
+round 3 before: load 101
+round 3 after: load 112
+tree                    before     after  after/before
+First Bass               376.7     346.2         0.919
+Ceiling                  412.1     374.3         0.908
+Detune Dream             194.5     156.7         0.806
+Long Way Down            332.0     281.7         0.849
+Glass Pad                322.5     272.3         0.844
+Choirboy                 214.0     182.1         0.851
+draw 1                   142.1     130.6         0.919
+draw 2                   189.2     156.4         0.826
+draw 3                   138.8     114.1         0.822
+draw 4                   228.2     186.4         0.817
+draw 5                   246.5     204.2         0.829
+draw 6                   237.1     185.4         0.782
+draw 7                   151.1     119.4         0.790
+draw 8                   294.8     240.3         0.815
+draw 9                   583.3     453.4         0.777
+draw 10                  305.5     240.1         0.786
+draw 11                  712.3     593.6         0.833
+draw 12                  515.4     386.0         0.749
+set                     5596.0    4623.3         0.826
+load average 112, after
+node crates/auracle-wasm/examples/bench_render.mjs --reps=3 --rounds=3   2>&1  96.97s user 1.21s system 11% cpu 13:46.97 total
+tee $W/ab-wasm-pin.txt  0.00s user 0.00s system 0% cpu 13:46.97 total
+
+[exited with code 0]

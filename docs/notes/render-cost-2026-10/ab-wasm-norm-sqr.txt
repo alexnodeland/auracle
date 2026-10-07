@@ -1,0 +1,32 @@
+# 0eff8f4f's engine against norm_sqr().sqrt() for norm() in audio.rs (analysis-norm-sqr.diff), in wasm under node
+bench_render (wasm, node v26.3.0): 18 trees, least of 3 over 3 rounds each, this thread's CPU ms
+before: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-head (release )
+after: /private/tmp/claude-501/engine-speed.uqmVOI/pkg-hypot (unstamped)
+load average 124 on 16 cores, before
+round 1 before: load 124
+round 1 after: load 118
+round 2 before: load 116
+round 2 after: load 132
+round 3 before: load 158
+round 3 after: load 156
+tree                    before     after  after/before
+First Bass               333.6     320.3         0.960
+Ceiling                  379.8     350.4         0.923
+Detune Dream             150.7     121.9         0.809
+Long Way Down            268.9     246.6         0.917
+Glass Pad                258.1     234.8         0.910
+Choirboy                 178.7     169.1         0.946
+draw 1                   122.0     101.1         0.829
+draw 2                   153.1     126.1         0.824
+draw 3                   107.3      95.3         0.889
+draw 4                   167.5     144.1         0.861
+draw 5                   189.8     182.0         0.959
+draw 6                   179.8     152.5         0.848
+draw 7                   116.5     102.1         0.876
+draw 8                   221.6     197.9         0.893
+draw 9                   437.4     401.1         0.917
+draw 10                  236.3     222.8         0.943
+draw 11                  571.5     522.9         0.915
+draw 12                  370.4     344.5         0.930
+set                     4442.9    4035.6         0.908
+load average 156, after

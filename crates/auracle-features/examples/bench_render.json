@@ -1,0 +1,925 @@
+{
+  "about": "The render benchmark's fixed set (crates/auracle-features/examples/bench_render.rs): the six presets PERFORM's tests play, then the first 12 vetted draws of PatchGrammarPrior::default().sample_with_rng(StdRng::seed_from_u64(20261006)), frozen as trees. Written by --write-set.",
+  "trees": [
+    {
+      "name": "First Bass",
+      "tree": {
+        "amp": {
+          "attack": 0.03,
+          "decay": 0.35,
+          "sustain": 0.55,
+          "release": 0.2
+        },
+        "root": {
+          "Filter": {
+            "kind": "Ladder",
+            "cutoff": 0.45,
+            "resonance": 0.55,
+            "mod_depth": 0.6,
+            "input": {
+              "Vco": {
+                "wave": "Saw",
+                "octave": -1,
+                "detune": 0.5,
+                "mod_depth": 0.0,
+                "modulation": "None"
+              }
+            },
+            "modulation": {
+              "Env": {
+                "attack": 0.02,
+                "decay": 0.45
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Ceiling",
+      "tree": {
+        "amp": {
+          "attack": 0.05,
+          "decay": 0.4,
+          "sustain": 0.7,
+          "release": 0.35
+        },
+        "root": {
+          "Filter": {
+            "kind": "Ladder",
+            "cutoff": 0.35,
+            "resonance": 0.55,
+            "mod_depth": 0.6,
+            "input": {
+              "Vco": {
+                "wave": "Saw",
+                "octave": -1,
+                "detune": 0.5,
+                "mod_depth": 0.0,
+                "modulation": "None"
+              }
+            },
+            "modulation": {
+              "Pair": {
+                "kind": "max",
+                "a": {
+                  "Env": {
+                    "attack": 0.05,
+                    "decay": 0.5
+                  }
+                },
+                "b": {
+                  "Lfo": {
+                    "wave": "Sine",
+                    "rate": 0.49
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Detune Dream",
+      "tree": {
+        "amp": {
+          "attack": 0.35,
+          "decay": 0.4,
+          "sustain": 0.75,
+          "release": 0.55
+        },
+        "root": {
+          "Delay": {
+            "time": 0.72,
+            "feedback": 0.45,
+            "mix": 0.35,
+            "mod_depth": 0.0,
+            "input": {
+              "Chorus": {
+                "rate": 0.3,
+                "depth": 0.55,
+                "mix": 0.4,
+                "mod_depth": 0.0,
+                "input": {
+                  "Supersaw": {
+                    "octave": 0,
+                    "detune": 0.55,
+                    "mix": 0.5,
+                    "mod_depth": 0.0,
+                    "modulation": "None"
+                  }
+                },
+                "modulation": "None"
+              }
+            },
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "Long Way Down",
+      "tree": {
+        "amp": {
+          "attack": 0.4,
+          "decay": 0.6,
+          "sustain": 0.9,
+          "release": 0.7
+        },
+        "root": {
+          "Filter": {
+            "kind": "SvfBp",
+            "cutoff": 0.5,
+            "resonance": 0.6,
+            "mod_depth": 0.85,
+            "input": {
+              "Mix": {
+                "balance": 0.4,
+                "a": {
+                  "Supersaw": {
+                    "octave": 0,
+                    "detune": 0.6,
+                    "mix": 0.4,
+                    "mod_depth": 0.0,
+                    "modulation": "None"
+                  }
+                },
+                "b": {
+                  "Noise": {
+                    "color": "Pink"
+                  }
+                }
+              }
+            },
+            "modulation": {
+              "Op": {
+                "kind": "slew",
+                "p0": 0.85,
+                "p1": 0.55,
+                "input": {
+                  "Rand": {
+                    "rate": 0.5,
+                    "glide": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Glass Pad",
+      "tree": {
+        "amp": {
+          "attack": 0.55,
+          "decay": 0.4,
+          "sustain": 0.8,
+          "release": 0.65
+        },
+        "root": {
+          "Chorus": {
+            "rate": 0.25,
+            "depth": 0.5,
+            "mix": 0.45,
+            "mod_depth": 0.0,
+            "input": {
+              "Filter": {
+                "kind": "SvfLp",
+                "cutoff": 0.65,
+                "resonance": 0.2,
+                "mod_depth": 0.25,
+                "input": {
+                  "Supersaw": {
+                    "octave": 0,
+                    "detune": 0.4,
+                    "mix": 0.6,
+                    "mod_depth": 0.0,
+                    "modulation": "None"
+                  }
+                },
+                "modulation": {
+                  "Lfo": {
+                    "wave": "Sine",
+                    "rate": 0.49
+                  }
+                }
+              }
+            },
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "Choirboy",
+      "tree": {
+        "amp": {
+          "attack": 0.12,
+          "decay": 0.5,
+          "sustain": 0.75,
+          "release": 0.4
+        },
+        "root": {
+          "Reverb": {
+            "size": 0.7,
+            "damp": 0.4,
+            "mix": 0.4,
+            "mod_depth": 0.0,
+            "input": {
+              "Formant": {
+                "vowel": 0.25,
+                "shift": 0.55,
+                "octave": 0,
+                "mod_depth": 0.5,
+                "modulation": {
+                  "Lfo": {
+                    "wave": "Triangle",
+                    "rate": 0.45
+                  }
+                }
+              }
+            },
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 1",
+      "tree": {
+        "amp": {
+          "attack": 0.0341235220059527,
+          "decay": 0.7803648505961234,
+          "sustain": 0.8124826924349726,
+          "release": 0.7556051720175178
+        },
+        "root": {
+          "Vco": {
+            "wave": "Saw",
+            "octave": -1,
+            "detune": 0.6116865489278578,
+            "mod_depth": 0.6588279069324356,
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 2",
+      "tree": {
+        "amp": {
+          "attack": 0.36368060242132405,
+          "decay": 0.08735354612711232,
+          "sustain": 0.674912545787331,
+          "release": 0.4398172893208663
+        },
+        "root": {
+          "Formant": {
+            "vowel": 0.954698270672795,
+            "shift": 0.5992448882142188,
+            "octave": -2,
+            "mod_depth": 0.05180793184393351,
+            "modulation": {
+              "Rand": {
+                "rate": 0.48851210580563886,
+                "glide": 0.2425269660741347
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 3",
+      "tree": {
+        "amp": {
+          "attack": 0.7972908482912736,
+          "decay": 0.5856888061452064,
+          "sustain": 0.16010914068786708,
+          "release": 0.9015363747520636
+        },
+        "root": {
+          "Vco": {
+            "wave": "Triangle",
+            "octave": 0,
+            "detune": 0.7463161034462846,
+            "mod_depth": 0.642253931525684,
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 4",
+      "tree": {
+        "amp": {
+          "attack": 0.2806020803716749,
+          "decay": 0.7049635220040293,
+          "sustain": 0.3983564304033318,
+          "release": 0.5858853461315631
+        },
+        "root": {
+          "Tremolo": {
+            "rate": 0.5692251220690138,
+            "depth": 0.7736101611735252,
+            "shape": 0.346323073568803,
+            "mod_depth": 0.3092343430217568,
+            "input": {
+              "Wavetable": {
+                "table": "Pulse12",
+                "octave": 2,
+                "morph": 0.5438474494198593,
+                "mod_depth": 0.2525224833426689,
+                "modulation": {
+                  "Lfo": {
+                    "wave": "Square",
+                    "rate": 0.8997227563588464
+                  }
+                }
+              }
+            },
+            "modulation": {
+              "Follow": {
+                "sens": 0.6550009084548435,
+                "release": 0.7486137834680341
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 5",
+      "tree": {
+        "amp": {
+          "attack": 0.7916495641652791,
+          "decay": 0.19975989238237324,
+          "sustain": 0.2507280681837195,
+          "release": 0.24513449168089108
+        },
+        "root": {
+          "Vibrato": {
+            "rate": 0.9191504252716877,
+            "depth": 0.2739532168663178,
+            "mix": 0.0858257987699258,
+            "mod_depth": 0.2248676643298425,
+            "input": {
+              "Distortion": {
+                "drive": 0.9313068269140724,
+                "tone": 0.46363167005805017,
+                "mode": "Tube",
+                "mod_depth": 0.27728876885729337,
+                "input": {
+                  "Vco": {
+                    "wave": "Square",
+                    "octave": -2,
+                    "detune": 0.31476508402630576,
+                    "mod_depth": 0.9059096580300531,
+                    "modulation": {
+                      "Lfo": {
+                        "wave": "Sine",
+                        "rate": 0.6303975576888591
+                      }
+                    }
+                  }
+                },
+                "modulation": {
+                  "Op": {
+                    "kind": "slew",
+                    "p0": 0.8295559254740759,
+                    "p1": 0.11592088470265671,
+                    "input": {
+                      "Lfo": {
+                        "wave": "Square",
+                        "rate": 0.07293509731687875
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 6",
+      "tree": {
+        "amp": {
+          "attack": 0.6356254924833326,
+          "decay": 0.965172966507565,
+          "sustain": 0.10981667762522085,
+          "release": 0.8944928045671217
+        },
+        "root": {
+          "Filter": {
+            "kind": "SvfHp",
+            "cutoff": 0.28104756638697914,
+            "resonance": 0.23956241645423082,
+            "mod_depth": 0.5319608102167819,
+            "input": {
+              "Wavetable": {
+                "table": "Pulse25",
+                "octave": 0,
+                "morph": 0.6142216795494021,
+                "mod_depth": 0.4269577550774599,
+                "modulation": {
+                  "Env": {
+                    "attack": 0.7799369186047899,
+                    "decay": 0.004429820260417938
+                  }
+                }
+              }
+            },
+            "modulation": "None"
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 7",
+      "tree": {
+        "amp": {
+          "attack": 0.971507198127573,
+          "decay": 0.9065151102829349,
+          "sustain": 0.06192561849291178,
+          "release": 0.06522569049036475
+        },
+        "root": {
+          "Vco": {
+            "wave": "Saw",
+            "octave": 0,
+            "detune": 0.6898451099135876,
+            "mod_depth": 0.7829466940127554,
+            "modulation": {
+              "Env": {
+                "attack": 0.7128575600706046,
+                "decay": 0.13691791118846108
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 8",
+      "tree": {
+        "amp": {
+          "attack": 0.09488538195243013,
+          "decay": 0.48964378717862334,
+          "sustain": 0.9459297066185054,
+          "release": 0.5140674493708993
+        },
+        "root": {
+          "Reverb": {
+            "size": 0.438648760079993,
+            "damp": 0.6737246867240904,
+            "mix": 0.2988696766663945,
+            "mod_depth": 0.7374367658152233,
+            "input": {
+              "Formant": {
+                "vowel": 0.38043941775452783,
+                "shift": 0.6154812093871426,
+                "octave": 2,
+                "mod_depth": 0.1494260218994049,
+                "modulation": {
+                  "Env": {
+                    "attack": 0.8710032762124525,
+                    "decay": 0.45098362708284534
+                  }
+                }
+              }
+            },
+            "modulation": {
+              "Env": {
+                "attack": 0.6902594650285859,
+                "decay": 0.6987012883751501
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 9",
+      "tree": {
+        "amp": {
+          "attack": 0.510679960227052,
+          "decay": 0.9562079005901095,
+          "sustain": 0.8757490744962173,
+          "release": 0.7613615151274167
+        },
+        "root": {
+          "Comp": {
+            "threshold": 0.2593272071175722,
+            "ratio": 0.13292286827505517,
+            "makeup": 0.16655627847722643,
+            "mod_depth": 0.8287144578839606,
+            "input": {
+              "Eq": {
+                "low": 0.7473883320278881,
+                "mid": 0.05858760301826016,
+                "high": 0.690061255424068,
+                "mod_depth": 0.26794320929882376,
+                "input": {
+                  "Wavetable": {
+                    "table": "Saw",
+                    "octave": 2,
+                    "morph": 0.1764069818301014,
+                    "mod_depth": 0.4817706352016293,
+                    "modulation": {
+                      "Op": {
+                        "kind": "slew",
+                        "p0": 0.35826514005108356,
+                        "p1": 0.45385132777235593,
+                        "input": {
+                          "Env": {
+                            "attack": 0.8450372795422826,
+                            "decay": 0.29648308219026176
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "modulation": {
+                  "Lfo": {
+                    "wave": "Square",
+                    "rate": 0.3511186273541451
+                  }
+                }
+              }
+            },
+            "sidechain": {
+              "Chorus": {
+                "rate": 0.7935296684558457,
+                "depth": 0.8266815795547686,
+                "mix": 0.3480012681231949,
+                "mod_depth": 0.1980720142480369,
+                "input": {
+                  "Tremolo": {
+                    "rate": 0.0974698384567817,
+                    "depth": 0.22765854908712246,
+                    "shape": 0.9141806654352925,
+                    "mod_depth": 0.27888285847707495,
+                    "input": {
+                      "Wavetable": {
+                        "table": "FormantO",
+                        "octave": -1,
+                        "morph": 0.9888864996445255,
+                        "mod_depth": 0.5025424496152343,
+                        "modulation": {
+                          "Steps": {
+                            "rate": 0.9876146934813417,
+                            "length": 0.48165285183143436,
+                            "slew": 0.2311868479337894,
+                            "values": [
+                              0.6108145949200682,
+                              0.24560230124180182,
+                              0.04192070763651734,
+                              0.9819658105633597,
+                              0.2006993533411574,
+                              0.3553160396693922,
+                              0.1133679098233833,
+                              0.9212428483980803
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "modulation": "None"
+                  }
+                },
+                "modulation": "None"
+              }
+            },
+            "modulation": {
+              "Env": {
+                "attack": 0.4686361640533636,
+                "decay": 0.5711555224784431
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 10",
+      "tree": {
+        "amp": {
+          "attack": 0.9940670671265383,
+          "decay": 0.15833937730639214,
+          "sustain": 0.021365502052428487,
+          "release": 0.701910854167574
+        },
+        "root": {
+          "Distortion": {
+            "drive": 0.8139418118371684,
+            "tone": 0.2919290274712709,
+            "mode": "Tube",
+            "mod_depth": 0.7773955536145137,
+            "input": {
+              "Chorus": {
+                "rate": 0.0014948436000021825,
+                "depth": 0.814062992873826,
+                "mix": 0.3088382292585493,
+                "mod_depth": 0.8582635972059793,
+                "input": {
+                  "Noise": {
+                    "color": "White"
+                  }
+                },
+                "modulation": {
+                  "Env": {
+                    "attack": 0.9467671581972485,
+                    "decay": 0.3817223977474876
+                  }
+                }
+              }
+            },
+            "modulation": {
+              "Env": {
+                "attack": 0.7158847399179368,
+                "decay": 0.3235841658219982
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 11",
+      "tree": {
+        "amp": {
+          "attack": 0.13621483442739013,
+          "decay": 0.417924152335708,
+          "sustain": 0.9876827309167885,
+          "release": 0.24032883439955188
+        },
+        "root": {
+          "Bitcrush": {
+            "bits": 0.34911076511324357,
+            "downsample": 0.799305598928077,
+            "mod_depth": 0.39300654411326696,
+            "input": {
+              "Mix": {
+                "balance": 0.9247935369660156,
+                "a": {
+                  "Mix": {
+                    "balance": 0.7269636633542705,
+                    "a": {
+                      "Filter": {
+                        "kind": "SvfHp",
+                        "cutoff": 0.5135602931007781,
+                        "resonance": 0.048806632427270125,
+                        "mod_depth": 0.6032834301759922,
+                        "input": {
+                          "Eq": {
+                            "low": 0.8879983088410173,
+                            "mid": 0.0288548856580656,
+                            "high": 0.5987003942684195,
+                            "mod_depth": 0.03380702118545231,
+                            "input": {
+                              "Wavetable": {
+                                "table": "FormantA",
+                                "octave": 1,
+                                "morph": 0.036963306311726174,
+                                "mod_depth": 0.7428274717231008,
+                                "modulation": {
+                                  "Op": {
+                                    "kind": "quantize",
+                                    "p0": 0.6645209132078435,
+                                    "p1": 0.38034473965487303,
+                                    "input": {
+                                      "Op": {
+                                        "kind": "quantize",
+                                        "p0": 0.8600798555106268,
+                                        "p1": 0.21988286887269093,
+                                        "input": {
+                                          "Rand": {
+                                            "rate": 0.3755069286779652,
+                                            "glide": 0.30306404476979454
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "modulation": {
+                              "Env": {
+                                "attack": 0.5959797396572079,
+                                "decay": 0.9487980946252256
+                              }
+                            }
+                          }
+                        },
+                        "modulation": {
+                          "Lfo": {
+                            "wave": "Sine",
+                            "rate": 0.03154323879815579
+                          }
+                        }
+                      }
+                    },
+                    "b": {
+                      "Distortion": {
+                        "drive": 0.9677158432500066,
+                        "tone": 0.3762201214540204,
+                        "mode": "Soft",
+                        "mod_depth": 0.33000051834615385,
+                        "input": {
+                          "Noise": {
+                            "color": "Pink"
+                          }
+                        },
+                        "modulation": {
+                          "Env": {
+                            "attack": 0.9207200092104556,
+                            "decay": 0.47549487845453553
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "b": {
+                  "Vibrato": {
+                    "rate": 0.9470796818673763,
+                    "depth": 0.6816395192572592,
+                    "mix": 0.23664994900117386,
+                    "mod_depth": 0.8110598548391755,
+                    "input": {
+                      "Supersaw": {
+                        "octave": 2,
+                        "detune": 0.6054134441701662,
+                        "mix": 0.03996730761797984,
+                        "mod_depth": 0.886571659893489,
+                        "modulation": {
+                          "Lfo": {
+                            "wave": "Triangle",
+                            "rate": 0.9763312478186469
+                          }
+                        }
+                      }
+                    },
+                    "modulation": {
+                      "Euclid": {
+                        "rate": 0.41901538545291106,
+                        "steps": 0.055922993630270756,
+                        "pulses": 0.3516842222628763
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "modulation": {
+              "Lfo": {
+                "wave": "Square",
+                "rate": 0.10338589359177319
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "draw 12",
+      "tree": {
+        "amp": {
+          "attack": 0.21929091782096655,
+          "decay": 0.9474865430240035,
+          "sustain": 0.8729624674268016,
+          "release": 0.45813890054197337
+        },
+        "root": {
+          "Mix": {
+            "balance": 0.8714443944967142,
+            "a": {
+              "Vibrato": {
+                "rate": 0.9006929639674326,
+                "depth": 0.2687784713810224,
+                "mix": 0.4103719156131377,
+                "mod_depth": 0.4863701100565545,
+                "input": {
+                  "Fold": {
+                    "threshold": 0.36434533814261383,
+                    "mod_depth": 0.21087480322916885,
+                    "input": {
+                      "Noise": {
+                        "color": "Pink"
+                      }
+                    },
+                    "modulation": {
+                      "Op": {
+                        "kind": "rectify",
+                        "p0": 0.5975224344099004,
+                        "p1": 0.0,
+                        "input": {
+                          "Env": {
+                            "attack": 0.21295743299772663,
+                            "decay": 0.48106407976035614
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "modulation": "None"
+              }
+            },
+            "b": {
+              "Delay": {
+                "time": 0.5929331128587557,
+                "feedback": 0.5881405426741291,
+                "mix": 0.010104017454395264,
+                "mod_depth": 0.4962115800869916,
+                "input": {
+                  "Gate": {
+                    "threshold": 0.3193095589674326,
+                    "range": 0.8036098595366636,
+                    "release": 0.11238424921163115,
+                    "mod_depth": 0.9117661778121039,
+                    "input": {
+                      "Fold": {
+                        "threshold": 0.30628355319900014,
+                        "mod_depth": 0.11256736149897473,
+                        "input": {
+                          "Filter": {
+                            "kind": "SvfHp",
+                            "cutoff": 0.3422389648716091,
+                            "resonance": 0.3595795251253464,
+                            "mod_depth": 0.9978888361765161,
+                            "input": {
+                              "Pluck": {
+                                "octave": -1,
+                                "damping": 0.4790572550167954,
+                                "brightness": 0.6521380852789245,
+                                "mod_depth": 0.5988245165324669,
+                                "modulation": "None"
+                              }
+                            },
+                            "modulation": {
+                              "Steps": {
+                                "rate": 0.5745003017506319,
+                                "length": 0.9779522763456994,
+                                "slew": 0.21710305240798256,
+                                "values": [
+                                  0.8315659921947921,
+                                  0.05064110742079164,
+                                  0.5948664196248589,
+                                  0.46642796639233175,
+                                  0.5780911743903192,
+                                  0.9625395994786855,
+                                  0.6463405212564564,
+                                  0.09168824238454021
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "modulation": {
+                          "Lfo": {
+                            "wave": "Saw",
+                            "rate": 0.8748166098387745
+                          }
+                        }
+                      }
+                    },
+                    "sidechain": {
+                      "Supersaw": {
+                        "octave": 2,
+                        "detune": 0.6805323087432479,
+                        "mix": 0.45227221035299525,
+                        "mod_depth": 0.30390616926331315,
+                        "modulation": {
+                          "Follow": {
+                            "sens": 0.0965793511548898,
+                            "release": 0.991683635750679
+                          }
+                        }
+                      }
+                    },
+                    "modulation": {
+                      "Euclid": {
+                        "rate": 0.19236317425871874,
+                        "steps": 0.3359778313905075,
+                        "pulses": 0.459368134129182
+                      }
+                    }
+                  }
+                },
+                "modulation": "None"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+one voice of each module kind, held on C4 for 1 s at 44100 Hz: this thread's CPU ms per voice-second (least of 3); load average 142 132 132 on 16 cores
+kind                    nodes      live  + on saw    render  + on saw
+saw voice                  13      10.6       0.0       9.7       0.0
+Vco                        13      11.6       1.0       9.6      -0.0
+Supersaw                   15      12.7       2.1      10.0       0.3
+Noise                      11      11.6       1.0       9.2      -0.5
+Mix                        18      16.4       5.8      14.8       5.1
+Filter SvfLp               16      15.7       5.0      13.8       4.1
+Filter Ladder              17      57.3      46.6      51.3      41.6
+Fold                       15      13.7       3.0      11.1       1.4
+Delay                      17      14.1       3.4      11.3       1.6
+Chorus                     19      17.9       7.2      15.9       6.3
+Reverb                     19      20.9      10.3      15.1       5.4
+Wavetable                  15      12.7       2.1       9.1      -0.6
+Pluck                      15      12.5       1.9      10.7       1.0
+Distortion                 16      16.1       5.5      14.6       4.9
+Bitcrush                   16      14.5       3.9      12.8       3.2
+Phaser                     19      20.9      10.2      18.0       8.3
+RingMod                    19      17.5       6.8      14.6       4.9
+Formant                    15      11.9       1.3       9.7       0.0
+Flanger                    19      19.5       8.8      15.6       5.9
+Tremolo                    17      13.6       2.9      11.2       1.5
+Vibrato                    17      14.6       3.9      11.8       2.1
+Eq                         17      18.0       7.3      15.9       6.2
+Granular                   17      16.0       5.4      14.7       5.0
+Shift                      17      15.5       4.8      13.8       4.1
+Comp                       22      24.0      13.4      16.1       6.4
+Duck                       22      19.8       9.1      15.5       5.8
+Gate                       22      20.8      10.1      14.6       4.9
+Vocoder                    22      20.5       9.9      16.7       7.1
+Silence                    11      10.7       0.1       9.3      -0.4
+AudioIn                    13      14.7       4.0      10.1       0.4
+Track                      22      24.4      13.8      22.3      12.6
+Capture                    17      16.7       6.0      15.5       5.8
+mod Lfo                    17      17.5       6.8      15.6       5.9
+mod Env                    18      19.4       8.8      16.0       6.3
+mod Rand                   21      17.9       7.3      17.5       7.8
+mod Follow                 18      15.1       4.5      11.5       1.9
+mod Euclid                 21      17.8       7.2      14.0       4.3
+mod Quantize               26      21.4      10.8      18.8       9.2
+mod Slew                   24      21.3      10.7      16.8       7.1
+mod Rectify                22      21.1      10.5      16.7       7.0
+mod Hold                   24      21.1      10.5      17.1       7.4
+mod Min                    24      24.3      13.7      22.5      12.8
+mod Max                    24      21.7      11.0      19.3       9.6
+mod And                    28      25.1      14.4      20.4      10.7
+mod Or                     28      26.1      15.5      20.3      10.6
+mod Xor                    28      25.4      14.7      21.4      11.7
+mod Switch                 28      24.0      13.4      21.0      11.4
+mod Steps                  28      21.0      10.4      14.4       4.7
+load average 155 138 134, after

@@ -1,0 +1,56 @@
+# xctrace Time Profiler, bench_render --loop=2 (the set twice), release build at c8541631 (before folding), symbols only
+# load average about 110 on 16 cores
+8946 samples
+  55.4%  graph walk
+  39.4%  DSP
+   2.8%  φ audio
+   0.9%  loudness
+   0.8%  face
+   0.4%  memo key
+   0.1%  compile (grammar)
+   0.1%  compile (quiver)
+   0.0%  other
+
+the DSP (39.4% of all), by module kind:
+  21.0% of DSP    8.3% of all  DiodeLadderFilter
+  12.6% of DSP    5.0% of all  Adsr
+   9.3% of DSP    3.7% of all  (tick_masked, inlined)
+   6.8% of DSP    2.7% of all  Svf
+   5.0% of DSP    2.0% of all  Limiter
+   4.9% of DSP    1.9% of all  FormantOsc
+   4.1% of DSP    1.6% of all  Supersaw
+   3.9% of DSP    1.5% of all  Vca
+   3.6% of DSP    1.4% of all  Chorus
+   3.1% of DSP    1.2% of all  ParametricEq
+   2.8% of DSP    1.1% of all  Vco
+   2.7% of DSP    1.1% of all  Lfo
+   2.6% of DSP    1.0% of all  NoiseGenerator
+   2.1% of DSP    0.8% of all  Wavetable
+   2.0% of DSP    0.8% of all  Attenuverter
+   1.5% of DSP    0.6% of all  Distortion
+   1.4% of DSP    0.6% of all  Reverb
+   1.2% of DSP    0.5% of all  Crossfader
+   1.1% of DSP    0.4% of all  StereoOutput
+   1.1% of DSP    0.4% of all  StepsCv
+   0.9% of DSP    0.3% of all  Compressor
+   0.7% of DSP    0.3% of all  Vibrato
+   0.7% of DSP    0.3% of all  SlewLimiter
+   0.6% of DSP    0.2% of all  Offset
+   0.6% of DSP    0.2% of all  SampleAndHold
+   0.6% of DSP    0.2% of all  Tremolo
+   0.5% of DSP    0.2% of all  NoiseGate
+   0.4% of DSP    0.2% of all  DelayLine
+   0.4% of DSP    0.2% of all  Euclidean
+   0.4% of DSP    0.2% of all  ScaleQuantizer
+   0.4% of DSP    0.1% of all  EnvelopeFollower
+   0.4% of DSP    0.1% of all  KarplusStrong
+   0.3% of DSP    0.1% of all  Clock
+   0.1% of DSP    0.0% of all  Bitcrusher
+   0.1% of DSP    0.0% of all  Wavefolder
+   0.1% of DSP    0.0% of all  Rectifier
+   0.0% of DSP    0.0% of all  Max
+
+the graph walk (55.4% of all), by the function on top:
+  99.9%  quiver::graph::Patch::tick::he0e5f4d79e9454a0
+   0.0%  libm::math::pow::pow::h8540cc1af91cd7f7
+   0.0%  libm::math::tan::tan::h45961251126070b0

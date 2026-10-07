@@ -1,0 +1,51 @@
+one live voice of each module kind (LivePoly, 1 voice, 48000 Hz, 128-frame quanta): this thread's CPU ms per voice-second, least of 5; node v26.3.0, load average 173 on 16 cores
+kind                       ms/s  + on saw  µs/quantum
+saw voice                  13.5       0.0        36.1
+Vco                        13.4      -0.2        35.6
+Supersaw                   15.7       2.1        41.8
+Noise                      12.7      -0.9        33.7
+Mix                        22.0       8.5        58.6
+Filter SvfLp               17.3       3.7        46.0
+Filter Ladder              36.4      22.9        97.2
+Fold                       14.9       1.4        39.8
+Delay                      17.5       4.0        46.7
+Chorus                     24.1      10.6        64.4
+Reverb                     22.6       9.1        60.3
+Wavetable                  15.1       1.5        40.1
+Pluck                      16.1       2.6        42.9
+Distortion                 19.7       6.2        52.6
+Bitcrush                   18.4       4.9        49.1
+Phaser                     24.9      11.3        66.3
+RingMod                    22.5       9.0        59.9
+Formant                    16.2       2.7        43.2
+Flanger                    22.9       9.4        61.1
+Tremolo                    18.1       4.6        48.2
+Vibrato                    18.4       4.9        49.2
+Eq                         23.0       9.5        61.3
+Granular                   22.7       9.1        60.4
+Shift                      18.5       5.0        49.3
+Comp                       25.1      11.5        66.8
+Duck                       23.3       9.8        62.1
+Gate                       23.7      10.2        63.2
+Vocoder                    23.4       9.8        62.3
+Silence                    11.6      -2.0        30.8
+AudioIn                    14.2       0.7        38.0
+Track                      20.7       7.2        55.1
+Capture                    20.3       6.7        54.0
+mod Lfo                    21.3       7.8        56.8
+mod Env                    18.8       5.3        50.1
+mod Rand                   21.4       7.9        57.1
+mod Follow                 17.8       4.3        47.6
+mod Euclid                 20.9       7.4        55.7
+mod Quantize               27.0      13.5        72.0
+mod Slew                   23.9      10.4        63.7
+mod Rectify                24.1      10.6        64.2
+mod Hold                   25.2      11.7        67.2
+mod Min                    26.6      13.1        70.9
+mod Max                    28.3      14.8        75.5
+mod And                    30.1      16.6        80.4
+mod Or                     28.3      14.8        75.4
+mod Xor                    29.7      16.2        79.3
+mod Switch                 31.0      17.5        82.8
+mod Steps                  24.8      11.3        66.2
+load average 186, after

@@ -18,6 +18,7 @@ dependencies = [
  "auracle-grammar",
  "fugue-evo",
  "fugue-ppl",
+ "libc",
  "libm",
  "quiver-dsp",
  "rand",

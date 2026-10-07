@@ -1,0 +1,12 @@
+diff -ru a/src/modules/filters.rs b/src/modules/filters.rs
+--- a/src/modules/filters.rs
++++ b/src/modules/filters.rs
+@@ -340,7 +340,7 @@
+         // so it is stable even at maximum resonance. Documented as a 2-iteration
+         // fixed-point approximation of the true ZDF ladder solve.
+         let mut fb_norm = self.feedback; // start from last sample's stage-4 output
+-        for _ in 0..2 {
++        for _ in 0..1 {
+             let fb = Self::diode_sat(fb_norm * k);
+             let u = input_driven - fb * 5.0;
+             let (y, _) = Self::run_cascade(u, &self.stages, big_g);

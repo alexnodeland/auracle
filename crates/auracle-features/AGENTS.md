@@ -10,7 +10,7 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 | --- | --- |
 | `phrase.rs` | `PhraseSpec`: the standard audition phrase, its seed, and its audition clip |
 | `clip.rs` | `AuditionClip`: what an AUDIO IN is measured with (a capture, or the built-in `reference`), its bounded saved form |
-| `render.rs` | Headless render of a compiled voice under the phrase |
+| `render.rs` | Headless render of a compiled voice under the phrase (compiled with `compile_for_render`: its knobs folded) |
 | `probe.rs` | The cable probe: every audio cable's RMS and peak over one render of the phrase, read through the compiler's taps without changing the render (Plan-005 task 9e); `examples/cable_probe` measures its cost and proves the render bit-identical on every preset |
 | `explain.rs` | A render's portrait for the app's figures (Plan-005 task 10): its spectrum in the face's 40 bands, the held note's harmonics, the onset, the phrase's level, the held note's brightness and level tracks, and φ's coordinates in their units (`Facts`); a picture, not a feature: nothing in φ reads it |
 | `vet.rs` | The vetting gate: silence, DC, blow-ups and other unplayable renders are refused |
@@ -49,7 +49,13 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
   the memo serves renders from the old DSP.
 - **Examples are instruments.** `pipeline_stats`, `norm_peak`,
   `preset_audit`, `phi_of_render`, `file_phi` and the probes are how φ questions get
-  answered. Prefer running one over reasoning about DSP.
+  answered. Prefer running one over reasoning about DSP. `bench_render` is
+  what a render costs (`make bench-render`): a fixed set in ms per render,
+  the render split into its stages (`--stages`), the nodes a render walks
+  (`--nodes`, `--census`), one voice of each module kind (`--kinds`), what a
+  render allocates (`--allocs`), φ for how far a change moves it (`--phi`),
+  and a digest of φ to show two builds measure the same (`--digest`;
+  [`docs/notes/render-cost-2026-10/`](../../docs/notes/render-cost-2026-10/README.md)).
 - **No string here reaches the screen.** A vetting or featurizing error
   reaches the app as a flag, not as text, and a feature's name is a key the
   app labels. A string that starts to reach the screen is copy, and its file

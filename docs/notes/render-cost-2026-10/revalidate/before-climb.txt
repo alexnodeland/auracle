@@ -1,0 +1,30 @@
+# make revalidate, climb (16 seeds): c8541631 (before folding). Cargo's lines, the run's header and /usr/bin/time's block stripped; nothing else.
+== 1. pool true utility per refinement generation ==
+(pool 48, 60 duels, 6 generations, 16 seeds)
+gen        mean u      max u     Δ mean
+0          -0.000      5.343          —
+1           0.858      6.551     +0.858
+2           1.414      6.859     +0.556
+3           1.875      7.407     +0.461
+4           2.082      7.628     +0.208
+5           2.090      7.411     +0.008
+6           2.000      7.366     -0.090
+  mean gain: +2.000 ± 0.380 (se)   climbed on 14/16
+  median gain: +1.931   10% trimmed: +1.919 ± 0.273 (se, n=14)
+seed     final mean  final max       gain
+e05           1.110      5.628     +1.110
+f06           1.019      5.365     +1.019
+1007          2.169      9.310     +2.169
+1108          1.191      5.466     +1.191
+1209         -0.113      6.037     -0.113
+130a         -0.634      6.253     -0.634
+140b          5.765     17.083     +5.765
+150c          1.693      8.354     +1.693
+160d          3.252      6.364     +3.252
+170e          1.574      5.850     +1.574
+180f          2.533      5.728     +2.533
+1910          2.220      8.794     +2.220
+1a11          2.330      7.384     +2.330
+1b12          3.528      8.173     +3.528
+1c13          1.172      5.432     +1.172
+1d14          3.192      6.634     +3.192

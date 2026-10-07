@@ -3,7 +3,10 @@ use crate::term::{AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape
 
 use crate::term;
 use crate::tests::{captured, frequency, listening, patch, sine_vco, stream_of, tone, tracked};
+use crate::PatchGrammarPrior;
 use crate::PARAM_MAX;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 const SR: f64 = 44_100.0;
 
@@ -2742,4 +2745,530 @@ fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
         assert_ne!(m, canonical, "not degenerate: {m:?}");
         assert_eq!(render(m.clone()), render(canonical), "{m:?}");
     }
+}
+
+/// How long [`played_bits`] holds a note and lets it go, in samples.
+const HELD: usize = 6_615;
+const LET_GO: usize = 2_205;
+
+/// Ticks `v` as the phrase plays a note: the gate open for `on` samples at
+/// C4, the pitch up an octave halfway, then the gate closed for `off`. A
+/// voice that listens reads `input`, a frame a tick, as a render's voices
+/// do. Every sample's bits, so a comparison cannot be fooled by the sign of
+/// a zero.
+fn played_bits(
+    v: &mut CompiledVoice,
+    input: Option<&Arc<AudioInputStream>>,
+    on: usize,
+    off: usize,
+) -> Vec<(u64, u64)> {
+    let mut out = Vec::with_capacity(on + off);
+    v.pitch.set(0.0);
+    v.gate.set(5.0);
+    for i in 0..on + off {
+        if i == on / 2 {
+            v.pitch.set(1.0);
+        }
+        if i == on {
+            v.gate.set(0.0);
+        }
+        let (l, r) = v.patch.tick();
+        if let Some(s) = input {
+            s.advance();
+        }
+        out.push((l.to_bits(), r.to_bits()));
+    }
+    out
+}
+
+/// What a voice that listens hears here: a 196 Hz tone that never sits on
+/// zero, long enough for [`played_bits`]' whole note, so a TRACK tracks a
+/// note and a CAPTURE has something to play back.
+fn heard() -> Option<Arc<AudioInputStream>> {
+    Some(stream_of(&tone(HELD + LET_GO, 196.0)))
+}
+
+/// The full voice of `tree` and the render's voice (its knobs folded), each
+/// built and played from the same seed of quiver's stream, as a render seeds
+/// it before it compiles, and each hearing its own copy of the same input
+/// when the tree listens. `follow` builds the followers a chord plays; a
+/// follower's TRACKs read what a lead hands them, which only a render does
+/// (`auracle-features`' render tests hold that path).
+fn both_ways(tree: &PatchTree, follow: bool) -> [(CompiledVoice, Vec<(u64, u64)>); 2] {
+    let play = |render: bool| {
+        quiver::rng::seed(SEED);
+        let input = tree.listens().then(heard).flatten();
+        let input = input.as_ref();
+        let mut v = match (render, follow) {
+            (false, false) => compile_with_input(tree, SR, input),
+            (false, true) => compile_follower(tree, SR, input),
+            (true, false) => compile_for_render(tree, SR, input),
+            (true, true) => compile_follower_for_render(tree, SR, input),
+        }
+        .expect("compiles");
+        let bits = played_bits(&mut v, input, HELD, LET_GO);
+        (v, bits)
+    };
+    [play(false), play(true)]
+}
+
+/// Why a knob node still in a render's voice could not be folded: a port it
+/// drives has another cable on it, is an audio input, or is normalled to a
+/// sibling, or its cable scales or offsets it. `None` when nothing stopped
+/// it. (A render's voice lists the knobs it kept in `knobs`.)
+fn kept_because(patch: &Patch, knob: NodeId) -> Option<&'static str> {
+    let spec = |id: NodeId| {
+        patch
+            .nodes()
+            .find(|(n, _, _)| *n == id)
+            .map(|(_, _, m)| m.port_spec().clone())
+    };
+    patch
+        .cables()
+        .iter()
+        .filter(|c| c.from.node == knob)
+        .find_map(|c| {
+            let def = spec(c.to.node)?.input_by_id(c.to.port)?.clone();
+            if patch.cables().iter().filter(|o| o.to == c.to).count() > 1 {
+                Some("shares its port")
+            } else if def.kind == SignalKind::Audio {
+                Some("drives an audio input")
+            } else if def.normalled_to.is_some() {
+                Some("drives a normalled input")
+            } else if c.attenuation.unwrap_or(1.0) != 1.0 || c.offset.unwrap_or(0.0) != 0.0 {
+                Some("is scaled")
+            } else {
+                None
+            }
+        })
+}
+
+/// Two plucked strings (Karplus-Strong, which draws its excitation from
+/// quiver's thread-wide stream), one under an LFO whose only inputs are
+/// knobs: folding the knobs makes that LFO a source, which moves its string
+/// ahead of the other in quiver's execution order, so the two would draw
+/// each other's noise. The tree whose fold [`CompiledVoice::pin_knobs`]
+/// refuses.
+fn two_strings() -> PatchTree {
+    let string = |modulation| AudioNode::Pluck {
+        uid: Uid::NEW,
+        octave: 0,
+        damping: 0.4,
+        brightness: 0.6,
+        mod_depth: 0.5,
+        modulation,
+    };
+    let lfo = ModNode::Lfo {
+        wave: Waveform::Sine,
+        rate: 0.3,
+        uid: Uid::NEW,
+    };
+    sustained(AudioNode::Mix {
+        balance: 0.5,
+        a: Box::new(string(lfo)),
+        b: Box::new(string(ModNode::None)),
+        uid: Uid::NEW,
+    })
+}
+
+/// The patches a player makes and the grammar never draws: a TRACK in each
+/// band, an AUDIO IN through a filter, and a CAPTURE in each mode holding a
+/// take. No preset and no draw of the prior has one.
+fn player_kinds() -> Vec<(String, PatchTree)> {
+    let take = Take::from_samples(&tone(2_000, 330.0), SR).expect("a take");
+    let mut trees = vec![(
+        "AUDIO IN".to_string(),
+        listening(0, term::InputChannel::Both),
+    )];
+    for band in [
+        term::PitchBand::Low,
+        term::PitchBand::Mid,
+        term::PitchBand::High,
+    ] {
+        trees.push((format!("TRACK {band:?}"), patch(tracked(band, 0.5))));
+    }
+    for mode in CaptureMode::ALL {
+        trees.push((
+            format!("CAPTURE {mode:?}"),
+            patch(captured(mode, take.clone())),
+        ));
+    }
+    trees
+}
+
+/// **A render's voice plays the full voice's samples, bit for bit, and
+/// walks fewer nodes** (#298). `compile_for_render` folds each live knob it
+/// can into the port it drives, which takes about half the nodes out of
+/// every sample's walk of a measurement render; φ is measured on those
+/// samples, so they must not move by a bit. Swept over every preset, prior
+/// draws, the player kinds no preset or draw has ([`player_kinds`], hearing
+/// a tone) and the tree whose fold is refused ([`two_strings`]), each played
+/// through a gate, a pitch change and a release from the same seed of
+/// quiver's stream; the presets and the player kinds also as a chord's
+/// follower. Every knob a folded voice still has is one that could not be
+/// folded exactly (`kept_because`), so the fold is not quietly doing less,
+/// and the knobs a voice lists are the knob nodes it kept. A voice left
+/// whole is counted on its own, and is one whose fold would
+/// have moved its schedule: [`two_strings`], and no preset and no player
+/// kind (a mutation that made the stand-ins refuse every fold would leave
+/// every voice whole, and every sample the same).
+#[test]
+fn a_render_compile_plays_the_full_voice_bit_for_bit() {
+    let prior = PatchGrammarPrior::default();
+    let mut rng = StdRng::seed_from_u64(0xF01D);
+    let both = &[false, true][..];
+    let mut trees: Vec<(String, PatchTree, &[bool])> = crate::presets()
+        .into_iter()
+        .map(|(name, tree)| (name.to_string(), tree, both))
+        .collect();
+    for (name, tree) in player_kinds() {
+        trees.push((name, tree, both));
+    }
+    for i in 0..60 {
+        let (tree, _) = crate::tests::draw(&prior, &mut rng);
+        trees.push((format!("draw {i}"), tree, &[false][..]));
+    }
+    trees.push(("two strings".to_string(), two_strings(), &[false][..]));
+    let (mut full_nodes, mut walked_nodes) = (0, 0);
+    let mut whole: Vec<String> = Vec::new();
+    for (name, tree, ways) in &trees {
+        for &follow in *ways {
+            let [(full, full_bits), (render, render_bits)] = both_ways(tree, follow);
+            assert!(
+                full_bits == render_bits,
+                "{name} (follower: {follow}): the render's voice plays other samples"
+            );
+            full_nodes += full.patch.node_count();
+            walked_nodes += render.patch.node_count();
+            // The knobs a render's voice lists are the knob nodes it kept
+            // (the compiler names each `…!`), every one of them, and no other.
+            // STEPS' `…:sync!` is its transport, a live handle and no knob:
+            // never listed, and never folded.
+            let listed: std::collections::BTreeSet<NodeId> =
+                render.knobs.iter().map(|(id, _)| *id).collect();
+            let left: std::collections::BTreeSet<NodeId> = render
+                .patch
+                .nodes()
+                .filter(|(_, n, _)| n.ends_with('!') && !n.ends_with(":sync!"))
+                .map(|(id, _, _)| id)
+                .collect();
+            assert_eq!(
+                listed, left,
+                "{name} (follower: {follow}): the knobs it lists"
+            );
+            let mut again = compile_voice(tree, SR, None, follow).expect("compiles");
+            if render.patch.node_count() == full.patch.node_count() && !again.pin_knobs() {
+                whole.push(name.clone());
+                continue;
+            }
+            for (id, _) in &render.knobs {
+                assert!(
+                    kept_because(&render.patch, *id).is_some(),
+                    "{name}: a knob that could have been folded was not"
+                );
+            }
+        }
+    }
+    let refused = |name: &str| !name.starts_with("draw ");
+    assert_eq!(
+        whole.iter().filter(|n| refused(n)).collect::<Vec<_>>(),
+        ["two strings"],
+        "the voices left whole"
+    );
+    assert!(
+        walked_nodes * 10 < full_nodes * 7,
+        "a render walks {walked_nodes} of {full_nodes} nodes: the knobs are not folded"
+    );
+}
+
+/// **A render compiles each voice once, and draws from quiver's stream what
+/// the full compile does.** A render seeds the stream and then compiles, so
+/// a module whose constructor draws from it (quiver's `AnalogVco` does;
+/// nothing the grammar compiles does yet) must draw the same in both, or
+/// every later draw moves. The fold is tried on stand-ins first and the
+/// voice compiled once, folded or left whole, so it does: here over every
+/// preset, the player kinds and [`two_strings`], whose fold is refused, as
+/// main voices and as followers. (A compile run twice, as the refused fold
+/// once did, draws twice the day a constructor draws.)
+#[test]
+fn a_render_compiles_each_voice_once() {
+    let mut trees: Vec<(String, PatchTree)> = crate::presets()
+        .into_iter()
+        .map(|(name, tree)| (name.to_string(), tree))
+        .collect();
+    trees.extend(player_kinds());
+    trees.push(("two strings".to_string(), two_strings()));
+    let compiled = || COMPILED.with(|c| c.get());
+    for (name, tree) in &trees {
+        for follow in [false, true] {
+            let drawn = |render: bool| {
+                quiver::rng::seed(SEED);
+                let at = compiled();
+                let built = match (render, follow) {
+                    (false, false) => compile_with_input(tree, SR, None),
+                    (false, true) => compile_follower(tree, SR, None),
+                    (true, false) => compile_for_render(tree, SR, None),
+                    (true, true) => compile_follower_for_render(tree, SR, None),
+                };
+                assert!(built.is_ok(), "{name} compiles");
+                (compiled() - at, quiver::rng::random().to_bits())
+            };
+            let (full, render) = (drawn(false), drawn(true));
+            assert_eq!(
+                render.0, 1,
+                "{name} (follower: {follow}): compiled {} times",
+                render.0
+            );
+            assert_eq!(render, full, "{name} (follower: {follow})");
+        }
+    }
+}
+
+/// **A TRACK in a render's voice reads its signals by slot**: the fold
+/// rebuilds the patch's routing, and the voice resolves each TRACK's three
+/// slots again on it, so [`CompiledVoice::lead`] hands a chord's followers
+/// what it tracked without a lookup by name a port a frame.
+#[test]
+fn a_folded_voice_reads_its_tracks_by_slot() {
+    let tree = patch(term::AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
+        b: Box::new(tracked(term::PitchBand::Low, 0.5)),
+    });
+    let full = compile_with_input(&tree, SR, None).expect("compiles");
+    let v = compile_for_render(&tree, SR, None).expect("compiles");
+    assert!(v.patch.node_count() < full.patch.node_count(), "folded");
+    assert_eq!(v.tracker_keys(), ["node/0", "node/1"]);
+    for t in &v.trackers {
+        assert_eq!(t.generation, v.patch.routing_generation(), "{}", t.key);
+        let by_name = [10, 11, 12].map(|port| v.patch.output_slot(t.id, port));
+        assert!(t.slots.iter().all(Option::is_some), "{}", t.key);
+        assert_eq!(t.slots, by_name, "{}", t.key);
+    }
+}
+
+/// **Where folding would move what a patch renders, the render gets the full
+/// voice.** [`two_strings`]: tried on the voice's stand-ins, the fold makes
+/// the LFO a source and the strings swap places in quiver's execution
+/// order, so they would draw each other's noise. `pin_knobs` sees the
+/// schedule move, leaves the voice whole, and says so; the render plays what
+/// the full voice plays.
+#[test]
+fn a_fold_that_would_move_the_schedule_keeps_the_full_voice() {
+    let tree = two_strings();
+    let mut voice = compile_with_input(&tree, SR, None).expect("compiles");
+    let before = Schedule::of(&voice.patch, |n| n);
+    assert_eq!(before.drawers.len(), 2, "two strings draw from the stream");
+    let mut stand = Stand::of(&voice.patch).expect("stands in");
+    let to = &stand.to;
+    assert!(
+        fold(&mut stand.patch, &voice.foldable(), |n| to[&n]),
+        "the fold takes"
+    );
+    assert_eq!(
+        Schedule::of(&stand.patch, |n| stand.back[&n]).drawers,
+        before.drawers.iter().rev().copied().collect::<Vec<_>>(),
+        "the strings swap places"
+    );
+    let nodes = voice.patch.node_count();
+    assert!(!voice.pin_knobs(), "folding this patch moves its schedule");
+    assert_eq!(voice.patch.node_count(), nodes, "the voice is left whole");
+    let [(full, full_bits), (render, render_bits)] = both_ways(&tree, false);
+    assert_eq!(render.patch.node_count(), full.patch.node_count());
+    assert!(full_bits == render_bits);
+}
+
+/// A raw patch with a feedback loop through a unit delay and a delay cabled
+/// into itself, a noise source and a VCO: what the schedule and stand-in
+/// tests read.
+fn looped() -> (Patch, [NodeId; 3], [PortRef; 3]) {
+    let mut looped = Patch::new(SR);
+    let src = looped.add("src", Vco::new(SR));
+    let hiss = looped.add("hiss", NoiseGenerator::new());
+    let mix = looped.add("mix", Mixer::new(3));
+    let delay = looped.add("delay", UnitDelay::new());
+    let out = looped.add("out", StereoOutput::new());
+    looped.connect(src.out("sin"), mix.in_("ch0")).unwrap();
+    looped.connect(hiss.out("white"), mix.in_("ch2")).unwrap();
+    looped.connect(mix.out("out"), delay.in_("in")).unwrap();
+    looped.connect(delay.out("out"), mix.in_("ch1")).unwrap();
+    looped.connect(mix.out("out"), out.in_("left")).unwrap();
+    let echo = looped.add("echo", UnitDelay::new());
+    looped.connect(echo.out("out"), echo.in_("in")).unwrap();
+    looped.set_output(out.id());
+    looped.compile().unwrap();
+    (
+        looped,
+        [hiss.id(), mix.id(), delay.id()],
+        [mix.out("out"), delay.in_("in"), echo.in_("in")],
+    )
+}
+
+/// A schedule names the modules that draw from quiver's stream in the order
+/// they tick, and the cables a node reads a sample late: none in a chain;
+/// in a loop through a unit delay, the one cable that closes it; and a
+/// cable from a node into itself, which it reads a sample late in any order.
+#[test]
+fn a_schedule_is_the_stream_draws_in_order_and_the_feedback_cables() {
+    let mut chain = Patch::new(SR);
+    let a = chain.add("a", NoiseGenerator::new());
+    let v = chain.add("v", Vco::new(SR));
+    let b = chain.add("b", NoiseGenerator::new());
+    let out = chain.add("out", StereoOutput::new());
+    chain.connect(a.out("white"), v.in_("fm")).unwrap();
+    chain.connect(v.out("saw"), out.in_("left")).unwrap();
+    chain.connect(b.out("white"), out.in_("right")).unwrap();
+    chain.set_output(out.id());
+    chain.compile().unwrap();
+    let s = Schedule::of(&chain, |n| n);
+    assert_eq!(s.drawers, vec![a.id(), b.id()]);
+    assert!(s.feedback.is_empty(), "a chain reads nothing late");
+
+    let (looped, [hiss, _, _], [mix_out, delay_in, echo_in]) = looped();
+    let echo_out = PortRef {
+        node: echo_in.node,
+        port: 10,
+    };
+    let s = Schedule::of(&looped, |n| n);
+    assert_eq!(s.drawers, vec![hiss]);
+    assert_eq!(
+        s.feedback,
+        [(mix_out, delay_in), (echo_out, echo_in)]
+            .into_iter()
+            .collect(),
+        "the delay reads the mix a sample late, and the echo itself"
+    );
+}
+
+/// **A patch of stand-ins schedules as the patch it stands in for**, which is
+/// what lets [`CompiledVoice::pin_knobs`] try a fold on it and trust the
+/// answer: the same execution order, node for node, and the same schedule,
+/// on a loop through a unit delay (where which node breaks the cycle is the
+/// stand-in's to say) and on every preset's voice. And it is silent and
+/// holds nothing: ticked, it plays zeros, and a reset leaves it so.
+#[test]
+fn a_patch_of_stand_ins_schedules_as_the_patch() {
+    let mut patches: Vec<(String, Patch)> = vec![("looped".to_string(), looped().0)];
+    for (name, tree) in crate::presets() {
+        patches.push((
+            name.to_string(),
+            compile(&tree, SR).expect("compiles").patch,
+        ));
+    }
+    for (name, patch) in &patches {
+        let Stand {
+            patch: mut stand,
+            back,
+            ..
+        } = Stand::of(patch).expect("stands in");
+        stand.compile().expect("compiles");
+        let order: Vec<NodeId> = stand.execution_order().iter().map(|n| back[n]).collect();
+        assert_eq!(order, patch.execution_order(), "{name}");
+        assert_eq!(
+            Schedule::of(&stand, |n| back[&n]),
+            Schedule::of(patch, |n| n),
+            "{name}"
+        );
+        assert_eq!(stand.tick(), (0.0, 0.0), "{name}");
+        stand.reset();
+        assert_eq!(stand.tick(), (0.0, 0.0), "{name}");
+    }
+}
+
+/// What a knob's cable delivers is what quiver's scatter and gather make of
+/// the knob's value: a number that is not finite reads 0, one under 1e-20 in
+/// magnitude reads 0 (and 1e-20 itself does not), a negative zero reads as a
+/// positive one, and anything else is itself.
+#[test]
+fn a_cabled_value_is_what_the_cable_delivers() {
+    for v in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        9e-21,
+        -9e-21,
+        -0.0,
+    ] {
+        assert_eq!(cabled_value(v).to_bits(), 0.0f64.to_bits(), "{v}");
+    }
+    for v in [1e-20, -1e-20, 0.25, -3.5, 5.0] {
+        assert_eq!(cabled_value(v).to_bits(), v.to_bits(), "{v}");
+    }
+}
+
+/// One voice of each kind of module a player can place or a modulation they
+/// can set: a saw voice, each source in its place, each processor inserted
+/// over it, the ladder (a filter's kind is a knob), and each modulation on
+/// the saw's slot (as `auracle-features`' `bench_render --kinds` builds
+/// them).
+fn one_of_each_kind() -> Vec<(String, PatchTree)> {
+    use crate::{apply_struct_op, ModKind, NodeKind, StructOp};
+    let base = sustained(AudioNode::Vco {
+        uid: Uid::NEW,
+        wave: Waveform::Saw,
+        octave: 0,
+        detune: 0.5,
+        mod_depth: 0.5,
+        modulation: ModNode::None,
+    });
+    let key = || "node".to_string();
+    let mut out = vec![("saw".to_string(), base.clone())];
+    for kind in NodeKind::ALL {
+        let op = if kind.is_source() {
+            StructOp::Replace { key: key(), kind }
+        } else {
+            StructOp::Insert { key: key(), kind }
+        };
+        let tree = apply_struct_op(&base, &op).expect("a kind a player can place");
+        if let AudioNode::Filter { .. } = tree.root {
+            let mut ladder = tree.clone();
+            if let AudioNode::Filter { kind, .. } = &mut ladder.root {
+                *kind = FilterKind::Ladder;
+            }
+            out.push(("ladder".to_string(), ladder));
+        }
+        out.push((format!("{kind:?}"), tree));
+    }
+    for kind in ModKind::ALL.into_iter().skip(1) {
+        let op = StructOp::SetMod { key: key(), kind };
+        let tree = apply_struct_op(&base, &op).expect("a modulation a player can set");
+        out.push((format!("mod {kind:?}"), tree));
+    }
+    out
+}
+
+/// **[`STREAM_DRAWERS`] is exactly the kinds that draw from quiver's
+/// stream as they tick**, which is what lets a render's voice keep their
+/// order (and so the noise they draw) when it folds its knobs. One voice of
+/// each kind the grammar compiles ([`one_of_each_kind`]), compiled, quiver's
+/// stream seeded, and played: a voice moves the stream if and only if it
+/// holds a listed module. A module that starts to draw in a new quiver, or a
+/// listed one that stops, fails here until the list says so.
+#[test]
+fn the_stream_drawers_are_the_kinds_that_draw() {
+    let (mut drew, mut still) = (0, 0);
+    for (name, tree) in one_of_each_kind() {
+        let input = tree.listens().then(heard).flatten();
+        let mut v = compile_with_input(&tree, SR, input.as_ref()).expect("compiles");
+        quiver::rng::seed(SEED);
+        played_bits(&mut v, input.as_ref(), HELD, LET_GO);
+        let next = quiver::rng::random();
+        quiver::rng::seed(SEED);
+        let moved = next != quiver::rng::random();
+        let listed = v
+            .patch
+            .nodes()
+            .any(|(_, _, m)| STREAM_DRAWERS.contains(&m.type_id()));
+        assert_eq!(
+            moved, listed,
+            "{name}: moved the stream: {moved}; listed: {listed}"
+        );
+        if moved {
+            drew += 1;
+        } else {
+            still += 1;
+        }
+    }
+    assert!(drew > 0 && still > 0, "{drew} voices drew, {still} did not");
 }

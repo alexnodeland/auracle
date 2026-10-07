@@ -1,0 +1,72 @@
+diff -ru a/src/port.rs b/src/port.rs
+--- a/src/port.rs
++++ b/src/port.rs
+@@ -339,8 +339,12 @@
+     ids: Vec<PortId>,
+     /// Value per slot, `None` when unwritten since the last [`clear`](PortValues::clear).
+     values: Vec<Option<f64>>,
++    /// Slot + 1 by port id, for ids below `SLOT_TABLE`; 0 for an id with no slot.
++    table: Vec<u16>,
+ }
+ 
++const SLOT_TABLE: usize = 256;
++
+ impl PortValues {
+     pub fn new() -> Self {
+         Self::default()
+@@ -349,10 +353,31 @@
+     /// Dense slot holding `id`, whether or not it currently holds a value.
+     #[inline]
+     fn slot_of(&self, id: PortId) -> Option<usize> {
++        let i = id as usize;
++        if i < SLOT_TABLE {
++            return match self.table.get(i) {
++                Some(&s) if s != 0 => Some(s as usize - 1),
++                _ => None,
++            };
++        }
+         self.ids.iter().position(|&candidate| candidate == id)
+     }
+ 
++    /// Push a new slot for `id` holding `value`.
+     #[inline]
++    fn push_slot(&mut self, id: PortId, value: Option<f64>) {
++        let i = id as usize;
++        if i < SLOT_TABLE {
++            if self.table.len() <= i {
++                self.table.resize(i + 1, 0);
++            }
++            self.table[i] = (self.ids.len() + 1) as u16;
++        }
++        self.ids.push(id);
++        self.values.push(value);
++    }
++
++    #[inline]
+     pub fn get(&self, id: PortId) -> Option<f64> {
+         self.slot_of(id).and_then(|k| self.values[k])
+     }
+@@ -366,10 +391,7 @@
+     pub fn set(&mut self, id: PortId, value: f64) {
+         match self.slot_of(id) {
+             Some(k) => self.values[k] = Some(value),
+-            None => {
+-                self.ids.push(id);
+-                self.values.push(Some(value));
+-            }
++            None => self.push_slot(id, Some(value)),
+         }
+     }
+ 
+@@ -380,10 +402,7 @@
+         // matters for signed zero: `0.0 + -0.0` is `+0.0`.
+         match self.slot_of(id) {
+             Some(k) => self.values[k] = Some(self.values[k].unwrap_or(0.0) + value),
+-            None => {
+-                self.ids.push(id);
+-                self.values.push(Some(0.0 + value));
+-            }
++            None => self.push_slot(id, Some(0.0 + value)),
+         }
+     }
+ 

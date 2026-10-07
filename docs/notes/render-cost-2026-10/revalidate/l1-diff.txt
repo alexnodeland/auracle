@@ -1,0 +1,178 @@
+# diff of revalidate/before-phi-stats-norm-peak.txt against l1-phi-stats-norm-peak.txt (L2's is empty)
+61,63c61,63
+< featurized:    1168 (97%)
+< quarantined:   silent=31 overlevel=0 dc=1 nonfinite=0
+< base quarantine rate: 2.7%
+---
+> featurized:    1167 (97%)
+> quarantined:   silent=32 overlevel=0 dc=1 nonfinite=0
+> base quarantine rate: 2.8%
+65,67c65,67
+< vco                455          1.5%      -1.1
+< supersaw           359          2.5%      -0.2
+< noise              206          1.0%      -1.7
+---
+> vco                455          1.5%      -1.2
+> supersaw           359          2.8%      +0.0
+> noise              206          1.0%      -1.8
+69,71c69,71
+< pluck              116          1.7%      -0.9
+< formant            135          3.0%      +0.3
+< silence             14         71.4%     +68.8  <-- silenced
+---
+> pluck              116          1.7%      -1.0
+> formant            135          3.0%      +0.2
+> silence             14         71.4%     +68.7  <-- silenced
+74,82c74,82
+< filter             387          5.7%      +3.0
+< fold               144          4.9%      +2.2
+< delay              166          3.6%      +0.9
+< chorus             126          4.8%      +2.1
+< reverb              99          2.0%      -0.6
+< distortion         148          1.4%      -1.3
+< bitcrush            40          0.0%      -2.7
+< phaser              53          0.0%      -2.7
+< ringmod             34          2.9%      +0.3
+---
+> filter             387          5.9%      +3.2
+> fold               144          4.9%      +2.1
+> delay              166          4.2%      +1.5
+> chorus             126          4.8%      +2.0
+> reverb              99          2.0%      -0.7
+> distortion         148          1.4%      -1.4
+> bitcrush            40          0.0%      -2.8
+> phaser              53          0.0%      -2.8
+> ringmod             34          2.9%      +0.2
+84,95c84,95
+< tremolo             69          4.3%      +1.7
+< vibrato             50          6.0%      +3.3
+< eq                  97          3.1%      +0.4
+< granular            21          4.8%      +2.1
+< shift               55          3.6%      +1.0
+< comp                43          2.3%      -0.3
+< duck                29          3.4%      +0.8
+< gate                17          0.0%      -2.7
+< vocoder             19         10.5%      +7.9
+< lfo                457          3.1%      +0.4
+< env                513          2.9%      +0.3
+< rand               176          2.3%      -0.4
+---
+> tremolo             69          4.3%      +1.6
+> vibrato             50          6.0%      +3.2
+> eq                  97          3.1%      +0.3
+> granular            21          4.8%      +2.0
+> shift               55          3.6%      +0.9
+> comp                43          2.3%      -0.4
+> duck                29          3.4%      +0.7
+> gate                17          0.0%      -2.8
+> vocoder             19         10.5%      +7.8
+> lfo                457          3.3%      +0.5
+> env                513          3.1%      +0.4
+> rand               176          2.3%      -0.5
+97,103c97,103
+< euclid             104          2.9%      +0.2
+< steps               92          4.3%      +1.7
+< quantize            48          0.0%      -2.7
+< slew                28          0.0%      -2.7
+< rectify             31          3.2%      +0.6
+< hold                40          5.0%      +2.3
+< min                  8          0.0%      -2.7
+---
+> euclid             104          2.9%      +0.1
+> steps               92          4.3%      +1.6
+> quantize            48          0.0%      -2.8
+> slew                28          0.0%      -2.8
+> rectify             31          3.2%      +0.5
+> hold                40          5.0%      +2.2
+> min                  8          0.0%      -2.8
+105,108c105,108
+< and                  6          0.0%      -2.7
+< or                   7          0.0%      -2.7
+< xor                 13         15.4%     +12.7  <-- silenced
+< switch               7          0.0%      -2.7
+---
+> and                  6          0.0%      -2.8
+> or                   7          0.0%      -2.8
+> xor                 13         15.4%     +12.6  <-- silenced
+> switch               7          0.0%      -2.8
+110c110
+< centroid_mean:p2     0.052     0.649     0.957
+---
+> centroid_mean:p2     0.052     0.648     0.957
+112c112
+< rolloff_mean:p2      0.021     0.542     0.991
+---
+> rolloff_mean:p2      0.021     0.541     0.991
+115c115
+< zcr_mean:p2          0.000     0.465     0.942
+---
+> zcr_mean:p2          0.000     0.463     0.942
+118,123c118,123
+< crest:p2             0.511     1.854     4.126
+< attack_s:p2         -5.298    -1.326     0.660
+< tail_ratio:p2       -6.908    -4.935     0.576
+< bass_fraction:p2     0.000     0.310     1.000
+< held_centroid_std:p2     0.000     0.015     0.389
+< high_ratio:p2       -5.600    -0.323     3.632
+---
+> crest:p2             0.511     1.858     4.126
+> attack_s:p2         -5.298    -1.331     0.660
+> tail_ratio:p2       -6.908    -4.932     0.576
+> bass_fraction:p2     0.000     0.312     1.000
+> held_centroid_std:p2     0.000     0.016     0.389
+> high_ratio:p2       -5.600    -0.325     3.632
+125,127c125,127
+< motion_slow:p2      -6.644    -4.913     1.536
+< motion_mid:p2       -6.644    -5.127     1.804
+< motion_fast:p2      -6.644    -5.481     1.529
+---
+> motion_slow:p2      -6.644    -4.916     1.110
+> motion_mid:p2       -6.644    -5.125     1.809
+> motion_fast:p2      -6.644    -5.481     1.530
+129c129
+< n_supersaw           0.000     0.318     3.000
+---
+> n_supersaw           0.000     0.317     3.000
+133c133
+< n_formant            0.000     0.116     2.000
+---
+> n_formant            0.000     0.117     2.000
+135c135
+< n_filter             0.000     0.521     6.000
+---
+> n_filter             0.000     0.519     6.000
+141,143c141,143
+< n_lfo                0.000     0.525     5.000
+< n_env                0.000     0.607     5.000
+< n_rand               0.000     0.241     3.000
+---
+> n_lfo                0.000     0.524     5.000
+> n_env                0.000     0.606     5.000
+> n_rand               0.000     0.242     3.000
+147c147
+< mod_density          0.000     0.593     1.000
+---
+> mod_density          0.000     0.592     1.000
+149c149
+< amp_attack           0.000     0.497     1.000
+---
+> amp_attack           0.000     0.496     1.000
+151c151
+< amp_release          0.000     0.501     1.000
+---
+> amp_release          0.000     0.500     1.000
+163c163
+< rms_mean:p2            4.7
+---
+> rms_mean:p2            4.8
+170c170,171
+< flatness_mean:p2       3.6
+---
+> flatness_mean:p2       3.7
+> crest:p2               3.4
+172d172
+< crest:p2               3.2
+188d187
+< n_rand                 1.7
+189a189
+> n_rand                 1.7
