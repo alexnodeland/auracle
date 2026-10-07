@@ -149,6 +149,29 @@ export function pullLabel(name, guess) {
   return guess ? `${name}?` : name;
 }
 
+// ---------- PERFORM: a control's lean, under the model view ----------
+// Which way your taste leans along each of PERFORM's controls at the sound in
+// hand (`perform_lean`, `Engine::lean`): the posterior slope of the utility
+// along the control's direction, a mean and its ±σ. perform.js draws it on
+// the control's dial as an arc from 12 o'clock toward the end it leans to,
+// with its interval, in degrees of the dial's half-travel. The panel's leans
+// share one scale, as a lens's weights do (`directionsScale`), so a longer
+// arc is a steeper slope; and a lean whose interval crosses zero is the same
+// guess as everywhere else (`pullMark`), drawn as one.
+
+/** The dial's half-travel, in degrees: 12 o'clock to either end. */
+export const LEAN_HALF = 135;
+
+/** The marks for a panel's leans, `rows[i]` a `{mean, std}` or null for a
+ *  control the engine said nothing of: each a `pullMark` in degrees
+ *  (negative toward the control's low end), or null. */
+export function leanMarks(rows, half = LEAN_HALF) {
+  const known = rows.filter(Boolean);
+  if (!known.length) return rows.map(() => null);
+  const scale = directionsScale(known, half);
+  return rows.map((r) => (r ? pullMark(r, scale, half) : null));
+}
+
 /** Counts for a caption or a screen reader: how many marks are settled. */
 export function countPulls(marks) {
   let settled = 0;

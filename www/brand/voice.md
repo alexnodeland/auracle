@@ -512,7 +512,8 @@ banned-words check in `make dev-check` reads the list after it.
 | **detail: automatic / full / compact** | How much of each module is drawn | LOD, zoom level |
 | **TEACH ▸**, **TEACH · N PICKS ▸** | The folded quick picks at the well's foot, counting to the first refit | train, rate, vote |
 | **SET ASIDE n** | The chip for modules unplugged or deleted, waiting to go back; it opens the shelf | tray, HELD, trash |
-| **leans** | The lean edges: amber or red plate edges by family under the model view (⌥ / MODEL); stronger when surer | belief, belief tint |
+| **leans** | The lean edges: amber or red plate edges by family under the model view (⌥ / MODEL); stronger when surer; in PERFORM, a control's lean: an amber arc from 12 o'clock toward the end your taste leans to, its interval behind it, dashed while it is a guess | belief, belief tint |
+| *it leans brighter* / *it leans brighter?* | Under the model view, the line under a PERFORM control in place of its caption, and its aria-description: it names the way your taste leans with the palette's comparative (*softer*, *more restless*), and a **?** while it is a guess | it leans bright (the control's end word) |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |
 | **figure**, **answer** | What ? on a control opens: its **answer** (BRIGHT · WHAT IT DOES), a **figure** of what the engine measured and a sentence; the guide's words, the app shows the title | tooltip, popover, explanation, help |

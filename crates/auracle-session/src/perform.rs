@@ -586,6 +586,28 @@ pub struct Wiring {
     pub axis: Vec<f64>,
 }
 
+/// Which way your taste leans along one named control, at one sound: what
+/// PERFORM draws on the control under the model view (⌥ or MODEL). The
+/// slope of the model's utility along the control's direction there, as a
+/// posterior mean and std ([`Engine::lean`]); the page draws it as a guess
+/// while `mean ± std` crosses zero, the rule LEARNING's weights and PATCH's
+/// worth chips use.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Lean {
+    /// The control's index in [`PALETTE`], as a [`Wiring`] carries it: how
+    /// the page lays the lean on its panel. `None` for a direction the
+    /// palette does not hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+    /// The control's name.
+    pub name: String,
+    /// Posterior mean of the slope, in utility per σ moved toward the
+    /// control's high word: above zero, your taste leans that way.
+    pub mean: f64,
+    /// Its posterior std, over the same importance-weighted draws.
+    pub std: f64,
+}
+
 impl Wiring {
     /// The range of control values this wiring honestly supports: a half the
     /// verification did not confirm is closed. An unverified wiring is taken
@@ -1475,6 +1497,47 @@ impl Engine {
             verify_by(tree, &jac, &mut wiring, &mut look);
         }
         need
+    }
+
+    /// Which way your taste leans along each of `controls` at `tree` (the
+    /// sound in hand), in the order asked: for each, the posterior slope of
+    /// the utility along the control's unit direction at the tree's
+    /// standardized φ ([`TastePosterior::slope`]).
+    ///
+    /// The utility is a max of experts, so its slope at a sound is the slope
+    /// of the lens that claims that sound, chosen per posterior draw: a draw
+    /// in which another lens rates this sound highest answers with that
+    /// lens. The direction is [`direction`] over the whole of φ, so it is
+    /// zero on every structural coordinate: turning a control moves the
+    /// sound, never the patch's module counts, and a lens's taste for a
+    /// structure does not lean any control.
+    ///
+    /// `None` before the first fit (no posterior, or no standardizer) and
+    /// for a tree that does not vet. One featurization, through the memo, so
+    /// a tree PERFORM has measured (its measurement renders the tree first)
+    /// renders nothing here.
+    ///
+    /// [`TastePosterior::slope`]: auracle_taste::TastePosterior::slope
+    pub fn lean(&self, tree: &PatchTree, controls: &[NamedControl]) -> Option<Vec<Lean>> {
+        let posterior = self.posterior.as_deref()?;
+        let sz = self.standardizer.as_deref()?;
+        let (cf, _) = featurize_memo(tree, &self.cfg.phrase, self.memo(), false).ok()?;
+        let phi = sz.transform(&cf.features.phi());
+        let names = crate::engine::phi_names();
+        Some(
+            controls
+                .iter()
+                .map(|c| {
+                    let (mean, std) = posterior.slope(&phi, &direction(c, &names));
+                    Lean {
+                        index: palette_index(c),
+                        name: c.name.to_string(),
+                        mean,
+                        std,
+                    }
+                })
+                .collect(),
+        )
     }
 
     /// The standardizer this session's φ lives under, once the pool is filled.

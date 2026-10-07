@@ -7,7 +7,7 @@ all crates are in [`../AGENTS.md`](../AGENTS.md).
 
 | File | Holds |
 | --- | --- |
-| `model.rs` | The taste model (a fugue program), its MCMC posterior `TastePosterior`, lens alignment (`aligned_to`) |
+| `model.rs` | The taste model (a fugue program), its MCMC posterior `TastePosterior` and its summaries (the utility's slope along a direction, `slope`, is PERFORM's lean), lens alignment (`aligned_to`) |
 | `observe.rs` | Observations (duels, stars, keeps, edits) and the persisted log |
 | `standardize.rs` | Feature standardization, refitted at fit time from raw φ |
 | `synthetic.rs` | The synthetic user the gate tests teach |

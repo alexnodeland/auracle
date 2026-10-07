@@ -24,7 +24,10 @@
 
 // The palette's words (names, end words, what each does), with this module's
 // own build stamp so a new build fetches both together.
-const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys } = await import(`./words.js${new URL(import.meta.url).search}`);
+const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys, leanWord } = await import(`./words.js${new URL(import.meta.url).search}`);
+// The model view's lean on each control is the guess mark LEARNING's weights
+// and PATCH's θ cell draw (`pullMark`), laid on the dial (`leanMarks`).
+const { leanMarks } = await import(`./taste-geom.js${new URL(import.meta.url).search}`);
 // A sound's face and the one renderer that draws it (Plan-005 task 3): stage
 // mode draws the sound in hand's.
 const { whiten, smooth, vesselPoints, createLiveMeter, FACE_BANDS, FACE_FRAME } = await import(`./faces.js${new URL(import.meta.url).search}`);
@@ -184,6 +187,9 @@ function keptSum(addr, wire, values) {
 // something (a graft or an offer). Short of it, it springs back and asks
 // nothing; the dial draws a notch there while it is being turned.
 const ASK_AT = 0.3;
+// The model view's lean (`paintLean`) sits just outside a control's ring, at
+// this radius in the dial's viewBox (the ring is 44, the viewBox ±50).
+const LEAN_R = 49;
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -284,6 +290,17 @@ export function createPerform(host) {
     // Velocity -> timbre: which named control a note's velocity plays, per
     // voice, and how far. -1 is off.
     touch: { i: 0, depth: 0.5, sites: [] },
+    // The model view's lean on each control (`perform_lean`, `Engine::lean`):
+    // which way your taste leans along it at the sound in hand. `{gen,
+    // marks}` (palette index -> its mark and words) for the sound it was
+    // asked of, or null before one lands (and before the first fit, when
+    // the engine has none). Asked only while the view is up and PERFORM
+    // shows (`askLean`), once per sound, posterior and panel (`leanAsked`,
+    // the key it was last asked for, `leanKey`; `leanRev` counts the
+    // posterior's changes main reports), never per frame.
+    lean: null,
+    leanAsked: null,
+    leanRev: 0,
   };
 
   // Booth attract mode plays the instrument by itself; nothing it does is the
@@ -460,6 +477,23 @@ export function createPerform(host) {
     );
     // Where a re-centred control was, fading (see `recentre`).
     if (spec.kind === "named") s.insertBefore(svg("path", { d: "" }, "pf-k-ghost"), s.querySelector(".pf-k-body"));
+    // Under the model view, which way your taste leans along it
+    // (`paintLean`): its interval, the arc from 12 o'clock toward the end it
+    // leans to, a dot at the arc's end, and a tick where an interval runs
+    // past the travel. Just outside the ring, clear of the green value arc.
+    // Its parts are kept on the control, so a repaint looks nothing up.
+    let lean = null;
+    if (spec.kind === "named") {
+      lean = {
+        iv: svg("path", { d: "" }, "pf-k-lean-iv"),
+        bar: svg("path", { d: "" }, "pf-k-lean-bar"),
+        cut: svg("path", { d: "" }, "pf-k-lean-cut"),
+        at: svg("circle", { r: 2.4, cx: 0, cy: -LEAN_R }, "pf-k-lean-at"),
+      };
+      const leanG = svg("g", {}, "pf-k-lean");
+      leanG.append(lean.iv, lean.bar, lean.cut, lean.at);
+      s.append(leanG);
+    }
     if (spec.kind === "wander") {
       // Where the zones begin (ideas, drift, roam): three short ticks just
       // outside the ring, and inside it a thin arc that fills toward
@@ -477,8 +511,12 @@ export function createPerform(host) {
     // moves). The status line above the deck is the one that announces it.
     const wait = el("div", "pf-k-wait mono", "");
     wait.setAttribute("aria-hidden", "true");
+    // The model's words for the lean, over the same box under the view
+    // (the caption returns when the view goes): `paintLean`.
+    const leanW = el("div", "pf-k-leanw", "");
+    leanW.setAttribute("aria-hidden", "true");
     const line = el("div", "pf-k-line");
-    line.append(sub, wait);
+    line.append(sub, wait, leanW);
     wrap.append(s, name, ends, line);
     if (spec.kind === "named") {
       // Velocity plays this control (Arrange): a tick over the ring's corner.
@@ -492,7 +530,7 @@ export function createPerform(host) {
     wrap.setAttribute("aria-label", spec.name);
     wrap.setAttribute("aria-valuemin", "-1");
     wrap.setAttribute("aria-valuemax", "1");
-    const k = { i, spec, wrap, svg: s, sub, wait, value: spec.initial || 0 };
+    const k = { i, spec, wrap, svg: s, sub, wait, lean, leanAt: null, leanSaid: null, leanW, value: spec.initial || 0 };
     bindDrag(k);
     // Wander leads the pad row, ringed in amber (the model's walk); the
     // panel's controls fill the grid.
@@ -668,6 +706,7 @@ export function createPerform(host) {
       // What velocity plays (Arrange's "Velocity plays"): a small "vel" tick
       // in the control's cell, over the ring's corner, so no word moves.
       k.wrap.classList.toggle("vel", k.i === state.touch.i && state.touch.sites.length > 0);
+      paintLean(k);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
       const [words, left] = wanderState();
@@ -695,6 +734,97 @@ export function createPerform(host) {
     k.sub.textContent = state.offer ? `${Math.round(k.value * 100)}% offer` : "no offer yet";
     k.wrap.classList.toggle("unwired", !state.offer);
     blendSlot.classList.toggle("on", !!state.offer);
+  }
+
+  // The model view's lean on a named control: which way your taste leans
+  // along it at the sound in hand (`Engine::lean`, a posterior slope and its
+  // ±σ), drawn on the dial from 12 o'clock toward the end it leans to, its
+  // interval behind it, on the scale the panel's leans share (`leanMarks`).
+  // Settled, the arc is solid; a guess (the interval crosses zero) is dashed
+  // and faint with its interval at full strength, and its words end in "?",
+  // as LEARNING draws one. Nothing before the first fit, when the engine has
+  // no lean, and nothing for a lean asked of another sound. CSS shows it only
+  // under the view (`body.model-view`).
+  //
+  // `paintKnob` runs every frame of a drag, a glide or a re-centre, so the
+  // arcs are written only when the mark on the control is another one
+  // (`k.leanAt`: each lean that lands makes new marks).
+  function paintLean(k) {
+    const lean = state.lean && state.lean.gen === state.gen ? state.lean : null;
+    const at = lean ? lean.marks.get(k.spec.index) : null;
+    if (at !== k.leanAt) {
+      k.leanAt = at;
+      k.wrap.classList.toggle("leaning", !!at);
+      k.wrap.classList.toggle("lean-guess", !!(at && at.mark.guess));
+      k.leanW.textContent = at ? at.words : "";
+      if (at) {
+        const m = at.mark;
+        const { iv, bar, cut, at: dot } = k.lean;
+        iv.setAttribute("d", arcAt(m.lo, m.hi, LEAN_R));
+        iv.setAttribute("stroke-opacity", String(m.whiskerAlpha));
+        bar.setAttribute("d", arcAt(0, m.len, LEAN_R));
+        bar.setAttribute("stroke-opacity", String(m.barAlpha));
+        const ticks = [m.clipLo && radial(m.lo, LEAN_R - 3, LEAN_R + 3), m.clipHi && radial(m.hi, LEAN_R - 3, LEAN_R + 3)];
+        cut.setAttribute("d", ticks.filter(Boolean).join(" "));
+        const r = (m.len - 90) * (Math.PI / 180);
+        dot.setAttribute("cx", (LEAN_R * Math.cos(r)).toFixed(2));
+        dot.setAttribute("cy", (LEAN_R * Math.sin(r)).toFixed(2));
+      }
+    }
+    // The words, to a screen reader, on the control itself (a slider's
+    // children are not read), while the view is up.
+    const said = at && host.modelOn?.() ? at.words : null;
+    if (said !== k.leanSaid) {
+      k.leanSaid = said;
+      if (said) k.wrap.setAttribute("aria-description", said);
+      else k.wrap.removeAttribute("aria-description");
+    }
+  }
+  // What the lean in hand was asked for: the posterior, and the sound and
+  // the panel's set as its wiring is keyed (`wireKey`: the tree PERFORM
+  // measures, whose render is in the engine's memo once measured or opened
+  // on the bench, with the audition clip for a sound that listens, which is
+  // measured through it).
+  const leanKey = () => `${state.gen}|${state.leanRev}|${state.cur ? wireKey(state.cur.json, state.panel) : ""}`;
+  // Ask the engine for the lean, when the model view is up over PERFORM and
+  // the one in hand is not for this sound, posterior and panel: when the
+  // view comes up (`modelViewChanged`), PERFORM comes into sight (`show`),
+  // the sound or the panel changes (`patchChanged`, a Keep, a glide landing,
+  // PATCH's knob writes followed, `setPanel`, a new clip for a sound that
+  // listens: `clipChanged`) and the posterior moves
+  // (`posteriorChanged`: a refit, a pick's reweighting, a taste file
+  // opened). A lean of this sound already drawn stays until the new one
+  // lands.
+  function askLean() {
+    if (!state.visible || !state.cur || !host.modelOn?.()) return;
+    const key = leanKey();
+    if (state.leanAsked === key) return;
+    state.leanAsked = key;
+    const req = request("perform_lean", { tree: state.cur.json, overrides: [], controls: setOf(state.panel) });
+    state.pending.get(req).leanKey = key;
+  }
+  // A lean asked under another posterior or panel, or of another tree, is
+  // not shown when the view comes up or PERFORM comes into sight: the new
+  // one is asked for, and drawn when it lands.
+  function freshLean() {
+    if (state.leanAsked !== leanKey()) state.lean = null;
+  }
+  // The engine's lean, laid on the panel by palette index: each control's
+  // mark and words, or null for no lean (before the first fit; a failure).
+  function applyLean(rows) {
+    if (!Array.isArray(rows)) {
+      state.lean = null;
+    } else {
+      const marks = leanMarks(rows);
+      const by = new Map();
+      rows.forEach((r, i) => {
+        const c = PALETTE[r.index];
+        if (!c || !marks[i]) return;
+        by.set(r.index, { mark: marks[i], words: leanWord(c.aim, r.mean, marks[i].guess) });
+      });
+      state.lean = { gen: state.gen, marks: by };
+    }
+    knobs.forEach(paintKnob);
   }
 
   // What letting go of a search control turned to `v` would do, said while it
@@ -1031,6 +1161,9 @@ export function createPerform(host) {
     if (structureDiffers(state.cur.json, json)) return;
     state.cur.json = json;
     if (state.home && state.home.json && !structureDiffers(state.home.json, json)) state.home.json = json;
+    // The sound in hand is the tree as edited: its lean, under the view (a
+    // write landing after PERFORM came into sight; otherwise `show` asks).
+    askLean();
   }
 
   // Why PERFORM is playing `addr` away from the patch, or null when it is
@@ -2378,6 +2511,7 @@ export function createPerform(host) {
     perform_graft: ["perform_grafted", "graft"],
     perform_apply: ["perform_applied", "json"],
     perform_record: ["perform_recorded", "recorded"],
+    perform_lean: ["perform_leaned", "lean"],
   };
   // `fatal`: the engine is gone, and is asked nothing more (`engineDown`).
   function requestFailed(req, message, fatal = false) {
@@ -2576,6 +2710,12 @@ export function createPerform(host) {
       if (then) then(m.json);
       return true;
     }
+    // The lean, if it is still the one asked for: a newer ask (another
+    // posterior, another panel) has its own answer coming.
+    if (m.type === "perform_leaned") {
+      if (p.leanKey === state.leanAsked) applyLean(m.lean);
+      return true;
+    }
     return true;
   }
 
@@ -2607,6 +2747,8 @@ export function createPerform(host) {
       // then in the background (see `recheck`).
       if (outsideTrust()) recheck();
       else renderStatus();
+      // The sound in hand is the kept tree now (the bench has rendered it).
+      askLean();
       return;
     }
     state.keeping = null;
@@ -2684,6 +2826,7 @@ export function createPerform(host) {
     knobs.forEach(paintKnob);
     renderHood();
     renderSteps();
+    askLean();
   }
 
   // A tree as its content alone — keys sorted, node uids dropped — so the
@@ -2783,6 +2926,9 @@ export function createPerform(host) {
       renderWander();
       if (outsideTrust()) recheck();
       else renderStatus();
+      // The sound in hand is where the glide landed (a drift's tree, which
+      // its walk rendered): its lean, under the view.
+      askLean();
       return;
     }
     requestAnimationFrame(stepGlide);
@@ -4144,6 +4290,7 @@ export function createPerform(host) {
     renderStatus();
     renderHow();
     renderPalette();
+    askLean();
     return true;
   }
   function panelLater() {
@@ -4483,9 +4630,11 @@ export function createPerform(host) {
       else if (state.cur && state.wire && !state.carried && state.wire.some((w) => w.pending)) measurePanel();
       const live = host.live();
       if (live && state.offer) live.bMix(state.blend);
+      freshLean();
       renderStatus();
       knobs.forEach(paintKnob);
       renderHood();
+      askLean();
     },
     // B is PERFORM's: out of sight it is silent, so editing in PATCH never
     // hears a blend it cannot see. The offer itself stays for coming back.
@@ -4556,5 +4705,27 @@ export function createPerform(host) {
     },
     // Has the sound left home (the moved bar)?
     moved: () => movedFromHome(),
+    // The model view came up or went (main's `modelViewChanged`): each
+    // control's lean is drawn under it, asked for as it comes up.
+    modelViewChanged(on) {
+      if (on) freshLean();
+      knobs.forEach(paintKnob);
+      if (on) askLean();
+    },
+    // The posterior moved (main: a refit's `fitted`, a pick's reweighting,
+    // the `status` that carries `ratings`, or a taste file opened, which
+    // takes the posterior away until its refit lands): the lean is asked
+    // again while the view is up, and when it next comes up otherwise.
+    posteriorChanged() {
+      state.leanRev += 1;
+      askLean();
+    },
+    // The audition clip changed (main's `audition_clip`: a capture, NEW
+    // CLIP, a restore). A sound in hand that listens is measured through
+    // it, so its lean is asked again (its key carries the clip, `wireKey`);
+    // any other sound's is the same, and nothing is asked.
+    clipChanged() {
+      askLean();
+    },
   };
 }

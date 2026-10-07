@@ -1447,6 +1447,98 @@ fn per_style_summaries_are_importance_weighted() {
     }
 }
 
+/// The slope along a direction is the claiming lens's θ along it, per draw,
+/// summarized by the importance weights. Here lens 1 claims the sound in the
+/// draw weighted 3/4 and lens 0 in the other, so the slope along each axis is
+/// the lens that wins there, not lens 0's and not the mean θ's: along (0, 1)
+/// 2 at 3/4 and 0 at 1/4 (1.5 ± √0.75, clear of zero), along (1, 0) 0 at 3/4
+/// and 3 at 1/4 (0.75 ± √1.6875, which crosses it). A direction the draws
+/// disagree on crosses zero; one they agree on has no spread.
+#[test]
+fn the_slope_along_a_direction_is_the_claiming_lens_s_weighted() {
+    let draw = |theta: Vec<Vec<f64>>| TasteSample {
+        theta,
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.0],
+    };
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(2, 2),
+        samples: vec![
+            // At (0, 1): lens 0 rates 0, lens 1 rates 2.
+            draw(vec![vec![1.0, 0.0], vec![0.0, 2.0]]),
+            // At (0, 1): lens 0 rates 0, lens 1 rates −1.
+            draw(vec![vec![3.0, 0.0], vec![0.0, -1.0]]),
+        ],
+        weights: vec![0.75, 0.25],
+    };
+    let at = [0.0, 1.0];
+    let (up, up_sd) = p.slope(&at, &[0.0, 1.0]);
+    assert_eq!((up, up_sd), (1.5, 0.75f64.sqrt()));
+    assert!(
+        up - up_sd > 0.0,
+        "a direction the claiming lenses favour clears zero"
+    );
+    let (across, across_sd) = p.slope(&at, &[1.0, 0.0]);
+    assert_eq!((across, across_sd), (0.75, 1.6875f64.sqrt()));
+    assert!(across - across_sd < 0.0 && across + across_sd > 0.0);
+    // Somewhere else lens 0 claims both draws: along (1, 0) it is lens 0's
+    // θ, 1 at 3/4 and 3 at 1/4.
+    assert_eq!(p.slope(&[1.0, 0.0], &[1.0, 0.0]), (1.5, 0.75f64.sqrt()));
+    // A sum of directions is the sum of slopes: linear within a lens.
+    let (both, _) = p.slope(&at, &[1.0, 1.0]);
+    assert_eq!(both, up + across);
+
+    // One lens, its draws agreeing on (1, 0) and split on (0, 1): the
+    // direction orthogonal to their mean leans neither way.
+    let p = TastePosterior {
+        cfg: TasteConfig::linear(2),
+        samples: vec![draw(vec![vec![1.0, 1.0]]), draw(vec![vec![1.0, -1.0]])],
+        weights: Vec::new(),
+    };
+    assert_eq!(p.slope(&[0.3, -0.2], &[0.0, 1.0]), (0.0, 1.0));
+    assert_eq!(p.slope(&[0.3, -0.2], &[1.0, 0.0]), (1.0, 0.0));
+}
+
+/// The slope's mean is the derivative of the posterior-mean utility along the
+/// direction: a small step `h` along `d` moves `utility_mix`'s mean by `h`
+/// times it. Swept over random three-lens posteriors with skewed weights,
+/// random sounds and directions; at `h = 1e-7` no draw's claiming lens
+/// changes over the step (the gaps between lens ratings are of order one),
+/// and the difference quotient agrees to 1e-6.
+#[test]
+fn the_slope_is_the_derivative_of_the_mean_utility() {
+    let mut rng = StdRng::seed_from_u64(0x510E);
+    let k = 3;
+    for _ in 0..20 {
+        let samples: Vec<TasteSample> = (0..60)
+            .map(|_| TasteSample {
+                theta: (0..k).map(|_| random_phi(&mut rng)).collect(),
+                tau: vec![0.0],
+                cuts: vec![-1.0, 0.0, 1.0],
+            })
+            .collect();
+        let raw: Vec<f64> = (0..samples.len())
+            .map(|_| rng.gen::<f64>().powi(3))
+            .collect();
+        let total: f64 = raw.iter().sum();
+        let p = TastePosterior {
+            cfg: TasteConfig::mixture(D, k),
+            samples,
+            weights: raw.iter().map(|w| w / total).collect(),
+        };
+        let phi = random_phi(&mut rng);
+        let d = random_phi(&mut rng);
+        let h = 1e-7;
+        let moved: Vec<f64> = phi.iter().zip(&d).map(|(x, y)| x + h * y).collect();
+        let quotient = (p.utility_mix(&moved).0 - p.utility_mix(&phi).0) / h;
+        let (slope, _) = p.slope(&phi, &d);
+        assert!(
+            (slope - quotient).abs() < 1e-6 * (1.0 + slope.abs()),
+            "slope {slope} against the difference quotient {quotient}"
+        );
+    }
+}
+
 /// A posterior whose draws all agree (what resampling deals once one draw
 /// holds all the weight) reports no spread: the SD of every θ coordinate
 /// and of every utility is 0, up to rounding, and never NaN. The spread is

@@ -3663,6 +3663,21 @@ async function dispatch(m) {
       performReply(m, "perform_applied", "json", false, () =>
         engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
       break;
+    // Which way your taste leans along each of PERFORM's controls at the
+    // sound in hand, for the model view (`Engine::lean`): `lean` is
+    // `[{index, name, mean, std}]` for the `controls` named (palette
+    // indices; the six without), or null before the first fit. Asked of the
+    // tree PERFORM measures, whose render is in the memo once PERFORM has
+    // measured it or the bench has opened it, so it is a few dot products over
+    // the posterior's draws (one render otherwise, as ▶ costs): `now`.
+    case "perform_lean":
+      performReply(m, "perform_leaned", "lean", false, () =>
+        JSON.parse(engine.perform_lean(
+          m.tree,
+          JSON.stringify(m.overrides || []),
+          Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined,
+        )));
+      break;
     case "perform_drift":
       await holdFloor(m, () => walkRun(m));
       break;

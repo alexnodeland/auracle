@@ -139,8 +139,11 @@ It shows only what the engine has:
   edge tinted by which way your taste leans on its family, a chip per family
   with what one more is worth, and the guess's two runners-up with their
   lower bounds ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
-- **PERFORM:** nothing per control yet. The engine doesn’t say which way your
-  taste leans on each control, so nothing is drawn there.
+- **PERFORM:** which way your taste leans along each control, from the sound
+  in your hands: an amber arc toward the end it leans to, and *it leans
+  brighter* under the control; dashed, with a **?**, while it is still a guess
+  ([which way your taste leans](./views/perform.md#which-way-your-taste-leans)).
+  Nothing before the first fit.
 
 ## The guess on a bank row
 
