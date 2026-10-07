@@ -695,6 +695,8 @@ impl CompiledVoice {
     /// not normalled to a sibling (gather reads the sibling, not the default,
     /// for an unpatched normalled input). Its port's default becomes
     /// [`cabled_value`] of the knob's value. The others keep their node.
+    /// (A knob always drives a port: [`Compiler::knob_to`] cables it, or the
+    /// build fails. One that drove none would be folded away harmlessly.)
     ///
     /// The rest of the patch must still render what it rendered, and folding
     /// a knob can move the other nodes in quiver's execution order (a node
@@ -739,7 +741,7 @@ impl CompiledVoice {
                 })
                 .collect();
             match ports {
-                Some(ports) if !ports.is_empty() => folds.push(Fold {
+                Some(ports) => folds.push(Fold {
                     node,
                     ports,
                     value: cabled_value(value.get()),

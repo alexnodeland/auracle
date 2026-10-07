@@ -2909,8 +2909,9 @@ fn a_fold_that_would_move_the_schedule_keeps_the_full_voice() {
 }
 
 /// A schedule names the modules that draw from quiver's stream in the order
-/// they tick, and the cables a node reads a sample late: none in a chain,
-/// and in a loop through a unit delay, the one cable that closes it.
+/// they tick, and the cables a node reads a sample late: none in a chain;
+/// in a loop through a unit delay, the one cable that closes it; and a
+/// cable from a node into itself, which it reads a sample late in any order.
 #[test]
 fn a_schedule_is_the_stream_draws_in_order_and_the_feedback_cables() {
     let mut chain = Patch::new(SR);
@@ -2936,14 +2937,21 @@ fn a_schedule_is_the_stream_draws_in_order_and_the_feedback_cables() {
     looped.connect(mix.out("out"), delay.in_("in")).unwrap();
     looped.connect(delay.out("out"), mix.in_("ch1")).unwrap();
     looped.connect(mix.out("out"), out.in_("left")).unwrap();
+    let echo = looped.add("echo", UnitDelay::new());
+    looped.connect(echo.out("out"), echo.in_("in")).unwrap();
     looped.set_output(out.id());
     looped.compile().unwrap();
     let s = Schedule::of(&looped);
     assert!(s.drawers.is_empty(), "nothing here draws from the stream");
     assert_eq!(
         s.feedback,
-        [(mix.out("out"), delay.in_("in"))].into_iter().collect(),
-        "the delay reads the mix a sample late"
+        [
+            (mix.out("out"), delay.in_("in")),
+            (echo.out("out"), echo.in_("in")),
+        ]
+        .into_iter()
+        .collect(),
+        "the delay reads the mix a sample late, and the echo itself"
     );
 }
 
