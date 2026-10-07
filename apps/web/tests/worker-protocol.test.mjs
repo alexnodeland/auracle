@@ -316,6 +316,11 @@ test("a first wiring is asked for the panel the last measurement named, and an e
   await w.runMessage({ type: "perform_wire", req: 1, tree: "{}", controls: [16, 6], rid: 1 });
   await w.runMessage({ type: "edit_begin", id: 4, rid: 2 });
   assert.deepEqual(repliesTo(w.out, 2)[0].first, { shape: '{"tree":2}', controls: "[16,6]" });
+  // A pre-warm measures the six for the cache: it does not say what the
+  // panel plays, so the set stays.
+  await w.runMessage({ type: "perform_wire", req: 9, tree: "{}", bg: true, prewarm: true, rid: 7 });
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 8 });
+  assert.deepEqual(repliesTo(w.out, 8)[0].first, { shape: '{"tree":2}', controls: "[16,6]" });
   // A measurement naming none is the six again.
   await w.runMessage({ type: "perform_wire", req: 2, tree: "{}", rid: 3 });
   await w.runMessage({ type: "edit_begin", id: 4, rid: 4 });

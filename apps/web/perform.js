@@ -4615,7 +4615,7 @@ export function createPerform(host) {
       const hit = fresh ? wireCache.get(key) : knownWiring(key);
       if (hit && (!fresh || hit.rev === wireRev())) return Promise.resolve(onPanel(reachOfWiring(hit.data.wiring)));
       return new Promise((resolve) => {
-        const req = request("perform_wire", { tree: json, overrides: [], bg: true });
+        const req = request("perform_wire", { tree: json, overrides: [], bg: true, prewarm: true });
         const p = state.pending.get(req);
         p.gen = -1;
         p.cacheAs = { json, rev: wireRev() };

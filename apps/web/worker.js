@@ -4123,7 +4123,9 @@ async function dispatch(m) {
     // tracks each request until its reply lands, and a missing reply would
     // leave (say) an offer "in flight" forever and refuse the next one.
     case "perform_wire": {
-      performControls = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
+      // A pre-warm measures the six for the cache, whatever the panel holds:
+      // it does not say which controls the panel plays.
+      if (!m.prewarm) performControls = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
       await holdFloor(m, () => measure(m));
       break;
     }
