@@ -215,7 +215,16 @@ illustrated scenes are drawn by the stage, frame by frame.
    it. It makes a first mix, which gives the envelopes the picture pulses
    with. The picture makes no sound of its own: the stage has no sound cues
    (ADR-014). Then it renders the
-   frames, mixes and encodes: MP4 and WebM, captions, poster.
+   frames, mixes and encodes: MP4 and WebM, captions, poster (`DRAFT=1`: a
+   fast MP4 and the 720p preview, no WebM).
+6. **Footage, if it cuts to the app:** a film with a `shots.json` (the
+   launch film) records its takes first, as a walkthrough's are recorded
+   (`footage.mjs`, one browser, a quiet machine; rehearse them with
+   `rehearse.sh` first), and reuses the takes on disk after that:
+   `FOOTAGE=1` records them all again, `SHOTS=a,b` those. Its `film.js`
+   reads each take's frames and logs from `out/<film>/shots/`, and draws the
+   app with the kit's `appScreen` in the same window and camera, so a drawn
+   frame crosses into the recording on the same picture.
 
 ## Making a walkthrough
 

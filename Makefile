@@ -1078,9 +1078,11 @@ film-sounds:
 film-voice:
 	$(FILM_ENV) www/video/tools/voice.sh $(FILM)
 
-## film: render an illustrated film, voice to encode (FILM=name POSTER=seconds)
+## film: render an illustrated film, voice to encode (FILM=name POSTER=seconds
+## [DRAFT=1: fast MP4 + preview, no WebM] [a film with footage: SHOTS=a,b
+## re-records those takes, FOOTAGE=1 all of them])
 film:
-	$(FILM_ENV) www/video/tools/illustrated.sh $(FILM) $(POSTER)
+	$(FILM_ENV) DRAFT=$(DRAFT) FOOTAGE=$(FOOTAGE) SHOTS=$(SHOTS) www/video/tools/illustrated.sh $(FILM) $(POSTER)
 
 ## film-rehearse: check and dry-run a walkthrough's shots, then summarise (FILM=name)
 film-rehearse:
