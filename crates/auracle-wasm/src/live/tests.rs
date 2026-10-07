@@ -3023,8 +3023,13 @@ fn an_attack_slowed_mid_wake_stops_the_fall_at_the_shelf() {
     for p in [&mut a, &mut b] {
         p.voices[0].amp[0].set(1.0);
     }
-    let quanta = wake_beside(&mut a, &mut b);
-    assert!(quanta < 16, "{quanta} quanta");
+    // It arrives at the shelf, well inside the bound that would end it
+    // anyway (three quanta are gone already).
+    let quanta = 3 + wake_beside(&mut a, &mut b);
+    assert!(
+        quanta <= CENSUS_WAKE_QUANTA,
+        "{quanta} quanta: it never arrived"
+    );
     let (want, got) = (env_of(&a, 60), env_of(&b, 60));
     assert!(
         (want - 0.5).abs() < 1e-3,
