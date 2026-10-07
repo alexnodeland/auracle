@@ -74,6 +74,35 @@ fn a_difference_names_the_first_place_the_probes_part() {
     );
 }
 
+/// A walked tree is compared as its shape and its numbers apart: every
+/// number, in an object or an array at any depth (a chain's modules are a
+/// list), is listed in key order and blanked from the digest, uids aside.
+/// So two replies that differ only in a knob's last digit, as a native
+/// `libm` and wasm's can, share a shape and part in a listed number, which
+/// the comparison holds to [`TOLERANCE`]; one that differs in a word has
+/// another shape.
+#[test]
+fn a_shape_lists_every_number_and_digests_the_rest() {
+    use serde_json::json;
+    let reply = |knob: f64, wave: &str| {
+        json!({
+            "tree": {
+                "amp": {"attack": 0.25},
+                "chain": [{"Delay": {"time": knob, "uid": 7}}, [1, 2]],
+                "wave": wave,
+            },
+            "makeup": 0.5,
+        })
+    };
+    let was = shape(reply(0.3, "Saw"));
+    assert_eq!(was["numbers"], json!([0.5, 0.25, 0.3, 1, 2]));
+    let nudged = shape(reply(0.3 + 1e-15, "Saw"));
+    assert_eq!(nudged["shape"], was["shape"]);
+    assert_eq!(nudged["numbers"], json!([0.5, 0.25, 0.3 + 1e-15, 1, 2]));
+    assert_eq!(first_difference(&was, &nudged, "walk"), None);
+    assert_ne!(shape(reply(0.3, "Sine"))["shape"], was["shape"]);
+}
+
 /// The measurement examples read the session engine inside a wasm engine
 /// (`session`): the one its bindings answer from.
 #[test]
