@@ -2015,6 +2015,9 @@ const REVERT_DWELL_MS = 2000;
 /** Whatever gesture is going out next, in one place, so the revert that may
  *  reverse it can name it. */
 let pendingEditTag = null;
+/** The tree PERFORM committed, while it is the edit going out: a rejection of
+ *  it is PERFORM's to hear (`perform.commitRefused`, #366). */
+let pendingPerformJson = null;
 
 function markEditLanded() {
   lastEdit = { at: Date.now(), op: pendingEditTag };
@@ -2631,6 +2634,8 @@ worker.onmessage = (e) => {
       }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
+      // What PERFORM can play this tree on before it is measured (#290).
+      if (perform && m.first) perform.firstKnown(m.json, m.first);
       setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
         // The bench speaking early: the worker posts the edited tree the
@@ -2655,6 +2660,7 @@ worker.onmessage = (e) => {
       if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
       if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
       if (earlyOpen && earlyOpen.id === m.id) break; // voiced from memory already
+      if (perform && m.first) perform.firstKnown(m.json, m.first);
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
@@ -3348,6 +3354,9 @@ worker.onmessage = (e) => {
       structInFlight = false;
       restoreInFlight = false;
       placeholderPending = null; // the tree it described never happened
+      // A tree PERFORM committed never landed: what waited on it lets go.
+      if (pendingPerformJson && perform && perform.commitRefused) perform.commitRefused(pendingPerformJson);
+      pendingPerformJson = null;
       // The edit never landed, so the sentence that would have announced it is
       // not owed — and must not be said on top of the next edit that does land.
       // The shelf keeps what the engine would not take: a refused drop leaves
@@ -5215,9 +5224,11 @@ async function bootPerform() {
     newestId: () => newestSeenId,
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
-    // Wirings are measured against the taste model; a new observation can
-    // move the standardizer they were measured in, so it keys their cache.
-    tasteRev: () => status.observations,
+    // Wirings are measured in the standardizer's units, which a fit moves
+    // when the sounds the session has met changed (the engine's `std_rev`),
+    // and a pick does not: it keys their cache (#290). It was the
+    // observation count, which made every kept wiring stale at every pick.
+    tasteRev: () => status.std_rev ?? status.observations,
     // …and in φ, as this binary renders it: a wiring measured under another
     // render namespace (a new quiver, a new featurizer) is re-measured.
     renderNs: () => renderNs,
@@ -5298,6 +5309,8 @@ async function bootPerform() {
     // the one undo step itself.
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
+    // True when the tree is on its way to the bench, false when it is
+    // refused here (PERFORM lets go of what waited on it: a graft, #366).
     commitTree: (json, why, makeup) => {
       // PERFORM plays a patch still on its way to the bench (`voiceEarly`),
       // and a tree sent now would land on the rack it replaces. PERFORM asks
@@ -5305,12 +5318,16 @@ async function bootPerform() {
       // anything has changed; this is the backstop, and it says so too.
       if (earlyOpen) {
         note(`That didn’t stick: ${earlyOpen.label} is still opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
-        return;
+        return false;
       }
-      if (!wb.tree) return note("Open a sound first: there’s nothing to play yet.");
+      if (!wb.tree) {
+        note("Open a sound first: there’s nothing to play yet.");
+        return false;
+      }
       // `makeup`, when PERFORM knows it (a Take: the offer was measured as it
       // grew), is what the voices take the tree at before its render.
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}), ...(makeup > 0 ? { makeup } : {}) }, null, { op: "perform" });
+      return true;
     },
   });
   // The levels' two first steps, after PERFORM's three (Plan-008 C3, the
@@ -5338,7 +5355,7 @@ async function bootPerform() {
     send,
     perform: () => perform,
     label: () => liveLabelText,
-    tasteRev: () => status.observations,
+    tasteRev: () => status.std_rev ?? status.observations,
     audio: { ctx: audioCtx, out: master },
     analyser: outAnalyser,
     // The bank's faces' mean and spread: a figure's and the lesson's face is
@@ -9618,6 +9635,7 @@ function sendEdit(addr, value, isIndex, id) {
   // looking current.
   beliefStale();
   pendingEditTag = { op: "param", addr };
+  pendingPerformJson = null;
   // Genome second: the worker validates, re-renders the phrase, updates φ —
   // in its turn, behind whatever the player did before this.
   const seq = ++laneSeq;
@@ -14608,6 +14626,7 @@ function queueStruct(msg, landed, tag, waiting) {
   // rewrite has no `StructOp` to report — it *is* the tree — so it says so
   // rather than inventing one.
   pendingEditTag = editTagOf(msg, tag);
+  pendingPerformJson = tag && tag.op === "perform" && msg.type === "edit_set_tree" ? msg.json : null;
   logImplicit("edit", pendingEditTag);
   send(msg);
 }

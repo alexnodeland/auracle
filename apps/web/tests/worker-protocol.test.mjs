@@ -277,10 +277,17 @@ const benchEngine = () => ({
   tree_json_of: () => '{"tree":2}',
   makeup_of: () => 1,
   edit_begin: () => true,
+  // What PERFORM can play the tree on before it is measured (#290): here,
+  // the tree and the controls it was asked about.
+  perform_first: (json, controls) => JSON.stringify({ shape: json, controls: controls ?? null }),
 });
 
 test("a bench edit's early tree and an open's early tree are not its last reply: the bench is", async () => {
-  const w = worker({}, { lifts: ["dispatch", "postLiveTree", "postBench"], engine: benchEngine() });
+  const w = worker({}, {
+    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst"],
+    engine: benchEngine(),
+    prelude: ["let performControls;"],
+  });
   await w.runMessage({ type: "edit_structure", op: { insert: "vcf" }, rid: 1 });
   await w.runMessage({ type: "edit_set_tree", json: "{}", rid: 2 });
   await w.runMessage({ type: "edit_set_tree", json: "{}", restore: true, rid: 3 });
@@ -292,6 +299,42 @@ test("a bench edit's early tree and an open's early tree are not its last reply:
   assert.deepEqual(repliesTo(w.out, 4).map((r) => r.type), ["bench_opening", "bench"]);
   for (const rid of [1, 2, 3, 4]) lastIsLast(repliesTo(w.out, rid), `request ${rid}`);
   assert.equal(w.out.length, 8, "nothing unstamped");
+  // Each early tree carries the engine's word on it for PERFORM (`first`),
+  // asked of that tree, for the six until a measurement names a set.
+  assert.deepEqual(repliesTo(w.out, 1)[0].first, { shape: '{"tree":1}', controls: null });
+  assert.deepEqual(repliesTo(w.out, 4)[0].first, { shape: '{"tree":2}', controls: null });
+});
+
+test("a first wiring is asked for the panel the last measurement named, and an engine without one sends none", async () => {
+  const engine = benchEngine();
+  const w = worker({}, {
+    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst"],
+    engine,
+    stubs: { holdFloor: async () => {}, measure: async () => {} },
+    prelude: ["let performControls;"],
+  });
+  await w.runMessage({ type: "perform_wire", req: 1, tree: "{}", controls: [16, 6], rid: 1 });
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 2 });
+  assert.deepEqual(repliesTo(w.out, 2)[0].first, { shape: '{"tree":2}', controls: "[16,6]" });
+  // A pre-warm measures the six for the cache: it does not say what the
+  // panel plays, so the set stays.
+  await w.runMessage({ type: "perform_wire", req: 9, tree: "{}", bg: true, prewarm: true, rid: 7 });
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 8 });
+  assert.deepEqual(repliesTo(w.out, 8)[0].first, { shape: '{"tree":2}', controls: "[16,6]" });
+  // A measurement naming none is the six again.
+  await w.runMessage({ type: "perform_wire", req: 2, tree: "{}", rid: 3 });
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 4 });
+  assert.deepEqual(repliesTo(w.out, 4)[0].first, { shape: '{"tree":2}', controls: null });
+  // A binary without it, or one that throws: no `first`, and the tree still goes.
+  delete engine.perform_first;
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 5 });
+  assert.equal(repliesTo(w.out, 5)[0].type, "bench_opening");
+  assert.equal(repliesTo(w.out, 5)[0].first, undefined);
+  engine.perform_first = () => {
+    throw new Error("unreachable");
+  };
+  await w.runMessage({ type: "edit_begin", id: 4, rid: 6 });
+  assert.equal(repliesTo(w.out, 6)[0].first, undefined);
 });
 
 test("a generation answers its refine from farm messages and its own queued walks: progress and children, then refined", async () => {

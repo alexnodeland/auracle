@@ -137,6 +137,27 @@ struct Status {
     /// refit is worth its seconds — a better refit trigger than a fixed
     /// vote count.
     needs_refit: bool,
+    /// Which standardizer the session's φ lives under ([`standardizer_rev`]):
+    /// it changes when a fit or a restore moves the scale (the sounds the
+    /// session has met changed since), and not on a pick.
+    /// PERFORM keys a kept wiring's staleness to it (#290). Empty before there
+    /// is one.
+    std_rev: String,
+}
+
+/// A fingerprint of a standardizer's audio coordinates (their means and
+/// spreads, FNV-1a over their bits, as hex): the scale a PERFORM wiring is
+/// measured in. Two sessions on the same pool and log have the same one.
+fn standardizer_rev(std: &auracle_taste::Standardizer) -> String {
+    let n = auracle_features::AudioFeatures::NAMES.len();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for v in std.mean.iter().take(n).chain(std.std.iter().take(n)) {
+        for b in v.to_bits().to_le_bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    format!("{h:016x}")
 }
 
 fn origin_str(o: Origin) -> &'static str {
@@ -809,6 +830,11 @@ pub struct WasmEngine {
     /// ([`WasmEngine::own_presets_set`]). Empty until the worker hands over
     /// the shipped wirings; then only pool members are named as nearest.
     own_presets: Vec<auracle_session::PresetPhi>,
+    /// How each kind of module's knob moves φ, for the wiring PERFORM plays
+    /// before a sound is measured ([`WasmEngine::perform_table_set`]). `None`
+    /// until the worker hands over the shipped wirings; then
+    /// [`WasmEngine::perform_first`] predicts.
+    knob_table: Option<auracle_session::predict::KnobTable>,
     /// PERFORM's walks in the middle ([`WasmEngine::perform_offer_begin`],
     /// [`WasmEngine::perform_drift_begin`]), by handle.
     jobs: std::collections::HashMap<u32, Held>,
@@ -1094,6 +1120,7 @@ impl WasmEngine {
             guess_key: None,
             guess_fresh: u32::MAX as u64 + 1,
             own_presets: Vec::new(),
+            knob_table: None,
             jobs: std::collections::HashMap::new(),
             next_job: 1,
             deals: DealSchedule::default(),
@@ -1345,6 +1372,11 @@ impl WasmEngine {
             k_styles: self.engine.cfg.k_styles,
             ess: self.engine.posterior_ess().unwrap_or(0.0),
             needs_refit: self.engine.needs_refit(),
+            std_rev: self
+                .engine
+                .standardizer()
+                .map(standardizer_rev)
+                .unwrap_or_default(),
         })
         .unwrap()
     }
@@ -2138,6 +2170,62 @@ impl WasmEngine {
             Some(leans) => json_or(&leans, "null"),
             None => "null".into(),
         }
+    }
+
+    /// Hand over the table PERFORM predicts a first wiring from (#290): the
+    /// text of the app's `perform-wirings.json`, whose `knobs` is how each
+    /// kind of module's knob moved φ in the presets' and the standard pool's
+    /// measurements (`make perform-wirings`). Returns whether the file held a
+    /// table over today's audio φ; without one, [`Self::perform_first`]
+    /// predicts nothing.
+    pub fn perform_table_set(&mut self, wirings_json: &str) -> bool {
+        #[derive(serde::Deserialize)]
+        struct File {
+            knobs: auracle_session::predict::KnobTable,
+        }
+        let names = auracle_features::AudioFeatures::NAMES;
+        self.knob_table = serde_json::from_str::<File>(wirings_json)
+            .ok()
+            .map(|f| f.knobs)
+            .filter(|t| t.names.iter().map(String::as_str).eq(names.iter().copied()));
+        self.knob_table.is_some()
+    }
+
+    /// What PERFORM can play `tree_json` on before it is measured (#290),
+    /// with no render: `{shape, knobs, predicted}`. `shape` is the tree's
+    /// structure without its knob values
+    /// ([`auracle_session::predict::shape_of`]): a measured relative of the
+    /// same shape lends its wiring, centred on this tree's `knobs` (its live
+    /// knobs, `[[addr, value], …]`). `predicted` is the wiring predicted from
+    /// the table ([`auracle_session::Engine::wire_predicted`]) in
+    /// [`Self::perform_wire`]'s shape, unverified, its `z` empty when the
+    /// memo does not hold the tree's render; `null` without a table or a
+    /// standardizer. `controls` as for [`Self::perform_wire`]. `null` if the
+    /// tree does not parse.
+    pub fn perform_first(&self, tree_json: &str, controls: Option<String>) -> String {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return "null".into();
+        };
+        let set = palette_set(controls.as_deref());
+        let predicted = self
+            .knob_table
+            .as_ref()
+            .and_then(|t| self.engine.wire_predicted(&tree, &set, t))
+            .map(|(jac, wiring)| {
+                serde_json::json!({
+                    "addrs": jac.addrs,
+                    "values": jac.values,
+                    "z": jac.z,
+                    "wiring": wiring,
+                })
+            });
+        let knobs = auracle_session::perform::live_knobs(&tree, self.engine.cfg.phrase.sample_rate);
+        serde_json::json!({
+            "shape": auracle_session::predict::shape_of(&tree),
+            "knobs": knobs,
+            "predicted": predicted,
+        })
+        .to_string()
     }
 
     /// The knobs of `tree_json` the voices can take live, as `[[addr, value],

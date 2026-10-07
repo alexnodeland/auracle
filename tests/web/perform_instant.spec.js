@@ -273,8 +273,8 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
 // 0.4.0 did), a wiring from the player's cache is still played at once, but
 // the status line says *re-checking* until it is measured again and replaced,
 // never trusted as current. The entry seeded here is stamped the way builds
-// before the namespace joined the tag stamped one: the bare observation count,
-// which a fresh profile matches.
+// before the namespace joined the tag stamped one: a bare observation count,
+// which no stamp today matches.
 test("a kept wiring from another build's DSP plays at once and is re-measured", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(180_000); // about 23 to 88 s on CI: a re-measurement of Acid Line
   await page.addInitScript(([key, data]) => {
@@ -316,13 +316,15 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   await expect(status, "the re-check lands").not.toHaveText(/re-checking/, { timeout: RECHECK_MS });
   await expect(status).toHaveText(/controls reach/);
   // Secondary, internal: the measurement was asked of the engine, and the
-  // re-measured wiring replaced the old one, stamped with this build's render
-  // namespace (the cache is written 1.5 s after it changes).
+  // re-measured wiring replaced the old one, stamped with a standardizer's
+  // fingerprint (the status's `std_rev` when it was asked for: during the
+  // fill, the provisional one) and this build's render namespace (the cache
+  // is written 1.5 s after it changes).
   expect((await app.sent({ type: "perform_wire" }, { after: shown })).length, "a measurement was asked for").toBeGreaterThan(0);
   const keptRev = () =>
     page.evaluate((key) => {
       const kept = new Map(JSON.parse(localStorage.getItem("auracle-perform-wirings") || "[]"));
       return String(kept.get(key)?.rev ?? "");
     }, acidKey);
-  await expect.poll(keptRev, { timeout: RECHECK_MS, intervals: [1000] }).toMatch(/^0@.+/);
+  await expect.poll(keptRev, { timeout: RECHECK_MS, intervals: [1000] }).toMatch(/^[0-9a-f]{16}@.+/);
 });

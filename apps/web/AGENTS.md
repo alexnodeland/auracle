@@ -88,8 +88,12 @@ the long-form notes are this directory's `README.md`.
   an animation that shows a mechanism (an offer growing, a child budding, a
   pick's direction) reads its fact from the engine's data and names the engine
   symbol in a comment beside it. What the engine doesn't record isn't drawn,
-  or is drawn as a guess (dashed amber). Plan-005 rebuilds the views as one
-  space to RFC-006.
+  or is drawn as a guess (dashed amber). PERFORM's controls are the
+  exception: their dashed amber already says *can't* (a search control), so a
+  control playing on a wiring borrowed or predicted before its sound is
+  measured wears the not-measured look (a thin, dim travel) and says *not
+  measured yet* (#290; #297's D2, corrected for PERFORM). Plan-005 rebuilds
+  the views as one space to RFC-006.
 - **Every interaction answers at once**
   ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md)):
   a background result waits while a control is held and for 1.5 s after, and

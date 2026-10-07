@@ -36,6 +36,7 @@ pub mod migrate;
 pub mod naming;
 pub mod own;
 pub mod perform;
+pub mod predict;
 pub mod surrogate;
 pub mod walk;
 
