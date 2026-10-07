@@ -45,8 +45,11 @@ release build).
   most recently built) whose `pkg/build.json` says it was built from the
   same Rust and build command (its `source`, a hash of `crates/`, the Cargo
   files and the toolchain as the working tree has them, uncommitted edits
-  included). The files are copied, never linked, so a build elsewhere later
-  can't change this one. `make worktree` runs it. When no checkout has one it
+  included), and whose engine is still the one that stamp was written for
+  (its `engine`: a plain `wasm-pack build` rewrites the engine and leaves the
+  stamp alone). The files are copied, never linked, so a build elsewhere
+  later can't change this one, and written anew, so the session-start hook
+  doesn't call them older than the sources. `make worktree` runs it. When no checkout has one it
   says why each was passed over, and `make wasm` is owed.
   `PKG_FROM=<dir>` takes that checkout's only.
 - **`make wasm-dev`** builds with test-fast's codegen (no LTO, 256 codegen

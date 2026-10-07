@@ -23,7 +23,7 @@ is, and taking another checkout's instead of building the same one again.
         when it was. Files are copied, never linked, so a build there later
         can't change this one
 
-pkg/build.json holds three things:
+pkg/build.json holds four things:
 - `build`: the first 16 hex digits of a SHA-256 over the engine and every
   app script. main.js puts it on the worker's, the modules' and the wasm's
   URLs, so the same bytes keep their URL and a browser refetches exactly
@@ -36,6 +36,11 @@ pkg/build.json holds three things:
   build, from before the field.
 - `source`: the hash of what the build was made from (`source`, above), so
   another checkout can tell whether this build is the one it would make.
+- `engine`: the first 16 hex digits of a SHA-256 over the engine and its
+  glue (`auracle_wasm_bg.wasm`, `auracle_wasm.js`) as the build stamped
+  them. A plain `wasm-pack build` rewrites both and leaves build.json alone,
+  so an engine that no longer hashes to its stamp's `engine` is not the
+  build the stamp describes, and no checkout takes it.
 
 Why `unfinished`: wasm-pack writes the new engine into pkg/ before it runs
 wasm-opt, and leaves build.json alone. A build that fails at wasm-opt (its
@@ -49,12 +54,18 @@ Which checkout `reuse` takes: every checkout git lists (`git worktree list`)
 but this one, the main checkout first and then the others, the most recently
 built first. A checkout is passed over, with the reason kept for the
 refusal, when it has no engine, a dev or unfinished build, a stamp that says
-nothing of its source, or a source that isn't this one's; so a worktree
+nothing of its source or of its engine (one from before the field), a source
+that isn't this one's, or an engine that isn't the one stamped; so a worktree
 whose Rust is the same as another's, any other's, takes that one's build.
+The copy's files are new files, written now (their times are the copy's,
+not the build's), so they are newer than the sources a fresh worktree was
+just checked out with, as the session-start hook asks.
 
 Re-stamping (after a JS-only change, or CI's cached engine against a new
-commit's app scripts) keeps the profile and the source: the engine is the
-same, only the scripts beside it changed.
+commit's app scripts) keeps the profile, the source and the engine hash:
+the engine is meant to be the same, only the scripts beside it changed. So
+a re-stamp can't make an engine rebuilt outside `make wasm` look like the
+one stamped; only a build's stamp (`--profile`) hashes the engine afresh.
 
 Python 3 standard library only.
 """
@@ -70,6 +81,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join("apps", "web", "pkg")
 WASM = "auracle_wasm_bg.wasm"
+GLUE = "auracle_wasm.js"
 # What `make wasm` reads, as CI's engine cache keys it (.github/actions/
 # web-engine), but for the Makefile and prose: of the Makefile only the
 # build's command counts (`--recipe`), and no crate compiles a `.md` file in
@@ -149,10 +161,24 @@ def begin(pkg):
     return write_stamp(pkg, {"profile": UNFINISHED})
 
 
+def engine(pkg):
+    """The hash of pkg/'s engine and its glue, or None when either is
+    missing."""
+    h = hashlib.sha256()
+    for name in (WASM, GLUE):
+        try:
+            with open(os.path.join(pkg, name), "rb") as f:
+                h.update(name.encode() + b"\0" + hashlib.sha256(f.read()).digest())
+        except OSError:
+            return None
+    return h.hexdigest()[:16]
+
+
 def stamp(pkg, files, profile=None, src=None):
     """Write pkg/build.json: `build` over `files`, `profile` and `source`
     as given, or as the stamp already there had them (an empty `src` drops
-    it). Returns what it wrote."""
+    it). A build's stamp (a `profile` given) hashes the engine as it is now;
+    a re-stamp keeps the hash the stamp had. Returns what it wrote."""
     before = read_stamp(pkg)
     h = hashlib.sha256()
     for path in files:
@@ -162,6 +188,9 @@ def stamp(pkg, files, profile=None, src=None):
     kept = before.get("source") if src is None else src
     if kept:
         out["source"] = kept
+    eng = engine(pkg) if profile else before.get("engine")
+    if eng:
+        out["engine"] = eng
     return write_stamp(pkg, out)
 
 
@@ -231,6 +260,10 @@ def offer(origin, mine):
             f"{origin}'s engine was built from other Rust, or another build command, than this checkout's "
             f"({rec['source']}, here {mine})"
         )
+    if not rec.get("engine"):
+        return None, f"{origin}'s stamp doesn't say which engine it was written for (a stamp from before it did)"
+    if engine(theirs) != rec["engine"]:
+        return None, f"{origin}'s engine has changed since it was stamped (built again outside `make wasm`?)"
     return rec, None
 
 
@@ -242,13 +275,19 @@ def take(root, origin, rec, files, mine):
     ours = os.path.join(root, PKG)
     staged = ours + ".reuse"
     shutil.rmtree(staged, ignore_errors=True)
-    # Files, not links: a build there later must not change this one.
+    # Files, not links: a build there later must not change this one. And
+    # new files, written now (`shutil.copy` keeps the mode, not the times):
+    # a copy that kept the build's times would be older than the sources a
+    # fresh worktree was just checked out with, and the session-start hook
+    # would call it stale.
     try:
-        shutil.copytree(theirs, staged, symlinks=False)
-        # A build there marks its pkg/ unfinished before it writes a byte, so
-        # a stamp unchanged after the copy means nothing was written during
-        # it. (A build that clears pkg/ under the copy fails the copy itself.)
-        copied = read_stamp(theirs) == rec
+        shutil.copytree(theirs, staged, symlinks=False, copy_function=shutil.copy)
+        # A build there through make marks its pkg/ unfinished before it
+        # writes a byte, so a stamp unchanged after the copy means make wrote
+        # nothing during it; a build outside make (a plain wasm-pack) leaves
+        # the stamp alone, so the copy's engine must also be the one stamped.
+        # (A build that clears pkg/ under the copy fails the copy itself.)
+        copied = read_stamp(theirs) == rec and engine(staged) == rec["engine"]
     except (OSError, shutil.Error):
         copied = False
     if not copied:

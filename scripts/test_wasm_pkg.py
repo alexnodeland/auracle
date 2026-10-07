@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -92,6 +93,17 @@ class Checkouts(unittest.TestCase):
         self.git(self.main, "worktree", "add", "-q", "--detach", path)
         return path
 
+    def listed(self):
+        """The checkouts in the order `git worktree list` gives them."""
+        out = subprocess.run(
+            ["git", "-C", self.main, "worktree", "list", "--porcelain"], env=test_env(), check=True, capture_output=True, text=True
+        ).stdout
+        return [os.path.realpath(line[len("worktree ") :]) for line in out.splitlines() if line.startswith("worktree ")]
+
+    def built_at(self, root, when):
+        """Set the time of root's engine (as a build at `when` would)."""
+        os.utime(os.path.join(root, W.PKG, W.WASM), (when, when))
+
     def build(self, root, wasm=b"\0asm-1", profile="release", src="here"):
         """A pkg/ as `make wasm` leaves it: the engine, its glue, the stamp."""
         pkg = os.path.join(root, W.PKG)
@@ -159,6 +171,23 @@ class Stamp(Checkouts):
         got = W.read_stamp(pkg)
         self.assertEqual(got["profile"], "release")
         self.assertNotIn("source", got)
+
+    def test_a_build_hashes_its_engine_and_glue_and_a_restamp_keeps_the_hash(self):
+        pkg = os.path.join(self.main, W.PKG)
+        made = self.build(self.main, wasm=b"\0asm-made")
+        self.assertEqual(made["engine"], W.engine(pkg))
+        # A plain wasm-pack build rewrites the engine; a re-stamp after it
+        # (`make wasm-stamp`) keeps the hash of the engine that was stamped.
+        with open(os.path.join(pkg, W.WASM), "wb") as f:
+            f.write(b"\0asm-rebuilt")
+        again = W.stamp(pkg, self.stamped(self.main))
+        self.assertEqual(again["engine"], made["engine"])
+        self.assertNotEqual(W.engine(pkg), made["engine"])
+        # The glue counts as much as the engine.
+        self.build(self.main, wasm=b"\0asm-made")
+        before = W.engine(pkg)
+        self.write(self.main, "apps/web/pkg/auracle_wasm.js", "glue(2);\n")
+        self.assertNotEqual(W.engine(pkg), before)
 
     def test_begin_marks_the_pkg_unfinished_with_no_build_id_and_a_restamp_keeps_it_so(self):
         pkg = os.path.join(self.main, W.PKG)
@@ -330,6 +359,10 @@ class Reuse(Checkouts):
         other = self.worktree("auracle-other")
         self.build(other, wasm=b"\0asm-other")
         self.build(self.main, wasm=b"\0asm-main")
+        # The main checkout's build is the older one: only putting the main
+        # checkout first takes it.
+        self.built_at(self.main, 1_000_000)
+        self.built_at(other, 2_000_000)
         code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
         self.assertEqual(code, 0, said)
         with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
@@ -349,12 +382,15 @@ class Reuse(Checkouts):
             self.assertEqual(f.read(), b"\0asm-good")
 
     def test_among_worktrees_the_most_recently_built_is_taken(self):
-        old, new = self.worktree("auracle-old"), self.worktree("auracle-new")
+        old, new = self.worktree("auracle-a-older"), self.worktree("auracle-b-newer")
         self.build(old, wasm=b"\0asm-old")
         self.build(new, wasm=b"\0asm-new")
-        # git lists `old` first: only the engines' times can put `new` ahead.
-        os.utime(os.path.join(old, W.PKG, W.WASM), (1_000_000, 1_000_000))
-        os.utime(os.path.join(new, W.PKG, W.WASM), (2_000_000, 2_000_000))
+        self.built_at(old, 1_000_000)
+        self.built_at(new, 2_000_000)
+        # git lists the worktrees by path, the older build first: only the
+        # engines' times can put the newer ahead.
+        order = self.listed()
+        self.assertLess(order.index(os.path.realpath(old)), order.index(os.path.realpath(new)))
         code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
         self.assertEqual(code, 0, said)
         with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
@@ -382,6 +418,72 @@ class Reuse(Checkouts):
         # The main checkout and the seven others, but this worktree's own.
         self.assertEqual(len(lines), 1 + W.SHOWN + 1)
         self.assertEqual(lines[-1].strip(), f"and {W.SHOWN + 2 + 1 - W.SHOWN} more")
+
+    def test_an_engine_built_again_after_its_stamp_is_passed_over(self):
+        # A sibling's release build; then a plain `wasm-pack build` there,
+        # from edited Rust, which rewrites the engine and leaves build.json
+        # alone. Its stamp still says release, from this Rust.
+        other = self.worktree("auracle-other")
+        self.build(other, wasm=b"\0asm-release")
+        with open(os.path.join(other, W.PKG, W.WASM), "wb") as f:
+            f.write(b"\0asm-experiment")
+        self.write(other, "apps/web/pkg/auracle_wasm.js", "glue('experiment');\n")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        self.assertIn(f"{other}'s engine has changed since it was stamped", said)
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG, W.WASM)))
+        # Named, too, and after a re-stamp there (`make wasm-stamp`).
+        W.stamp(os.path.join(other, W.PKG), self.stamped(other))
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt), origin=other)
+        self.assertEqual(code, 1)
+        self.assertIn("changed since it was stamped", said)
+
+    def test_a_stamp_that_does_not_say_which_engine_it_was_written_for_is_passed_over(self):
+        pkg = os.path.join(self.main, W.PKG)
+        made = self.build(self.main)
+        del made["engine"]
+        W.write_stamp(pkg, made)
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        self.assertIn("doesn't say which engine it was written for", said)
+
+    def test_an_engine_rewritten_while_it_is_copied_is_refused(self):
+        # A plain wasm-pack build there during the copy: the stamp is the
+        # same after it, the copied engine is not the one stamped.
+        self.build(self.main, wasm=b"\0asm-main")
+        copy = shutil.copytree
+
+        def copy_torn(src, dst, *a, **k):
+            out = copy(src, dst, *a, **k)
+            with open(os.path.join(dst, W.WASM), "wb") as f:
+                f.write(b"\0asm-half")
+            return out
+
+        W.shutil.copytree = copy_torn
+        try:
+            code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        finally:
+            W.shutil.copytree = copy
+        self.assertEqual(code, 1)
+        self.assertIn("changed while it was copied", said)
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG)))
+
+    def test_a_copied_engine_is_newer_than_the_sources_the_worktree_was_checked_out_with(self):
+        # The main checkout's engine was built an hour ago; the worktree's
+        # sources were checked out just now (setUp). The session-start hook
+        # calls an engine stale when a source is newer than it.
+        self.build(self.main, wasm=b"\0asm-main")
+        an_hour_ago = time.time() - 3600
+        pkg = os.path.join(self.main, W.PKG)
+        for name in os.listdir(pkg):
+            os.utime(os.path.join(pkg, name), (an_hour_ago, an_hour_ago))
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        newer = subprocess.run(
+            ["find", "crates", "-name", "*.rs", "-newer", os.path.join(W.PKG, W.WASM)], cwd=self.wt, capture_output=True, text=True, check=True
+        ).stdout
+        self.assertEqual(newer, "", "the hook's own check: no source newer than the copied engine")
+        self.assertGreater(os.path.getmtime(os.path.join(self.wt, W.PKG, W.WASM)), an_hour_ago + 3000)
 
     def test_the_copy_is_files_not_links_and_a_later_build_there_does_not_change_it(self):
         self.build(self.main, wasm=b"\0asm-main")
