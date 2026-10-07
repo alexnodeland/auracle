@@ -745,7 +745,8 @@ from it ([Rules](#rules)).
   the machine. The specs on the fixture that name no seed of their own boot
   unseeded there (`AURACLE_SEED=random`); on the gate they boot seeded
   (`tests/web/fixtures.js` `SEED`, the same pool and sides every run;
-  PERFORM's specs `PERFORM_SEED`, whose first offer is a typical one), so a
+  PERFORM's specs `PERFORM_SEED`, whose first offer was a typical one when
+  it was chosen, under the uniform octave draw #62 replaced), so a
   spec that only holds for one pool shows up here. A spec that names its own
   `random:` seed keeps it in both. Each test that fails gets its own issue,
   `Flaky: <file> '<test title>'`, or a comment on the one open for it

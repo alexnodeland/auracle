@@ -153,7 +153,8 @@ const DEFAULT_SEED = (() => {
 
 /** The seed PERFORM's specs boot with (`app.boot({ seed: PERFORM_SEED,
  *  random: PERFORM_SEED })`), in place of SEED: under SEED the first offer
- *  they grow is unusually light. `AURACLE_SEED` overrides it as it does SEED
+ *  they grew was unusually light, as measured below (before #62).
+ *  `AURACLE_SEED` overrides it as it does SEED
  *  (`random` boots them unseeded, N with N).
  *
  *  Chosen (#135) so the first offer grown on Glass Pad, in the specs' own
