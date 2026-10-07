@@ -14,10 +14,12 @@ both alternatives are kept so the comparison stays runnable.
 | `Bald` | The pair maximizing expected information gain about $\theta$ |
 | `Thompson` | Dueling Thompson sampling: a best-arm rule |
 
-In the app, a pair is chosen from the sounds the fill's schedule names: the
-first four deals of a session from the first 8, 16, 24 and 32 sounds of the
-pool, every later one from all of it, so a seed deals the same pairs while
-the pool fills at any machine speed ([the runtime](../runtime.md#progressive-boot)).
+In the app, a pair is chosen from the sounds the fill's schedule names: in a
+session whose pool fills at boot, the first four deals from the first 8, 16,
+24 and 32 sounds of the pool, every later one from all of it, so a seed deals
+the same pairs while the pool fills at any machine speed; a session restored
+with its pool full deals from all of it from the first
+([the runtime](../runtime.md#progressive-boot)).
 The measurement below deals from the whole pool.
 
 ## The measurement

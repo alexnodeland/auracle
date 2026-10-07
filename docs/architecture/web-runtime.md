@@ -504,9 +504,9 @@ number:
   player's, or another in the background) is not queued again, and the
   player's takes the place of a queued background one. Its one reply's `re`
   lists every number it answers;
-- a deal asked for while the pool fills waits for the sounds its schedule
-  names (`dealsWaiting`) and is run again once they have joined, or the fill
-  is over: its reply comes late, never not at all
+- a deal asked for while the pool fills waits for the sounds the fill's
+  schedule names (`dealsWaiting`) and is run again once they have joined,
+  or the fill is over: its reply comes late, never not at all
   ([Deals while the pool fills](#deals-while-the-pool-fills));
 - a request that arrives before the engine is up gets `not_ready`, and is
   never run. It names the request as `engine_error` does (`request`, its
@@ -1508,9 +1508,10 @@ behind the displaced pair that was the pick's own pair was refused when it
 landed while the pick was held and went up when it landed after ⌘Z (5,22
 and 1,7 after Q in #211's probe). Judged against the pick that put the
 displaced pair up, it is refused in every order. The engine's answers are
-the same too, given the same requests in the same order: a deal drawn while
-the pool fills keeps to the fill's schedule, and a cut elsewhere does not
-move a deal ([Deals while the pool fills](#deals-while-the-pool-fills)).
+the same too, given the same requests in the same order: the deals of a
+session whose pool fills at boot keep to the fill's schedule, and a cut
+elsewhere does not move a deal
+([Deals while the pool fills](#deals-while-the-pool-fills)).
 
 An empty answer (the engine deals `null` when fewer than two sounds in the
 pool are standardized and not cut, `deal_duel_except`) is nothing to put up.
@@ -1546,22 +1547,32 @@ The app is handed over at eight sounds (`playable`) and the rest of the
 pool fills behind the player. A deal drawn over however many had joined when
 it was asked for gave the same seed other pairs on a faster machine (#211:
 4,10, then 4,11, then 5,6 across boots of seed 20260928). Deals now keep to
-a fixed schedule (`DealSchedule` in `auracle-session`'s `engine/deal.rs`):
-the k-th deal of a session draws only from the first 8·(k+1) sounds of the
-pool (8, 16, 24, 32), in pool order, until that reaches the pool's size,
-and every later deal from the whole pool, children bred later included. The
-worker sets the schedule at boot to the size the app is handed over at
-(`set_deal_schedule(playableAt)`), so the first deal, at `playable`, waits
-for nothing and the table opens as fast as it did.
+a fixed schedule (`DealSchedule` in `auracle-session`'s `engine/deal.rs`)
+in a session whose pool fills at boot: the k-th deal draws only from the
+first 8·(k+1) sounds of the pool (8, 16, 24, 32), in pool order, until that
+reaches the pool's size, and every later deal from the whole pool, children
+bred later included. Whether the fill has finished by then changes nothing:
+a session whose pool filled before its second deal still deals its first
+four from the first 8, 16, 24 and 32 sounds. The worker sets the schedule
+at boot, once the restore (if any) is done, to the size the app is handed
+over at (`set_deal_schedule(playableAt)`), so the first deal, at
+`playable`, waits for nothing and the table opens as fast as it did.
+
+A pool already full at that point (a saved bank that came back whole) has
+no fill, so its deals depend on no timing, and the worker sets no schedule
+(`set_deal_schedule(0)`): every deal draws from the whole pool, as before
+#211. A schedule there would deal the first pairs of every visit from the
+oldest sounds, since bred children join at the end of the pool. A bank
+that came back short (a sound that could not be restored, or a larger
+pool) is topped up by a fill, and keeps to the schedule from its first
+deal, as a fresh session does.
 
 k is the deal's place in the engine's sequence of deals since boot: one per
 `duel` request it answers, and one for each it draws again because a side
 was cut (below). That sequence is what main asks for, one deal per pair it
 needs, the refusals' deals included, in the order the player's gestures and
 the dealer's rules ask, never by a clock; it is also what the engine's duel
-stream has drawn, so it adds no timing the stream did not already have. A
-session restored from a save, or one whose pool is already full, follows the
-same schedule from its first deal.
+stream has drawn, so it adds no timing the stream did not already have.
 
 Pool order is the order the seed's fill folds its draws in, the same on
 every machine: the farm's results are folded in draw-index order
@@ -1589,9 +1600,10 @@ request is served as before, and the fill goes on between them. A fast
 picker on a slow machine can therefore wait for a pair in the first
 seconds: the cards dim and say *dealing…* until it lands.
 `tests/worker/deal.test.mjs` holds the wait and the pairs on the worker,
-`tests/web/evolve_seeded_deals.spec.js` on the page (two boots of one seed,
-the second's fill held by a gate, show the same pairs), and
-`engine/deal/tests.rs` the schedule.
+and that a bank back whole deals from the whole pool while one back short
+keeps to the schedule; `tests/web/evolve_seeded_deals.spec.js` holds them on
+the page (two boots of one seed, the second's fill held by a gate, show the
+same pairs), and `engine/deal/tests.rs` the schedule.
 
 A cut changes a deal only when the deal draws the cut sound. A uniform deal
 (the default rule, every deal before the first fit, a scheduled check)
@@ -1790,9 +1802,9 @@ that pick commits (`settleFit`), so it keeps its window too.
   its number of picks: ADR-001), so a fresh session with the same random
   seed deals the same pool at any farm width, under the same names however
   many sounds `playable` caught (`Engine::fix_names`), and what follows
-  repeats when the same requests reach the engine in the same order. A deal
-  made while the pool is filling keeps to the fill's schedule and waits for
-  its sounds, so how far the fill has got does not move it
+  repeats when the same requests reach the engine in the same order. The
+  deals of a session whose pool fills at boot keep to the fill's schedule
+  and wait for their sounds, so how far the fill has got does not move them
   ([Deals while the pool fills](#deals-while-the-pool-fills)); a sound the
   player adds while it fills can. Timing can still move each PERFORM walk,
   which takes its draw when it begins. A saved session comes back as it was

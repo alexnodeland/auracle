@@ -5,7 +5,9 @@
 // they have all joined waits in the worker until they have (worker.js
 // `dealsWaiting`). So a seed deals the same pairs however far the fill had
 // got when each was asked for. It used to draw over however many had
-// joined, and the same seed dealt 4,10 on one boot and 5,6 on another.
+// joined, and the same seed dealt 4,10 on one boot and 5,6 on another. A
+// saved bank that comes back whole has no fill, and deals from the whole
+// pool from its first pair.
 //
 // worker.js runs here as it is, over the built engine, with no page
 // (harness.mjs), filling serially (no farm), two sounds a step. The claims
@@ -81,3 +83,41 @@ test("a deal asked for while the pool fills waits for the sounds the schedule na
   await w.close();
 });
 
+test("a saved bank that comes back whole deals from the whole pool from its first pair, and one that comes back short keeps to the schedule", { timeout: TIMEOUT }, async (t) => {
+  // A bank of POOL sounds, saved; its order is the pool's.
+  const first = await workerFor(t, { seed: SEED, poolSize: POOL, playableAt: STEP });
+  const [{ json: saved }] = await first.send({ type: "save" });
+  await first.close();
+  const order = JSON.parse(saved).bank.map((e) => e.id);
+  assert.equal(order.length, POOL);
+  const at = (id) => order.indexOf(id);
+
+  // Back whole: there is no fill, so no schedule. Booted with a step of 2,
+  // the k-th deal under one would hold only the first 2·(k+1) sounds (the
+  // first deal the first two); the first deals here reach past that. (Drawn
+  // from the whole pool, the first falls within its first two sounds one
+  // time in 66, the second within four one in 11, the third within six one
+  // in 4: a seed whose three all do would be a seed to change.)
+  const whole = await workerFor(t, { seed: SEED, poolSize: POOL, playableAt: 2, saved });
+  const wide = [];
+  for (let k = 0; k < 3; k++) {
+    const [r] = await whole.send({ type: "duel", exclude: [] });
+    wide.push(Math.max(...r.pair.map(at)));
+  }
+  assert.ok(
+    wide.some((last, k) => last >= 2 * (k + 1)),
+    `a bank that came back whole dealt by the schedule: its first pairs reached ${wide.map((n) => n + 1).join(", ")} sounds in`,
+  );
+  await whole.close();
+
+  // Back short of a larger pool: the rest fills behind it, so its deals keep
+  // to the schedule, and the first is the bank's first two sounds.
+  const short = await workerFor(t, { seed: SEED, poolSize: POOL + 2, playableAt: 2, saved });
+  const [r] = await short.send({ type: "duel", exclude: [] });
+  assert.deepEqual(
+    r.pair.map(at).sort((x, y) => x - y),
+    [0, 1],
+    "a bank that came back short dealt its first pair from beyond its first two sounds",
+  );
+  await short.close();
+});

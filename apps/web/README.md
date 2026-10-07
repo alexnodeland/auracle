@@ -187,9 +187,11 @@ to a pinned `role="alert"` strip that stays until resolved.
   is real rather than cosmetic. `filled` still fires, and everything
   downstream of it still runs. `fill_progress` carries `stage`/`stages` so a
   restore and the top-up fill each own a labelled share of the boot bar.
-  Deals made meanwhile keep to the fill's schedule (the k-th from the first
-  8·(k+1) sounds) and wait in `dealsWaiting` for any not yet folded in, so a
-  seed deals the same pairs at any machine speed (#211).
+  The deals of a session that fills at boot keep to the fill's schedule (the
+  k-th from the first 8·(k+1) sounds, whether or not the fill has finished)
+  and wait in `dealsWaiting` for any not yet folded in, so a seed deals the
+  same pairs at any machine speed; a bank restored whole has no schedule
+  (#211).
 
   **The player first.** Requests are served in three lanes, most urgent
   first and in arrival order within a lane: *now* (every gesture, and

@@ -97,14 +97,17 @@ after that is dealt behind it. Pairs go up in the order they were dealt, so a
 seeded session shows the same pairs in the same order however long each deal
 took.
 
-While the pool is still filling, each deal reaches eight sounds further, in
-the order the pool fills: the first deal is from its first eight sounds, the
-next from the first 16, then 24 and 32, and every deal after that from the
-whole pool. (A pair that can’t go up, such as the pair just put away, is
-dealt again, and that counts as a deal.) A deal whose sounds haven’t all
-arrived waits for them, so the same random seed and the same picks deal the
-same pairs on any machine. Pick very fast in the first seconds and the next
-pair can take a moment.
+When the pool is still filling as the app opens (a new session, or a saved
+one that came back with sounds missing), its first four deals each reach
+eight sounds further, in the order the pool fills: the first deal is from
+its first eight sounds, the next from the first 16, then 24 and 32, even if
+the pool has filled by then. Every deal after that is from the whole pool.
+(A pair that can’t go up, such as the pair just put away, is dealt again,
+and that counts as a deal.) A deal whose sounds haven’t all arrived waits
+for them, so the same random seed and the same picks deal the same pairs on
+any machine. Pick very fast in the first seconds and the next pair can take
+a moment. A saved session that comes back with its whole pool has nothing
+to fill, and every deal is from all of it.
 
 The next pair is chosen before your pick is known. That changes nothing,
 because pairs are dealt at random and your pick is held for its seven seconds

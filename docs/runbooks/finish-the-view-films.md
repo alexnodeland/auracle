@@ -149,8 +149,8 @@ themselves (`film_chip.spec.js`).
 - **Seeded deals made while the pool fills** used to differ between runs
   (ADR-001): each was drawn over however many sounds had joined, and the
   duel stream's draws depend on that number (range sampling rejects draws).
-  Since #211 the k-th deal of a session draws only from the first 8·(k+1)
-  sounds in the order the seed fills the pool, and waits for them, so a
+  Since #211 the k-th deal of a fresh session draws only from the first
+  8·(k+1) sounds in the order the seed fills the pool, and waits for them, so a
   seeded take deals the same pairs at any machine speed; a sound added while
   the pool fills (the warm start's picks, a preset opened) still joins
   wherever the fill has got to. That changed the first four pairs a seed

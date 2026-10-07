@@ -2903,9 +2903,10 @@ async function pump() {
 }
 
 // Deals waiting for the sounds the fill's schedule names (#211). The k-th
-// deal of a session draws only from the first `playableAt`·(k+1) sounds of
-// the pool, in the order the seed's fill folds them in (`set_deal_schedule`,
-// at boot), and a deal asked for before they have all joined waits here, in
+// deal of a session whose pool fills at boot draws only from the first
+// `playableAt`·(k+1) sounds of the pool, in the order the seed's fill folds
+// them in (`set_deal_schedule`, at boot; none on a pool already full), and a
+// deal asked for before they have all joined waits here, in
 // the order it was asked for, until the fill has folded them in
 // (`serveDeals`, after each fold) or is over. It used to be drawn at once over
 // however many had joined, so a slower machine dealt the same seed other
@@ -3286,10 +3287,6 @@ async function dispatch(m) {
         // out of vetted draws), where announcing anyway is what keeps the veil
         // from being left up forever.
         const playableAt = Math.max(2, m.playableAt || PLAYABLE_AT);
-        // Deals keep to the fill's schedule (#211, `dealsWaiting`): the
-        // first reaches the sounds the app is handed over at, so it waits
-        // for nothing.
-        if (typeof engine.set_deal_schedule === "function") engine.set_deal_schedule(playableAt);
         let announced = false;
         const announcePlayable = () => {
           if (announced) return;
@@ -3303,6 +3300,16 @@ async function dispatch(m) {
         };
 
         let st = status();
+        // Deals keep to the fill's schedule (#211, `dealsWaiting`) when there
+        // is a fill: the first reaches the sounds the app is handed over at,
+        // so it waits for nothing. A pool already full here (a saved bank
+        // that came back whole) has no fill to wait for, and its deals
+        // depend on no timing: they draw from the whole pool from the first,
+        // with no schedule (0), as they did before it. A schedule there
+        // would deal the first pairs of every visit from the oldest sounds.
+        if (typeof engine.set_deal_schedule === "function") {
+          engine.set_deal_schedule(st.pool >= st.pool_target ? 0 : playableAt);
+        }
         news({
           type: "fill_progress",
           pool: st.pool,

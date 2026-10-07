@@ -1398,9 +1398,11 @@ impl WasmEngine {
     /// Deal by the fill's schedule (#211): the `k`-th deal of the session
     /// draws only from the first `step · (k + 1)` sounds of the pool, in pool
     /// order, until that reaches the pool's size, and every later deal from
-    /// the whole pool ([`DealSchedule`]). The worker sets it to the size the
-    /// app is handed over at, so the first deal waits for nothing. Counts
-    /// deals from 0 again; `0` is no schedule.
+    /// the whole pool ([`DealSchedule`]). The worker sets it at boot to the
+    /// size the app is handed over at, so the first deal waits for nothing,
+    /// or to 0 when the pool is already full (a saved bank that came back
+    /// whole has no fill to keep to). Counts deals from 0 again; `0` is no
+    /// schedule.
     pub fn set_deal_schedule(&mut self, step: usize) {
         self.deals = DealSchedule::new(step);
     }
