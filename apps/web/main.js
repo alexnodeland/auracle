@@ -8724,10 +8724,13 @@ function bankRow(r, fitted) {
     if (e.target.closest("button")) return;
     if (e.detail > 1) return; // a double-click's second click: a rename, not another open
     kbdRowId = r.id;
-    // Its face as the row shows it now: opening it redraws the bank.
+    // Its face as the row shows it now: opening it redraws the bank. The
+    // sound is opened where you are, as Enter and ⌘K open one: its face
+    // flies from the row to where this level draws the sound you're playing
+    // (`takeUpCheck`). Only what says PATCH goes there (↓ PATCH, How it
+    // works' knob).
     armTakeUp(el.querySelector(":scope > .face-slot"), { id: r.id });
     openOnBench(r.id);
-    showView("patch");
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
@@ -8943,7 +8946,7 @@ function renderPresetBank(list) {
     if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      openPreset(p, el, { move: true });
+      openPreset(p, el);
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
     frag.appendChild(el);
@@ -8955,12 +8958,11 @@ function renderPresetBank(list) {
   paintFaces(list);
 }
 
-/** Open a preset, as its row does: the pool's copy if it is in the pool
- *  (and, from the row's click, PATCH), else asked of the engine with `open`.
- *  `el` is its row, if the bank draws it (its face flies from there when the
- *  sound lands, and it says it is loading); ⌘K's list opens one without a
- *  move, as Enter on a bank row does. */
-function openPreset(p, el, { move = false } = {}) {
+/** Open a preset, as its row does: the pool's copy if it is in the pool,
+ *  else asked of the engine with `open`, at the level you're at (a click,
+ *  Enter and ⌘K's list alike). `el` is its row, if the bank draws it (its
+ *  face flies from there when the sound lands, and it says it is loading). */
+function openPreset(p, el) {
   const loadedId = presetIds.get(p.index);
   const inBank = loadedId != null && !!rowOf(loadedId);
   const row = el || document.querySelector(`#bank-list .preset-item[data-index="${p.index}"]`);
@@ -8969,7 +8971,6 @@ function openPreset(p, el, { move = false } = {}) {
     armTakeUp(slot, { id: loadedId });
     openOnBench(loadedId);
     voicePresetEarly(p, loadedId);
-    if (move) showView("patch");
   } else {
     // Said at once: the engine may be busy for seconds, and a click
     // that shows nothing gets clicked again, or given up on.

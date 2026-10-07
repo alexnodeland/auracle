@@ -16,3 +16,11 @@
 - **It costs little and stops in silence.** Nothing is drawn or measured
   while nothing sounds, and with reduced motion set on your system the
   faces stay still (`live_faces.spec.js`).
+
+### Changed: a sound picked from the bank opens where you are
+
+- **Clicking a row in the bank no longer takes you to PATCH.** A pool sound
+  or a preset clicked at PERFORM, EVOLVE, TASTE or LEARNING now opens right
+  there, as Enter on a row and ⌘K's sounds already did, and its face flies
+  from the row to where that level shows the sound you're playing. ↓ PATCH
+  on an EVOLVE card still opens the sound in PATCH (`shell_zoom.spec.js`).

@@ -89,8 +89,8 @@ It lists, in three groups:
   safe; and links to the films and to this guide’s keys and gestures.
 - **SOUNDS:** the pool, then the presets, each with its face. With nothing
   typed it shows five; with a query, the eight that match best. Choosing one
-  puts it in your hands at the level you’re at, as <kbd>Enter</kbd> on its
-  row in the bank does.
+  puts it in your hands at the level you’re at, as a click or <kbd>Enter</kbd>
+  on its row in the bank does.
 
 Each command prints its key beside it, where it has one, so the list teaches
 the keys as you use it, and a setting that is on says *on*. A name’s start

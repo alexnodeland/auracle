@@ -22,7 +22,8 @@ it.</figcaption>
 
 ## Open a sound and change it
 
-1. Click a row in the [bank](../bank.md). It opens as the sound you’re playing.
+1. At PATCH, click a row in the [bank](../bank.md). It opens here as the sound
+   you’re playing (a row opens its sound at whichever level you’re at).
 2. Play it from the keybed. Hold a chord, or run the arpeggiator.
 3. Drag a knob, and hear it change.
 4. Press **KEEP AS NEW** in the edit bar to add your edit to the pool as a new

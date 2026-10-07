@@ -84,7 +84,9 @@ test("a face appears on every row, card and chip once its render lands", async (
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#face-a.face-slot img.face")).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(page.locator("#face-b.face-slot img.face")).toHaveCount(1);
-  // PATCH: the header and the teach strip's A and B.
+  // PATCH: the header and the teach strip's A and B (a row opens its sound
+  // at the level you're at).
+  await goLevel(page, "patch");
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
   await app.engine((timeout) => expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   await app.engine((timeout) => expect(page.locator("#pd-a .face-slot img.face")).toHaveCount(1, { timeout }), { ms: 30_000 });

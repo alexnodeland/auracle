@@ -143,8 +143,10 @@ unit-tested (`tests/levels.test.mjs`):
   leaves the mark `taken-up`. No clock ends the wait, since a slower engine
   only says the face later (ADR-022); the arm goes when another sound is
   asked for or the sound in hand is already another face. It waits for a
-  move in flight to land; a move started under it takes it off. A row
-  click's own move to PATCH carries no face, since an open is on its way.
+  move in flight to land; a move started under it takes it off. Every open
+  from the bank leaves you at the level you're at (a row's click, Enter, a
+  preset, ⌘K's Sounds): only what says PATCH goes there (an EVOLVE card's
+  ↓ PATCH, How it works' knob).
 
 ### The model view
 
