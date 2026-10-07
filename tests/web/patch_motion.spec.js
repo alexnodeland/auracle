@@ -246,7 +246,7 @@ test("a sound opened over an unrelated one fades up in place: nothing of the las
   const boots = await page.locator("#rack-subject").textContent();
   await takeFrames(page);
 
-  // From the sound the boot opened (Soft Key, fifteen modules) to First
+  // From the sound the boot opened (Bright Stab, fourteen modules) to First
   // Bass, then from First Bass to Reese, whose filter stands where First
   // Bass's amp was: a slide from there passes behind it.
   await openPreset(app, "First Bass");

@@ -265,10 +265,13 @@ measurement that would settle it.
   A fused prior over the cluster is now **implemented and switched off**, which
   is a more useful state than either “not done” or “done”.
 
-  The VIFs quoted when this was written were 18.4 / 10.4 / 5.9; after the ZCR DC
-  removal they measure **16.9 / 9.7 / 5.9** and `zcr_mean` no longer trips the
-  collinearity flag at all. A third of the original argument was a coordinate
-  bug rather than a modeling problem.
+  The VIFs quoted when this was written were 18.4 / 10.4 / 5.9; the ZCR DC
+  removal, when it shipped, took them to **16.9 / 9.7 / 5.9**, and `zcr_mean`
+  stopped tripping the collinearity flag. A third of the original argument was
+  a coordinate bug rather than a modeling problem. They have risen since:
+  today's sweep reads **18.7 / 12.0 / 6.8**, and `zcr_mean` is over the flag
+  again ([Known collinearity](../features/audio.md#known-collinearity) has
+  today's table).
 
   Two gates were run at ρ = 0.25 and they **disagreed**. The closed-loop gate,
   which scores θ recovery, improved (0.657 → 0.702). The 48-seed paired climb,

@@ -93,6 +93,36 @@
 //! patches get their full makeup (72 patches over 0 dBTP, 64 before); its
 //! sample ceiling holds. And 16.5 % of the bank (`spk` < 20 %) is still
 //! inaudible on a laptop at any level: that is register, not loudness.
+//!
+//! The register (#62): the grammar's octave weights (`OCTAVE_WEIGHTS`, 5 %,
+//! 15 %, 40 %, 25 % and 15 % for −2 … +2) in place of a uniform draw. The
+//! same five loads, which a new prior fills with other patches, and the
+//! table the run ends with, by the octave of each patch's lowest oscillator:
+//!
+//! ```text
+//!                                   uniform        weighted
+//! spk < 20 %                       35 (17.5 %)     17 (8.5 %)
+//! mostly < 200 Hz at C4            61 (30.5 %)     43 (21.5 %)
+//! live notes ≥ 10 LU under         13 (6.5 %)      10 (5.0 %)
+//!
+//! lowest octave        patches, of them mostly < 200 Hz, spk < 20 %
+//!   −2                 37: 23, 15                 15: 11, 7
+//!   −1                 43: 29, 14                 41: 26, 6
+//!    0                 49:  1,  2                 71:  2, 2
+//!   +1                 25:  1,  1                 37:  1, 2
+//!   +2                 32:  5,  3                 22:  1, 0
+//!   no oscillator      14:  2,  0                 14:  2, 0
+//! ```
+//!
+//! The issue estimated about 15 % mostly sub and 7 % under the speaker
+//! threshold by reweighting the uniform pool. The second came out near it;
+//! the first less far down, because the octave of a patch's lowest
+//! oscillator is the lowest of several draws: a patch with two oscillators
+//! has one at −1 or lower more than a third of the time (1 − 0.8²), and
+//! −1 is still the lowest octave of a fifth of the bank, two thirds of them
+//! mostly sub. The weights moved patches between the rows; within a row
+//! the share that is mostly sub stayed about where it was (the small rows
+//! move with their few patches).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -100,7 +130,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use auracle_features::{integrated_lufs, CachedFeatures, TARGET_LUFS};
-use auracle_grammar::PatchTree;
+use auracle_grammar::{AudioNode, PatchTree};
 use auracle_wasm::{farm_render, LivePoly, WasmEngine};
 use rustfft::{num_complex::Complex, FftPlanner};
 
@@ -466,6 +496,26 @@ struct Row {
     spk: f64,
     centroid: f64,
     low_c4: f64,
+    /// The lowest octave of any oscillator in the patch, which sets its
+    /// register; `None` for a patch with no oscillator (noise, a hole).
+    low_octave: Option<i8>,
+}
+
+/// The lowest octave of any oscillator under `n`.
+fn lowest_octave(n: &AudioNode) -> Option<i8> {
+    let own = match n {
+        AudioNode::Vco { octave, .. }
+        | AudioNode::Supersaw { octave, .. }
+        | AudioNode::Wavetable { octave, .. }
+        | AudioNode::Pluck { octave, .. }
+        | AudioNode::Formant { octave, .. } => Some(*octave),
+        _ => None,
+    };
+    n.children()
+        .into_iter()
+        .filter_map(lowest_octave)
+        .chain(own)
+        .min()
 }
 
 fn measure_load(load: u64, tp: &TruePeak) -> Vec<Row> {
@@ -543,6 +593,7 @@ fn measure_load(load: u64, tp: &TruePeak) -> Vec<Row> {
                 spk: t.speaker,
                 centroid: t.centroid,
                 low_c4: c4.low,
+                low_octave: lowest_octave(&tree.root),
             });
         }
     }
@@ -809,6 +860,22 @@ fn main() {
         pct(small),
         pct(sub)
     );
+    println!("by the lowest oscillator's octave (register):");
+    for octave in [Some(-2), Some(-1), Some(0), Some(1), Some(2), None] {
+        let at: Vec<&Row> = rows.iter().filter(|r| r.low_octave == octave).collect();
+        let share = |k: usize| 100.0 * k as f64 / at.len().max(1) as f64;
+        let (sub, small) = (
+            at.iter().filter(|r| r.low_c4 > LOW_MOSTLY).count(),
+            at.iter().filter(|r| r.spk < SMALL_SPK).count(),
+        );
+        println!(
+            "  {:>4}  {:>3} patches   mostly < 200 Hz {sub:>3} ({:>5.1}%)   spk < 20 % {small:>3} ({:>5.1}%)",
+            octave.map_or("none".to_string(), |o| format!("{o:+}")),
+            at.len(),
+            share(sub),
+            share(small),
+        );
+    }
     println!(
         "gain_db beyond the ±12 dB live clamp: {} ({:.1}%; {clamp_up} up, {clamp_down} down); \
          loudness alone wanted > +12 dB: {want_up} ({:.1}%)",

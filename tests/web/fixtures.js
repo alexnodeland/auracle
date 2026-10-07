@@ -153,7 +153,8 @@ const DEFAULT_SEED = (() => {
 
 /** The seed PERFORM's specs boot with (`app.boot({ seed: PERFORM_SEED,
  *  random: PERFORM_SEED })`), in place of SEED: under SEED the first offer
- *  they grow is unusually light. `AURACLE_SEED` overrides it as it does SEED
+ *  they grew was unusually light, as measured below (before #62).
+ *  `AURACLE_SEED` overrides it as it does SEED
  *  (`random` boots them unseeded, N with N).
  *
  *  Chosen (#135) so the first offer grown on Glass Pad, in the specs' own
@@ -168,7 +169,12 @@ const DEFAULT_SEED = (() => {
  *
  *  SEED's offer is mid-range in growth, but its measurement is the third
  *  lightest of twelve, under the lower quartile; this one is near the
- *  median in both, and three repeats of each dealt the same offer. */
+ *  median in both, and three repeats of each dealt the same offer.
+ *
+ *  Measured while the grammar drew every oscillator's octave uniformly.
+ *  Its octave weights (#62) deal another pool, and so another first offer,
+ *  from each seed. The specs on this seed pass under them, but this table
+ *  and the choice it argues for have not been measured again. */
 const PERFORM_SEED = (() => {
   const v = process.env.AURACLE_SEED;
   if (v === "random") return null;

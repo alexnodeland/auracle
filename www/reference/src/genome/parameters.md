@@ -69,16 +69,31 @@ again brings back the step that was there.
 
 ## Discrete sites
 
-Uniform categoricals, each with a named domain:
+Categoricals, each with a named domain, and all uniform but the octave:
 
-| Site | Domain |
-|---|---|
-| `#wave` | Waveform: saw, square, triangle, sine |
-| `#oct` | Octave offset |
-| `#color` | Noise color |
-| `#fkind` | Filter kind |
-| `#table` | Wavetable shape |
-| `#dmode` | Drive mode: soft, hard, tube |
+| Site | Domain | Drawn |
+|---|---|---|
+| `#wave` | Waveform: saw, square, triangle, sine | uniformly |
+| `#oct` | Octave offset, −2 … +2 | 5%, 15%, 40%, 25%, 15% (`OCTAVE_WEIGHTS`, in `prior.rs`) |
+| `#color` | Noise color | uniformly |
+| `#fkind` | Filter kind | uniformly |
+| `#table` | Wavetable shape | uniformly |
+| `#dmode` | Drive mode: soft, hard, tube | uniformly |
+
+The octave is weighted for the speakers a patch is heard on. A patch’s
+register comes almost entirely from its lowest oscillator. Drawn uniformly,
+30.5% of a fresh bank put most of its energy at C4 below 200 Hz, and 17.5%
+put under a fifth of it in 200 Hz–5 kHz, the band a laptop’s speakers
+reproduce: sounds a laptop barely plays. With the weights, the same five
+fresh loads of the app’s pool (200 patches, measured by `auracle-wasm`’s
+`pool_loudness` example) hold 21.5% and 8.5%. Most of what is still below
+200 Hz has its lowest oscillator at −1: a patch with two oscillators has one
+at −1 or lower more than a third of the time.
+
+Octave 0 is the common draw and the lowest the rarest. The edges keep a
+weight above zero: at zero, a preset or a saved patch with an oscillator at
+−2 or +2 would score $\log p = -\infty$, and refinement would refuse to
+start from it.
 
 Plus the structural categoricals (`#src`, `#op`, `#mod`, `#modop`, `#pairop`),
 whose orders are the persisted wire format and therefore append-only.

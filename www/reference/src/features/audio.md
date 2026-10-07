@@ -252,13 +252,15 @@ comfortable, with one cluster that is not:
 
 | Coordinate | VIF |
 |---|---|
-| `rolloff_mean` | ≈ 16.9 |
-| `zcr_mean` | ≈ 9.7 |
-| `centroid_mean` | ≈ 5.9 |
+| `rolloff_mean` | ≈ 18.7 |
+| `zcr_mean` | ≈ 12.0 |
+| `centroid_mean` | ≈ 6.8 |
 
-These are the values after the zero-crossing rate’s DC removal; before it they
-were 18.4, 10.4, and 5.9 ([Open questions](../design/open-questions.md) has the
-history).
+These are the values with the grammar’s octave weights
+([Discrete sites](../genome/parameters.md#discrete-sites)); drawing the octave
+uniformly, as it did before them, gave 19.7, 12.9, and 6.1. The zero-crossing
+rate’s DC removal, when it shipped, took them from 18.4, 10.4, and 5.9 to 16.9,
+9.7, and 5.9 ([Open questions](../design/open-questions.md) has the history).
 
 That is the **brightness cluster**: three genuine measurements of one
 perceptual thing. It is left standing deliberately: dropping any of them

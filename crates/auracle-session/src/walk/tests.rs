@@ -486,3 +486,47 @@ fn a_walk_cannot_start_outside_the_priors_support() {
     );
     assert_eq!(begun.err(), Some(RefineOutcome::OutsideSupport));
 }
+
+/// **A patch at either edge of the octave range is still bred.** The
+/// grammar draws octaves −2 and +2 rarely (`OCTAVE_WEIGHTS`, #62), but not
+/// never: every shipped preset with an oscillator at an edge, and there are
+/// some at each, starts a walk under the shipped prior rather than being
+/// refused as outside its support, as it would be at weight zero.
+#[test]
+fn a_walk_starts_from_a_preset_at_either_edge_octave() {
+    let octaves = |tree: &PatchTree| -> Vec<i8> {
+        tree.to_trace()
+            .choices
+            .iter()
+            .filter(|(a, _)| a.as_str().ends_with("#oct"))
+            .filter_map(|(_, c)| c.value.as_usize())
+            .map(|i| i as i8 - 2)
+            .collect()
+    };
+    let mut edges = HashSet::new();
+    for (name, tree) in auracle_grammar::presets() {
+        let at_edge: Vec<i8> = octaves(&tree)
+            .into_iter()
+            .filter(|o| o.abs() == 2)
+            .collect();
+        if at_edge.is_empty() {
+            continue;
+        }
+        edges.extend(at_edge);
+        let begun = WalkRun::begin(
+            PatchGrammarPrior::default(),
+            1.0,
+            RefineKeep::Last,
+            Flat,
+            &tree,
+            &HashSet::new(),
+            4,
+        );
+        assert!(begun.is_ok(), "{name}: {:?}", begun.err());
+    }
+    assert_eq!(
+        edges,
+        HashSet::from([-2, 2]),
+        "the presets no longer hold both edge octaves, so this tests less than it says"
+    );
+}

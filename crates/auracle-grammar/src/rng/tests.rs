@@ -30,8 +30,12 @@ fn an_index_reads_the_stream_the_same_way_everywhere() {
 
 /// **No draw depends on the target's width**, in the grammar or in any
 /// other engine crate's non-test code: every integer `gen_range` goes
-/// through [`gen_index`] or names its type on a bound (`0u64..n`,
-/// `0i32..5`), and the only unsuffixed ranges left are float literals.
+/// through [`gen_index`] or names its type on a bound (`0u64..n`), and the
+/// only unsuffixed ranges left are float literals. Today the scan finds no
+/// typed bound at all: the last, the octave's `0i32..5`, became a weighted
+/// pick with #62, so every integer draw it reads is a [`gen_index`]. The
+/// scan's own test, [`the_width_scan_reads_what_it_claims`], keeps both
+/// forms.
 ///
 /// An unsuffixed integer range takes its type from where the result goes,
 /// and `InputChannel::ALL[rng.gen_range(0..3)]` makes it a `usize`, which
@@ -65,7 +69,9 @@ fn no_draw_depends_on_the_targets_width() {
         format!("{root}/src/rng/tests.rs"),
     ];
     let mut offenders = Vec::new();
-    let mut calls = 0;
+    // Draws the scan saw: every `gen_range` it judged, and every `gen_index`.
+    // None at all would mean it read no code that draws.
+    let mut draws = 0;
     let mut nested = 0;
     for (dir, with_tests) in &dirs {
         let mut files = Vec::new();
@@ -83,8 +89,9 @@ fn no_draw_depends_on_the_targets_width() {
             if !with_tests {
                 code = without_test_modules(&code);
             }
+            draws += code.matches("gen_index(").count();
             for (line, arg) in gen_range_args(&code) {
-                calls += 1;
+                draws += 1;
                 if !names_its_width(&arg) {
                     offenders.push(format!("{}:{line}: gen_range({arg})", path.display()));
                 }
@@ -92,8 +99,8 @@ fn no_draw_depends_on_the_targets_width() {
         }
     }
     assert!(
-        calls > 0,
-        "found no gen_range at all, so this proved nothing"
+        draws > 0,
+        "found no gen_range and no gen_index at all, so this proved nothing"
     );
     assert!(
         nested > 0,

@@ -825,18 +825,24 @@ fn a_job_keeps_the_target_it_began_on() {
         .unwrap();
     let mut r = StdRng::seed_from_u64(9);
     assert!(job.step(&mut r, 1));
-    contrary_picks(&mut engine, 4);
-    let moved = engine.offer_aimed(
-        &mut StdRng::seed_from_u64(9),
-        &p.tree,
-        &[],
-        4,
-        grit,
-        1.0,
-        1.0,
-        2,
-    );
-    assert_ne!(moved, want, "the picks moved nothing a walk can see");
+    // Contrary picks, a few at a time, until a new job's walk goes elsewhere:
+    // how many it takes before the reweighted taste changes one of a short
+    // walk's accept-or-reject decisions depends on the pool and the taste.
+    let moved = (0..6).any(|_| {
+        contrary_picks(&mut engine, 4);
+        let now = engine.offer_aimed(
+            &mut StdRng::seed_from_u64(9),
+            &p.tree,
+            &[],
+            4,
+            grit,
+            1.0,
+            1.0,
+            2,
+        );
+        now != want
+    });
+    assert!(moved, "the picks moved nothing a walk can see");
     engine.standardizer = None;
     while job.step(&mut r, 2) {}
     assert_eq!(job.finish(), want);
