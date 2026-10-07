@@ -177,22 +177,33 @@ function engineWorker(idb, { module = async () => renderStore, news = () => {} }
   );
 }
 
-// One farm worker, as written: `onJob` (its phrase) and `cacheOpen`, with its
-// wasm instance computing this build's namespace and render-store.js imported.
+// One farm worker, as written: `onJob` (its phrase and its jobs), `cacheOpen`,
+// `cacheGet` and `cachePut`, with its wasm instance computing this build's
+// namespace, each sound's key (the namespace, then the tree) and a render of
+// it (`farm_render`: its φ, `phi:<tree>`, each logged as `rendered`), and
+// render-store.js imported.
 function farmWorker(idb, who) {
   assert.ok(/import\(`\.\/render-store\.js\?v=\$\{V\}`\)/.test(farmSrc), "farm.js does not import render-store.js");
-  const port = { postMessage: (msg) => idb.log.push({ who, op: "said", type: msg.type }) };
+  const port = { postMessage: (msg) => idb.log.push({ who, op: "said", type: msg.type, i: msg.i, hit: !!msg.hit }) };
+  const wasm = {
+    cache_namespace: () => NS,
+    farm_key: (tree) => `${NS}/${tree}`,
+    farm_render(tree, _phrase, wantAudio) {
+      idb.log.push({ who, op: "rendered", tree, wantAudio });
+      return { ok: true, cached: `phi:${tree}`, take_samples: () => new Float32Array(4), free() {} };
+    },
+  };
   return new Function(
     "self", "wasm", "port", "store",
     [
+      "const EMPTY = new Float32Array(0);",
       "let cacheDb = null;",
       "let cacheNs = null;",
       "let phrase = null;",
-      lift(farmSrc, "cacheOpen"),
-      lift(farmSrc, "onJob"),
+      ...["idbReq", "cacheOpen", "cacheGet", "cachePut", "onJob"].map((name) => lift(farmSrc, name)),
       "return { onJob, opened: () => ({ db: cacheDb, ns: cacheNs, phrase }) };",
     ].join("\n"),
-  )({ indexedDB: idb.as(who) }, { cache_namespace: () => NS }, port, renderStore);
+  )({ indexedDB: idb.as(who) }, wasm, port, renderStore);
 }
 
 // A crew of `width` farm workers on `idb` and a port to each, every message on
@@ -250,6 +261,35 @@ test("the engine worker creates and stamps the render store before boot's crew i
   const idb = fakeIndexedDB();
   const { farms } = await bootCrew(idb, 6);
   stampedFirst(idb, farms);
+});
+
+test("a farm worker keeps the row of every render, one made with its audio too, and reads the store only for a job that wants no audio", async () => {
+  // A restore with no farm reads every bank entry from the store (worker.js
+  // `bankPass`), the first ones too, which the farm renders with their audio
+  // (`FARM_AUDIO_AHEAD`). Kept only for a job that wanted no audio, those
+  // were rendered again on that visit (#285).
+  const idb = fakeIndexedDB();
+  const { farms } = await bootCrew(idb, 1);
+  const [farm] = farms;
+  const rows = () => idb.store().stores.get(RENDER_ROWS);
+  const rendered = () => idb.log.filter((e) => e.op === "rendered").map((e) => `${e.tree}${e.wantAudio ? " with audio" : ""}`);
+  const done = (i) => idb.log.find((e) => e.op === "said" && e.type === "done" && e.i === i);
+
+  // Rendered with its audio, and its row kept.
+  await farm.onJob({ type: "job", i: 0, tree: "a", wantAudio: true });
+  for (let i = 0; i < 4; i++) await settle();
+  assert.equal(rows().get(`${NS}/a`), "phi:a", "a render made with its audio was not kept");
+  // Wanting no audio, the same sound is read, not rendered.
+  await farm.onJob({ type: "job", i: 1, tree: "a", wantAudio: false });
+  assert.equal(done(1).hit, true, "a sound in the store was not read from it");
+  // Wanting its audio, it is rendered again: a row has no samples.
+  await farm.onJob({ type: "job", i: 2, tree: "a", wantAudio: true });
+  assert.equal(done(2).hit, false);
+  // A miss wanting no audio is rendered and kept.
+  await farm.onJob({ type: "job", i: 3, tree: "b", wantAudio: false });
+  for (let i = 0; i < 4; i++) await settle();
+  assert.equal(rows().get(`${NS}/b`), "phi:b");
+  assert.deepEqual(rendered(), ["a with audio", "a with audio", "b"]);
 });
 
 test("a walk crew wanted while the render store is being stamped is asked for, and handed the phrase, after the stamp", async () => {

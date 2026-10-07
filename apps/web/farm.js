@@ -169,13 +169,21 @@ async function onJob(m) {
   // ▶ — moving the cost onto the first patches they actually audition, which is
   // exactly where `wantAudio` exists to avoid it. The few jobs that ask for
   // audio render; the rest, which is nearly all of them, can hit.
+  //
+  // Written either way. The row is the same φ with or without the audio, and
+  // a restore with no farm reads every bank entry from the store (worker.js
+  // `bankPass`), the first ones too: unkept, the eight sounds a fill or a
+  // restore rendered here with their audio were rendered again on such a
+  // visit, which on a slowed engine was most of its wait (#285).
   let cacheKey = null;
-  if (!m.wantAudio && cacheDb) {
+  if (cacheDb) {
     try {
       cacheKey = wasm.farm_key(m.tree, phrase);
     } catch (_) {
       cacheKey = null;
     }
+  }
+  if (!m.wantAudio && cacheKey) {
     const row = await cacheGet(cacheKey);
     if (row) {
       // The engine re-derives the key from the tree it holds at this index and
