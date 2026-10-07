@@ -2721,6 +2721,7 @@ export function createPerform(host) {
           // measurement to replace it, it goes rather than lingering.
           state.wire = null;
           state.carried = false;
+          state.guess = null;
           state.wireError = "couldn’t measure this patch";
         } else if (m.error) {
           // The wiring in hand still plays; it just wasn't re-checked. A
@@ -2939,6 +2940,7 @@ export function createPerform(host) {
       state.home.knobs = new Map(here);
       state.wiredAt = new Map(here);
       state.wire = alignWiring(carried);
+      state.guess = taking.guess || null;
       // A borrowed wiring: the XY keeps its axes (see pickXY) until the
       // taken patch's own measurement says which controls reach it.
       state.carried = true;
@@ -3242,7 +3244,9 @@ export function createPerform(host) {
     // bench refuses must not lend its wiring to whatever patch comes next. The
     // wiring is the one under the hands now, kept here because an edit still
     // in flight can land first and clear it.
-    state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire, shot: snapshot("taken") };
+    // A guess stays a guess across the Take (#290): carried over, it is still
+    // not measured on the sound it was carried to.
+    state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire, guess: state.guess, shot: snapshot("taken") };
     renderOffer();
     knobs.forEach(paintKnob);
     host.commitTree(json, "taken offer", makeup);

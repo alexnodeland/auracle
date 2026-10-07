@@ -345,3 +345,37 @@ test("a control held still while its sound's measurement lands is not moved, and
   expect(at.settled, "it settled after the release").toBeGreaterThan(at.released);
   expect(at.settled - at.released, "1.5 s after the release, not after the last move").toBeGreaterThanOrEqual(1500);
 });
+
+// A Take of an offer grown from a sound playing on a guess carries the guess
+// over as a guess (#290's review): the controls keep turning the knobs the
+// taken sound still has, and they say they are not measured yet, with no
+// count on the status line, until the taken sound's own measurement lands.
+// Both measurements are kept from the engine (the tap's `stall`), so the
+// carried state stands while it is read.
+test("a Take from a sound on a guess carries the guess over as a guess", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(240_000);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("perform");
+  await app.fullPool();
+  await app.reached();
+  await bankTab(page, "pool");
+  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  // The guess's measurement never reaches the engine: the sound stays on it.
+  await app.stall("perform_wire");
+  await app.level("perform");
+  await app.stalled();
+  await expect(page.locator(".pf-knob.guess").first(), "it plays on its guess").toBeAttached();
+  await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
+  await app.engine((timeout) => expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout }));
+  // The taken sound's measurement is kept too.
+  await app.stall("perform_wire");
+  const takenAt = await app.now();
+  await page.locator(".pf-pad", { hasText: "Take" }).click();
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "perform_wire" }, { after: takenAt })).length, { timeout, message: "the taken sound's measurement was asked for" }).toBeGreaterThan(0));
+  await expect(page.locator(".pf-knob.guess").first(), "carried over as a guess").toBeAttached();
+  await expect(page.locator(".pf-knob.guess").first()).toHaveAttribute("aria-description", "not measured yet");
+  await expect(page.locator(".pf-status"), "no count before the measurement").toHaveText(/^listening( to [^·]+)?…$/);
+});
