@@ -87,8 +87,9 @@ The first line fetches and makes `claude/<topic>` from `origin/main` at
 `$WT`, inside the main checkout where git ignores it, with `tests/web`'s
 packages; the second keeps the main checkout on `main` and current, since an
 agent in `$WT` also loads its root `AGENTS.md` and runs its hooks; the third
-gives the worktree an engine (the [`ship`](../ship/SKILL.md) skill's step 2
-says more of each).
+gives the worktree an engine (the first tried it already; any checkout's build
+of the same Rust will do). The [`ship`](../ship/SKILL.md) skill's step 2
+says more of each.
 
 Give each item a free port of its own (8771 and up; the reviewer takes the
 port plus 100). Its notes are what the builder needs and would otherwise ask:

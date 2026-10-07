@@ -155,9 +155,10 @@ the long-form notes are this directory's `README.md`.
   JS-only change `make -s wasm-stamp` refreshes it. It also says which build
   it is (`profile`: `release`; `dev` from `make wasm-dev`; or `unfinished`
   while a build runs and after one fails; the specs and films refuse the
-  last two) and what it was built from (`source`, which
-  `make pkg-reuse` compares): `scripts/wasm_pkg.py`. `main.js` reads only
-  `build`.
+  last two), what it was built from (`source`, which `make pkg-reuse`
+  compares) and which engine it was written for (`engine`, a hash of the
+  wasm and its glue, which `make pkg-reuse` checks the engine still has):
+  `scripts/wasm_pkg.py`. `main.js` reads only `build`.
 
 ## Debugging
 
