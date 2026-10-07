@@ -143,6 +143,9 @@ const { createTaste } = await import(`./taste.js?v=${BUILD}`);
 // A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
 // one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
 const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
+// Which of the presets' shipped faces a session draws (shipped-faces.js,
+// tests/shipped-faces.test.mjs).
+const { readPresetFaces, presetFace } = await import(`./shipped-faces.js?v=${BUILD}`);
 const { drawVessel, vesselBox, shownBox } = await import(`./vessel.js?v=${BUILD}`);
 // How many sounds in the pool carry each module and each coordinate, read off
 // the ranked rows' s-expressions (support.js, tests/support.test.mjs).
@@ -519,6 +522,53 @@ let facePaintQueued = false;
 let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, landed, result}
 let faceLanded = 0; // bumped when any face lands, so a missing one is looked for again
 
+// The presets' faces ship with the app (`preset-faces.json`, rendered
+// natively by `make preset-faces`). A preset's face is drawn from the file at
+// once, wherever a preset shows by its index (the warm start's cards, the
+// PRESETS rows), with no request to the engine, where the file's render
+// namespace, and for a preset with an AUDIO IN its clip, are the session's
+// (`renderNs`, `auditionClip`: shipped-faces.js `presetFace`). Anything else
+// is asked of the engine, which renders it, as before the file. Asked before
+// the file lands, a preset's face waits for it (`shippedHeld`), at most
+// SHIPPED_FACES_WAIT_MS, so a stalled fetch never keeps a face from being
+// rendered; a file that lands later still draws the presets after it. On an
+// engine slowed four times the warm start's nine faces came 415 s after its
+// cards, each a render queued behind the fill, PERFORM's first measurement
+// and the cards' background measurements.
+const SHIPPED_FACES_WAIT_MS = 3000;
+let shippedFaces = null; // the file, read (`readPresetFaces`), once it has landed
+let shippedFacesWaiting = true; // the file is on its way, and not given up on
+const shippedHeld = new Set(); // preset targets asked for meanwhile
+(async () => {
+  const load = fetch(`./preset-faces.json?v=${BUILD}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((file) => {
+      shippedFaces = readPresetFaces(file, decodeFace);
+      // Slots drawn empty while it was on its way draw from it now.
+      if (shippedFaces) facesChanged();
+    })
+    .catch(() => { /* no file (an old bundle, a blocked fetch): the engine renders them */ });
+  await Promise.race([load, new Promise((ok) => setTimeout(ok, SHIPPED_FACES_WAIT_MS))]);
+  shippedFacesWaiting = false;
+  // What waited: drawn from the file now, or asked of the engine.
+  const held = [...shippedHeld];
+  shippedHeld.clear();
+  for (const t of held) if (!faceKeyOfTarget(t)) wantFace(t);
+})();
+/** A preset target's shipped face, filed in `faceByKey` under the key the
+ *  worker files it under, and that key; or null where the session renders
+ *  it. Kept apart from `faceKeyByRef`, an LRU a bench's edits churn, so a
+ *  preset never falls back to a render it does not need. */
+function shippedKeyOf(target) {
+  if (!shippedFaces) return null;
+  const index = Number(target.slice(1));
+  const row = (presetRows || []).find((r) => r.index === index);
+  const hit = row ? presetFace(shippedFaces, row.name, { ns: renderNs, clip: auditionClip }) : null;
+  if (!hit) return null;
+  if (lruGet(faceByKey, hit.key) === undefined) lruSet(faceByKey, hit.key, hit.face);
+  return hit.key;
+}
+
 /** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
 function treeRef(json) {
   let h = 0x811c9dc5;
@@ -539,7 +589,8 @@ function faceTarget(t) {
   return "";
 }
 function faceKeyOfTarget(target) {
-  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : lruGet(faceKeyByRef, target);
+  if (target.startsWith("i")) return faceKeyById.get(Number(target.slice(1)));
+  return (target.startsWith("p") && shippedKeyOf(target)) || lruGet(faceKeyByRef, target);
 }
 /** The face drawn for a target, as markup, or "" (asked for if not known). */
 function faceMarkup(target, kind, ask = true, build = true) {
@@ -687,6 +738,8 @@ const faceSeen = new Set();
 function wantFace(target, { seen = false } = {}) {
   if (seen) faceSeen.add(target);
   if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
+  // A preset's face may be in the app's own file, still on its way.
+  if (shippedFacesWaiting && target.startsWith("p")) return void shippedHeld.add(target);
   faceWanted.add(target);
   if (faceSendQueued) return;
   faceSendQueued = true;
@@ -900,6 +953,7 @@ function faceWhenSeen(root) {
  *  dropped, `cancelled`). */
 function faceDrop(target) {
   faceWanted.delete(target);
+  shippedHeld.delete(target);
   if (!faceAsked.has(target)) return void faceLazy.delete(target);
   if (!faceDropQueued) {
     faceDropQueued = new Set();
@@ -2346,6 +2400,9 @@ worker.onmessage = (e) => {
     }
     case "audition_clip": {
       if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
+      // A preset with an AUDIO IN is drawn from the shipped file under the
+      // reference clip only (`shippedKeyOf`).
+      facesChanged();
       if (m.views) applyViews(m.views);
       if (m.status) applyStatus(m.status);
       audioIn.clip(m);
@@ -8567,6 +8624,9 @@ function renderPresetBank(list) {
   }
   list.appendChild(frag);
   faceWhenSeen(list);
+  // Drawn from the presets' shipped faces as the rows come into view: no
+  // face lands for them to be drawn at.
+  paintFaces(list);
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the

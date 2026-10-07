@@ -77,7 +77,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
-        wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings serve doc bundle clean \
+        wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings preset-faces serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -361,7 +361,8 @@ smoke-tools:
 ## worker-test: the worker-protocol tests (tests/worker): apps/web/worker.js
 ## run as it is in a Node worker thread over the built engine, with no page,
 ## for what it answers and in what order (its lanes). Needs `make wasm` first.
-## Its four files run side by side on any machine (CI's job limit counts on it).
+## Its files run four at a time on any machine (`--test-concurrency=4`), and a
+## test fails at 150 s: CI's job limit counts on both.
 ## With COVERAGE=1, what they ran of apps/web as well, in target/js-cov/worker.lcov
 worker-test:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine in apps/web/pkg: run `make wasm` first\n'; exit 1; }
@@ -588,11 +589,14 @@ mutants-installed:
 
 # DIFF=1's diff: the Rust in crates/ changed since the merge base with BASE,
 # to the working tree (so uncommitted changes count). Empty when none did.
+# The diff reads the index, so it runs without the file-system monitor, as
+# changes.py's git does: in a worktree it waited on the monitor's socket for
+# over a minute.
 mutants-diff:
 	@git rev-parse --verify --quiet "$(BASE)^{commit}" >/dev/null || { \
 		printf '  %s is not here to diff against: run `git fetch origin` first (or name another BASE=)\n' "$(BASE)"; exit 1; }
 	@mkdir -p target
-	@git diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
+	@git -c core.fsmonitor=false diff "$$(git merge-base $(BASE) HEAD)" -- 'crates/*.rs' > $(MUTANTS_DIFF)
 
 ## mutants: mutation testing against the fast tier: `make mutants CRATE=auracle-taste`
 ## for one crate, `make mutants DIFF=1` for the code changed since BASE
@@ -694,7 +698,8 @@ clippy: lint
 # `make revalidate` on both sides of the change, and the paired table goes in
 # the PR.** These targets exist so that is a command rather than a memory. A φ
 # change also re-measures the preset wirings the app ships
-# (`make perform-wirings`); `make test` fails until it has.
+# (`make perform-wirings`) and renders its presets' faces again
+# (`make preset-faces`); `make test` fails until it has.
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
 # always-on floors under all of this and they DO run in `make check`, and in
@@ -747,7 +752,7 @@ offer-census:
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
 	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n'
-	@printf '  a φ change also owes `make perform-wirings` (the shipped preset wirings)\n\n'
+	@printf '  a φ change also owes `make perform-wirings` and `make preset-faces` (the shipped preset wirings and faces)\n\n'
 
 # The engine's two builds, and what pkg/build.json says of them
 # (scripts/wasm_pkg.py): which build it is, and what it was made from (a
@@ -803,7 +808,7 @@ pkg-reuse:
 # Every app script, not a list: a module main.js imports with `?v=` (perform.js,
 # midi.js) that was left out would keep its old URL when it changed and be
 # served from cache.
-WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json apps/web/preset-faces.json
 wasm-prebuilt:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  WASM_PREBUILT=1 but apps/web/pkg has no engine\n'; exit 1; }
 	@$(MAKE) --no-print-directory wasm-stamp
@@ -820,6 +825,16 @@ wasm-stamp:
 ## Owed by every φ change. THREADS=n to use n cores.
 perform-wirings:
 	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_wirings --release -- $(or $(THREADS),2) apps/web/perform-wirings.json
+
+## preset-faces: render every preset's face natively, the way the worker
+## renders a preset's, into apps/web/preset-faces.json (one render per preset,
+## about 14 s of one core's time; commit the file). The page draws a preset's face
+## from it without asking the engine. `make test` fails while it is stale: a
+## preset, the render namespace, the reference clip or the face's encoding
+## changed, or a face renders differently today. Owed by every φ change.
+## One thread unless THREADS=n.
+preset-faces:
+	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_faces --release -- $(or $(THREADS),1) apps/web/preset-faces.json
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

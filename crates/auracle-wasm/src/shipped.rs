@@ -35,6 +35,10 @@
 //!
 //! A change that moves none of the sample can still slip through; the sample
 //! is chosen to be cheap and broad, not complete.
+//!
+//! The app ships each preset's face too (`apps/web/preset-faces.json`,
+//! [`faces`], `make preset-faces`): one render per preset, so the page draws a
+//! preset's face without asking the engine for it.
 
 use auracle_features::{cache_namespace, featurize_memo, AudioFeatures, PhraseSpec};
 use auracle_grammar::PatchTree;
@@ -361,6 +365,9 @@ pub fn warm(e: &WasmEngine, trees: &[PatchTree], threads: usize) {
         let _ = featurize_memo(t, spec, memo, false);
     });
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod faces;
 
 #[cfg(test)]
 mod tests;

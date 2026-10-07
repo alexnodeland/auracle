@@ -42,6 +42,11 @@ export const MODULES = {
   "apps/web/takes.js": ["audio_in_takes"],
   "apps/web/explain.js": ["explain"],
   "apps/web/faces.js": ["faces", "evolve_cards", "bank_row"],
+  // The presets' shipped faces, and which a session draws: the warm start's
+  // cards and the PRESETS rows; the file's bytes are the built wasm's own
+  // render of each preset (boot_agrees, which opens no page).
+  "apps/web/shipped-faces.js": ["faces", "first_run"],
+  "apps/web/preset-faces.json": ["faces", "first_run", "boot_agrees"],
   "apps/web/vessel.js": ["faces", "perform_stage", "shell_zoom"],
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],

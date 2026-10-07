@@ -1266,16 +1266,17 @@ self.addEventListener("unhandledrejection", (ev) => {
 // whose renders differ cannot read another's faces. Whitening against the
 // bank is main's (`faces.js`): it knows which rows the bank shows.
 //
-// `faces` (now lane) answers at once from memory alone, and says what is
-// pending. The rest is looked up in `later` (`face_lookup`: the memo, a
-// resident audition, the store), and what none of them has (a row stored
-// before faces existed, a preset not yet heard) is rendered one per turn in
-// the faces lane, below `later` (`face_render`), each answered as it lands,
-// or as failed. One render serves every slot that asked for its key while it
-// waited (a preset's row and that preset's pool row, or the bench, share a
-// render key): each asker is on the job (`asks`) with its own source, the
-// render is made from the first that can still say what to render
-// (`faceFromAsks`), and each is answered.
+// `faces` (now lane) answers at once from what it has copied out, the
+// engine's memo and a resident audition, and says what is pending. The rest
+// is looked up in `later` (`face_lookup`: those again, then the store), and
+// what none of them has (a row stored before faces existed, a preset not yet
+// heard) is rendered one per turn in the faces lane, below `later`
+// (`face_render`), each answered as it lands, or as failed. One render
+// serves every slot that asked for its key while it waited (a preset's row
+// and that preset's pool row, or the bench, share a render key): each asker
+// is on the job (`asks`) with its own source, the render is made from the
+// first that can still say what to render (`faceFromAsks`), and each is
+// answered.
 // `face_cancel` drops what is still waiting for a slot that left the view,
 // and says so. Every request is answered.
 const FACE_DB = "auracle-faces";
@@ -1367,7 +1368,8 @@ function faceNow(q, render = false) {
 }
 
 // `m.ids`: pool members; `m.trees`: [{ref, tree, seen?}] (a preset, an
-// offer, the bench). `m.render`: render what has no face yet, in `later`.
+// offer, the bench). `m.render`: render what has no face yet, in the faces
+// lane.
 // `seen`: a face the player is looking at and waiting on (PATCH's outline of
 // the patch without the selected module): its render goes to the front of the
 // faces lane and ahead of a measurement nobody is waiting on (`nextLong`).
@@ -1388,12 +1390,26 @@ async function faces(m) {
   const waiting = [];
   for (const q of asks) {
     q.key = faceKeyOf(q);
-    if (!q.key) failed.push(faceTag(q));
-    else if (faceMem.has(q.key)) items.push({ ...faceTag(q), key: q.key, face: faceMem.get(q.key) });
-    else waiting.push(q);
+    if (!q.key) {
+      failed.push(faceTag(q));
+      continue;
+    }
+    // What the worker has copied out, else what the engine's memo holds (a
+    // pool member's face rides on its featurization) or a resident audition
+    // gives (an analysis of milliseconds; the audition cache holds a dozen):
+    // answered now, with no render. Before, everything not copied out yet
+    // waited for `later`, and `later` waits while a long job holds the
+    // engine: on an engine slowed four times the bank's faces, and with them
+    // the bank's mean every face is drawn against, came 154 s after the warm
+    // start, when PERFORM's first measurement ended.
+    const known = faceMem.get(q.key) || faceNow(q);
+    if (known) {
+      if (!faceMem.has(q.key)) faceKeep(q.key, known);
+      items.push({ ...faceTag(q), key: q.key, face: known });
+    } else waiting.push(q);
   }
-  // The rest from the memo, a resident audition or the store, in `later`:
-  // a lookup there can wait on IndexedDB or take a face's analysis.
+  // The rest from the store, in `later` (a lookup there can wait on
+  // IndexedDB), and what the store has not either is rendered.
   if (waiting.length) {
     lanes[LATER].push({ type: "face_lookup", asks: waiting, render: !!m.render });
     schedulePump();

@@ -25,9 +25,10 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
 | `examples/selector_makeup.rs` | Measures the level a selector change (a wave, a filter mode) would play at if its tree reached the voices before its render, against what cheaper renders would estimate, over every preset's selector changes: why selectors wait for theirs |
 | `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
+| `examples/preset_faces.rs` | Renders every preset's face through this surface and writes `apps/web/preset-faces.json` (`make preset-faces`), which the page draws a preset's face from |
 | `examples/palette_census.rs` | The palette's eighteen directions (Plan-005 task 9c): their definitions and cosines, how often each reaches the presets alone and beside the six, and what measuring eighteen costs against six, on the shipped engine; `--prototype` adds the prototype's blends |
 | `examples/palette_cost.mjs` | The same measurement's cost in wasm under node, six against eighteen (`make wasm` first) |
-| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on, with the session engine inside it (`session`) for the measurement examples. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only). Its `boot_probe` is also in the page's wasm (about 18 KB raw, 5 KB brotli): a test-only export that `tests/web/boot_agrees.spec.js` runs to compare the browser's pool with `tests/boot_probe.json` |
+| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on, with the session engine inside it (`session`) for the measurement examples. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only). Its `boot_probe` is also in the page's wasm (about 18 KB raw, 5 KB brotli): a test-only export that `tests/web/boot_agrees.spec.js` runs to compare the browser's pool with `tests/boot_probe.json`. `shipped/faces.rs` (native only) renders the presets' faces that `apps/web/preset-faces.json` ships, with the fingerprint of what a face is measured with, and `tests/shipped_faces.rs` fails when the file is not what it renders today; `tests/web/boot_agrees.spec.js` fails when the built wasm renders a preset's face otherwise. |
 
 ## Rules
 
@@ -74,7 +75,9 @@ Each module's tests sit beside it, in a file of their own: `live.rs`'s in
 `live/tests.rs`, and so on; `lib.rs`'s (`WasmEngine` and the farm's exports)
 are in `src/tests.rs` (`../AGENTS.md` § Coverage says why). The integration
 tests: `tests/boot_agrees.rs` (the cross-target seed contract),
-`tests/shipped_wirings.rs` (the shipped wirings are current) and
+`tests/shipped_wirings.rs` (the shipped wirings are current),
+`tests/shipped_faces.rs` (the shipped presets' faces are each preset's face
+today) and
 `tests/no_alloc.rs` (a quantum of play allocates nothing; a counting
 allocator, so one test in its binary).
 

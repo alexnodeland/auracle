@@ -52,10 +52,9 @@ THE THREE YOU’D REACH FOR.</figcaption>
 
 The card is headed **PICK THE THREE YOU’D REACH FOR**, over nine presets drawn
 one per family from the library, each with its [face](../faces.md), which
-arrives once the preset has been rendered (the engine renders the nine while
-you choose, or once the bank has filled). The button under them counts down
-as you pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then reads
-**TEACH IT**.
+comes with the app, so it is there with the card. The button under them
+counts down as you pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then
+reads **TEACH IT**.
 
 When you press it, PERFORM opens on your first pick, and **TAUGHT** in the
 menu bar reads 18. The toast says what happened: *Your three taught it 18

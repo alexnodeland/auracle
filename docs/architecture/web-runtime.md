@@ -799,11 +799,18 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   preset} | {ref, memo}], render}`. A `memo` is a render key already in the
   engine's memo: PATCH's guess names the render of each candidate
   (`Guess::key`), and its face is read with `face_of_key`, which never
-  renders (a row evicted since is `failed`). Answered at once from memory alone, with `{type:
-  "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
-  are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
-  `face_of_tree`, a resident audition, the store), each posted as a `faces`
-  as it is found. With `render`, what none of them has is queued as
+  renders (a row evicted since is `failed`). Answered at once, with `{type:
+  "faces", items: [{id | ref, key, face}], pending, failed}`, from what the
+  worker has copied out and from the engine's memo through `face_of`,
+  `face_of_tree` and `face_of_key` without a render (a pool member's face
+  rides on its featurization; a resident audition is analyzed, a few
+  milliseconds, and the audition cache holds a dozen). Before, all but the
+  copied-out waited for `later`, which waits while a long job holds the
+  engine: on an engine slowed four times the bank's faces, and with them the
+  bank's mean every face is drawn against, came 154 s after the warm start,
+  when PERFORM's first measurement ended (`tests/worker/faces.test.mjs`).
+  The pending are looked up in `later` (**`face_lookup`**: the memo again,
+  then the store), each posted as a `faces` as it is found. With `render`, what none of them has is queued as
   **`face_render`** in the **faces lane**, below `later` (`FACES`), so a
   refit, a guess or a cable probe always goes first, and blocked until boot
   has finished (`blocked`: half a second each, they would slow the fill);
@@ -839,6 +846,32 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   as `faces` with `cancelled`; a render is dropped once nobody is left on it,
   so another slot waiting on the same key still gets its face. Main asks
   again when the slot comes back into view.
+- **The presets' faces ship with the app** (`apps/web/preset-faces.json`,
+  rendered natively by `make preset-faces` through the bindings the worker
+  asks a preset's face by; `shipped-faces.js`). Main fetches it at start
+  (`?v=` stamped, in `WEB_STAMPED`) and draws a preset's slot from it
+  (`shippedKeyOf`, under the key the worker files the face under,
+  `"<ns>/<render key>"`) with no `faces` request, wherever a preset shows by
+  its index: the warm start's cards and the PRESETS rows (`paintFaces`: the
+  rows in view at once, the rest from `faceIdleQueue` while the page is
+  idle, so a row scrolled to has its face already). A shipped face is drawn
+  once the bank's own faces are in (`faceStats`, which it is drawn
+  against), and used only where the file's render namespace is the
+  session's (`renderNs`, from `ready`) and, for a preset with an AUDIO IN,
+  while the session hears the reference clip (`auditionClip`); otherwise
+  the preset is asked of the engine and rendered,
+  as before the file. A preset's ask made while the file is on its way waits
+  for it (`shippedHeld`), at most `SHIPPED_FACES_WAIT_MS` (3 s), so a stalled
+  fetch never keeps a face from being rendered. The worker does not read the
+  file: a preset in the pool, on the bench or in PERFORM's hands has its face
+  in the engine's memo from its featurization. On an engine slowed four times
+  (`slowEngine: 4`), before the file, the warm start's nine faces were drawn
+  415 s after its cards and the PRESETS rows' 227 s after the tab opened;
+  with it, in the cards' own task and 34 ms after the rows
+  (`tests/web/faces_presets.spec.js`). The file is held current by
+  `crates/auracle-wasm/tests/shipped_faces.rs`, which renders every preset
+  again natively, and the built wasm to it by `tests/web/boot_agrees.spec.js`,
+  which renders every preset in the wasm.
 - **After a `render`**, the worker posts the buffer first; the face, if main
   hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
   stored audition (not the PCM main is sent: `audition_pcm` limits). No face

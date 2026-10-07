@@ -46,8 +46,8 @@ the face.
 - **The menu bar**, beside the name of the sound you’re playing, at every
   level: the face of what the keys play.
 - **[The bank](./bank.md)**, on every row, in a column left of the row’s two
-  lines. Preset rows draw theirs as you scroll to them, since a preset you
-  haven’t heard may need a render first.
+  lines. A preset’s face comes with the app, so a preset row never waits for
+  a render of its own.
 - **[EVOLVE](./views/evolve.md)**, beside each card’s name.
 - **[PATCH](./views/play.md)**, at OUT past the amp (a click on it plays the
   sound), on **A** and **B** in TEACH at the well's foot, in a module's sheet
@@ -74,14 +74,13 @@ PERFORM’s names wrap rather than cut.
 
 An empty space means one of three things:
 
-- **The face is on its way.** A sound from an earlier session, or a preset
-  you haven’t heard, is rendered for it once the bank has finished arriving,
-  after anything else the engine has to do (at the start, that includes
-  PERFORM’s measurement of the sound it opens with). A warm-start card’s can
-  come sooner: the engine renders the nine while you choose. One render serves
-  every place that shows the same sound: a preset’s row, its row in the pool once
-  you’ve heard it, and the sound you’re playing. A preset row scrolled past
-  before its face came asks again when you scroll back.
+- **The face is on its way.** A sound from an earlier session is rendered for
+  it once the bank has finished arriving, after anything else the engine has
+  to do (at the start, that includes PERFORM’s measurement of the sound it
+  opens with). One render serves every place that shows the same sound: its
+  row in the bank and the sound you’re playing. Every preset’s face comes
+  with the app, rendered ahead of time from the preset itself, so a preset
+  doesn’t wait for one.
 - **The sound doesn’t play.** An edit the instrument refuses to play has no
   render, so it has no face.
 - **There is nothing to compare with yet.** A face is drawn against your bank,
