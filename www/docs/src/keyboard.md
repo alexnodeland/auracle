@@ -24,15 +24,6 @@ at last time.
 | <kbd>⌥</kbd> and the wheel | Zoom: up in, down out, one level a turn, anywhere on the stage (over PATCH's patch too) |
 | <kbd>Ctrl</kbd> and the wheel, or a trackpad's pinch | Zoom the same way, except over PATCH's patch, where they zoom the patch itself |
 | Two fingers on a touch screen | Spread to zoom in, pinch to zoom out (over PATCH's patch they are the patch's) |
-
-A move carries the face of the sound you’re playing from where one level
-draws it to where the next does: PERFORM’s well, the face at **OUT** in
-PATCH, its mark on TASTE’s map, its ring on LEARNING’s, and the card in
-EVOLVE that holds it, if one does. Where a level doesn’t draw it (an edited
-sound has no mark on the map), the face fades instead of flying, and while
-the sound is still on its way to you (just opened, or an edit not yet
-rendered) the levels simply cross-fade. With reduced motion set on your
-system every move is instant.
 | Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it once nothing nearer is open (a press closes the nearest thing first, at every level) |
 
 They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
@@ -46,6 +37,15 @@ mode, a lesson) they do nothing; a panel that leaves the page usable (MIDI,
 levels with <kbd>Tab</kbd>, the arrow keys walk them as they are drawn (<kbd>↑</kbd>
 out, <kbd>↓</kbd> in, <kbd>←</kbd> to EVOLVE, <kbd>→</kbd> back), and
 <kbd>Home</kbd> and <kbd>End</kbd> go to their ends.
+
+A move carries the face of the sound you’re playing from where one level
+draws it to where the next does: PERFORM’s well, the face at **OUT** in
+PATCH, its mark on TASTE’s map, its ring on LEARNING’s, and the card in
+EVOLVE that holds it, if one does. Where a level doesn’t draw it (an edited
+sound has no mark on the map), the face fades instead of flying, and while
+the sound is still on its way to you (just opened, or an edit not yet
+rendered) the levels simply cross-fade. With reduced motion set on your
+system every move is instant.
 
 ## Notes
 
