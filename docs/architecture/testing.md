@@ -1014,3 +1014,21 @@ each headline against one: the week before wave 0 is
 The nightly *CI health* workflow (`ci-health.yml`, after the *Flake hunt*)
 writes the last 7 days against it to its run's summary; a run that stops at
 the API's rate limit writes what it read, says so, and goes red.
+
+### The render benchmark
+
+Almost every wait in the app is a number of phrase renders, so what one render
+costs is tracked as a number: `make bench-render` renders a fixed set of 18
+trees (PERFORM's six presets and twelve prior draws, frozen in
+`crates/auracle-features/examples/bench_render.json`, so a change to a preset
+or to the prior does not move it) as a farm worker does, natively
+(`auracle-features`' `examples/bench_render.rs`) and in wasm on the built
+engine under node (`auracle-wasm`'s `examples/bench_render.mjs`), each tree
+the least of `REPS` repeats in thread CPU ms per render, with the load
+average. It is a measurement, not a gate: nothing in CI runs it yet (the
+nightly speed budgets, #299, are where a render's budget will be judged), and
+time is never an `expect` ([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)).
+To compare two builds, run them alternately on the same machine:
+`docs/notes/render-cost-2026-10/ab_native.py` for two native binaries, and
+`bench_render.mjs` with two packages; that note has the method, the profile
+and the figures (#298).

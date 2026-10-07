@@ -36,7 +36,8 @@ Two loops share one pool of patches.
    compiles the voice with `compile_for_render`, which folds each live knob
    into the port it drives (nothing turns a knob during a measurement), so a
    sample walks about half the nodes and the samples are the same, bit for
-   bit (`CompiledVoice::pin_knobs`).
+   bit (`CompiledVoice::pin_knobs`; [what a render
+   costs](../notes/render-cost-2026-10/README.md)).
    A patch with an AUDIO IN (`PatchTree::listens`) is built on the audition
    stream and reads the phrase's audition clip on the render's own clock
    (`clip.rs`, `render.rs`); its render key carries the clip.

@@ -129,7 +129,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         mutants-installed mutants-diff mutants mutants-command \
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
-        closed-loop walk-payload offer-census revalidate \
+        closed-loop walk-payload offer-census revalidate bench-render \
         wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings preset-faces serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
@@ -806,6 +806,19 @@ walk-payload:
 ## costs in taste, at several γ (the measurement behind AIM_GAMMA)
 offer-census:
 	$(CARGO) run -p auracle-session --example offer_census --release -- 16 2 20
+
+## bench-render: what one phrase render costs, natively and in wasm: a fixed
+## set of 18 trees (PERFORM's six presets and twelve prior draws, frozen in
+## crates/auracle-features/examples/bench_render.json) rendered as a farm
+## worker does, each the least of REPS (5) repeats, in thread CPU ms per
+## render, with the load average. The wasm half runs on the release engine in
+## apps/web/pkg (`make wasm` first). Not niced, and not in CI yet (#299):
+## docs/notes/render-cost-2026-10/ says how to read it and compare two builds
+REPS ?= 5
+bench-render:
+	$(CARGO) run -p auracle-features --example bench_render --release -- --reps=$(REPS)
+	$(RELEASE_ENGINE)
+	node crates/auracle-wasm/examples/bench_render.mjs --reps=$(REPS)
 
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check

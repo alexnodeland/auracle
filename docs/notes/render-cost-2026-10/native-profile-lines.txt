@@ -1,0 +1,35 @@
+# xctrace Time Profiler on a line-tables build (CARGO_PROFILE_RELEASE_DEBUG=line-tables-only: the
+# release codegen, plus DWARF), bench_render --loop=2 at c8541631 (before folding). Each sample named by
+# the innermost function at its address, inlined or not (xctrace gives no more): what the graph walk is made of.
+# load average about 100 on 16 cores. Share of all samples, top 30:
+ 17.2%  position<u32, quiver::port::{impl#7}::slot_of::{closure_env#0}>
+  8.1%  scatter
+  6.1%  next<quiver::graph::InputPlan>
+  4.7%  libm::math::expm1::expm1::hc217a541b6c32946
+  4.7%  as_mut_slice<core::option::Option<f64>, alloc::alloc::Global>
+  3.6%  get_at
+  3.2%  gather
+  3.1%  non_null<alloc::alloc::Global, u32>
+  2.9%  tick_step
+  2.8%  as_slice<core::option::Option<f64>, alloc::alloc::Global>
+  2.7%  spec_fill<core::option::Option<f64>>
+  2.5%  index_mut<core::option::Option<f64>>
+  2.4%  next<core::option::Option<f64>>
+  2.0%  tanh
+  1.8%  as_slice<quiver::graph::NormalledPlan, alloc::alloc::Global>
+  1.6%  next<quiver::graph::InEdge>
+  1.4%  is_some<u32>
+  1.3%  as_slice<u32, alloc::alloc::Global>
+  1.3%  quiver::port::GraphModule::tick_masked::h2361958beb0566b0
+  1.2%  non_null<alloc::alloc::Global, core::option::Option<f64>>
+  1.2%  libm::math::pow::pow::hd3cb6550c84f5958
+  1.0%  clear
+  0.9%  to_bits
+  0.8%  _$LT$quiver..modules..dynamics..Adsr$u20$as$u20$quiver..port..GraphModule$GT$::tick::h5203e41036787117
+  0.8%  as_slice<quiver::graph::InputPlan, alloc::alloc::Global>
+  0.8%  as_slice<quiver::graph::InEdge, alloc::alloc::Global>
+  0.8%  {closure#0}
+  0.7%  k_cos
+  0.6%  process
+  0.5%  next<core::slice::iter::Iter<u32>>
+8918 samples

@@ -1,0 +1,1 @@
+2000 draws: 62207 nodes compiled, 34363 walked by a render (55%); 2 of 2000 with knobs kept every knob (the schedule would have moved)

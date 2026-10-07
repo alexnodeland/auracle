@@ -22,6 +22,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# The render benchmark (`examples/bench_render.rs`) times this thread's CPU
+# (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`) and reads the load average.
+# Already in the tree through quiver's and rand's dependencies.
+libc = "0.2"
 fugue-ppl.workspace = true
 fugue-evo.workspace = true
 rand.workspace = true
