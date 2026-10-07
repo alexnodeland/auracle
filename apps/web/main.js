@@ -2230,6 +2230,8 @@ worker.onmessage = (e) => {
       // Once the veil is down the bank header is the only place still saying
       // that patches are arriving, so keep it current.
       if (booted) renderFillHint();
+      // A deal waiting on the fill's schedule says how far it has got.
+      sayDealing();
       break;
     }
     case "repaired": {
@@ -2338,6 +2340,8 @@ worker.onmessage = (e) => {
       fillPool = m.status.pool;
       fillTarget = m.status.pool_target;
       poolSettled = true;
+      // A deal still out no longer waits on the fill.
+      sayDealing();
       // The bank grew behind the app: re-read the instruments over the full
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
@@ -7104,7 +7108,13 @@ let dealSayTimer = null;
 
 /** What the deal is waiting behind, as far as main can know it. A generation
  *  or ⚡ on the farm holds nothing up; walked in the engine worker (no farm on
- *  this machine), a deal waits for the walk in progress. */
+ *  this machine), a deal waits for the walk in progress. While the pool fills
+ *  behind the player in a session opened with a seed in the address
+ *  (`addressSeed`), a deal waits for the sounds the fill's schedule names
+ *  (worker.js `dealsWaiting`, #211). On a machine that fills serially that is
+ *  seconds a pick, so the cards say so, with the fill's count, which
+ *  `fill_progress` moves. An ordinary session's deal waits on no schedule,
+ *  only on the fill's step in progress, and is a slow deal like any other. */
 function dealingWhy() {
   if (breeding && !breeding.farm) {
     if (!breeding.total) return "dealing: the engine is breeding";
@@ -7115,6 +7125,7 @@ function dealingWhy() {
   }
   if (evolvingFrom && !evolvingFrom.stoppable) return "dealing: the engine is ⚡ evolving a sound";
   if (meterFitting && engineBusy) return "dealing: the engine is redrawing your taste map";
+  if (addressSeed != null && !poolSettled && fillTarget > fillPool) return `dealing: the engine is filling the pool (${fillPool}/${fillTarget})`;
   return "dealing…";
 }
 

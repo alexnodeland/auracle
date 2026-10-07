@@ -10,7 +10,8 @@
   next from the first 16, then 24 and 32, even if the pool has filled by
   then, and every deal after that is from the whole pool. A deal whose
   sounds haven’t all arrived waits for them, so in such a session, if you
-  pick very fast in the first seconds, the next pair can take a moment. A
+  pick very fast in the first seconds, the next pair can take a moment, and
+  the cards say *dealing: the engine is filling the pool (16/40)*. A
   session with no seed in the address deals at once, as before. A saved
   session that comes back with its whole pool deals from all of it from the
   first pair, as before (`evolve_seeded_deals.spec.js`,

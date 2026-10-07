@@ -113,7 +113,7 @@ test("the same seed deals the same pairs whether the pool had filled or was stil
   await pairUp(page, app);
   const filling = [await tableKey(page)];
   const progress = await app.replies("fill_progress");
-  const held = progress.at(-1).pool;
+  const { pool: held, target } = progress.at(-1);
   expect(held, "the gate held the fill short of the second deal's 16 sounds").toBeLessThan(16);
   // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("filled"), "the pool filled past the gate").toBe(0);
@@ -127,6 +127,8 @@ test("the same seed deals the same pairs whether the pool had filled or was stil
   await expect.poll(out, { message: "the second deal was asked for" }).toBe(1);
   await app.quiet();
   expect(await out(), "a deal was answered with the fill held short of 16 sounds").toBe(1);
+  // The cards say what the deal waits on, and how far the fill has got.
+  await expect(page.locator("#duel-a .deal-why")).toHaveText(`dealing: the engine is filling the pool (${held}/${target})`);
   // The fill goes on, and the deal is answered once its sounds have joined.
   await app.post({ type: "__fill_gate" });
   await pairUp(page, app);

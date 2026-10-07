@@ -111,9 +111,11 @@ pair that can’t go up, such as the pair just put away, is dealt again, and
 that counts as a deal.) A deal whose sounds haven’t all arrived waits for
 them, so the same seed and the same picks deal the same pairs on any
 machine, however fast its pool fills. Pick very fast in the first seconds of
-such a session and the next pair can take a moment. A saved session that
-comes back with its whole pool has nothing to fill, and every deal is from
-all of it.
+such a session and the next pair can take a moment, longer on a slower
+computer; the cards then say *dealing: the engine is filling the pool
+(16/40)*, with how many sounds have arrived. A saved session that comes
+back with its whole pool has nothing to fill, and every deal is from all of
+it.
 
 The next pair is chosen before your pick is known. That changes nothing,
 because pairs are dealt at random and your pick is held for its seven seconds

@@ -1618,7 +1618,12 @@ failed. `deal_need` says how many sounds the next deal waits for, planned on
 a copy of the duel stream so it draws nothing. Only deals wait: every other
 request is served as before, and the fill goes on between them. In a seeded
 session a fast picker on a slow machine can therefore wait for a pair in
-the first seconds: the cards dim and say *dealing…* until it lands.
+the first seconds: the cards dim and, after `DEAL_SAY_MS`, say *dealing:
+the engine is filling the pool (n/N)* until it lands (`dealingWhy`, whose
+count each `fill_progress` moves). Only a seeded session's cards say it:
+an ordinary session's deal waits on no schedule, so a slow one says what
+any slow deal says (*dealing…*, or the breeding, ⚡ or refit it waits
+behind).
 `tests/worker/deal.test.mjs` holds the wait and the pairs on the worker,
 that a seeded bank back whole deals from the whole pool while one back
 short keeps to the schedule, and that a session with no seed deals at once,
