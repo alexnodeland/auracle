@@ -272,11 +272,9 @@ which is why the [reference](../reference/architecture/two-loops.html) quotes
 Sixty-two hand-made sounds in seven families (bass, lead, keys, pad, texture,
 perc, and weird), browsed in place under each family’s name and count. A
 preset’s description is its name’s tooltip. Each row carries the preset’s
-[face](./faces.md), from a render of the preset itself: the rows in view ask
-for theirs, and the engine renders them one at a time once nothing you are
-waiting on needs it (at the start, that includes PERFORM’s measurement of the
-sound it opens with). Until a face lands its place stays empty, and the name
-stays where it is.
+[face](./faces.md), from a render of the preset itself made ahead of time
+and shipped with the app, so no row waits for a render of its own: each has
+its face as soon as your bank has faces to draw it against.
 
 1. Open **PRESETS**.
 2. Point at a row and press **▶** to hear it (on a touch screen the **▶** is

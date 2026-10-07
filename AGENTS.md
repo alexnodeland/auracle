@@ -42,7 +42,8 @@ contributor guide; this file does not repeat it.
 2. **φ is a measurement contract.** The audition phrase, the feature list and
    loudness normalization define what the model can hear. Changing any of them
    owes `make revalidate` on both sides of the change and a diff of the tables,
-   then `make perform-wirings` for the preset wirings the app ships
+   then `make perform-wirings` and `make preset-faces` for the preset wirings
+   and faces the app ships
    ([`crates/auracle-features/AGENTS.md`](crates/auracle-features/AGENTS.md)).
 3. **Rust tests run optimized.** Use `--profile test-fast` (nextest's
    `--cargo-profile test-fast`), or `make test`.
@@ -71,12 +72,16 @@ contributor guide; this file does not repeat it.
 7. **Generated files are not hand-edited.** `apps/web/pkg/`, `site/`,
    `www/docs/src/img/`, `www/landing/assets/film/` (written by
    `www/video/tools/publish.py`) and the `<!-- film:NAME -->` blocks it fills,
-   the `tokens:begin` … `tokens:end` blocks in six stylesheets (written by
+   the presets' wirings and faces the app ships
+   (`apps/web/perform-wirings.json` and `apps/web/preset-faces.json`, written
+   natively by `make perform-wirings` and `make preset-faces`; `make test`
+   fails when one is stale), the `tokens:begin` … `tokens:end` blocks in six
+   stylesheets (written by
    `make tokens` from `www/brand/tokens.json`; `make dev-check` fails when one
    is stale), and the films' generated scores (`www/video/sound/bloom.json`,
    `reach.json`, `n3.json`) and `www/video/tools/sound_defaults.py` (written
    by `make sound` from `www/brand/sound.json`; the same check). A hook blocks
-   edits to the first three.
+   edits to the four directories and the presets' two files.
 8. **Commits explain why.** Loose conventional prefixes (`feat:`, `fix(web):`,
    `docs:` …), an imperative subject, a body that says what was wrong and why
    this is the fix. A PR's title is its squash commit's subject, so it
@@ -140,7 +145,7 @@ contributor guide; this file does not repeat it.
 | The specs a change reaches | `make browser-changed` (against `origin/main`, `BASE=` for another; for `main.js` the specs of the views it changed; `REPEAT=3` before a push) |
 | The instrument, locally | `make serve`, then <http://localhost:8642> |
 | The site | `make site && make site-check` (needs `make site-tools` once) |
-| A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
+| A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` and `make preset-faces` |
 | A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
 | A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane), `PR checks` and `Mutants in the changed code` are green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
 
@@ -176,7 +181,8 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
   hand edits under the five generated paths of a file's own checkout, a
   worktree included (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
-  `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`
+  `www/landing/assets/film/`), or to the presets' two generated files
+  (`apps/web/perform-wirings.json`, `apps/web/preset-faces.json`); after an edit, `rustfmt`, `node --check`
   (as a module for an ES module), the workflow check on a saved workflow,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
   `cargo test` without `--release`, `--profile` or `--doc`, or

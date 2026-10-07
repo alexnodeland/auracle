@@ -33,7 +33,8 @@ in [`../AGENTS.md`](../AGENTS.md).
   the strings in `presets.rs`, `describe.rs`, `term.rs`, `prior.rs`,
   `diff.rs` and `mutate.rs` against `www/brand/voice.md`
   ([`../AGENTS.md`](../AGENTS.md)). A preset's name is fingerprinted by
-  `apps/web/perform-wirings.json`; its description is not.
+  `apps/web/perform-wirings.json` and `apps/web/preset-faces.json`; its
+  description is not.
 - **Every structural op must leave a compilable tree.** The edit gate applies
   every op at every node of random trees. A new module or op is not done until
   it passes that gate.

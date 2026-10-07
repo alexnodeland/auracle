@@ -19,8 +19,8 @@
 # (docs/process.md § Building), at 0.5 to 3 GB each, most of it its own
 # target/: every job would copy every worktree. Nothing a test reads is
 # ignored: the files outside crates/ that tests read (apps/web/words.js,
-# apps/web/perform-wirings.json, Cargo.lock) are tracked, and no crate has a
-# build script.
+# apps/web/perform-wirings.json, apps/web/preset-faces.json, Cargo.lock) are
+# tracked, and no crate has a build script.
 gitignore = true
 
 # nextest, as every Rust test job runs: it runs each test in its own process,
