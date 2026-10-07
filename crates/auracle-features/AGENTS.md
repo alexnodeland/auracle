@@ -52,8 +52,9 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
   answered. Prefer running one over reasoning about DSP. `bench_render` is
   what a render costs (`make bench-render`): a fixed set in ms per render,
   the render split into its stages (`--stages`), the nodes a render walks
-  (`--nodes`, `--census`), one voice of each module kind (`--kinds`), and a
-  digest of φ to show two builds measure the same (`--digest`;
+  (`--nodes`, `--census`), one voice of each module kind (`--kinds`), what a
+  render allocates (`--allocs`), φ for how far a change moves it (`--phi`),
+  and a digest of φ to show two builds measure the same (`--digest`;
   [`docs/notes/render-cost-2026-10/`](../../docs/notes/render-cost-2026-10/README.md)).
 - **No string here reaches the screen.** A vetting or featurizing error
   reaches the app as a flag, not as text, and a feature's name is a key the
