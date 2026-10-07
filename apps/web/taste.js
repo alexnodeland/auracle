@@ -1473,10 +1473,12 @@ export function createTaste(host) {
   });
 
   return {
-    /** Where the level showing draws the sound you're playing, for the face
+    /** Where the level showing marks the sound you're playing, for the face
      *  carried between the levels (shell.js): its mark on TASTE's map, where
      *  the map puts it (`taste_map`, as it will rest when a settle moves it),
-     *  at the size the map draws it; its ring on LEARNING's small map. In
+     *  at the size the map draws it; its ring on LEARNING's small map, which
+     *  draws a dot there, not a face (the face lands small on the ring, and
+     *  the dot is what is left once the move lands). In
      *  the page's pixels, `{id, x, y, size}` (the mark's centre, and its
      *  size as `host.drawFace` takes it), or null: not showing, or the sound
      *  is not on the map (an offer, a preset not yet in the pool). */

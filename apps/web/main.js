@@ -1009,8 +1009,9 @@ function levelAnchor(level) {
     return null;
   }
   if (level === "taste" || level === "learning") {
-    // Its mark on the map: the pool sound's own face, so a sound you have
-    // since edited (another render, another key) is not there.
+    // Its mark on the map, keyed by the pool sound's own face (LEARNING's
+    // mark is a dot in a ring, which stands for that face), so a sound you
+    // have since edited (another render, another key) is not there.
     const m = taste && taste.anchor ? taste.anchor(level) : null;
     const key = m && faceKeyById.get(m.id);
     if (!m || !key) return null;

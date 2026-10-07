@@ -56,9 +56,10 @@ export function createShell(host = {}) {
   const ms = (name) => (host.motionMs ? host.motionMs(name) : 0);
 
   /** A level, the section that shows it, and `anchor()`: where the level
-   *  draws the sound you're playing, `{box: {x, y, w, h}, key}` in the
-   *  page's pixels with the render key of the face drawn there, or null
-   *  where it draws none. */
+   *  shows the sound you're playing, `{box: {x, y, w, h}, key}` in the
+   *  page's pixels with the render key of the face shown there (or that a
+   *  map's mark stands for: LEARNING's is a dot in a ring), or null where
+   *  it shows none. */
   function register(level, spec) {
     if (!isLevel(level) || !spec || !spec.el) return;
     levels.set(level, spec);
