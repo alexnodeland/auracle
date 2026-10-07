@@ -2902,6 +2902,42 @@ async function pump() {
   if (runnable()) schedulePump();
 }
 
+// Deals waiting for the sounds the fill's schedule names (#211). In a
+// session opened with a seed in the address (`init`'s `seeded`: a spec that
+// pins a seed's pairs, a shared seed; a spec booted with `random` alone is
+// not seeded) whose pool fills at boot, the k-th deal draws only from the
+// first `playableAt`·(k+1) sounds of the pool, in the order the seed's fill
+// folds them in (`set_deal_schedule`, at boot; none on a pool already full),
+// and a deal asked for before they have all joined waits here, in the order
+// it was asked for, until the fill has folded them in (`serveDeals`, after
+// each fold) or is over. It used to be drawn at once over however many had
+// joined, so a slower machine dealt the same seed other pairs. Only the deal
+// waits: every other request is served as it was, and the fill goes on
+// between them. An ordinary session has no schedule (`dealSchedule` 0) and
+// deals at once from the sounds that have joined, as before: on a slow
+// machine the schedule made a pick wait seconds for its pair while the pool
+// filled, and only a seed needs the same pairs on every machine (ADR-025).
+// The engine says what a deal waits for (`deal_need`, in sounds, 0 for
+// nothing); a binary without it deals at once.
+const dealsWaiting = [];
+let fillDone = false;
+let dealSchedule = 0;
+function dealWaits(m) {
+  if (!dealSchedule || fillDone || typeof engine.deal_need !== "function") return false;
+  try {
+    return engine.deal_need(new Uint32Array(m.exclude || [])) > 0;
+  } catch (_) {
+    return false; // dealt now, and the deal reports what failed
+  }
+}
+function serveDeals() {
+  while (dealsWaiting.length && !dealWaits(dealsWaiting[0])) {
+    const m = dealsWaiting.shift();
+    m.waited = true;
+    runMessage(m);
+  }
+}
+
 // Run one request's handler. Its synchronous part runs with `m` as the request
 // being answered (`answering`, which `post` stamps), restored before this
 // returns: what the handler says after an `await` is said with `answer(m, …)`.
@@ -3271,6 +3307,20 @@ async function dispatch(m) {
         };
 
         let st = status();
+        // A seeded session's deals keep to the fill's schedule (#211,
+        // `dealsWaiting`) when there is a fill: the first reaches the sounds
+        // the app is handed over at, so it waits for nothing. A pool already
+        // full here (a saved bank that came back whole) has no fill to wait
+        // for, and its deals depend on no timing: they draw from the whole
+        // pool from the first, with no schedule (0), as they did before it.
+        // A schedule there would deal the first pairs of every visit from the
+        // oldest sounds. An ordinary session (no seed in the address) has no
+        // schedule either: its deals are drawn at once, over the sounds that
+        // have joined, so a pick never waits for more to join.
+        dealSchedule = m.seeded && st.pool < st.pool_target ? playableAt : 0;
+        if (typeof engine.set_deal_schedule === "function") {
+          engine.set_deal_schedule(dealSchedule);
+        }
         news({
           type: "fill_progress",
           pool: st.pool,
@@ -3292,6 +3342,7 @@ async function dispatch(m) {
             workers: farmCrew(),
           });
           if (st.pool >= playableAt) announcePlayable();
+          serveDeals();
         };
 
         // The farm renders; this worker draws, absorbs and standardizes. Every
@@ -3373,9 +3424,14 @@ async function dispatch(m) {
           news({ type: "fill_progress", pool: st.pool, target: st.pool_target, stage: fillStage, stages });
           if (added === 0) break;
           if (st.pool >= playableAt) announcePlayable();
+          serveDeals();
           await yieldToQueue();
         }
         announcePlayable();
+        // The pool will grow no further: a deal still waiting is dealt from
+        // what joined (a fill that ran out of draws stops short).
+        fillDone = true;
+        serveDeals();
         // The provisional standardizer was fit on the first handful of draws;
         // the finished pool is a better reference population. No-op once a
         // posterior exists — see `Engine::restandardize_if_untaught`.
@@ -3415,6 +3471,10 @@ async function dispatch(m) {
         else answer(m, failed);
       } finally {
         bootCrewDone();
+        // A boot that failed folds nothing more: a deal still waiting is
+        // answered now (by the engine, or with what failed).
+        fillDone = true;
+        serveDeals();
         // From here a generation or ⚡ may raise a crew of its own.
         booted = true;
         schedulePump();
@@ -3429,6 +3489,13 @@ async function dispatch(m) {
       break;
     }
     case "duel": {
+      // While the pool fills, a deal waits for the sounds its schedule
+      // names, behind any deal already waiting (`dealsWaiting`), and is
+      // answered here once they have joined (`serveDeals`).
+      if (!m.waited && (dealsWaiting.length || dealWaits(m))) {
+        dealsWaiting.push(m);
+        return;
+      }
       // `next_duel_ex` carries *why* this pair was chosen. A duel the engine
       // picked at random is a calibration check, and labelling it is the only
       // way the reliability numbers mean anything — the acquisition function

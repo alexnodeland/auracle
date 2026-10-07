@@ -477,6 +477,8 @@ banned-words check in `make dev-check` reads the list after it.
 | **frozen** | Wander's state while a tap (or Enter) holds it still: its ring lit, this word under it and as its value | paused (that is hands on), held, stopped |
 | **Nothing to keep: this sound is home.** / **Nothing to go back to: this sound is home.** | ↵ or ⇧⌫ pressed with the sound at home: the refusal, said at once | No changes, Already saved |
 | **Nothing to pair. Fewer than two sounds are left to deal.** | EVOLVE's cards when the engine has no pair to deal, every other sound in the pool cut: the refusal, said at once on both cards, with their buttons off | |
+| **Couldn’t deal a pair. ANOTHER PAIR tries again.** | EVOLVE's cards when the engine could not deal the pair the table waits on: said at once on both cards, with the pair's buttons off and ANOTHER PAIR (N) live, which deals again | |
+| **dealing: the engine is filling the pool (16/40)** | EVOLVE's cards while a deal in a session opened with a seed in the address (`?seed=`) waits for the sounds its schedule reaches as the pool fills: said once the deal is slow (`DEAL_SAY_MS`), on both cards, with how many sounds have arrived of the pool's size, the count moving as they arrive; never in a session with no seed, nor once the pool has filled | loading, buffering, waiting for sounds |
 | **B · ‹aim›** (B · GRITTIER) | B's label for an offer a control asked for: B and the aim word of the way it was turned | B (grittier), target |
 | **offered · hold B to peek** / **hold Peek to hear it** (touch) | B's line under its face: it is an offer, and how to hear it | press and hold, preview |
 | **depth** | ARRANGE's slider beside Velocity plays: how far velocity reaches | amount, intensity, sensitivity |

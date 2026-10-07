@@ -2303,6 +2303,65 @@ fn a_deal_counts_when_it_is_shown() {
     assert!(!deferred.duel_shown(u32::MAX, u32::MAX - 1), "never dealt");
 }
 
+/// The fill's schedule (#211) is the session's: set once by the worker, it
+/// counts every deal however it is asked for (`deal_duel_ex`, `next_duel_ex`,
+/// `next_duel`), and `deal_need` says, in sounds, what the next deal waits
+/// for, with the cut ids the page sends. What a schedule deals is the
+/// session's `engine::deal` tests.
+#[test]
+fn the_deal_schedule_counts_every_way_of_dealing() {
+    let mut engine = WasmEngine::new(0xD5, 24);
+    engine.set_deal_schedule(8);
+    let joined = |e: &WasmEngine| {
+        e.engine
+            .pool
+            .iter()
+            .map(|c| c.id as u32)
+            .collect::<Vec<_>>()
+    };
+    let fill_to = |e: &mut WasmEngine, n: usize| {
+        while e.engine.pool.len() < n {
+            assert!(e.fill_step(n - e.engine.pool.len()) > 0, "the fill ran dry");
+        }
+    };
+    let ids = |reply: &str| -> [u32; 2] {
+        let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+        let at = |k: usize| {
+            v.get("a")
+                .map_or(&v[k], |_| &v[["a", "b"][k]])
+                .as_u64()
+                .unwrap() as u32
+        };
+        [at(0), at(1)]
+    };
+    fill_to(&mut engine, 10);
+    engine.standardize_now();
+    assert_eq!(engine.deal_need(None), 0, "the first deal reaches 8 of 10");
+    let seven: Vec<u32> = joined(&engine)[1..8].to_vec();
+    assert_eq!(
+        engine.deal_need(Some(seven)),
+        16,
+        "with seven of its eight cut, the first deal reaches the second's 16"
+    );
+    let first = ids(&engine.deal_duel_ex(None));
+    assert!(first.iter().all(|id| joined(&engine)[..8].contains(id)));
+    assert_eq!(engine.deals.dealt, 1);
+    assert_eq!(engine.deal_need(None), 16, "the second waits for 16");
+    fill_to(&mut engine, 16);
+    let second = ids(&engine.next_duel_ex(Some(vec![first[0]])));
+    assert!(second
+        .iter()
+        .all(|id| joined(&engine)[..16].contains(id) && *id != first[0]));
+    fill_to(&mut engine, 24);
+    let before = engine.deals.dealt;
+    let third = ids(&engine.next_duel());
+    assert_ne!(third[0], third[1]);
+    assert_eq!(engine.deals.dealt, before + 1, "next_duel kept no count");
+    // Set again, it counts from the first deal.
+    engine.set_deal_schedule(8);
+    assert_eq!(engine.deals, DealSchedule::new(8));
+}
+
 /// The import route enforces the same ceilings as every other write route,
 /// and the knob boundary refuses what `clamp` would let through.
 #[test]

@@ -120,8 +120,20 @@ the `refine` stream, so which farm worker finishes first cannot change what
 is bred. PERFORM's offers and drifts are seeded the same way: each takes one
 draw of the `perform` stream when it begins and walks on a generator of its
 own, so pausing one, or beginning another beside it, cannot change what either
-finds. The one remaining nondeterminism in the app is *when* the first duel is
-dealt: it is dealt at `playable`, while the pool is still filling.
+finds. A session opened with a seed in the address (`?seed=`) whose pool
+fills at boot keeps its duels to a fixed schedule from the first, dealt at
+`playable`: the k-th draws only from the first 8·(k+1) sounds in the order
+the seed's fill folds them in, whether or not the fill has finished by
+then, and the worker holds one until those have joined, so how far the fill
+had got does not change them, on any machine. A session restored with its
+pool full has no fill and no schedule, and its duels draw from the whole
+pool. An ordinary session (no seed in the address) has no schedule either:
+its duels are drawn at once from the sounds that have joined, so a pick
+never waits for more to join, and how far the fill had got can change them
+([web-runtime.md](web-runtime.md#deals-while-the-pool-fills)). What a
+player does while the pool fills can change the duels: a sound they add
+(the warm start's picks, a preset opened) joins wherever the fill has got
+to.
 
 ## Adding a module
 
