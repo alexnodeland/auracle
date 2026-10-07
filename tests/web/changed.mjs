@@ -62,8 +62,9 @@ export const MODULES = {
   "apps/web/support.js": ["taste_marks", "patch_model_view", "patch_catalog"],
   "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in"],
   "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing"],
-  // Both workers open the render cache's store through it, at boot.
-  "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing"],
+  // Both workers open the render cache's store through it, at boot; the
+  // fixture writes and reads the store through it too (`reuseRenders`).
+  "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
   // The toast lane's queue: main.js's `note` hands it every toast.
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
 };
@@ -86,10 +87,11 @@ export const VIEWS = {
     sample: ["smoke", "failure_flows", "shell_levels"],
   },
 };
-// Specs no view draws: the fixture's own test, and the engine's, which opens
-// no page (the browser's engine deals what the native one deals). A change
-// to the engine runs the second beside the samples.
-export const NO_VIEW = ["fixture_tap", "boot_agrees"];
+// Specs no view draws: the fixture's own tests (its tap, and the renders a
+// boot reuses), and the engine's, which opens no page (the browser's engine
+// deals what the native one deals). A change to the engine runs the last
+// beside the samples.
+export const NO_VIEW = ["fixture_tap", "fixture_renders", "boot_agrees"];
 export const ENGINE_SPECS = ["boot_agrees"];
 
 // main.js's sections, by their headings, and the views each draws. The first

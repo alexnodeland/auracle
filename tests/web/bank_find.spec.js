@@ -10,9 +10,11 @@
 // page hands each row's words to it and draws what it keeps.
 const { test, expect, bankTab } = require("./fixtures");
 
-/** Boot, and wait for the whole pool in the bank. */
+/** Boot, and wait for the whole pool in the bank: with the renders an
+ *  earlier boot of the seed kept, since nothing here happens before the pool
+ *  is whole (fixtures.js `reuseRenders`). */
 async function boot(app) {
-  await app.boot();
+  await app.boot({ reuseRenders: true });
   await app.poolRows(40);
 }
 const names = (page) =>

@@ -32,6 +32,10 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 - **`make smoke`** runs the pair CI's *Browser smoke* job runs after the
   site build on a PR that changes the app, the engine or what runs the specs
   (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
+- **Where a run's time goes:** `--reporter=line,./split.mjs` adds each
+  test's split to a run's end (setup, boots, waits for the whole pool, the
+  test's own work, teardown); over a CI run's blob reports it splits the
+  whole tier (the commands are in `split.mjs`'s header).
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
   `AURACLE_TAP_LOG=1` prints it too. It names the machine it failed on, as
@@ -149,8 +153,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
 - **Logic belongs in a unit test.** New logic lands in a pure module under
   `apps/web/` with a `node:test` in `apps/web/tests/` (`make web-check` runs
   them in milliseconds); a browser spec proves the wiring and what a player
-  sees, not arithmetic. A boot is seconds, here and on CI (a median of 4
-  to 5 s there, about 28% of the fast tier's test time).
+  sees, not arithmetic. A boot is seconds, here and on CI (a median of 4.7
+  s there, about 30% of the fast tier's test time:
+  [`docs/notes/spec-time-2026-10.md`](../../docs/notes/spec-time-2026-10.md)).
 - **What the engine worker answers belongs in a worker test.** A claim
   about a reply, its fields, or the order the worker answers in (its lanes,
   a long job giving way, what reaches the farm's ports) is a test in
@@ -177,6 +182,27 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
     slows the engine's wasm, `workerPrefix` runs a spec's own code in the
     engine worker ahead of `worker.js`, kept on a throttled run too).
+    `reuseRenders: true` boots with the render cache (`auracle-renders`) as
+    an earlier boot of the same seed left it once its pool was whole, so the
+    fill after the veil is served, not rendered (by the farm: a fill that
+    falls back to serial reads no cache). The veil lifts no sooner (its 8
+    sounds are rendered with their audio, which the cache never holds:
+    about 1.2 s here either way), but the pool is whole as it lifts, where a
+    cold boot's is whole about 4.4 s later here; on CI that wait was about
+    20 s a test (no reused boot is timed there yet). The pool is the one a
+    cold boot fills, sound for sound; the boot is not: it is playable with
+    all 40 sounds, where a cold one has about 10, so EVOLVE's first pair (and
+    the pair dealt behind it) is drawn from the whole pool, sounds without
+    their audio. It is for a test that waits for the whole pool before it
+    does anything (`app.filled`, `app.poolRows(40)`, `app.fullPool`, a wait
+    of its own) and then reads only the pool; never for one that reads or
+    hears EVOLVE's table, one about boot, the fill or the renders, nor one
+    that picks, teaches or deals while the pool fills. The first such boot
+    of a seed in a run is cold and keeps its rows once the pool is whole, in
+    the worker and in `.renders/` here (ignored by git: a file per engine
+    binary, named by its hash, the newest three kept); an unseeded boot
+    keeps nothing. `fixture_renders.spec.js` holds the fixture to it. The
+    bank's specs that wait for the pool and read only it ask for it.
     PERFORM's specs boot with `{ seed:
     PERFORM_SEED, random: PERFORM_SEED }` instead, a seed whose first offer
     on Glass Pad is a typical one (SEED's is unusually light).

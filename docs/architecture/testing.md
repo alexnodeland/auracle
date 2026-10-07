@@ -273,6 +273,15 @@ and up to about ten when Rust changed (Coverage sets the length) or an app
 module's specs run (`patch.js` reaches about 23 test-minutes, on four
 runners).
 
+**Where the time goes.** `tests/web/split.mjs`, a reporter, splits each
+test's time into its setup, its boots (a navigation to the veil lifting),
+its waits for the whole pool, its own work and its teardown, on a run here or
+over a CI run's blob reports. On the full gate of run 37554756597 (307
+tests, 84.1 test-minutes) the boots were 29.5% (a median of 4.7 s each),
+setup and teardown 0.5%, and waiting for the pool to fill after the veil
+13.8 minutes in 43 tests
+([`docs/notes/spec-time-2026-10.md`](../notes/spec-time-2026-10.md)).
+
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
 equal count, which left one of five runners with twice another's work.
 `tests/web/shard.mjs` weighs each test by its time on main's last run and
@@ -727,6 +736,7 @@ from it ([Rules](#rules)).
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; every preset's face, rendered in the built wasm as the worker renders a preset's (`preset_tree_json`, `face_of_tree`, an engine of its own each), is the shipped file's byte for byte, under the key the worker files it by (`farm_key`), a test per family, and the file lists the library in its order; opens no page, about 3 s under Node for the probe and 20 s of CPU for the faces |
 | `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1`; on a worker that answers as `worker.js` does, a request's last reply (`app.replyTo`) is the one carrying its number without `more`, not the first of its type nor the engine's own news, `app.answered` waits while a request it covers has none and names it when it gives up, by type or lane, never for a request the worker never answers or one main did not number, and a reply `app.answer` or `app.fail` gives for a request carries its number; `app.visit` is a new load of the seeded address with a level's hash, even when only the hash changed; a page error in a context `newContext` made fails the test, and the context has the project's `use` |
+| `fixture_renders.spec.js` | The fixture's reused renders (`app.boot({ reuseRenders: true })`): a boot of a seed with nothing kept is cold (no rows in the render cache as its page starts, none served) and keeps its rows once its pool is whole; a boot of that seed in another context then has them in the store before the app's first script, the engine serves its fill from them (its `render_cache` tally, which only the farm keeps: a fill that fell back to serial fails it, by name), and its pool is the cold boot's, sound for sound (id, name and patch); a boot of the same seed that does not ask starts with no rows. A store that cannot be read fails it rather than counting as empty |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off in the guide pill |
 | `warm_start.spec.js` | The warm start run again from ⋯ deals nine cards with none picked, one pick reads *2 more*, three reach *teach it*, and *teach it* sends those three and teaches 18 more picks |
@@ -803,8 +813,9 @@ from it ([Rules](#rules)).
   in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
-  boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
-  about 28% of the fast tier's test time). What the engine worker answers,
+  boot costs seconds, here and on a CI runner (a median of 4.7 s there,
+  about 30% of the fast tier's test time:
+  [`spec-time-2026-10.md`](../notes/spec-time-2026-10.md)). What the engine worker answers,
   and in what order, is a worker-protocol test (`tests/worker/`,
   [The levels](#the-levels)), not a spec that boots the app to read
   `app.reply`.
@@ -817,7 +828,15 @@ from it ([Rules](#rules)).
   `app.answered`; `web-runtime.md` § The worker's replies), and holds the
   engine's own replies while an injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
-  1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
+  1.5 s), the one fixed wait. Every boot is a first visit's, cold, except
+  where a spec that waits for the whole pool before it does anything, and
+  then reads only the pool, asks to reuse renders (`app.boot({ reuseRenders:
+  true })`): the render cache as an earlier boot of the same seed left it,
+  so the fill after the veil is served rather than rendered, and the pool is
+  the same (`fixture_renders.spec.js`). The boot is not: it is playable with
+  the whole pool, so EVOLVE's first pair is dealt from all of it, and a spec
+  that reads or hears EVOLVE's table does not ask. `tests/web/AGENTS.md` §
+  Writing a spec.
 - **A script's git runs without the file-system monitor, and its tests'
   scratch repositories read no user config.** A user's `core.fsmonitor=true`
   makes every git command that reads the index (`diff`, `ls-files --others`,
