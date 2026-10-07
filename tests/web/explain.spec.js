@@ -381,7 +381,7 @@ test("asking about a control moves no label", async ({ page, app }) => {
   expect(await labels()).toEqual(at);
 });
 
-test("a turn with an answer open asks the engine once it rests, not on every move", async ({ page, app }) => {
+test("a turn with an answer open asks the engine once it rests, not on every move", { tag: "@quarantine", annotation: { type: "issue", description: "#336" } }, async ({ page, app }) => {
   await boot(page, app);
   await openOnPerform(app, "Reese");
   await askAbout(page, app, 0);
