@@ -292,10 +292,10 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     `./fixtures` in a helper handed no `app`. It records `budget: <name>
     <ms> ms of <limit> ms` on the test (the merged report shows it, and the
     run's summary lists those over) and never fails the gate;
-    `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does (at
-    `AURACLE_CPU_THROTTLE=1`). A test that booted on a reference profile
-    ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md),
-    `profile.js`) names it beside each budget's figure (`… ms of 100 ms on air in
+    `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does, on
+    the reference profile ([ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md),
+    `profile.js`), in Chromium and in Firefox. A test that booted on a
+    profile names it beside each budget's figure (`… ms of 100 ms on air in
     chromium, ×4.4`) and carries the annotation `profile`, what its
     calibration measured.
   - *The reference profile* is the reference machine (a 2018 or 2019
