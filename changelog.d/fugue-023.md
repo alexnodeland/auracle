@@ -17,6 +17,6 @@
   wherever it is set, and fold the step back at either end of its range.**
   The step used to grow with the knob's setting, so a knob set near zero
   barely moved. Over twelve presets, an offer of eight steps on the knobs
-  alone moved its farthest knob 0.04 to 0.62 of its range, and now moves it
-  0.30 to 0.89. For a given random seed, what is bred and offered differs
+  alone moved its farthest knob 0.04 to 0.60 of its range, and now moves it
+  0.36 to 0.68. For a given random seed, what is bred and offered differs
   from before (#143).

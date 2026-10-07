@@ -349,9 +349,10 @@ fn performance_touches_live_knobs_only() {
 
 /// A drift is local and knob-only: it changes no structural or
 /// categorical choice and no knob without a live handle, and the farthest
-/// knob it moves grows with `sigma` — the Wander dial's reach. (The old
-/// walk, fugue's adaptive kernel from a fresh chain, moved some knob by
-/// 0.3–0.85 of its range in eight steps.)
+/// knob it moves grows with `sigma` — the Wander dial's reach. (The walk a
+/// drift once was, fugue's adaptive kernel from a fresh chain, moves the
+/// farthest live knob 0.36–0.68 of its range in eight steps:
+/// `examples/drift_distance.rs`.)
 #[test]
 fn drift_is_local_and_follows_sigma() {
     use crate::engine::{Engine, SessionConfig};

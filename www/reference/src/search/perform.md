@@ -680,15 +680,19 @@ $$
 accepted with probability $\min\!\big(1,\ \pi_\beta(x')/\pi_\beta(x)\big)$. The
 reflected Gaussian is symmetric, so there is no Hastings correction
 (`Engine::drift`). Refinement’s kernel, fugue’s adaptive single-site MH,
-starts every fresh chain with a wide proposal on a unit-interval knob: measured
-over 12 presets, an 8-step “drift” moved some knob by 0.3–0.85 of its range. A
-drift should wander, and how far is the Wander dial’s to say.
+starts every fresh chain at a step of scale 1 on each site and adapts it only
+after ten proposals there, so on a unit-interval knob each step of a short
+walk is a Gaussian as wide as the whole range, reflected back into it: close to
+a fresh draw. An offer of 8 steps with every site but the live knobs locked
+moved its farthest knob 0.36–0.68 of its range over the table’s 12 presets
+(its last row). A drift should wander, and how far is the Wander dial’s to say.
 
 | Wander | Steps | $\sigma$ | Farthest knob moved (12 presets) |
 |---|---|---|---|
 | drift, at its start | 8 | 0.05 | 0.06–0.14 |
 | drift, at its top | 18 | 0.08 | 0.15–0.33 |
 | roam, at its top | 40 | 0.15 | 0.25–0.61 |
+| *refinement’s kernel, the live knobs alone* | 8 | 1, at first | 0.36–0.68 |
 
 (`cargo run -p auracle-session --example drift_distance --release`.) Within
 each zone the pace rises linearly with the dial (`wanderPace`, in
