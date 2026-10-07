@@ -3,16 +3,19 @@
 - **Coming back to a session without render workers no longer sits on one
   line.** With none (a machine with few cores, `?farm=0`, or workers too slow
   to start), the engine brought all your sounds back in one go, rendering
-  each again and saying nothing until the last: 40 sounds took 15 s in
-  Firefox on a busy M-series laptop, on *restoring your bank & taste…* the
+  every one again and saying nothing until the last: 40 sounds took 13.6 s
+  in Firefox on an M-series laptop, on *restoring your bank & taste…* the
   whole time, and over two minutes on an older Intel MacBook Air. Now it
   brings them back one at a time, the bar counting them (*recalling 12 of 40
-  sounds…*), and keeps what it renders. A sound this browser has measured
-  before is read back rather than rendered: the first such return took about
-  as long as before (11 to 15 s here), and the next took 0.6 s (#285).
-- **Sounds the render workers measured come back without them too.** The
-  workers kept no record of the first eight sounds they rendered, the ones
-  you hear first, so a visit without workers rendered those eight again.
+  sounds…*), and keeps each one it renders. A sound the render workers
+  measured as the app loaded, or that an earlier return measured, is read
+  back rather than rendered: in Firefox held to four cores on a busy
+  M-series laptop, a return after a visit with workers took 1.1 to 1.7 s,
+  where it took 12.5 to 13.1 s. With nothing stored, a return still renders
+  every sound, in about the time it took before (11 to 15 s there), and the
+  next return took 0.6 s. A sound that joined while you played (a
+  generation's, an edit you kept, a patch file you opened) is rendered again
+  on the next return (#285).
 - **Render workers slow to start join the boot.** The engine waits five
   seconds for one to be ready. A worker ready a moment later used to sit out
   the whole boot; now the engine starts on its own and hands the rest to each
