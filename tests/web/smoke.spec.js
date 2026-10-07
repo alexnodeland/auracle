@@ -61,7 +61,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // voices at before its render. The three `audition_clip` methods are the
 // session's clip (Plan-007 task 3), and the live voice's input surface is what
 // the worklet writes the player's input through, with the open voice that
-// holds a patch that listens open while it is monitored (task 4). The
+// holds a patch that listens open while it is monitored (task 4), and `rest`
+// and `resting` are PERFORM's B at a mix of 0, which the worklet rests rather
+// than renders, and its wake (#288). The
 // `guess_*` four are the model's guess (Plan-005 task 9d), with
 // `guess_patch_as` the key a new patch files its guesses under (task 7), and
 // `edit_cable_levels` the cable probe (9e). `held_sounds` and `readmit_held`
@@ -99,7 +101,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "face_of", "face_key", "face_of_tree", "preset_tree_json", "face_of_key",
       "bank_twin_of", "set_deal_schedule", "deal_need",
     ];
-    const live = ["input_ptr", "input_capacity", "write_input", "clear_input", "set_open", "open_sounding"];
+    const live = ["input_ptr", "input_capacity", "write_input", "clear_input", "set_open", "open_sounding", "rest", "resting"];
     return {
       farm_walk: typeof mod.farm_walk,
       cache_namespace: typeof mod.cache_namespace,
@@ -114,5 +116,5 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
   expect(got.farm_render).toBe("function");
   expect(got.farm_key).toBe("function");
   expect(got.missing, "WasmEngine methods worker.js calls are missing").toEqual([]);
-  expect(got.liveMissing, "LivePoly's input surface is missing").toEqual([]);
+  expect(got.liveMissing, "LivePoly's input surface or its rest is missing").toEqual([]);
 });

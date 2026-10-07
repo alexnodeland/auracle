@@ -194,9 +194,11 @@ a child beside its seed.
 
 A generation takes from under a minute to a few, depending on how many cores
 your machine has to spare. On a busy four-core machine it takes about two to
-three and a half minutes. The instrument goes on answering while it breeds. A
-pick deals its next pair at once, a ▶ plays, a sound opens, and PERFORM
-measures and grows offers.
+three and a half minutes. While the sound is running short on a slower
+computer ([Blend, Peek, and B](perform.md#blend-peek-and-b)), the walks not
+yet under way wait while notes sound, and go on a second after the last one.
+The instrument goes on answering while it breeds. A pick deals its next pair
+at once, a ▶ plays, a sound opens, and PERFORM measures and grows offers.
 
 **STOP** ends the generation with the children bred so far. Then, as at any
 generation’s end, the pool goes back to its size.

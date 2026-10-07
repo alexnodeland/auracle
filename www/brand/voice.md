@@ -481,6 +481,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **dealing: the engine is filling the pool (16/40)** | EVOLVE's cards while a deal in a session opened with a seed in the address (`?seed=`) waits for the sounds its schedule reaches as the pool fills: said once the deal is slow (`DEAL_SAY_MS`), on both cards, with how many sounds have arrived of the pool's size, the count moving as they arrive; never in a session with no seed, nor once the pool has filled | loading, buffering, waiting for sounds |
 | **B · ‹aim›** (B · GRITTIER) | B's label for an offer a control asked for: B and the aim word of the way it was turned | B (grittier), target |
 | **offered · hold B to peek** / **hold Peek to hear it** (touch) | B's line under its face: it is an offer, and how to hear it | press and hold, preview |
+| **runs short**, **falls behind** (the sound) | On a slower computer, the sound under your hands not keeping up (heard as a crackle), and what Auracle then does about it for as long as it lasts: B silent at BLEND's home, its own work waiting while you play | overloaded, lagging, struggling (outside the reference and the architecture notes), CPU |
 | **depth** | ARRANGE's slider beside Velocity plays: how far velocity reaches | amount, intensity, sensitivity |
 | **CONTROLS** | PERFORM's cap over the controls, with ARRANGE and HOW IT WORKS | knobs, macros, deck |
 | **Share this sound as a picture** | The share button's accessible name | export image, save image |
