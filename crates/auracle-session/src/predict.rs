@@ -28,10 +28,14 @@
 //! pool sounds held out by session: from the presets and one session's pool,
 //! 76% of the controls it wires turn the way their name says on the sound's
 //! own Jacobian, and it covers 56% of what the measurement reaches; Space and
-//! Snap are reliable, Motion and Body are not. The reference's older table
-//! (keyed by the bare site name, and judged by purity) is why the measurement
-//! stays the truth: a predicted wiring is unverified ([`Wiring::up`] and
-//! [`Wiring::down`] are `None`) and the page draws it as a guess.
+//! Snap are reliable, Motion and Body are not. So the prediction is **gated
+//! per control** ([`KnobTable::passes`]): the table carries how often it turned
+//! each control the named way on the pool sounds it was learned from, each
+//! held out in turn ([`KnobTable::agreement`]), and a control is wired from it
+//! only where that agrees well enough ([`PREDICT_GATE`]). The rest wait for
+//! the measurement, as they always did. A predicted wiring is unverified
+//! ([`Wiring::up`] and [`Wiring::down`] are `None`) and the page says it is not
+//! measured yet.
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -42,7 +46,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::engine::Engine;
 use crate::perform::{
-    live_knobs, standardized_audio, wire_set, Jacobian, NamedControl, Wiring, SEMANTIC_RIDGE,
+    direction, live_knobs, standardized_audio, wire_set, Jacobian, NamedControl, Wiring,
+    SEMANTIC_RIDGE,
 };
 
 /// Fewest measured columns a key needs to stand for its knobs in the table.
@@ -51,9 +56,57 @@ use crate::perform::{
 /// (`examples/wire_predict.rs`) measured three against one and two.
 pub const TABLE_MIN: usize = 3;
 
+/// Lowest agreement ([`Agreement::lower_bound`]) at which a control is wired
+/// from the prediction. The maintainer heard the prediction's Bright (69% of
+/// its turns went the named way by ear, 78% on the measured Jacobians the
+/// gate is judged on) and accepted it, and its Motion (42% by ear, 62% on
+/// the Jacobians) and did not (#290). 0.70 is between the two in the gate's
+/// own units: more than two turns in three go the named way, after the bound
+/// has paid for how few turns it saw. On the shipped table, Bright's 82% of
+/// 139 turns reads 0.746 and Snap's 83% of 231 reads 0.776.
+pub const PREDICT_GATE: f64 = 0.70;
+
+/// The bound's width, in standard errors: z of the Wilson score interval
+/// [`Agreement::lower_bound`] takes the lower end of. At two, a control
+/// passes on at least ten turns, all the named way (n of n reads n/(n+4)), or
+/// on more with some wrong, and a control seen a couple of hundred times
+/// gives up five to eight points. At one, three turns in three passed: the
+/// shipped table wired Grit on 5 pool sounds of 240, all the named way, and
+/// it passed on that.
+pub const GATE_Z: f64 = 2.0;
+
+/// How often the prediction turned one control the named way: of the pool
+/// sounds it was judged on, each held out of the table in turn, how many it
+/// wired the control on (`wired`) and how many of those moved along the
+/// control's direction on the sound's own measured Jacobian (`right`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Agreement {
+    /// Held-out sounds the prediction wired the control on.
+    pub wired: u32,
+    /// Of those, the ones it turned the named way.
+    pub right: u32,
+}
+
+impl Agreement {
+    /// The lower end of the Wilson score interval at [`GATE_Z`] around
+    /// `right / wired`: the share of turns that go the named way, less what
+    /// so few turns cannot vouch for. 0 for a control never wired.
+    pub fn lower_bound(&self) -> f64 {
+        if self.wired == 0 {
+            return 0.0;
+        }
+        let (n, z) = (f64::from(self.wired), GATE_Z);
+        let p = f64::from(self.right) / n;
+        let centre = p + z * z / (2.0 * n);
+        let spread = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt();
+        (centre - spread) / (1.0 + z * z / n)
+    }
+}
+
 /// How each kind of module's knob moves φ: per key ([`knob_keys`]), the
 /// median of measured `∂φ_audio/∂p` columns in raw audio-φ units per unit of
-/// knob travel.
+/// knob travel; and per control, how well the table predicted it on sounds it
+/// was not learned from ([`KnobTable::passes`]).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct KnobTable {
     /// The audio φ names the columns run over ([`AudioFeatures::NAMES`] when
@@ -61,6 +114,12 @@ pub struct KnobTable {
     pub names: Vec<String>,
     /// Key → column, every level of [`knob_keys`] in one map.
     pub cols: BTreeMap<String, Vec<f64>>,
+    /// Control name → how often the table turned it the named way on held-out
+    /// pool sounds ([`KnobTable::agreement`]). A control it does not name, and
+    /// every control of a table written before the gate, is never wired from
+    /// the prediction.
+    #[serde(default)]
+    pub gate: BTreeMap<String, Agreement>,
 }
 
 /// One measured sound, as [`KnobTable::learn`] takes it: the tree, its
@@ -147,7 +206,94 @@ impl KnobTable {
             .filter(|(_, v)| v.len() >= TABLE_MIN)
             .map(|(k, v)| (k, median_by_coordinate(&v)))
             .collect();
-        KnobTable { names, cols }
+        KnobTable {
+            names,
+            cols,
+            gate: BTreeMap::new(),
+        }
+    }
+
+    /// The gate's data: for each of `held` (indices into `measured`, the pool
+    /// sounds), the table learned from every other measured sound, each of
+    /// `controls` wired on it alone from the prediction, and whether the
+    /// control's knobs, turned up, move the held-out sound along the
+    /// control's direction on its own measured Jacobian. The presets train
+    /// but are never held out: the app never predicts a preset (its wiring
+    /// ships), and held out they flatter the table (Motion read 79 to 88%
+    /// on them against 62% on pool sounds).
+    pub fn agreement(
+        measured: &[Measured],
+        held: &[usize],
+        controls: &[NamedControl],
+    ) -> BTreeMap<String, Agreement> {
+        let mut out: BTreeMap<String, Agreement> = controls
+            .iter()
+            .map(|c| (c.name.to_string(), Agreement::default()))
+            .collect();
+        let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+        for &h in held {
+            let Some(m) = measured.get(h) else { continue };
+            let train: Vec<Measured> = measured
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != h)
+                .map(|(_, o)| Measured {
+                    tree: o.tree,
+                    jac: o.jac,
+                    spread: o.spread,
+                })
+                .collect();
+            let table = KnobTable::learn(&train);
+            let knobs: Vec<(String, f64)> = m
+                .jac
+                .addrs
+                .iter()
+                .cloned()
+                .zip(m.jac.values.iter().copied())
+                .collect();
+            let Some(cols) = table.predict(m.tree, &knobs, m.spread) else {
+                continue;
+            };
+            let guess = Jacobian {
+                cols,
+                ..m.jac.clone()
+            };
+            for c in controls {
+                let w = wire_set(&guess, std::slice::from_ref(c), SEMANTIC_RIDGE).remove(0);
+                if w.search {
+                    continue;
+                }
+                let d = direction(c, &names);
+                let along: f64 = w
+                    .knobs
+                    .iter()
+                    .filter_map(|(a, g)| {
+                        let i = m.jac.addrs.iter().position(|x| x == a)?;
+                        Some(
+                            g * m.jac.cols[i]
+                                .iter()
+                                .zip(&d)
+                                .map(|(j, e)| j * e)
+                                .sum::<f64>(),
+                        )
+                    })
+                    .sum();
+                let a = out.entry(c.name.to_string()).or_default();
+                a.wired += 1;
+                if along > 0.0 {
+                    a.right += 1;
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether `control` may be wired from this table's prediction: its
+    /// agreement's lower bound reaches [`PREDICT_GATE`].
+    pub fn passes(&self, control: &NamedControl) -> bool {
+        self.gate
+            .get(control.name)
+            .is_some_and(|a| a.lower_bound() >= PREDICT_GATE)
     }
 
     /// The column the table holds for a knob, by the finest of its `keys`
@@ -222,14 +368,19 @@ pub fn shape_of(tree: &PatchTree) -> String {
 }
 
 impl Engine {
-    /// `controls` wired onto `tree` from `table`, with no render: its live
-    /// knobs (a compile), their columns as the table predicts them under this
+    /// The controls of `controls` that `table` may wire ([`KnobTable::passes`])
+    /// wired onto `tree` from its prediction, with no render: its live knobs
+    /// (a compile), their columns as the table predicts them under this
     /// session's standardizer, and the measurement's solve ([`wire_set`]) on
-    /// those. The wirings are unverified, so each turns both ways. `z` is the
-    /// tree's standardized audio φ if the memo holds its render (a pool
-    /// sound's does), and empty otherwise, which puts every control's
-    /// position at zero. `None` before a standardizer exists, when the tree
-    /// has no live knob, or when the table is over other φ names.
+    /// those, in the order asked. A control the gate keeps out, or that the
+    /// prediction cannot reach (it would be a search control: a claim that
+    /// the patch *can't*, which a guess may not make), is left out, and the
+    /// page has it wait for the measurement. The wirings are unverified, so
+    /// each turns both ways. `z` is the tree's standardized audio φ if the
+    /// memo holds its render (a pool sound's does), and empty otherwise,
+    /// which puts every control's position at zero. `None` before a
+    /// standardizer exists, when the tree has no live knob, when the table is
+    /// over other φ names, or when no control is left.
     pub fn wire_predicted(
         &self,
         tree: &PatchTree,
@@ -256,8 +407,16 @@ impl Engine {
             z,
             cols,
         };
-        let wiring = wire_set(&jac, controls, SEMANTIC_RIDGE);
-        Some((jac, wiring))
+        let gated: Vec<NamedControl> = controls
+            .iter()
+            .copied()
+            .filter(|c| table.passes(c))
+            .collect();
+        let wiring: Vec<Wiring> = wire_set(&jac, &gated, SEMANTIC_RIDGE)
+            .into_iter()
+            .filter(|w| !w.search)
+            .collect();
+        (!wiring.is_empty()).then_some((jac, wiring))
     }
 }
 

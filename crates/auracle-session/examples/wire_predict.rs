@@ -49,7 +49,7 @@ use auracle_grammar::edit::{set_param, ParamValue};
 use auracle_grammar::{describe, preset_bank, PatchGrammarPrior, PatchTree};
 use auracle_session::perform::{
     apply, direction, jacobian, purity_basis, separate, standardized_audio, wire_set, Jacobian,
-    Wiring, CONTROLS, PURITY_FLOOR, REACH_FLOOR, SEMANTIC_RIDGE,
+    Wiring, CONTROLS, PALETTE, PURITY_FLOOR, REACH_FLOOR, SEMANTIC_RIDGE,
 };
 use auracle_session::predict::KnobTable;
 use auracle_session::{Engine, SessionConfig};
@@ -693,6 +693,81 @@ fn shipped(seed: u64, threads: usize) {
     );
 }
 
+/// The gate's data as `make perform-wirings` can compute it (#290): the table
+/// learned from the presets and one session's pool, each pool sound held out
+/// in turn, every palette control wired on it alone from the prediction, and
+/// how often the control it wires turns the named way on the sound's own
+/// Jacobian (`along > 0`). Per seed, so the threshold is read across six
+/// pools rather than the one the generator boots.
+fn gate_sweep(sounds: &[Sound], groups: &[String]) {
+    let levels = vec![
+        Level::Site,
+        Level::KindSite,
+        Level::KindSiteDest,
+        Level::KindSiteDestBin,
+    ];
+    let seeds: Vec<&String> = groups.iter().filter(|g| g.starts_with("seed")).collect();
+    print!("{:<9}", "control");
+    for g in &seeds {
+        print!(" {:>12}", g);
+    }
+    println!(" {:>12}", "all");
+    for (c, control) in PALETTE.iter().enumerate() {
+        let mut all = (0usize, 0usize);
+        print!("{:<9}", control.name);
+        for g in &seeds {
+            let mut n = (0usize, 0usize);
+            let pool: Vec<&Sound> = sounds.iter().filter(|s| &s.group == *g).collect();
+            for held in &pool {
+                let train: Vec<&Sound> = sounds
+                    .iter()
+                    .filter(|s| s.group == "preset" || (&s.group == *g && s.name != held.name))
+                    .collect();
+                let t = Table::learn(&train, &levels, 3, true);
+                let w = wire_set(
+                    &predicted_jac(held, &t, None),
+                    &PALETTE[c..=c],
+                    SEMANTIC_RIDGE,
+                )
+                .remove(0);
+                if w.search {
+                    continue;
+                }
+                let tj = true_jac(held);
+                let d = direction(control, &tj.names);
+                let mut moved = vec![0.0; tj.names.len()];
+                for (a, gain) in &w.knobs {
+                    if let Some(i) = tj.addrs.iter().position(|x| x == a) {
+                        for (m, v) in moved.iter_mut().zip(&tj.cols[i]) {
+                            *m += v * gain;
+                        }
+                    }
+                }
+                let along: f64 = moved.iter().zip(&d).map(|(a, b)| a * b).sum();
+                n.0 += 1;
+                if along > 0.0 {
+                    n.1 += 1;
+                }
+            }
+            let _ = c;
+            print!(
+                " {:>5}/{:<2} {:>3.0}%",
+                n.1,
+                n.0,
+                100.0 * n.1 as f64 / n.0.max(1) as f64
+            );
+            all.0 += n.0;
+            all.1 += n.1;
+        }
+        println!(
+            " {:>5}/{:<3} {:>3.0}%",
+            all.1,
+            all.0,
+            100.0 * all.1 as f64 / all.0.max(1) as f64
+        );
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--shipped") {
@@ -727,6 +802,10 @@ fn main() {
         sounds.len(),
         groups
     );
+    if args.iter().any(|a| a == "--gate") {
+        gate_sweep(&sounds, &groups);
+        return;
+    }
     let fine = || {
         vec![
             Level::Site,

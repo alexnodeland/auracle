@@ -200,7 +200,7 @@ fn a_prediction_takes_the_finest_key_and_the_sessions_spread() {
     let keys = knob_keys(&t, &knobs);
     let mut table = KnobTable {
         names: names(),
-        cols: BTreeMap::new(),
+        ..KnobTable::default()
     };
     table
         .cols
@@ -245,12 +245,155 @@ fn flat(s: f64) -> Standardizer {
     }
 }
 
+/// The gate's data for `passing` (each wired 100 times, right on 85) and
+/// `failing` (wired 100, right on 60).
+fn gate(passing: &[&str], failing: &[&str]) -> BTreeMap<String, Agreement> {
+    let pass = Agreement {
+        wired: 100,
+        right: 85,
+    };
+    let fail = Agreement {
+        wired: 100,
+        right: 60,
+    };
+    passing
+        .iter()
+        .map(|n| (n.to_string(), pass))
+        .chain(failing.iter().map(|n| (n.to_string(), fail)))
+        .collect()
+}
+
+/// **The bound decides the gate, not the rate.** Four turns in five, seen a
+/// hundred times, pass at 0.70; seen ten times, they do not, and nor does a
+/// control never wired. Seven in ten seen a hundred times are under it too.
+/// A perfect record passes from ten turns: ten in ten do, nine in nine and
+/// five in five (the shipped table's Grit) do not. The bound is the Wilson
+/// interval's lower end at two standard errors, worked by hand here.
+#[test]
+fn the_bound_not_the_rate_decides_the_gate() {
+    let bound = |wired, right| Agreement { wired, right }.lower_bound();
+    let near = |a: f64, b: f64| assert!((a - b).abs() < 1e-4, "{a} ≈ {b}");
+    near(bound(100, 80), 0.70917);
+    near(bound(10, 8), 0.48394);
+    near(bound(100, 70), 0.60211);
+    near(bound(10, 10), 0.71429);
+    near(bound(9, 9), 0.69231);
+    near(bound(5, 5), 0.55556);
+    assert_eq!(bound(0, 0), 0.0);
+    for (w, r) in [(100, 80), (10, 10)] {
+        assert!(bound(w, r) >= PREDICT_GATE, "{r} of {w}");
+    }
+    for (w, r) in [(10, 8), (100, 70), (9, 9), (5, 5), (0, 0)] {
+        assert!(bound(w, r) < PREDICT_GATE, "{r} of {w}");
+    }
+    let mut table = KnobTable::default();
+    table.gate.insert(
+        "Bright".into(),
+        Agreement {
+            wired: 100,
+            right: 80,
+        },
+    );
+    table
+        .gate
+        .insert("Snap".into(), Agreement { wired: 5, right: 5 });
+    assert!(table.passes(&CONTROLS[0]));
+    assert!(!table.passes(&CONTROLS[1]), "too few turns");
+    assert!(!table.passes(&CONTROLS[2]), "never judged");
+}
+
+/// **The gate counts how often a held-out sound turns the named way.** Four
+/// Acid Lines whose measured cutoff brightens by 1, 2 and 3 and darkens by
+/// 5: each held out in turn, the other three's median predicts a brightening
+/// (2, 1, 1 and 2), right on the three that brighten and wrong on the one
+/// that darkens. Bright is counted on every sound it is
+/// wired on, a control the table cannot reach on none. Only the held-out
+/// indices are judged: the rest only train.
+#[test]
+fn the_gate_counts_held_out_turns_that_go_the_named_way() {
+    let n = names().len();
+    let spread = vec![1.0; n];
+    let sounds: Vec<(PatchTree, Jacobian)> = [1.0, 2.0, 3.0, -5.0]
+        .iter()
+        .map(|&v| measured_acid(col(&[("centroid_mean", v), ("rolloff_mean", v)])))
+        .collect();
+    let measured: Vec<Measured> = sounds
+        .iter()
+        .map(|(tree, jac)| Measured {
+            tree,
+            jac,
+            spread: &spread,
+        })
+        .collect();
+    let all = KnobTable::agreement(&measured, &[0, 1, 2, 3], &CONTROLS);
+    assert_eq!(all.len(), CONTROLS.len(), "every control asked is named");
+    assert_eq!(all["Bright"], Agreement { wired: 4, right: 3 });
+    assert_eq!(all["Grit"], Agreement::default(), "nothing reaches it");
+    // Held out alone, the darkening one is wrong, and a brightening one right.
+    assert_eq!(
+        KnobTable::agreement(&measured, &[3], &CONTROLS)["Bright"],
+        Agreement { wired: 1, right: 0 }
+    );
+    assert_eq!(
+        KnobTable::agreement(&measured, &[0], &CONTROLS)["Bright"],
+        Agreement { wired: 1, right: 1 }
+    );
+    // An index past the end is judged on nothing.
+    assert_eq!(
+        KnobTable::agreement(&measured, &[9], &CONTROLS)["Bright"],
+        Agreement::default()
+    );
+    // A learned table carries no gate of its own: the generator adds it.
+    assert!(KnobTable::learn(&measured).gate.is_empty());
+}
+
+/// **A control below the gate is not wired from the prediction, and one
+/// above is.** With a table that can reach both Bright (the cutoff
+/// brightens) and Snap (the amp's attack is quicker), each is wired exactly
+/// when its gate passes; a control the gate passes but the prediction cannot
+/// reach is left out rather than called a search control (a guess may not
+/// say *can't*); and a table whose gate passes nothing predicts nothing.
+#[test]
+fn a_control_below_the_gate_is_not_wired_from_the_prediction_and_one_above_is() {
+    let (t, _) = acid();
+    let mut engine = Engine::new(PatchGrammarPrior::default(), fast());
+    engine.standardizer = Some(Arc::new(flat(1.0)));
+    let mut table = KnobTable {
+        names: names(),
+        ..KnobTable::default()
+    };
+    table.cols.insert(
+        "cut".into(),
+        col(&[("centroid_mean", 3.0), ("rolloff_mean", 3.0)]),
+    );
+    table
+        .cols
+        .insert("attack".into(), col(&[("attack_s", -3.0), ("crest", 3.0)]));
+    let wired = |table: &KnobTable| -> Vec<String> {
+        engine
+            .wire_predicted(&t, &CONTROLS, table)
+            .map(|(_, w)| w.into_iter().map(|w| w.name).collect())
+            .unwrap_or_default()
+    };
+    table.gate = gate(&["Bright", "Snap", "Body"], &[]);
+    assert_eq!(
+        wired(&table),
+        ["Bright", "Snap"],
+        "Body passes and reaches nothing"
+    );
+    table.gate = gate(&["Bright"], &["Snap"]);
+    assert_eq!(wired(&table), ["Bright"]);
+    table.gate = gate(&["Snap"], &["Bright"]);
+    assert_eq!(wired(&table), ["Snap"]);
+    table.gate = gate(&["Body"], &["Bright", "Snap"]);
+    assert!(engine.wire_predicted(&t, &CONTROLS, &table).is_none());
+}
+
 /// **A predicted wiring is the measurement's solve on the table, with no
 /// render.** Before a standardizer there is none. With a table that says a
-/// ladder's cutoff brightens, Bright turns Acid Line's cutoff up by the full
-/// travel and the controls the table says nothing about are search
-/// controls; the wiring is unverified, so it turns both ways, and nothing
-/// was rendered. The tree's position comes from the memo once its render is
+/// filter's cutoff brightens, Bright turns Acid Line's cutoff up by the full
+/// travel and the controls the table says nothing about are left out; the
+/// wiring is unverified, so it turns both ways, and nothing was rendered. The tree's position comes from the memo once its render is
 /// there. A patch the compiler refuses has no live knob and no prediction;
 /// nor does a table over other names.
 #[test]
@@ -259,12 +402,13 @@ fn a_predicted_wiring_is_the_solve_on_the_table_with_no_render() {
     let mut engine = Engine::new(PatchGrammarPrior::default(), fast());
     let mut table = KnobTable {
         names: names(),
-        cols: BTreeMap::new(),
+        ..KnobTable::default()
     };
     table.cols.insert(
         "cut".into(),
         col(&[("centroid_mean", 3.0), ("rolloff_mean", 3.0)]),
     );
+    table.gate = gate(&CONTROLS.map(|c| c.name), &[]);
     assert!(engine.wire_predicted(&t, &CONTROLS, &table).is_none());
     engine.standardizer = Some(Arc::new(flat(1.5)));
     let misses = engine.memo().stats().misses;
@@ -286,7 +430,7 @@ fn a_predicted_wiring_is_the_solve_on_the_table_with_no_render() {
         col(&[("centroid_mean", 2.0), ("rolloff_mean", 2.0)])
     );
     assert!(jac.z.is_empty());
-    assert_eq!(wiring.len(), CONTROLS.len());
+    assert_eq!(wiring.len(), 1, "the table knows only the cutoff");
     let bright = &wiring[0];
     assert_eq!(bright.name, "Bright");
     assert!(!bright.search);
@@ -294,10 +438,6 @@ fn a_predicted_wiring_is_the_solve_on_the_table_with_no_render() {
     assert_eq!((bright.up, bright.down), (None, None));
     assert_eq!(bright.range(), (-1.0, 1.0));
     assert_eq!(bright.position, 0.0);
-    assert!(
-        wiring[1..].iter().all(|w| w.search),
-        "the table knows only the cutoff"
-    );
     // Its render in the memo: the position is where it measures.
     let (cf, _) = featurize_memo(&t, &engine.cfg.phrase, engine.memo(), false).expect("vets");
     let z = standardized_audio(&cf.features, engine.standardizer.as_deref().unwrap());
