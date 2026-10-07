@@ -13,11 +13,12 @@
 // This holds the page's half: the line and the bar move on the veil, sound by
 // sound, before it lifts. The engine is slowed fourfold (`slowEngine`), about
 // an older laptop; the seconds are budgets (ADR-022), on the page's clock.
-// Their limits are what a 16-core M3 Max measured, busy with other work (load
-// average 115 to 170), with room for a slower CI runner: from the store, 0.5 s
-// to the veil and 11 ms a step; with nothing stored, 47 s and 3.6 s a step,
-// one render. The one call this replaced would be the whole restore in one
-// step, and every render again where the store has them.
+// Their limits: from the store, 3 s from boot to the veil and 0.5 s a step;
+// with nothing stored, 90 s and 5 s a step (one render). A 16-core M3 Max,
+// busy with other work (load average 30 to 200), measured 0.4 to 1.2 s and
+// 7 to 24 ms, and 40.6 to 48.6 s and 2.6 to 3.6 s; the limits leave room
+// for a slower CI runner. The one call this replaced would be the whole
+// restore in one step, and every render again where the store has them.
 const { test, expect } = require("./fixtures");
 
 const SLOW = 4;
@@ -117,8 +118,9 @@ const rising = (xs) => xs.every((x, i) => i === 0 || x > xs[i - 1]);
 
 test("a returning visit with no farm says each sound on the veil as it comes back, reading what the farm measured from the render store", async ({ page, app }) => {
   // The first visit fills the pool on the farm, which keeps each render in
-  // the store.
-  await firstVisit(page, app);
+  // the store. Two workers, whatever this machine's cores (`farmWidth` gives
+  // none below four): a fill here keeps nothing (ADR-025's `?farm=2`).
+  await firstVisit(page, app, "?farm=2");
   const visit = await returningVisit(page, app);
 
   expect(visit.lifted, "the veil never lifted").toBe(true);
