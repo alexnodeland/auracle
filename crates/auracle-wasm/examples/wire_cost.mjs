@@ -18,7 +18,10 @@
 // nudges, the verification's four points per reachable control, the retries
 // at half travel), the CPU time of the renders and of the arithmetic (the
 // plans and the finish), and what a compile of the tree alone costs
-// (`perform_knobs`: what a wiring with no render would have to pay). CPU time
+// (`perform_knobs`), and what the first wiring costs (#290: `perform_first`,
+// a compile and the knob table's prediction, which the worker pays with every
+// tree it sends to the voices), with the shipped table handed over as the
+// worker hands it (`perform_table_set`). CPU time
 // is the process's (`process.cpuUsage`), so a loaded machine slows the wall
 // clock and not the figure; both are printed.
 import { readFileSync } from "node:fs";
@@ -54,6 +57,8 @@ const [, bootWall, bootCpu] = timed(() => {
   globalThis.e.restandardize_if_untaught();
 });
 const e = globalThis.e;
+const table = typeof e.perform_table_set === "function" && e.perform_table_set(readFileSync(fileURLToPath(new URL("../../../apps/web/perform-wirings.json", import.meta.url)), "utf8"));
+say(`knob table: ${table ? "handed over" : "none (an engine before #290)"}`);
 say(`pool of 40 filled and standardized: ${(bootWall / 1e3).toFixed(1)} s wall, ${(bootCpu / 1e3).toFixed(1)} s CPU`);
 
 const misses = () => JSON.parse(e.memo_stats()).misses;
@@ -62,7 +67,9 @@ const sounds = pool
   .map((id) => {
     const tree = e.tree_json_of(id);
     const [knobs, , compileCpu] = timed(() => JSON.parse(e.perform_knobs(tree)).length);
-    return { id, tree, knobs, compileCpu };
+    const [first, , firstCpu] = table ? timed(() => JSON.parse(e.perform_first(tree))) : [null, 0, NaN];
+    const guessed = first && first.predicted ? first.predicted.wiring.filter((w) => !w.search).length : null;
+    return { id, tree, knobs, compileCpu, firstCpu, guessed };
   })
   .sort((a, b) => a.knobs - b.knobs);
 // Spread over the knob counts: every k-th by count, the largest included.
@@ -73,8 +80,8 @@ const chosen = [...new Set(pick)];
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 const pct = (xs, p) => [...xs].sort((a, b) => a - b)[Math.round((xs.length - 1) * p)];
 
-console.log("sound  knobs  renders [jacobian verify retry] = all   render CPU ms (mean/render)   plan+finish CPU ms   compile CPU ms   wired");
-const all = { renders: [], perRender: [], arith: [], compile: [], total: [], jac: [] };
+console.log("sound  knobs  renders [jacobian verify retry] = all   render CPU ms (mean/render)   plan+finish CPU ms   compile CPU ms   first CPU ms   wired (predicted)");
+const all = { renders: [], perRender: [], arith: [], compile: [], total: [], jac: [], first: [] };
 for (const s of chosen) {
   const failed = [];
   const rounds = [];
@@ -103,7 +110,7 @@ for (const s of chosen) {
   const cells = [0, 1, 2].map((i) => String(rounds[i] || 0).padStart(3)).join(" ");
   console.log(
     `${String(s.id).padStart(5)}  ${String(s.knobs).padStart(5)}  [${cells}] = ${String(r).padStart(3)}   ${renderCpu.toFixed(0).padStart(7)} (${mean(per).toFixed(0).padStart(4)})` +
-      `              ${arithCpu.toFixed(1).padStart(7)}            ${s.compileCpu.toFixed(1).padStart(6)}       ${wired} of 6`,
+      `              ${arithCpu.toFixed(1).padStart(7)}            ${s.compileCpu.toFixed(1).padStart(6)}   ${s.firstCpu.toFixed(1).padStart(10)}       ${wired} of 6 (${s.guessed ?? "-"})`,
   );
   all.renders.push(r);
   all.perRender.push(...per);
@@ -111,10 +118,12 @@ for (const s of chosen) {
   all.compile.push(s.compileCpu);
   all.total.push(renderCpu + arithCpu);
   all.jac.push(jacCpu);
+  if (Number.isFinite(s.firstCpu)) all.first.push(s.firstCpu);
 }
 console.log("");
 console.log(`renders per measurement: mean ${mean(all.renders).toFixed(1)}, p50 ${pct(all.renders, 0.5)}, max ${pct(all.renders, 1)}`);
 console.log(`one render: mean ${mean(all.perRender).toFixed(0)} ms CPU, p50 ${pct(all.perRender, 0.5).toFixed(0)}, p90 ${pct(all.perRender, 0.9).toFixed(0)}, max ${pct(all.perRender, 1).toFixed(0)}`);
 console.log(`a measurement: mean ${(mean(all.total) / 1e3).toFixed(1)} s CPU, p50 ${(pct(all.total, 0.5) / 1e3).toFixed(1)}, max ${(pct(all.total, 1) / 1e3).toFixed(1)}; its Jacobian round alone: mean ${(mean(all.jac) / 1e3).toFixed(1)} s`);
 console.log(`the arithmetic (plans and finish): mean ${mean(all.arith).toFixed(1)} ms CPU; a compile for the knobs: mean ${mean(all.compile).toFixed(1)} ms, max ${pct(all.compile, 1).toFixed(1)}`);
+if (all.first.length) console.log(`the first wiring (perform_first): mean ${mean(all.first).toFixed(1)} ms CPU, max ${pct(all.first, 1).toFixed(1)}`);
 say(`load ${loadavg().map((x) => x.toFixed(0)).join(" ")}`);

@@ -29,15 +29,29 @@
 //! (true `along > 0`), by at least half the reach floor, its true purity, and
 //! whether it turns the measured wiring's knobs (then the measurement lands in
 //! place, `applyRechecked` in perform.js, and the control does not re-centre).
-use std::collections::HashMap;
+//!
+//! ```bash
+//! cargo run -p auracle-session --example wire_predict --release -- --shipped [seed=77] [threads=8]
+//! ```
+//!
+//! `--shipped` judges what the app plays instead, by ear: the knob table in
+//! `apps/web/perform-wirings.json` on a fresh session's pool of 40, each
+//! predicted control rendered turned fully up and fully down (as verification
+//! renders a measured one), against the sound's own measurement
+//! (`Engine::wire_named`). "Up" is the sound moving toward the control's high
+//! word when turned up, "both" moving the named way at both ends, "audible"
+//! by at least half the reach floor.
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use auracle_features::{AudioFeatures, RenderMemo};
+use auracle_grammar::edit::{set_param, ParamValue};
 use auracle_grammar::{describe, preset_bank, PatchGrammarPrior, PatchTree};
 use auracle_session::perform::{
-    direction, jacobian, purity_basis, separate, wire_set, Jacobian, Wiring, CONTROLS,
-    PURITY_FLOOR, REACH_FLOOR, SEMANTIC_RIDGE,
+    apply, direction, jacobian, purity_basis, separate, standardized_audio, wire_set, Jacobian,
+    Wiring, CONTROLS, PURITY_FLOOR, REACH_FLOOR, SEMANTIC_RIDGE,
 };
+use auracle_session::predict::KnobTable;
 use auracle_session::{Engine, SessionConfig};
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
@@ -538,8 +552,155 @@ impl Variant {
     }
 }
 
+/// The shipped table's predictions on a fresh pool, by ear (`--shipped`).
+fn shipped(seed: u64, threads: usize) {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../apps/web/perform-wirings.json"
+    );
+    let file: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("the shipped wirings"))
+            .expect("JSON");
+    let table: KnobTable = serde_json::from_value(file["knobs"].clone()).expect("a knob table");
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let cfg = SessionConfig {
+        pool_size: 40,
+        ..SessionConfig::default()
+    };
+    let mut e = Engine::new(PatchGrammarPrior::default(), cfg);
+    e.begin_session();
+    e.fill_pool(&mut rng);
+    let trees: Vec<PatchTree> = e.pool.iter().map(|c| c.tree.clone()).collect();
+    println!(
+        "seed {seed}: {} pool sounds, the shipped table's {} keys",
+        trees.len(),
+        table.cols.len()
+    );
+    // Per control: [predicted wired, up, both, audible both, measured reaches, measured reaches & predicted wired]
+    let tally = Mutex::new([[0usize; 6]; 6]);
+    let next = Mutex::new(0usize);
+    let (e, spec) = (&e, e.cfg.phrase.clone());
+    std::thread::scope(|sc| {
+        for _ in 0..threads {
+            sc.spawn(|| loop {
+                let i = {
+                    let mut n = next.lock().unwrap();
+                    *n += 1;
+                    *n - 1
+                };
+                let Some(tree) = trees.get(i) else { return };
+                let std = e.standardizer().expect("a standardizer");
+                let Some((jac, wiring)) = e.wire_predicted(tree, &CONTROLS, &table) else {
+                    continue;
+                };
+                let measured = e
+                    .wire_named(tree, &CONTROLS, &HashSet::new())
+                    .map(|(_, w)| w);
+                let along = |t: &PatchTree, c: usize| -> Option<f64> {
+                    let (cf, _) =
+                        auracle_features::featurize_memo(t, &spec, e.memo(), false).ok()?;
+                    let z = standardized_audio(&cf.features, std);
+                    Some(
+                        direction(&CONTROLS[c], &jac.names)
+                            .iter()
+                            .zip(&z)
+                            .map(|(a, b)| a * b)
+                            .sum(),
+                    )
+                };
+                let base = along(tree, 0).map(|_| ());
+                let mut rows = [[0usize; 6]; 6];
+                for c in 0..6 {
+                    let reaches = measured.as_ref().is_some_and(|m| !m[c].search);
+                    if reaches {
+                        rows[c][4] += 1;
+                    }
+                    if wiring[c].search || base.is_none() {
+                        continue;
+                    }
+                    rows[c][0] += 1;
+                    if reaches {
+                        rows[c][5] += 1;
+                    }
+                    let at = |turn: f64| -> Option<f64> {
+                        let mut cs = vec![0.0; 6];
+                        cs[c] = turn;
+                        let mut t = tree.clone();
+                        for (a, v) in apply(&jac, &wiring, &cs) {
+                            t = set_param(&t, &a, ParamValue::Continuous(v)).ok()?;
+                        }
+                        along(&t, c)
+                    };
+                    let (Some(mid), Some(up), Some(down)) = (along(tree, c), at(1.0), at(-1.0))
+                    else {
+                        continue;
+                    };
+                    let (u, d) = (up - mid, mid - down);
+                    if u > 0.0 {
+                        rows[c][1] += 1;
+                    }
+                    if u > 0.0 && d > 0.0 {
+                        rows[c][2] += 1;
+                    }
+                    if u >= REACH_FLOOR * 0.5 && d >= REACH_FLOOR * 0.5 {
+                        rows[c][3] += 1;
+                    }
+                }
+                let mut t = tally.lock().unwrap();
+                for (a, b) in t.iter_mut().zip(rows) {
+                    for (x, y) in a.iter_mut().zip(b) {
+                        *x += y;
+                    }
+                }
+            });
+        }
+    });
+    let t = tally.into_inner().unwrap();
+    println!(
+        "{:<7} {:>8} {:>6} {:>6} {:>9} {:>9}",
+        "control", "wired", "up", "both", "audible", "measured"
+    );
+    let pc = |a: usize, b: usize| {
+        if b == 0 {
+            "   -".to_string()
+        } else {
+            format!("{:>3.0}%", 100.0 * a as f64 / b as f64)
+        }
+    };
+    let mut sum = [0usize; 6];
+    for (c, row) in t.iter().enumerate() {
+        println!(
+            "{:<7} {:>8} {:>6} {:>6} {:>9} {:>9}",
+            CONTROLS[c].name,
+            row[0],
+            pc(row[1], row[0]),
+            pc(row[2], row[0]),
+            pc(row[3], row[0]),
+            row[4]
+        );
+        for (s, v) in sum.iter_mut().zip(row) {
+            *s += v;
+        }
+    }
+    println!(
+        "all     {:>8} {:>6} {:>6} {:>9} {:>9}; of what the measurement reaches, predicted wires {}",
+        sum[0],
+        pc(sum[1], sum[0]),
+        pc(sum[2], sum[0]),
+        pc(sum[3], sum[0]),
+        sum[4],
+        pc(sum[5], sum[4])
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--shipped") {
+        let seed = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(77);
+        let threads = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(8);
+        shipped(seed, threads);
+        return;
+    }
     let cache = args
         .first()
         .cloned()
