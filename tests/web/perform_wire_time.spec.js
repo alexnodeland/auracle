@@ -243,3 +243,50 @@ test("a predicted panel plays the controls the gate passes and listens on the re
   await expect(page.locator('.pf-knob[aria-description="not measured yet"]')).toHaveCount(0);
   await expect(page.locator(".pf-knob[data-index]").first()).not.toHaveAttribute("title", /not measured yet/);
 });
+
+// A graft is judged on the grafted patch's measurement, never on a guess
+// (#290's review): turned past the point of asking, a search control gives
+// its patch the module it lacks (`perform_graft`), and the grafted tree is
+// measured before PERFORM says whether the control now turns. A guess would
+// answer first: a Space graft changes only the release, so the tree would
+// borrow the wiring that could not reach Space, and every Space and Body
+// graft said it didn't reach and grew an offer. On First Bass, Space then
+// turns; on Acid Line, Body still cannot, and an offer grows. Each says so
+// in its toast, and nothing is wired from a guess between the turn and it.
+async function graftTurn(page, app, preset, index) {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform(preset);
+  // Its shipped wiring re-checked: the panel is the preset's own measurement.
+  await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout }));
+  const control = page.locator(`.pf-knob[data-index="${index}"]`);
+  await expect(control, "a search control here").toHaveClass(/\bsearch\b/);
+  const mark = await app.toastMark();
+  const before = await app.now();
+  const b = await control.boundingBox();
+  const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 80, { steps: 10 });
+  await page.mouse.up();
+  const said = await app.engine((ms) => app.toast(/now turns|didn.t reach it here|nothing to add here/, { since: mark, timeout: ms }));
+  const how = (await app.marks("perform-wired", { after: before })).map((m) => m.detail?.how);
+  const offers = await app.sent({ type: "perform_offer", bg: false }, { after: before });
+  const grafts = await app.sent({ type: "perform_graft" }, { after: before });
+  return { said, how, offers: offers.length, grafts: grafts.length };
+}
+
+test("a Space graft on First Bass is judged on its measurement: Space now turns", { tag: "@slow" }, async ({ page, app }) => {
+  const r = await graftTurn(page, app, "First Bass", 5);
+  expect(r.grafts, "the turn asked for a module").toBe(1);
+  expect(r.said).toMatch(/^Space now turns /);
+  expect(r.offers, "no offer grows in its place").toBe(0);
+  expect(r.how, "the grafted tree was measured, and played on no guess").toEqual(["measured"]);
+});
+
+test("a Body graft on Acid Line is judged on its measurement: it still can't, and an offer grows", { tag: "@slow" }, async ({ page, app }) => {
+  const r = await graftTurn(page, app, "Acid Line", 3);
+  expect(r.grafts, "the turn asked for a module").toBe(1);
+  expect(r.said).toMatch(/^Body: the .* didn.t reach it here/);
+  expect(r.offers, "an offer grows instead").toBe(1);
+  expect(r.how, "the grafted tree was measured, and played on no guess").toEqual(["measured"]);
+});

@@ -1794,6 +1794,11 @@ export function createPerform(host) {
     return data ? { data, rev: "", guess: "predicted" } : null;
   }
 
+  // A graft asked for by a turn, whose tree has not been judged yet (the
+  // window `applyWired` judges it in).
+  const GRAFT_JUDGED_MS = 30_000;
+  const grafting = () => !!state.intent && performance.now() - state.intent.at < GRAFT_JUDGED_MS;
+
   function wire() {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
@@ -1803,8 +1808,17 @@ export function createPerform(host) {
     // set measured of this patch, control by control (`borrowWiring`): the
     // controls they share play at once, and the rest listen until the
     // panel's set is measured.
+    // A tree a graft just committed is not played on a guess: the graft is
+    // judged on what the patch does (`applyWired`'s `state.intent`), and a
+    // guess would answer for the measurement (a Space graft changes only a
+    // knob, so it would borrow the very wiring that could not reach Space).
+    // The player asked for that wait.
+    const guess = first && !grafting();
     const hit = first
-      ? knownWiring(key) || borrowWiring(state.cur.json, set) || relativeWiring(state.cur.json, set) || predictedWiring(state.cur.json)
+      ? knownWiring(key) ||
+        borrowWiring(state.cur.json, set) ||
+        (guess && (relativeWiring(state.cur.json, set) || predictedWiring(state.cur.json))) ||
+        null
       : null;
     if (first && !hit && !shippedLoaded) {
       // The shipped file is a local fetch of a few milliseconds, begun when
@@ -2529,7 +2543,7 @@ export function createPerform(host) {
     renderSteps();
     // A graft was asked for by a turn: finish the gesture on the new patch.
     const it = state.intent;
-    if (it && performance.now() - it.at < 30_000) {
+    if (it && performance.now() - it.at < GRAFT_JUDGED_MS) {
       state.intent = null;
       const w = state.wire[it.i];
       const k = knobs[it.i];
@@ -2804,8 +2818,12 @@ export function createPerform(host) {
         return true;
       }
       // Committed like Keep: one undo step on the bench, and the patch comes
-      // back through patchChanged to be measured.
-      if (refusedWhileLanding("That change")) return true;
+      // back through patchChanged to be measured. Refused, it is not waited
+      // on: the next sound is played on its guess as any other.
+      if (refusedWhileLanding("That change")) {
+        state.intent = null;
+        return true;
+      }
       host.commitTree(JSON.stringify(t));
       return true;
     }
