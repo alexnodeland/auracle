@@ -16,11 +16,15 @@
 //   --target=0.5      the share of a quantum the voices may take there, the rest being
 //                     the page's, the browser's and the other threads' on the same core
 //   --list            print every preset of the sweep, cheapest first
-//   --gate=0.30       with --sweep-only: exit 1 if any preset's four voices cost more than this
+//   --gate=0.59       with --sweep-only: exit 1 if any preset's four voices cost more than this
 //                     many ms of CPU a quantum (the least of the sweep's repeats), naming them.
-//                     0.30 ms is half of a 48 kHz quantum on a CPU 4.5x slower than the M3 Max
-//                     these figures were taken on. Time is a budget, never an expect (ADR-022):
-//                     run it where it is judged (the speed budgets job), not in the gate.
+//                     0.59 ms is a whole 48 kHz quantum on a CPU 4.5x slower than the M3 Max
+//                     these figures were taken on; 11 of the 62 presets (the ladders) are over it.
+//                     With an offer in B the worklet renders eight voices, so the same number is
+//                     then 0.30 for four (half of it: 50 of 62 presets are over). The figures are
+//                     this machine's: a CI runner measures 1.5-2x as much, so a runner's limit is
+//                     its own baseline. Time is a budget, never an expect (ADR-022): run it where
+//                     it is judged (the speed budgets job), not in the gate.
 //   --seconds=4       length of a fast run
 //   --pool=24         patches in the pool whose heaviest is measured (0: presets only)
 //   --presets=a,b     preset names to measure besides the sweep's four landmarks
