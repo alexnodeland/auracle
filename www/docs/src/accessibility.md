@@ -124,10 +124,12 @@ outright on a touch screen, because on a tablet, hover-to-reveal means never:
 every bank row shows its actions (and every preset its **▶**) at rest, on a
 line under its name, so a sound can be heard, rated, saved or cut without
 opening it. **MODEL**’s press and hold is the model view under a finger, and
-two fingers spread or pinched on the stage zoom between the levels (over
-PATCH’s patch they are the patch’s); a tap on a stop in the levels does the
-same. The stage keeps a pinch for the levels, so the browser does not zoom
-the page there.
+two fingers spread or pinched on the stage zoom between the levels (two
+that start on PATCH’s patch move no level); a tap on a stop in the levels
+does the same. The stage keeps a pinch for the levels, so the browser does
+not zoom the page there, by a pinch or by a double tap. A pinch still
+zooms the page over the bank, the menu bar and the keys, and your system’s
+own zoom works everywhere.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
 desktop is unchanged.
 

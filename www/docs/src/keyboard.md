@@ -23,7 +23,7 @@ at last time.
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
 | <kbd>⌥</kbd> and the wheel | Zoom: up in, down out, one level a turn, anywhere on the stage (over PATCH's patch too). Over a list or a panel that can still scroll that way, such as PATCH's catalog, they scroll it instead, and the model view stays up |
 | <kbd>Ctrl</kbd> and the wheel, or a trackpad's pinch | Zoom the same way, except over PATCH's patch, where they zoom the patch itself |
-| Two fingers on a touch screen | Spread to zoom in, pinch to zoom out (over PATCH's patch they are the patch's) |
+| Two fingers on a touch screen | Spread to zoom in, pinch to zoom out. Two that start on PATCH's patch move no level |
 | Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it once nothing nearer is open (a press closes the nearest thing first, at every level) |
 
 They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
@@ -44,8 +44,8 @@ PATCH, its mark on TASTE’s map, its ring on LEARNING’s, and the card in
 EVOLVE that holds it, if one does. Where a level doesn’t draw it (an edited
 sound has no mark on the map), the face fades instead of flying, and while
 the sound is still on its way to you (just opened, or an edit not yet
-rendered) the levels simply cross-fade. With reduced motion set on your
-system every move is instant.
+rendered) one level simply fades into the next. With reduced motion set on
+your system every move is instant.
 
 ## Notes
 

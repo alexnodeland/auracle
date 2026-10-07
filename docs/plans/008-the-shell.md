@@ -468,7 +468,11 @@ into C2a and C2b; round 2's decisions govern PATCH):
   to zoom out to TASTE, the sound among all sounds* (ticked by arriving at
   TASTE by any move the player chose) and *Hold ⌥ to see what the model
   believes* (ticked as the view comes up), with a pinch and MODEL on a touch
-  screen; the words await voice.md's approval with the first steps row.
+  screen; the words await voice.md's approval with the first steps row. A
+  player who had done the first three (and not pressed ×) sees the pill
+  again for the last two, and its closing line again after them: kept, as
+  the way to teach the levels to those who learned PERFORM before them, and
+  said in the changelog.
 - **Not built here:** the mock's arrivals that wait for the move to land
   (TASTE's pulses, LEARNING's replay start as they did, during it); a
   `?b=` stamp on `style.css` and `main.js` (there is none to bump: the
