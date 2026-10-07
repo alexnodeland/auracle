@@ -251,11 +251,10 @@ impl KnobTable {
                 .cloned()
                 .zip(m.jac.values.iter().copied())
                 .collect();
-            let Some(cols) = table.predict(m.tree, &knobs, m.spread) else {
-                continue;
-            };
+            // Learned just now, so over today's names: `columns`, not
+            // `predict`, whose check could only pass.
             let guess = Jacobian {
-                cols,
+                cols: table.columns(m.tree, &knobs, m.spread),
                 ..m.jac.clone()
             };
             for c in controls {
@@ -321,16 +320,20 @@ impl KnobTable {
         {
             return None;
         }
-        let n = self.names.len();
-        Some(
-            knob_keys(tree, knobs)
-                .iter()
-                .map(|keys| match self.column(keys) {
-                    Some(raw) => raw.iter().zip(spread).map(|(r, s)| r / s).collect(),
-                    None => vec![0.0; n],
-                })
-                .collect(),
-        )
+        Some(self.columns(tree, knobs, spread))
+    }
+
+    /// [`Self::predict`] for a table known to be over today's audio φ names
+    /// (one [`Self::learn`] just built).
+    fn columns(&self, tree: &PatchTree, knobs: &[(String, f64)], spread: &[f64]) -> Vec<Vec<f64>> {
+        let n = AudioFeatures::NAMES.len();
+        knob_keys(tree, knobs)
+            .iter()
+            .map(|keys| match self.column(keys) {
+                Some(raw) => raw.iter().zip(spread).map(|(r, s)| r / s).collect(),
+                None => vec![0.0; n],
+            })
+            .collect()
     }
 }
 
