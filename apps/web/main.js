@@ -2308,12 +2308,13 @@ worker.onmessage = (e) => {
       const within = m.target > 0 ? Math.min(1, m.pool / m.target) : 0;
       bootPct = Math.max(bootPct, Math.min(100, (100 * (stage + within)) / stages));
       $("boot-fill").style.width = `${bootPct}%`;
-      // Say how many renderers are on it. Not decoration: a boot that is four
-      // times faster than the last one should say why, and a boot that fell
-      // back to one core should say that too.
-      const crew = m.workers > 0 ? ` · ${m.workers} renderer${m.workers > 1 ? "s" : ""}` : "";
-      $("boot-status").textContent =
-        m.label ? `${m.label}${crew}` : `heard ${m.pool} of ${m.target}${crew}`;
+      // The line says how far the listening has got, in a player's words.
+      // How many renderers are on it stays in its title, not on the line: a
+      // boot four times faster than the last should still say why, and one
+      // that fell back to one core say that, to whoever looks.
+      const status = $("boot-status");
+      status.textContent = m.label || `heard ${m.pool} of ${m.target}`;
+      status.title = m.workers > 0 ? `${m.workers} renderer${m.workers > 1 ? "s" : ""}` : "";
       bootField(m.pool, m.target);
       fillPool = m.pool;
       fillTarget = m.target;
@@ -2381,7 +2382,6 @@ worker.onmessage = (e) => {
       } else if (fillTarget > fillPool) {
         note(`Start picking. ${plural(fillTarget - fillPool, "more sound")} ${fillTarget - fillPool === 1 ? "is" : "are"} still arriving.`);
       }
-      showCoach();
       break;
     }
     // The engine has said goodbye to the farm. Reap the workers: they exist
@@ -4311,23 +4311,9 @@ function pulseOnce(el) {
   setTimeout(() => el.classList.remove("pulse-once"), 1300);
 }
 
-// First-run coach: the app invites a sound before it asks for a vote.
-let coachEl = null;
-function showCoach() {
-  if (hasPlayed || localStorage.getItem("auracle-played") || coachEl) return;
-  coachEl = document.createElement("div");
-  coachEl.className = "coach";
-  coachEl.textContent = "Press A–L, or tap a key: you’re already holding a synth.";
-  document.body.appendChild(coachEl);
-}
-
 function firstNotePlayed() {
   mark("first-sound", { via: "a key" }, { once: true });
   guide.done("patch-play");
-  if (coachEl) {
-    coachEl.remove();
-    coachEl = null;
-  }
   if (hasPlayed) return;
   hasPlayed = true;
   localStorage.setItem("auracle-played", "1");
