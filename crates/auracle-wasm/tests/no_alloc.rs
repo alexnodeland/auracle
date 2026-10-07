@@ -14,12 +14,14 @@
 //! as the worklet does, with notes pressed and let go (each press putting
 //! its voice's knobs back and, with velocity playing a knob, offsetting
 //! it), knobs, the knob under velocity and the bend moved between quanta
-//! (the port handler's messages during play), and a patch swap's audible
-//! quanta, its fade out and its fade in. Every path is played once first,
-//! so what is counted is the steady state, not a first use. What allocates
-//! by design is left out: a swap's silent rebuild (it compiles the new
-//! voices), the meter while it is on, RECORD, the settings a player changes
-//! between phrases rather than during one (`set_sync`, `set_arp`), and
+//! (the port handler's messages during play), a patch swap's audible
+//! quanta, its fade out and its fade in, and an instrument resting (PERFORM's
+//! B slot at a mix of 0) and woken by a render under a held key. Every path
+//! is played once first, so what is counted is the steady state, not a first
+//! use. What allocates by design is left out: a swap's silent rebuild (it
+//! compiles the new voices), the meter while it is on, RECORD, the settings a
+//! player changes between phrases rather than during one (`set_sync`,
+//! `set_arp`), and
 //! `set_touch`, which parses the list of knobs velocity plays. That last is
 //! not only between phrases: besides the moments PERFORM sends its wiring
 //! anew (a patch or an offer taken, its controls measured or rearranged,
@@ -123,6 +125,33 @@ fn phrase(poly: &mut LivePoly, knob: &str, quanta: usize, t: &mut usize) {
             _ => {}
         }
         let _ = quantum(poly, t);
+    }
+}
+
+/// A phrase of the B slot at a mix of 0 and back: the instrument rests
+/// (`rest`), notes pressed and let go and a knob turned while it does, then
+/// is rendered for 15 quanta, which wakes it (each held note's envelope
+/// driven where it would be over a few silent quanta, a key pressed in the
+/// middle of it, every other voice back to silence) and fades it in. One
+/// wake in three is cut short by a rest and started again.
+fn rested_phrase(poly: &mut LivePoly, knob: &str, quanta: usize, t: &mut usize) {
+    for q in 0..quanta {
+        match q % 50 {
+            0 => poly.note_off(67),
+            5 => poly.note_on(64, 0.7),
+            15 => assert!(poly.set_param(knob, (q % 7) as f64 / 7.0), "{knob}"),
+            30 => poly.note_off(64),
+            33 => poly.note_on(67, 0.9),
+            37 => poly.note_on(60, 0.5),
+            39 => poly.note_off(60),
+            _ => {}
+        }
+        let cut = q % 150 == 37;
+        if q % 50 >= 35 && !cut {
+            let _ = quantum(poly, t);
+        } else {
+            poly.rest(Q);
+        }
     }
 }
 
@@ -233,6 +262,14 @@ fn a_quantum_allocates_nothing() {
     assert!(play(400), "the open voice is held");
     let n = allocations(|| assert!(play(400)));
     assert_eq!(n, 0, "{n} allocations in 1,200 quanta of play");
+
+    // An offer at a mix of 0 rests under a held key, and wakes.
+    let mut offer = LivePoly::new(&filtered, SR, 4).expect("compiles");
+    offer.note_on(57, 1.0);
+    rested_phrase(&mut offer, "node#cut", 200, &mut t);
+    let n = allocations(|| rested_phrase(&mut offer, "node#cut", 400, &mut t));
+    assert_eq!(n, 0, "{n} allocations in 400 quanta resting and waking");
+    assert!(!offer.resting(), "the phrase ends awake: its wakes ran");
 
     // A swap under a held note: the quanta it fades out through and back
     // in through are heard, and allocate nothing; the silent rebuild between

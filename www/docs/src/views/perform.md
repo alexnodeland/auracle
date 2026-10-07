@@ -511,8 +511,8 @@ for that.
 ## Blend, Peek, and B
 
 An offer is a second sound in a second set of voices that follows the same
-hands: every note you play sounds on both. You hear B by crossfading to it,
-never by a jump.
+hands: every note you play is played on both. You hear B by crossfading to
+it, never by a jump.
 
 B stands in the well beside your sound: its label (**B**, or **B · GRITTIER**
 for an [aimed offer](#amber-dashed-search-controls)), its face in amber, and
@@ -543,6 +543,21 @@ louder sound reliably wins a comparison, so without that the crossfade would
 be a volume knob.
 ```
 
+```admonish info collapsible=true title="How it works: when the sound runs short"
+B plays every note you play, heard or not, so BLEND and PEEK bring it in at
+once. That is a second set of voices, and on a slower computer the two
+together can be more than the sound keeps up with: it crackles. Auracle
+listens for the sound falling behind, and only while it does, B follows your
+hands in silence with BLEND at home and PEEK let go. Move BLEND or hold PEEK
+then, and B’s held notes come in where they would have been, about two
+hundredths of a second later, without starting their attack again. A note
+you let go while B was silent has no tail, and a modulation envelope in B
+(one that sweeps a filter, say) starts again: on some sounds, a brief
+brighter blip as B comes in. Meanwhile what Auracle does on its own
+(Wander, growing the next offer, filling the bank, a generation) waits while
+you play. Once the sound has kept up for a while, B plays along again.
+```
+
 ## Wander
 
 WANDER sets how alive the sound is on its own. It is one dial with four
@@ -570,7 +585,11 @@ The line under WANDER says what it is doing:
 - *frozen* while it is frozen;
 - *nothing better nearby* when the walk finds nothing it prefers, and stays.
 
-Wander runs only while PERFORM is on screen.
+Wander runs only while PERFORM is on screen. While the sound is running
+short on a slower computer ([Blend, Peek, and B](#blend-peek-and-b)), a walk
+waits while notes sound, so the line reads *walking…* longer: it starts a
+second after your last note, and after eight seconds of playing it goes on a
+step at a time.
 
 **Structure never changes on its own.** Drift and roam move knob values only,
 and they respect the locks you set in PATCH. A new module only ever arrives as
@@ -591,7 +610,7 @@ focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 | Pad | Key | What it does |
 |---|---|---|
 | **WANDER** | | How alive the sound is (see [Wander](#wander)); a tap freezes it. Not **HOLD** in the keys bar’s **KEYS ⋯**, which latches notes |
-| **OFFER** | <kbd>N</kbd> | Grows a variant from here into B. The first is usually there at once, grown ahead once the sound has been steady for a few seconds and your hands have been off it for two |
+| **OFFER** | <kbd>N</kbd> | Grows a variant from here into B. The first is usually there at once, grown ahead once the sound has been steady for a few seconds and your hands have been off it for two (while the sound is running short on a slower computer, not while you play) |
 | **NEXT** | <kbd>N</kbd> | What OFFER reads while B holds an offer, with *passes on B* under it. It passes on B (B empties, BLEND glides home) and brings the next, which has been growing meanwhile |
 | **PEEK** | hold <kbd>B</kbd> | Hold to hear the offer alone |
 | **TAKE** | <kbd>⇧↵</kbd> | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
