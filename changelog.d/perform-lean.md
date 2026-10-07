@@ -13,6 +13,6 @@
   because the engine couldn't say it. It is asked for when the view comes
   up, when the sound in your hands changes (for a sound with AUDIO IN, a
   new clip too), and when a pick or a refit teaches the model; opening a
-  taste file takes the leans away until the model has fitted it, and
+  taste file takes the leans away until the model has fitted again, and
   turning a control doesn't redraw it (`perform_lean.spec.js`, the
   worker's `lanes.test.mjs`, #140).
