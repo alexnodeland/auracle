@@ -104,7 +104,7 @@ unit-tested (`tests/levels.test.mjs`):
   sound's; the mark on TASTE's map and the ring on LEARNING's,
   `taste.anchor`). An end whose key is not the held face's is no place for
   it: the face fades in where it lands or fades out where it was, and with
-  no face at either end the levels cross-fade (`levels.js` `flightEnds`).
+  no face at either end one level fades into the other (`levels.js` `flightEnds`).
 - **The gestures.** On `.stage`, ⌥ and the wheel move a level (`wheelStep`:
   70 px, a 400 ms pause restarts the count, 500 ms of the turn's momentum
   after a move moves nothing), except a turn that starts over something
