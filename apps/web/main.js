@@ -4275,8 +4275,11 @@ function positionToastLane() {
   // The reserved rects (see LANE_STRIPS / LANE_COLUMNS), measured each time.
   // Several passes, because clearing one can walk into another — left of the
   // node bank is the strip under the rack — and every step only ever moves
-  // the lane up or left, so the passes cannot undo each other.
-  const shown = (el) => !el.classList.contains("hidden") && el.offsetParent !== null;
+  // the lane up or left, so the passes cannot undo each other. A level being
+  // left (shell.js, `.leaving` while it fades) is no longer the player's:
+  // its strips are gone once the move lands, and nothing measures the lane
+  // again then, so it is placed for the level reached alone.
+  const shown = (el) => !el.classList.contains("hidden") && el.offsetParent !== null && !el.closest(".view.leaving");
   const reserved = [
     ...LANE_STRIPS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: false })),
     ...LANE_COLUMNS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: true })),

@@ -22,6 +22,9 @@
 // - Two fingers spread on a touch screen zoom in, closed zoom out; over the
 //   rack they move no level.
 // - At the end of the axis a level key moves nothing and the rail nods.
+// - A toast on screen while a move plays is placed for the level reached:
+//   once the move lands, the lane stands where that level at rest puts it,
+//   not clear of the strips of the level left as well.
 // - A pool row opened from PERFORM goes to PATCH without flying the sound
 //   being put down, and once the sound is in hand its face flies from the
 //   row to the face at OUT, landing within 2 px of it.
@@ -260,6 +263,38 @@ test("at the end of the axis a level key moves nothing, and the rail nods", asyn
   await expect.poll(() => page.evaluate(() => window.__pwNod.some((t) => t && t !== "none" && !/^0px( 0px)?$/.test(t)))).toBe(true);
   await expect(page.locator("body")).toHaveAttribute("data-level", "patch");
   expect(await app.marks("level-landed", { after: t0 })).toEqual([]);
+});
+
+test("a toast up during a move stands where the level reached puts it, not clear of the level left", async ({ page, app }) => {
+  // The page's clock, so the toast is still up when the move has landed
+  // however slow the runner (ADR-022): stopped once the toast is said, and
+  // run on past the move's end.
+  await page.clock.install();
+  await app.boot();
+  await expect(page.locator("#view-perform .pf-pads")).toBeVisible();
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  // PERFORM's ↵ with nothing focused, at home: a refusal, said at once.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#toasts")).toContainText("Nothing to keep");
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect(page.locator("body")).toHaveAttribute("data-level", "taste");
+  // Past the move's own end (`--d-zoom`, twice, and its grace: shell.js's
+  // guard), on the page's clock.
+  await page.clock.runFor(2_000);
+  await expect(page.locator("section.view.on")).toHaveCount(1);
+  await expect(page.locator("section.view.leaving")).toHaveCount(0);
+  // Where the lane stands now, and where TASTE at rest puts it: the same.
+  const lane = await page.evaluate(() => {
+    const holder = document.getElementById("toasts");
+    const up = !!holder.firstChild;
+    const after = holder.style.bottom;
+    window.dispatchEvent(new Event("resize"));
+    return { up, after, rest: holder.style.bottom };
+  });
+  expect(lane.up, "the toast is still up").toBe(true);
+  expect(lane.after).toBe(lane.rest);
+  await page.clock.resume();
 });
 
 test("a pool row opened from PERFORM goes to PATCH, and its face flies from the row to the face at OUT", async ({ page, app }) => {
