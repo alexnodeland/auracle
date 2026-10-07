@@ -1053,8 +1053,8 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 .bank-item .bi-name.custom { color: var(--phos-b); }
 .bank-item.live .bi-name.custom { color: var(--phos-a); }
 /* A patch id ("#43") and a topology signature ("saw-ladr") are the engine's
-   bookkeeping, not anything a player chose or can hear: they wait behind ⋯ ›
-   Show measurements (`html.engineer`, set in main.js). */
+   bookkeeping, not anything a player chose or can hear: they wait behind
+   ⌘K's Show measurements (`html.engineer`, set in main.js). */
 .bank-item .bi-id, .preset-item .pb-sig { flex: none; font-family: var(--font-mono); font-size: var(--t-label); color: var(--silk-dim); }
 html:not(.engineer) .bank-item .bi-id,
 html:not(.engineer) .preset-item .pb-sig { display: none; }

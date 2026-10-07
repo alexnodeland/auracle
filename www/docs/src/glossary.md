@@ -132,8 +132,9 @@ a cut. Its own card doesn’t count, nor do stars
 The one list of every command, with its key, and every sound, by its face:
 <kbd>⌘K</kbd> (Ctrl K), **Find or do anything** in the menu bar, or
 <kbd>?</kbd> away from PERFORM’s controls. Type part of what you want, choose
-with the arrows, and press <kbd>↵</kbd>. It took in the old ⋯ menu and the ?
-card ([one space](./levels.md#k-find-anything)).
+with the arrows, and press <kbd>↵</kbd>. It took in the old ⋯ menu; the old ?
+card’s key map is [the keyboard page](./keyboard.md) ([one
+space](./levels.md#k-find-anything)).
 
 ### KEYS ⋯
 

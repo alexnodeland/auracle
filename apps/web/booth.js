@@ -1,7 +1,7 @@
 // Booth mode: Auracle on a trade-show kiosk.
 //
-// Three jobs, all off unless booth mode is on (`?booth` in the URL, or the ⋯
-// menu):
+// Three jobs, all off unless booth mode is on (`?booth` in the URL, or ⌘K's
+// Booth mode):
 //
 // 1. **Attract.** After a minute with nobody at the keys, the instrument
 //    plays itself in PERFORM: a curated patch, a chord progression, two named

@@ -11394,7 +11394,7 @@ function renderSubject() {
       ? `opening ${nameOf(benchPending)}…`
       : "",
     // The id and the topology signature ("#30 · ssaw-lp-cho") are the
-    // engine's bookkeeping, on request only (⋯ › Show measurements).
+    // engine's bookkeeping, on request only (⌘K's Show measurements).
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
@@ -15731,7 +15731,7 @@ function setFlip(side, on) {
   // The raw term is engine truth, not a label. It belongs *with* the circuit
   // view, not permanently under the waveform where it reads as the card's
   // description — truncated mid-token, at that. And only for those who asked
-  // for the numbers (⋯ › Show measurements): the drawing already says what
+  // for the numbers (⌘K's Show measurements): the drawing already says what
   // the s-expression says, in a form a player can read.
   $(`readout-${side}`).classList.toggle("hidden", !(on && engineerMode));
   $(`mini-${side}`).classList.toggle("hidden", !on);
@@ -23555,7 +23555,7 @@ function renderWarmStart(all) {
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
   // Every deal starts with none picked. The last deal's picks used to stay
-  // (⋯ › Re-run, or the offer again after a skip), so a new card could not
+  // (⌘K's Re-run, or the offer again after a skip), so a new card could not
   // be added once three were held, and TEACH IT taught the old ones.
   warmPicked.clear();
   warmHeard.clear();

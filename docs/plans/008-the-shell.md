@@ -526,7 +526,7 @@ into C2a and C2b; round 2's decisions govern PATCH):
   | Before | After (mouse, keyboard, touch) |
   | --- | --- |
   | ⋯ › Download your taste, Open a taste file…, Download this patch, Download as a picture…, Open a patch file…, Scope & analyzer…, Re-run the three-pick warm start, Reset your taste…, Show measurements (its state), Booth mode (its state), New visitor ⇧Esc (in booth mode) | The same words as commands in ⌘K's Anywhere, a state as the hint *on*; New visitor only in booth mode, with ⇧Esc. Clicked, ↵, or tapped |
-  | ⋯ › Keyboard map & gestures ?, the ? card's prose | *Keys and gestures* opens the guide's keyboard page; each action the card named is a command with its key (ADR-017: `?` away from a control opens the list) |
+  | ⋯ › Keyboard map & gestures ?, the ? card's prose | The card's key map is the guide's keyboard page (*Keys and gestures* ↗ opens it), which already held every key the card did. Where an action is a command, the command prints its key; many the card named are keys only (b to peek, 1–5, c, p, F2, l, q, ⇧1–9, Tab into the patch), and those are on that page alone. ADR-017: `?` away from a control opens the list |
   | ⋯ › Watch the films ↗ | *Watch the films* ↗ |
   | The ? card's *watch ‹VIEW› in depth* | *Watch ‹LEVEL› in depth* ↗, at a level whose film is published (`data-films`), not on film or in booth mode |
   | The ? card's © line, license and source | The list's foot, right |

@@ -664,8 +664,8 @@ Nothing PERFORM does on its own opens a dialog. A player in the middle of a
 phrase can’t answer a question, so everything PERFORM needs to tell you arrives
 as a line: the status line, B’s words in the well, or a toast. Everything it offers you
 is a pad you can ignore. The dialogs you can open from it are your own
-choice, ⌘K’s list and the lesson on filters, and <kbd>Esc</kbd> closes
-either.
+choice: ⌘K’s list, [stage mode](#stage-mode) (<kbd>⇧F</kbd>) and the lesson
+on filters, and <kbd>Esc</kbd> closes each.
 
 ## In ⌘K
 
