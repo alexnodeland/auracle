@@ -570,6 +570,23 @@ test("a waiting table whose deal failed puts nothing up until ↻ deals again", 
   assert.deepEqual(t.table, Q);
 });
 
+test("a table with nothing to deal whose next deal fails waits for ↻, not for a sound to come back", () => {
+  const t = upWith([P]);
+  t.skip();
+  t.land(null); // nothing to deal
+  assert.equal(t.dealer.empty, true);
+  t.dealer.soundsBack(); // the pool changed: it deals again
+  assert.equal(t.dealer.out, 1);
+  assert.equal(t.dealer.failed(), true, "the table waits on nothing else");
+  assert.equal(t.dealer.stuck, true);
+  assert.equal(t.dealer.empty, false, "a failed deal is not nothing to deal");
+  const asked = t.asked.length;
+  t.dealer.soundsBack(); // the next views update
+  assert.equal(t.asked.length, asked, "the stuck table dealt again by itself");
+  assert.equal(t.dealer.retry(), true);
+  assert.equal(t.asked.length, asked + 1);
+});
+
 test("a deal dealt ahead that failed leaves the table as it was, and ↻ does not retry it", () => {
   const t = upWith([P]);
   assert.equal(t.dealer.out, 0);

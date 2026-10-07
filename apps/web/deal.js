@@ -281,11 +281,14 @@ export function createDealer(io) {
     /** A deal the engine could not run (an `engine_error` naming it): true
      *  when the table waits on nothing else, which then has no pair coming
      *  until ↻ deals again (`retry`). A deal ahead that failed leaves the
-     *  table as it was: the next render or pair asks again. */
+     *  table as it was: the next render or pair asks again. A stuck table
+     *  is no longer one with nothing to deal: its last answer was the
+     *  failure, so `soundsBack` does not deal for it. */
     failed() {
       answered();
       if (io.table() || out) return false;
       stuck = true;
+      empty = false;
       return true;
     },
     /** ↻ on a table whose deal failed: deal again (true), unless a pair or

@@ -1530,7 +1530,8 @@ table waiting on no other leaves no pair coming: the dealer is `stuck`, and
 `main.js`'s `dealFailed` keeps the pair's buttons off, says *Couldn’t deal a
 pair. ANOTHER PAIR tries again.* in the cards' reason slot, and leaves
 ANOTHER PAIR (and N) live. Pressing it deals again (`retryDeal`, the
-dealer's `retry`); nothing else does, the `filled` handler included. It
+dealer's `retry`); nothing else does, the `filled` handler and `soundsBack`
+included (a stuck table is not one with nothing to deal). It
 used to turn every button back on over no pair. A deal ahead that failed
 leaves the table as it was: the next render or pair asks again.
 

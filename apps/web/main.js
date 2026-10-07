@@ -6565,7 +6565,7 @@ $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
-$("pd-skip").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
+$("pd-skip").onclick = () => anotherPair();
 // Renders are ~0.6 s of engine work each and the worker is one thread, so a
 // render requested for a pair the user has already voted past sits at the head
 // of the queue and delays the *next* deal behind it. That is what made rapid
@@ -7515,11 +7515,15 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
-$("skip-duel").onclick = () => {
+/** ANOTHER PAIR, on EVOLVE's cards (↻, and N) and PATCH's TEACH strip: the
+ *  next pair, or, on a table whose deal failed, the deal again. (The strip
+ *  hides with no pair on the table, so there it is only ever the first.) */
+function anotherPair() {
   if (dealing) return;
   if (currentDuel) dealAnother();
   else retryDeal();
-};
+}
+$("skip-duel").onclick = anotherPair;
 $("evolve-btn").onclick = () => {
   if (breeding || evolvingFrom) return;
   lampOn("refine");
