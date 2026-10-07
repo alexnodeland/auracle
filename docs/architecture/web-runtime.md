@@ -116,14 +116,17 @@ unit-tested (`tests/levels.test.mjs`):
   pinch to it.
 - **A sound taken up** (`shell.takeUp(from, key)`). A bank row's open (a
   click, Enter, a preset) arms main's `takeUpArm` with the row's face; when
-  the bench's reply puts that sound in hand and the level draws its face (a
-  `faces` reply may come after, `facesChanged` checks again, for 2.5 s), the
-  face flies from the row, where it is now, to the level's anchor, steered
+  the bench's reply puts that sound in hand and the engine has said its
+  face (`heldFace`: the `faces` reply for the bench's render, which comes
+  after the bench's, so `facesChanged` checks again), the face flies from
+  the row, where it is now, to the level's anchor, steered
   each frame onto it (PATCH's camera may still be fitting the new patch), or
   to the menu bar's chip (`handAnchor`) at a level with no place for it, and
-  leaves the mark `taken-up`. It waits for a move in flight to land; a move
-  started under it takes it off. A row click's own move to PATCH carries no
-  face, since an open is on its way.
+  leaves the mark `taken-up`. No clock ends the wait, since a slower engine
+  only says the face later (ADR-022); the arm goes when another sound is
+  asked for or the sound in hand is already another face. It waits for a
+  move in flight to land; a move started under it takes it off. A row
+  click's own move to PATCH carries no face, since an open is on its way.
 
 ### The model view
 

@@ -9209,13 +9209,11 @@ function openingName() {
 // Opening a sound from the bank (its row clicked, Enter on it, a preset)
 // carries its face from the row to where the level you're at draws the sound
 // you're playing. Not at the click: the sound reaches your hands when the
-// engine has opened it (the bench's reply), and the face flies only once the
-// level draws it, the same render's face as the row's (ADR-012). An open the
-// player did not ask for (boot's first sound, booth attract) takes nothing up.
-let takeUpArm = null; // {id} or {index}, the row's face box and key, when it landed
-// Once the sound is in hand, how long its face may take to be shown before
-// the moment has passed and nothing flies: when, not how long a move takes.
-const TAKE_UP_WAIT_MS = 2500;
+// engine has opened it (the bench's reply), and the face flies once the
+// engine has said the face of that render, the same face as the row's
+// (ADR-012), which is when the level draws it too. An open the player did
+// not ask for (boot's first sound, booth attract) takes nothing up.
+let takeUpArm = null; // {id} or {index}, and the render key of the face its row drew
 /** Is this armed open the one for pool sound `id`? */
 function takeUpFor(arm, id) {
   return arm.id != null ? arm.id === id : presetIds.get(arm.index) === id;
@@ -9223,21 +9221,22 @@ function takeUpFor(arm, id) {
 /** Remember the row's face as the open is asked for. */
 function armTakeUp(slot, which) {
   const a = faceBoxOf(slot);
-  takeUpArm = a ? { ...which, key: a.key, landed: null } : null;
+  takeUpArm = a ? { ...which, key: a.key } : null;
 }
-/** The armed sound is in hand and its face is shown: it flies, from where
- *  its row draws it now. */
+/** The armed sound is in hand and its face is known: it flies, from where
+ *  its row draws it now. No clock decides: the face of the bench's render
+ *  is the engine's to say (the faces reply after the bench's), and a slower
+ *  engine only says it later, so the arm waits for it (ADR-022). It goes
+ *  when the moment has passed for good: another sound asked for
+ *  (`openOnBench`), or the sound in hand already another face (an edit
+ *  landed first). */
 function takeUpCheck() {
   const t = takeUpArm;
   if (!t || wb.subjectId == null || benchPending != null || !takeUpFor(t, wb.subjectId)) return;
-  if (t.landed == null) t.landed = performance.now();
-  if (performance.now() - t.landed > TAKE_UP_WAIT_MS) {
-    takeUpArm = null;
-    return;
-  }
   const held = heldFace();
-  if (!held || held.key !== t.key) return;
+  if (!held) return;
   takeUpArm = null;
+  if (held.key !== t.key) return;
   const slot = t.id != null
     ? document.querySelector(`#bank-list .bank-item[data-id="${t.id}"] > .face-slot`)
     : document.querySelector(`#bank-list .preset-item[data-index="${t.index}"] > .face-slot`);

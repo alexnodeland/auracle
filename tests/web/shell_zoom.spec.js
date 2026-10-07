@@ -25,6 +25,9 @@
 // - A pool row opened from PERFORM goes to PATCH without flying the sound
 //   being put down, and once the sound is in hand its face flies from the
 //   row to the face at OUT, landing within 2 px of it.
+// - However late the engine says the face of the sound in hand (a slow
+//   engine, seconds after the sound itself), the face still flies when it
+//   does: the take-up waits for the engine, not for a clock.
 const { test, expect, goLevel, landed } = require("./fixtures");
 
 // A player's pace between two moves (gesture pacing, in the page: the
@@ -34,6 +37,10 @@ const GAPS = [0, 40, 120, 300];
 // PATCH's face at OUT.
 const WELL = [240, 480];
 const OUT = [150, 250];
+// An engine busy elsewhere: every face is asked for this much later
+// (`app.delay`), so the face of the sound in hand is said seconds after the
+// sound reaches your hands, as it is on a slow machine.
+const FACES_LATE_MS = 4_000;
 
 /** Where a large face slot draws its vessel, from the page: the picture
  *  fitted whole into the slot (`object-fit: contain`), and the vessel in it
@@ -273,6 +280,23 @@ test("a pool row opened from PERFORM goes to PATCH, and its face flies from the 
   const moves = (await app.marks("level-landed", { after: t0 })).map((m) => m.detail);
   expect(moves).toEqual([expect.objectContaining({ to: "patch", flew: null })]);
   // The row's face landed on the face at OUT.
+  expect(taken.detail.level).toBe("patch");
+  near(taken.detail.flew, await drawnVessel(page, "#out-face", OUT));
+});
+
+test("a sound opened from the bank flies into your hands however late the engine says its face", async ({ page, app }) => {
+  await bootWithFaces(app);
+  await app.fullPool();
+  await goLevel(page, "perform");
+  const row = page.locator("#bank-list .bank-item[data-id]:not(.live)", { has: page.locator(":scope > .face-slot img.face") }).first();
+  await expect(row).toBeVisible();
+  await app.delay("faces", FACES_LATE_MS);
+  const t0 = await app.now();
+  await row.locator(".bi-name").click();
+  const [taken] = await app.engine(async (timeout) => {
+    await expect.poll(() => app.marks("taken-up", { after: t0 }), { timeout }).toHaveLength(1);
+    return app.marks("taken-up", { after: t0 });
+  });
   expect(taken.detail.level).toBe("patch");
   near(taken.detail.flew, await drawnVessel(page, "#out-face", OUT));
 });
