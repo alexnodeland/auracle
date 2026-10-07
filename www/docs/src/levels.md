@@ -99,8 +99,8 @@ in order with others between: *dyt* finds *Download your taste*.
 While the list is open, what you type goes into it: no note plays, no level
 moves, and <kbd>⌘Z</kbd> takes nothing back. It is drawn from what the page
 already holds, so it opens and narrows at once: a sound’s face is the one
-the bank has drawn, and a sound whose face it hasn’t drawn yet keeps an
-empty place for it.
+the bank has drawn, or for a preset the one [shipped with the app](./bank.md#presets),
+and a sound whose face it hasn’t got yet keeps an empty place for it.
 
 ## What to try next
 

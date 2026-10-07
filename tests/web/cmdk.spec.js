@@ -32,13 +32,22 @@
 //   controls do (Freeze Wander freezes WANDER; How the catalog works opens
 //   the catalog's walkthrough).
 // - With no query it shows five sounds, each with its face's slot; a sound
-//   picked from it is the sound in hand, at the level you were at.
+//   picked from it is the sound in hand, at the level you were at. A preset
+//   the pool lacks is listed with the face the app ships for it, and the
+//   engine is asked for none.
 // - ? over a PERFORM control asks about it (explain.js, which claims the
 //   key first); ? anywhere else opens the list; and the list's What does
 //   BRIGHT do? opens BRIGHT's answer as ? over it does, printing no key,
 //   since ? away from BRIGHT is the list's.
-const { test, expect, goLevel, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
+const fs = require("fs");
+const path = require("path");
+const { test, expect, goLevel, bankTab, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
 const patchPage = require("./patch_page.js");
+
+// The faces the app ships for the presets (`make preset-faces`), by the key the
+// worker files each under.
+const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/preset-faces.json"), "utf8"));
+const SHIPPED_KEY = new Map(SHIPPED.presets.map((p) => [p.name, `${SHIPPED.ns}/${p.key}`]));
 
 const list = (page) => page.locator("#cmdk");
 const field = (page) => page.locator("#cmdk-input");
@@ -332,6 +341,23 @@ test("five sounds with no query, each with its face's slot, and one picked is in
   await page.keyboard.press("Enter");
   await app.engine((timeout) => expect(page.locator("#live-label")).toHaveText(name, { timeout }), { ms: 30_000 });
   await expect(page.locator('.rail-stop[data-level="perform"]')).toHaveAttribute("aria-current", "location");
+});
+
+test("a preset the pool lacks is listed with the face the app ships for it, and the engine is asked for none", async ({ page, app }) => {
+  await app.boot();
+  await bankTab(page, "presets");
+  const row = page.locator("#bank-list .preset-item:not(.in-bank)").first();
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  const index = await row.getAttribute("data-index");
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type(name);
+  const slot = page.locator(`#cmdk-list .face-slot[data-face="p${index}"]`);
+  await expect(slot).toHaveCount(1);
+  // Drawn against the bank, whose faces are the engine's: an engine wait.
+  await app.engine((timeout) => expect(slot.locator("img.face")).toHaveCount(1, { timeout }));
+  expect((await slot.getAttribute("data-drawn")).split("|")[0], "the face is the preset's, from the file").toBe(SHIPPED_KEY.get(name));
+  const asked = (await app.sent({ type: "faces" })).flatMap((s) => (s.trees || []).filter((t) => t.preset != null));
+  expect(asked, "no preset's face was asked of the engine").toEqual([]);
 });
 
 test("? over a control asks about it, and anywhere else opens the list", async ({ page, app }) => {

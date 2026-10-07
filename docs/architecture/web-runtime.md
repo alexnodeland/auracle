@@ -242,8 +242,10 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   group with the best hit leads; Sounds shows five with no query and eight
   with one (`SOUNDS_SHOWN`), the commands all. It draws from what the page
   holds and sends the engine nothing (ADR-025): a sound's face is a `cmdk`
-  face slot built `lazy`, so a face not drawn yet stays an empty slot and
-  is never asked for. A sound runs as Enter on its bank row does
+  face slot built `lazy`, so a face the page does not hold yet stays an empty
+  slot and is never asked for: a preset's is drawn from the shipped file
+  (`shippedKeyOf`) as soon as the bank has faces to draw it against, and
+  `cmdk.spec.js` holds that none is asked of the engine. A sound runs as Enter on its bank row does
   (`openOnBench`, or `openPreset` with no move), at the level shown.
 - **The keys** while it is open are its own, taken on the window in the
   capture phase with `stopPropagation`: ↑/↓ choose
