@@ -1,0 +1,59 @@
+# After the review: c8541631's bench (no folding) against 551c904f's (the fold tried on stand-ins, one compile), natively, niced 10
+round 1 before:     4460 ms for the set, load 104
+round 1 after :     3848 ms for the set, load 144
+round 2 before:     4509 ms for the set, load 147
+round 2 after :     3742 ms for the set, load 130
+round 3 before:     4452 ms for the set, load 140
+round 3 after :     3874 ms for the set, load 149
+
+tree                    before     after  after/before
+First Bass               332.3     323.6         0.974
+Ceiling                  381.0     357.6         0.939
+Detune Dream             137.4     106.6         0.776
+Long Way Down            245.0     215.2         0.878
+Glass Pad                264.6     221.5         0.837
+Choirboy                 176.6     147.1         0.833
+draw 1                   104.2      88.0         0.845
+draw 2                   129.6     115.6         0.892
+draw 3                    97.0      87.2         0.899
+draw 4                   167.2     127.1         0.760
+draw 5                   188.6     153.2         0.812
+draw 6                   166.5     136.3         0.819
+draw 7                   111.5      95.9         0.860
+draw 8                   226.6     187.1         0.826
+draw 9                   466.0     383.7         0.823
+draw 10                  250.3     217.9         0.871
+draw 11                  544.4     455.1         0.836
+draw 12                  398.5     311.9         0.783
+set                     4387.3    3730.6         0.850
+load average 138, after
+
+# 0eff8f4f's bench (the fold as first shipped) against 551c904f's
+round 1 before:     3774 ms for the set, load 138
+round 1 after :     3856 ms for the set, load 146
+round 2 before:     3808 ms for the set, load 156
+round 2 after :     3903 ms for the set, load 138
+round 3 before:     3780 ms for the set, load 136
+round 3 after :     3752 ms for the set, load 160
+
+tree                    before     after  after/before
+First Bass               325.0     323.1         0.994
+Ceiling                  351.2     361.6         1.030
+Detune Dream             109.8     108.6         0.989
+Long Way Down            212.9     216.4         1.016
+Glass Pad                228.2     205.6         0.901
+Choirboy                 153.6     146.1         0.951
+draw 1                    84.9      88.6         1.044
+draw 2                   115.5     107.3         0.929
+draw 3                    91.4      86.0         0.941
+draw 4                   123.7     128.0         1.035
+draw 5                   156.1     165.0         1.057
+draw 6                   132.9     132.8         0.999
+draw 7                    96.6      97.2         1.006
+draw 8                   190.0     189.3         0.996
+draw 9                   373.6     376.8         1.009
+draw 10                  212.7     216.3         1.017
+draw 11                  457.7     471.5         1.030
+draw 12                  320.3     316.0         0.987
+set                     3736.1    3736.2         1.000
+load average 154, after

@@ -35,6 +35,7 @@ is.
 | [`nodes.txt`](nodes.txt), [`census.txt`](census.txt) | What each tree of the set compiles to and walks; the same over 2000 prior draws |
 | [`voice-cost-native.txt`](voice-cost-native.txt), [`voice-cost-wasm.txt`](voice-cost-wasm.txt) | One voice of each module kind, natively and in wasm |
 | [`ab-native-fold.txt`](ab-native-fold.txt), [`ab-wasm-fold.txt`](ab-wasm-fold.txt) | Folding the knobs, before and after, natively and in wasm |
+| [`ab-native-review.txt`](ab-native-review.txt) | After the review: the baseline and the fold as first shipped, each against the fold tried on stand-ins |
 | [`wasm-profile.txt`](wasm-profile.txt) | The wasm profile (V8, a build that keeps its names), folded, and its math split by caller |
 | [`browsers.txt`](browsers.txt) | The set in Chromium and Firefox, in a worker and on the page |
 | [`allocs.txt`](allocs.txt) | What one render allocates (`bench_render --allocs`) |
@@ -271,16 +272,36 @@ with two sources, costs more than most processors.
 `render_phrase` for the main voice and the chord's: each live knob whose one
 cable reaches a control input exactly as a default would (unit gain, no other
 cable on the port, not normalled) is removed, and the port's default set to
-what the cable delivered, quiver's arithmetic mirrored (`cabled_value`). If
-that moves the order of the modules that draw from quiver's thread-wide random
-stream, or the patch's feedback breaks (its `Schedule`), the voice is compiled
-again without folding: 2 of 2000 prior draws ([census.txt](census.txt)). The
-live voice (`LivePoly`) keeps every knob live.
+what the cable delivered, quiver's arithmetic mirrored (`cabled_value`): 86.7%
+of the knobs over 2000 prior draws, every other one sharing its port with a
+modulation's cable ([census.txt](census.txt)). Folding a knob can move the
+other nodes in quiver's execution order, and the order of the modules that
+draw from quiver's thread-wide random stream (`noise` and `karplus_strong`;
+`Granular` seeds a stream of its own) and the patch's feedback breaks (its
+`Schedule`) are part of what it renders. So the fold is first tried on a
+patch of stand-ins (the voice's ports, feedback flags and kinds, in the
+voice's node and cable order, which is all quiver's scheduler reads), and
+made on the voice only if the schedule holds there; otherwise the voice is
+left whole: 2 of 2000 prior draws, and none of the presets. The voice is
+compiled once either way, so a render, which seeds quiver's stream and then
+compiles, draws from it what the live compile does even the day a module's
+constructor draws. The live voice (`LivePoly`) keeps every knob live.
 
 - **The same measurement:** φ, the vet report, the face and the onsets digest
-  the same on the set and all 63 presets (`bench_render --digest`), and
-  `a_render_compile_plays_the_full_voice_bit_for_bit` holds it over every
-  preset and 60 prior draws, as a main voice and as a follower.
+  the same on the set and the 62 presets (`bench_render --digest`, natively
+  and in wasm). `a_render_compile_plays_the_full_voice_bit_for_bit` plays
+  the folded voice against the live one over every preset, 60 prior draws,
+  the tree whose fold is refused, and the patches only a player makes (a
+  TRACK in each band, an AUDIO IN, a CAPTURE in each mode, hearing a tone),
+  the presets and the player's patches also as a chord's follower; no preset
+  or draw has a TRACK, an AUDIO IN or a CAPTURE, so an earlier version of
+  this test, over the presets alone, proved nothing about them.
+  `a_folded_render_is_the_live_render` renders the phrase both ways, where a
+  TRACK's dyad is a follower fed by the main voice every frame
+  (`CompiledVoice::lead`), on a TRACK in each band, an AUDIO IN and a CAPTURE
+  on the audition clip, the refused tree and two presets: the same samples,
+  onsets and spans. `a_render_compiles_each_voice_once` counts the compiles
+  and the stream's draws.
 - **The gain:** a render walks 352 nodes of the set's 606 and 55% of the nodes
   over 2000 prior draws. The set, the least of three rounds of three:
 
@@ -308,7 +329,13 @@ stopped unfinished when the session wound down; its climb's seeds are the
 first six of the 16 that match. `5a6824d5` is the folding before
 `0eff8f4f` removed a match guard that never fires (no knob drives no port);
 the two build the same voices (`0eff8f4f`'s digests match `c8541631`'s on the
-set and all 63 presets, and its fast tier, 651 tests, passed).
+set and the 62 presets, and its fast tier, 651 tests, passed). The review that
+followed made the refused fold leave the voice whole instead of compiling it
+again, and tried the fold on stand-ins first: the same voices fold, the
+digests are the same again (natively and in wasm, on the set and the 62
+presets), compiling stays at 0.8 ms over the set's 18 trees, and nothing of
+the gain went: the set takes 15.0% less CPU than `c8541631`'s and the same as
+the fold as first shipped ([ab-native-review.txt](ab-native-review.txt)).
 
 ## Build settings
 
@@ -319,8 +346,8 @@ under node, alternating, the least of three rounds of three:
 
 | Setting | φ | The set |
 | --- | --- | ---: |
-| `-C target-feature=+simd128` (and `wasm-opt --enable-simd`) | the same on all 63 presets | -2.2% (per tree -8.5% to +4.1%) |
-| `wasm-opt -O4` over the `-O3` engine | the same on all 63 presets | -1.1% |
+| `-C target-feature=+simd128` (and `wasm-opt --enable-simd`) | the same on the 62 presets | -2.2% (per tree -8.5% to +4.1%) |
+| `wasm-opt -O4` over the `-O3` engine | the same on the 62 presets | -1.1% |
 
 Both are within what the load moves a run here. `simd128` would also set the
 app's floor at Safari 16.4, Chrome 91 and Firefox 89 (an engine built with it
@@ -341,7 +368,7 @@ patched into a scratch copy of this workspace (`[patch.crates-io]`); none
 changes quiver or its version here. Natively, against `0eff8f4f`, alternating,
 the least of three rounds of three; "a ladder voice" is the live voice of
 `--kinds` (a saw through the ladder), CPU ms per voice-second; φ's move is the
-largest change of any coordinate on any of the 63 presets, in that
+largest change of any coordinate on any of the 62 presets, in that
 coordinate's spread over them ([phi-moves.txt](quiver/phi-moves.txt)):
 
 | Candidate | φ | The set | First Bass | Ceiling | A ladder voice | In wasm |

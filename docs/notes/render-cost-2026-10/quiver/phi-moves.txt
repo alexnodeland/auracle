@@ -1,4 +1,4 @@
-# phi_moves.py on bench_render --phi --bank: 0eff8f4f's φ against each ladder candidate's (63 presets; one is refused on both sides)
+# phi_moves.py on bench_render --phi --bank: 0eff8f4f's φ against each ladder candidate's (the 62 presets, none refused)
 == l1
 62 trees measured on both sides; 11 moved
 

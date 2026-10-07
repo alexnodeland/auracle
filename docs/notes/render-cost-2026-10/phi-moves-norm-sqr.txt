@@ -1,4 +1,4 @@
-# phi_moves.py: 0eff8f4f against norm_sqr().sqrt() for norm() in audio.rs (analysis-norm-sqr.diff), on the 63 presets
+# phi_moves.py: 0eff8f4f against norm_sqr().sqrt() for norm() in audio.rs (analysis-norm-sqr.diff), on the 62 presets
 62 trees measured on both sides; 43 moved
 
 largest move of each coordinate, in its spread over the trees (top 15):

@@ -6,7 +6,7 @@
   EVOLVE breeds, when PERFORM measures a preset or makes an offer, when an
   edit lands. A patch's knobs used to be read once per sample, each as a
   module of its own, though nothing turns them during a measurement; that
-  render now sets each knob's value once, in the port it turns, and plays
+  render now sets most knobs' values once, in the ports they turn, and plays
   about half as many modules per sample. On a set of eighteen sounds,
   rendering in the background took 15% less time in Chromium and 20% less
   in Firefox (#298). The instrument you play keeps every knob live.
