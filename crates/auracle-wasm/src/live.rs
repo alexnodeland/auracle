@@ -2451,12 +2451,14 @@ impl LivePoly {
                 // host wants it; a patch with none has nothing to
                 // hold (the old one went with the old voices).
                 self.sync_open();
+                let asleep = self.asleep;
                 if let (Some(v), Some((phase, at))) = (self.open.as_mut(), open_phase) {
                     if v.note.is_some() {
                         v.pressed_at = at;
-                        if !self.asleep {
-                            v.voice.seed_env_phase(phase);
-                        }
+                    }
+                    // Asleep, it is not seeded: the wake drives it from `at`.
+                    if v.note.is_some() && !asleep {
+                        v.voice.seed_env_phase(phase);
                     }
                 }
                 self.event = EVENT_PATCHED;
