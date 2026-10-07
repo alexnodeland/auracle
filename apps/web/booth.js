@@ -12,7 +12,7 @@
 //    spot — notes released, Wander still, B cleared — and the visitor is
 //    holding the sound that was playing. Nothing attract did is logged or
 //    taught: PERFORM is quiet while it runs, and its offers are never answered.
-// 3. **Next visitor.** Shift+Esc (or the ⋯ menu) forgets the taste profile
+// 3. **Next visitor.** Shift+Esc (or ⌘K's New visitor) forgets the taste profile
 //    and starts again, keeping booth mode and the measured wirings.
 // 4. **Pre-warm.** Every patch in the set is measured for PERFORM in the
 //    background at boot, while nobody is at the keys, so attract performs

@@ -83,7 +83,7 @@ export function kindsInLog(observations) {
   return k;
 }
 
-/** Reset your taste's question (the ⋯ menu): what it forgets, counted by
+/** Reset your taste's question (⌘K's Reset your taste…): what it forgets, counted by
  *  kind, and what it keeps. `picks`, `stars` and `cuts` are TAUGHT's
  *  (main.js `taughtKinds`, a pick still in its undo window among them),
  *  `generations` the engine's count and `saved` how many saved sounds stay.

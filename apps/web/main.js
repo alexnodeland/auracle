@@ -24334,6 +24334,16 @@ patchCmd("pt-aside", "Set aside: the shelf", "tray-chip");
 patchCmd("pt-teach", "Teach it your taste: pick between two sounds", "pt-teach");
 shell.cmd({ id: "pt-first", level: "patch", label: "The first module", key: "Home", when: () => !!wb.rack, run: () => focusPlate(platesInOrder()[0]) });
 shell.cmd({ id: "pt-last", level: "patch", label: "The last module, at OUT", key: "End", when: () => !!wb.rack, run: () => { const p = platesInOrder(); focusPlate(p[p.length - 1]); } });
+// The catalog's walkthrough, its ? beside the search, from the catalog opened.
+shell.cmd({
+  id: "pt-catalog-tour",
+  level: "patch",
+  label: "How the catalog works",
+  run: () => {
+    openCatalog(false);
+    if (nbTourAt < 0) $("nb-tour-btn").click();
+  },
+});
 for (const c of patchView.cmds()) shell.cmd(c);
 
 // EVOLVE: the pair's buttons, with their keys.
