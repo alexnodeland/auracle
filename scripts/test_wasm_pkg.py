@@ -6,7 +6,8 @@ engine inputs' hash, and taking another checkout's build.
 
 Nothing here builds an engine or reads the real apps/web/pkg. The cases make
 a throwaway git repository with a crate and an app script in it, a worktree
-of it beside it, and a pkg/ of a few bytes in each. Python 3 standard library
+of it beside it (and more, where a case needs them), and a pkg/ of a few
+bytes in each. Python 3 standard library
 only.
 """
 
@@ -83,6 +84,12 @@ class Checkouts(unittest.TestCase):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             f.write(text)
+        return path
+
+    def worktree(self, name):
+        """Another worktree of the repository, at the same commit."""
+        path = os.path.join(self.tmp, name)
+        self.git(self.main, "worktree", "add", "-q", "--detach", path)
         return path
 
     def build(self, root, wasm=b"\0asm-1", profile="release", src="here"):
@@ -295,11 +302,204 @@ class Reuse(Checkouts):
             self.assertEqual(f.read(), b"\0asm-mine")
         self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG) + ".reuse"))
 
-    def test_the_main_checkout_has_no_other_to_take(self):
+    def test_the_main_checkout_with_no_other_engine_to_take_is_owed_a_build(self):
         self.build(self.main)
         code, said = W.reuse(self.main, RECIPE, self.stamped(self.main))
         self.assertEqual(code, 1)
-        self.assertIn("this is the main checkout", said)
+        self.assertIn("`make wasm` is owed", said)
+        self.assertIn(f"{self.wt} has no built engine", said)
+
+    def test_the_main_checkout_takes_a_worktrees_build(self):
+        self.build(self.wt, wasm=b"\0asm-worktree")
+        code, said = W.reuse(self.main, RECIPE, self.stamped(self.main))
+        self.assertEqual(code, 0, said)
+        with open(os.path.join(self.main, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-worktree")
+
+    def test_a_worktree_takes_another_worktrees_build_when_the_main_checkout_has_none(self):
+        other = self.worktree("auracle-other")
+        self.build(other, wasm=b"\0asm-other")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        self.assertIn(other, said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-other")
+        self.assertEqual(self.stamp_of(self.wt)["source"], W.source(self.wt, RECIPE))
+
+    def test_the_main_checkout_is_preferred_when_both_match(self):
+        other = self.worktree("auracle-other")
+        self.build(other, wasm=b"\0asm-other")
+        self.build(self.main, wasm=b"\0asm-main")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-main")
+
+    def test_a_checkout_that_cannot_be_taken_is_passed_over_for_one_that_can(self):
+        # The main checkout: other Rust. One worktree: a dev build. Another:
+        # the build wanted.
+        dev = self.worktree("auracle-dev")
+        good = self.worktree("auracle-good")
+        self.build(dev, wasm=b"\0asm-dev", profile="dev")
+        self.build(good, wasm=b"\0asm-good")
+        self.build(self.main, wasm=b"\0asm-main", src="0123456789abcdef")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-good")
+
+    def test_among_worktrees_the_most_recently_built_is_taken(self):
+        old, new = self.worktree("auracle-old"), self.worktree("auracle-new")
+        self.build(old, wasm=b"\0asm-old")
+        self.build(new, wasm=b"\0asm-new")
+        # git lists `old` first: only the engines' times can put `new` ahead.
+        os.utime(os.path.join(old, W.PKG, W.WASM), (1_000_000, 1_000_000))
+        os.utime(os.path.join(new, W.PKG, W.WASM), (2_000_000, 2_000_000))
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-new")
+
+    def test_no_match_anywhere_says_make_wasm_is_owed_and_why_each_was_passed_over(self):
+        other = self.worktree("auracle-other")
+        self.build(self.main, wasm=b"\0asm-main", src="0123456789abcdef")
+        self.build(other, wasm=b"\0asm-other", profile="dev")
+        self.build(self.wt, wasm=b"\0asm-mine", profile="dev")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        self.assertIn("`make wasm` is owed", said)
+        self.assertIn(f"{self.main}'s engine was built from other Rust", said)
+        self.assertIn(f"{other}'s engine is a dev build", said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-mine", "a refusal leaves the worktree's own pkg/ alone")
+
+    def test_a_refusal_says_why_for_the_first_few_checkouts_and_counts_the_rest(self):
+        for i in range(W.SHOWN + 2):
+            self.worktree(f"auracle-{i}")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        lines = said.splitlines()
+        # The main checkout and the seven others, but this worktree's own.
+        self.assertEqual(len(lines), 1 + W.SHOWN + 1)
+        self.assertEqual(lines[-1].strip(), f"and {W.SHOWN + 2 + 1 - W.SHOWN} more")
+
+    def test_the_copy_is_files_not_links_and_a_later_build_there_does_not_change_it(self):
+        self.build(self.main, wasm=b"\0asm-main")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 0, said)
+        mine = os.path.join(self.wt, W.PKG)
+        self.assertFalse(os.path.islink(mine))
+        for name in os.listdir(mine):
+            self.assertFalse(os.path.islink(os.path.join(mine, name)), name)
+        W.begin(os.path.join(self.main, W.PKG))  # a `make wasm` starts in the main checkout
+        with open(os.path.join(self.main, W.PKG, W.WASM), "wb") as f:
+            f.write(b"\0asm-rebuilt")
+        with open(os.path.join(mine, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-main")
+        self.assertEqual(self.stamp_of(self.wt)["profile"], "release")
+
+    def test_a_worktree_whose_directory_was_removed_is_skipped(self):
+        gone = self.worktree("auracle-gone")
+        self.build(gone, wasm=b"\0asm-gone")
+        self.build(self.main, wasm=b"\0asm-main", src="0123456789abcdef")
+        shutil.rmtree(gone)
+        self.assertNotIn(gone, W.checkouts(self.wt))
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        self.assertEqual(code, 1)
+        self.assertNotIn(gone, said)
+
+    def test_a_repository_with_no_other_checkout_has_nothing_to_take(self):
+        self.git(self.main, "worktree", "remove", "--force", self.wt)
+        code, said = W.reuse(self.main, RECIPE, self.stamped(self.main))
+        self.assertEqual(code, 1)
+        self.assertIn("no other checkout", said)
+        self.assertIn("make wasm", said)
+
+    def test_outside_git_it_says_so(self):
+        loose = os.path.join(self.tmp, "loose")
+        os.makedirs(loose)
+        code, said = W.reuse(loose, RECIPE, [])
+        self.assertEqual(code, 1)
+        self.assertIn("make wasm", said)
+
+    def test_from_names_a_checkout_and_only_that_one_is_looked_at(self):
+        self.build(self.main, wasm=b"\0asm-main")
+        other = self.worktree("auracle-other")
+        self.build(other, wasm=b"\0asm-other", src="0123456789abcdef")
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt), origin=other)
+        self.assertEqual(code, 1, "the main checkout matches, but --from named another")
+        self.assertIn(f"{other}'s engine was built from other Rust", said)
+        self.assertIn("run `make wasm` there, or here", said)
+        code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt), origin=self.wt)
+        self.assertEqual(code, 1)
+        self.assertIn("that is this checkout", said)
+
+    def test_an_engine_that_changes_while_it_is_copied_from_a_named_checkout_is_refused(self):
+        self.build(self.main, wasm=b"\0asm-main")
+        copy = shutil.copytree
+
+        def copy_then_build_there(src, dst, *a, **k):
+            out = copy(src, dst, *a, **k)
+            W.begin(os.path.join(self.main, W.PKG))
+            return out
+
+        W.shutil.copytree = copy_then_build_there
+        try:
+            code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt), origin=self.main)
+        finally:
+            W.shutil.copytree = copy
+        self.assertEqual(code, 1)
+        self.assertIn("changed while it was copied", said)
+        self.assertIn("`make pkg-reuse` again", said)
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG)))
+
+    def test_an_engine_cleared_under_the_copy_is_passed_over_for_the_next(self):
+        other = self.worktree("auracle-other")
+        self.build(self.main, wasm=b"\0asm-main")
+        self.build(other, wasm=b"\0asm-other")
+        copy = shutil.copytree
+
+        def vanishes_from_main(src, dst, *a, **k):
+            if os.path.realpath(src).startswith(os.path.realpath(self.main) + os.sep):
+                raise FileNotFoundError(src)  # a build there cleared its pkg/
+            return copy(src, dst, *a, **k)
+
+        W.shutil.copytree = vanishes_from_main
+        try:
+            code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        finally:
+            W.shutil.copytree = copy
+        self.assertEqual(code, 0, said)
+        with open(os.path.join(self.wt, W.PKG, W.WASM), "rb") as f:
+            self.assertEqual(f.read(), b"\0asm-other")
+        self.assertFalse(os.path.exists(os.path.join(self.wt, W.PKG) + ".reuse"))
+
+    def test_a_repository_that_cannot_list_its_checkouts_says_so(self):
+        listed = W.checkouts
+
+        def cannot(root):
+            raise RuntimeError("git worktree list: broken")
+
+        W.checkouts = cannot
+        try:
+            code, said = W.reuse(self.wt, RECIPE, self.stamped(self.wt))
+        finally:
+            W.checkouts = listed
+        self.assertEqual(code, 1)
+        self.assertIn("cannot list this repository's checkouts", said)
+        self.assertIn("make wasm", said)
+
+    def test_the_command_says_what_it_took_and_what_it_owes(self):
+        files = self.stamped(self.wt)
+        asked = ["reuse", "--recipe", RECIPE, *files]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(W.main(asked, root=self.wt), 1)
+            self.build(self.main, wasm=b"\0asm-main")
+            self.assertEqual(W.main(asked, root=self.wt), 0)
+        self.assertIn("`make wasm` is owed", err.getvalue())
+        self.assertIn(f"{self.main}'s release build", out.getvalue())
+        self.assertIn('"profile": "release"', out.getvalue())
 
     def test_from_names_another_checkout(self):
         self.build(self.wt, wasm=b"\0asm-sibling")

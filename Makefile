@@ -131,8 +131,10 @@ install-hooks:
 
 ## worktree: a new branch's worktree, at .claude/worktrees/TOPIC in the main
 ## checkout (git ignores it), from any checkout: TOPIC's branch (claude/TOPIC,
-## or BRANCH=) from a fresh origin/main, with tests/web's packages installed;
-## it prints the path (docs/process.md § Building)
+## or BRANCH=) from a fresh origin/main, with tests/web's packages installed
+## and the release engine of another checkout built from the same Rust, if
+## there is one (`make pkg-reuse`; if not it says `make wasm` is owed); it
+## prints the path (docs/process.md § Building)
 ## worktree-rm: once merged, remove TOPIC's worktree and the branch it is on
 ## (read from the worktree; BRANCH= only checks it); it refuses a worktree
 ## holding work not committed, one on no branch, and a branch whose commits
@@ -148,6 +150,7 @@ worktree:
 	git -C "$(MAIN_CHECKOUT)" fetch -q origin
 	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
 	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
+	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && $(MAKE) --no-print-directory pkg-reuse SOFT=1
 	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
 
 # The branch to delete is the one the worktree is on, never one named from
@@ -792,12 +795,16 @@ wasm-dev:
 	$(RUSTUP_NOTE)$(WASM_DEV) && \
 	$(WASM_PKG) stamp --profile dev --source "$$src" --recipe '$(WASM_DEV)' $(WEB_STAMPED)
 
-## pkg-reuse: in a worktree, take the main checkout's release engine instead
-## of building it again (about a second, not a minute), when it was built from
-## this worktree's Rust and the same build command; otherwise it says so, and
-## `make wasm` builds it. PKG_FROM=<dir> takes another checkout's
+## pkg-reuse: take another checkout's release engine instead of building it
+## again (about a second, not minutes of fat LTO): the first of this
+## repository's checkouts and worktrees (`git worktree list`: the main
+## checkout, then the most recently built) whose engine was built from this
+## tree's Rust and the same build command, copied, never linked; otherwise it
+## says why each was passed over, and `make wasm` is owed. `make worktree`
+## tries it. PKG_FROM=<dir> takes that checkout's only. SOFT=1 says a refusal
+## and doesn't fail on it
 pkg-reuse:
-	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED)
+	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED) $(if $(SOFT),|| true)
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
 # hash over the engine and the app scripts, so the same bytes get the same URL
