@@ -143,7 +143,7 @@ tilted one. Nothing about that is unsound (MH is exact for $\pi'$), but what the
 climbs includes the tilt.
 
 A true proposal tilt, one that leaves $\pi_\beta$ alone, would need a custom site proposal
-carrying its own Hastings correction; fugue 0.2.2 offers only `PriorResample` for `usize`
+carrying its own Hastings correction; fugue 0.2.3 offers only `PriorResample` for `usize`
 sites, so it is not available without an upstream hook. Because refinement
 [hill-climbs](./refinement.md) rather than samples, the practical effect is the one
 intended: the climb finds the kinds the player picks sooner. The field keeps its name

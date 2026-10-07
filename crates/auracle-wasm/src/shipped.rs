@@ -227,8 +227,17 @@ const PROBE_DRAWS: u32 = 400;
 const PROBE_LISTED: usize = 12;
 /// The pool the probe fills: a handful of renders, not [`POOL`].
 const PROBE_POOL: usize = 8;
-/// Duels the probe deals from that pool.
+/// Duels the probe deals from that pool, each then answered as a pick.
 const PROBE_DUELS: usize = 6;
+/// The probe's taste fit, `(samples, warmup)`: hundreds of single-site
+/// steps, each a site drawn by index, not the shipped budget's thousands.
+/// What the probe asks is whether both targets take the same steps, not
+/// whether the fit is good.
+const PROBE_FIT: (usize, usize) = (400, 100);
+/// Steps of the probe's PERFORM offer and of its walk (EVOLVE's ⚡
+/// breeding): enough for each to move, each step at most one render.
+const PROBE_OFFER_STEPS: u32 = 6;
+const PROBE_WALK_STEPS: usize = 6;
 
 /// A tree's digest, uids aside (they are minted per process).
 fn tree_digest(tree_json: &str) -> String {
@@ -237,21 +246,124 @@ fn tree_digest(tree_json: &str) -> String {
     fnv(v.to_string().as_bytes())
 }
 
+/// Every number in `v`, in order, each left `null` in its place.
+fn take_numbers(v: &mut serde_json::Value, numbers: &mut Vec<serde_json::Value>) {
+    use serde_json::Value;
+    match v {
+        Value::Number(_) => numbers.push(std::mem::take(v)),
+        Value::Object(m) => m.values_mut().for_each(|x| take_numbers(x, numbers)),
+        Value::Array(xs) => xs.iter_mut().for_each(|x| take_numbers(x, numbers)),
+        _ => {}
+    }
+}
+
+/// A reply that holds a walked tree, uids aside, as its shape and its
+/// numbers apart: the digest of the reply with every number blanked, and the
+/// numbers in order.
+///
+/// A walk moves a knob by a Gaussian step, drawn through `ln` and `cos`
+/// (Box–Muller), which may differ in the last digit between a native `libm`
+/// and wasm's. Listed, the comparison holds each number to [`TOLERANCE`] and
+/// names the one that parts; inside a digest the last digit would read as
+/// another tree.
+fn shape(mut v: serde_json::Value) -> serde_json::Value {
+    strip_uids(&mut v);
+    let mut numbers = Vec::new();
+    take_numbers(&mut v, &mut numbers);
+    serde_json::json!({ "shape": fnv(v.to_string().as_bytes()), "numbers": numbers })
+}
+
+/// Every pool member's utility under the posterior `e` holds, as
+/// `[id, mean, std]`, by id.
+fn utilities(e: &WasmEngine) -> Vec<serde_json::Value> {
+    let mut rows: Vec<(u64, f64, f64)> = e
+        .engine
+        .ranked()
+        .into_iter()
+        .map(|(i, mean, std)| (e.engine.pool[i].id, mean, std))
+        .collect();
+    rows.sort_unstable_by_key(|r| r.0);
+    rows.into_iter()
+        .map(|(id, mean, std)| serde_json::json!([id, mean, std]))
+        .collect()
+}
+
+/// What PERFORM, a fit and EVOLVE deal from `e`'s filled pool, in the
+/// order a player could ask for them: an offer from the first member before
+/// any taste, then `duels` answered (the first sound of each pair picked:
+/// the duel stream dealt the order) and the taste fitted from those picks,
+/// then one ⚡ walk from the member that fit ranks best.
+///
+/// Each is a consumer of randomness with its own stream (ADR-001), and each
+/// draws indices inside fugue: single-site Metropolis picks the site it
+/// moves by index, in the fit's chain and at every step of a walk. The offer
+/// comes first so that it reads no posterior: if it parts between targets,
+/// the walk did, not the fit.
+fn offer_taste_walk(
+    e: &mut WasmEngine,
+    duels: &[serde_json::Value],
+) -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+    let home = e.engine.pool.first().map_or(0, |c| c.id);
+    let reply = e.perform_offer(
+        &e.tree_json_of(home as u32),
+        "[]",
+        "[]",
+        PROBE_OFFER_STEPS,
+        None,
+        None,
+    );
+    let mut offer: serde_json::Value = serde_json::from_str(&reply).unwrap_or_default();
+    if let Some(m) = offer.as_object_mut() {
+        m.remove("diff"); // the tree's change in words: the tree says it
+    }
+    for d in duels {
+        if let (Some(a), Some(b)) = (d[0].as_u64(), d[1].as_u64()) {
+            e.record_duel(a as u32, b as u32, true);
+        }
+    }
+    (e.engine.cfg.mcmc_samples, e.engine.cfg.mcmc_warmup) = PROBE_FIT;
+    e.fit();
+    let taste = utilities(e);
+    let best = e
+        .engine
+        .ranked()
+        .first()
+        .map_or(0, |r| e.engine.pool[r.0].id);
+    e.engine.cfg.refine_steps = PROBE_WALK_STEPS;
+    let walked = e
+        .engine
+        .refine_from_job(&mut e.rng.refine, best, &[])
+        .map(|(ctx, job)| auracle_session::run_walk(&ctx, &job, e.engine.memo()));
+    let mut walk = serde_json::to_value(&walked).unwrap_or_default();
+    if let Some(m) = walk.pointer_mut("/Ok").and_then(|r| r.as_object_mut()) {
+        m.remove("cached"); // the child's φ and face: the child says it
+    }
+    (
+        serde_json::json!({ "from": home, "reply": shape(offer) }),
+        serde_json::json!(taste),
+        serde_json::json!({ "from": best, "result": shape(walk) }),
+    )
+}
+
 /// What a seed deals, in a form two targets can compare: the digest of every
 /// tree of the fill stream's first [`PROBE_DRAWS`] draws (a pure function of
 /// the seed, no render), a small pool filled from [`SEED`] (which draws it
-/// consumed, which trees it kept, the audio standardizer's spreads) and the
-/// first duels dealt from that pool.
+/// consumed, which trees it kept, the audio standardizer's spreads), the
+/// first duels dealt from that pool, and then what the session goes on to
+/// deal from it ([`offer_taste_walk`]): a PERFORM offer, the taste fitted
+/// from those duels' picks (each member's utility under it), and a ⚡ walk.
 ///
 /// The page's engine runs as wasm and the diagnostics and wirings run
-/// natively, and a seed has to mean the same pool on both. This is the one
+/// natively, and a seed has to mean the same session on both. This is the one
 /// function both targets run: `tests/boot_agrees.rs` pins its native output
 /// to `tests/boot_probe.json`, and `tests/web/boot_agrees.spec.js` runs it in
 /// the built wasm and compares what it returns with the same file, in
 /// JavaScript ([`boot_probe_difference`] is the native half of that
-/// comparison and stays out of the page's wasm). A disagreement in the draws is the stream itself reading
-/// differently (a draw whose width depends on the target: see
-/// [`auracle_grammar::rng`]); in the pool only, the renders or the features.
+/// comparison and stays out of the page's wasm). A disagreement in the draws
+/// is the stream itself reading differently (a draw whose width depends on
+/// the target: see [`auracle_grammar::rng`]); in the pool only, the renders
+/// or the features; in the offer, the taste or the walk, a draw inside
+/// fugue's Metropolis steps, or the arithmetic after it.
 #[wasm_bindgen]
 pub fn boot_probe() -> String {
     let mut e = WasmEngine::new(SEED, PROBE_POOL);
@@ -276,17 +388,22 @@ pub fn boot_probe() -> String {
     let duels: Vec<serde_json::Value> = (0..PROBE_DUELS)
         .map(|_| serde_json::from_str(&e.next_duel()).unwrap_or_default())
         .collect();
+    let pool = serde_json::json!({
+        "size": PROBE_POOL,
+        "draws_consumed": e.fill_cursor(),
+        "kept": kept,
+        "spread": serde_json::from_str::<serde_json::Value>(&e.phi_scale()).unwrap_or_default(),
+    });
+    let (offer, taste, walk) = offer_taste_walk(&mut e, &duels);
     serde_json::json!({
         "seed": SEED,
         "draws": &draws[..PROBE_LISTED],
         "draws_digest": fnv(draws.concat().as_bytes()),
         "duels": duels,
-        "pool": {
-            "size": PROBE_POOL,
-            "draws_consumed": e.fill_cursor(),
-            "kept": kept,
-            "spread": serde_json::from_str::<serde_json::Value>(&e.phi_scale()).unwrap_or_default(),
-        },
+        "pool": pool,
+        "offer": offer,
+        "taste": taste,
+        "walk": walk,
     })
     .to_string()
 }

@@ -132,7 +132,7 @@ the parts that constrain the engine are in [The web runtime](../runtime.md).
 |---|---|
 | `quiver-dsp` **0.4.0** | Modular DSP. Library name is `quiver` |
 | `fugue-evo` **0.3.1** | Evolution as inference. `default-features = false`, because `checkpoint` and `parallel` do not compile on wasm32 |
-| `fugue-ppl` **0.2.2** | The probabilistic programming layer |
+| `fugue-ppl` **0.2.3** | The probabilistic programming layer. From 0.2.3 a seeded run draws the same in wasm32 as natively |
 
 All three come from the registry. To hack on them alongside Auracle, add a
 `[patch.crates-io]` block at the bottom of the workspace manifest.

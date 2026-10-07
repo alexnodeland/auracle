@@ -87,7 +87,12 @@ quiver-dsp = "0.4.0"
 fugue-evo = { version = "0.3.1", default-features = false, features = ["std", "ppl"] }
 # 0.2.2 adds `adaptive_mcmc_chain_thinned`, which is what stops a fit holding
 # the whole chain in memory to keep 500 draws (see `auracle_taste::model`).
-fugue-ppl = "0.2.2"
+# 0.2.3 draws every index as a `u64`, so a seeded fit, walk and offer make the
+# same draws in wasm32 as natively (`crates/auracle-wasm/tests/boot_agrees.rs`),
+# and gives a `Uniform` site (every knob) a walk reflected in its bounds, where
+# 0.2.2 walked a positive knob in log space: native fits are unchanged, native
+# walks and offers are not.
+fugue-ppl = "0.2.3"
 
 # Shared third-party
 rand = "0.8"

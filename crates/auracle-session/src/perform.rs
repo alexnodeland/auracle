@@ -1567,10 +1567,13 @@ impl Engine {
     /// before any taste has been fitted).
     ///
     /// Why not the structural walk: fugue's adaptive single-site kernel starts
-    /// each fresh chain with a wide proposal on a unit-interval knob, and
-    /// measured over 12 presets an 8-step "drift" moved some knob by 0.3–0.85
-    /// of its range, a jump, glided. A drift should wander, and how far is the
-    /// Wander dial's to say: `sigma`.
+    /// each fresh chain at a step of scale 1 on every site, adapted only after
+    /// ten proposals there, so each step a short walk takes on a knob is a
+    /// Gaussian as wide as the knob's range, reflected back into it. Over 12
+    /// presets an offer of 8 steps on the live knobs alone moved its farthest
+    /// knob 0.36–0.68 of its range (`examples/drift_distance.rs`): a jump,
+    /// glided. A drift should wander, and how far is the Wander dial's to
+    /// say: `sigma`.
     ///
     /// Nothing enters the pool. The error says why nothing came back:
     /// [`RefineOutcome::NoMove`] for a walk that stayed,

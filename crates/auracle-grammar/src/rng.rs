@@ -19,11 +19,12 @@
 //! `bool`, a `gen_range` over a literal range, which is an `i32`), so the
 //! index is the one thing to pin.
 //!
-//! Not covered: `fugue-ppl`'s Metropolis step picks the site it moves with
-//! `sites[rng.gen_range(0..sites.len())]` (`inference/mh.rs`, 0.2.2), the same
-//! `usize` draw, and a walk is built on it. A seeded walk (EVOLVE's breeding,
-//! the ⚡ refine) is therefore still not the same on wasm32 and natively, until
-//! that call draws a `u64` upstream.
+//! `fugue-ppl` had the same draw: its Metropolis step picked the site it moves
+//! with `sites[rng.gen_range(0..sites.len())]` (`inference/mh.rs`, 0.2.2), so
+//! a seeded taste fit, walk (EVOLVE's breeding, the ⚡ refine) or PERFORM offer
+//! parted between wasm32 and native at its first step. Since 0.2.3 it draws
+//! every index as a `u64` through a helper of its own, as this one does, and
+//! `boot_agrees` pins a fit, a walk and an offer beside the pool.
 
 use rand::Rng;
 
