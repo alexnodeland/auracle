@@ -183,6 +183,25 @@ function keptSum(addr, wire, values) {
   });
   return v;
 }
+// The graft a turn asked for (#290, #366), bound to the tree it committed,
+// never to a time: asked at the turn (no tree yet), `committed` with that
+// tree's shape when the engine answers with it, `pending` while that tree is
+// the one in PERFORM (it is not played on a guess, and its measurement judges
+// the graft, however long it takes). Any other tree arriving drops it
+// (another sound opened, an undo), and so does the bench refusing its commit.
+// Shapes, not texts (`treeShape` in `createPerform`): the bench re-mints a
+// tree's uids, so the grafted tree comes back as another text, as a taken
+// offer does. Bound to 30 s instead, a grafted tree measured later was never
+// judged (no toast, no offer), and a sound opened meanwhile skipped its guess
+// and had the graft judged on it. Pure, so the rule is tested away from the
+// page (tests/perform.test.mjs).
+const bound = (intent, key) => !!intent && intent.key != null && intent.key === key;
+export const graftIntent = {
+  committed: (intent, key) => (intent ? { ...intent, key } : null),
+  arrived: (intent, key) => (bound(intent, key) ? intent : null),
+  refused: (intent, key) => (bound(intent, key) ? null : intent),
+  pending: (intent, key) => bound(intent, key),
+};
 // What a patch nobody has measured can borrow from a measured relative
 // (#290): of `entries` (kept wirings, oldest first, each with the `shape` and
 // panel `set` it was measured under), the youngest with the same shape as
@@ -1533,7 +1552,7 @@ export function createPerform(host) {
       const graft = graftFor(w, up);
       if (graft) {
         state.grafted.add(w.name);
-        state.intent = { i: k.i, dir: up ? 1 : -1, at: performance.now() };
+        state.intent = { i: k.i, dir: up ? 1 : -1 };
         host.note(`${w.name}: giving it a ${graft} to turn…`, { replace: `pf-graft:${w.name}` });
         // Named by its palette index, as every control is to the engine.
         request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: indexAt(k.i) });
@@ -1803,10 +1822,9 @@ export function createPerform(host) {
     return data ? { data, rev: "", guess: "predicted" } : null;
   }
 
-  // A graft asked for by a turn, whose tree has not been judged yet (the
-  // window `applyWired` judges it in).
-  const GRAFT_JUDGED_MS = 30_000;
-  const grafting = () => !!state.intent && performance.now() - state.intent.at < GRAFT_JUDGED_MS;
+  // The tree in PERFORM is the one a graft committed, not judged yet
+  // (`graftIntent`).
+  const grafting = () => !!state.cur && graftIntent.pending(state.intent, treeShape(state.cur.json));
 
   function wire() {
     if (!state.cur) return;
@@ -2551,8 +2569,10 @@ export function createPerform(host) {
     renderStatus();
     renderSteps();
     // A graft was asked for by a turn: finish the gesture on the new patch.
+    // Only on the tree the graft committed (`graftIntent`), whenever its
+    // measurement lands.
     const it = state.intent;
-    if (it && performance.now() - it.at < GRAFT_JUDGED_MS) {
+    if (graftIntent.pending(it, treeShape(state.cur.json))) {
       state.intent = null;
       const w = state.wire[it.i];
       const k = knobs[it.i];
@@ -2834,7 +2854,11 @@ export function createPerform(host) {
         state.intent = null;
         return true;
       }
-      host.commitTree(JSON.stringify(t));
+      // Bound to the tree it commits: judged when that tree is measured.
+      const json = JSON.stringify(t);
+      state.intent = graftIntent.committed(state.intent, treeShape(json));
+      // The bench refused it at once (main's backstop): nothing is pending.
+      if (host.commitTree(json) === false) state.intent = null;
       return true;
     }
     if (m.type === "perform_applied") {
@@ -2906,6 +2930,8 @@ export function createPerform(host) {
       .filter(([, p]) => p.gen === state.gen && /^perform_(wire|offer|drift)$/.test(p.kind))
       .map(([req]) => req);
     if (leaving.length) host.send({ type: "retire", reqs: leaving });
+    // A graft waits for its own tree: any other drops it (`graftIntent`).
+    state.intent = graftIntent.arrived(state.intent, treeShape(json));
     state.gen++;
     state.applyThen.clear();
     state.measuring = false;
@@ -4808,6 +4834,11 @@ export function createPerform(host) {
     ensureWired,
     patchChanged,
     firstKnown,
+    // The bench refused a tree PERFORM committed (main's `edit_rejected`):
+    // a graft that committed it is not pending any more (`graftIntent`).
+    commitRefused(json) {
+      state.intent = graftIntent.refused(state.intent, treeShape(json));
+    },
     // The live patch was renamed (auto-names follow the pool).
     relabel() {
       renderHeadWords();

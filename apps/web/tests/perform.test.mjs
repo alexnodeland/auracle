@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -165,4 +165,36 @@ test("a relative of another shape, another set, or a knob this tree lacks lends 
   assert.equal(relativeOf({ shape: "s1" }, [kept("s1", "", ["f#cut"], [0.2], "x")], ""), null);
   // A kept entry with no data is passed over.
   assert.deepEqual(relativeOf(first, [kept("s1", "", ["f#cut"], [0.2], "x"), { shape: "s1", set: "" }], "").values, [0.7]);
+});
+
+// A graft's turn: Space, turned up, its tree not committed yet.
+const turned = { i: 5, dir: 1 };
+
+test("a graft is bound to the tree it committed, not to a time", () => {
+  // Asked at the turn, nothing is pending until the engine commits a tree.
+  assert.equal(graftIntent.pending(turned, "grafted"), false);
+  const committed = graftIntent.committed(turned, "grafted");
+  assert.deepEqual(committed, { i: 5, dir: 1, key: "grafted" });
+  assert.deepEqual(turned, { i: 5, dir: 1 }, "the turn's intent is left as it was");
+  // Pending exactly while its own tree is the one in PERFORM.
+  assert.equal(graftIntent.pending(committed, "grafted"), true);
+  assert.equal(graftIntent.pending(committed, "another"), false);
+  // Its own tree arriving keeps it; any other drops it.
+  assert.equal(graftIntent.arrived(committed, "grafted"), committed);
+  assert.equal(graftIntent.arrived(committed, "another"), null);
+  // A tree arriving before the engine answered drops the turn too.
+  assert.equal(graftIntent.arrived(turned, "another"), null);
+  // Nothing asked: nothing to commit, nothing pending.
+  assert.equal(graftIntent.committed(null, "grafted"), null);
+  assert.equal(graftIntent.pending(null, "grafted"), false);
+});
+
+test("a refused commit leaves no pending graft, and a refusal of another tree leaves it", () => {
+  const committed = graftIntent.committed(turned, "grafted");
+  assert.equal(graftIntent.refused(committed, "grafted"), null);
+  // A Keep refused while the graft's tree waits behind it in the lane.
+  assert.equal(graftIntent.refused(committed, "kept"), committed);
+  // A turn not yet committed is not what the bench refused.
+  assert.equal(graftIntent.refused(turned, "grafted"), turned);
+  assert.equal(graftIntent.refused(null, "grafted"), null);
 });

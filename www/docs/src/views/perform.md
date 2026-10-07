@@ -144,21 +144,23 @@ control, seconds on a fast computer and a minute or more on a slow one, so a
 sound you haven't played starts on a wiring PERFORM has without rendering: a
 sound of the same shape that it has measured (the same modules, selectors
 included: the one a sound was bred from, a preset you changed only by turning
-its knobs), lending how its controls turn the knobs, or else what each kind
-of knob usually does to the sound, learned from measuring the presets and
-sounds like the ones in your pool. That second kind plays only the controls
-it gets right well more often than not, **Bright**, **Snap** and **Space**
-among the six today; the others say *listening…* until the sound is measured,
-as before. Some sounds still wait for their measurement with every control
-listening: one none of whose controls PERFORM can start this way, one
-changed in PATCH by a selector or an undo whose render is still on its way,
-and one a graft just changed (the graft is judged on what it really does). The controls that play turn at once, their travel drawn thin and
-dim, and their tooltip says *not measured yet*, while the status line says
-*listening…* as the sound's own measurement runs. When it lands the controls
-settle on what the sound really does, without moving what you hear; a control
-left turned a way the measurement finds it can't go stops at the center on
-that side, as a drag into a stop does. A control that turned the wrong way
-before the measurement landed turns the right way once it settles.
+its knobs), lending how its controls turn the knobs, or else what each kind of
+knob usually does to the sound, learned from measuring the presets and sounds
+like the ones in your pool. That second kind plays only the controls it gets
+right well more often than not, **Bright**, **Snap** and **Space** among the
+six today; the others say *listening…* until the sound is measured, as before.
+Some sounds still wait for their measurement with every control listening: one
+none of whose controls PERFORM can start this way; one changed in PATCH by a
+selector, or by an undo whose render is still on its way; and the sound a
+graft just changed, until its measurement says whether the graft reached the
+control (another sound you open meanwhile starts at once). The controls that
+play turn at once, their travel drawn thin and dim, and their tooltip says
+*not measured yet*, while the status line says *listening…* as the sound's own
+measurement runs. When it lands the controls settle on what the sound really
+does, without moving what you hear; a control left turned a way the
+measurement finds it can't go stops at the center on that side, as a drag into
+a stop does. A control that turned the wrong way before the measurement landed
+turns the right way once it settles.
 
 ### The palette
 

@@ -1370,9 +1370,12 @@ with no count of the controls that reach the sound until the measurement
 lands, and the measurement is asked for in `soon`. A borrowed wiring lends
 only how the relative's controls turn its knobs (`relativeOf`): a control
 that could not reach the relative is left out, both halves are open, and
-where the sound sits is the engine's prediction of it or nothing. A tree a
-graft just committed is not played on a guess (`grafting()`): the graft is
-judged on its measurement. A Take carries a guess over as a guess. The
+where the sound sits is the engine's prediction of it or nothing. The tree a
+graft committed is not played on a guess (`grafting()`): the graft is judged
+on that tree's measurement whenever it lands, bound to the tree's shape and
+never to a time (`graftIntent`, #366); any other tree arriving, or the bench
+refusing the commit (`commitTree` returning false, `edit_rejected` through
+`commitRefused`), drops it. A Take carries a guess over as a guess. The
 measurement lands through `applyRechecked`'s rebase whatever knobs each
 control turns, so nothing you hear moves and a turned control keeps its
 place (unless the measurement closed the half it is on, where it stops at

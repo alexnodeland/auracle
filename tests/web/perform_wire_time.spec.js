@@ -253,7 +253,10 @@ test("a predicted panel plays the controls the gate passes and listens on the re
 // graft said it didn't reach and grew an offer. On First Bass, Space then
 // turns; on Acid Line, Body still cannot, and an offer grows. Each says so
 // in its toast, and nothing is wired from a guess between the turn and it.
-async function graftTurn(page, app, preset, index) {
+// A preset opened onto PERFORM, its re-check landed, and its search control
+// `index` turned up past the point of asking: a graft. The toast mark and the
+// page's clock at the turn.
+async function turnPast(page, app, preset, index) {
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform(preset);
   // Its shipped wiring re-checked: the panel is the preset's own measurement.
@@ -268,12 +271,22 @@ async function graftTurn(page, app, preset, index) {
   await page.mouse.down();
   await page.mouse.move(x, y - 80, { steps: 10 });
   await page.mouse.up();
-  const said = await app.engine((ms) => app.toast(/now turns|didn.t reach it here|nothing to add here/, { since: mark, timeout: ms }));
+  return { mark, before };
+}
+
+// What a graft says: its toast, how each tree after the turn was wired, the
+// offers and grafts asked for.
+async function graftTurn(page, app, preset, index) {
+  const { mark, before } = await turnPast(page, app, preset, index);
+  const said = await app.engine((ms) => app.toast(VERDICT, { since: mark, timeout: ms }));
   const how = (await app.marks("perform-wired", { after: before })).map((m) => m.detail?.how);
   const offers = await app.sent({ type: "perform_offer", bg: false }, { after: before });
   const grafts = await app.sent({ type: "perform_graft" }, { after: before });
   return { said, how, offers: offers.length, grafts: grafts.length };
 }
+
+// A graft's verdict, as its toast says it.
+const VERDICT = /now turns|didn.t reach it here|nothing to add here/;
 
 test("a Space graft on First Bass is judged on its measurement: Space now turns", { tag: "@slow" }, async ({ page, app }) => {
   const r = await graftTurn(page, app, "First Bass", 5);
@@ -378,4 +391,37 @@ test("a Take from a sound on a guess carries the guess over as a guess", { tag: 
   await expect(page.locator(".pf-knob.guess").first(), "carried over as a guess").toBeAttached();
   await expect(page.locator(".pf-knob.guess").first()).toHaveAttribute("aria-description", "not measured yet");
   await expect(page.locator(".pf-status"), "no count before the measurement").toHaveText(/^listening( to [^·]+)?…$/);
+});
+
+// A graft is bound to its own tree (#366): another sound opened while a graft
+// waits to be judged plays its guess at once, and the graft is not judged on
+// it. Bound to a time instead (30 s from the turn), the other sound skipped
+// its guess and waited for its whole measurement, and the graft was judged on
+// it: "Space now turns …" on a sound nobody grafted, its Space set to half a
+// turn with no hand on it. First Bass's Space is turned past asking; once the
+// grafted tree is in PERFORM, its measurement asked for, a pool sound is
+// opened and shown. Its wiring is a guess, no verdict is said, no offer
+// grows, and none comes when that sound's measurement lands either.
+test("a sound opened while a graft waits plays its guess, and the graft is not judged on it", { tag: "@slow" }, async ({ page, app }) => {
+  const { mark, before } = await turnPast(page, app, "First Bass", 5);
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "perform_wire" }, { after: before })).length, { timeout, message: "the grafted tree's measurement was asked for" }).toBeGreaterThan(0));
+  await bankTab(page, "pool");
+  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  const shown = await app.now();
+  await app.level("perform");
+  // Wired: an engine wait, so a sound that waits for its measurement reaches
+  // the assertions below and says how it was wired.
+  const wiredMark = () => app.marks("perform-wired", { after: shown }).then((ms) => ms.find((m) => m.detail?.name === name));
+  await app.engine((timeout) => expect.poll(wiredMark, { timeout, message: `${name} is wired` }).toBeTruthy());
+  const how = (await wiredMark()).detail.how;
+  // Its measurement lands, and still no verdict: the graft is not judged on it.
+  const asked = (await app.sent({ type: "perform_wire" }, { after: shown })).pop();
+  await app.replyTo(asked);
+  await app.quiet();
+  expect((await app.toasts(mark)).filter((t) => VERDICT.test(t)), "no verdict on a sound nobody grafted").toEqual([]);
+  expect(["predicted", "borrowed"], `${name} plays its guess, wired ${how}`).toContain(how);
+  expect(await app.sent({ type: "perform_offer", bg: false }, { after: before }), "no offer grows").toEqual([]);
 });
