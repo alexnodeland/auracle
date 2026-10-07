@@ -1781,8 +1781,9 @@ export function createPerform(host) {
     if (hit) {
       // A hit is a use: it moves to the young end, so the patches played
       // most — a booth's demo set, round every few minutes — are the last
-      // ones the cache lets go.
-      if (!hit.shipped && !hit.borrowed) {
+      // ones the cache lets go. A guess is not kept: only its measurement
+      // is, when it lands (#290).
+      if (!hit.shipped && !hit.borrowed && !hit.guess) {
         wireCache.delete(key);
         wireCache.set(key, hit);
       }

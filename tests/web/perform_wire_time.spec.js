@@ -142,21 +142,26 @@ test("a pool sound's controls play soon after it is taken into PERFORM", { tag: 
 
 // A sound playing on a guess whose measurement then fails keeps playing on
 // it, and says it was never measured: "couldn't re-check" is for a wiring
-// that was. Slowed, so the measurement is still out when the engine's
-// failure is handed to main (the tap's engine_error, as the worker sends
-// one it could not run).
-test("a sound playing on a guess whose measurement fails keeps playing, and says it couldn't measure it", async ({ page, app }) => {
-  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, slowEngine: 4 });
+// that was. The engine's failure is handed to main (the tap's engine_error,
+// as the worker sends one it could not run) while the measurement is still
+// out. And a guess is never kept as a measurement: once another sound's
+// measurement lands and the kept wirings are written, none is a guess.
+test("a sound playing on a guess whose measurement fails keeps playing, says it couldn't measure it, and is not kept", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.level("perform");
   await app.fullPool();
   await app.reached();
   await bankTab(page, "pool");
-  const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
-  const name = (await row.locator(".bi-name").textContent()).trim();
-  await row.click();
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
-  const since = await app.now();
-  await app.level("perform");
+  const open = async (at) => {
+    const row = page.locator("#bank-list .bank-item[data-id]").nth(at);
+    const name = (await row.locator(".bi-name").textContent()).trim();
+    await row.click();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+    const since = await app.now();
+    await app.level("perform");
+    return since;
+  };
+  const since = await open(5);
   const status = page.locator(".pf-status");
   await expect(status, "it plays on a guess while it is measured").toHaveText(/controls reach this patch · listening…$/);
   await expect(page.locator(".pf-knob.guess").first(), "drawn as a guess").toBeAttached();
@@ -165,4 +170,13 @@ test("a sound playing on a guess whose measurement fails keeps playing, and says
   await expect(status).toHaveText(/controls reach this patch · couldn’t measure this patch$/);
   await expect(page.locator(".pf-knob.waiting"), "no control still says listening…").toHaveCount(0);
   await expect(page.locator(".pf-knob.guess").first(), "still playing on its guess").toBeAttached();
+  // Another sound, measured: its measurement is kept (written 1.5 s after it
+  // lands), and the guess that was never measured is not.
+  const kept = () => page.evaluate(() => JSON.parse(localStorage.getItem("auracle-perform-wirings") || "[]"));
+  const before = (await kept()).length;
+  const next = await open(6);
+  const measured = (await app.sent({ type: "perform_wire" }, { after: next })).pop();
+  await app.replyTo(measured);
+  await expect.poll(async () => (await kept()).length, { message: "its measurement is kept" }).toBeGreaterThan(before);
+  expect((await kept()).filter(([, v]) => v && v.guess), "no guess among the kept wirings").toEqual([]);
 });
