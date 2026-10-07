@@ -9,7 +9,10 @@
 //!
 //! - `shipped_preset_wirings_are_current` compares fingerprints of the presets
 //!   and of the measurement's named inputs (phrase, render namespace, feature
-//!   names, controls, PERFORM's constants). It renders nothing.
+//!   names, controls, PERFORM's constants), each preset's shape (what a knob
+//!   edit of it must share to borrow its wiring), and that the knob table a
+//!   first wiring is predicted from (#290) is over today's audio φ. It
+//!   renders nothing.
 //! - `shipped_preset_wirings_measure_the_same_today` catches what no
 //!   fingerprint sees (feature maths, loudness normalization, vetting,
 //!   compiler, DSP, the pool the standardizer is fitted to, PERFORM's solver)
@@ -71,8 +74,53 @@ fn shipped_preset_wirings_are_current() {
             "{}: tree text",
             p.name
         );
+        let tree: auracle_grammar::PatchTree =
+            serde_json::from_str(row["tree"].as_str().unwrap_or("")).expect("a tree");
+        assert_eq!(
+            row["shape"].as_str(),
+            Some(auracle_session::predict::shape_of(&tree).as_str()),
+            "{}'s shape is not today's — {REGENERATE}",
+            p.name
+        );
     }
+    let table: auracle_session::predict::KnobTable =
+        serde_json::from_value(file["knobs"].clone()).expect("a knob table");
+    let names: Vec<&str> = auracle_features::AudioFeatures::NAMES.to_vec();
+    assert_eq!(
+        table.names, names,
+        "the knob table is over other φ names — {REGENERATE}"
+    );
+    assert!(
+        table.cols.contains_key("cut"),
+        "the knob table knows no cutoff — {REGENERATE}"
+    );
+    // The gate: judged for every palette control, and which pass is the
+    // maintainer's to know of (#290): a regeneration that moves one says so
+    // here, and the change is theirs to hear before it ships.
+    let palette = auracle_session::perform::PALETTE;
+    let judged: Vec<&str> = table.gate.keys().map(String::as_str).collect();
+    let mut names: Vec<&str> = palette.iter().map(|c| c.name).collect();
+    names.sort_unstable();
+    assert_eq!(
+        judged, names,
+        "the gate does not judge every palette control — {REGENERATE}"
+    );
+    let passing: Vec<&str> = palette
+        .iter()
+        .filter(|c| table.passes(c))
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(
+        passing, PASSING,
+        "the controls the prediction may wire moved: regenerate if the file is stale, and tell the maintainer which controls now play on a prediction (#290)"
+    );
 }
+
+/// The palette controls the shipped prediction may wire, in palette order:
+/// what `make perform-wirings` measured at 0.70 (`PREDICT_GATE`).
+const PASSING: [&str; 8] = [
+    "Bright", "Snap", "Space", "Thump", "Round", "Distance", "Haze", "Bite",
+];
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
 /// within [`TOLERANCE`] of their size, everything else exactly.

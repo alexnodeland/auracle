@@ -5965,6 +5965,7 @@ html.handheld .handheld-gate {
 .pf-knob.search .pf-k-half { stroke: var(--phos-b-deep); stroke-dasharray: 3 5; }
 .pf-knob.search .pf-k-name { color: var(--phos-b-dim); }
 .pf-knob.search .pf-k-sub { color: var(--phos-b-dim); }
+
 .pf-knob.unwired .pf-k-ptr { stroke: var(--silk-mute); }
 .pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
 /* Listening: not measured yet (no wiring, or a control a Take carried over
@@ -5973,6 +5974,12 @@ html.handheld .handheld-gate {
    while a measurement is out. */
 .pf-knob.pending .pf-k-half { stroke-width: 1; opacity: 0.6; }
 .pf-knob.pending .pf-k-name, .pf-knob.pending .pf-k-sub { color: var(--silk-dim); }
+/* A guess (#290, ADR-012): a control playing on a wiring borrowed from a
+   measured relative or predicted from the knob table, until this sound's own
+   measurement lands. It turns, and its caption says what it turns; only its
+   travel wears the not-measured look above, never the dashed amber of
+   "can't", and settles when the measurement lands. */
+.pf-knob.guess .pf-k-half { stroke-width: 1; opacity: 0.6; }
 
 /* What velocity plays, a row of the Arrange panel. */
 .pf-touch {

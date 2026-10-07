@@ -15,6 +15,7 @@ loop (observe, refit). Rules shared by all crates are in
 | `job.rs` | PERFORM's offers, aimed offers and drifts as walks that can be paused: `PerformJob` (`step`, `finish_moved`), built by `Engine::offer_job`, `offer_aimed_job` and `drift_job`; `walk.rs`'s `WalkRun` is the locked walk's state between steps, and `walk_on` is it run to the end, so stepping and not stepping are one walk |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
 | `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`); the palette's eighteen directions (`PALETTE`, whose first six are the panel's `CONTROLS`), wired on request (`Engine::wire_named`); which way your taste leans along each, at the sound in hand, for the model view (`Engine::lean`, `Lean`) |
+| `predict.rs` | PERFORM's first wiring before a sound is measured (#290): `shape_of` (the structure without knob values, what a measured relative must share to lend its wiring), `KnobTable` (the median measured column per module kind, site, modulation target and third of the range; `learn`, and the gate: `agreement` on held-out pool sounds, `passes` at `PREDICT_GATE` on the Wilson bound at `GATE_Z`) and `Engine::wire_predicted` (the gated, reachable controls wired from the table, no render) |
 | `guess.rs` | The model's guess (Plan-005 task 9d): the module it guesses you'd add next. `guess_candidates` (the output's placements), `Engine::guess_plan` (the renders owed, in render order) and `Engine::guess_rank` (by the lower bound of the gain), pure; `GuessMemory`, the skips and the undo of a taken guess, per patch |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits, and where a sound of your own sits on it (`TasteMap::own`, `Engine::own_on_map`) |
 | `own.rs` | A sound of your own (Plan-005 task 11): a recording's measured coordinates in the session's space (`OwnSound`, saved by name, never audio), its nearest pool members and presets over those coordinates, and the generation bred toward it (`refine_toward_jobs`, `TowardFitness`, `OWN_GAMMA`) |
@@ -74,7 +75,9 @@ instantiation, so one fitness type has to take every path of it.
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
-`AIM_WALKS`) and the loops. `suggest_census` measures ways the model could
+`AIM_WALKS`; `wire_predict`, how well a wiring predicted from the tree
+alone, from a table of measured Jacobians, would do before the
+measurement lands, #290) and the loops. `suggest_census` measures ways the model could
 suggest the next module in PATCH, their cost and their quality against
 synthetic listeners (`docs/notes/suggest-2026-10/`); `guess_cost` measures
 what was built from it (renders and CPU per guess, and what it guesses, on

@@ -330,10 +330,12 @@ rather than closing.
 Total cost for a patch with $n$ knobs and $r$ reachable controls is $n + 1 + 4r$
 renders, plus two for each retry, all through the memo. In the browser that is
 around 20–30 renders, and the page caches each measurement by tree, stamped
-with the vote count and the render namespace (`cache_namespace`: the
+with the standardizer's revision and the render namespace (`cache_namespace`: the
 featurizer's `RENDER_EPOCH` and the quiver version), so returning to a patch
 costs none. A stamp that no longer matches is played at once and re-measured
-in the background. Every preset’s measurement also
+in the background. The stamp is the standardizer's revision (the status's
+`std_rev`), not the vote count: the scale moves when a fit runs over sounds
+the session had not met, and a pick alone left every kept wiring stale. Every preset’s measurement also
 ships with the app (`apps/web/perform-wirings.json`, made natively through the
 same `WasmEngine` calls by `make perform-wirings`), so a preset is playable the
 moment it lands; the page re-measures it in the background, because the file
@@ -388,7 +390,59 @@ wired by a table that had seen it.
 | Wired from the best leave-one-out per-site table | 0.23 | 0.16 | 0.09 |
 
 The same knob does different things in different patches. That is the reason
-the grammar exists, and it is the reason the table is not used.
+the grammar exists, and it is the reason the table is never the last word.
+
+It is the first one, though (#290). A first measurement is 8 to 71 renders, a
+minute and more on a slow computer, and a sound nobody has measured plays its
+controls at once on a wiring that costs none: one kept for a sound of the same
+shape (the same modules and selectors, so the same knobs; `predict::shape_of`)
+if one was measured, and otherwise one predicted from a table of how each
+kind of module's knob moves φ (`predict::KnobTable`: the median measured
+column per module kind, site, modulation target and third of the range,
+backing off to coarser keys), run through the same solve. The measurement
+then lands on it by a rebase, so nothing heard moves. Until it does, a control
+playing on either says *not measured yet*: a borrowed wiring was measured, on
+another sound, and is not gated; a predicted one is gated (below). Judged against each sound's own Jacobian,
+held out (`examples/wire_predict.rs`, 240 pool sounds from six sessions):
+
+| Table learned from | Wires | Turns the named way | Covers the measured reach |
+|---|---|---|---|
+| The presets | 767 | 70% | 53% |
+| The presets and one session's pool | 688 | 76% | 56% |
+| The presets and five sessions' pools | 579 | 79% | 50% |
+
+**The gate.** It is right on some controls far more than others (Space 99%,
+Bright and Snap about 78%, Motion 62%, Body 63%), so a control is wired from
+the prediction only where the table has shown it can be. `make perform-wirings`
+learns the shipped table from the presets' Jacobians and 240 pool sounds' (the
+standard pool's and five more sessions'), and for each palette control counts,
+on every pool sound held out of the table in turn, how often the prediction
+wired it and how often that turned it the named way (`KnobTable::agreement`).
+A control passes when the lower end of the Wilson interval at two standard
+errors reaches 0.70 (`PREDICT_GATE`, `GATE_Z`): more than two turns in three
+the named way, after paying for how few turns there were, so a perfect record
+needs ten. One session's pool is too few to read it on: across six, one pool's
+Bright read 65% and another's Motion 72%. The rest wait for the measurement and
+read *listening…*, as do controls the prediction cannot reach (a guess does
+not say a patch *can't*).
+
+| Control | Wired | Named way | Bound | |
+|---|---|---|---|---|
+| Bright | 139 | 82% | 0.746 | passes |
+| Snap | 231 | 83% | 0.776 | passes |
+| Motion | 108 | 60% | 0.506 | |
+| Body | 19 | 32% | 0.151 | |
+| Grit | 5 | 100% | 0.556 | |
+| Space | 73 | 99% | 0.924 | passes |
+
+Of the palette's twelve, Warmth, Thump, Round, Distance, Haze and Bite pass;
+Air, Heft, Punch, Throb, Sway and Lo-fi do not. `shipped_wirings.rs` pins the
+list. By ear, rendering each gated control turned fully up and fully down on a
+fresh session's 40 sounds (`wire_predict --shipped`), 81% moved the named way
+turned up and 66% both ways (ungated, 66% and 55%), and the prediction wires
+58% of the controls the measurement reaches. "The named way" is the sign of
+the movement along the control's own direction, not how much else moves with
+it, so a purity row like the one above would read lower.
 
 **Grit and Space** measure a median purity of about zero by knobs alone on most
 presets, because most patches contain no drive or reverb to turn. They are the

@@ -97,7 +97,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "held_sounds", "readmit_held",
       "own_sound_set", "own_sound", "own_sound_clear", "own_presets_set", "refine_toward_jobs",
       "perform_offer_begin", "perform_drift_begin", "perform_job_step", "perform_job_finish", "perform_job_drop",
-      "perform_lean",
+      "perform_lean", "perform_table_set", "perform_first",
       "face_of", "face_key", "face_of_tree", "preset_tree_json", "face_of_key",
       "bank_twin_of", "set_deal_schedule", "deal_need",
     ];
