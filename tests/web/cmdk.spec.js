@@ -211,15 +211,23 @@ test("at PATCH, undo finds Undo an edit first, and ↵ takes back the last edit,
 
 test("a file's command opens its picker", async ({ page, app }) => {
   await app.boot();
+  // The listener goes in before anything is pressed: Playwright turns the
+  // file chooser's interception on when the first listener is added, and
+  // that takes a round trip to the browser. A `waitForEvent` set beside the
+  // press missed the picker the press opened in about one run in eight (the
+  // click reached the input, with the gesture active; the event never came).
+  const choosers = [];
+  page.on("filechooser", (c) => choosers.push(c));
   await page.keyboard.press("Meta+k");
   await page.keyboard.type("open a taste");
   await expect(options(page).first().locator(".cmdk-lab")).toHaveText("Open a taste file…");
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 5_000 }), page.keyboard.press("Enter")]);
-  expect(chooser.isMultiple()).toBe(false);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => choosers.length, { message: "↵ opened the taste file's picker" }).toBe(1);
+  expect(choosers[0].isMultiple()).toBe(false);
   await expect(list(page)).toBeHidden();
   // And with the mouse.
-  const [again] = await Promise.all([page.waitForEvent("filechooser", { timeout: 5_000 }), runCommand(page, "Open a patch file…")]);
-  expect(again).toBeTruthy();
+  await runCommand(page, "Open a patch file…");
+  await expect.poll(() => choosers.length, { message: "the click opened the patch file's picker" }).toBe(2);
 });
 
 test("while the list is open no note plays, no level moves and ⌘Z takes nothing back", async ({ page, app }) => {
