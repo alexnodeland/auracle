@@ -47,9 +47,10 @@ history of each choice.
   render cache's store](#the-render-caches-store)), rendered and written back
   otherwise, with a yield after each. The store holds rows for what a farm
   worker rendered and what an earlier restore rendered in the engine worker:
-  a sound that joined in play is rendered again by the next restore. The one call that re-rendered every entry
-  with nothing posted until it returned (`import_session_checked`) is kept
-  only for a binary without the deferred surface.
+  a sound that joined in play is rendered again by the next restore. The one
+  call that re-rendered every entry with nothing posted until it returned
+  (`import_session_checked`) is kept only for a binary without the deferred
+  surface.
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
   voice per note, allocation-free per quantum, no clock.
 
