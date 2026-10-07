@@ -246,10 +246,15 @@ to a pinned `role="alert"` strip that stays until resolved.
   Boot waits `FARM_HANDSHAKE_MS` (5 s) for a worker to report ready. A crew
   with a worker still starting then is kept: the fill or the restore begins
   in the engine worker, and a worker that reports ready later takes the
-  rest. A restore goes one bank entry at a time either way, and the engine
-  worker's own reads each entry from the render store (`bankPass`), as a
-  farm worker does, so a returning visit renders only what this browser has
-  not measured before.
+  rest (the fill hands it first the draws a crew that died left issued). A
+  restore goes one bank entry at a time either way, and the engine worker's
+  own reads each entry from the render store (`bankPass`), as a farm worker
+  does. The store holds what a farm worker rendered and what an earlier
+  restore rendered here, nothing else: a sound that joined in play (a walk's
+  child, ⚡, a kept edit, an opened patch, a preset taken in) or a fill with
+  no farm is rendered again by the next restore. With the farm, the first
+  eight entries (`FARM_AUDIO_AHEAD`) are rendered with their audio whatever
+  is stored.
 
   Boot's crew is reaped when boot ends. A generation or ⚡ raises a **walk
   crew** on demand: the engine worker posts `farm_want`, main spawns

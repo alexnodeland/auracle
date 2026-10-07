@@ -35,14 +35,23 @@ tablet whose shorter side is 620 px or more starts in either orientation.
 
 - **The first load compiles the engine.** Once; later loads are much faster.
 - **Coming back to a session** brings your sounds back one at a time, and the
-  bar counts them: *recalling 12 of 40 sounds…*. A sound this browser has
-  measured before is read back rather than rendered, so a return is usually
-  quick. One it hasn’t (after an update that changes how sounds are
-  measured, or once the site’s data is cleared) is rendered again, across
-  the render workers where there are some. On a slow machine with no
-  workers, that can take a minute, with the bar moving all the way.
-- **Render workers slow to start** don’t hold the boot up: the engine starts
-  on its own, and each worker joins the work once it’s ready.
+  bar counts them: *recalling 12 of 40 sounds…*. A sound the render workers
+  measured as the app loaded, or that an earlier return measured, is read
+  back rather than rendered, so a return is usually quick. The rest is
+  rendered again, across the render workers where there are some:
+  - the sounds of a first visit that had no render workers;
+  - a sound that joined while you played: a generation’s, ⚡’s, an edit you
+    kept, a patch file you opened, a preset you picked or opened;
+  - every sound, after an update that changes how sounds are measured, or
+    once the stored measurements pass their limit and are cleared.
+
+  With the render workers, the first eight sounds are always rendered, with
+  their audio, so they play at once. On a slow machine with no workers, a
+  return that renders everything can take a minute, with the bar moving all
+  the way.
+- **Render workers slow to start** hold the boot up for five seconds at
+  most: the engine waits that long for the first to be ready, then starts on
+  its own, and each worker joins the work once it’s ready.
 - **Safari limits the render workers**, and boots more slowly than Chrome.
   That’s expected.
 - **A worker that fails** hands its work to the engine, over the same draws,

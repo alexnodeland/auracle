@@ -881,8 +881,9 @@ const EMPTY_F32 = new Float32Array(0);
 // The deferred form does the same work in the same order (the native gate
 // `deferred_restore_equals_import_state` pins that), but one entry at a time,
 // with the bar tracking it and the worker answering between entries. An entry
-// this build has measured before is read from the render store, as a farm
-// worker reads it, so a returning visit renders only what is missing.
+// whose row the render store holds (a farm worker rendered it, or an earlier
+// restore here did) is read from it, as a farm worker reads it, so a returning
+// visit renders only what the store is missing.
 //
 // Both paths ask the engine for a *verdict*, not a count. `import_session`
 // answered 0 for a save with nothing in it and for a save this build cannot

@@ -40,12 +40,14 @@ history of each choice.
   the rest from the next batch or bank entry (#285). Boot's crew is reaped
   when boot ends. A generation's walks and ⚡ evolve from this run on a crew
   raised on demand (see [The farm on demand](#the-farm-on-demand)).
-- **A restore** goes one bank entry at a time, in bank order: on the farm
-  while a worker is ready, and in the engine worker otherwise, each entry
-  read from the render cache's store when this browser has measured it
-  before (see [The render cache's store](#the-render-caches-store)),
-  rendered and written back otherwise, with "recalling n of m sounds…"
-  posted and a yield after each. The one call that re-rendered every entry
+- **A restore** goes one bank entry at a time, in bank order, with
+  "recalling n of m sounds…" posted as each lands: on the farm while a
+  worker is ready, and in the engine worker otherwise, each entry there read
+  from the render cache's store when it holds the entry's row (see [The
+  render cache's store](#the-render-caches-store)), rendered and written back
+  otherwise, with a yield after each. The store holds rows for what a farm
+  worker rendered and what an earlier restore rendered in the engine worker:
+  a sound that joined in play is rendered again by the next restore. The one call that re-rendered every entry
   with nothing posted until it returned (`import_session_checked`) is kept
   only for a binary without the deferred surface.
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
@@ -1074,22 +1076,32 @@ order, over a stand-in IndexedDB.
 
 **A restore the engine worker runs itself reads and writes the same rows**
 (`bankPass`, `bankHere`): with no farm worker ready, it opens the store once
-the stamp is done, reads every bank entry's row (`farm_key`, the farm's key)
-in one transaction, waiting for that read `RENDER_STAMP_MS` at most, and then
+the stamp is done (`renderStoreReady`, `RENDER_STAMP_MS` at most), reads
+every bank entry's row (`farm_key`, the farm's key) in one transaction,
+waiting for the open and the read `RENDER_STAMP_MS` at most again, and then
 folds each entry in from its row (`bank_absorb`, which checks the row's
 content address against the entry), or renders it with the farm's own
-`farm_render` and writes the row back. A row the engine refuses, or a render
-that did not vet, goes to `bank_render`, which drops an entry that no longer
-vets as `import_state` does. Its tally goes to the app's log as a farm
-wave's does (`render_cache`, with `here: true`). Before #285 that restore was
-one call that read nothing, and the farm kept no row of the first
-`FARM_AUDIO_AHEAD` sounds it rendered with their audio, so a returning visit
-with no farm rendered every sound, or at best those eight, again. Measured in
-Chromium on the 16-core M3 Max, busy with other work (load average 115 to
-170), with the engine slowed fourfold (`tests/web/restore.spec.js`): 40
-sounds from the store, 0.5 s from boot to the veil lifting; with eight of
-them rendered (the farm's rows of its first eight missing), 14.4 s; with
-none in the store, 47 s, the line and the bar moving with each sound. `tests/worker/restore.test.mjs` holds the order (each
+`farm_render` and writes the row back. Rows that come after that wait are
+still read for the entries measured after they come; a store that opens
+after it is closed unread. A row the engine refuses, or a render that did
+not vet, goes to `bank_render`, which drops an entry that no longer vets as
+`import_state` does. Its tally goes to the app's log as a farm wave's does
+(`render_cache`, with `here: true`). Before #285 that restore was one call
+that read nothing, so a returning visit with no farm rendered every sound
+again. Measured in Chromium on the 16-core M3 Max, busy with other work
+(load average 115 to 170), with the engine slowed fourfold
+(`tests/web/restore.spec.js`): 40 sounds from the store, 0.5 s from boot to
+the veil lifting; with none in the store, 47 s, the line and the bar moving
+with each sound.
+
+**Only those two write rows**: a farm worker's render (a fill's draw, a
+restore's entry, a guess's candidate) and a render of the engine worker's own
+restore. What the engine worker measures anywhere else stays in its memo: a
+fill with no farm (`fill_step`), a walk's child (a generation's, ⚡'s), a
+kept edit, an opened patch file, a preset taken in. So the next restore
+renders those, and writes their rows then. With the farm, the restore's
+first `FARM_AUDIO_AHEAD` entries are rendered with their audio whatever is
+stored. `tests/worker/restore.test.mjs` holds the order (each
 sound's progress posted as it lands, a request answered between two sounds,
 the bank `import_state`'s), the rows kept on a first visit and read on the
 next, and a farm worker that reports ready late taking the rest.

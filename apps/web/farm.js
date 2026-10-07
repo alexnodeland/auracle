@@ -31,8 +31,8 @@ let port = null;
 // ---------- the persistent render cache ----------
 //
 // φ is a pure function of `(term, spec)` — that is the featurizer's stated
-// determinism contract — so a featurization this browser has already performed
-// can be replayed instead of re-rendered. Without it every reload re-renders
+// determinism contract — so a featurization stored once can be replayed
+// instead of re-rendered. Without it every reload re-renders
 // the whole bank from nothing: ~48 candidates at ~0.5 s each, for numbers the
 // machine computed yesterday.
 //

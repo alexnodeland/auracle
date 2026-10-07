@@ -2,8 +2,8 @@
 // web-runtime.md "The farm on demand"). With no farm worker ready (`?farm=0`,
 // a small machine, or none ready in the handshake's window) the engine worker
 // restores the bank itself, one sound at a time: each read from the render
-// store when this browser has measured it before (the farm's store and key),
-// rendered otherwise, and "recalling n of m sounds…" posted before the next.
+// store when it holds the sound's row (the farm's store and key), rendered
+// otherwise, and "recalling n of m sounds…" posted before the next.
 // It used to be one call that re-rendered every sound with nothing posted
 // until it returned: 13.6 s on "restoring your bank & taste…" for 40 sounds in
 // Firefox on an M-series laptop, and over two minutes on an Intel MacBook Air.

@@ -1,8 +1,8 @@
 // A returning visit's restore (#285, docs/architecture/web-runtime.md "The
 // farm on demand"). With no farm worker ready, the engine worker restores the
 // bank itself one sound at a time: each sound read from the render store when
-// this build has measured it before (the farm's store, key and namespace),
-// rendered and written back otherwise, with its progress posted and the
+// it holds the sound's row (the farm's store, key and namespace), rendered and
+// written back otherwise, with its progress posted and the
 // player's requests answered between sounds. A farm worker that reports
 // ready after the handshake's window takes the rest of the restore, or of a
 // fill, rather than sitting out the boot. Whichever ran, the bank comes back
@@ -120,7 +120,7 @@ test("a restore with no farm comes back sound by sound, with its bar moving and 
   await w.close();
 });
 
-test("a restore with no farm reads what this build measured before from the render store, and renders none of it", { timeout: TIMEOUT }, async (t) => {
+test("a restore with no farm reads from the render store what an earlier restore rendered, and renders none of it", { timeout: TIMEOUT }, async (t) => {
   const { saved } = await serialSession();
   // The first visit renders the bank and keeps it in the store.
   const first = await workerFor(t, { boot: false, idb: {} });
