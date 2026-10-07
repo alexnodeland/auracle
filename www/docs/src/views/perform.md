@@ -67,7 +67,8 @@ On the right, what you turn:
   **HOW IT WORKS** (see [How it works](#how-it-works)), then a status line
   saying what PERFORM is doing with the sound: *4 of 6 controls reach this
   patch*, with *listening…* after it while a sound you haven't played is
-  measured behind controls that already turn (see
+  measured behind controls that already turn, naming the ones still waiting
+  for it (*listening to Motion, Body…*; see
   [a sound you haven't played](#a-sound-you-havent-played)), *listening to
   this sound…* when there is nothing to start it on yet, *re-checking* while
   it measures again in the background, or

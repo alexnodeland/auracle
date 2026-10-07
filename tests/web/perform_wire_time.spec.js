@@ -163,7 +163,8 @@ test("a sound playing on a guess whose measurement fails keeps playing, says it 
   };
   const since = await open(5);
   const status = page.locator(".pf-status");
-  await expect(status, "it plays on a guess while it is measured").toHaveText(/controls reach this patch · listening…$/);
+  // Listening, and naming the controls the gate left out to the measurement.
+  await expect(status, "it plays on a guess while it is measured").toHaveText(/controls reach this patch · listening( to [^·]+)?…$/);
   await expect(page.locator(".pf-knob.guess").first(), "drawn as a guess").toBeAttached();
   const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
   await app.inject({ type: "engine_error", request: "perform_wire", id: null, req: asked.req, message: "RuntimeError: injected for the test" });
