@@ -1473,6 +1473,18 @@ export function createTaste(host) {
   });
 
   return {
+    /** TASTE's and LEARNING's commands for ⌘K (shell.js `cmd`), each the
+     *  control it names: the color by taste switch, the replay of how your
+     *  taste moved, and LEARNING's replay (R), copy as JSON and the math. */
+    cmds() {
+      return [
+        { id: "taste-color", level: "taste", label: words.TASTE_LABELS.togTitle, hint: () => (tasteOn() ? "on" : ""), run: () => tog.click() },
+        { id: "taste-replay", level: "taste", label: words.TASTE_LABELS.trackPlay, when: () => !tplay.disabled && !tplay.hidden, run: () => tplay.click() },
+        { id: "learning-replay", level: "learning", label: "Replay what it weighs", key: "R", when: () => !replayBtn.disabled, run: () => replayBtn.click() },
+        { id: "learning-copy", level: "learning", label: "Copy as JSON", run: () => $("md-copy").click() },
+        { id: "learning-math", level: "learning", label: "The math", hint: () => (mathBtn.getAttribute("aria-expanded") === "true" ? "open" : ""), run: () => mathBtn.click() },
+      ];
+    },
     /** Where the level showing marks the sound you're playing, for the face
      *  carried between the levels (shell.js): its mark on TASTE's map, where
      *  the map puts it (`taste_map`, as it will rest when a settle moves it),

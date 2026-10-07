@@ -3,7 +3,8 @@
 // level rail and the level keys (ADR-017: ⌥↑/⌥↓ zoom, ⌥← to EVOLVE and ⌥→
 // back, ⌥1–5), ⌥ and the wheel and a two-finger pinch, the move between
 // levels (the morph, the face it carries, the rail's puck) and a sound taken
-// up from the bank (`takeUp`), and the model view (hold ⌥, or MODEL).
+// up from the bank (`takeUp`), the model view (hold ⌥, or MODEL), and ⌘K,
+// the one list of every command and every sound (`cmd`).
 // main.js creates it with a host and keeps every side effect of a move in
 // `host.levelChanged(prev, next)` and of the model view in
 // `host.modelViewChanged(on)`: the shell does the DOM (the section shown,
@@ -22,6 +23,7 @@
 const {
   WHERE, isLevel, startLevel, hashLevel, levelForKey, dirOf, step, railPath,
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, NOD_PX, flightEnds, flightAt, wheelStep, wheelOwner, pinchStep,
+  BY_DIGIT, cmdkList, SOUNDS_SHOWN,
 } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
@@ -819,6 +821,261 @@ export function createShell(host = {}) {
     return true;
   }
 
+  // ---------- ⌘K: the one list (Plan-008 §2.4) ----------
+  // Every command, with its key, and every sound, by its face, found by
+  // typing: what this level does (This level), what any does (Anywhere: the
+  // levels, the keys bar, files, your taste, the films, the guide's keys and
+  // gestures), and the sounds (pool, saved, presets). ⌘K or Ctrl K opens
+  // it, as its button in the menu bar does. It is
+  // drawn from what the page already holds, never asking the engine: a
+  // sound's face is the one the page has drawn, or an empty slot until it
+  // has one. While it is open the keys are the field's: nothing behind it
+  // hears them, so no note plays and no level moves.
+  const cmdList = [];
+  /** A command: `{id, level?, label, key?, hint?, run, when?}`. `level` puts
+   *  it under This level, at that level only; without one it is Anywhere.
+   *  `label` and `hint` may be functions, read each time the list is drawn
+   *  (a setting's state), and `when()` false leaves it out. `key` is the
+   *  key that does the same (a string, or several), printed for this
+   *  platform; `hint` is said where a command has no key. Registering an
+   *  `id` again replaces it. */
+  function cmd(c) {
+    if (!c || !c.id || typeof c.run !== "function") return;
+    const i = cmdList.findIndex((x) => x.id === c.id);
+    if (i >= 0) cmdList[i] = c;
+    else cmdList.push(c);
+  }
+  /** Commands that come and go (a sound kept safe, RECORD AGAIN on it): a
+   *  function giving the ones there are now, asked each time the list is
+   *  drawn. */
+  const providers = [];
+  function cmds(fn) {
+    if (typeof fn === "function") providers.push(fn);
+  }
+  const K = {
+    el: document.getElementById("cmdk"),
+    scrim: document.getElementById("cmdk-scrim"),
+    input: document.getElementById("cmdk-input"),
+    list: document.getElementById("cmdk-list"),
+    btn: document.getElementById("cmdk-btn"),
+  };
+  const kOpen = () => !!K.el && !K.el.classList.contains("hidden");
+  let kSel = 0;
+  let kRows = []; // [{item, li}], in the order shown
+  let kFrom = null; // where the focus goes back to on close
+  const val = (v) => (typeof v === "function" ? v() : v);
+  const keyText = (k) => (host.platformKeys ? host.platformKeys(k) : k);
+  function kGroups() {
+    const now = [...cmdList];
+    for (const fn of providers) {
+      try {
+        now.push(...(fn() || []));
+      } catch { /* a provider that cannot say gives nothing */ }
+    }
+    const live = now.filter((c) => {
+      try {
+        return !c.when || c.when();
+      } catch {
+        return false;
+      }
+    });
+    const shown = (c) => ({ ...c, label: String(val(c.label) || ""), hint: val(c.hint) || "", key: val(c.key) || null });
+    let sounds = [];
+    try {
+      sounds = host.sounds ? host.sounds() : [];
+    } catch {
+      sounds = [];
+    }
+    return [
+      { name: "This level", items: live.filter((c) => c.level && c.level === cur).map(shown) },
+      { name: "Anywhere", items: live.filter((c) => !c.level).map(shown) },
+      { name: "Sounds", items: sounds.map(shown), cap: SOUNDS_SHOWN },
+    ];
+  }
+  /** The label, with the letters the query matched marked. */
+  function marked(label, marks) {
+    const frag = document.createDocumentFragment();
+    const at = new Set(marks);
+    let run = "";
+    let inMark = false;
+    const flush = () => {
+      if (!run) return;
+      if (inMark) {
+        const m = document.createElement("mark");
+        m.textContent = run;
+        frag.append(m);
+      } else frag.append(run);
+      run = "";
+    };
+    for (let i = 0; i < label.length; i++) {
+      const hit = at.has(i);
+      if (hit !== inMark) {
+        flush();
+        inMark = hit;
+      }
+      run += label[i];
+    }
+    flush();
+    return frag;
+  }
+  function kDraw() {
+    const groups = cmdkList(kGroups(), K.input.value);
+    const frag = document.createDocumentFragment();
+    kRows = [];
+    for (const g of groups) {
+      const h = document.createElement("li");
+      h.className = "cmdk-grp";
+      h.setAttribute("role", "presentation");
+      h.textContent = g.name;
+      frag.append(h);
+      for (const { item, marks } of g.hits) {
+        const li = document.createElement("li");
+        li.className = "cmdk-it";
+        li.id = `cmdk-o${kRows.length}`;
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", "false");
+        const ico = document.createElement("span");
+        ico.className = "cmdk-ico";
+        ico.setAttribute("aria-hidden", "true");
+        // A sound's face, as the page has drawn it (main.js `faceSlot`);
+        // a command's glyph where the app has one for it (▶, ⚡), else ›.
+        if (item.face) ico.innerHTML = item.face();
+        else ico.textContent = item.icon || "›";
+        const lab = document.createElement("span");
+        lab.className = "cmdk-lab";
+        lab.append(marked(item.label, marks));
+        const hint = document.createElement("span");
+        hint.className = "cmdk-hint";
+        const keys = item.key ? (Array.isArray(item.key) ? item.key : [item.key]) : [];
+        if (item.hint) hint.append(item.hint);
+        for (const k of keys) {
+          const kb = document.createElement("kbd");
+          kb.textContent = keyText(k);
+          hint.append(kb);
+        }
+        li.append(ico, lab, hint);
+        const at = kRows.length;
+        li.addEventListener("click", () => kRun(at));
+        li.addEventListener("pointermove", (e) => {
+          if (e.pointerType === "mouse" && kSel !== at) kMark(at, false);
+        });
+        frag.append(li);
+        kRows.push({ item, li });
+      }
+    }
+    K.list.replaceChildren(frag);
+    // The faces drawn already go in now; the rest stay empty slots.
+    if (host.paintSounds) host.paintSounds(K.list);
+    K.list.classList.toggle("none", !kRows.length);
+    kMark(0, true);
+  }
+  function kMark(i, scroll = true) {
+    kSel = Math.max(0, Math.min(kRows.length - 1, i));
+    kRows.forEach(({ li }, j) => li.setAttribute("aria-selected", String(j === kSel)));
+    const row = kRows[kSel];
+    if (row) {
+      K.input.setAttribute("aria-activedescendant", row.li.id);
+      if (scroll) row.li.scrollIntoView({ block: "nearest" });
+    } else K.input.removeAttribute("aria-activedescendant");
+  }
+  /** Open the list. `from` says where the focus goes back to when it closes:
+   *  what held it before, unless a pointer's click opened it (then nothing:
+   *  a click leaves no focus, and Space then plays, ADR-016). */
+  function kShow({ pointer = false } = {}) {
+    if (!K.el || kOpen()) return;
+    const a = document.activeElement;
+    kFrom = !pointer && a && a !== document.body && a !== K.input ? a : null;
+    K.input.value = "";
+    K.el.classList.remove("hidden");
+    K.scrim.classList.remove("hidden");
+    K.btn?.setAttribute("aria-expanded", "true");
+    kDraw();
+    K.input.focus({ preventScroll: true });
+    if (host.mark) host.mark("cmdk-open", { rows: kRows.length });
+  }
+  function kHide() {
+    if (!kOpen()) return;
+    K.el.classList.add("hidden");
+    K.scrim.classList.add("hidden");
+    K.btn?.setAttribute("aria-expanded", "false");
+    K.input.removeAttribute("aria-activedescendant");
+    const back = kFrom;
+    kFrom = null;
+    if (back && document.contains(back) && back.focus) back.focus({ preventScroll: true });
+    else if (document.activeElement === K.input) K.input.blur();
+    kRows = [];
+    K.list.replaceChildren();
+  }
+  /** Run the row `i`: the list closes first, giving the focus back, so what
+   *  the command opens (a panel, a file's picker) takes it from there, in
+   *  the same task as the key or the click (a file's picker needs that). */
+  function kRun(i) {
+    const row = kRows[i];
+    kHide();
+    if (row) row.item.run();
+  }
+  if (K.el) {
+    K.input.addEventListener("input", () => kDraw());
+    K.scrim.addEventListener("click", () => kHide());
+    // A press inside the list keeps the focus in its field.
+    K.el.addEventListener("mousedown", (e) => {
+      if (e.target !== K.input) e.preventDefault();
+    });
+    if (K.btn) K.btn.addEventListener("click", (e) => (kOpen() ? kHide() : kShow({ pointer: e.detail > 0 })));
+  }
+  // ⌘K or Ctrl K, from anywhere but under another modal dialog; taken
+  // before anything on the page (Firefox takes Ctrl K for its search bar).
+  // While the list is open every key is its own: the arrows choose, Enter
+  // runs, Esc closes, Tab stays in the field, and the rest are typed into
+  // it, heard by nothing behind (no note, no ⌘Z, no level key, no Esc for
+  // the model view).
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const isK = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.code === "KeyK" || String(e.key || "").toLowerCase() === "k");
+      if (!kOpen()) {
+        if (!isK || !K.el || (host.blocked && host.blocked())) return;
+        e.preventDefault();
+        e.stopPropagation();
+        kShow();
+        return;
+      }
+      e.stopPropagation();
+      if (isK || e.key === "Escape") {
+        e.preventDefault();
+        kHide();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (kRows.length) kMark((kSel + (e.key === "ArrowDown" ? 1 : -1) + kRows.length) % kRows.length);
+      } else if (e.key === "Enter") {
+        if (e.isComposing) return;
+        e.preventDefault();
+        if (!e.repeat) kRun(kSel);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+      }
+    },
+    true,
+  );
+  // The levels, each one a command, with the key that goes straight there.
+  BY_DIGIT.forEach((level, i) => {
+    cmd({
+      id: `level-${level}`,
+      label: `${WHERE[level][0].toUpperCase()}: ${WHERE[level][1]}`,
+      key: `⌥${i + 1}`,
+      when: () => cur !== level,
+      run: () => show(level, { chosen: true }),
+    });
+  });
+  // MODEL's tap: up until run again (or Esc); held, ⌥ (its key, printed).
+  cmd({
+    id: "model-view",
+    label: "The model view: what it believes about every sound",
+    hint: () => (model.on ? "on" : "hold"),
+    key: () => (model.on ? null : "⌥"),
+    run: () => setModelView(!model.on, { sticky: true }),
+  });
+
   return {
     register,
     show,
@@ -831,5 +1088,13 @@ export function createShell(host = {}) {
     modelView: () => model.on,
     /** Say the tag again: what it believes has changed (a pick, a fit). */
     modelTagChanged: () => { if (model.on) paintModelTag(); },
+    /** Register a command in ⌘K's list (`cmd` above), or a function giving
+     *  the ones there are now (`cmds`). */
+    cmd,
+    cmds,
+    /** ⌘K's list: open it, close it, and is it open? */
+    openCommands: () => kShow(),
+    closeCommands: () => kHide(),
+    commandsOpen: kOpen,
   };
 }

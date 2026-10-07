@@ -119,6 +119,10 @@
          or Esc. Its LED is lit while the view is up; pressed (`aria-pressed`)
          only while tapped on. -->
     <button class="model-btn" id="model-btn" type="button" aria-pressed="false" aria-keyshortcuts="Alt" aria-label="The model view: what it believes about every sound. Hold, or hold Alt (Option); a tap keeps it" title="The model view · hold ⌥"><span class="led" aria-hidden="true"></span><span class="mb-word">model</span><kbd>⌥</kbd></button>
+    <!-- ⌘K: the one list of every command, with its key, and every sound,
+         by its face (shell.js, Plan-008 §2.4). Ctrl K off Apple platforms;
+         ? opens it too, wherever no control is there to ask about. -->
+    <button class="cmdk-btn" id="cmdk-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cmdk" aria-keyshortcuts="Meta+K Control+K" aria-label="Find or do anything" title="Find or do anything · ⌘K"><svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg><span class="cmdk-word">Find or do anything</span><kbd>⌘K</kbd></button>
     <!-- ? and ⋯ hold the rightmost slots until the ⌘K list takes in what they
          hold (Plan-008 PR D). -->
     <button id="help-open" class="iconbtn" type="button" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
@@ -1084,6 +1088,20 @@
       <button class="hw-btn small" id="help-close">got it</button>
     </div>
   </div>
+</section>
+
+<!-- ⌘K's list (shell.js): a field, and under it what it finds, in three
+     groups (This level, Anywhere, Sounds). The field keeps the focus; the
+     arrows choose (aria-activedescendant), ↵ does it, Esc closes, and the
+     focus goes back where it was. -->
+<div class="cmdk-scrim hidden" id="cmdk-scrim" aria-hidden="true"></div>
+<section class="cmdk hidden" id="cmdk" role="dialog" aria-modal="true" aria-label="Find or do anything">
+  <div class="cmdk-q">
+    <svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg>
+    <input id="cmdk-input" type="text" role="combobox" aria-controls="cmdk-list" aria-expanded="true" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Find a sound, a level or what to do" aria-label="Find a sound, a level or what to do">
+  </div>
+  <ul class="cmdk-list" id="cmdk-list" role="listbox" aria-label="What it found"></ul>
+  <div class="cmdk-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>↵</kbd> do it</span><span><kbd>esc</kbd> close</span><span class="cmdk-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author" target="_blank">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle" target="_blank" rel="noopener">source</a></span></div>
 </section>
 
 <!-- handheld gate — the only thing rendered when html.handheld is set -->

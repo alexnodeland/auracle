@@ -1459,5 +1459,19 @@ export function createExplain(host) {
       closeLesson();
     },
     openLesson,
+    /** Its two commands for ⌘K (shell.js `cmd`): BRIGHT's answer, at
+     *  PERFORM while BRIGHT is on its panel, as ? over it opens it; and the
+     *  lesson, wherever there is a sound in hand to hear it on. */
+    cmds() {
+      const bright = () => {
+        const p = perf();
+        const bi = p ? p.panel().indexOf(0) : -1;
+        return bi < 0 ? null : document.querySelector(`#view-perform .pf-knob[data-i="${bi}"]`);
+      };
+      return [
+        { id: "ask-bright", level: "perform", label: "What does BRIGHT do?", key: "?", when: () => !!bright(), run: () => ask(bright()) },
+        { id: "lesson", label: LESSON_BUTTON, hint: LESSON_LENGTH, when: () => !!perf()?.sounding(), run: openLesson },
+      ];
+    },
   };
 }

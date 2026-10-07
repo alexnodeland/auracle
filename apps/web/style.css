@@ -662,6 +662,38 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 }
 .iconbtn:hover, .iconbtn[aria-expanded="true"] { color: var(--silk); border-color: var(--hairline); }
 
+/* ⌘K in the bar (the mock's): a glass, the words, its key. The words go
+   under 1240 px, as the mock's do, and the key on a touch screen. */
+.cmdk-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 34px;
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--rack);
+  color: var(--silk-dim);
+  font-size: var(--t-value);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--d-state), border-color var(--d-state);
+}
+.cmdk-btn:hover, .cmdk-btn[aria-expanded="true"] { color: var(--silk); border-color: var(--plate-edge); }
+.cmdk-glass { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.cmdk-btn kbd, .cmdk-hint kbd, .cmdk-foot kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+  padding: 0 var(--s1);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  line-height: 1.4;
+}
+@media (max-width: 1240px) { .cmdk-btn .cmdk-word { display: none; } }
+@media (pointer: coarse) { .cmdk-btn kbd, .cmdk-hint kbd, .cmdk-foot > span:not(.cmdk-fine) { display: none; } }
+
 /* The job slot: long work, only while it runs. Amber, because it is the
    model's work; the fill is the share done; stop is a small raised button.
    It stands just left of the sound in hand. */
@@ -4066,6 +4098,90 @@ body.model-view .style-badge { visibility: visible; opacity: 1; }
    patch's name. */
 .pd-side .pd-wait { color: var(--silk-dim); }
 
+/* ---------- ⌘K: the one list (shell.js) ----------
+   Over everything at a level, under a dialog that opens from it: a field,
+   then what it finds in three groups, the row chosen lit. */
+.cmdk-scrim { position: fixed; inset: 0; z-index: 60; background: var(--scrim-82); }
+.cmdk-scrim.hidden, .cmdk.hidden { display: none; }
+.cmdk {
+  position: fixed;
+  left: 50%;
+  top: 14vh;
+  z-index: 61;
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  max-height: 72vh;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  animation: cmdk-in var(--d-state) var(--e-settle);
+}
+@keyframes cmdk-in { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
+.cmdk-q {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--silk-mute);
+}
+.cmdk-q input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--silk);
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+}
+.cmdk-q input:focus-visible { outline: none; }
+.cmdk-q input::placeholder { color: var(--silk-mute); }
+.cmdk-list { list-style: none; margin: 0; padding: var(--s1); overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.cmdk-list.none { display: none; }
+.cmdk-grp {
+  padding: var(--s3) var(--s3) var(--s1);
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-mute);
+}
+.cmdk-it {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 40px;
+  padding: 0 var(--s3);
+  border-radius: var(--r2);
+  color: var(--silk);
+  font-size: var(--t-body);
+  cursor: pointer;
+}
+.cmdk-it[aria-selected="true"] { background: var(--plate-hi); }
+.cmdk-it mark { background: none; color: var(--phos-a); }
+.cmdk-ico { flex: none; width: 24px; display: grid; place-items: center; color: var(--silk-dim); font-size: var(--t-value); }
+.cmdk-ico .face-slot { display: block; }
+.cmdk-lab { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-hint { flex: none; margin-left: auto; display: flex; align-items: center; gap: var(--s1); color: var(--silk-mute); font-size: var(--t-value); }
+.cmdk-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--hairline);
+  color: var(--silk-mute);
+  font-size: var(--t-label);
+}
+.cmdk-fine { margin-left: auto; }
+.cmdk-fine a { color: var(--silk-mute); }
+.cmdk-fine a:hover { color: var(--phos-a); }
+@media (pointer: coarse) { .cmdk-it { min-height: 48px; } }
+
 /* ---------- help overlay ---------- */
 .help-overlay {
   position: fixed; inset: 0; z-index: 60;
@@ -5431,6 +5547,8 @@ html.handheld .app,
 html.handheld #boot,
 html.handheld #warmstart,
 html.handheld #help,
+html.handheld #cmdk,
+html.handheld #cmdk-scrim,
 html.handheld #wire-overlay { display: none !important; }
 /* The app is a fixed, non-scrolling instrument (html, body { overflow: hidden }).
    This screen is a document — it has to scroll on a phone in landscape. */
