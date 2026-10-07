@@ -708,6 +708,11 @@ fn census(n: usize, spec: &PhraseSpec) {
     let prior = PatchGrammarPrior::default();
     let mut rng = StdRng::seed_from_u64(POOL_SEED);
     let (mut full, mut walked, mut fell, mut knobbed) = (0, 0, 0, 0);
+    // Live knobs (the nodes the compiler names `…!`) in the voices a render
+    // folds, and how many of them it folded.
+    let (mut knobs, mut folded) = (0, 0);
+    let knob_count =
+        |p: &quiver::prelude::Patch| p.nodes().filter(|(_, n, _)| n.ends_with('!')).count();
     for i in 0..n {
         let tree = prior.sample_with_rng(&mut rng);
         let Ok(voice) = compile_with_input(&tree, spec.sample_rate, None) else {
@@ -717,24 +722,27 @@ fn census(n: usize, spec: &PhraseSpec) {
         let (a, b) = (voice.patch.node_count(), render.patch.node_count());
         full += a;
         walked += b;
-        if !voice.params.is_empty() {
-            knobbed += 1;
-            if a == b {
-                fell += 1;
-                if fell <= 3 {
-                    println!(
-                        "draw {}: fell back: {}",
-                        i + 1,
-                        serde_json::to_string(&tree).expect("serializes")
-                    );
-                }
+        if a == b {
+            fell += 1;
+            if fell <= 3 {
+                println!(
+                    "draw {}: left whole: {}",
+                    i + 1,
+                    serde_json::to_string(&tree).expect("serializes")
+                );
             }
+        } else {
+            knobbed += 1;
+            knobs += knob_count(&voice.patch);
+            folded += knob_count(&voice.patch) - knob_count(&render.patch);
         }
     }
     println!(
         "{n} draws: {full} nodes compiled, {walked} walked by a render ({:.0}%); \
-         {fell} of {knobbed} with knobs kept every knob (the schedule would have moved)",
-        100.0 * walked as f64 / full as f64
+         {fell} left whole (the fold would have moved the schedule); in the {knobbed} folded, \
+         {folded} of {knobs} knobs folded ({:.1}%)",
+        100.0 * walked as f64 / full as f64,
+        100.0 * folded as f64 / knobs as f64
     );
 }
 
