@@ -19,7 +19,7 @@
 
 ### Removed: the ⋯ menu and the ? card
 
-- **The menu bar's ⋯ and ? are gone, and everything in them is in ⌘K's
+- **The menu bar's ⋯ and ? are gone, and everything ⋯ held is in ⌘K's
   list under the same words:** Download your taste, Open a taste file…,
   Download this patch, Download as a picture…, Open a patch file…, Scope &
   analyzer…, Re-run the three-pick warm start, Reset your taste…, Show
@@ -27,10 +27,3 @@
   key map lives in the guide's keyboard page, which *Keys and gestures* in
   the list opens, and its link to a level's film is *Watch PERFORM in
   depth* (and the others) once that film is out (#132).
-
-### Fixed: the scope's settings and Download as a picture… open whole
-
-- **Scope & analyzer… and Download as a picture… open their panels whole,
-  under the menu bar.** Since the menu bar became one row, they (and the ⋯
-  menu that opened them) were cut off at the bar's edge, and opening one
-  pushed the bar's own contents up out of sight (`cmdk.spec.js`, #132).
