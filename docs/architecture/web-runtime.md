@@ -852,11 +852,14 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   (`?v=` stamped, in `WEB_STAMPED`) and draws a preset's slot from it
   (`shippedKeyOf`, under the key the worker files the face under,
   `"<ns>/<render key>"`) with no `faces` request, wherever a preset shows by
-  its index: the warm start's cards and the PRESETS rows (painted as they
-  come into view, `paintFaces`). A shipped face is used only where the file's
-  render namespace is the session's (`renderNs`, from `ready`) and, for a
-  preset with an AUDIO IN, while the session hears the reference clip
-  (`auditionClip`); otherwise the preset is asked of the engine and rendered,
+  its index: the warm start's cards and the PRESETS rows (`paintFaces`: the
+  rows in view at once, the rest from `faceIdleQueue` while the page is
+  idle, so a row scrolled to has its face already). A shipped face is drawn
+  once the bank's own faces are in (`faceStats`, which it is drawn
+  against), and used only where the file's render namespace is the
+  session's (`renderNs`, from `ready`) and, for a preset with an AUDIO IN,
+  while the session hears the reference clip (`auditionClip`); otherwise
+  the preset is asked of the engine and rendered,
   as before the file. A preset's ask made while the file is on its way waits
   for it (`shippedHeld`), at most `SHIPPED_FACES_WAIT_MS` (3 s), so a stalled
   fetch never keeps a face from being rendered. The worker does not read the
@@ -867,7 +870,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   with it, in the cards' own task and 34 ms after the rows
   (`tests/web/faces_presets.spec.js`). The file is held current by
   `crates/auracle-wasm/tests/shipped_faces.rs`, which renders every preset
-  again.
+  again natively, and the built wasm to it by `tests/web/boot_agrees.spec.js`,
+  which renders every preset in the wasm.
 - **After a `render`**, the worker posts the buffer first; the face, if main
   hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
   stored audition (not the PCM main is sent: `audition_pcm` limits). No face

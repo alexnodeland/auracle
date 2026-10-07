@@ -10,8 +10,9 @@
 //   face, under the key the worker files it under, while PERFORM's first
 //   measurement is still out, and no preset's face is asked of the engine.
 //   Its time is a budget (ADR-022).
-// - The PRESETS rows are drawn from the file as they come into view, at the
-//   list's head and at its foot, and no preset's face is asked of the engine.
+// - The PRESETS rows are drawn from the file: the rows in view, then the rest
+//   while the page is idle, so a row at the list's foot has its face before
+//   it is scrolled to; and no preset's face is asked of the engine.
 // - A preset row's face is the face the worker gives for that preset: the
 //   key it is drawn from is the key of the worker's own answer, and the
 //   file's bytes are the bytes the engine renders in the page's wasm.
@@ -123,13 +124,20 @@ test("the warm start's cards draw their presets' faces from the app's own file, 
   app.budget("the warm start shown → its nine faces drawn, engine slowed 4×", warm.drawnAt - warm.shownAt, 1000);
 });
 
-test("the PRESETS rows draw their presets' faces from the app's own file as they come into view, and ask the engine for none", async ({ page, app }) => {
+test("the PRESETS rows draw their presets' faces from the app's own file, those out of view before they are scrolled to, and ask the engine for none", async ({ page, app }) => {
   await app.boot({ slowEngine: 4 });
   await bankTab(page, "presets");
   await allInViewDrawn(app, page);
   const head = await presetsInView(page);
   expect(head.map((r) => r.key)).toEqual(head.map((r) => SHIPPED_KEY.get(r.name)));
-  // To the list's foot: the rows there are drawn as they come into view.
+  // The rows out of view are drawn too, while the page is idle (main.js
+  // `paintFaces`): every row of the list has its face before any is
+  // scrolled to.
+  await expect
+    .poll(() => page.locator("#bank-list .preset-item").evaluateAll((rows) => ({ rows: rows.length, bare: rows.filter((r) => !r.querySelector(".face-slot img.face")).length })), { message: "every preset row drawn, in view or not" })
+    .toEqual({ rows: SHIPPED.presets.length, bare: 0 });
+  // To the list's foot: rows none of which was in view, each with its own
+  // preset's face from the file.
   await page.evaluate(() => {
     const list = document.getElementById("bank-list");
     list.scrollTop = list.scrollHeight;
@@ -137,10 +145,11 @@ test("the PRESETS rows draw their presets' faces from the app's own file as they
   await expect
     .poll(async () => {
       const rows = await presetsInView(page);
-      return rows.length > 3 && !rows.some((r) => head.some((h) => h.index === r.index)) && rows.every((r) => r.face);
-    }, { message: "the rows at the list's foot drawn with their faces" })
+      return rows.length > 3 && !rows.some((r) => head.some((h) => h.index === r.index));
+    }, { message: "the list scrolled to rows none of which was in view" })
     .toBe(true);
   const foot = await presetsInView(page);
+  expect(foot.filter((r) => !r.face), "a row at the foot without its face").toEqual([]);
   expect(foot.map((r) => r.key)).toEqual(foot.map((r) => SHIPPED_KEY.get(r.name)));
   expect(await presetAsks(app)).toEqual([]);
 });
@@ -216,9 +225,10 @@ test("a sound opened while preset faces wait to render is not kept waiting behin
   await boot(app);
   await bankTab(page, "presets");
   await allInViewDrawn(app, page);
-  // Twenty more presets' faces asked for at once, none of them rendered yet
-  // (a list of presets looked through asks for one per row): the faces lane
-  // is long.
+  // Twenty more presets' faces asked of the engine at once (posted here:
+  // with the app's own file the rows ask for none), none of them rendered
+  // yet: the faces lane is long, as a bank stored before faces, or a list of
+  // presets under another build's file, makes it.
   const shown = new Set((await presetsInView(page)).map((r) => r.index));
   const all = await page.locator("#bank-list .preset-item").evaluateAll((rows) => rows.map((r) => Number(r.dataset.index)));
   const asked = all.filter((i) => !shown.has(i)).slice(0, 20);
