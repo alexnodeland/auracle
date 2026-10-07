@@ -560,6 +560,54 @@ class OwnEnv(Tree):
         self.assertNotIn("GIT_INDEX_FILE", env)
 
 
+class NoFileSystemMonitor(Tree):
+    """A config that turns the file-system monitor on (a user's global
+    core.fsmonitor=true, which the script's git reads when it is named by
+    GIT_CONFIG_GLOBAL, as OwnEnv's) does not make the script's git ask it:
+    `diff` and `ls-files --others` would ask a daemon, and start one for
+    each scratch repository, to outlive it and hold up a later git there.
+    The monitor here is a hook that records that it was asked (git runs one
+    for the same two commands, without starting a daemon), so a test that
+    fails does so without leaving one behind."""
+
+    def setUp(self):
+        super().setUp()
+        self.outside = tempfile.mkdtemp(prefix="coverage-monitor-")
+        self.addCleanup(shutil.rmtree, self.outside)
+        self.asked = os.path.join(self.outside, "asked")
+        hook = os.path.join(self.outside, "monitor.sh")
+        with open(hook, "w") as f:
+            f.write(f'#!/bin/sh\necho asked >> "{self.asked}"\nprintf "\\0"\n')
+        os.chmod(hook, 0o755)
+        self.cfg = os.path.join(self.outside, "global.gitconfig")
+        with open(self.cfg, "w") as f:
+            f.write(f"[core]\n\tfsmonitor = {hook}\n")
+        self.git("init", "-q", "-b", "main")
+        self.write("crates/a/src/lib.rs", LIB_BEFORE)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "base")
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.write("crates/a/src/new.rs", "pub fn n() {}\n")
+
+    def was_asked(self):
+        asked = os.path.exists(self.asked)
+        if asked:
+            os.remove(self.asked)
+        return asked
+
+    def test_the_changed_lines_are_read_without_asking_the_monitor(self):
+        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": self.cfg}):
+            # The control: git asks the monitor for both commands when
+            # nothing says otherwise, so the test below can fail.
+            for args in (["diff", "--unified=0", "HEAD", "--", "crates"], ["ls-files", "--others", "--", "crates"]):
+                subprocess.run(["git", "-C", self.root, *args], env=C.own_env(), capture_output=True, check=True)
+                self.assertTrue(self.was_asked(), f"git {args[0]} did not ask the monitor: this test proves nothing")
+            mb, changed = C.changes_since("main", self.root)
+        self.assertFalse(self.was_asked(), "the script's git asked the file-system monitor")
+        self.assertEqual(changed["crates/a/src/lib.rs"], {2, 4, 5})
+        self.assertEqual(changed["crates/a/src/new.rs"], {1, 2})
+
+
 class Parsing(unittest.TestCase):
     def test_hunks_give_the_new_side_and_a_deletion_gives_nothing(self):
         diff = "\n".join(

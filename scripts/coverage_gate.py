@@ -258,7 +258,8 @@ def warn(text: str) -> None:
 # Which config files git reads, kept through own_env: they name no
 # repository. A caller that says "no global config" (the tests' scratch
 # repositories, so no fsmonitor daemon starts in each and outlives it) is
-# heard.
+# heard. `git` below also turns the monitor off itself, whatever config it
+# reads, so a caller that names none gets no daemon either.
 CONFIG_VARS = ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_SYSTEM")
 
 
@@ -272,7 +273,16 @@ def own_env() -> dict[str, str]:
 
 
 def git(args: list[str], root: str = ROOT, check: bool = True) -> str:
-    r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, env=own_env())
+    """`git args` in the checkout at `root`, without the file-system monitor
+    whatever config says (as changes.py's and wasm_pkg.py's): a user's
+    core.fsmonitor=true makes `diff` and `ls-files --others` ask a daemon, and
+    start one for a checkout that has none. In a scratch repository that was
+    a daemon to outlive it, and with hundreds running a git blocked on one's
+    socket for minutes (the pre-commit hook's run of this script's tests). On
+    a loaded machine a daemon that fell behind also called an edited file
+    unchanged, and a changed line the gate never saw is a check that passes
+    on anything."""
+    r = subprocess.run(["git", "-C", root, "-c", "core.fsmonitor=false", *args], capture_output=True, text=True, env=own_env())
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout if r.returncode == 0 else ""
