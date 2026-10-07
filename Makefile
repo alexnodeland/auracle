@@ -29,24 +29,77 @@ else
 RUSTUP_NOTE = $(eval RUSTUP_NOTE :=)$(warning no cargo in $(CARGO_BIN): cargo and rustc come from PATH, and rust-toolchain.toml applies only if they are rustup's proxies)
 CARGO = $(RUSTUP_NOTE)cargo
 endif
-# sccache, opt-in: with AURACLE_SCCACHE=1 in the environment (and sccache
-# installed: `scripts/setup.sh --sccache`), every cargo call here compiles
-# through it, unless RUSTC_WRAPPER already names a wrapper. A new worktree's
-# first build then takes the crates.io dependencies from its cache instead of
-# compiling them again. It is safe with a target directory per worktree,
-# where sharing one target directory is not (docs/architecture/testing.md §
-# The local loop): sccache keys each compile by its inputs, the CARGO_*
-# variables among them, so a workspace crate, whose path differs in each
-# worktree, never hits another worktree's entry, and an incremental compile
-# (the workspace's crates under test-fast) is not cached at all.
-ifeq ($(AURACLE_SCCACHE),1)
+# sccache, on whenever it is installed (`make setup` installs it): every cargo
+# call here compiles through it, so a new worktree's first build takes the
+# crates.io dependencies from one cache on this disk instead of compiling
+# them again (docs/architecture/testing.md § The local loop has what that
+# saves). It is safe with a target directory per worktree, where sharing one
+# target directory is not: sccache keys each compile by its inputs, among them
+# every CARGO_* variable and the compile's working directory, so a workspace
+# crate, whose CARGO_MANIFEST_DIR and directory differ in each worktree, never
+# hits another worktree's entry; nor does a dependency that reads its build
+# script's OUT_DIR (a variable its dep-info lists, which is hashed too, and a
+# path inside the worktree). An incremental compile (the workspace's crates
+# under test-fast, and clippy's) is not cached at all.
+# Left alone when:
+# - there is no sccache, or AURACLE_SCCACHE=0 (the builds are as they were
+#   without one), or GITHUB_ACTIONS is set (CI's runners have rust-cache), or
+#   RUSTC_WRAPPER is set, empty too, which names the wrapper;
+# - the goals compile no Rust (RUST_GOALS; `make` alone is `all`): `make
+#   serve`, `make dev-check` and the rest don't start a server or wait on one.
+#   A goal left out of the list compiles without sccache, as before it;
+# - its server does not answer on its port within ten seconds (a server that
+#   is stuck, or another program on the port): said once, and the builds go
+#   without it, where a server that does not answer would fail every compile.
+#   AURACLE_SCCACHE=1 also says when there is no sccache.
+# The server, not the cargo call, runs the compiles, and serves every
+# checkout until it has been idle for ten minutes, so it is started here at a
+# priority of 10 whatever the priority of the make that starts it (at its own
+# when that is already 10 or more: a priority can't be raised back), and with
+# the cache capped at SCCACHE_CACHE_SIZE, 2G here (sccache's own default is
+# 10G; the three builds `make check` makes put about 0.3 G in it, and each
+# worktree's own crates 0.05 G more), evicting the least recently used. A
+# server that is already running keeps the priority and the cache size it was
+# started with: `sccache --stop-server` stops it, and the next make starts it
+# again.
+# `make` alone makes `all` (said here, above the first target, so the list
+# below can name it).
+.DEFAULT_GOAL := all
+RUST_GOALS := all check test test-verbose test-crate test-fast-tier test-slow-tier \
+	test-search-floor test-slow-rest build lint lint-fix clippy doc wasm wasm-dev wasm-check \
+	bundle coverage coverage-run coverage-archive mutants perform-wirings preset-faces \
+	climb search-check islands budget-ab phi-stats norm-peak fit-bench closed-loop \
+	walk-payload offer-census revalidate site site-api site-tools
+ifneq ($(AURACLE_SCCACHE),0)
+ifeq ($(origin RUSTC_WRAPPER),undefined)
+ifeq ($(GITHUB_ACTIONS),)
 SCCACHE := $(firstword $(wildcard $(CARGO_BIN)/sccache) $(shell command -v sccache 2>/dev/null))
-ifeq ($(SCCACHE),)
-$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh --sccache; building without it)
+ifneq ($(SCCACHE),)
+ifneq ($(filter $(RUST_GOALS),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))),)
+SCCACHE_SIZE := $(or $(SCCACHE_CACHE_SIZE),2G)
+SCCACHE_PORT := $(or $(SCCACHE_SERVER_PORT),4226)
+# Whatever answers on its port is waited for ten seconds, not for ever.
+SCCACHE_WITHIN := perl -e 'alarm 10; exec @ARGV'
+# The increment that brings this make's priority to 10, or 0 when it is there
+# already (`nice` on macOS can't print the priority; `ps` can).
+SCCACHE_NICE := n=$$(ps -o nice= -p $$$$ 2>/dev/null | tr -d ' '); i=$$((10 - $${n:-0})); [ "$$i" -gt 0 ] || i=0
+SCCACHE_UP := $(shell ($(SCCACHE_NICE); SCCACHE_CACHE_SIZE=$(SCCACHE_SIZE) nice -n "$$i" $(SCCACHE_WITHIN) $(SCCACHE) --start-server >/dev/null 2>&1; $(SCCACHE_WITHIN) $(SCCACHE) --show-stats >/dev/null 2>&1 && echo ok) 2>/dev/null)
+ifeq ($(SCCACHE_UP),ok)
+export RUSTC_WRAPPER := $(SCCACHE)
+export SCCACHE_CACHE_SIZE := $(SCCACHE_SIZE)
 else
-export RUSTC_WRAPPER ?= $(SCCACHE)
+$(warning sccache's server does not answer on port $(SCCACHE_PORT) within ten seconds: building without it. An sccache server there: `$(SCCACHE) --stop-server`, or end the process `lsof -iTCP:$(SCCACHE_PORT) -sTCP:LISTEN` names (--stop-server waits for ever on a server that does not answer). Another program: SCCACHE_SERVER_PORT=<a free port>. AURACLE_SCCACHE=0 builds without sccache and skips this wait)
 endif
 endif
+else
+ifeq ($(AURACLE_SCCACHE),1)
+$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh; building without it)
+endif
+endif
+endif
+endif
+endif
+
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
 FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
@@ -116,7 +169,7 @@ help:
 ## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
 ## checks on staged files before each commit. Opt-in, per clone.
 ## setup: install what the engine, the app and its tests need (scripts/setup.sh),
-## and sccache when AURACLE_SCCACHE=1 is set (opt-in)
+## sccache among them (`make` compiles through it; AURACLE_SCCACHE=0 skips it)
 setup:
 	scripts/setup.sh
 
@@ -131,8 +184,10 @@ install-hooks:
 
 ## worktree: a new branch's worktree, at .claude/worktrees/TOPIC in the main
 ## checkout (git ignores it), from any checkout: TOPIC's branch (claude/TOPIC,
-## or BRANCH=) from a fresh origin/main, with tests/web's packages installed;
-## it prints the path (docs/process.md § Building)
+## or BRANCH=) from a fresh origin/main, with tests/web's packages installed
+## and the release engine of another checkout built from the same Rust, if
+## there is one (`make pkg-reuse`; if not it says `make wasm` is owed); it
+## prints the path (docs/process.md § Building)
 ## worktree-rm: once merged, remove TOPIC's worktree and the branch it is on
 ## (read from the worktree; BRANCH= only checks it); it refuses a worktree
 ## holding work not committed, one on no branch, and a branch whose commits
@@ -148,6 +203,9 @@ worktree:
 	git -C "$(MAIN_CHECKOUT)" fetch -q origin
 	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
 	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
+	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && $(MAKE) --no-print-directory pkg-reuse SOFT=1
+	@[ -n "$(SCCACHE)" ] || [ "$(AURACLE_SCCACHE)" = 0 ] || [ -n "$(GITHUB_ACTIONS)" ] || [ "$(origin RUSTC_WRAPPER)" != undefined ] || \
+		printf '  no sccache: its first build compiles the dependencies in full; scripts/setup.sh installs it, and the next one takes them from its cache\n'
 	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
 
 # The branch to delete is the one the worktree is on, never one named from
@@ -765,8 +823,9 @@ revalidate: phi-stats norm-peak climb search-check
 WASM_PKG := python3 scripts/wasm_pkg.py
 WASM_PACK := wasm-pack build crates/auracle-wasm --target web --out-dir ../../apps/web/pkg
 WASM_RELEASE := $(WASM_RUSTFLAGS) $(WASM_PACK) --release
-# test-fast's codegen (Cargo.toml: release's opt-level, no LTO, 16 codegen
-# units) into its own target directory, incremental, and no wasm-opt.
+# test-fast's codegen (Cargo.toml: release's opt-level, no LTO, 256 codegen
+# units for the workspace's crates) into its own target directory,
+# incremental, and no wasm-opt.
 WASM_DEV := CARGO_INCREMENTAL=1 $(WASM_RUSTFLAGS) $(WASM_PACK) --profile test-fast --no-opt
 # The browser targets' first line: a release build is in pkg/, or they stop
 # and say what to run.
@@ -792,12 +851,17 @@ wasm-dev:
 	$(RUSTUP_NOTE)$(WASM_DEV) && \
 	$(WASM_PKG) stamp --profile dev --source "$$src" --recipe '$(WASM_DEV)' $(WEB_STAMPED)
 
-## pkg-reuse: in a worktree, take the main checkout's release engine instead
-## of building it again (about a second, not a minute), when it was built from
-## this worktree's Rust and the same build command; otherwise it says so, and
-## `make wasm` builds it. PKG_FROM=<dir> takes another checkout's
+## pkg-reuse: take another checkout's release engine instead of building it
+## again (about a second, not minutes of fat LTO): the first of this
+## repository's checkouts and worktrees (`git worktree list`: the main
+## checkout, then the most recently built) whose engine was built from this
+## tree's Rust and the same build command, and is still the engine its stamp
+## was written for; copied, never linked, as new files; otherwise it says why
+## each was passed over, and `make wasm` is owed. `make worktree` tries it.
+## PKG_FROM=<dir> takes that checkout's only. SOFT=1 says a refusal and
+## doesn't fail on it
 pkg-reuse:
-	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED)
+	@$(WASM_PKG) reuse --recipe '$(WASM_RELEASE)' $(if $(PKG_FROM),--from $(PKG_FROM)) $(WEB_STAMPED) $(if $(filter-out 0,$(SOFT)),|| true)
 
 # The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
 # hash over the engine and the app scripts, so the same bytes get the same URL

@@ -135,7 +135,7 @@ contributor guide; this file does not repeat it.
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests on nextest); `make -j check` runs the parts side by side |
 | Between edits | `make check-changed`: the parts of `make check` the change reaches, by CI's own classifier (`scripts/changes.py`), and what else CI runs for it |
 | After changing Rust the app calls | `make wasm` (`make wasm-dev` to try it by hand in seconds; the specs and films refuse that build) |
-| An engine for a new worktree that changed no Rust | `make pkg-reuse` (the main checkout's build, when it was built from the same Rust; else it says to `make wasm`) |
+| An engine for a worktree that changed no Rust | `make pkg-reuse` (`make worktree` runs it: a release build from any checkout of this repository, the main one first, that was made from the same Rust; else it says `make wasm` is owed) |
 | Only JS changed | `make web-check` |
 | `worker.js`'s replies or lanes | `make worker-test` (after `make wasm`) |
 | One crate's tests | `make test-crate CRATE=auracle-<crate>` (`FILTER=` a test name) |

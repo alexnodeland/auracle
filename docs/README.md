@@ -130,6 +130,10 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
   spec's time goes (its boot, its waits for the pool, its own work), here and
   over a CI run's blob reports, and what a cache takes away: not the engine's
   compile, not the veil, but the fill a test waits for (#323)
+- [`rust-build-2026-10/`](notes/rust-build-2026-10/README.md): what a faster
+  Rust toolchain would save on this repository, measured on a loaded
+  machine: sccache across worktrees, the `test-fast` profile, the linker
+  (mold on CI), the parallel front end and Cranelift (#321)
 - [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
   health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
   the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the

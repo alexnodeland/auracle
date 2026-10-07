@@ -26,7 +26,7 @@ current.
 
 ```bash
 make wasm          # wasm-pack --release with the 8 MB stack, then the build stamp
-make pkg-reuse     # in a worktree that changed no Rust: the main checkout's build, in a second
+make pkg-reuse     # in a worktree that changed no Rust: another checkout's build, in a second
 make wasm-dev      # a quick build for trying an engine edit by hand; the specs refuse it
 ```
 
@@ -39,15 +39,21 @@ release build).
   a 1 MB stack that overflows on large patches, and leaves no stamp.
 - It takes about a minute (more with every crate to compile). Run it before
   queueing browser work, not while a recording is running.
-- **`make pkg-reuse`** copies the main checkout's release build into a
-  worktree and stamps it with the worktree's own app scripts, when
-  `pkg/build.json` says it was built from the same Rust and build command
-  (its `source`, a hash of `crates/`, the Cargo files and the toolchain as
-  the working tree has them, uncommitted edits included). Otherwise it says
-  why, and `make wasm` builds one. `PKG_FROM=<dir>` takes another
-  checkout's.
-- **`make wasm-dev`** builds with test-fast's codegen (no LTO, 16 codegen
-  units), incremental, and no wasm-opt: an engine edit reaches `make serve`
+- **`make pkg-reuse`** copies a release build into a checkout and stamps it
+  with that checkout's own app scripts: the first of this repository's
+  checkouts and worktrees (`git worktree list`: the main checkout, then the
+  most recently built) whose `pkg/build.json` says it was built from the
+  same Rust and build command (its `source`, a hash of `crates/`, the Cargo
+  files and the toolchain as the working tree has them, uncommitted edits
+  included), and whose engine is still the one that stamp was written for
+  (its `engine`: a plain `wasm-pack build` rewrites the engine and leaves the
+  stamp alone). The files are copied, never linked, so a build elsewhere
+  later can't change this one, and written anew, so the session-start hook
+  doesn't call them older than the sources. `make worktree` runs it. When no checkout has one it
+  says why each was passed over, and `make wasm` is owed.
+  `PKG_FROM=<dir>` takes that checkout's only.
+- **`make wasm-dev`** builds with test-fast's codegen (no LTO, 256 codegen
+  units for the workspace's crates), incremental, and no wasm-opt: an engine edit reaches `make serve`
   in seconds rather than a minute. Its stamp says `"profile": "dev"`, and the
   `make browser-*` targets, the Playwright config, rehearsals and recordings
   refuse it, naming `make wasm`; the session-start hook reports it.

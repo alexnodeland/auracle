@@ -2,13 +2,13 @@
 # Set up a machine to build, test and film Auracle. Idempotent: run it again
 # after pulling and it only does what is missing.
 #
-#   scripts/setup.sh            the engine, the app and its tests
+#   scripts/setup.sh            the engine, the app and its tests, and sccache
 #   scripts/setup.sh --film     also the films: voice, film tools, models, sound
 #   scripts/setup.sh --site     also the site's doc toolchain (mdBook + plugins)
-#   scripts/setup.sh --sccache  also sccache, which `make` compiles through when
-#                               AURACLE_SCCACHE=1 is set (opt-in; not in --all;
-#                               AURACLE_SCCACHE=1 in the environment implies it)
-#   scripts/setup.sh --all      everything but sccache
+#   scripts/setup.sh --all      everything
+#   scripts/setup.sh --no-sccache   without sccache (AURACLE_SCCACHE=0 in the
+#                               environment does the same, and tells `make` not
+#                               to compile through it)
 #
 # `make setup` and `make film-setup` run the first two.
 #
@@ -41,13 +41,14 @@
 #          shared sound (make film-sounds)
 #   site   mdbook, mdbook-katex and mdbook-admonish at the pinned versions
 #   sccache  sccache at SCCACHE_VERSION, built with no remote storage (a
-#          cache on this disk only). `make` uses it when AURACLE_SCCACHE=1 is
-#          in the environment: put `export AURACLE_SCCACHE=1` in your shell's
-#          profile. A new worktree's first build then takes the crates.io
+#          cache on this disk only). `make` compiles through it whenever it
+#          is installed (AURACLE_SCCACHE=0 in the environment turns that
+#          off). A new worktree's first build then takes the crates.io
 #          dependencies from the cache, not the compiler; each worktree keeps
 #          its own target/ (the Makefile says why that is safe). The cache is
 #          ~/Library/Caches/Mozilla.sccache on a Mac (~/.cache/sccache on
-#          Linux), up to 10 GB; SCCACHE_CACHE_SIZE sets another limit
+#          Linux), up to 2 GB under `make` (sccache's own limit is 10 GB);
+#          SCCACHE_CACHE_SIZE sets another
 #
 # Nothing here needs sudo. ffmpeg comes with imageio-ffmpeg; espeak-ng with
 # espeakng-loader.
@@ -56,13 +57,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 SCCACHE_VERSION=0.18.0
-FILM=0 SITE=0 SCCACHE=0
-if [ "${AURACLE_SCCACHE:-}" = 1 ]; then SCCACHE=1; fi
+FILM=0 SITE=0 SCCACHE=1
+if [ "${AURACLE_SCCACHE:-}" = 0 ]; then SCCACHE=0; fi
 for a in "$@"; do
   case "$a" in
     --film) FILM=1 ;;
     --site) SITE=1 ;;
-    --sccache) SCCACHE=1 ;;
+    --no-sccache) SCCACHE=0 ;;
+    # What asked for sccache when it was opt-in; it is in the base set now.
+    --sccache) ;;
     --all) FILM=1 SITE=1 ;;
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "unknown option: $a (see --help)" >&2; exit 2 ;;
@@ -108,19 +111,18 @@ mutants="$(sed -n 's/^MUTANTS_VERSION := //p' Makefile)"
 if [ "$(cargo mutants --version 2>/dev/null | awk '{ print $2 }')" != "$mutants" ]; then
   cargo install --locked "cargo-mutants@$mutants"
 fi
-# sccache, opt-in (--sccache, or AURACLE_SCCACHE=1 in the environment, which
-# `make setup` passes on): before the engine's first build below, so that
-# one goes through it too. Built without remote storage, which a cache on
-# this disk does not need.
+# sccache (unless --no-sccache, or AURACLE_SCCACHE=0 in the environment):
+# before the engine's first build below, so that one goes through it too.
+# Built without remote storage, which a cache on this disk does not need. Its
+# server is `make`'s to start (at a priority of 10, with the cache capped), and `make`
+# says when the server will not start; starting one here would run it at this
+# shell's priority with sccache's own 10 GB limit, which `make` then finds
+# running and leaves be.
 if [ "$SCCACHE" = 1 ]; then
   if [ "$(sccache --version 2>/dev/null | awk '{ print $2 }')" != "$SCCACHE_VERSION" ]; then
     cargo install --locked --no-default-features "sccache@$SCCACHE_VERSION"
   fi
-  if [ "${AURACLE_SCCACHE:-}" = 1 ]; then
-    echo "$(sccache --version): make compiles through it (AURACLE_SCCACHE=1)"
-  else
-    echo "$(sccache --version): to have make compile through it, put  export AURACLE_SCCACHE=1  in your shell's profile"
-  fi
+  echo "$(sccache --version): make compiles through it (AURACLE_SCCACHE=0 turns that off)"
 fi
 
 say "Node and the browser tests"

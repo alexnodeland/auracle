@@ -15,7 +15,7 @@ in `docs/architecture/testing.md`.
 
 ```bash
 make wasm                  # only if Rust the app calls changed (see the wasm skill);
-                           # in a fresh worktree, `make pkg-reuse` may take the main checkout's
+                           # in a fresh worktree, `make pkg-reuse` may take another checkout's
 cd tests/web
 AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   npx playwright test <spec.js ...> --reporter=line > <scratch>/run.log 2>&1

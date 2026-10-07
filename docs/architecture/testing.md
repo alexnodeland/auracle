@@ -146,12 +146,22 @@ each comparison was taken back to back, with the load average beside it.
   profile, where its own time limit comes first. Which tier a test is in is
   still the `Makefile`'s (`SEARCH_FLOOR`, `SLOW_TESTS`).
 - **Test builds are incremental** (`incremental = true` in
-  `[profile.test-fast]`). After an edit to a function's body, the test binaries rebuild in 10 s
-  instead of 61 (an edit to the grammar, which three other crates build
-  on) and in 11 s instead of 41 (the session crate): medians of six each,
-  at a load average of 77 to 136. The tests run as fast: six of the
-  heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
-  whole. It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
+  `[profile.test-fast]`). The workspace's crates build in 256 codegen units
+  (cargo's own number for an incremental build; the dependencies keep 16):
+  an edit dirties a 256th of a crate where it dirtied a sixteenth. After a
+  one-statement edit to the body of a plain function, the test binaries
+  rebuilt in 9 to 13 CPU seconds, against 31 to 41 at 16 units (seven runs
+  each, at a load average of 100 to 190: 16 to 33 s of wall against 29 to
+  54), and the tests ran as long (the fast tier took 1,069 and 1,105 CPU
+  seconds against 1,078 and 1,083). An edit to an `#[inline]` function that
+  the crates call costs more, since every caller compiles it again (87 to
+  102 CPU seconds at 16 units). At 16 units, the first measurement of the
+  loop (#294) took a different edit, at a load average of 77 to 136: the test
+  binaries rebuilt in 10 s instead of 61 (an edit to the grammar, which
+  three other crates build on) and in 11 s instead of 41 (the session
+  crate), medians of six each, with the tests as fast as built whole (six of
+  the heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
+  whole). It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
   CI sets `CARGO_INCREMENTAL=0`, which overrides it, since every build
   there starts from a cache that the incremental state would only bloat;
   `make coverage` sets it too, since each of its runs starts clean.
@@ -177,22 +187,60 @@ each comparison was taken back to back, with the load average beside it.
   reaches (Site, Worker protocol, Browser smoke, the specs it reaches), each
   with its local command. `make -j check-changed` runs the parts side by
   side.
-- **sccache, opt-in.** With `AURACLE_SCCACHE=1` in the environment (put it
-  in your shell's profile; `make setup` then installs sccache, as
-  `scripts/setup.sh --sccache` does), every cargo call `make` makes
-  compiles through it. Each worktree keeps its own `target/`: one target
-  directory shared between worktrees is not safe here, since cargo judges
-  freshness by file times and bakes `CARGO_MANIFEST_DIR` into test binaries
-  (the main checkout once ran a test binary built from a copy of the
-  workspace, which read the copy's fixture). sccache keys each compile by
-  its inputs, the `CARGO_*` variables among them, so only what is the same
-  in every worktree, crates.io's dependencies, comes back from its cache,
-  and an incremental compile (the workspace's crates under `test-fast`) is
-  never cached. A new worktree's first builds (the tests, clippy and the
-  wasm32 check, as `make check` builds them) took 99, 130 and 146 s from a
-  warm cache against 117, 160 and 160 s without one, at load averages of
-  27 to 59: 146 of the 198 compiles it can cache came back from it, and it
-  never caches a build script or a procedural macro (161 calls).
+- **sccache, on whenever it is installed** (`make setup` installs it;
+  `AURACLE_SCCACHE=0` in the environment turns it off). Every cargo call
+  `make` makes compiles through it, with one cache on the disk for every
+  worktree, capped at 2 GB (`SCCACHE_CACHE_SIZE`; the dependencies take 0.3
+  GB, and each worktree's own crates about 0.05 GB more). Each worktree
+  keeps its own `target/`: one target directory shared between worktrees is
+  not safe here, since cargo judges freshness by file times and bakes
+  `CARGO_MANIFEST_DIR` into test binaries (the main checkout once ran a
+  test binary built from a copy of the workspace, which read the copy's
+  fixture). sccache keys each compile by its inputs, among them every
+  `CARGO_*` variable and the compile's working directory, so a workspace
+  crate (its `CARGO_MANIFEST_DIR` and directory differ in each worktree)
+  never comes back from another worktree's compile; nor does a dependency
+  that reads its build script's `OUT_DIR` (a variable the crate's dep-info
+  lists, which sccache hashes too, and a path inside the worktree). What
+  comes back is crates.io's other dependencies; the rest, and what sccache
+  never caches (build scripts, procedural macros, binaries, and an
+  incremental compile: the workspace's crates under `test-fast`,
+  clippy's), is compiled again. In a second worktree 49 of the 65 compiles
+  the test build asks for were taken from the cache. Only a goal that
+  compiles Rust (the Makefile's `RUST_GOALS`; `make` alone is `make all`)
+  looks for the server: `make serve` or `make dev-check` don't. The server
+  runs the compiles, for every checkout, until it has been idle for ten
+  minutes, so `make` starts it at a priority of 10 (`nice` 10, whatever
+  make's own; its own when that is 10 or more), and when the server does
+  not answer on its port within ten seconds it says so and builds without
+  it. A server that is already running keeps the priority and the cache
+  size it was started with: `sccache --stop-server` stops it, and the next
+  `make` starts it again. [`docs/notes/rust-build-2026-10/`](../notes/rust-build-2026-10/README.md)
+  has the method and every figure; in CPU seconds (user and system, the
+  server's included; the wall time was swamped by a load average of 45 to
+  140), the three builds `make check` makes from a clean `target/`
+  (the tests, clippy, the wasm32 check) took 367 to 400 without it; 427 the
+  first time with an empty cache; 344 in a second worktree with a warm one;
+  and 301 and 304 where the worktree's `target/` was cleaned and built
+  again. `make wasm` took 124 to 135, 112 in a second worktree and 72 again
+  in the same one: the dependencies come back, the fat-LTO link of the
+  engine does not. The engine it builds is the same file, byte for byte.
+
+- **A new worktree's engine is copied, not built.** `make worktree` ends
+  with `make pkg-reuse`, which copies into the worktree the release build
+  of any other checkout of the repository (`git worktree list`: the main
+  checkout, then the most recently built) that was made from the same Rust
+  and build command, instead of the `make wasm` it would owe (124 to 135
+  CPU seconds, 330 to 530 s of wall at a load average of 100 to 130, for
+  fat LTO and one codegen unit). Files are copied, never linked, so a build
+  in another checkout later can't change this one, and written anew, so they
+  are newer than the sources the worktree was just checked out with (the
+  session-start hook calls an engine older than them stale). An engine that
+  no longer hashes to its stamp's `engine` (rebuilt since by a plain
+  `wasm-pack build`, which leaves `pkg/build.json` alone) is passed over,
+  and so is a stamp from before the field. When no checkout has one it says
+  so, and why each was passed over: `make wasm` is owed before a browser
+  run.
 
 ## CI tiers
 

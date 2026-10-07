@@ -17,8 +17,9 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 
 - **The release engine.** The specs run on what `make wasm` builds, as CI
   and the films do. In a worktree that changed no Rust, `make pkg-reuse`
-  takes the main checkout's build instead (in about a second), when it was
-  built from the same Rust. A quick build (`make wasm-dev`, for trying an
+  (which `make worktree` runs) takes another checkout's build instead (in
+  about a second): the main checkout's, or a worktree's, that was built from
+  the same Rust. A quick build (`make wasm-dev`, for trying an
   engine edit by hand) is refused, and so is one a build left unfinished:
   the config stops before a browser starts, and the `make browser-*`
   targets say so first.

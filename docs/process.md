@@ -85,8 +85,10 @@ in a plan's prose, a session's notes or a conversation.
 
 - **One worktree per branch**, inside the main checkout at
   `.claude/worktrees/<topic>`, which git ignores: `make worktree TOPIC=<topic>`,
-  from any checkout, fetches, makes `claude/<topic>` from `origin/main` there
-  and installs `tests/web`'s packages in it. By hand, from the main checkout:
+  from any checkout, fetches, makes `claude/<topic>` from `origin/main` there,
+  installs `tests/web`'s packages in it and copies in the release engine of
+  another checkout built from the same Rust, if there is one (`make
+  pkg-reuse`; if not it says `make wasm` is owed). By hand, from the main checkout:
   `git worktree add -b claude/<topic> .claude/worktrees/<topic> origin/main`.
   Claude Code puts the worktrees it makes itself there too (a subagent's
   `isolation: worktree`, `EnterWorktree`, `claude --worktree`). A worktree

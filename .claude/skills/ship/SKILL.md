@@ -67,11 +67,13 @@ packages there (`node_modules` is per checkout): without them
 lint a spec. The second keeps the main checkout on `main` and current: an
 agent in `$WT` also loads its root `AGENTS.md`, from an ancestor directory,
 and runs its hooks and settings; it follows its worktree's own `AGENTS.md`
-where the two differ. The last gives the worktree an engine: the main
-checkout's release build, copied in about a second, when it was built from
-the same Rust (`make pkg-reuse` compares the two, and says why not when it
-can't); otherwise a build of its own (about a minute, more with every crate
-to compile). A builder that changes Rust builds again with `make wasm`.
+where the two differ. The last gives the worktree an engine (the first
+line tried it already, and the main checkout may have been built since): a
+release build copied in about a second from the main checkout, or from any
+other worktree, that was built from the same Rust (`make pkg-reuse` compares
+them, and says why each was passed over when none was); otherwise a build of
+its own (about a minute, more with every crate to compile). A builder that
+changes Rust builds again with `make wasm`.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
