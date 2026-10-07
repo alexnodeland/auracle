@@ -118,8 +118,8 @@ fn shipped_preset_wirings_are_current() {
 
 /// The palette controls the shipped prediction may wire, in palette order:
 /// what `make perform-wirings` measured at 0.70 (`PREDICT_GATE`).
-const PASSING: [&str; 9] = [
-    "Bright", "Snap", "Space", "Warmth", "Thump", "Round", "Distance", "Haze", "Bite",
+const PASSING: [&str; 8] = [
+    "Bright", "Snap", "Space", "Thump", "Round", "Distance", "Haze", "Bite",
 ];
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
