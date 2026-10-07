@@ -81,7 +81,7 @@ export const VIEWS = {
   shell: {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
-      "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "budgets", "smoke", "failure_flows",
+      "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
   },

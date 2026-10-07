@@ -128,24 +128,62 @@ clearing site data destroys the session; and there is no server-side copy to
 recover from. The only backup of the taste is a downloaded profile (the menu’s
 Download your taste item).
 
-## Restore is farmed
+## Restore goes sound by sound
 
-Restoring re-renders the saved bank, which is the single most expensive thing
-the app does on load. It runs through the same parallel path as the initial
-fill (`import_session_deferred` → `bank_absorb` → `restore_finish`) rather
-than serially. See [The web runtime](./runtime.md#the-render-farm).
+Restoring re-measures the saved bank, which is the single most expensive thing
+the app does on load. It is one entry at a time in bank order
+(`import_session_deferred_v2` → `bank_absorb` per entry → `restore_finish`),
+with `fill_progress` (“recalling 12 of 40 sounds…”) after each:
+
+- **On the farm** while a farm worker is ready, as the initial fill runs. See
+  [The web runtime](./runtime.md#the-render-farm). The first eight entries
+  (`FARM_AUDIO_AHEAD`) are rendered with their audio whatever the cache
+  holds; the rest are read from it where it has their rows.
+- **In the engine worker** otherwise (`?farm=0`, a machine too small for a
+  farm, or none ready yet), with a yield to the message queue between
+  entries, so the bar moves and requests are answered while it runs. Each
+  entry is read from the [render cache](#the-persistent-render-cache) when
+  it has the entry's row, and rendered and written back otherwise. A farm
+  worker that reports ready later takes the rest.
+
+The cache has a row for what a farm worker rendered and for what an earlier
+restore rendered in the engine worker, and for nothing else (see [what writes a
+row](#what-writes-a-row)), so a sound that joined the bank in play is rendered
+again by the next restore.
+
+In the engine worker it was one synchronous call (`import_session_checked`)
+that re-rendered every entry, read nothing from the cache and posted nothing
+until it returned: 13.6 s for 40 sounds on one unchanging line in Firefox on
+an M-series laptop, and minutes on a CPU four or five times slower. That call is kept only for a binary without
+the deferred surface. Whichever path runs, the bank comes back as
+`import_state` builds it, in its order (`deferred_restore_equals_import_state`).
 
 ## The persistent render cache
 
 $\varphi$ is a pure function of $(\text{term}, \text{spec})$, which is the
-[determinism contract](./runtime.md), so a featurization this browser has
-already performed can be replayed instead of re-rendered. Without that, every
+[determinism contract](./runtime.md), so a featurization stored once can be
+replayed instead of re-rendered. Without that, every
 reload re-renders the whole bank from nothing: the app’s 40 sounds at ~0.5 s
 each, for numbers the machine computed yesterday.
 
 Farm workers consult an IndexedDB store (`auracle-renders`) before rendering and
-write back on a miss. The engine reports the hit rate per wave into the app’s own
-log.
+write back every render they make. A restore the engine worker runs itself, with
+no farm worker ready, reads and writes the same rows under the same keys
+(`bankPass` in `worker.js`), so a session restored with no farm comes back from
+the store the next time, and so does one whose farm wrote its rows. The engine
+reports the hit rate per wave, and per restore it runs itself, into the app’s
+own log.
+
+### What writes a row
+
+Only those two: a farm worker's render (a fill's draw, a restore's entry, a
+guess's candidate), and a render the engine worker's own restore makes. What
+the engine worker measures anywhere else goes into its memo and no further: a
+fill with no farm (`fill_step`), a generation's or ⚡'s children (walks
+return their child, not a row), a kept edit, an opened patch file, a preset
+taken in. Those are rendered again by the next restore, which writes their
+rows then. A row for each would make every return a read; it is not written
+today.
 
 The engine worker opens the store once at boot, before any farm worker is handed
 the phrase: it creates the store on a first visit and stamps it with the
@@ -194,6 +232,7 @@ disagrees.
 Cached rows carry $\varphi$ **without samples**, so a job that asked for audio
 still renders. Serving it a row would move the saving onto the first patches the
 player actually auditions, which is exactly where `wantAudio` exists to avoid it.
+Its row is still written: a restore with no farm asks for no audio, and reads it.
 
 Eviction is “clear everything” past a row cap, which is crude on purpose: an LRU
 needs an access-time write on every *hit*, turning the cheap path into a write,
@@ -201,7 +240,14 @@ and what is being protected is a disk quota rather than a working set.
 
 It lives in the farm worker rather than in the engine’s `runFarm` loop, whose
 absorb cursor, re-issue watchdog, and speculative-work handling must not acquire
-asynchrony. A cache hit is simply a job that returns fast.
+asynchrony. A cache hit is simply a job that returns fast. The engine worker’s
+own restore reads its rows in one transaction before its first entry. It
+waits for the stamp as a crew does (`renderStoreReady`, at most
+`RENDER_STAMP_MS`), then for the open and the read, at most `RENDER_STAMP_MS`
+again, so up to twice that in all. A store that opens after that is closed
+unread, and every entry is rendered and none written back. One that opens in
+time but whose rows come later costs the entries measured before they come:
+those are rendered, and the rest are read.
 
 ## Pins live engine-side
 
