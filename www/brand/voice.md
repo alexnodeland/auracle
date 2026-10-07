@@ -465,7 +465,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
 | **PASS** | PERFORM's pad: pass on the offer in B without growing another; heard, a pick for what you had, with UNDO | skip, reject, discard |
-| **first steps** | Each level's first-visit steps, one at a time in a pill bottom left (PERFORM's: play, turn, offer; PATCH's: play it, a knob, a lock, ⚡); its × is *Stop showing these*, for that level's | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
+| **first steps** | Each level's first-visit steps, one at a time in a pill bottom left (PERFORM's: play, turn, offer, zoom out to TASTE, the model view; PATCH's: play it, a knob, a lock, ⚡); its × is *Stop showing these*, for that level's | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
+| *Press ⌥↑ to zoom out to TASTE, the sound among all sounds* / *Pinch to zoom out to TASTE, …* | PERFORM's fourth first step; the line is TASTE's own from `#where` | scroll out, go up, zoom to the map |
+| *Hold ⌥ to see what the model believes* / *Hold MODEL to see …* | PERFORM's fifth first step, ticked as the view comes up | what the model thinks, lens |
 | **▶ PLAY** | An EVOLVE card's button: its phrase | SAMPLE, audition |
 | **↓ patch** | An EVOLVE card's corner: open its sound in PATCH without picking | open in patch, promote |
 | **⇄ face** | An EVOLVE card's corner, flipped to its circuit: back to its face | wave |
@@ -549,6 +551,10 @@ banned-words check in `make dev-check` reads the list after it.
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
 | **the levels** | PERFORM, PATCH, EVOLVE, TASTE and LEARNING as one space around the sound you're playing: zoom out to TASTE and LEARNING, in to PATCH, beside it to EVOLVE; and the cross at the stage's right edge that shows where you are (its name to a screen reader: *Where you are*) | tabs, pages, "the rail" (that is the bank's), the depth rail |
+| **the levels nod** | ⌥↑ at LEARNING, ⌥↓ at PATCH, a turn or a pinch past the end: the cross nods and no level moves | bounce, shake |
+| **a light along the levels** | The light that travels the stops from the level you left to the one you reach while a move plays | puck, indicator, dot |
+| **spread**, **pinch** | Two fingers on a touch screen moving apart, and together | pinch in / pinch out, pinch-zoom |
+| **the face flies**, **fades** | A move between the levels, or a sound opened from the bank, carrying its face to where the next level draws it; where a level doesn't, it fades, and with no face to carry one level fades into the next | morph, transition, zoom animation, cross-fade |
 | **KEYS ⋯** | The keys bar's settings: HOLD, UNI, ARP, SYNC, glide, the keybed's height and span, and silence | settings, options, the dock's drawer |
 
 ### The view names
