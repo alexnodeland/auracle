@@ -20,6 +20,9 @@
 //   camera and leave the level; ⌥ and the wheel move a level, over the rack
 //   too, one level a turn; ctrl and the wheel elsewhere on the stage move a
 //   level as well.
+// - ⌥ and the wheel over something that can still scroll that way scroll
+//   it, and the model view ⌥ holds up stays; at its end, the turn after is
+//   the levels'.
 // - Two fingers spread on a touch screen zoom in, closed zoom out; over the
 //   rack they move no level.
 // - At the end of the axis a level key moves nothing and the rail nods.
@@ -219,6 +222,40 @@ test("ctrl and the wheel over the rack zoom its camera; ⌥ and the wheel move a
   await page.keyboard.up("Control");
   await expect(page.locator("body")).toHaveAttribute("data-level", "perform");
   await landed(page);
+});
+
+test.describe("in a window where PERFORM scrolls", () => {
+  test.use({ viewport: { width: 1000, height: 600 } });
+
+  test("⌥ and the wheel scroll what can scroll that way, under the model view, and move a level where nothing can", async ({ page, app }) => {
+    await app.boot();
+    await goLevel(page, "perform");
+    const section = page.locator("#view-perform");
+    const fits = () => section.evaluate((el) => ({ top: el.scrollTop, room: el.scrollHeight - el.clientHeight }));
+    expect((await fits()).room, "PERFORM is taller than the window here").toBeGreaterThan(0);
+    // Over the well, which scrolls nothing of its own: what can scroll there
+    // is PERFORM itself.
+    const box = await page.locator("#view-perform .pf-well").boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    // At its top, up is nowhere to scroll: the turn is the levels', in to
+    // PATCH.
+    await page.keyboard.down("Alt");
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up("Alt");
+    await expect(page.locator("body")).toHaveAttribute("data-level", "patch");
+    await landed(page);
+    await goLevel(page, "perform");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    // Down, with ⌥ held long enough for the model view: PERFORM scrolls, and
+    // the view and the level stay.
+    await page.keyboard.down("Alt");
+    await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(async () => (await fits()).top).toBeGreaterThan(0);
+    await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+    await expect(page.locator("body")).toHaveAttribute("data-level", "perform");
+    await page.keyboard.up("Alt");
+  });
 });
 
 test("two fingers spread zoom in and closed zoom out; over the rack they move no level", async ({ page, app }) => {

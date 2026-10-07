@@ -21,7 +21,7 @@
 // With the build stamp main.js loaded this with, so a new build refetches it.
 const {
   WHERE, isLevel, startLevel, hashLevel, levelForKey, dirOf, step, railPath,
-  MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, NOD_PX, flightEnds, flightAt, wheelStep, pinchStep,
+  MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, NOD_PX, flightEnds, flightAt, wheelStep, wheelOwner, pinchStep,
 } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
@@ -689,14 +689,42 @@ export function createShell(host = {}) {
   // pinch there zooms the patch and ⌥ and the wheel, ⌥↑ or the rail leave
   // it. A turn moves one level, and the rest of it moves nothing
   // (levels.js `wheelStep`). Taken from the page either way, or the
-  // browser would zoom the page under it.
+  // browser would zoom the page under it. But ⌥ and the wheel over
+  // something that can still scroll that way (PATCH's catalog, PERFORM's
+  // hood, a level taller than the window) scroll it, as they always did: ⌥
+  // held is also the model view, read while the list moves. The turn stays
+  // the scroller's to its end (levels.js `wheelOwner`).
   const stage = document.querySelector(".stage");
   let wheel = {};
+  let turn = null;
+  /** Can something under `el`, inside the stage, scroll the way the wheel
+   *  turned (its larger axis)? */
+  const scrollsThatWay = (el, dx, dy) => {
+    const across = Math.abs(dx) > Math.abs(dy);
+    const d = across ? dx : dy;
+    if (!d) return false;
+    for (let n = el; n && n !== stage && n.nodeType === 1; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      const ov = across ? cs.overflowX : cs.overflowY;
+      if (ov !== "auto" && ov !== "scroll" && ov !== "overlay") continue;
+      const [at, seen, all] = across ? [n.scrollLeft, n.clientWidth, n.scrollWidth] : [n.scrollTop, n.clientHeight, n.scrollHeight];
+      if (all - seen < 1) continue;
+      if (d > 0 ? at + seen < all - 1 : at > 0) return true;
+    }
+    return false;
+  };
   if (stage) {
     stage.addEventListener("wheel", (e) => {
       if (!(e.altKey || e.ctrlKey) || e.metaKey) return;
       if (!e.altKey && e.target.closest?.("#rack-scroll")) return;
       if (host.blocked && host.blocked()) return;
+      if (e.altKey && !e.ctrlKey) {
+        // The rack scrolls nothing (it is a camera), and ⌥ and the wheel
+        // over it are the levels' (Q9), whatever holds it.
+        const scrolls = !e.target.closest?.("#rack-scroll") && scrollsThatWay(e.target, e.deltaX, e.deltaY);
+        turn = wheelOwner(turn, performance.now(), scrolls);
+        if (turn.to === "scroll") return;
+      }
       e.preventDefault();
       // ⌥ held for the wheel is the wheel's, not the model view's: as with a
       // level key, the move is what was meant.

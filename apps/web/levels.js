@@ -192,6 +192,18 @@ export function wheelStep(st, dy, now) {
   return { st: { acc, last: now, lock }, dir: null };
 }
 
+/** Whose a turn of ⌥ and the wheel is: one that starts over something that
+ *  can still scroll that way is that scroller's ("scroll") until the turn
+ *  ends, a pause of `WHEEL_IDLE_MS`, as the browser keeps a scroll on the
+ *  list it started in; any other is the levels' ("levels"). `turn`
+ *  (`{to, last}`, or null), the event's time, and whether what is under
+ *  the pointer can scroll that way now: the turn after it. */
+export function wheelOwner(turn, now, scrolls) {
+  const last = Number.isFinite(turn?.last) ? turn.last : -Infinity;
+  const to = now - last > WHEEL_IDLE_MS || !turn?.to ? (scrolls ? "scroll" : "levels") : turn.to;
+  return { to, last: now };
+}
+
 /** Two fingers on a touch screen: spread past 1.3 × the distance they
  *  started at is a move in, closed under 0.77 × a move out. */
 export const PINCH_IN = 1.3;

@@ -11,7 +11,9 @@
   in from the way you went, and a light runs along the levels' stops. With
   reduced motion set, every move is instant (`shell_zoom.spec.js`, #131).
 - **Hold ⌥ and turn the wheel to zoom between the levels,** one level a
-  turn, anywhere on the stage. Ctrl and the wheel, which is how a
+  turn, anywhere on the stage. Over a list that can still scroll that way,
+  such as PATCH's catalog, the wheel scrolls it as before, and the model
+  view you're holding up with ⌥ stays. Ctrl and the wheel, which is how a
   trackpad's pinch arrives, do the same, except over a patch in PATCH,
   where they still zoom the patch. On a touch screen, spread two fingers to
   zoom in and pinch to zoom out. At either end, the levels nod

@@ -437,6 +437,12 @@ into C2a and C2b; round 2's decisions govern PATCH):
   in flight moves nothing, as the mock's `zoom` has it. The mock's wheel "lockout" (`lastT = now + 500`) only
   delayed the count's reset; the app's is one: 500 ms after a move, the
   rest of the turn moves nothing (`wheelStep`).
+- **⌥ and the wheel over a scroller.** §2.3 has ⌥ and the wheel anywhere on
+  `.stage`; review found that took the scroll from PATCH's catalog,
+  PERFORM's hood and a level taller than the window while ⌥ held the model
+  view up, and dropped the view. A turn that starts over something that
+  can still scroll that way (not the rack, Q9) is that scroller's to its
+  end (`wheelOwner`), and the view stays; any other turn is the levels'.
 - **The rack.** ctrl and the wheel over `#rack-scroll` are its camera's
   (Q9), and ⌥ and the wheel over it, which used to pan it, move a level.
   The rack has no touch pinch of its own; two fingers that start on it move

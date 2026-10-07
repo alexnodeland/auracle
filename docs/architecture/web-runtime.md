@@ -107,9 +107,13 @@ unit-tested (`tests/levels.test.mjs`):
   no face at either end the levels cross-fade (`levels.js` `flightEnds`).
 - **The gestures.** On `.stage`, ⌥ and the wheel move a level (`wheelStep`:
   70 px, a 400 ms pause restarts the count, 500 ms of the turn's momentum
-  after a move moves nothing), and so do ctrl and the wheel (a trackpad's
-  pinch) except over `#rack-scroll`, whose camera keeps them (Plan-008 Q9;
-  the rack's own wheel handler leaves ⌥ to the stage). Two touch pointers
+  after a move moves nothing), except a turn that starts over something
+  that can still scroll that way, outside the rack (a catalog, PERFORM's
+  hood, a level taller than the window): that turn is the scroller's to
+  its end (`wheelOwner`), and the model view ⌥ holds up stays. Ctrl and
+  the wheel (a trackpad's pinch) move a level too, except over
+  `#rack-scroll`, whose camera keeps them (Plan-008 Q9; the rack's own
+  wheel handler leaves ⌥ to the stage). Two touch pointers
   spread past 1.3× or closed under 0.77× move a level (`pinchStep`), the puck
   leaning toward it on the way; pointers that start on the rack are the
   rack's. `.stage` is `touch-action: pan-x pan-y`, so the browser leaves the

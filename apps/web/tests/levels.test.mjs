@@ -8,7 +8,7 @@ import {
   LEVELS, ASIDE, HOME, BY_DIGIT, WHERE, ALL,
   isLevel, digitKey, dirOf, step, railPath, savedLevel, hashLevel, startLevel, levelForKey,
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, flightEnds, easeInOut, flightAt,
-  WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, PINCH_IN, PINCH_OUT, pinchStep,
+  WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, wheelOwner, PINCH_IN, PINCH_OUT, pinchStep,
 } from "../levels.js";
 
 test("the axis runs out to in, with EVOLVE beside PERFORM", () => {
@@ -190,6 +190,25 @@ test("the wheel moves a level once it has turned past the step, then rests for t
   assert.equal(wheelStep(st, 60, 10).st.acc, 0);
   // A junk delta counts as nothing.
   assert.equal(wheelStep({}, NaN, 0).st.acc, 0);
+});
+
+test("a turn of ⌥ and the wheel that starts over something that can scroll is the scroller's to its end", () => {
+  // Over a list that can scroll that way: the list's, the whole turn, even
+  // once it reaches its end (its momentum is not a move).
+  let t = wheelOwner(null, 0, true);
+  assert.equal(t.to, "scroll");
+  t = wheelOwner(t, 100, false);
+  assert.equal(t.to, "scroll");
+  t = wheelOwner(t, 100 + WHEEL_IDLE_MS, false);
+  assert.equal(t.to, "scroll");
+  // A pause ends the turn: the next is asked again, and at the list's end
+  // it is the levels'.
+  t = wheelOwner(t, 100 + 2 * WHEEL_IDLE_MS + 1, false);
+  assert.equal(t.to, "levels");
+  // A turn that started on the levels stays theirs over a list.
+  assert.equal(wheelOwner(t, 100 + 2 * WHEEL_IDLE_MS + 10, true).to, "levels");
+  // Nothing under the pointer that scrolls: the levels'.
+  assert.equal(wheelOwner(null, 0, false).to, "levels");
 });
 
 test("a pinch spread past 1.3 goes in, closed under 0.77 goes out, and leans on the way", () => {
