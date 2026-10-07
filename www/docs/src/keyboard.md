@@ -93,7 +93,7 @@ you choose, unless you are stepping through them with the arrow keys.
 |---|---|
 | Type | Narrow the list: a name’s start ranks first, then a word’s start, then the letters anywhere |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Choose a row |
-| <kbd>↵</kbd> | Do it (or click it) |
+| <kbd>↵</kbd> | Do it (or click it). With nothing found it does nothing, and what you typed stays |
 | <kbd>Tab</kbd> | Between its field and the two links at its foot (the author, the source) |
 | <kbd>Esc</kbd>, or <kbd>⌘K</kbd> | Close it, with the focus back where it was |
 

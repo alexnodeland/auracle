@@ -1009,11 +1009,14 @@ export function createShell(host = {}) {
   }
   /** Run the row `i`: the list closes first, giving the focus back, so what
    *  the command opens (a panel, a file's picker) takes it from there, in
-   *  the same task as the key or the click (a file's picker needs that). */
+   *  the same task as the key or the click (a file's picker needs that).
+   *  With nothing found there is no row, and ↵ leaves the list open with
+   *  what was typed, to be put right rather than typed again. */
   function kRun(i) {
     const row = kRows[i];
+    if (!row) return;
     kHide();
-    if (row) row.item.run();
+    row.item.run();
   }
   if (K.el) {
     K.input.addEventListener("input", () => kDraw());

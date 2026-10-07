@@ -102,7 +102,7 @@ test("⌘K and Ctrl K open the list over any level, its own commands first, at o
   app.budget("a letter typed → the list filtered", took.filter, 100);
 });
 
-test("typing ranks a label's start first, and ↵ runs the row chosen", async ({ page, app }) => {
+test("typing ranks a label's start first, ↵ runs the row chosen, and with nothing found leaves the list open", async ({ page, app }) => {
   await app.boot();
   await page.keyboard.press("Meta+k");
   await page.keyboard.type("patch");
@@ -127,6 +127,18 @@ test("typing ranks a label's start first, and ↵ runs the row chosen", async ({
   await page.keyboard.press("Enter");
   await expect(list(page)).toBeHidden();
   await expect(page.locator("#oct-label")).not.toHaveText(before);
+
+  // With nothing found, ↵ runs nothing and leaves the list open, with what
+  // was typed still in the field.
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("zqxj");
+  await expect(options(page)).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(list(page)).toBeVisible();
+  await expect(field(page)).toHaveValue("zqxj");
+  await expect(field(page)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(list(page)).toBeHidden();
 });
 
 test("Esc closes the list and gives the focus back, and ends nothing behind it", async ({ page, app }) => {
