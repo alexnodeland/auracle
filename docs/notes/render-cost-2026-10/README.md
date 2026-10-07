@@ -192,7 +192,7 @@ set, on a build that keeps its function names (release codegen, `wasm-opt
 | Other (`log`, `__multi3`, the loader) | 4.5% |
 
 The ladder is 7.2% of the set's time in wasm (1.0% its own `tick`, 6.2% the
-`tanh` and `expm1` it calls) from three trees of eighteen. And φ's analysis is
+`tanh` and `expm1` it calls) from two trees of eighteen. And φ's analysis is
 about 12% of a render in wasm against 4% natively, because of one function:
 `num_complex`'s `norm()` is a `hypot`, taken on every bin of every FFT frame
 (1024 bins by about 215 frames a render), and in wasm, which has no fused
@@ -290,9 +290,6 @@ live voice (`LivePoly`) keeps every knob live.
 | Wasm, a render's mean | 311 ms | 257 ms | |
 
 Per tree it is 5% (First Bass, whose ladder dominates) to 25% (a large prior
-draw), more where a patch has more knobs.
-
-Per tree it is 5% (First Bass, whose ladder dominates) to 25% (a large prior
 draw), more where a patch has more knobs. In the browsers' workers it is
 15.4% (Chromium) and 19.6% (Firefox) ([above](#in-the-browsers)).
 
@@ -324,7 +321,8 @@ quiver's `DiodeLadderFilter::tick` (quiver-dsp 0.4.0) runs its four-stage
 cascade three times a sample (two fixed-point passes for the resonance
 feedback, then the pass that commits the state), with libm's `tanh` on the
 input, on every stage's output and on the feedback each pass: 19 `tanh` a
-sample. Four candidates, each a diff against 0.4.0 in [`quiver/`](quiver/),
+sample. Three candidates and two of their combinations, each a diff against
+0.4.0 in [`quiver/`](quiver/),
 patched into a scratch copy of this workspace (`[patch.crates-io]`); none
 changes quiver or its version here. Natively, against `0eff8f4f`, alternating,
 the least of three rounds of three; "a ladder voice" is the live voice of
