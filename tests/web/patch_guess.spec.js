@@ -185,28 +185,34 @@ test("a new patch's skips are its own: the sound it was started from does not in
 // those went last (`idleOnly` in worker.js) a guess asked straight after the
 // warm start's fit started with the bank still arriving (pool 27 of 40 on a
 // CI runner) and ranked eight. It waits for boot's crew now, as a generation
-// does. Here boot's crew is made slow (its wasm calls 12 times as long, as
-// perform_budget.js slows the engine), so the bank is still arriving when
-// the guess is asked; the walk crew raised afterwards is not slowed. The
-// slowdown is the boot's `farmPrefix`, which the fixture serves after a
-// profile's own (a route of the spec's own would lose to the profile's).
+// does. Here boot's crew is made slow (its wasm calls 12 times as long as
+// this machine's, as perform_budget.js slows the engine), so the bank is
+// still arriving when the guess is asked; the walk crew raised afterwards is
+// not slowed. The slowdown is the boot's `farmPrefix`, which the fixture
+// serves after a profile's own (a route of the spec's own would lose to the
+// profile's).
 /** farm.js's prefix (`app.boot`'s `farmPrefix`, asked each time farm.js is
  *  served): boot's crew, the farm workers served within five seconds of the
- *  first as the page loads, slowed 12 times; a walk crew, much later, not.
- *  Timed from the first, not from the boot's call, which on a profile may
- *  first spend seconds calibrating. */
-function bootCrewSlowed() {
+ *  first as the page loads, slowed to 12 times this machine's own render; a
+ *  walk crew, much later, not. On a reference profile (`app.profile`) the
+ *  farm is already slowed by its rate, so the crew is slowed by what is left
+ *  of the 12: on top of it, a 12 made a boot's 8 sounds take more than its
+ *  150 s on a 16-core M3 Max (×4.5 there). Timed from the first worker, not
+ *  from the boot's call, which on a profile may first spend seconds
+ *  calibrating. */
+function bootCrewSlowed(app) {
   let first = null;
   return () => {
     const now = Date.now();
     if (first === null) first = now;
-    return now - first < 5_000 ? SLOW_ENGINE(12) : "";
+    const rate = Math.max(1, 12 / (app.profile ? app.profile.farmRate : 1));
+    return now - first < 5_000 && rate > 1 ? SLOW_ENGINE(rate) : "";
   };
 }
 
 test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(300_000); // about 168 s on CI, most of it the bank arriving on boot's slowed crew
-  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed() });
+  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed(app) });
   await app.warmStart();
   await openPreset(app, "Sub & Sparkle");
   await app.engine((timeout) => expect.poll(() => app.sentCount("guess"), { timeout }).toBeGreaterThan(0), { ms: 60_000 });
