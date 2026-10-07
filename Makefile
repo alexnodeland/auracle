@@ -69,7 +69,7 @@ RUST_GOALS := all check test test-verbose test-crate test-fast-tier test-slow-ti
 	test-search-floor test-slow-rest build lint lint-fix clippy doc wasm wasm-dev wasm-check \
 	bundle coverage coverage-run coverage-archive mutants perform-wirings preset-faces \
 	climb search-check islands budget-ab phi-stats norm-peak fit-bench closed-loop \
-	walk-payload offer-census revalidate site site-api site-tools
+	walk-payload offer-census revalidate bench-render site site-api site-tools
 ifneq ($(AURACLE_SCCACHE),0)
 ifeq ($(origin RUSTC_WRAPPER),undefined)
 ifeq ($(GITHUB_ACTIONS),)
