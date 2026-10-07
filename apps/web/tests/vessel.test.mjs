@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decodeFace, bankStats, FACE_LEN, FACE_BANDS, FACE_SLICES } from "../faces.js";
-import { drawVessel, vesselBox } from "../vessel.js";
+import { drawVessel, vesselBox, shownBox } from "../vessel.js";
 
 /** A 2D context that records every call and every style it is given. */
 function recorder() {
@@ -94,4 +94,19 @@ test("a comparison face: the outline alone, dashed, and nothing else", () => {
   const plain = recorder();
   drawVessel(plain, bank[2], stats, { box: vesselBox(150, 250), color: GREEN, slices: false });
   assert.ok(!plain.ops.some((o) => o[0] === "setLineDash"), "solid unless asked");
+});
+
+test("a face shown in a box lands where the picture puts it: fitted and centred, or at its own size", () => {
+  const box = { x: 30, y: 40, w: 60, h: 100 };
+  // A 120 × 240 picture in a 300 × 300 well: half as wide as tall, so it is
+  // 150 × 300, centred across (75 px in), and the vessel scales with it.
+  assert.deepEqual(shownBox({ x: 10, y: 20, w: 300, h: 300 }, 120, 240, box), { x: 10 + 75 + 37.5, y: 20 + 50, w: 75, h: 125 });
+  // In a tall narrow well it fits the width and is centred down it.
+  assert.deepEqual(shownBox({ x: 0, y: 0, w: 60, h: 400 }, 120, 240, box), { x: 15, y: 140 + 20, w: 30, h: 50 });
+  // A fixed slot draws it at its size, from the slot's corner.
+  assert.deepEqual(shownBox({ x: 5, y: 6, w: 26, h: 34 }, 26, 34, vesselBox(26, 34), { fit: false }), { x: 5 + 26 * 0.06, y: 6 + 26 * 0.06, w: 26 - 2 * 26 * 0.06, h: 34 - 2 * 26 * 0.06 });
+  // Nothing to show it in, or no size: no place.
+  assert.equal(shownBox(null, 120, 240, box), null);
+  assert.equal(shownBox({ x: 0, y: 0, w: 0, h: 0 }, 120, 240, box), null);
+  assert.equal(shownBox({ x: 0, y: 0, w: 10, h: 10 }, 0, 240, box), null);
 });

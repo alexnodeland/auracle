@@ -43,7 +43,10 @@ preset is found by that preset’s too. Typing in the field plays no notes.
 
 ## Find and keep a sound
 
-1. Click a row to open it as the sound you’re playing.
+1. Click a row to open it as the sound you’re playing. Once it is in your
+   hands, its face flies from the row to where the level you’re at shows it
+   (the face at **OUT** in PATCH, where a click on a pool row takes you), or
+   to the sound in hand in the menu bar.
 2. Point at a row (or put the bank’s cursor on it) and its actions appear at
    its end (on a touch screen they are always there, under the name): **▶**
    plays the standard phrase without opening it.

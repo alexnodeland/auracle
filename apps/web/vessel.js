@@ -120,3 +120,18 @@ export function vesselBox(w, h) {
   const pad = Math.min(w, h) * 0.06;
   return { x: pad, y: pad, w: w - 2 * pad, h: h - 2 * pad };
 }
+
+/** Where a vessel drawn into a `w × h` picture at `box` (in the picture's
+ *  px) lands on the page when the picture is shown in `rect` (`{x, y, w,
+ *  h}`, page px): fitted whole and centred, as `object-fit: contain` shows a
+ *  large face in its well; with `fit` false, at its own size from the
+ *  rect's corner, as a fixed slot shows it. The box the level's face is
+ *  drawn at, for a face carried to it (shell.js's move between the levels). */
+export function shownBox(rect, w, h, box, { fit = true } = {}) {
+  if (!rect || !(w > 0) || !(h > 0) || !box) return null;
+  const k = fit ? Math.min(rect.w / w, rect.h / h) : 1;
+  if (!(k > 0)) return null;
+  const ox = rect.x + (fit ? (rect.w - w * k) / 2 : 0);
+  const oy = rect.y + (fit ? (rect.h - h * k) / 2 : 0);
+  return { x: ox + box.x * k, y: oy + box.y * k, w: box.w * k, h: box.h * k };
+}

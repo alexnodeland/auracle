@@ -1,16 +1,17 @@
 // The guide pill (Plan-008 PR C1, ADR-009's one onboarding surface): the
 // first-visit steps, one at a time, bottom left of the stage, with pips and
-// ×. PERFORM's three first steps are its steps.
+// ×. PERFORM's five first steps are its steps: its three (C1) and the
+// levels' two (C3).
 //
 // - It shows the step that is next, ticks it off when it happens (a note
-//   played, a control turned, an offer asked for), and after the last says
-//   what the loop was, then goes.
+//   played, a control turned, an offer asked for, TASTE reached, the model
+//   view up), and after the last says what the loop was, then goes.
 // - It sits bottom left of the stage, under PERFORM's well, and shows each
 //   level's own steps: PERFORM's on PERFORM, PATCH's on PATCH (Plan-008 C2a).
 // - × stops it, and a reload keeps it stopped (`auracle-guide`).
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
-const { test, expect, goLevel } = require("./fixtures");
+const { test, expect, goLevel, modelView } = require("./fixtures");
 
 /** A first visit, seeded as every spec boots (fixtures.js): an unseeded
  *  session can open on a sound none of whose controls reach ("0 of 6
@@ -43,7 +44,7 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step")).toHaveCount(1);
   await expect(page.locator("#guide .pf-step.now")).toContainText("Play a key");
-  await expect(pips(page)).toHaveCount(3);
+  await expect(pips(page)).toHaveCount(5);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(0);
   // Bottom left of the stage, under the well.
   const g = await pill(page).boundingBox();
@@ -70,13 +71,22 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await goLevel(page, "perform");
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step.now")).toContainText("Press OFFER");
-  // An offer asked for: the last step, said once, then the pill goes.
+  // An offer asked for: step 4, the zoom out to TASTE, done by going there.
   await page.locator(".pf-pad", { hasText: /^Offer$/ }).click();
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^Press (⌥|Alt) ?↑ to zoom out to TASTE/);
+  await expect(page.locator("#guide .pips i.done")).toHaveCount(3);
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect(page.locator("body")).toHaveAttribute("data-level", "taste");
+  await goLevel(page, "perform");
+  // Step 5, the model view: the last, said once, then the pill goes.
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^Hold (⌥|Alt) to see what the model believes/);
+  await modelView(page, true);
   await expect(page.locator("#guide .pf-step.all")).toContainText("That is the loop");
+  await modelView(page, false);
   await expect(pill(page)).toBeHidden({ timeout: 15_000 });
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")));
   // The note ticked PATCH's first step (play it) too.
-  expect(kept.done.sort()).toEqual(["offer", "patch-play", "play", "turn"]);
+  expect(kept.done.sort()).toEqual(["model", "offer", "patch-play", "play", "turn", "zoom"]);
 });
 
 test("× stops the pill, and a reload keeps it stopped", async ({ page, app }) => {

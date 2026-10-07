@@ -135,7 +135,10 @@ the standard phrase, as <kbd>Space</kbd> does. Pressed while an edit is still on
 its way, it wears a dotted amber ring and plays once the edit lands; press it
 again to take that back. Space plays the same phrase from PERFORM and EVOLVE,
 and waits the same way: *▶ waiting for the edit…* stands in for the name in
-the menu bar until it lands.
+the menu bar until it lands. Coming to PATCH from another level, the face
+flies here from where that level drew it (or fades in, from a level that
+doesn’t draw it), and a sound opened from the bank flies here from its row
+once it is in your hands.
 
 **Without this module.** Select a module and, over the face at OUT, a dashed
 outline shows the face of the patch without it: what that module does to the

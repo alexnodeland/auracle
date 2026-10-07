@@ -151,9 +151,10 @@ the sound you’re playing: zoom out to TASTE (the sound among all sounds) and
 LEARNING (how it learns), in to PATCH (what the sound is made of), and beside
 it to EVOLVE (what it could become). The cross at the stage’s right edge shows
 where you are; click a stop to go there, or use <kbd>⌥↑</kbd>, <kbd>⌥↓</kbd>,
-<kbd>⌥←</kbd>, <kbd>⌥→</kbd> and <kbd>⌥1</kbd>–<kbd>⌥5</kbd>
+<kbd>⌥←</kbd>, <kbd>⌥→</kbd> and <kbd>⌥1</kbd>–<kbd>⌥5</kbd>, <kbd>⌥</kbd>
+and the wheel, or a pinch
 ([the keyboard map](./keyboard.md#the-levels)). The menu bar names the level
-you’re at.
+you’re at, and a move carries the sound’s face from one level to the next.
 
 ### Lock
 

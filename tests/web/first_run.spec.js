@@ -64,7 +64,8 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page, app }
 });
 
 // Someone who walks up cold gets the whole loop in three moves, each ticked off
-// when it happens; an engineer gets the numbers behind the controls on request.
+// when it happens, and then the levels' two (shell_zoom, guide_pill); an
+// engineer gets the numbers behind the controls on request.
 test("PERFORM's first steps tick off as they happen; measurements are one menu item away", async ({ page, app }) => {
   await firstVisit(app);
   await page.locator("#warm-skip").click();
@@ -87,7 +88,7 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.mouse.up();
   await expect(page.locator(".pf-step.now")).toContainText("Press OFFER");
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
-  await expect(page.locator(".pf-step.all")).toContainText("That is the loop");
+  await expect(page.locator(".pf-step.now")).toContainText(/zoom out to TASTE/);
   // engineer mode
   await page.locator("#ovf-btn").click();
   await page.locator("#engineer-btn").click();

@@ -2,10 +2,10 @@
 // surface): bottom left of the stage, one step at a time, with pips for how
 // far along the steps are and × to stop showing them. A step ticks off when
 // it happens, not when it is read. Each level shows its own steps: PERFORM's
-// three (play, turn a control, ask for an offer), and PATCH's (turn a knob,
-// lock what you love, ⚡; Plan-008 C2a). A step may belong to more than one
-// level. The zoom and the model view's join it with the levels' zoom
-// (Plan-008 PR C3).
+// five (play, turn a control, ask for an offer; then the levels' two, zoom
+// out to TASTE and hold ⌥ for the model view, Plan-008 C3), and PATCH's
+// (play it, turn a knob, lock what you love, ⚡; Plan-008 C2a). A step may
+// belong to more than one level.
 //
 // What has been done is the player's, kept in localStorage as
 // `auracle-guide` ({done: [ids], closed: [levels]}), JS-owned. × stops one

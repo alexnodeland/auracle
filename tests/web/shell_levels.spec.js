@@ -7,8 +7,8 @@
 // - The app opens at PERFORM, with no hash and no saved level.
 // - A stop on the rail goes to its level; ⌥↑ zooms out and ⌥↓ in, ⌥← goes to
 //   EVOLVE and ⌥→ back to PERFORM, ⌥1–5 go to PERFORM, PATCH, EVOLVE, TASTE
-//   and LEARNING; the arrows on a focused stop walk the rail. After each,
-//   exactly one level's section shows, its stop alone is
+//   and LEARNING; the arrows on a focused stop walk the rail. After each has
+//   landed, exactly one level's section shows, its stop alone is
 //   `aria-current=location`, `body[data-level]` names it, and `#where` says
 //   its name and its line.
 // - A text field keeps ⌥ and an arrow (there it moves by word): ⌥↑ in PATCH's
@@ -80,11 +80,13 @@ const WHERE = {
   learning: ["Learning", "how it learns your taste"],
 };
 
-/** One level on, its stop alone current, and the header naming it. */
+/** One level on, its stop alone current, and the header naming it. A move
+ *  carries the sound across (shell_zoom.spec.js): both levels show while it
+ *  does, and one once it has landed. */
 async function expectAt(page, level) {
   await expect(page.locator("body")).toHaveAttribute("data-level", level);
   await expect(page.locator(`#view-${level}`)).toBeVisible();
-  expect(await page.locator("section.view:not(.hidden)").count(), `one level shows at ${level}`).toBe(1);
+  await expect(page.locator("section.view.on"), `one level shows at ${level}`).toHaveCount(1);
   await expect(page.locator('.rail-stop[aria-current="location"]')).toHaveCount(1);
   await expect(page.locator(`.rail-stop[data-level="${level}"]`)).toHaveAttribute("aria-current", "location");
   await expect(page.locator("#where .where-n")).toHaveText(WHERE[level][0]);

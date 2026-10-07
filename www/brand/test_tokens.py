@@ -378,11 +378,11 @@ class TheSizesRatchet(unittest.TestCase):
     def test_every_block_carries_the_reduced_motion_rule(self):
         for c in T.CONSUMERS:
             block = T.BLOCK_RE.search(source(c["file"])).group(0)
-            self.assertRegex(block, r"@media \(prefers-reduced-motion: reduce\) \{\s*:root \{ --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; \}", c["file"])
+            self.assertRegex(block, r"@media \(prefers-reduced-motion: reduce\) \{\s*:root \{ --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; --d-zoom: 0ms; \}", c["file"])
 
     def test_an_edit_inside_the_reduced_motion_line_leaves_the_block_stale(self):
         with Tree() as t:
-            t.edit("apps/web/style.css", lambda s: s.replace(":root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }", ":root { --d-press: 0ms; --d-state: 0ms; --d-move: 90ms; }", 1))
+            t.edit("apps/web/style.css", lambda s: s.replace(":root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; --d-zoom: 0ms; }", ":root { --d-press: 0ms; --d-state: 0ms; --d-move: 90ms; --d-zoom: 0ms; }", 1))
             self.assertTrue(any(p.startswith("apps/web/style.css") and "stale" in p for p in t.problems()))
 
     def test_the_generator_is_idempotent(self):
@@ -491,11 +491,18 @@ class TheSpecimensScale(unittest.TestCase):
         for name, want in spec.items():
             if name in names:
                 self.assertEqual(nums(names[name]), nums(want), name)
-        self.assertEqual(sum(n in spec for n in names), len(names) - 1, "every token but the canvas floor is the specimen's")
+        # Two are not in its :root: the canvas floor, and the move between
+        # the levels, which the specimen writes as a literal in its morph
+        # (core.js `A.show`, `D = 620`). Plan-008 Q10 made it a token.
+        self.assertEqual(sum(n in spec for n in names), len(names) - 2, "every token but the canvas floor and the zoom is the specimen's")
         self.assertEqual(src["type"]["ratio"], 1.2)
         self.assertEqual(names["t-canvas"], "12px")
+        self.assertEqual(names["d-zoom"], "620ms")
+        self.assertIn("D = 620 *", source("docs/notes/vision-2026-09/prototype/core.js"))
         still = re.search(r"prefers-reduced-motion: reduce\)\s*\{\s*:root \{([^}]*)\}", css).group(1)
-        self.assertEqual(dict(re.findall(r"--([\w-]+):\s*([^;]+);", still)), src["motion"]["reduced"])
+        reduced = dict(src["motion"]["reduced"])
+        self.assertEqual(reduced.pop("d-zoom"), "0ms")
+        self.assertEqual(dict(re.findall(r"--([\w-]+):\s*([^;]+);", still)), reduced)
 
 
 class TheDriftsItClosed(unittest.TestCase):

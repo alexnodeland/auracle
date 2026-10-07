@@ -12,7 +12,7 @@
 //   strip's labels keep their descenders inside the canvas.
 // - The menu bar is one row as tall as `--menubar-h`, which what opens under
 //   it (the alarm) is placed by, at every width.
-// - Under prefers-reduced-motion all three durations on the scale are 0, so a
+// - Under prefers-reduced-motion all four durations on the scale are 0, so a
 //   transition built on one is instant; without it, it plays.
 //
 // The tokens are www/brand/tokens.json, and `tokens.py --check` counts the
@@ -161,8 +161,8 @@ test("the menu bar is one row as tall as --menubar-h, which the alarm is placed 
 
 test("reduced motion makes every duration on the scale instant, and without it a transition plays", async ({ newContext }) => {
   for (const [reducedMotion, want] of [
-    ["no-preference", { press: "90ms", state: "180ms", move: "320ms", boot: "0.32s" }],
-    ["reduce", { press: "0ms", state: "0ms", move: "0ms", boot: "0s" }],
+    ["no-preference", { press: "90ms", state: "180ms", move: "320ms", zoom: "620ms", boot: "0.32s" }],
+    ["reduce", { press: "0ms", state: "0ms", move: "0ms", zoom: "0ms", boot: "0s" }],
   ]) {
     const context = await newContext({ reducedMotion });
     const page = await context.newPage();
@@ -174,6 +174,7 @@ test("reduced motion makes every duration on the scale instant, and without it a
         press: root.getPropertyValue("--d-press").trim(),
         state: root.getPropertyValue("--d-state").trim(),
         move: root.getPropertyValue("--d-move").trim(),
+        zoom: root.getPropertyValue("--d-zoom").trim(),
         boot: getComputedStyle(document.getElementById("boot")).transitionDuration,
       };
     });

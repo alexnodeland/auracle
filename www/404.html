@@ -106,11 +106,12 @@
     --r2: 8px;  /* a button, a pad, a card */
     --r3: 14px; /* the well, a sheet */
 
-    /* motion: three durations and two easings. Under prefers-reduced-motion
+    /* motion: four durations and two easings. Under prefers-reduced-motion
        every duration is 0 ms. A loop's period is not one of these */
     --d-press: 90ms;                /* a press: a control going down, a row lighting */
     --d-state: 180ms;               /* a state changing: a color, a hover, a reveal */
     --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
+    --d-zoom: 620ms;                /* a move between the levels, the sound's face carried across (the specimen's morph) */
     --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
     --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
 
@@ -118,7 +119,7 @@
     --t-h1: clamp(1.7rem, 5vw, 2.4rem); /* the page's one line */
   }
   @media (prefers-reduced-motion: reduce) {
-    :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
+    :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; --d-zoom: 0ms; }
   }
   /* tokens:end */
 
