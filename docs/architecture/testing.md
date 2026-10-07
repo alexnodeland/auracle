@@ -176,22 +176,47 @@ each comparison was taken back to back, with the load average beside it.
   reaches (Site, Worker protocol, Browser smoke, the specs it reaches), each
   with its local command. `make -j check-changed` runs the parts side by
   side.
-- **sccache, opt-in.** With `AURACLE_SCCACHE=1` in the environment (put it
-  in your shell's profile; `make setup` then installs sccache, as
-  `scripts/setup.sh --sccache` does), every cargo call `make` makes
-  compiles through it. Each worktree keeps its own `target/`: one target
-  directory shared between worktrees is not safe here, since cargo judges
-  freshness by file times and bakes `CARGO_MANIFEST_DIR` into test binaries
-  (the main checkout once ran a test binary built from a copy of the
-  workspace, which read the copy's fixture). sccache keys each compile by
-  its inputs, the `CARGO_*` variables among them, so only what is the same
-  in every worktree, crates.io's dependencies, comes back from its cache,
-  and an incremental compile (the workspace's crates under `test-fast`) is
-  never cached. A new worktree's first builds (the tests, clippy and the
-  wasm32 check, as `make check` builds them) took 99, 130 and 146 s from a
-  warm cache against 117, 160 and 160 s without one, at load averages of
-  27 to 59: 146 of the 198 compiles it can cache came back from it, and it
-  never caches a build script or a procedural macro (161 calls).
+- **sccache, on whenever it is installed** (`make setup` installs it;
+  `AURACLE_SCCACHE=0` in the environment turns it off). Every cargo call
+  `make` makes compiles through it, with one cache on the disk for every
+  worktree, capped at 2 GB (`SCCACHE_CACHE_SIZE`; the dependencies take 0.3
+  GB, and each worktree's own crates about 0.05 GB more). Each worktree
+  keeps its own `target/`: one target directory shared between worktrees is
+  not safe here, since cargo judges freshness by file times and bakes
+  `CARGO_MANIFEST_DIR` into test binaries (the main checkout once ran a
+  test binary built from a copy of the workspace, which read the copy's
+  fixture). sccache keys each compile by its inputs, the `CARGO_*`
+  variables and a build script's `OUT_DIR` among them, so what comes back
+  from the cache in another worktree is crates.io's dependencies without a
+  build script; the workspace's crates, the dependencies with a build
+  script (their `OUT_DIR` is in the worktree), and what sccache never
+  caches (build scripts, procedural macros, binaries, and an incremental
+  compile: the workspace's crates under `test-fast`, clippy's) are
+  compiled again. In a second worktree 49 of the 65 compiles the test build
+  asks for were taken from the cache. The server runs the compiles, so
+  `make` starts it at `nice -n 10` when none is running, and says so when
+  it will not start (a port taken), building without it; a server someone
+  started keeps the priority and the cache size it was started with. [`docs/notes/rust-build-2026-10/`](../notes/rust-build-2026-10/README.md)
+  has the method and every figure; in CPU seconds (user and system, the
+  server's included; the wall time was swamped by a load average of 50 to
+  140), the three builds `make check` makes from a clean `target/`
+  (the tests, clippy, the wasm32 check) took 367 to 400 without it; 427 the
+  first time with an empty cache; 344 in a second worktree with a warm one;
+  and 301 and 304 where the worktree's `target/` was cleaned and built
+  again. `make wasm` took 124 to 135, 112 in a second worktree and 72 again
+  in the same one: the dependencies come back, the fat-LTO link of the
+  engine does not. The engine it builds is the same file, byte for byte.
+
+- **A new worktree's engine is copied, not built.** `make worktree` ends
+  with `make pkg-reuse`, which copies into the worktree the release build
+  of any other checkout of the repository (`git worktree list`: the main
+  checkout, then the most recently built) that was made from the same Rust
+  and build command, instead of the `make wasm` it would owe (124 to 135
+  CPU seconds, 330 to 530 s of wall at a load average of 100 to 130, for
+  fat LTO and one codegen unit). Files are copied, never linked, so a build
+  in another checkout later can't change this one. When no checkout has one
+  it says so, and why each was passed over: `make wasm` is owed before a
+  browser run.
 
 ## CI tiers
 

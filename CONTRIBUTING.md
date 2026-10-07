@@ -36,12 +36,13 @@ Be respectful and constructive.
    `.node-version`; fnm or nvm pick it up), then run **`make setup`**
    (`scripts/setup.sh`): it installs the Rust release `rust-toolchain.toml`
    pins (with rustfmt, clippy and the wasm32 target, and its `llvm-tools`),
-   `wasm-pack`, `cargo-nextest` and `cargo-llvm-cov`, installs the browser
-   tests' packages and Chromium, turns on the git hooks and builds the app's
-   engine. It is idempotent; run it again
-   after pulling. With `AURACLE_SCCACHE=1` in your environment it also
-   installs sccache, and `make` compiles through it, so a new worktree's
-   first build takes crates.io's dependencies from its cache (opt-in;
+   `wasm-pack`, `cargo-nextest`, `cargo-llvm-cov` and sccache, installs the
+   browser tests' packages and Chromium, turns on the git hooks and builds
+   the app's engine. It is idempotent; run it again after pulling. `make`
+   compiles through sccache whenever it is installed, so a new worktree's
+   first build takes crates.io's dependencies from one cache on your disk
+   (`AURACLE_SCCACHE=0` in your environment turns that off, and `make setup`
+   then leaves it out;
    [`docs/architecture/testing.md` § The local loop](docs/architecture/testing.md#the-local-loop)).
    For the films, **`make film-setup`** also builds
    `.venv-voice` (the narration's pinned Kokoro/Whisper set and the film

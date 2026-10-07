@@ -29,24 +29,54 @@ else
 RUSTUP_NOTE = $(eval RUSTUP_NOTE :=)$(warning no cargo in $(CARGO_BIN): cargo and rustc come from PATH, and rust-toolchain.toml applies only if they are rustup's proxies)
 CARGO = $(RUSTUP_NOTE)cargo
 endif
-# sccache, opt-in: with AURACLE_SCCACHE=1 in the environment (and sccache
-# installed: `scripts/setup.sh --sccache`), every cargo call here compiles
-# through it, unless RUSTC_WRAPPER already names a wrapper. A new worktree's
-# first build then takes the crates.io dependencies from its cache instead of
-# compiling them again. It is safe with a target directory per worktree,
-# where sharing one target directory is not (docs/architecture/testing.md §
-# The local loop): sccache keys each compile by its inputs, the CARGO_*
-# variables among them, so a workspace crate, whose path differs in each
+# sccache, on whenever it is installed (`make setup` installs it): every cargo
+# call here compiles through it, so a new worktree's first build takes the
+# crates.io dependencies from one cache on this disk instead of compiling
+# them again (docs/architecture/testing.md § The local loop has what that
+# saves). It is safe with a target directory per worktree, where sharing one
+# target directory is not: sccache keys each compile by its inputs, the
+# CARGO_* variables and a build script's OUT_DIR among them, so a workspace
+# crate, or a dependency with a build script, whose path differs in each
 # worktree, never hits another worktree's entry, and an incremental compile
-# (the workspace's crates under test-fast) is not cached at all.
-ifeq ($(AURACLE_SCCACHE),1)
+# (the workspace's crates under test-fast and clippy's) is not cached at all.
+# Left alone when:
+# - there is no sccache, or AURACLE_SCCACHE=0 (the builds are as they were
+#   without one), or GITHUB_ACTIONS is set (CI's runners have rust-cache), or
+#   RUSTC_WRAPPER is set, empty too, which names the wrapper;
+# - its server will not start (say a port is taken): said once, and the
+#   builds go without it, where a server that was down would fail every
+#   compile. AURACLE_SCCACHE=1 also says when there is no sccache.
+# The server, not the cargo call, runs the compiles, so it is started here,
+# at `nice -n 10` (a server that is already running keeps the priority and
+# the cache size it was started with, until it idles out after ten minutes),
+# and with the cache capped at SCCACHE_CACHE_SIZE, 2G here (sccache's own
+# default is 10G; the three builds `make check` makes put about 0.3 G in it,
+# and each worktree's own crates 0.05 G more), evicting the least recently
+# used.
+ifneq ($(AURACLE_SCCACHE),0)
+ifeq ($(origin RUSTC_WRAPPER),undefined)
+ifeq ($(GITHUB_ACTIONS),)
 SCCACHE := $(firstword $(wildcard $(CARGO_BIN)/sccache) $(shell command -v sccache 2>/dev/null))
-ifeq ($(SCCACHE),)
-$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh --sccache; building without it)
+ifneq ($(SCCACHE),)
+SCCACHE_SIZE := $(or $(SCCACHE_CACHE_SIZE),2G)
+# Whatever answers on its port is waited for ten seconds, not for ever.
+SCCACHE_WITHIN := perl -e 'alarm 10; exec @ARGV'
+SCCACHE_UP := $(shell (SCCACHE_CACHE_SIZE=$(SCCACHE_SIZE) nice -n 10 $(SCCACHE_WITHIN) $(SCCACHE) --start-server >/dev/null 2>&1; $(SCCACHE_WITHIN) $(SCCACHE) --show-stats >/dev/null 2>&1 && echo ok) 2>/dev/null)
+ifeq ($(SCCACHE_UP),ok)
+export RUSTC_WRAPPER := $(SCCACHE)
+export SCCACHE_CACHE_SIZE := $(SCCACHE_SIZE)
 else
-export RUSTC_WRAPPER ?= $(SCCACHE)
+$(warning sccache is installed, but its server will not start (run: $(SCCACHE) --show-stats): building without it; AURACLE_SCCACHE=0 turns this off)
+endif
+else
+ifeq ($(AURACLE_SCCACHE),1)
+$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh; building without it)
 endif
 endif
+endif
+endif
+endif
+
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
 FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
@@ -116,7 +146,7 @@ help:
 ## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
 ## checks on staged files before each commit. Opt-in, per clone.
 ## setup: install what the engine, the app and its tests need (scripts/setup.sh),
-## and sccache when AURACLE_SCCACHE=1 is set (opt-in)
+## sccache among them (`make` compiles through it; AURACLE_SCCACHE=0 skips it)
 setup:
 	scripts/setup.sh
 
@@ -150,7 +180,10 @@ worktree:
 	git -C "$(MAIN_CHECKOUT)" fetch -q origin
 	git -C "$(MAIN_CHECKOUT)" worktree add -q -b $(WT_BRANCH) .claude/worktrees/$(TOPIC) origin/main
 	cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)/tests/web" && npm ci --no-audit --no-fund
-	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && $(MAKE) --no-print-directory pkg-reuse SOFT=1
+	@cd "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" && { $(MAKE) --no-print-directory pkg-reuse SOFT=1 || \
+		printf '  no engine to reuse here: `make wasm` is owed before a browser run\n'; }
+	@[ -n "$(SCCACHE)" ] || [ "$(AURACLE_SCCACHE)" = 0 ] || [ -n "$(GITHUB_ACTIONS)" ] || [ -n "$$RUSTC_WRAPPER" ] || \
+		printf '  no sccache: its first build compiles the dependencies in full; scripts/setup.sh installs it, and the next one takes them from its cache\n'
 	@printf '  %s, on %s\n' "$(MAIN_CHECKOUT)/.claude/worktrees/$(TOPIC)" "$(WT_BRANCH)"
 
 # The branch to delete is the one the worktree is on, never one named from
