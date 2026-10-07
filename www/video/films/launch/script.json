@@ -52,7 +52,7 @@
       "lines": [
         {
           "id": "duel1",
-          "text": "It plays you two patches. You pick the one you like better.",
+          "text": "In EVOLVE, it plays you two sounds. You pick the one you like better.",
           "post": 0.5
         },
         {
@@ -88,7 +88,7 @@
       "lines": [
         {
           "id": "play1",
-          "text": "Then you play it.",
+          "text": "Then you play it, in PERFORM.",
           "post": 0.9
         },
         {
@@ -129,7 +129,7 @@
       "lines": [
         {
           "id": "depth1",
-          "text": "Open the circuit any time. Every knob is real, and you can watch the performance turn them.",
+          "text": "Open the sound in PATCH any time. Every knob is real, and you can watch PERFORM turn them.",
           "post": 0.7
         },
         {
