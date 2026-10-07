@@ -54,7 +54,7 @@ const PERFORM_REQUESTS = ["perform_wire", "perform_offer", "perform_drift", "per
 // does. `slow`: the engine worker's wasm calls slowed that many times
 // (`app.boot`'s `slowEngine`), so a measurement is still out when the test
 // acts on it (AURACLE_CPU_THROTTLE takes over when it is larger). `seen`:
-// the first-visit tours (the keybed coach among them) marked seen.
+// the first-visit tours marked seen.
 async function boot(page, app, { shipped = true, stalled = false, slow = 0, seen = true } = {}) {
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   if (stalled) await page.route("**/perform-wirings.json*", () => {});
@@ -180,26 +180,18 @@ test("a control still being listened to does nothing, and never looks or acts li
 });
 
 test("first steps name a control that turns on this patch, and speak alone", async ({ page, app }) => {
-  // A newcomer: the keybed coach not yet retired by a first note.
+  // A newcomer, at PERFORM, where the app opens: the guide pill is the one
+  // teaching surface. No other first-run mark speaks over the keybed, at
+  // PERFORM or at PATCH, whose own pill asks for the first note.
   await boot(page, app, { seen: false });
-  // A newcomer, at PERFORM, where the app opens: step 1 says what the keybed
-  // coach would, so the coach keeps quiet. In PATCH it is up until the first
-  // note.
   await expect(page.locator("#guide .pf-steps")).toBeVisible();
-  await expect(page.locator(".coach")).toBeHidden();
+  await expect(page.locator(".coach")).toHaveCount(0);
   await app.level("patch");
-  await expect(page.locator(".coach")).toBeVisible();
+  await expect(page.locator(".coach")).toHaveCount(0);
   await app.openOnPerform("Glass Pad", { reach: false });
   await expect(page.locator("#guide .pf-steps")).toBeVisible();
-  // One voice per lesson: step 1 says what the coach says.
-  await expect(page.locator(".coach")).toBeHidden();
   await app.reached({ wired: true });
-  // Back in PATCH the coach speaks again (until the first note).
-  await app.level("patch");
-  await expect(page.locator(".coach")).toBeVisible();
-  await app.level("perform");
-  // The pill shows one step at a time: a note played, step 2 is next (and
-  // the note retires the coach for good).
+  // The pill shows one step at a time: a note played, step 2 is next.
   await expect(page.locator("#guide .pf-step.now")).toContainText("Play a key");
   await page.keyboard.press("a");
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn /);

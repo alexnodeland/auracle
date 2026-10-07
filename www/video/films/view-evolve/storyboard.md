@@ -37,7 +37,6 @@ Pump Room, Glass Rain, Woodblock, Gated Snare, Ceiling*.
    deal still picks by family), then **teach it**.
 3. Wait until the app has switched to PERFORM and the model has fitted, then
    go to EVOLVE.
-4. Play one note, so the "press A–L" coach goes.
 
 Each chapter then adds its own picks off camera, so the pair on the cards
 differs from chapter to chapter.

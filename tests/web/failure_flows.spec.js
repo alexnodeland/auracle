@@ -43,7 +43,7 @@
 // The engine worker, the toasts that entered the lane, a request held at the
 // worker's door and a reply dispatched as the worker would post it are the
 // fixture's tap (`app`), installed before main.js runs; the first-run
-// overlays (warm start, coach, tours) are marked seen by its boot, so nothing
+// overlays (warm start, tours) are marked seen by its boot, so nothing
 // sits over the controls the tests click. AU-S2 says `console.error` on
 // purpose (both threads log the deliberate error), so console errors are not
 // counted here: an uncaught exception still fails any test.
