@@ -49,8 +49,8 @@ release build).
   can't change this one. `make worktree` runs it. When no checkout has one it
   says why each was passed over, and `make wasm` is owed.
   `PKG_FROM=<dir>` takes that checkout's only.
-- **`make wasm-dev`** builds with test-fast's codegen (no LTO, 16 codegen
-  units), incremental, and no wasm-opt: an engine edit reaches `make serve`
+- **`make wasm-dev`** builds with test-fast's codegen (no LTO, 256 codegen
+  units for the workspace's crates), incremental, and no wasm-opt: an engine edit reaches `make serve`
   in seconds rather than a minute. Its stamp says `"profile": "dev"`, and the
   `make browser-*` targets, the Playwright config, rehearsals and recordings
   refuse it, naming `make wasm`; the session-start hook reports it.

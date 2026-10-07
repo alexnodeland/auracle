@@ -50,11 +50,25 @@ panic = "abort"
 # the workspace's crates only; the dependencies are compiled once either way.
 # CI sets CARGO_INCREMENTAL=0, which overrides it: there every build starts
 # from a cache, and the incremental state would only make each cache bigger.
+#
+# `codegen-units = 256` is cargo's own number for an incremental build (the 16
+# this had is the default for one that is not, written before the profile was
+# incremental): incremental compilation reuses whole codegen units, so an edit
+# dirties a 256th of a crate where it dirtied a 16th. Measured on a
+# one-statement edit to a plain function, the rebuild took 9 to 13 CPU seconds
+# against 31 to 41; the fast tier's tests took as long (1,069 and 1,105 CPU
+# seconds against 1,078 and 1,083); a build from nothing took the same without
+# incremental state (CI's) and about a tenth more with it
+# (docs/notes/rust-build-2026-10/). The dependencies below keep 16: they are
+# compiled once, and the render loop runs in them.
 [profile.test-fast]
 inherits = "release"
 lto = false
-codegen-units = 16
+codegen-units = 256
 incremental = true
+
+[profile.test-fast.package."*"]
+codegen-units = 16
 
 [workspace.dependencies]
 # In-house foundations, from crates.io.

@@ -801,8 +801,9 @@ revalidate: phi-stats norm-peak climb search-check
 WASM_PKG := python3 scripts/wasm_pkg.py
 WASM_PACK := wasm-pack build crates/auracle-wasm --target web --out-dir ../../apps/web/pkg
 WASM_RELEASE := $(WASM_RUSTFLAGS) $(WASM_PACK) --release
-# test-fast's codegen (Cargo.toml: release's opt-level, no LTO, 16 codegen
-# units) into its own target directory, incremental, and no wasm-opt.
+# test-fast's codegen (Cargo.toml: release's opt-level, no LTO, 256 codegen
+# units for the workspace's crates) into its own target directory,
+# incremental, and no wasm-opt.
 WASM_DEV := CARGO_INCREMENTAL=1 $(WASM_RUSTFLAGS) $(WASM_PACK) --profile test-fast --no-opt
 # The browser targets' first line: a release build is in pkg/, or they stop
 # and say what to run.
