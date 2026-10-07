@@ -3562,7 +3562,7 @@ async function dispatch(m) {
             st = status();
             if (engine.fill_cursor() !== from) continue;
           }
-          // Not while notes sound (`backgroundTurn`).
+          // Not while room is made for the audio (`backgroundTurn`).
           await backgroundTurn();
           const added = engine.fill_step(2);
           st = status();

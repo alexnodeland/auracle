@@ -1663,7 +1663,10 @@ audio](#making-room-for-the-audio)), and notes it in the app's log
 (`audio_strain`). A browser with neither reading never turns them on. On a
 machine with headroom they never come on, and B renders always. What it costs
 there: nothing but the readings. Where they come on, the first notes of a
-struggle are heard before them.
+struggle are heard before them: with an offer in B and the audio thread made
+4.5 and 5.5 times slower (`tests/web/probes/play_fast.mjs`, at a load of
+about 195), they came on 234 to 386 ms after the audio clock first fell
+behind, and the run's underruns fell from 791 to 943 to 73 to 201.
 
 ## AUDIO IN
 
