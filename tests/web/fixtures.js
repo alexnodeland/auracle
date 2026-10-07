@@ -666,6 +666,9 @@ class App {
    *    fixture serves the worker with it, after its own: a spec that routed
    *    worker.js itself lost its prefix whenever the fixture routed it too,
    *    as every throttled run does (#166), and a run on a profile;
+   *  - `farmPrefix`: the same for every farm worker, ahead of farm.js, after
+   *    the profile's slowdown: a string, or a function the fixture calls each
+   *    time it serves farm.js (`() => code`, to slow only boot's crew, say);
    *  - `reuseRenders` (false): start with the render cache an earlier boot of
    *    the same seed left once its pool was whole, so the fill after the veil
    *    is served rather than rendered (`RENDERS` above). For a spec that waits
@@ -674,7 +677,7 @@ class App {
    *    deals from the whole pool, nor one about boot, the fill or the
    *    renders;
    *  - `wait` (true): wait for the boot. */
-  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, profile = PROFILE, workerPrefix = "", reuseRenders = false, wait = true } = {}) {
+  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, profile = PROFILE, workerPrefix = "", farmPrefix = "", reuseRenders = false, wait = true } = {}) {
     const { page } = this;
     if (seed === undefined) seed = random === undefined ? DEFAULT_SEED : null;
     if (random === undefined) random = DEFAULT_SEED;
@@ -695,14 +698,15 @@ class App {
         if (this.profile) this.profile.served.worker++;
       });
     }
-    // The farm's workers, on a profile only: at its rate, the engine's own
-    // `slowEngine` aside. Counted, so a spec can see that every farm worker
-    // the page started was served this way.
-    if (on) {
-      const slowFarm = performBudget.SLOW_ENGINE(on.rate);
+    // The farm's workers: on a profile at its rate, the engine's own
+    // `slowEngine` aside, then the spec's own code. Counted, so a spec can see
+    // that every farm worker the page started was served this way.
+    if (on || farmPrefix) {
+      const slowFarm = on ? performBudget.SLOW_ENGINE(on.rate) : "";
       await page.route(profiles.FARM_JS, async (route) => {
         const resp = await route.fetch();
-        await route.fulfill({ response: resp, body: slowFarm + (await resp.text()), contentType: "text/javascript" });
+        const own = typeof farmPrefix === "function" ? farmPrefix() : farmPrefix;
+        await route.fulfill({ response: resp, body: slowFarm + own + (await resp.text()), contentType: "text/javascript" });
         if (this.profile) this.profile.served.farm++;
       });
     }

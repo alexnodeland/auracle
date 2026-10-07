@@ -184,7 +184,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
     slows the engine's wasm, `profile: "air"` boots on the reference profile
     (below), `workerPrefix` runs a spec's own code in the engine worker ahead
-    of `worker.js`, kept on a throttled run and on a profile too).
+    of `worker.js` and `farmPrefix` in every farm worker ahead of `farm.js`
+    (a string, or a function asked each time it is served), both kept on a
+    throttled run and on a profile too).
     `reuseRenders: true` boots with the render cache (`auracle-renders`) as
     an earlier boot of the same seed left it once its pool was whole, so the
     fill after the veil is served, not rendered (by the farm: a fill that
@@ -324,9 +326,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     Playwright's image, it stays suspended and every level reads silence),
     which the nightly job starts. A spec's own route for `worker.js` or
     `farm.js` and a profile's cannot both hold (the one registered last
-    answers; `patch_guess.spec.js` slows boot's crew that way, and on a
-    profile it is the profile's): give the engine's code to `workerPrefix`,
-    which a profile keeps.
+    answers): give the engine's code to `workerPrefix` and the farm's to
+    `farmPrefix`, which a profile keeps (`patch_guess.spec.js` slows boot's
+    crew with `farmPrefix`).
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its

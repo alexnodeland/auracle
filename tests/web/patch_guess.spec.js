@@ -187,18 +187,26 @@ test("a new patch's skips are its own: the sound it was started from does not in
 // CI runner) and ranked eight. It waits for boot's crew now, as a generation
 // does. Here boot's crew is made slow (its wasm calls 12 times as long, as
 // perform_budget.js slows the engine), so the bank is still arriving when
-// the guess is asked; the walk crew raised afterwards is not slowed.
+// the guess is asked; the walk crew raised afterwards is not slowed. The
+// slowdown is the boot's `farmPrefix`, which the fixture serves after a
+// profile's own (a route of the spec's own would lose to the profile's).
+/** farm.js's prefix (`app.boot`'s `farmPrefix`, asked each time farm.js is
+ *  served): boot's crew, the farm workers served within five seconds of the
+ *  first as the page loads, slowed 12 times; a walk crew, much later, not.
+ *  Timed from the first, not from the boot's call, which on a profile may
+ *  first spend seconds calibrating. */
+function bootCrewSlowed() {
+  let first = null;
+  return () => {
+    const now = Date.now();
+    if (first === null) first = now;
+    return now - first < 5_000 ? SLOW_ENGINE(12) : "";
+  };
+}
+
 test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(300_000); // about 168 s on CI, most of it the bank arriving on boot's slowed crew
-  const t0 = Date.now();
-  await page.route(/\/farm\.js(\?|$)/, async (route) => {
-    const resp = await route.fetch();
-    const body = await resp.text();
-    // Boot's crew is spawned as the page loads; a walk crew, much later.
-    const slow = Date.now() - t0 < 5_000;
-    await route.fulfill({ response: resp, body: (slow ? SLOW_ENGINE(12) : "") + body, contentType: "text/javascript" });
-  });
-  await app.boot({ warmed: false });
+  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed() });
   await app.warmStart();
   await openPreset(app, "Sub & Sparkle");
   await app.engine((timeout) => expect.poll(() => app.sentCount("guess"), { timeout }).toBeGreaterThan(0), { ms: 60_000 });
