@@ -217,10 +217,12 @@ over a PERFORM control asks about it and anywhere else opens the list; not
 in a text field, and neither key under another modal dialog (`host.blocked`).
 
 - **The registry** is the shell's: `shell.cmd({id, level, label, key, hint,
-  icon, run, when})`, and `shell.cmds(fn)` for commands that come and go
-  (`takes.kept()`'s *Record again: ‹name›*). `label`, `hint` and `key` may be
-  functions, read each time the list draws (a setting's *on*); `when()` false
-  leaves one out. The shell registers the levels (their `⌥1`–`⌥5`) and the
+  title, icon, run, when})`, and `shell.cmds(fn)` for commands that come and
+  go (`takes.kept()`'s *Record again: ‹name›*). `label`, `hint`, `key` and
+  `title` may be functions, read each time the list draws (a setting's
+  *on*); `when()` false leaves one out; `title` is the row's tooltip, where
+  a label can't say what the command does (*Show measurements*, *Booth
+  mode*, *New visitor*: the ⋯ items' tooltips). The shell registers the levels (their `⌥1`–`⌥5`) and the
   model view; main.js the rest of Anywhere (the sound in hand, `⌘Z` through
   `undoKey`, `[ ]`, Z/X, VOL, MIDI, ● REC, every KEYS ⋯ setting, what ⋯
   held, the bank tour, the film of the level shown when publish.py has
@@ -245,7 +247,8 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   (`openOnBench`, or `openPreset` with no move), at the level shown.
 - **The keys** while it is open are its own, taken on the window in the
   capture phase with `stopPropagation`: ↑/↓ choose
-  (`aria-activedescendant`), ↵ runs, Esc and ⌘K close, Tab walks the field
+  (`aria-activedescendant`), ↵ runs (with nothing found it does nothing,
+  and the query stays), Esc and ⌘K close, Tab walks the field
   and the foot's two links (the ? card's © line moved there), and every other key is typed into it and reaches nothing behind it
   (no note, level key, ⌘Z, pad key or Esc for the model view). A press in
   the dialog keeps the focus in the field. Closing gives the focus back to
@@ -255,7 +258,9 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   opens its picker. The scope's and the picture's panels stand under the
   button, fixed to the window outside the menu bar (which clips to its one
   row, and scrolled its own contents when a panel inside it took the
-  focus), and their Esc gives the focus to it.
+  focus), and their Esc gives the focus to it. They sit under the list's
+  scrim (z-index 55, the MIDI panel's, against the scrim's 60), so one left
+  open when the list opens is covered, not clickable over it.
 
 ## The worker's lanes
 
