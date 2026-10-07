@@ -3,15 +3,15 @@
 // press that has nothing nearer left to close (shell.js takes Esc last, and
 // leaves it when a closer said it used it: `preventDefault`). PATCH's chain
 // is model_view.spec.js's; here, the closers outside it that once let the
-// same press end the view too: PERFORM's well modes (XY, How it works), the
-// ? card, the scope panel, the picture panel and TASTE's selected point; and
+// same press end the view too: PERFORM's well modes (XY, How it works),
+// ⌘K's list, the scope panel, the picture panel and TASTE's selected point; and
 // with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY, either panel
 // over PATCH's selected module), a press closes the nearer only. And XY goes
 // from an axis's drop-down too, where the focus stays after a choice. A step
 // that reads the view never presses in a drop-down: the shell leaves the
 // view up for a press there (`typing`), so the view would stay whatever the
 // closer did.
-const { test, expect, modelView, openKeys, bankTab } = require("./fixtures");
+const { test, expect, modelView, openKeys, bankTab, runCommand } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
   await app.boot();
@@ -61,21 +61,21 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
   await expect(well).toHaveAttribute("data-mode", "how");
   await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "How it works");
 
-  // The ? card, where ? asks for it (nothing askable in reach).
+  // ⌘K's list, where ? opens it (nothing askable in reach).
   await app.level("evolve");
   await page.keyboard.press("?");
-  await expect(page.locator("#help")).toBeVisible();
-  await escCloses(() => expect(page.locator("#help")).toBeHidden(), "the ? card");
+  await expect(page.locator("#cmdk")).toBeVisible();
+  await escCloses(() => expect(page.locator("#cmdk")).toBeHidden(), "⌘K's list");
 
-  // The scope panel and the picture panel, from ⋯. Each opens with the focus
-  // on its first drop-down; Shift+Tab takes it back to the panel's ×, which
-  // is not a field, so the press is the panel's to spend. The focus goes back
-  // to ⋯ (the item that opened the panel is in the menu, hidden).
-  const panels = [["#scope-btn", "#scope-panel", "#scope-close"], ["#image-btn", "#image-panel", "#image-close"]];
-  /** A panel opened from ⋯, the focus on its ×. */
+  // The scope panel and the picture panel, from ⌘K. Each opens with the
+  // focus on its first drop-down; Shift+Tab takes it back to the panel's ×,
+  // which is not a field, so the press is the panel's to spend. The focus
+  // goes back to ⌘K's button (the row that opened the panel went with the
+  // list).
+  const panels = [["Scope & analyzer…", "#scope-panel", "#scope-close"], ["Download as a picture…", "#image-panel", "#image-close"]];
+  /** A panel opened from ⌘K, the focus on its ×. */
   const openPanel = async (item, panel, close) => {
-    await page.locator("#ovf-btn").click();
-    await page.locator(item).click();
+    await runCommand(page, item);
     await expect(page.locator(panel)).toBeVisible();
     await page.keyboard.press("Shift+Tab");
     await expect(page.locator(close)).toBeFocused();
@@ -83,7 +83,7 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
   for (const [item, panel, close] of panels) {
     await openPanel(item, panel, close);
     await escCloses(() => expect(page.locator(panel)).toBeHidden(), panel);
-    await expect(page.locator("#ovf-btn"), `Esc on ${panel} left the focus nowhere`).toBeFocused();
+    await expect(page.locator("#cmdk-btn"), `Esc on ${panel} left the focus nowhere`).toBeFocused();
   }
 
   // In PATCH, either panel over a selected module is nearer: that press

@@ -3,7 +3,7 @@
 A full instrument in one frame (Plan-008, to the prototype in
 `docs/notes/vision-2026-09/prototype/`): a menu bar (the wordmark and its
 lamp, the level you're at, the film chip, the job slot, the sound in hand with
-its face and ▶, TAUGHT, ? and ⋯), the bank on the left, the stage with the
+its face and ▶, TAUGHT, MODEL and ⌘K's Find or do anything), the bank on the left, the stage with the
 levels at its right edge, and a **playable keyboard** docked at the bottom
 (KEYS and the octave, the keybed, and VOL, MIDI, ● REC and KEYS ⋯) — the
 current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;

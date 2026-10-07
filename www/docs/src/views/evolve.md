@@ -6,6 +6,11 @@ EVOLVE POOL grows new sounds toward your picks.</p>
 
 <!-- film:view-evolve --><!-- /film:view-evolve -->
 
+EVOLVE is [the level](../levels.md) beside PERFORM: <kbd>⌥←</kbd> (or
+<kbd>⌥3</kbd>, or the stop left of PERFORM’s) goes there, and <kbd>⌥→</kbd>
+comes back. Zooming from it is measured from PERFORM: <kbd>⌥↑</kbd> goes to
+TASTE, <kbd>⌥↓</kbd> to PATCH.
+
 <figure>
 <img src="../img/evolve.webp" alt="EVOLVE: the question Pick the one you’d reach for, with six pips and a teaching line under it and a small TASTE map at its right; two cards, each with its sound’s face large in a well, its name, and PLAY and PICK; ANOTHER PAIR and EVOLVE POOL under them." loading="eager" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
@@ -255,6 +260,14 @@ Before any step, it says so: *No generations yet. Make a few picks,
 then press EVOLVE POOL, or ⚡ on a sound you like.* If generations have run
 and none added a sound, it says that instead (*2 generations ran, and none
 put a new sound in the pool.*).
+
+## In ⌘K
+
+At EVOLVE, [⌘K’s list](../levels.md#k-find-anything) starts with THIS LEVEL,
+each with its key: *Play A* (<kbd>1</kbd>) and *Play B* (<kbd>2</kbd>), *Pick
+A* (<kbd>←</kbd>) and *Pick B* (<kbd>→</kbd>) while a pair is dealt,
+*Another pair* (<kbd>N</kbd>), *Evolve pool: breed a generation from the
+seeds it marks*, and *What each generation did*.
 
 ## What to try next
 

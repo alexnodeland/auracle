@@ -1408,6 +1408,13 @@ export function createPatch(host) {
     shown,
     hidden,
     renderTools,
+    /** Its commands for ⌘K (shell.js `cmd`), at PATCH: NEW PATCH, and while
+     *  one is open CLEAR and BACK TO ‹name›, each as its button does. */
+    cmds: () => [
+      { id: "patch-new", level: "patch", label: "New patch", when: () => !fresh.on && host.hasRack(), run: enterNew },
+      { id: "patch-clear", level: "patch", label: "Clear the patch", when: () => fresh.on && moduleCount() > 0, run: clearNew },
+      { id: "patch-back", level: "patch", label: () => `Back to ${fresh.fromName}`, key: "Esc", when: () => fresh.on, run: backFrom },
+    ],
     counts,
     isNew: () => fresh.on,
     openSheet,

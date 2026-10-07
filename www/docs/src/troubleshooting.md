@@ -194,7 +194,7 @@ than your impression. Then:
   deal. The overall number also counts comparisons you chose (edits, PERFORM
   offers).
 
-If it has learned something you don’t mean, **⋯** › **Reset your taste…**
+If it has learned something you don’t mean, *Reset your taste…* in [⌘K](./levels.md#k-find-anything)
 downloads a copy of your taste, clears what it learned, and leaves your saved
 sounds alone.
 

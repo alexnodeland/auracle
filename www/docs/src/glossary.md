@@ -38,7 +38,7 @@ flip, 1 is perfect, and below 0 is worse than guessing.
 
 The ceilings breeding searches within: 24 modules, a depth of 6, and a
 modulation depth of 3. PATCH shows a ceiling only when the patch is one short
-of it or at it (*23/24 modules*). **⋯** › **Show measurements** shows all
+of it or at it (*23/24 modules*). *Show measurements*, in [⌘K](./levels.md#k-find-anything), shows all
 three (*8/24 modules · 4/6 depth · 1/3 mod depth*). A patch at a ceiling has
 no room to grow.
 
@@ -127,6 +127,15 @@ keeping an edit of it as new with an answer (the card, or PICK THE EDIT), or
 a cut. Its own card doesn’t count, nor do stars
 ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
+### ⌘K
+
+The one list of every command, with its key, and every sound, by its face:
+<kbd>⌘K</kbd> (Ctrl K), **Find or do anything** in the menu bar, or
+<kbd>?</kbd> away from PERFORM’s controls. Type part of what you want, choose
+with the arrows, and press <kbd>↵</kbd>. It took in the old ⋯ menu; the old ?
+card’s key map is [the keyboard page](./keyboard.md) ([one
+space](./levels.md#k-find-anything)).
+
 ### KEYS ⋯
 
 At the right end of the keys bar, beside **VOL**, **MIDI** and **● REC**: the
@@ -153,8 +162,9 @@ it to EVOLVE (what it could become). The cross at the stage’s right edge shows
 where you are; click a stop to go there, or use <kbd>⌥↑</kbd>, <kbd>⌥↓</kbd>,
 <kbd>⌥←</kbd>, <kbd>⌥→</kbd> and <kbd>⌥1</kbd>–<kbd>⌥5</kbd>, <kbd>⌥</kbd>
 and the wheel, or a pinch
-([the keyboard map](./keyboard.md#the-levels)). The menu bar names the level
-you’re at, and a move carries the sound’s face from one level to the next.
+([the keyboard map](./keyboard.md#the-levels), [one space](./levels.md)).
+The menu bar names the level you’re at, and a move carries the sound’s face
+from one level to the next.
 
 ### Lock
 
@@ -178,7 +188,8 @@ show in these, it can’t be learned.**
 The row across the top: the wordmark and its lamp, the level you’re at and
 what it is, the film of that level, the job slot while long work runs, the
 sound you’re playing (its face, its name and ▶, which is <kbd>Space</kbd>),
-**TAUGHT**, **MODEL** (the model view), and **?** and **⋯**.
+**TAUGHT**, **MODEL** (the model view), and **Find or do anything ⌘K**, the
+one list of every command and every sound ([one space](./levels.md#k-find-anything)).
 
 ### Model view
 
@@ -349,7 +360,7 @@ on it) freezes it. It leads PERFORM’s pads. See
 
 Picking three of nine presets on a first visit, under **PICK THE THREE YOU’D
 REACH FOR**. It teaches the model 18 picks in half a minute, and your three are
-saved. Run it again from **⋯** › *Re-run the three-pick warm start*.
+saved. Run it again from [⌘K](./levels.md#k-find-anything): *Re-run the three-pick warm start*.
 
 ### Without this module
 

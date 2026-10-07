@@ -1,6 +1,7 @@
 // Unit tests for levels.js: how the levels sit, how a key, a hash or a
 // saved name moves between them, and the rules of the move itself (the
-// morph, the flight, the wheel and the pinch).
+// morph, the flight, the wheel and the pinch), and what ⌘K's list finds
+// for a query and in what order.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,6 +10,7 @@ import {
   isLevel, digitKey, dirOf, step, railPath, savedLevel, hashLevel, startLevel, levelForKey,
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, flightEnds, easeInOut, flightAt,
   WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, wheelOwner, PINCH_IN, PINCH_OUT, pinchStep,
+  rank, fuzzy, hitMarks, cmdkList, SOUNDS_SHOWN,
 } from "../levels.js";
 
 test("the axis runs out to in, with EVOLVE beside PERFORM", () => {
@@ -226,4 +228,73 @@ test("a pinch spread past 1.3 goes in, closed under 0.77 goes out, and leans on 
   assert.equal(pinchStep(PINCH_IN).lean.t, 1);
   assert.deepEqual(pinchStep(0), { dir: null, lean: null });
   assert.deepEqual(pinchStep(NaN), { dir: null, lean: null });
+});
+
+// ---------- ⌘K ----------
+
+test("a query ranks a label's start first, then a word's start, then anywhere, then scattered letters", () => {
+  const start = rank("down", "Download your taste");
+  const word = rank("taste", "Download your taste");
+  const inside = rank("load", "Download your taste");
+  const scattered = rank("dyt", "Download your taste");
+  assert.ok(start > word && word > inside && inside > scattered && scattered > 0, `${start} ${word} ${inside} ${scattered}`);
+  assert.equal(rank("xyz", "Download your taste"), -1);
+  // Case and the spaces around a query don't count.
+  assert.equal(rank("  DOWN ", "Download your taste"), start);
+  // A shorter label that starts with it comes before a longer one.
+  assert.ok(rank("open", "Open a taste file…") > rank("open", "Open a taste file… and more"));
+  // An earlier word before a later one.
+  assert.ok(rank("taste", "Taste your taste") > rank("taste", "Reset your taste…"));
+  // A word starts after anything that isn't a letter or a digit.
+  assert.ok(rank("tall", "⇕ tall: a taller keybed") >= 80 - 1);
+  // No query names everything alike.
+  assert.equal(rank("", "anything"), rank("", "else"));
+});
+
+test("fuzzy finds a query's letters in order, and the marks are what rank counted", () => {
+  assert.deepEqual(fuzzy("dyt", "Download your taste"), [0, 9, 14]);
+  assert.equal(fuzzy("tyd", "Download your taste"), null);
+  assert.deepEqual(hitMarks("down", "Download your taste"), [0, 1, 2, 3]);
+  assert.deepEqual(hitMarks("taste", "Download your taste"), [14, 15, 16, 17, 18]);
+  assert.deepEqual(hitMarks("load", "Download"), [4, 5, 6, 7]);
+  assert.deepEqual(hitMarks("dyt", "Download your taste"), [0, 9, 14]);
+  assert.deepEqual(hitMarks("", "Download"), []);
+  assert.deepEqual(hitMarks("q", "Download"), []);
+});
+
+test("the list keeps its groups in order with no query, and shows every command but five sounds", () => {
+  const items = (n, p) => Array.from({ length: n }, (_, i) => ({ label: `${p} ${i}` }));
+  const groups = [
+    { name: "This level", items: items(3, "here") },
+    { name: "Anywhere", items: items(30, "anywhere") },
+    { name: "Sounds", items: items(12, "sound"), cap: SOUNDS_SHOWN },
+  ];
+  const list = cmdkList(groups, "");
+  assert.deepEqual(list.map((g) => g.name), ["This level", "Anywhere", "Sounds"]);
+  assert.deepEqual(list.map((g) => g.hits.length), [3, 30, 5]);
+  assert.deepEqual(list[1].hits.map((h) => h.item.label).slice(0, 3), ["anywhere 0", "anywhere 1", "anywhere 2"]);
+  // A group with nothing to show is left out.
+  assert.deepEqual(cmdkList([{ name: "This level", items: [] }, ...groups.slice(1)], "").map((g) => g.name), ["Anywhere", "Sounds"]);
+});
+
+test("with a query the group with the best hit leads, its hits best first, and eight sounds at most", () => {
+  const groups = [
+    { name: "This level", items: [{ label: "Another pair" }] },
+    { name: "Anywhere", items: [{ label: "Reset your taste…" }, { label: "Download your taste" }, { label: "Open a taste file…" }] },
+    { name: "Sounds", items: [{ label: "Glass Pad" }, { label: "Taste Maker" }], cap: SOUNDS_SHOWN },
+  ];
+  const list = cmdkList(groups, "taste");
+  // "Taste Maker" starts with it: Sounds leads.
+  assert.deepEqual(list.map((g) => g.name), ["Sounds", "Anywhere"]);
+  assert.equal(list[0].hits[0].item.label, "Taste Maker");
+  // Within Anywhere each has it as its third word: a tie, in the order given.
+  assert.deepEqual(list[1].hits.map((h) => h.item.label), ["Reset your taste…", "Download your taste", "Open a taste file…"]);
+  const many = cmdkList([{ name: "Sounds", items: Array.from({ length: 20 }, (_, i) => ({ label: `Pad ${i}` })), cap: SOUNDS_SHOWN }], "pad");
+  assert.equal(many[0].hits.length, 8);
+  // A prefix outranks a word inside a longer label, across groups too.
+  const prefix = cmdkList([
+    { name: "Anywhere", items: [{ label: "Hear the pool" }] },
+    { name: "Sounds", items: [{ label: "Pool Party" }], cap: SOUNDS_SHOWN },
+  ], "pool");
+  assert.equal(prefix[0].hits[0].item.label, "Pool Party");
 });

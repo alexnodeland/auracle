@@ -557,6 +557,19 @@ banned-words check in `make dev-check` reads the list after it.
 | **spread**, **pinch** | Two fingers on a touch screen moving apart, and together | pinch in / pinch out, pinch-zoom |
 | **the face flies**, **fades** | A move between the levels, or a sound opened from the bank, carrying its face to where the next level draws it; where a level doesn't, it fades, and with no face to carry one level fades into the next | morph, transition, zoom animation, cross-fade |
 | **KEYS ⋯** | The keys bar's settings: HOLD, UNI, ARP, SYNC, glide, the keybed's height and span, and silence | settings, options, the dock's drawer |
+| **Find or do anything** | The menu bar's button, and the list's name: ⌘K opens one list of what the instrument can do and every sound it holds | search, command palette, quick actions, spotlight |
+| **Find a sound, a level or what to do** | The list's field: type part of a sound's name, a level, or what you want done (*octave*, *download*) | Search, Search sounds, Type a command |
+| **This level**, **Anywhere**, **Sounds** | ⌘K's three groups, in that order: what the level you're at does, what works at every level, then the sounds (the pool, then the presets), each with its face | Current view, Global, Results, Library |
+| **choose**, **do it**, **close** | The list's foot, beside ↑ ↓, ↵ and esc | select, run, execute, dismiss |
+| **Keys and gestures** | The ⌘K command that opens the guide's keyboard page, where the ? card's key map went | Keyboard map, shortcuts, hotkeys, help card |
+| **What does BRIGHT do?** | ⌘K's way to explain's answer for a control, here BRIGHT; it prints no key, since ? asks only over the control and elsewhere opens the list | Explain BRIGHT, Help with BRIGHT |
+| **What are the three banks?** | ⌘K's command for the bank's walkthrough, the one the bank's ? starts | Bank tour, Explain the banks |
+| **Record again: ‹name›** | ⌘K's command for a kept-safe sound: RECORD AGAIN makes it a new take | Re-record, Retake, Redo take |
+| **Undo an edit**, **Redo an edit** | PATCH's commands in ⌘K: the last edit taken back, and brought back; *Undo to as opened* takes back every edit at once | Undo, Step back, Revert one |
+| **Take back your last pick or cut** | Anywhere's ⌘Z in ⌘K: the pick or cut taken back within its seven seconds; with **Play the sound in hand** (Space), **Save the sound you’re on** (M) and **Cut the sound you’re on** | Undo last action, Play/pause, Bookmark, Delete |
+| **Press a key to hear it. ⌘K lists what you can do, with its keys.** | The toast after skipping the warm start: the keybed plays, and ⌘K is where the rest is found | Tip, Hint, Did you know |
+| **One space** | The guide page that says how PERFORM, PATCH, EVOLVE, TASTE and LEARNING fit together, how to move between them, the model view and ⌘K | Navigation, Views overview, Modes |
+| **Watch ‹LEVEL› in depth** | The film of the level you're at, opened in the guide, only once the film is published; the film chip's words as a ⌘K label | Tutorial, Learn ‹LEVEL›, Watch the tour |
 
 ### The view names
 

@@ -28,7 +28,7 @@
 // Sessions are seeded (the films' own Math.random, no `?seed`: the session's
 // seed is drawn from it), so the pool is the same run to run. What was asked
 // of the engine and what it answered is the fixture's tap.
-const { test, expect, goLevel, bankTab, openApp } = require("./fixtures");
+const { test, expect, goLevel, bankTab, openApp, runCommand } = require("./fixtures");
 const fs = require("fs");
 
 // What a slot shows: its drawing, as the image it is (vessel.js draws it).
@@ -180,8 +180,7 @@ test("the sound's card downloads with its face, its name and its patch", async (
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
   await app.engine((timeout) => expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   const name = (await page.locator("#rack-subject").textContent()).trim();
-  await page.locator("#ovf-btn").click();
-  await page.locator("#image-btn").click();
+  await runCommand(page, "Download as a picture…");
   await page.locator("#ix-scope").selectOption("card");
   await page.locator("#ix-scale").selectOption("2");
   await page.locator("#ix-fmt").selectOption("png");

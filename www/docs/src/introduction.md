@@ -17,7 +17,7 @@ Auracle is a modular synthesizer you play in the browser. Pick between two
 sounds, and it learns what you like, breeds new sounds toward it, and shows you
 what it learned. Every sound is a patch you can open and change.
 
-This guide is for playing it: each page is one view or one task, and says what
+This guide is for playing it: each page is one level or one task, and says what
 to do and what you’ll see. The [reference](../reference/) is for how it works,
 with the math.
 
@@ -26,7 +26,7 @@ rack of 45 modules with typed cables. You can play it without teaching it
 anything.
 
 <figure>
-<img src="./img/play.webp" alt="The PATCH view: the bank on the left, the patch's modules in signal order across its well, wired with green audio cables and amber modulation cables into OUT and the sound's face, and a keybed along the bottom." loading="eager" width="1440" height="900">
+<img src="./img/play.webp" alt="PATCH: the bank on the left, the patch's modules in signal order across its well, wired with green audio cables and amber modulation cables into OUT and the sound's face, and a keybed along the bottom." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The sound you’re playing, opened as a rack
 you can turn, rewire, and lock, live while you edit it.</figcaption>
 </figure>
@@ -47,17 +47,23 @@ you can turn, rewire, and lock, live while you edit it.</figcaption>
 - **What you play is what it heard.** The patch you play live is the same one
   that was bred, checked, and measured.
 
-## The four views
+## The five levels
 
-| View | Shows | What you do there |
+The instrument is [one space](./levels.md) around the sound you’re playing:
+zoom out to see it among every sound, in to see what it is made of, and step
+beside it to breed.
+
+| Level | Shows | What you do there |
 |---|---|---|
+| **LEARNING** | How it learns | Read what it weighs, how its guesses have scored, and name your styles |
+| **TASTE** | The sound among all sounds | See your pool on a map, and how each pick moved what it guesses you’d like |
 | **PERFORM** | The sound | Play it with controls named for what you hear, let it wander, and hear offers |
 | **PATCH** | The patch | Hear it, play it, turn its knobs, rewire it, and lock what you like |
 | **EVOLVE** | The question | Pick the one of two sounds you’d reach for, and breed |
-| **TASTE** | What it learned | Your styles, how sure it is, and whether its guesses have been right |
 
 PERFORM is where you play, EVOLVE is where you teach, and PATCH is where you
-open the sound up. TASTE is where you see whether it’s learning.
+open the sound up. TASTE and LEARNING are where you see whether it’s learning.
+<kbd>⌘K</kbd> finds any sound, and anything to do, from any of them.
 
 ```admonish tip title="The whole loop"
 1. Pick the three you’d reach for when the warm start asks.

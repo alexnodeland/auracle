@@ -1,4 +1,4 @@
-// The warm start run again, from ⋯ › Re-run the three-pick warm start (the
+// The warm start run again, from ⌘K's Re-run the three-pick warm start (the
 // guide's "any time, to teach it 18 more"): nine new cards, none of them
 // picked, TEACH IT reached by picking three of them, and those three taught.
 //
@@ -9,15 +9,14 @@
 //
 // The warm start's first run, its 18 preferences and PERFORM's first steps
 // after it, are `first_run.spec.js`'s, which is not on the fixture yet (#170).
-const { test, expect } = require("./fixtures");
+const { test, expect, runCommand } = require("./fixtures");
 
 test("the warm start run again starts with no card picked and teaches the three picked on it", async ({ page, app }) => {
   await app.boot({ warmed: false });
   await app.warmStart([1, 4, 7]);
   await expect(page.locator("#duel-count")).toHaveText("18");
 
-  await page.locator("#ovf-btn").click();
-  await page.locator("#warm-rerun-btn").click();
+  await runCommand(page, "Re-run the three-pick warm start");
   // The deal waits on the engine's `presets` reply.
   await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }));
   const items = page.locator("#warm-grid .warm-item");

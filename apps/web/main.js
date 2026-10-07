@@ -168,7 +168,7 @@ const shell = createShell({
   modelTag: () => words.modelTag({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
   // A modal dialog keeps the level keys: the level behind it must not change
   // unseen.
-  // Any modal one showing: the warm start, the commit pair, the ? card,
+  // Any modal one showing: the warm start, the commit pair, ⌘K's list,
   // PERFORM's stage mode, explain's lesson. A non-modal panel (MIDI, KEYS ⋯,
   // the scope's settings, Compare) does not keep them.
   blocked: () => modalUp(),
@@ -181,8 +181,14 @@ const shell = createShell({
   // up from the bank lands at a level with no place for it.
   handAnchor: () => faceBoxOf($("inhand-face")),
   mark: (name, detail) => mark(name, detail),
+  // ⌘K (Plan-008 §2.4): its keys printed for this platform, and the sounds
+  // it lists (the pool and the presets), each with the face the page has
+  // drawn for it and nothing asked of the engine.
+  platformKeys: (k) => platformKeys(k),
+  sounds: () => cmdkSounds(),
+  paintSounds: (root) => paintFaces(root),
 });
-/** Is a modal dialog showing (the warm start, the commit pair, the ? card,
+/** Is a modal dialog showing (the warm start, the commit pair, ⌘K's list,
  *  stage mode, explain's lesson)? It keeps the level keys and PERFORM's pad
  *  keys: what is behind it must not change unseen. */
 function modalUp() {
@@ -452,6 +458,7 @@ const FACE_SIZE = {
   warm: [24, 40],  // the warm start's cards
   share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
   inhand: [20, 30], // the header's chip, the sound in hand
+  cmdk: [24, 32],  // ⌘K's list, beside a sound's name (the mock's 24 px)
   // Large, in a well (Plan-008 C1): PERFORM's sound in hand and its B, and
   // an EVOLVE card's sound. Drawn at this size and scaled by the well that
   // holds it (`FACE_FLUID`), with the glow and the floor's reflection stage
@@ -4794,7 +4801,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
     if (activate) items[j].click();
   });
 }
-wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
 
 // ---------- audio helpers ----------
 function ensureAudio() {
@@ -5253,6 +5259,7 @@ async function bootPerform() {
     // The ? chip is chrome: not on film, not at a kiosk.
     chrome: () => !new URLSearchParams(location.search).has("film") && !booth?.on,
   });
+  for (const c of explain.cmds()) shell.cmd(c);
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
   if (perform.marquee) perform.marquee.append($("booth-attract"));
   if (liveTreeJson) perform.patchChanged(liveTreeJson, liveMakeup);
@@ -5271,15 +5278,14 @@ try {
   engineerMode = false;
 }
 function paintEngineer() {
-  $("engineer-btn").setAttribute("aria-checked", String(engineerMode));
-  $("engineer-btn").textContent = engineerMode ? "Show measurements: on" : "Show measurements";
-  // The same switch holds back the engine's own vocabulary everywhere else:
+  // ⌘K's Show measurements says "on" from `engineerMode`. The same switch holds back the engine's own vocabulary everywhere else:
   // patch ids and topology signatures in the bank, the PATCH header and the
   // duel cards (CSS, keyed on this class), and the structural budget until it
   // is close to a ceiling (`renderBudget`).
   document.documentElement.classList.toggle("engineer", engineerMode);
 }
-$("engineer-btn").onclick = () => {
+/** ⌘K's Show measurements: on, or off. */
+function toggleEngineer() {
   engineerMode = !engineerMode;
   try {
     localStorage.setItem("auracle-engineer", engineerMode ? "1" : "0");
@@ -5292,7 +5298,7 @@ $("engineer-btn").onclick = () => {
   renderSubject();
   renderBudget();
   renderBank();
-};
+}
 paintEngineer();
 
 // ---------- the performed circuit ----------
@@ -5357,6 +5363,8 @@ setInterval(paintPerformedKnobs, 100);
 // touch hands it over; Shift+Esc forgets the visitor. See booth.js.
 let booth = null;
 let boothQuiet = false;
+// Booth mode on or off (⌘K's Booth mode), once booth.js is up.
+let toggleBooth = null;
 
 // Booth mode's pre-warm: each demo patch measured for PERFORM before attract
 // or a visitor needs it. The measurement wants the patch's tree exactly as the
@@ -5474,19 +5482,15 @@ async function bootBooth() {
     // Booth mode reserves the attract band's row, so the band can come and go
     // without moving anything a visitor might be reaching for.
     document.documentElement.classList.toggle("booth", booth.on);
-    $("booth-btn").setAttribute("aria-checked", String(booth.on));
-    $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
-    $("booth-reset-btn").classList.toggle("hidden", !booth.on);
     pointFilmChip();
   };
-  $("booth-btn").onclick = () => {
+  toggleBooth = () => {
     booth.setOn(!booth.on);
     paintBooth();
     note(booth.on
       ? platformKeys("Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; ⇧Esc starts a new visitor.")
       : "Booth mode off.");
   };
-  $("booth-reset-btn").onclick = () => boothResetVisitor();
   paintBooth();
 }
 
@@ -5778,19 +5782,14 @@ function escFloats() {
     [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
     [() => compareId != null, closeCompare],
     [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
-    [() => shown("ovf-menu"), () => {
-      $("ovf-menu").classList.add("hidden");
-      $("ovf-btn").setAttribute("aria-expanded", "false");
-      $("ovf-btn").focus();
-    }],
     // The scope and picture panels, never by listeners of their own: those
     // heard Esc after this chain had put PATCH's selected module down for
-    // the same press. The focus goes back to ⋯, which they hang off (the
-    // item that opened each is in the menu, hidden now).
+    // the same press. The focus goes to ⌘K's button, which they hang off
+    // (the row that opened each is in the list, closed now).
     [() => panelOpen("scope-panel") || panelOpen("image-panel"), () => {
       closeScopePanel();
       closeImagePanel();
-      $("ovf-btn").focus();
+      $("cmdk-btn").focus();
     }],
     [() => shown("bank-tour"), () => { endBankTour(); $("bank-tour-btn").focus(); }],
     [keysPopOpen, () => {
@@ -5819,29 +5818,33 @@ function escSteps() {
   ];
 }
 
+/** ⌘Z (and ⇧⌘Z, `redo`): first the newest teaching act still inside its
+ *  undo window, at any level; then, in PATCH only, the edit undo. ⌘K's
+ *  *Take back your last pick or cut* is the same. */
+function undoKey(redo) {
+  if (!redo && takeBackNewest()) return;
+  // Edit undo belongs to PATCH, where the rack it changes is on screen. It
+  // used to be what ⌘Z fell through to everywhere: in EVOLVE, pressed a
+  // moment after a pick's window had closed, it silently reverted a knob
+  // turned minutes earlier on a patch the player could not see.
+  if (currentView !== "patch") {
+    note(
+      redo
+        ? "Nothing to redo here. PATCH edits redo in PATCH."
+        : "Nothing to undo here. PATCH edits undo in PATCH.",
+      { urgent: true, replace: "undo-here" },
+    );
+    return;
+  }
+  // Unconditional: a restore already in flight is a reason to *queue* the
+  // press, not to discard it — which is what this gate did, silently, to
+  // nine presses out of ten in a burst. `requestRestore` owns the waiting.
+  redo ? doRedo() : doUndo();
+}
 document.addEventListener("keydown", (e) => {
-  // ⌘Z: first the newest teaching act still inside its undo window, in any
-  // view; then, in PATCH only, the edit undo.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
-    if (!e.shiftKey && takeBackNewest()) return;
-    // Edit undo belongs to PATCH, where the rack it changes is on screen. It
-    // used to be what ⌘Z fell through to everywhere: in EVOLVE, pressed a
-    // moment after a pick's window had closed, it silently reverted a knob
-    // turned minutes earlier on a patch the player could not see.
-    if (currentView !== "patch") {
-      note(
-        e.shiftKey
-          ? "Nothing to redo here. PATCH edits redo in PATCH."
-          : "Nothing to undo here. PATCH edits undo in PATCH.",
-        { urgent: true, replace: "undo-here" },
-      );
-      return;
-    }
-    // Unconditional: a restore already in flight is a reason to *queue* the
-    // press, not to discard it — which is what this gate did, silently, to
-    // nine presses out of ten in a burst. `requestRestore` owns the waiting.
-    e.shiftKey ? doRedo() : doUndo();
+    undoKey(e.shiftKey);
     return;
   }
   // Camera zoom, on the bindings every expert already has in their fingers.
@@ -8596,28 +8599,7 @@ function renderPresetBank(list) {
     if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      if (inBank) {
-        armTakeUp(el.querySelector(":scope > .face-slot"), { id: loadedId });
-        openOnBench(loadedId);
-        voicePresetEarly(p, loadedId);
-        showView("patch");
-      } else {
-        // Said at once: the engine may be busy for seconds, and a click
-        // that shows nothing gets clicked again, or given up on.
-        // A click is an open too: a preset clicked before this one and still
-        // loading lands in the bank, not on the bench (the player moved on).
-        // It used to open when it landed, and this one was then refused.
-        benchSeq += 1;
-        presetClicks.set(p.index, benchSeq);
-        takes.benchMoved(null); // a preset on its way: the bench is moving on
-        openAskedAt = performance.now();
-        el.classList.add("loading");
-        el.setAttribute("aria-busy", "true");
-        send({ type: "load_preset", index: p.index, open: true });
-        armTakeUp(el.querySelector(":scope > .face-slot"), { index: p.index });
-        // Heard before: it plays now, while the engine inserts it.
-        voicePresetEarly(p);
-      }
+      openPreset(p, el, { move: true });
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
     frag.appendChild(el);
@@ -8627,6 +8609,42 @@ function renderPresetBank(list) {
   // Drawn from the presets' shipped faces as the rows come into view: no
   // face lands for them to be drawn at.
   paintFaces(list);
+}
+
+/** Open a preset, as its row does: the pool's copy if it is in the pool
+ *  (and, from the row's click, PATCH), else asked of the engine with `open`.
+ *  `el` is its row, if the bank draws it (its face flies from there when the
+ *  sound lands, and it says it is loading); ⌘K's list opens one without a
+ *  move, as Enter on a bank row does. */
+function openPreset(p, el, { move = false } = {}) {
+  const loadedId = presetIds.get(p.index);
+  const inBank = loadedId != null && !!rowOf(loadedId);
+  const row = el || document.querySelector(`#bank-list .preset-item[data-index="${p.index}"]`);
+  const slot = row ? row.querySelector(":scope > .face-slot") : null;
+  if (inBank) {
+    armTakeUp(slot, { id: loadedId });
+    openOnBench(loadedId);
+    voicePresetEarly(p, loadedId);
+    if (move) showView("patch");
+  } else {
+    // Said at once: the engine may be busy for seconds, and a click
+    // that shows nothing gets clicked again, or given up on.
+    // A click is an open too: a preset clicked before this one and still
+    // loading lands in the bank, not on the bench (the player moved on).
+    // It used to open when it landed, and this one was then refused.
+    benchSeq += 1;
+    presetClicks.set(p.index, benchSeq);
+    takes.benchMoved(null); // a preset on its way: the bench is moving on
+    openAskedAt = performance.now();
+    if (row) {
+      row.classList.add("loading");
+      row.setAttribute("aria-busy", "true");
+    }
+    send({ type: "load_preset", index: p.index, open: true });
+    armTakeUp(slot, { index: p.index });
+    // Heard before: it plays now, while the engine inserts it.
+    voicePresetEarly(p);
+  }
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
@@ -9091,13 +9109,6 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn") &&
       Date.now() - menuOpenedAt > 350) {
     closeMenu();
-  }
-  // One dismissal law for every popover: a click that is not inside it closes
-  // it. The ovf button used to stopPropagation, which kept THIS handler from
-  // ever seeing the click — so opening one popover left the other one up.
-  if (!e.target.closest(".ovf")) {
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
   }
 });
 
@@ -11383,7 +11394,7 @@ function renderSubject() {
       ? `opening ${nameOf(benchPending)}…`
       : "",
     // The id and the topology signature ("#30 · ssaw-lp-cho") are the
-    // engine's bookkeeping, on request only (⋯ › Show measurements).
+    // engine's bookkeeping, on request only (⌘K's Show measurements).
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
@@ -15720,7 +15731,7 @@ function setFlip(side, on) {
   // The raw term is engine truth, not a label. It belongs *with* the circuit
   // view, not permanently under the waveform where it reads as the card's
   // description — truncated mid-token, at that. And only for those who asked
-  // for the numbers (⋯ › Show measurements): the drawing already says what
+  // for the numbers (⌘K's Show measurements): the drawing already says what
   // the s-expression says, in a form a player can read.
   $(`readout-${side}`).classList.toggle("hidden", !(on && engineerMode));
   $(`mini-${side}`).classList.toggle("hidden", !on);
@@ -21435,7 +21446,15 @@ function panelOpen(id) {
 
 function closeScopePanel() {
   $("scope-panel")?.classList.add("hidden");
-  $("scope-btn")?.setAttribute("aria-expanded", "false");
+}
+
+/** The scope's settings, opened (the focus on its first setting) or closed. */
+function toggleScopePanel() {
+  const panel = $("scope-panel");
+  if (!panel) return;
+  closeImagePanel();
+  const shut = panel.classList.toggle("hidden");
+  if (!shut) $("sp-mode").focus();
 }
 
 function scopePanelInit() {
@@ -21466,19 +21485,11 @@ function scopePanelInit() {
   bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
   const close = closeScopePanel;
   $("scope-close").onclick = close;
-  $("scope-btn").onclick = (ev) => {
-    ev.stopPropagation();
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-    const shut = panel.classList.toggle("hidden");
-    $("scope-btn").setAttribute("aria-expanded", String(!shut));
-    if (!shut) $("sp-mode").focus();
-  };
-  // The same dismissals the ⋯ menu itself honours, so the panel never
-  // outlives the gesture that opened it.
+  // A press anywhere else puts it away, so the panel never outlives the
+  // gesture that opened it.
   document.addEventListener("pointerdown", (ev) => {
     if (panel.classList.contains("hidden")) return;
-    if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
+    if (panel.contains(ev.target)) return;
     close();
   });
   // Esc closes it in main's Esc chain, with whatever else floats.
@@ -21894,6 +21905,7 @@ taste = createTaste({
   kindsText,
   fitEvery: FIT_EVERY,
 });
+for (const c of taste.cmds()) shell.cmd(c);
 
 /** Redraw TASTE or LEARNING, whichever is showing, from the views main holds. */
 function drawTaste() {
@@ -22071,7 +22083,6 @@ function lineageChanges(diff) {
 }
 
 // ---------- profile ----------
-$("export-btn").onclick = () => send({ type: "export" });
 // Importing a profile *replaces* the taste log — every pick, star and cut —
 // and the autosave 2.5 s later made that permanent. It used to happen on the
 // file pick, with no question asked and no copy kept. Now it asks, and the
@@ -22110,9 +22121,9 @@ $("import-input").onchange = async (e) => {
   $("alarm").appendChild(keep);
 };
 
-// The warm start stays reachable after a skip, and the profile can start
-// over — previously the only reset was clearing site data by hand.
-$("warm-rerun-btn").onclick = () => openWarmStart();
+// The warm start stays reachable after a skip (⌘K's Re-run the three-pick
+// warm start), and the profile can start over — previously the only reset
+// was clearing site data by hand.
 // Reset forgets the taste, and keeps what is yours. It used to delete the whole
 // saved record and reload, which also took every saved patch (MY PATCHES),
 // the modules set aside, the dock settings and the pins — none of which the
@@ -22137,7 +22148,9 @@ function resetQuestion() {
     saved: ((views && views.ranked) || []).filter((r) => r.pinned).length,
   });
 }
-$("taste-reset-btn").onclick = () => {
+/** Reset your taste… (⌘K): the question, with the counts (or what a crashed
+ *  engine costs), and its answers. */
+function askReset() {
   if (saveBlocked === "crashed") {
     // No engine to export from or to ask for the bank: say what that costs.
     alarm("Reset your taste? The engine has stopped, so no copy can be downloaded and nothing can " +
@@ -22176,7 +22189,7 @@ $("taste-reset-btn").onclick = () => {
   keep.textContent = "keep it";
   keep.onclick = () => alarm(null);
   $("alarm").appendChild(keep);
-};
+}
 
 function clearFirstRunMarks() {
   for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-guide", "auracle-perform-steps"]) {
@@ -22292,14 +22305,15 @@ function saveBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
-$("patch-export-btn").onclick = () => {
+/** ⌘K's Download this patch: the sound in hand as a patch file. */
+function downloadPatch() {
   const body = patchSidecar();
   if (!body) return note("Open a sound first: there’s no patch to download.");
   saveBlob(
     new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }),
     `${patchFileStem(body)}.auracle.json`,
   );
-};
+}
 
 /** Open a parsed sidecar (or a bare tree) on the bench.
  *
@@ -23151,7 +23165,6 @@ function openSoundCard() {
   imageSave();
   $("scope-panel")?.classList.add("hidden");
   panel.classList.remove("hidden");
-  $("image-btn")?.setAttribute("aria-expanded", "true");
   imageSync();
   $("ix-scope").focus();
 }
@@ -23259,7 +23272,16 @@ async function runCardExport() {
 
 function closeImagePanel() {
   $("image-panel")?.classList.add("hidden");
-  $("image-btn")?.setAttribute("aria-expanded", "false");
+}
+
+/** Download as a picture…: its panel, opened (the focus on what it draws)
+ *  or closed. */
+function toggleImagePanel() {
+  const panel = $("image-panel");
+  if (!panel) return;
+  closeScopePanel();
+  const shut = panel.classList.toggle("hidden");
+  if (!shut) { imageSync(); $("ix-scope").focus(); }
 }
 
 function imagePanelInit() {
@@ -23277,27 +23299,16 @@ function imagePanelInit() {
   bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
   bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
   const close = closeImagePanel;
-  // Focus goes back to the ⋯, not to the menu item that opened this: the item
-  // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
-  // and `focus()` on a `display:none` element is a no-op that drops the
-  // keyboard on the body. The ⋯ is the visible control this panel hangs off.
-  // (Esc does the same, in main's Esc chain, for this panel and the scope's.)
-  const dismiss = () => { close(); $("ovf-btn")?.focus(); };
+  // Focus goes back to ⌘K's button, which this panel hangs off: the row of
+  // the list that opened it is gone with the list. (Esc does the same, in
+  // main's Esc chain, for this panel and the scope's.)
+  const dismiss = () => { close(); $("cmdk-btn")?.focus(); };
   $("image-close").onclick = dismiss;
   $("ix-go").onclick = runImageExport;
-  $("image-btn").onclick = (ev) => {
-    ev.stopPropagation();
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-    closeScopePanel();
-    const shut = panel.classList.toggle("hidden");
-    $("image-btn").setAttribute("aria-expanded", String(!shut));
-    if (!shut) { imageSync(); $("ix-scope").focus(); }
-  };
   // The same dismissals every other popover in the header honours.
   document.addEventListener("pointerdown", (ev) => {
     if (panel.classList.contains("hidden")) return;
-    if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
+    if (panel.contains(ev.target)) return;
     close();
   });
 }
@@ -23544,7 +23555,7 @@ function renderWarmStart(all) {
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
   // Every deal starts with none picked. The last deal's picks used to stay
-  // (⋯ › Re-run, or the offer again after a skip), so a new card could not
+  // (⌘K's Re-run, or the offer again after a skip), so a new card could not
   // be added once three were held, and TEACH IT taught the old ones.
   warmPicked.clear();
   warmHeard.clear();
@@ -23632,15 +23643,14 @@ function closeWarmStart(mark = true) {
 
 $("warm-skip").onclick = () => {
   // Straight to the instrument. Stacking the help dialog behind this one made
-  // the first thing a new user did be dismissing two modals in a row; the
-  // keymap is one click away in ⋯ and the next-step chip says what to do.
-  // A skip DEFERS the warm start rather than destroying it — it is the
+  // the first thing a new user did be dismissing two modals in a row; every
+  // command and its key is one ⌘K away, and the next-step chip says what to
+  // do. A skip DEFERS the warm start rather than destroying it — it is the
   // highest-value-per-second elicitation in the product, so it is re-offered
-  // once after a few duels and stays reachable from the ⋯ menu.
+  // once after a few duels and stays reachable from ⌘K.
   localStorage.setItem("auracle-warm-deferred", "1");
-  localStorage.setItem("auracle-helped", "1");
   closeWarmStart(false);
-  note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
+  note(platformKeys("Press a key to hear it. ⌘K lists what you can do, with its keys."));
 };
 
 $("warm-go").onclick = () => {
@@ -23731,59 +23741,14 @@ function warmStartDone(m) {
   });
 }
 
-// ---------- overflow menu ----------
-$("ovf-btn").onclick = () => {
-  const menu = $("ovf-menu");
-  const open = menu.classList.toggle("hidden");
-  $("ovf-btn").setAttribute("aria-expanded", String(!open));
-  if (!open) menu.querySelector(".ovf-item")?.focus();
-};
-$("ovf-menu").addEventListener("click", (e) => {
-  if (e.target.closest("button, label")) {
-    $("ovf-menu").classList.add("hidden");
-    $("ovf-btn").setAttribute("aria-expanded", "false");
-  }
-});
-// The two file items are <label>s, which no key activates by itself: Enter
-// or Space opens the file dialog, as a click does.
-$("ovf-menu").addEventListener("keydown", (e) => {
-  const item = e.target.closest?.("label.ovf-item");
-  if (!item || (e.key !== "Enter" && e.key !== " ")) return;
-  e.preventDefault();
-  e.stopPropagation();
-  item.click();
-});
-
-// ---------- help overlay ----------
-let helpReturnFocus = null;
-
-function showHelp(on) {
-  const el = $("help");
-  const wasOpen = !el.classList.contains("hidden");
-  el.classList.toggle("hidden", !on);
-  if (on) pointHelpFilm();
-  if (on && !wasOpen) {
-    // A modal that doesn't move focus is a modal a keyboard user cannot reach
-    // or leave.
-    helpReturnFocus = document.activeElement;
-    // Focus without scrolling to it: GOT IT is the card's last line, and
-    // focusing it scrolled a card taller than the window to its foot, so the
-    // dialog opened with its title cut off at every window size.
-    const card = el.querySelector(".help-card");
-    if (card) card.scrollTop = 0;
-    $("help-close").focus({ preventScroll: true });
-  } else if (!on && wasOpen) {
-    if (helpReturnFocus && helpReturnFocus.focus) helpReturnFocus.focus();
-    helpReturnFocus = null;
-  }
-}
-// The films live in the guide beside the instrument (/play/ → /docs/). The
-// help card's link is the in-depth film of the view it was opened from, on
-// that view's page; ⋯ opens the index of all of them. A local build has no
-// site around it, so it links to the published one. Both links stay hidden
-// (index.html) until the films are published: publish.py un-hides them when
-// it puts the films beside the site. A request asking the site whether they
-// exist would log a 404 in every console until then.
+// ---------- the films and the guide ----------
+// The films live in the guide beside the instrument (/play/ → /docs/), and so
+// does the keymap (⌘K's Keys and gestures). ⌘K's Watch ‹LEVEL› in depth is
+// the in-depth film of the level you are at, on that level's page, offered
+// only once publish.py has listed it in the film chip's data-films (a request
+// asking the site whether it exists would log a 404 in every console until
+// then); its Watch the films opens the index of all of them. A local build
+// has no site around it, so it links to the published one.
 const FILMS_DOCS = location.pathname.includes("/play/")
   ? new URL("../docs/", location.href).href
   : "https://auracle.alexnodeland.com/docs/";
@@ -23795,15 +23760,7 @@ const VIEW_FILMS = {
 };
 const viewFilmHref = (v) => `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
 const TOUR_HREF = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
-function pointHelpFilm() {
-  const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
-  const a = $("help-film");
-  a.href = viewFilmHref(v);
-  a.lastChild.textContent = ` watch ${v.name} in depth`;
-}
-$("films-link").href = `${FILMS_DOCS}films.html`;
 $("warm-tour").href = TOUR_HREF;
-pointHelpFilm();
 
 // The film of the view you are in, in the menu bar. The first time you open a
 // view it says so in words ("new to PATCH? watch it in depth · 5:40"), and
@@ -23912,7 +23869,7 @@ $("fc-close").onclick = foldFilmChip;
 // Opened in a new tab: the note has done its job here.
 $("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
 // Each platform's own keys (www/brand/voice.md): the markup writes chords
-// with the Mac's symbols (the ? card, the booth menu, a tooltip), and off
+// with the Mac's symbols (⌘K's button, a tooltip), and off
 // Apple platforms they read Ctrl, Alt and Shift. They used to read ⌘
 // everywhere, though the app takes Ctrl wherever it takes ⌘. Strings built
 // later go through `platformKeys` where they are built.
@@ -23924,27 +23881,6 @@ for (const el of document.querySelectorAll("[title]")) {
   const t = platformKeys(el.title);
   if (t !== el.title) el.title = t;
 }
-$("help-btn").onclick = () => showHelp(true);
-$("help-open").onclick = () => showHelp(true);
-$("help-close").onclick = () => {
-  showHelp(false);
-  localStorage.setItem("auracle-helped", "1");
-};
-$("help").addEventListener("click", (e) => {
-  if (e.target === $("help")) showHelp(false);
-});
-document.addEventListener("keydown", (e) => {
-  // Same optional-chaining as the note-key guard: a keydown targeting the
-  // document has no `closest`, and the throw stopped `?` opening help.
-  if (e.key === "?" && !e.target?.closest?.("input")) showHelp(true);
-  // Only a press that closed it is spent (`preventDefault`): with the card
-  // away, Esc goes on to what it closes elsewhere, the model view last.
-  if (e.key === "Escape" && !$("help").classList.contains("hidden")) {
-    e.preventDefault();
-    showHelp(false);
-  }
-});
-
 // ---------- resize ----------
 let resizeTimer = null;
 window.addEventListener("resize", () => {
@@ -24228,6 +24164,226 @@ bootMidi();
     farm.ports
   );
 })();
+
+// ---------- ⌘K: the commands (shell.js `cmd`, Plan-008 §2.4) ----------
+// Every command is a control the app already has, run as that control runs:
+// its words are the control's own (its label, its tooltip, the guide's line
+// for its key), and its key is printed beside it. The levels and the model
+// view are the shell's; PATCH's new patch is patch.js's; TASTE's and
+// LEARNING's are taste.js's and explain's two are explain.js's, added where
+// each is made. PERFORM's are here, through perform.js's API.
+
+/** A control that can be pressed now: in the page, shown, and not disabled. */
+function usable(el) {
+  return !!el && !el.disabled && !el.hidden && !el.classList.contains("hidden") && el.getClientRects().length > 0;
+}
+const press = (id) => () => $(id)?.click();
+const pressedHint = (id) => () => ($(id)?.getAttribute("aria-pressed") === "true" ? "on" : "");
+/** Open KEYS ⋯ with the focus on one of its settings. */
+function keysSetting(id) {
+  setKeysPop(true);
+  $(id)?.focus({ preventScroll: true });
+}
+/** A link out, in a new tab (the guide, the films), as the ⋯ menu's did. */
+function openOut(href) {
+  window.open(href, "_blank", "noopener");
+}
+
+// The sounds ⌘K lists: the pool as the bank lists it at rest (the newest
+// generation's children, then the order they joined), then the presets not
+// in it, each with the face the page has drawn (`lazy`: nothing is asked of
+// the engine for one it hasn't). One opens as Enter on its bank row does: in
+// your hands, at the level you're at.
+function cmdkSounds() {
+  const live = ((views && views.ranked) || []).filter((r) => !cutIds.has(r.id));
+  const fresh = [...lastBorn].map((id) => live.find((r) => r.id === id)).filter(Boolean);
+  const rest = live.filter((r) => !lastBorn.has(r.id)).sort((a, b) => a.id - b.id);
+  const pool = [...fresh, ...rest].map((r) => ({
+    id: `sound-${r.id}`,
+    label: r.name || nameOf(r.id),
+    hint: r.pinned ? "saved" : presetOfId(r.id)?.category || "",
+    face: () => faceSlot("cmdk", { id: r.id }, { lazy: true }),
+    run: () => {
+      kbdRowId = r.id;
+      bankScrollTo = r.id;
+      bankScrollAt = performance.now();
+      armTakeUp(document.querySelector(`#bank-list .bank-item[data-id="${r.id}"] > .face-slot`), { id: r.id });
+      openOnBench(r.id);
+    },
+  }));
+  const pooled = new Set(live.map((r) => r.id));
+  const presets = (presetRows || [])
+    .filter((p) => !pooled.has(presetIds.get(p.index)))
+    .map((p) => ({
+      id: `preset-${p.index}`,
+      label: p.name,
+      hint: p.category,
+      face: () => faceSlot("cmdk", { preset: p.index }, { lazy: true }),
+      run: () => openPreset(p, null),
+    }));
+  return [...pool, ...presets];
+}
+
+// Anywhere: the sound in hand and the bank's keys.
+shell.cmd({ id: "play", label: "Play the sound in hand", key: "Space", icon: "▶", run: () => toggleAudition() });
+shell.cmd({ id: "save", label: "Save the sound you’re on", key: "M", run: () => saveCursorRow() });
+shell.cmd({
+  id: "cut",
+  label: "Cut the sound you’re on",
+  when: () => rateTargetId() != null,
+  run: () => {
+    const r = rowOf(rateTargetId());
+    if (r) cutRow(r);
+  },
+});
+shell.cmd({ id: "undo", label: "Take back your last pick or cut", key: "⌘Z", run: () => undoKey(false) });
+shell.cmd({ id: "bank-prev", label: "Previous sound in the bank", key: "[", run: () => stepBank(-1) });
+shell.cmd({ id: "bank-next", label: "Next sound in the bank", key: "]", run: () => stepBank(1) });
+shell.cmd({ id: "tour", label: "What are the three banks?", run: () => startBankTour(tourStepFor(bankFilter)) });
+// The sounds kept safe for a recording: RECORD AGAIN on each (takes.js).
+shell.cmds(() => takes.kept().map((h) => ({ id: `kept-${h.id}`, label: `Record again: ${h.name}`, run: () => takes.recordAgain(h.id) })));
+// The keys bar: the octave, VOL, MIDI, ● REC, and every setting in KEYS ⋯.
+shell.cmd({ id: "oct-down", label: "Octave down", key: "Z", run: () => octave(-1) });
+shell.cmd({ id: "oct-up", label: "Octave up", key: "X", run: () => octave(1) });
+shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => $("vol")?.focus({ preventScroll: true }) });
+shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: press("midi-ind") });
+shell.cmd({ id: "rec", label: "Record what you play; stop to download a WAV", icon: "●", run: press("rec-btn") });
+shell.cmd({ id: "keys-hold", label: "Hold: latch held notes", hint: pressedHint("hold-btn"), run: press("hold-btn") });
+shell.cmd({ id: "keys-uni", label: "Unison: all 4 voices on one note, detuned wide", hint: pressedHint("uni-btn"), run: press("uni-btn") });
+shell.cmd({ id: "keys-arp", label: "Arpeggiator: hold a chord, it plays the pattern", hint: pressedHint("arp-btn"), run: press("arp-btn") });
+shell.cmd({ id: "keys-sync", label: "Tempo sync: step sequencers play the nearest division of the tempo", hint: pressedHint("sync-btn"), run: press("sync-btn") });
+shell.cmd({ id: "keys-arp-set", label: "Arp and tempo settings", when: () => perf.arp || perf.sync, run: () => keysSetting("arp-mode") });
+shell.cmd({ id: "keys-glide", label: "Glide: how long a note takes to slide to the next one in a line", hint: () => $("glide-val")?.textContent || "", run: () => keysSetting("glide") });
+shell.cmd({ id: "keys-tall", label: "Taller keybed, for fingers rather than a mouse", icon: "⇕", hint: pressedHint("bigkeys-btn"), run: press("bigkeys-btn") });
+shell.cmd({ id: "keys-span", label: "How much of the keybed to show: fewer octaves, wider keys", hint: () => $("key-span")?.selectedOptions?.[0]?.textContent || "", run: () => keysSetting("key-span") });
+shell.cmd({ id: "keys-silence", label: "Silence all voices", icon: "◼", run: press("panic-btn") });
+// What the ⋯ menu held: files, your taste, the scope, the warm start,
+// measurements, booth mode, and the guide and the films.
+shell.cmd({ id: "taste-download", label: "Download your taste", run: () => send({ type: "export" }) });
+shell.cmd({ id: "taste-open", label: "Open a taste file…", run: () => $("import-input").click() });
+shell.cmd({ id: "patch-download", label: "Download this patch", run: () => downloadPatch() });
+shell.cmd({ id: "patch-picture", label: "Download as a picture…", run: () => { if (!panelOpen("image-panel")) toggleImagePanel(); } });
+shell.cmd({ id: "patch-open", label: "Open a patch file…", run: () => $("patch-import-input").click() });
+shell.cmd({ id: "scope", label: "Scope & analyzer…", run: () => { if (!panelOpen("scope-panel")) toggleScopePanel(); } });
+shell.cmd({ id: "warm-rerun", label: "Re-run the three-pick warm start", run: () => openWarmStart() });
+shell.cmd({ id: "taste-reset", label: "Reset your taste…", run: () => askReset() });
+// Each with the ⋯ menu's tooltip for it: its label alone doesn't say what
+// it does.
+shell.cmd({
+  id: "measurements",
+  label: "Show measurements",
+  title: "Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget",
+  hint: () => (engineerMode ? "on" : ""),
+  run: () => toggleEngineer(),
+});
+shell.cmd({
+  id: "booth",
+  label: "Booth mode",
+  title: "For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over",
+  hint: () => (booth?.on ? "on" : ""),
+  when: () => !!toggleBooth,
+  run: () => toggleBooth(),
+});
+shell.cmd({
+  id: "booth-next",
+  label: "New visitor",
+  title: "Forget this visitor’s taste and start again (booth mode keeps its settings)",
+  key: "⇧Esc",
+  when: () => !!booth?.on,
+  run: () => boothResetVisitor(),
+});
+shell.cmd({ id: "keys-guide", label: "Keys and gestures", hint: "↗", run: () => openOut(`${FILMS_DOCS}keyboard.html`) });
+shell.cmd({ id: "films", label: "Watch the films", hint: "↗", run: () => openOut(`${FILMS_DOCS}films.html`) });
+// The film of the level you're at, where it is published, as the film chip
+// links it (and hidden where the chip is: on film, in booth mode).
+shell.cmd({
+  id: "level-film",
+  label: () => `Watch ${VIEW_FILMS[currentView]?.name} in depth`,
+  hint: () => `${FILM_LENGTHS[VIEW_FILMS[currentView]?.film] || ""} ↗`,
+  icon: "▶",
+  when: () => {
+    const v = VIEW_FILMS[currentView];
+    return !!v && hasFilm(v.film) && !new URLSearchParams(location.search).has("film") && !booth?.on;
+  },
+  run: () => openOut(viewFilmHref(VIEW_FILMS[currentView])),
+});
+
+// PERFORM: its pads (ADR-018) and what its buttons open, through perform.js.
+const performHas = (sel) => usable(document.querySelector(`#view-perform ${sel}`));
+const performPress = (sel) => () => document.querySelector(`#view-perform ${sel}`)?.click();
+shell.cmd({ id: "pf-offer", level: "perform", label: "Offer: grow a variant into B", key: "N", when: () => !!perform, run: () => perform.pad("offer") });
+shell.cmd({ id: "pf-take", level: "perform", label: "Take the offer in B", key: "⇧↵", when: () => !!perform, run: () => perform.pad("take") });
+shell.cmd({ id: "pf-pass", level: "perform", label: "Pass on the offer in B", when: () => !!perform, run: () => perform.pad("pass") });
+shell.cmd({ id: "pf-keep", level: "perform", label: "Keep: make the sound home", key: "↵", when: () => !!perform && perform.moved(), run: () => perform.pad("keep") });
+shell.cmd({ id: "pf-back", level: "perform", label: "Back: glide back to the last sound you kept", key: "⇧⌫", when: () => !!perform && perform.moved(), run: () => perform.pad("back") });
+// Wander freezes on a tap or Enter, not on a click (perform.js): its `hold`.
+shell.cmd({ id: "pf-wander", level: "perform", label: "Freeze Wander", hint: () => (document.querySelector("#view-perform .pf-wander")?.dataset.frozen === "true" ? "frozen" : ""), when: () => !!perform && performHas(".pf-wander"), run: () => perform.pad("hold") });
+shell.cmd({ id: "pf-arrange", level: "perform", label: "Arrange your controls", when: () => !!perform, run: () => perform.openPalette() });
+shell.cmd({ id: "pf-how", level: "perform", label: "How it works", when: () => performHas(".pf-why-btn"), run: performPress(".pf-why-btn") });
+shell.cmd({ id: "pf-xy", level: "perform", label: "XY pad: two controls under one finger", when: () => performHas(".pf-xy-btn"), run: performPress(".pf-xy-btn") });
+shell.cmd({ id: "pf-stage", level: "perform", label: "Stage mode", key: "⇧F", when: () => !!perform, run: () => perform.openStage() });
+shell.cmd({ id: "pf-share", level: "perform", label: "Share this sound as a picture", when: () => performHas(".pf-share"), run: performPress(".pf-share") });
+
+// PATCH: its head, its edit bar and its camera, each the button it names.
+const patchCmd = (id, label, el, more = {}) =>
+  shell.cmd({ id, level: "patch", label, when: () => usable(typeof el === "string" ? $(el) : el()), run: () => (typeof el === "string" ? $(el) : el())?.click(), ...more });
+patchCmd("pt-add", "Add a module", "pt-add", { key: "/" });
+patchCmd("pt-how", "How to read this patch", "pt-how");
+patchCmd("pt-evolve", "⚡ Evolve from this", "rack-evolve");
+patchCmd("pt-commit", "Keep as new", "rack-commit");
+patchCmd("pt-revert", "Undo to as opened", "pt-revert");
+// The edit undo, one step, as ⌘Z is at PATCH once no pick or cut is still in
+// its window (Anywhere's *Take back your last pick or cut* is ⌘Z's first
+// meaning). It runs the edit undo itself, so it does what it says inside
+// that window too; Undo to as opened takes back every edit at once.
+shell.cmd({ id: "pt-undo", level: "patch", label: "Undo an edit", key: "⌘Z", run: () => doUndo() });
+shell.cmd({ id: "pt-redo", level: "patch", label: "Redo an edit", key: "⇧⌘Z", run: () => undoKey(true) });
+// ⚡'s ▾ menu's items, pressed where the menu holds them, open or not.
+for (const [id, btn, label] of [["pt-lock-knobs", "lock-knobs", "Lock knobs"], ["pt-lock-wiring", "lock-structure", "Lock wiring"], ["pt-lock-clear", "lock-clear", "Clear locks"]]) {
+  shell.cmd({ id, level: "patch", label, when: () => !!$(btn) && !$(btn).disabled, run: press(btn) });
+}
+patchCmd("pt-fit", "Fit the whole patch", "pt-fit", { key: "⇧Home" });
+shell.cmd({ id: "pt-fit-here", level: "patch", label: "Fit what you’re on", key: ".", run: () => fitSelection(true) });
+shell.cmd({ id: "pt-actual", level: "patch", label: "Actual size", key: "⌘0", run: () => zoomActual() });
+patchCmd("pt-zoom-out", "Zoom out on the patch", "pt-zoom-out", { key: "⌘−" });
+patchCmd("pt-zoom-in", "Zoom in on the patch", "pt-zoom-in", { key: "⌘=" });
+patchCmd("pt-map", "Show the minimap", "rack-map-btn", { hint: pressedHint("rack-map-btn") });
+for (const [mode, label] of [["chain", "Layout: chain, in signal order"], ["compact", "Layout: compact, packed tight"], ["freeform", "Layout: by hand, drag them where you like"]]) {
+  shell.cmd({
+    id: `pt-layout-${mode}`,
+    level: "patch",
+    label,
+    hint: () => (document.querySelector(`#pt-laymenu [data-layout="${mode}"]`)?.getAttribute("aria-checked") === "true" ? "on" : ""),
+    when: () => !!document.querySelector(`#pt-laymenu [data-layout="${mode}"]`),
+    run: () => document.querySelector(`#pt-laymenu [data-layout="${mode}"]`)?.click(),
+  });
+}
+patchCmd("pt-aside", "Set aside: the shelf", "tray-chip");
+patchCmd("pt-teach", "Teach it your taste: pick between two sounds", "pt-teach");
+shell.cmd({ id: "pt-first", level: "patch", label: "The first module", key: "Home", when: () => !!wb.rack, run: () => focusPlate(platesInOrder()[0]) });
+shell.cmd({ id: "pt-last", level: "patch", label: "The last module, at OUT", key: "End", when: () => !!wb.rack, run: () => { const p = platesInOrder(); focusPlate(p[p.length - 1]); } });
+// The catalog's walkthrough, its ? beside the search, from the catalog opened.
+shell.cmd({
+  id: "pt-catalog-tour",
+  level: "patch",
+  label: "How the catalog works",
+  run: () => {
+    openCatalog(false);
+    if (nbTourAt < 0) $("nb-tour-btn").click();
+  },
+});
+for (const c of patchView.cmds()) shell.cmd(c);
+
+// EVOLVE: the pair's buttons, with their keys.
+const evolveCmd = (id, label, btn, key) =>
+  shell.cmd({ id, level: "evolve", label, key, when: () => usable($(btn)), run: press(btn) });
+evolveCmd("ev-play-a", "Play A", "play-a", "1");
+evolveCmd("ev-play-b", "Play B", "play-b", "2");
+evolveCmd("ev-pick-a", "Pick A", "choose-a", "←");
+evolveCmd("ev-pick-b", "Pick B", "choose-b", "→");
+evolveCmd("ev-another", "Another pair", "skip-duel", "N");
+evolveCmd("ev-pool", "Evolve pool: breed a generation from the seeds it marks", "evolve-btn");
+evolveCmd("ev-lineage", "What each generation did", "lineage-btn");
 
 // Debug/testing hook (no UI surface).
 // `note` rides along because the toast lane's guarantee — that nothing

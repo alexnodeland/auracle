@@ -103,8 +103,8 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   });
   expect(pip.t[2] <= pip.c[2] && pip.t[3] <= pip.c[3], `the bookmark's number fits its pip (${JSON.stringify(pip)})`).toBe(true);
   await page.keyboard.press("?");
-  await expect(page.locator("#help")).toBeVisible();
-  under["? card"] = await page.evaluate(UNDER(11));
+  await expect(page.locator("#cmdk")).toBeVisible();
+  under["⌘K's list"] = await page.evaluate(UNDER(11));
   for (const [where, list] of Object.entries(under)) expect(list, `text under 11 px on ${where}`).toEqual([]);
 });
 
@@ -139,8 +139,8 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
 test("the menu bar is one row as tall as --menubar-h, which the alarm is placed under, at every width", async ({ newContext }) => {
   // One row at every width (Plan-008): what gives way on a narrower window
   // is words (TAUGHT's, the level's line, the sound's name, then the level),
-  // never a second row, and ⋯ stays on screen, on a phone behind "look
-  // around anyway" too.
+  // never a second row, and ⌘K's button stays on screen, on a phone behind
+  // "look around anyway" too.
   for (const [width, height, mobile] of [[1440, 900, false], [1000, 800, false], [860, 800, false], [390, 844, true]]) {
     const context = await newContext({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
     const page = await context.newPage();
@@ -152,9 +152,9 @@ test("the menu bar is one row as tall as --menubar-h, which the alarm is placed 
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-h")),
     ]);
     expect(got[0], `the menu bar's height at ${width} px, against --menubar-h`).toBe(got[1]);
-    const ovf = await page.locator("#ovf-btn").boundingBox();
-    expect(ovf.x + ovf.width, `⋯ on screen at ${width} px`).toBeLessThanOrEqual(width);
-    expect(ovf.y + ovf.height, `⋯ in the bar's one row at ${width} px`).toBeLessThanOrEqual(got[1]);
+    const k = await page.locator("#cmdk-btn").boundingBox();
+    expect(k.x + k.width, `⌘K on screen at ${width} px`).toBeLessThanOrEqual(width);
+    expect(k.y + k.height, `⌘K in the bar's one row at ${width} px`).toBeLessThanOrEqual(got[1]);
     await context.close();
   }
 });

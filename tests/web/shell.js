@@ -1,7 +1,8 @@
 // The shell's ways in, for the specs (Plan-008): the level rail, KEYS ⋯, the
-// bank's tabs, the model view and PATCH's catalog. They use the app's own hooks (the rail's
-// `aria-current`, KEYS ⋯'s popover, the tabs' `aria-selected`,
-// `body.model-view`), never a test-only attribute.
+// bank's tabs, the model view, PATCH's catalog and ⌘K's list. They use the
+// app's own hooks (the rail's `aria-current`, KEYS ⋯'s popover, the tabs'
+// `aria-selected`, `body.model-view`, the list's options), never a
+// test-only attribute.
 const { expect } = require("@playwright/test");
 
 /** Go to a level by its stop on the rail, as a player does, and wait until
@@ -58,4 +59,24 @@ async function openCatalog(page) {
   await expect(cat).toBeVisible();
 }
 
-module.exports = { goLevel, landed, openKeys, bankTab, modelView, openCatalog };
+/** The row of ⌘K's list whose label is `label`, exactly. */
+function commandRow(page, label) {
+  const exact = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  return page.locator("#cmdk-list .cmdk-it").filter({ has: page.locator(".cmdk-lab", { hasText: exact }) });
+}
+
+/** Run a command from ⌘K's list as a player does with the mouse: ⌘K's
+ *  button, the label typed, its row clicked; and wait for the list to close.
+ *  What it opens (a panel, a file's picker) is the caller's to wait for. */
+async function runCommand(page, label) {
+  const list = page.locator("#cmdk");
+  if (await list.isHidden()) await page.locator("#cmdk-btn").click();
+  await expect(list).toBeVisible();
+  await page.locator("#cmdk-input").fill(label);
+  const row = commandRow(page, label);
+  await expect(row).toHaveCount(1);
+  await row.click();
+  await expect(list).toBeHidden();
+}
+
+module.exports = { goLevel, landed, openKeys, bankTab, modelView, openCatalog, commandRow, runCommand };

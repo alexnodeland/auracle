@@ -1,7 +1,7 @@
 // Booth mode: Auracle on a trade-show kiosk.
 //
-// Three jobs, all off unless booth mode is on (`?booth` in the URL, or the ⋯
-// menu):
+// Three jobs, all off unless booth mode is on (`?booth` in the URL, or ⌘K's
+// Booth mode):
 //
 // 1. **Attract.** After a minute with nobody at the keys, the instrument
 //    plays itself in PERFORM: a curated patch, a chord progression, two named
@@ -12,7 +12,7 @@
 //    spot — notes released, Wander still, B cleared — and the visitor is
 //    holding the sound that was playing. Nothing attract did is logged or
 //    taught: PERFORM is quiet while it runs, and its offers are never answered.
-// 3. **Next visitor.** Shift+Esc (or the ⋯ menu) forgets the taste profile
+// 3. **Next visitor.** Shift+Esc (or ⌘K's New visitor) forgets the taste profile
 //    and starts again, keeping booth mode and the measured wirings.
 // 4. **Pre-warm.** Every patch in the set is measured for PERFORM in the
 //    background at boot, while nobody is at the keys, so attract performs

@@ -362,6 +362,8 @@ export function createTakes(host) {
     recordAgain,
     /** The sounds kept safe, in the order they are listed. */
     keptIds: () => held.map((h) => h.id),
+    /** …with the names the bank lists them by (⌘K's *Record again: ‹name›*). */
+    kept: () => held.map((h) => ({ id: h.id, name: nameOf(h) })),
     /** The engine's longest take, in seconds (its `ready`). */
     setLimit: (s) => { if (Number.isFinite(s) && s > 0) limit = s; },
     setHeld,

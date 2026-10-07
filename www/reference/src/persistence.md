@@ -125,8 +125,8 @@ IndexedDB, under the page’s origin. No account, no server, nothing transmitted
 Consequences worth stating in a reference: the hosted build and a
 locally-served copy are **different origins** and do not share storage;
 clearing site data destroys the session; and there is no server-side copy to
-recover from. The only backup of the taste is a downloaded profile (the menu’s
-Download your taste item).
+recover from. The only backup of the taste is a downloaded profile (⌘K’s
+Download your taste command).
 
 ## Restore goes sound by sound
 

@@ -142,7 +142,7 @@ at. Held notes keep sounding through it.
 
 The patch is rendered and checked again before it can play its phrase, so a ▶
 pressed before then waits for it, then plays the edit. So does
-<kbd>Space</kbd>, in any view. Edits reach the engine
+<kbd>Space</kbd>, at any level. Edits reach the engine
 in the order you make them. On a busy machine the next waits its turn: its
 module is outlined, and the caption under the name says *1 edit waiting*.
 
@@ -296,7 +296,7 @@ it weighs.
 
 ## Downloading a patch
 
-From **⋯**, *Download this patch* writes a patch file, and *Download as a
+In [⌘K](./levels.md#k-find-anything), *Download this patch* writes a patch file, and *Download as a
 picture…* draws the rack as a PNG or SVG, at a size and background you choose.
 The picture carries the patch inside it: open an Auracle PNG or SVG with
 *Open a patch file…*, or drop it on the window, and you get the same sound

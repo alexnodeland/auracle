@@ -119,148 +119,20 @@
          or Esc. Its LED is lit while the view is up; pressed (`aria-pressed`)
          only while tapped on. -->
     <button class="model-btn" id="model-btn" type="button" aria-pressed="false" aria-keyshortcuts="Alt" aria-label="The model view: what it believes about every sound. Hold, or hold Alt (Option); a tap keeps it" title="The model view · hold ⌥"><span class="led" aria-hidden="true"></span><span class="mb-word">model</span><kbd>⌥</kbd></button>
-    <!-- ? and ⋯ hold the rightmost slots until the ⌘K list takes in what they
-         hold (Plan-008 PR D). -->
-    <button id="help-open" class="iconbtn" type="button" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
-    <div class="ovf">
-      <button id="ovf-btn" class="iconbtn" aria-haspopup="menu" aria-expanded="false" title="Files, your taste &amp; help" aria-label="More: files, your taste, and help">⋯</button>
-      <div class="ovf-menu hidden" id="ovf-menu" role="menu">
-        <button id="export-btn" class="ovf-item" role="menuitem">Download your taste</button>
-        <label class="ovf-item" role="menuitem" tabindex="0">Open a taste file…<input id="import-input" type="file" accept=".json" hidden></label>
-        <div class="ovf-sep"></div>
-        <button id="patch-export-btn" class="ovf-item" role="menuitem">Download this patch</button>
-        <button id="image-btn" class="ovf-item" role="menuitem">Download as a picture…</button>
-        <!-- One import for all three: the .json sidecar, and the .png/.svg
-             that carry the very same sidecar inside them. There is no second
-             "import an image" route because there is no second kind of
-             file — an exported picture *is* an exported patch. -->
-        <label class="ovf-item" role="menuitem" tabindex="0">Open a patch file…<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
-        <div class="ovf-sep"></div>
-        <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyzer…</button>
-        <div class="ovf-sep"></div>
-        <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
-        <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset your taste…</button>
-        <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget">Show measurements</button>
-        <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
-        <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor’s taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
-        <div class="ovf-sep"></div>
-        <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
-        <a id="films-link" class="ovf-item" role="menuitem" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener">Watch the films <span aria-hidden="true">↗</span></a>
-      </div>
-      <!-- The scope's own panel. It hangs off the same ⋯ the rest of the
-           app's settings do rather than growing a second gear icon on the
-           rack, and everything in it is persisted: a scope you have to
-           re-aim on every reload is a scope you stop configuring. -->
-      <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
-        <div class="sp-head">
-          <span class="sp-title">scope &amp; analyzer</span>
-          <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
-        </div>
-        <div class="sp-grid">
-          <label class="sp-row"><span>mode</span>
-            <select id="sp-mode">
-              <option value="off">off</option>
-              <option value="scope">waveform</option>
-              <option value="spectrum">spectrum</option>
-            </select></label>
-          <label class="sp-row"><span>tap</span>
-            <select id="sp-tap">
-              <option value="pre">pre-master</option>
-              <option value="post">post-master</option>
-            </select></label>
-          <label class="sp-row"><span>fft size</span>
-            <select id="sp-fft">
-              <option value="512">512</option>
-              <option value="1024">1024</option>
-              <option value="2048">2048</option>
-              <option value="4096">4096</option>
-            </select></label>
-          <label class="sp-row"><span>window</span>
-            <select id="sp-smooth">
-              <option value="0">none</option>
-              <option value="0.35">light</option>
-              <option value="0.6">medium</option>
-              <option value="0.85">heavy</option>
-            </select></label>
-          <label class="sp-row"><span>color</span>
-            <select id="sp-colour">
-              <option value="green">phosphor</option>
-              <option value="amber">amber</option>
-            </select></label>
-          <label class="sp-row"><span>corner</span>
-            <select id="sp-corner">
-              <option value="tl">top left</option>
-              <option value="tr">top right</option>
-              <option value="bl">bottom left</option>
-              <option value="br">bottom right</option>
-            </select></label>
-          <label class="sp-row"><span>size</span>
-            <select id="sp-size">
-              <option value="S">small</option>
-              <option value="M">medium</option>
-              <option value="L">large</option>
-            </select></label>
-          <label class="sp-row"><span>park after</span>
-            <select id="sp-park">
-              <option value="0.5">½ s</option>
-              <option value="1.5">1½ s</option>
-              <option value="4">4 s</option>
-              <option value="600">never</option>
-            </select></label>
-          <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
-            <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
-          <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
-            <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
-          <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
-        </div>
-        <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
-      </div>
-      <!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
-           screenshot key; a design tool asks the four questions it cannot
-           guess — how much of the patch, at what size, on what, and in
-           which format — and then tells you exactly what you are about to
-           get. It hangs off the same ⋯ as the scope panel and wears the
-           same shell, because it is the same kind of thing: a preference
-           you set once and a command you run often. -->
-      <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
-        <div class="sp-head">
-          <span class="sp-title">download a picture</span>
-          <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
-        </div>
-        <div class="sp-grid">
-          <label class="sp-row"><span>scope</span>
-            <select id="ix-scope">
-              <option value="all">whole patch</option>
-              <option value="sel">selection</option>
-              <option value="card">the sound's card</option>
-            </select></label>
-          <label class="sp-row"><span>size</span>
-            <select id="ix-scale">
-              <option value="1">1×</option>
-              <option value="2">2×</option>
-              <option value="3">3×</option>
-            </select></label>
-          <label class="sp-row"><span>background</span>
-            <select id="ix-bg">
-              <option value="solid">solid</option>
-              <option value="transparent">transparent</option>
-            </select></label>
-          <label class="sp-row"><span>format</span>
-            <select id="ix-fmt">
-              <option value="png">PNG</option>
-              <option value="svg">SVG</option>
-            </select></label>
-        </div>
-        <!-- Figma's readout, and for the same reason: the one number you
-             want before you press the button is the one you get afterwards
-             by opening the file. -->
-        <div class="ix-dims mono" id="ix-dims">·</div>
-        <button class="ix-go" id="ix-go">download</button>
-        <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
-      </div>
-    </div>
+    <!-- ⌘K: the one list of every command, with its key, and every sound,
+         by its face (shell.js, Plan-008 §2.4). Ctrl K off Apple platforms;
+         ? opens it too, wherever no control is there to ask about. What the
+         ⋯ menu held are its commands (the ? card's key map is the guide's
+         keyboard page, its Keys and gestures); the two files it opens wait
+         here, and the two panels it shows (below, after the list) stand
+         under its button. -->
+    <button class="cmdk-btn" id="cmdk-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cmdk" aria-keyshortcuts="Meta+K Control+K" aria-label="Find or do anything" title="Find or do anything · ⌘K"><svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg><span class="cmdk-word">Find or do anything</span><kbd>⌘K</kbd></button>
+    <!-- Open a taste file… and Open a patch file…: the pickers ⌘K's two
+         commands open. One import for a patch's three kinds of file: the
+         .json sidecar, and the .png/.svg that carry the very same sidecar
+         inside them (an exported picture *is* an exported patch). -->
+    <input id="import-input" type="file" accept=".json" hidden>
+    <input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden>
   </header>
 
   <!-- ===================== deck: bank + stage ===================== -->
@@ -1027,64 +899,134 @@
   </div>
 </section>
 
-<!-- help overlay -->
-<section id="help" class="help-overlay hidden" role="dialog" aria-modal="true" aria-label="How to play">
-  <div class="help-card panel">
-    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="help-scroll">
-    <div class="boot-title">HOW TO PLAY</div>
-    <div class="help-cols">
-      <div>
-        <div class="help-h">perform: play it</div>
-        <p><b>Bright, Snap, Motion, Body, Grit</b>, and <b>Space</b> are named for what you hear, and <b>Arrange</b> places up to eight of the palette’s eighteen, in your order. Each is wired to the knobs of <i>this</i> sound that do that job, measured when it opens, and the strip underneath shows them move. An <b>amber</b> control is one this sound’s knobs can’t reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>
-        <p><b>Offer</b> (<kbd>n</kbd>) grows a new version of what you are playing into <b>B</b>, beside it in the well. Hold <b>Peek</b> (or <kbd>b</kbd>) to hear it, slide <b>Blend</b> under the two to move between them, and <b>Take</b> (<kbd>⇧↵</kbd>) to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next; <b>Pass</b> passes without another. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
-        <p><b>Wander</b>, at the start of the pads, lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing; tap it to freeze it. When the sound has moved from where you last kept it, <b>moved · keep · back</b> shows by its name: <b>Keep</b> (<kbd>↵</kbd>, with nothing focused) marks where you are and <b>Back</b> (<kbd>⇧⌫</kbd>) returns there. <b>XY</b> in the well’s corner puts two controls under one finger, <b>Arrange</b> chooses what your velocity plays, and a MIDI controller’s first eight knobs claim the first eight controls.</p>
-        <div class="help-h">the levels</div>
-        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING · <kbd>⌥</kbd> and the wheel zoom too, one level a turn, and over a list that can still scroll they scroll it · <kbd>Ctrl</kbd> and the wheel, or a trackpad’s pinch, zoom the same way, except over the patch, which keeps them · on a touch screen, spread two fingers to zoom in and pinch to zoom out · at either end the levels nod · hold <kbd>⌥</kbd> (or <b>model</b>) for the model view: what it believes, over any level; a tap on <b>model</b> keeps it, <kbd>Esc</kbd> ends it</p>
-        <div class="help-h">keys</div>
-        <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>Space</kbd> hear the sound you’re playing · in PERFORM, <kbd>n</kbd> offer, hold <kbd>b</kbd> to peek, <kbd>⇧↵</kbd> take, <kbd>↵</kbd> keep, <kbd>⇧⌫</kbd> back, <kbd>⇧F</kbd> stage mode, and <kbd>?</kbd> on a control shows what it does to this sound, measured (BRIGHT’s has a lesson on filters) · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
-        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> hear A or B · <kbd>←</kbd>/<kbd>→</kbd> pick · <kbd>n</kbd> another pair · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
-        <div class="help-h">the patch's canvas</div>
-        <p><kbd>⇧Home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in · the same in the well’s corner: <b>fit</b>, <b>−</b>, <b>+</b></p>
-        <p><kbd>Ctrl</kbd> and the wheel, or a pinch, zooms at the pointer · the wheel or a drag on bare canvas pans · <kbd>Space</kbd> and a drag, or a middle-button drag, pans from anywhere on it. <b>map</b> shows where you are (<kbd>Shift</kbd>-click it to bookmark a spot, <kbd>⇧1–9</kbd> to go back); at the edges, ‹ and › say how many modules lie past them.</p>
-        <p>The layout’s <b>▾</b>: <b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>by hand</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>Shift</kbd> to place it freely. <b>snap to the grid</b> pins everything where it sits now, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file. <b>detail</b> leaves each module three knobs to read when you zoom out.</p>
-        <div class="help-h">the keybed</div>
-        <p><b>vol</b>, <b>midi</b> and <b>● rec</b> sit at the dock's right end: <b>● rec</b> bounces your playing to a WAV. <b>keys ⋯</b> holds the rest, and is lit while any of hold, uni, arp or sync is on: <b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>glide</b> slides one note into the next when you play a line (chords stay clean) · <b>◼ silence</b> stops every voice</p>
-        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>span</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
-        <p>A MIDI keyboard plays it, with velocity, pitch bend, and the sustain pedal.</p>
-      </div>
-      <div>
-        <div class="help-h">the patch</div>
-        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. The selected module shows <b>⋯</b>, its structure menu (or right-click it, or <kbd>F2</kbd>), and <b>▢</b>, which locks it so breeding can’t touch it (<kbd>l</kbd>); <kbd>q</kbd> asks the model what goes there. <kbd>Tab</kbd> into the patch, then <kbd>←</kbd>/<kbd>→</kbd> walk the modules in signal order, <kbd>↑</kbd>/<kbd>↓</kbd> go into a module’s modulators and back, <kbd>Home</kbd>/<kbd>End</kbd> the first and the last, <kbd>Enter</kbd> into its knobs: <kbd>↑</kbd>/<kbd>↓</kbd> turn (<kbd>Shift</kbd> finely), <kbd>Space</kbd> or <kbd>Enter</kbd> cycles a setting (<kbd>Shift</kbd> goes back), <kbd>Esc</kbd> back out. A click on the face at OUT plays the sound.</p>
-        <div class="help-h">the catalog</div>
-        <p><b>add module</b> (or <kbd>/</kbd>) opens the catalog over the well. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it, or <b>▶</b> on the line along the well’s top to hear it there first. <kbd>Esc</kbd> puts it down, and closes the catalog.</p>
-        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Point at any module for a sentence on what it does and its ports (hold <kbd>⌥</kbd> to see which way your taste leans on it). Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>
-        <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
-        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b>, even across a reload. <b>set aside</b> at the well’s foot opens the shelf (the catalog lists it first too), and dragging its ● onto a ○ puts it back.</p>
-        <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or <b>teach</b> at the foot of PATCH’s well). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
-        <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
-        a bred sound that joins it replaces the <i>lowest</i>-rated one it can (not saved, nor just kept as new).
-        <b>presets</b> is the hand-made library that came with the instrument.
-        <b>saved</b> is what you saved.</p>
-        <p><b>★</b> and <b>save</b> are different questions. Stars tell the
-        model what you think of a sound; <b>save</b> tells the bank to keep it,
-        and no generation replaces a saved sound. Press <kbd>m</kbd> on the
-        row the bank cursor is on to save it.</p>
-        <p>Your session is kept in this browser as you play.</p>
-      </div>
-    </div>
-    <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
-    </div>
-    <div class="help-foot">
-      <!-- The in-depth film of the view the card was opened from; main.js
-           sets it (the site's guide beside /play/, or the published one). -->
-      <a class="help-film hidden" id="help-film" href="https://auracle.alexnodeland.com/docs/views/perform.html#film-view-perform" target="_blank" rel="noopener"><span aria-hidden="true">▶</span> watch PERFORM in depth</a>
-      <button class="hw-btn small" id="help-close">got it</button>
-    </div>
+<!-- ⌘K's list (shell.js): a field, and under it what it finds, in three
+     groups (This level, Anywhere, Sounds). The field keeps the focus; the
+     arrows choose (aria-activedescendant), ↵ does it, Esc closes, and the
+     focus goes back where it was. -->
+<div class="cmdk-scrim hidden" id="cmdk-scrim" aria-hidden="true"></div>
+<section class="cmdk hidden" id="cmdk" role="dialog" aria-modal="true" aria-label="Find or do anything">
+  <div class="cmdk-q">
+    <svg class="cmdk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg>
+    <input id="cmdk-input" type="text" role="combobox" aria-controls="cmdk-list" aria-expanded="true" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Find a sound, a level or what to do" aria-label="Find a sound, a level or what to do">
   </div>
+  <ul class="cmdk-list" id="cmdk-list" role="listbox" aria-label="What it found"></ul>
+  <div class="cmdk-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>↵</kbd> do it</span><span><kbd>esc</kbd> close</span><span class="cmdk-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author noopener" target="_blank">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle" target="_blank" rel="noopener">source</a></span></div>
 </section>
+
+<!-- The scope's own panel (⌘K's Scope & analyzer…). It stands under the
+     menu bar's ⌘K rather than growing a second gear icon on the rack, and
+     everything in it is persisted: a scope you have to re-aim on every
+     reload is a scope you stop configuring. Out of the menu bar, which
+     clips what hangs off it (it keeps to one row). -->
+<div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
+  <div class="sp-head">
+    <span class="sp-title">scope &amp; analyzer</span>
+    <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
+  </div>
+  <div class="sp-grid">
+    <label class="sp-row"><span>mode</span>
+      <select id="sp-mode">
+        <option value="off">off</option>
+        <option value="scope">waveform</option>
+        <option value="spectrum">spectrum</option>
+      </select></label>
+    <label class="sp-row"><span>tap</span>
+      <select id="sp-tap">
+        <option value="pre">pre-master</option>
+        <option value="post">post-master</option>
+      </select></label>
+    <label class="sp-row"><span>fft size</span>
+      <select id="sp-fft">
+        <option value="512">512</option>
+        <option value="1024">1024</option>
+        <option value="2048">2048</option>
+        <option value="4096">4096</option>
+      </select></label>
+    <label class="sp-row"><span>window</span>
+      <select id="sp-smooth">
+        <option value="0">none</option>
+        <option value="0.35">light</option>
+        <option value="0.6">medium</option>
+        <option value="0.85">heavy</option>
+      </select></label>
+    <label class="sp-row"><span>color</span>
+      <select id="sp-colour">
+        <option value="green">phosphor</option>
+        <option value="amber">amber</option>
+      </select></label>
+    <label class="sp-row"><span>corner</span>
+      <select id="sp-corner">
+        <option value="tl">top left</option>
+        <option value="tr">top right</option>
+        <option value="bl">bottom left</option>
+        <option value="br">bottom right</option>
+      </select></label>
+    <label class="sp-row"><span>size</span>
+      <select id="sp-size">
+        <option value="S">small</option>
+        <option value="M">medium</option>
+        <option value="L">large</option>
+      </select></label>
+    <label class="sp-row"><span>park after</span>
+      <select id="sp-park">
+        <option value="0.5">½ s</option>
+        <option value="1.5">1½ s</option>
+        <option value="4">4 s</option>
+        <option value="600">never</option>
+      </select></label>
+    <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
+      <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
+    <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
+      <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
+    <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
+  </div>
+  <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
+</div>
+<!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
+     screenshot key; a design tool asks the four questions it cannot
+     guess — how much of the patch, at what size, on what, and in
+     which format — and then tells you exactly what you are about to
+     get. It hangs off ⌘K beside the scope panel and wears the
+     same shell, because it is the same kind of thing: a preference
+     you set once and a command you run often. -->
+<div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
+  <div class="sp-head">
+    <span class="sp-title">download a picture</span>
+    <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
+  </div>
+  <div class="sp-grid">
+    <label class="sp-row"><span>scope</span>
+      <select id="ix-scope">
+        <option value="all">whole patch</option>
+        <option value="sel">selection</option>
+        <option value="card">the sound's card</option>
+      </select></label>
+    <label class="sp-row"><span>size</span>
+      <select id="ix-scale">
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="3">3×</option>
+      </select></label>
+    <label class="sp-row"><span>background</span>
+      <select id="ix-bg">
+        <option value="solid">solid</option>
+        <option value="transparent">transparent</option>
+      </select></label>
+    <label class="sp-row"><span>format</span>
+      <select id="ix-fmt">
+        <option value="png">PNG</option>
+        <option value="svg">SVG</option>
+      </select></label>
+  </div>
+  <!-- Figma's readout, and for the same reason: the one number you
+       want before you press the button is the one you get afterwards
+       by opening the file. -->
+  <div class="ix-dims mono" id="ix-dims">·</div>
+  <button class="ix-go" id="ix-go">download</button>
+  <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
+</div>
 
 <!-- handheld gate — the only thing rendered when html.handheld is set -->
 <section id="handheld" class="handheld-gate">

@@ -221,3 +221,92 @@ export function pinchStep(ratio) {
     : { dir: "out", t: Math.min(1, (1 - ratio) / (1 - PINCH_OUT)) };
   return { dir: null, lean };
 }
+
+// ---------- ⌘K: the one list (Plan-008 §2.4) ----------
+// Every command and every sound in one list, found by typing. These are the
+// rules for what a query finds and in what order; shell.js draws the list.
+
+/** How well a query names a label: its start (a shorter label first), then
+ *  the start of a word in it (an earlier word first), then anywhere in it
+ *  (earlier first), then its letters in order, scattered; -1 for no match.
+ *  An empty query names everything alike. The specimen's `rank`. */
+export function rank(q, s) {
+  const k = String(q || "").trim().toLowerCase();
+  if (!k) return 1;
+  const l = String(s || "").toLowerCase();
+  if (l.startsWith(k)) return 100 - l.length * 0.05;
+  const wi = wordStarts(l).findIndex((at) => l.startsWith(k, at));
+  if (wi >= 0) return 80 - wi;
+  const ci = l.indexOf(k);
+  if (ci >= 0) return 60 - ci * 0.2;
+  return fuzzy(k, l) ? 20 : -1;
+}
+
+/** Where each word of a label starts: after anything that is not a letter or
+ *  a digit. */
+function wordStarts(l) {
+  const at = [];
+  for (let i = 0; i < l.length; i++) {
+    const word = /[\p{L}\p{N}]/u.test(l[i]);
+    if (word && (i === 0 || !/[\p{L}\p{N}]/u.test(l[i - 1]))) at.push(i);
+  }
+  return at;
+}
+
+/** A query's letters in a label, in order and case aside: where each falls
+ *  (the first place it can), or null when they don't all appear. */
+export function fuzzy(q, s) {
+  const k = String(q || "").trim().toLowerCase();
+  const l = String(s || "").toLowerCase();
+  const at = [];
+  for (let j = 0; j < l.length && at.length < k.length; j++) if (l[j] === k[at.length]) at.push(j);
+  return at.length === k.length ? at : null;
+}
+
+/** What to mark in a label for a query: the letters it matched, as the
+ *  match `rank` counted (the run at its start, at a word or anywhere, else
+ *  the scattered letters); none for an empty query or no match. */
+export function hitMarks(q, s) {
+  const k = String(q || "").trim().toLowerCase();
+  if (!k) return [];
+  const l = String(s || "").toLowerCase();
+  const run = (from) => Array.from({ length: k.length }, (_, i) => from + i);
+  if (l.startsWith(k)) return run(0);
+  const w = wordStarts(l).find((at) => l.startsWith(k, at));
+  if (w != null) return run(w);
+  const ci = l.indexOf(k);
+  if (ci >= 0) return run(ci);
+  return fuzzy(k, l) || [];
+}
+
+/** How many sounds the list shows: with no query, and with one. */
+export const SOUNDS_SHOWN = [5, 8];
+
+/** The list for a query. `groups` is `[{name, items, cap}]`, each item with
+ *  a `label`, in the order to show them with no query; `cap` is
+ *  `[none, some]`, how many of its hits a group shows without a query and
+ *  with one (all, without a cap). A group's hits stand best first (ties in
+ *  the order given), a group with none is left out, and with a query the
+ *  group holding the best hit comes first, so the first row is what was
+ *  typed. Each hit carries the letters to mark. */
+export function cmdkList(groups, q) {
+  const k = String(q || "").trim();
+  const out = [];
+  for (const g of groups || []) {
+    const hits = [];
+    (g.items || []).forEach((item, i) => {
+      const r = rank(k, item.label);
+      if (r >= 0) hits.push({ item, r, i });
+    });
+    if (!hits.length) continue;
+    hits.sort((a, b) => b.r - a.r || a.i - b.i);
+    const cap = g.cap ? g.cap[k ? 1 : 0] : Infinity;
+    out.push({
+      name: g.name,
+      best: hits[0].r,
+      hits: hits.slice(0, cap).map(({ item }) => ({ item, marks: hitMarks(k, item.label) })),
+    });
+  }
+  if (k) out.sort((a, b) => b.best - a.best);
+  return out.map(({ name, hits }) => ({ name, hits }));
+}
