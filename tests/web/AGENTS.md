@@ -32,6 +32,10 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 - **`make smoke`** runs the pair CI's *Browser smoke* job runs after the
   site build on a PR that changes the app, the engine or what runs the specs
   (`smoke.spec.js`, `failure_flows.spec.js`), in seconds.
+- **Where a run's time goes:** `--reporter=line,./split.mjs` adds each
+  test's split to a run's end (setup, boots, waits for the whole pool, the
+  test's own work, teardown); over a CI run's blob reports it splits the
+  whole tier (the commands are in `split.mjs`'s header).
 - **A failed test on the fixture** carries what its tap saw (every toast,
   and the counts of what was sent and heard) as the attachment `tap`;
   `AURACLE_TAP_LOG=1` prints it too. It names the machine it failed on, as
@@ -149,8 +153,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
 - **Logic belongs in a unit test.** New logic lands in a pure module under
   `apps/web/` with a `node:test` in `apps/web/tests/` (`make web-check` runs
   them in milliseconds); a browser spec proves the wiring and what a player
-  sees, not arithmetic. A boot is seconds, here and on CI (a median of 4
-  to 5 s there, about 28% of the fast tier's test time).
+  sees, not arithmetic. A boot is seconds, here and on CI (a median of 4.7
+  s there, about 30% of the fast tier's test time:
+  [`docs/notes/spec-time-2026-10.md`](../../docs/notes/spec-time-2026-10.md)).
 - **What the engine worker answers belongs in a worker test.** A claim
   about a reply, its fields, or the order the worker answers in (its lanes,
   a long job giving way, what reaches the farm's ports) is a test in

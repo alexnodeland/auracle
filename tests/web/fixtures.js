@@ -197,13 +197,14 @@ const LANES = {
 // the render cache never holds (worker.js `FARM_AUDIO_AHEAD`, farm.js), so no
 // cache moves the veil. What one can take away is the fill after it: the other
 // 30-odd draws are a hit each, where a cold boot renders them behind the test
-// (about 4 s after the veil on a 16-core M3 Max, up to 20 on a CI runner). A
-// spec that waits for the whole pool before it does anything spends that time
-// waiting, and finds the same pool either way: the same draws, and a hit is
-// the φ a render gives, bit for bit (every row is stored under the namespace
-// and the draw's content address, which the engine checks against its tree
-// before folding the row in: farm.js). Such a spec asks for it in
-// `app.boot`; every other boot is a first visit's.
+// (about 4 s after the veil on a 16-core M3 Max, up to 20 on a CI runner:
+// docs/notes/spec-time-2026-10.md). A spec that waits for the whole pool
+// before it does anything spends that time waiting, and finds the same pool
+// either way: the same draws, and a hit is the φ a render gives, bit for bit
+// (every row is stored under the namespace and the draw's content address,
+// which the engine checks against its tree before folding the row in:
+// farm.js). Such a spec asks for it in `app.boot`; every other boot is a
+// first visit's.
 //
 // The first boot that asks, for its seed, is cold. Once its pool is whole
 // (`app.filled`, `app.poolRows`, `app.fullPool`, or at the end of a test that

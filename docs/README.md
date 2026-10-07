@@ -126,6 +126,10 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 - [`suggest-2026-10/`](notes/suggest-2026-10/README.md): how the model could
   suggest the next module in PATCH; four designs measured for cost and against
   synthetic listeners, and a recommendation (RFC-006 Open 2, Plan-005 task 9d)
+- [`spec-time-2026-10.md`](notes/spec-time-2026-10.md): where a browser
+  spec's time goes (its boot, its waits for the pool, its own work), here and
+  over a CI run's blob reports, and what a cache takes away: not the engine's
+  compile, not the veil, but the fill a test waits for (#323)
 - [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
   health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
   the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the

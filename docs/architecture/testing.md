@@ -266,6 +266,15 @@ and up to about ten when Rust changed (Coverage sets the length) or an app
 module's specs run (`patch.js` reaches about 23 test-minutes, on four
 runners).
 
+**Where the time goes.** `tests/web/split.mjs`, a reporter, splits each
+test's time into its setup, its boots (a navigation to the veil lifting),
+its waits for the whole pool, its own work and its teardown, on a run here or
+over a CI run's blob reports. On the full gate of run 37554756597 (307
+tests, 84.1 test-minutes) the boots were 29.5% (a median of 4.7 s each),
+setup and teardown 0.5%, and waiting for the pool to fill after the veil
+13.8 minutes in 43 tests
+([`docs/notes/spec-time-2026-10.md`](../notes/spec-time-2026-10.md)).
+
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
 equal count, which left one of five runners with twice another's work.
 `tests/web/shard.mjs` weighs each test by its time on main's last run and
@@ -796,8 +805,9 @@ from it ([Rules](#rules)).
   in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
-  boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
-  about 28% of the fast tier's test time). What the engine worker answers,
+  boot costs seconds, here and on a CI runner (a median of 4.7 s there,
+  about 30% of the fast tier's test time:
+  [`spec-time-2026-10.md`](../notes/spec-time-2026-10.md)). What the engine worker answers,
   and in what order, is a worker-protocol test (`tests/worker/`,
   [The levels](#the-levels)), not a spec that boots the app to read
   `app.reply`.
