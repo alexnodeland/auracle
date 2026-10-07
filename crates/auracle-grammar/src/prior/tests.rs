@@ -351,7 +351,7 @@ fn every_oscillator_scores_its_octave_by_the_weights() {
     let prior = PatchGrammarPrior::default();
     let at = fugue::addr!("node", "oct");
     let base = crate::presets::presets()[0].1.clone();
-    let mut scored_kinds = 0;
+    let mut scored_kinds = Vec::new();
     for kind in NodeKind::ALL.into_iter().filter(|k| k.is_source()) {
         let op = StructOp::Replace {
             key: "node".into(),
@@ -361,7 +361,7 @@ fn every_oscillator_scores_its_octave_by_the_weights() {
         if root_octave(&placed).is_none() {
             continue;
         }
-        scored_kinds += 1;
+        scored_kinds.push(kind);
         for (i, w) in OCTAVE_WEIGHTS.iter().enumerate() {
             let octave = i as i8 - 2;
             let tree =
@@ -386,7 +386,20 @@ fn every_oscillator_scores_its_octave_by_the_weights() {
             );
         }
     }
-    assert!(scored_kinds > 0, "no source has an octave");
+    // The five oscillators, one per `#oct` arm of the program: a source
+    // whose octave the codec stopped writing would drop out of this list,
+    // and a new oscillator joins it here.
+    assert_eq!(
+        scored_kinds,
+        [
+            NodeKind::Vco,
+            NodeKind::Supersaw,
+            NodeKind::Wavetable,
+            NodeKind::Pluck,
+            NodeKind::Formant,
+        ],
+        "the sources whose octave was scored"
+    );
 }
 
 /// **The two samplers map the unit interval onto octaves alike.** The
@@ -431,23 +444,30 @@ fn the_two_octave_draws_map_the_unit_interval_alike() {
 /// (`√(0.4 · 0.6 / 4000)` ≈ 0.0077).
 #[test]
 fn both_samplers_draw_every_octave_by_its_weight() {
-    let mut tested = 0;
-    for src in 0..N_SOURCES {
+    let mut tested = Vec::new();
+    for (src, label) in SOURCE_LABELS.into_iter().enumerate() {
         let prior = only_source(src);
         for program in [false, true] {
             let Some(shares) = octave_shares(&prior, program, 0x0C7A + src as u64, 4000) else {
                 continue;
             };
-            tested += 1;
+            tested.push((label, program));
             for (i, (got, want)) in shares.iter().zip(OCTAVE_WEIGHTS).enumerate() {
                 assert!(
                     (got - want).abs() < 0.04,
-                    "source {src} by the {}: octave {:+} drawn {got:.4} of the time, weight {want}",
+                    "{label} by the {}: octave {:+} drawn {got:.4} of the time, weight {want}",
                     if program { "program" } else { "RNG" },
                     i as i8 - 2
                 );
             }
         }
     }
-    assert!(tested > 0, "no source has an octave");
+    // Both samplers' arm for each of the five oscillators: an arm whose
+    // draws stopped carrying an octave would drop out of this list.
+    let oscillators = ["vco", "supersaw", "wavetable", "pluck", "formant"];
+    let every_arm: Vec<_> = oscillators
+        .into_iter()
+        .flat_map(|s| [(s, false), (s, true)])
+        .collect();
+    assert_eq!(tested, every_arm, "the sampler arms tested");
 }

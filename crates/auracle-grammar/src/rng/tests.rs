@@ -30,8 +30,12 @@ fn an_index_reads_the_stream_the_same_way_everywhere() {
 
 /// **No draw depends on the target's width**, in the grammar or in any
 /// other engine crate's non-test code: every integer `gen_range` goes
-/// through [`gen_index`] or names its type on a bound (`0u64..n`,
-/// `0i32..5`), and the only unsuffixed ranges left are float literals.
+/// through [`gen_index`] or names its type on a bound (`0u64..n`), and the
+/// only unsuffixed ranges left are float literals. Today the scan finds no
+/// typed bound at all: the last, the octave's `0i32..5`, became a weighted
+/// pick with #62, so every integer draw it reads is a [`gen_index`]. The
+/// scan's own test, [`the_width_scan_reads_what_it_claims`], keeps both
+/// forms.
 ///
 /// An unsuffixed integer range takes its type from where the result goes,
 /// and `InputChannel::ALL[rng.gen_range(0..3)]` makes it a `usize`, which
