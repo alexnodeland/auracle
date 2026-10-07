@@ -6,8 +6,9 @@
 //
 // - However soon a second move follows the first (0, 40, 120 or 300 ms),
 //   once it has landed exactly one level is on, the one asked for last, and
-//   no section keeps a transform, a fade or `inert`; the first move, cut
-//   short, says so.
+//   no section keeps a transform, a fade or `inert`; each move says it
+//   landed, the last one whole, and the first, asked for in the same task as
+//   the second, says it was cut short.
 // - The face lands where the level draws it: the end of its flight is
 //   PERFORM's well face and PATCH's face at OUT as they are drawn once the
 //   move has landed, within 2 px.
@@ -113,10 +114,16 @@ test("after a move exactly one level is on, however soon the next move follows",
     await expect(page.locator("body")).toHaveAttribute("data-level", last);
     await expect(page.locator(`.rail-stop[data-level="${last}"]`)).toHaveAttribute("aria-current", "location");
     await nothingLeft(page);
-    // The first, cut short by the second (all four gaps are under a move's
-    // 620 ms), and the second landed whole.
+    // Both landed, the second whole. With no gap the second is asked for
+    // in the first's own task, so the first is cut short; with one, a page
+    // stalled long enough can let the first finish before the second comes,
+    // and either is right.
     const marks = (await app.marks("level-landed", { after: t0 })).map((m) => m.detail);
-    expect(marks.map((d) => [d.to, d.cut]), `at a gap of ${gap} ms`).toEqual([[first, true], [last, false]]);
+    if (gap === 0) expect(marks.map((d) => [d.to, d.cut]), "with no gap").toEqual([[first, true], [last, false]]);
+    else {
+      expect(marks.map((d) => d.to), `at a gap of ${gap} ms`).toEqual([first, last]);
+      expect(marks[1].cut, `at a gap of ${gap} ms`).toBe(false);
+    }
   }
 });
 
