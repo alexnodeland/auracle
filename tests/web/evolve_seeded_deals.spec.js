@@ -30,9 +30,15 @@ const FAILED = "Couldn’t deal a pair. ANOTHER PAIR tries again.";
 // Run in the engine worker ahead of worker.js. Once a `fill_progress` says
 // the pool holds 8 sounds or more, and is not yet full, every timer of 0 ms
 // waits until the spec posts `__fill_gate`: the serial fill's yield between
-// steps (`yieldToQueue`) among them, so the fill stops where it is. The
-// player's requests are still served on arrival (`drainNow`), a deal among
-// them.
+// steps (`yieldToQueue`) among them, so the fill stops where it is. So does
+// every other yield: the `now` lane's before a background render (the
+// table's sounds, asked for once the first pair is up), after which that
+// lane serves nothing (`drainNow` is still draining), and the pump's. So
+// while the gate is shut no request of the player's is served, a deal
+// among them, whether or not the worker would hold it. What tells a deal
+// that waits for its sounds from one drawn at once comes after the gate
+// opens: it is answered only once 16 sounds have joined, and the pairs are
+// the first boot's.
 const FILL_GATE = `(() => {
   let shut = false;
   let opened = false;
@@ -109,14 +115,16 @@ test("the same seed deals the same pairs whether the pool had filled or was stil
   expect(held, "the gate held the fill short of the second deal's 16 sounds").toBeLessThan(16);
   // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("filled"), "the pool filled past the gate").toBe(0);
-  // ANOTHER PAIR asks for the second deal, which reaches 16 sounds: it waits.
-  const asked = await app.sentCount("duel");
+  // ANOTHER PAIR puts the first pair away, and the table waits on the
+  // second deal, which reaches 16 sounds: asked for by the click, or ahead
+  // of it had the table's sounds been rendered. Either way one deal is out,
+  // and it stays out while the gate is shut.
+  const out = async () => (await app.unanswered({ types: ["duel"] })).length;
   await page.locator("#skip-duel").click();
-  await expect.poll(() => app.sentCount("duel")).toBe(asked + 1);
   await expect(page.locator("#choose-a")).toBeDisabled();
+  await expect.poll(out, { message: "the second deal was asked for" }).toBe(1);
   await app.quiet();
-  // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
-  expect(await app.count("duel"), "a deal was answered over the sounds that had joined").toBe(asked);
+  expect(await out(), "a deal was answered with the fill held short of 16 sounds").toBe(1);
   // The fill goes on, and the deal is answered once its sounds have joined.
   await app.post({ type: "__fill_gate" });
   await pairUp(page, app);
