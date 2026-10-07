@@ -53,7 +53,9 @@ Every key and gesture is in [the keyboard map](./keyboard.md#the-levels).
 Hold <kbd>⌥</kbd> for a moment, at any level, and what the model believes
 comes up over it: each bank row’s guess and the pool in the model’s order,
 TASTE’s halos, EVOLVE’s guess before you pick, PATCH’s belief line and which
-way your taste leans on each module. Let go and it goes. **MODEL** in the menu bar does the
+way your taste leans on each module, and which way your taste leans along
+each of PERFORM’s controls, from the sound in your hands (*it leans
+brighter*). Let go and it goes. **MODEL** in the menu bar does the
 same held, and a tap on it keeps the view up until you tap it again or press
 <kbd>Esc</kbd>. [Reading what it learned](./reading-the-model.md#the-model-view)
 says what each mark means.
