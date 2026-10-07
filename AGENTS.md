@@ -64,10 +64,12 @@ contributor guide; this file does not repeat it.
    ([ADR-001](docs/decisions/001-one-random-stream-per-consumer.md)). Do not
    share a generator across consumers again. Draw an index with
    `auracle_grammar::rng::gen_index`, never `gen_range(0..len)` over a `usize`,
-   which reads the stream differently in wasm32. That makes the pool and the
-   random-rule duels the same on every target
-   (`crates/auracle-wasm/tests/boot_agrees.rs`); taste fits, walks and
-   PERFORM's offers are not, until `fugue-ppl` draws its site as a `u64` (see
+   which reads the stream differently in wasm32; `fugue-ppl` draws its own
+   indices (the site each Metropolis step moves) the same way since 0.2.3.
+   That makes a seed deal the same on every target: the pool, the duels,
+   taste fits, walks and PERFORM's offers make the same choices, their
+   numbers equal but for the last digit a native `libm` and wasm's can part
+   by (`crates/auracle-wasm/tests/boot_agrees.rs` pins one of each; see
    `crates/auracle-grammar/src/rng.rs`).
 7. **Generated files are not hand-edited.** `apps/web/pkg/`, `site/`,
    `www/docs/src/img/`, `www/landing/assets/film/` (written by

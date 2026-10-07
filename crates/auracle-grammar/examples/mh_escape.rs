@@ -20,13 +20,22 @@
 //! false for both `−∞` and the `NaN` that `−∞ − −∞` produces. The chain
 //! therefore cannot leave the support it started in.
 //!
-//! There is one thing in that chain worth naming, because it is the part a
-//! reader would go looking for: fugue routes a site to a **log-space** walk
-//! when its density is `−∞` at −1, which is true of `Uniform(0,1)` — so every
-//! knob in this grammar is proposed as `exp(ln x + s·z)`, which is unbounded
-//! *above*. Proposals above 1 are made constantly. They are all rejected. That
-//! costs acceptance rate near the top of the range; it does not cost
-//! correctness, and this example is what says so.
+//! Since fugue-ppl 0.2.3 the proposal itself stays inside, and that guard has
+//! one value left to catch. fugue picks a continuous site's proposal from its
+//! distribution's declared support, and `Uniform(0,1)` declares
+//! `Support::Bounded { lower: 0, upper: 1 }`, so every knob in this grammar
+//! takes a Gaussian step reflected back off 0 and 1
+//! (`ReflectionWalkProposal`): no proposal leaves `[0, 1]`. The value left is
+//! `1.0` exactly: the reflection keeps a step in the closed interval, while
+//! the knob domain (`PARAM_DOMAIN`) and `Uniform`'s `log_prob` are half-open,
+//! so a step that lands on it scores `−∞` and is rejected by the argument
+//! above.
+//!
+//! (fugue-ppl 0.2.1, which this example was written against, and 0.2.2
+//! walked such a site in log space instead, as `exp(ln x + s·z)`, which is
+//! unbounded *above*: proposals above 1 were made constantly, and every one
+//! was rejected on its `−∞`. That cost acceptance near the top of the range,
+//! not correctness, and this example is what said so then.)
 //!
 //! ## The measurement
 //!
@@ -37,7 +46,7 @@
 //! no featurizer), which is what makes 160 000 fully-checked transitions a
 //! ten-second job rather than an afternoon.
 //!
-//! Result, at the shipped `fugue-ppl` 0.2.1 / `fugue-evo` 0.3.1:
+//! Result, at the shipped `fugue-ppl` 0.2.3 / `fugue-evo` 0.3.1:
 //!
 //! ```text
 //! 8 chains × 20000 steps = 160000 transitions, 0 out-of-domain sites observed
