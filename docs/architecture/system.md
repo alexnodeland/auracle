@@ -32,10 +32,14 @@ Two loops share one pool of patches.
    with the output stage and limiter every patch shares.
 3. **Render and vet.** `auracle-features` plays the voice through the standard
    phrase (`phrase.rs`), refuses silent, broken or runaway renders (`vet.rs`),
-   and normalizes loudness to `TARGET_LUFS` (`loudness.rs`). A patch with an
-   AUDIO IN (`PatchTree::listens`) is compiled with `compile_with_input` and
-   reads the phrase's audition clip on the render's own clock (`clip.rs`,
-   `render.rs`); its render key carries the clip.
+   and normalizes loudness to `TARGET_LUFS` (`loudness.rs`). A render
+   compiles the voice with `compile_for_render`, which folds each live knob
+   into the port it drives (nothing turns a knob during a measurement), so a
+   sample walks about half the nodes and the samples are the same, bit for
+   bit (`CompiledVoice::pin_knobs`).
+   A patch with an AUDIO IN (`PatchTree::listens`) is built on the audition
+   stream and reads the phrase's audition clip on the render's own clock
+   (`clip.rs`, `render.rs`); its render key carries the clip.
 4. **Measure.** φ is φ_audio (perceptual descriptors of the render) plus
    φ_struct (render-free descriptors of the tree), `pipeline.rs`. φ is all the
    model sees.

@@ -3,7 +3,10 @@ use crate::term::{AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape
 
 use crate::term;
 use crate::tests::{captured, frequency, listening, patch, sine_vco, stream_of, tone, tracked};
+use crate::PatchGrammarPrior;
 use crate::PARAM_MAX;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 const SR: f64 = 44_100.0;
 
@@ -2742,4 +2745,267 @@ fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
         assert_ne!(m, canonical, "not degenerate: {m:?}");
         assert_eq!(render(m.clone()), render(canonical), "{m:?}");
     }
+}
+
+/// Ticks `v` as the phrase plays a note: the gate open for `on` samples at
+/// C4, the pitch up an octave halfway, then the gate closed for `off`. Every
+/// sample's bits, so a comparison cannot be fooled by the sign of a zero.
+fn played_bits(v: &mut CompiledVoice, on: usize, off: usize) -> Vec<(u64, u64)> {
+    let mut out = Vec::with_capacity(on + off);
+    v.pitch.set(0.0);
+    v.gate.set(5.0);
+    for i in 0..on + off {
+        if i == on / 2 {
+            v.pitch.set(1.0);
+        }
+        if i == on {
+            v.gate.set(0.0);
+        }
+        let (l, r) = v.patch.tick();
+        out.push((l.to_bits(), r.to_bits()));
+    }
+    out
+}
+
+/// The full voice of `tree` and the render's voice (its knobs folded), each
+/// built and played from the same seed of quiver's stream, as a render seeds
+/// it before it compiles. `follow` builds the followers a chord plays.
+fn both_ways(tree: &PatchTree, follow: bool) -> [(CompiledVoice, Vec<(u64, u64)>); 2] {
+    let play = |render: bool| {
+        quiver::rng::seed(SEED);
+        let mut v = match (render, follow) {
+            (false, false) => compile_with_input(tree, SR, None),
+            (false, true) => compile_follower(tree, SR, None),
+            (true, false) => compile_for_render(tree, SR, None),
+            (true, true) => compile_follower_for_render(tree, SR, None),
+        }
+        .expect("compiles");
+        let bits = played_bits(&mut v, 6_615, 2_205);
+        (v, bits)
+    };
+    [play(false), play(true)]
+}
+
+/// Why a knob node still in a render's voice could not be folded: a port it
+/// drives has another cable on it, is an audio input, or is normalled to a
+/// sibling, or its cable scales or offsets it. `None` when nothing stopped
+/// it. (A render's voice lists the knobs it kept in `knobs`.)
+fn kept_because(patch: &Patch, knob: NodeId) -> Option<&'static str> {
+    let spec = |id: NodeId| {
+        patch
+            .nodes()
+            .find(|(n, _, _)| *n == id)
+            .map(|(_, _, m)| m.port_spec().clone())
+    };
+    patch
+        .cables()
+        .iter()
+        .filter(|c| c.from.node == knob)
+        .find_map(|c| {
+            let def = spec(c.to.node)?.input_by_id(c.to.port)?.clone();
+            if patch.cables().iter().filter(|o| o.to == c.to).count() > 1 {
+                Some("shares its port")
+            } else if def.kind == SignalKind::Audio {
+                Some("drives an audio input")
+            } else if def.normalled_to.is_some() {
+                Some("drives a normalled input")
+            } else if c.attenuation.unwrap_or(1.0) != 1.0 || c.offset.unwrap_or(0.0) != 0.0 {
+                Some("is scaled")
+            } else {
+                None
+            }
+        })
+}
+
+/// **A render's voice plays the full voice's samples, bit for bit, and
+/// walks fewer nodes** (#298). `compile_for_render` folds each live knob
+/// into the port it drives, which takes about half the nodes out of every
+/// sample's walk of a measurement render; φ is measured on those samples, so
+/// they must not move by a bit. Swept over every preset and prior draws,
+/// each played through a gate, a pitch change and a release from the same
+/// seed of quiver's stream, as a main voice and as a chord's follower. And
+/// every knob the render's voice still has is one that could not be folded
+/// exactly (`kept_because`), so the fold is not quietly doing less.
+#[test]
+fn a_render_compile_plays_the_full_voice_bit_for_bit() {
+    let prior = PatchGrammarPrior::default();
+    let mut rng = StdRng::seed_from_u64(0xF01D);
+    // A follower differs from a main voice only where a TRACK is, and the
+    // bank has those: followers are swept over the bank.
+    let mut trees: Vec<(String, PatchTree, &[bool])> = crate::presets()
+        .into_iter()
+        .map(|(name, tree)| (name.to_string(), tree, &[false, true][..]))
+        .collect();
+    for i in 0..60 {
+        let (tree, _) = crate::tests::draw(&prior, &mut rng);
+        trees.push((format!("draw {i}"), tree, &[false][..]));
+    }
+    let (mut full_nodes, mut walked_nodes) = (0, 0);
+    for (name, tree, ways) in &trees {
+        for &follow in *ways {
+            let [(full, full_bits), (render, render_bits)] = both_ways(tree, follow);
+            assert!(
+                full_bits == render_bits,
+                "{name} (follower: {follow}): the render's voice plays other samples"
+            );
+            full_nodes += full.patch.node_count();
+            walked_nodes += render.patch.node_count();
+            for (id, _) in &render.knobs {
+                assert!(
+                    kept_because(&render.patch, *id).is_some(),
+                    "{name}: a knob that could have been folded was not"
+                );
+            }
+        }
+    }
+    assert!(
+        walked_nodes * 10 < full_nodes * 7,
+        "a render walks {walked_nodes} of {full_nodes} nodes: the knobs are not folded"
+    );
+}
+
+/// **Where folding would move what a patch renders, the render gets the full
+/// voice.** Two strings (Karplus-Strong, which draws its excitation from
+/// quiver's thread-wide stream), one under an LFO whose only inputs are
+/// knobs: folding the knobs makes that LFO a source, which moves its string
+/// ahead of the other in quiver's execution order, so the two would draw
+/// each other's noise. `compile_for_render` sees the schedule move and
+/// compiles the voice again, unfolded.
+#[test]
+fn a_fold_that_would_move_the_schedule_keeps_the_full_voice() {
+    let string = |modulation| AudioNode::Pluck {
+        uid: Uid::NEW,
+        octave: 0,
+        damping: 0.4,
+        brightness: 0.6,
+        mod_depth: 0.5,
+        modulation,
+    };
+    let lfo = ModNode::Lfo {
+        wave: Waveform::Sine,
+        rate: 0.3,
+        uid: Uid::NEW,
+    };
+    let tree = sustained(AudioNode::Mix {
+        balance: 0.5,
+        a: Box::new(string(lfo)),
+        b: Box::new(string(ModNode::None)),
+        uid: Uid::NEW,
+    });
+    // Folded by hand, the schedule moves: the two strings swap.
+    let mut folded = compile_with_input(&tree, SR, None).expect("compiles");
+    let before = Schedule::of(&folded.patch);
+    assert_eq!(before.drawers.len(), 2, "two strings draw from the stream");
+    assert!(!folded.pin_knobs(), "folding this patch moves its schedule");
+    assert_eq!(
+        Schedule::of(&folded.patch).drawers,
+        before.drawers.iter().rev().copied().collect::<Vec<_>>(),
+        "the strings swap places"
+    );
+    // So a render compiles it whole, and plays what the full voice plays.
+    let [(full, full_bits), (render, render_bits)] = both_ways(&tree, false);
+    assert_eq!(render.patch.node_count(), full.patch.node_count());
+    assert!(full_bits == render_bits);
+}
+
+/// A schedule names the modules that draw from quiver's stream in the order
+/// they tick, and the cables a node reads a sample late: none in a chain,
+/// and in a loop through a unit delay, the one cable that closes it.
+#[test]
+fn a_schedule_is_the_stream_draws_in_order_and_the_feedback_cables() {
+    let mut chain = Patch::new(SR);
+    let a = chain.add("a", NoiseGenerator::new());
+    let v = chain.add("v", Vco::new(SR));
+    let b = chain.add("b", NoiseGenerator::new());
+    let out = chain.add("out", StereoOutput::new());
+    chain.connect(a.out("white"), v.in_("fm")).unwrap();
+    chain.connect(v.out("saw"), out.in_("left")).unwrap();
+    chain.connect(b.out("white"), out.in_("right")).unwrap();
+    chain.set_output(out.id());
+    chain.compile().unwrap();
+    let s = Schedule::of(&chain);
+    assert_eq!(s.drawers, vec![a.id(), b.id()]);
+    assert!(s.feedback.is_empty(), "a chain reads nothing late");
+
+    let mut looped = Patch::new(SR);
+    let src = looped.add("src", Vco::new(SR));
+    let mix = looped.add("mix", Mixer::new(2));
+    let delay = looped.add("delay", UnitDelay::new());
+    let out = looped.add("out", StereoOutput::new());
+    looped.connect(src.out("sin"), mix.in_("ch0")).unwrap();
+    looped.connect(mix.out("out"), delay.in_("in")).unwrap();
+    looped.connect(delay.out("out"), mix.in_("ch1")).unwrap();
+    looped.connect(mix.out("out"), out.in_("left")).unwrap();
+    looped.set_output(out.id());
+    looped.compile().unwrap();
+    let s = Schedule::of(&looped);
+    assert!(s.drawers.is_empty(), "nothing here draws from the stream");
+    assert_eq!(
+        s.feedback,
+        [(mix.out("out"), delay.in_("in"))].into_iter().collect(),
+        "the delay reads the mix a sample late"
+    );
+}
+
+/// What a knob's cable delivers is what quiver's scatter and gather make of
+/// the knob's value: a number that is not finite reads 0, one under 1e-20 in
+/// magnitude reads 0 (and 1e-20 itself does not), a negative zero reads as a
+/// positive one, and anything else is itself.
+#[test]
+fn a_cabled_value_is_what_the_cable_delivers() {
+    for v in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        9e-21,
+        -9e-21,
+        -0.0,
+    ] {
+        assert_eq!(cabled_value(v).to_bits(), 0.0f64.to_bits(), "{v}");
+    }
+    for v in [1e-20, -1e-20, 0.25, -3.5, 5.0] {
+        assert_eq!(cabled_value(v).to_bits(), v.to_bits(), "{v}");
+    }
+}
+
+/// **Every module that draws from quiver's stream while it ticks is in
+/// [`STREAM_DRAWERS`]**, which is what lets a render's voice keep their
+/// order (and so the noise they draw) when it folds its knobs. Each preset
+/// and prior draw is compiled, quiver's stream seeded, and the voice played;
+/// a voice whose play moved the stream must hold a listed module. A module
+/// that starts to draw in a new quiver fails here until it is listed.
+#[test]
+fn a_module_that_draws_from_quivers_stream_is_listed() {
+    let prior = PatchGrammarPrior::default();
+    let mut rng = StdRng::seed_from_u64(0xD2A3);
+    let mut trees: Vec<PatchTree> = crate::presets().into_iter().map(|(_, t)| t).collect();
+    for _ in 0..120 {
+        trees.push(crate::tests::draw(&prior, &mut rng).0);
+    }
+    let (mut drew, mut still) = (0, 0);
+    for tree in &trees {
+        let mut v = compile(tree, SR).expect("compiles");
+        quiver::rng::seed(SEED);
+        played_bits(&mut v, 1_024, 256);
+        let next = quiver::rng::random();
+        quiver::rng::seed(SEED);
+        if next == quiver::rng::random() {
+            still += 1;
+            continue;
+        }
+        drew += 1;
+        let listed = v
+            .patch
+            .nodes()
+            .any(|(_, _, m)| STREAM_DRAWERS.contains(&m.type_id()));
+        let kinds: Vec<&str> = v.patch.nodes().map(|(_, _, m)| m.type_id()).collect();
+        assert!(
+            listed,
+            "a voice of {kinds:?} drew from quiver's stream, and none of its modules is listed"
+        );
+    }
+    assert!(
+        drew > 0 && still > 0,
+        "{drew} voices drew, {still} did not: the sweep proves nothing"
+    );
 }

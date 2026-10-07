@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile_follower, compile_with_input, PatchTree};
+use auracle_grammar::{compile_follower_for_render, compile_for_render, PatchTree};
 use quiver::{AudioInputStream, PatchError};
 
 use crate::phrase::PhraseSpec;
@@ -130,7 +130,7 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
     // The clip, for a patch that listens: one stream every voice reads, on
     // this render's clock (see the module doc).
     let input = tree.listens().then(|| audition_stream(spec));
-    let mut voice = compile_with_input(tree, spec.sample_rate, input.as_ref())?;
+    let mut voice = compile_for_render(tree, spec.sample_rate, input.as_ref())?;
     // Chord voices for the note being (or last) played. Compiled lazily at
     // the first chord note; a mono spec pays nothing.
     let mut chord_voices: Vec<ChordVoice> = Vec::new();
@@ -181,7 +181,7 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
                 // on the tracked note, not on C4 while a cold tracker settles)
                 // and its amp keeps this note's gate, so it stops with the
                 // dyad. For a patch with no TRACK it is the same voice.
-                let v = compile_follower(tree, spec.sample_rate, input.as_ref())?;
+                let v = compile_follower_for_render(tree, spec.sample_rate, input.as_ref())?;
                 v.pitch.set(voct);
                 v.gate.set(5.0);
                 chord_voices.push(ChordVoice {
