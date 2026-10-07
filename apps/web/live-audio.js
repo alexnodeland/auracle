@@ -71,17 +71,21 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.meterPtr = 0;
     // The B slot: a second instrument that follows the same hands, so an
     // offer can be heard against home by crossfade rather than by a jump.
-    // Mixed at equal power. While its mix is 0 (Blend down, PERFORM out of
-    // sight) and the ramp down to it is over, nobody hears it, so it rests
-    // (LivePoly.rest): it follows the keys and keeps time, and renders no
-    // voice, where rendering it cost the audio thread a second instrument's
-    // work a quantum, the crackle of issue 288 on a slower laptop. When the mix
-    // leaves 0 it wakes (resting() says so while it does): each held note's
-    // envelope is driven to where it would be over a few silent quanta, at
-    // a rendered quantum's cost each, and the mix waits at 0 meanwhile, so
-    // B comes in on its ramp from there with no attack. held mirrors the
-    // notes under the player's fingers so a freshly loaded B joins the chord.
+    // Mixed at equal power. Rendered every quantum while it is loaded, so its
+    // envelopes and tails are in step with A when the fader moves and PEEK or
+    // BLEND is heard at the next quantum. Only while main says the audio is
+    // struggling (strained: the audio clock falling behind, issue 288), B
+    // rests while its mix is 0 (BLEND at home, PERFORM out of sight) and the
+    // ramp down to it is over (LivePoly.rest): it follows the keys and keeps
+    // time, and renders no voice, where rendering it cost a slow laptop's
+    // audio thread a second instrument's work a quantum. When the mix leaves
+    // 0 it wakes (resting() says so while it does): each held note's envelope
+    // is driven to where it would be over a few silent quanta, at about a
+    // rendered quantum's cost each, and the mix waits at 0 meanwhile, so B
+    // comes in on its ramp from there with no attack. held mirrors the notes
+    // under the player's fingers so a freshly loaded B joins the chord.
     this.polyB = null;
+    this.strained = false;
     this.mixB = 0;
     this.mixCur = 0;
     this.mixBuf = null;
@@ -262,6 +266,8 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (this.poly) this.poly.set_touch_base(m.i, m.v);
         break;
       case "b_mix": this.mixB = Math.min(1, Math.max(0, +m.mix || 0)); break;
+      // The audio is struggling (main.js strainChanged): B rests at a mix of 0.
+      case "strain": this.strained = !!m.on; break;
       case "b_param": if (this.polyB) this.polyB.set_param(m.addr, m.value); break;
       case "b_clear":
         if (!this.polyB) break;
@@ -400,10 +406,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     }
     if (this.poly && L) {
       const n = L.length;
-      // B rests while nobody hears it: its mix is 0 and the ramp down to it
-      // is over. So a retiring B (fading after Keep, Back or Pass, or
-      // sounding on while A takes its tree) renders until it is silent.
-      const bRests = !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;
+      // While the audio struggles, B rests while nobody hears it: its mix is
+      // 0 and the ramp down to it is over. So a retiring B (fading after
+      // PASS or NEXT, or sounding on while A takes its tree) renders until
+      // it is silent.
+      const bRests = this.strained && !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;
       // The input first: the voices read it as they render this quantum.
       const inp = inputs[0];
       const hasInput = inp && inp.length > 0 && inp[0].length === n;
@@ -679,6 +686,11 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     touchBase(i, v) {
       node.port.postMessage({ type: "touch_base", i, v });
+    },
+    // The audio is struggling (main.js strainChanged): only then does B rest
+    // at a mix of 0.
+    strain(on) {
+      node.port.postMessage({ type: "strain", on: !!on });
     },
     // The B slot (PERFORM's offers): load, crossfade, tweak, clear.
     bPatch(tree, makeup) {

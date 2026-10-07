@@ -71,7 +71,9 @@ async function host() {
 
   // In the order it happened on this thread: `in` (a message handed to the
   // worker), `call` (a call into the engine begins), `posted` (a `during`
-  // request sent), `out` (a reply, numbered as the client numbers them).
+  // request sent), `out` (a reply, numbered as the client numbers them). Each
+  // carries `t`, this thread's clock when it happened, for a claim that
+  // holds only for so long (a hold's cap).
   const trace = [];
   let replies = 0;
   const armed = []; // {call, left, msg, tag}
@@ -84,7 +86,7 @@ async function host() {
   const idb = workerData.idb ? fakeIndexedDB({ dbs: workerData.idb }) : null;
   if (idb) self.indexedDB = idb.as("engine");
   self.postMessage = (msg, transfer) => {
-    trace.push({ ev: "out", n: replies++, type: msg && msg.type });
+    trace.push({ ev: "out", n: replies++, type: msg && msg.type, t: performance.now() });
     parentPort.postMessage(msg, transfer || []);
   };
   self.addEventListener = (type, fn) => {
@@ -142,13 +144,13 @@ async function host() {
   // thread's event loop, as a message main posts mid-call does.
   const loop = new MessageChannel();
   function called(name) {
-    const e = { ev: "call", name };
+    const e = { ev: "call", name, t: performance.now() };
     trace.push(e);
     for (let i = 0; i < armed.length; i++) {
       const a = armed[i];
       if (a.call !== name || --a.left > 0) continue;
       armed.splice(i--, 1);
-      trace.push({ ev: "posted", tag: a.tag, type: a.msg.type });
+      trace.push({ ev: "posted", tag: a.tag, type: a.msg.type, t: performance.now() });
       loop.port1.postMessage(a.msg);
     }
     return e;
@@ -156,7 +158,7 @@ async function host() {
 
   const deliver = (data) => {
     if (data && data.type === "init" && !data.module) data = { ...data, module };
-    trace.push({ ev: "in", type: data && data.type, key: data && (data.req ?? data.token ?? data.id ?? null) });
+    trace.push({ ev: "in", type: data && data.type, key: data && (data.req ?? data.token ?? data.id ?? null), t: performance.now() });
     self.onmessage({ data });
   };
   loop.port2.on("message", deliver);

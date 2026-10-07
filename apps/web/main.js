@@ -211,6 +211,9 @@ const { createDealer } = await import(`./deal.js?v=${BUILD}`);
 const bootParams = await import(`./params.js?v=${BUILD}`);
 // The warm start's nine cards, one per family (warm.js, tests/warm.test.mjs).
 const { warmSample } = await import(`./warm.js?v=${BUILD}`);
+// Is the audio struggling? The rule over the audio's samples
+// (strain.js, tests/strain.test.mjs).
+const strainRule = await import(`./strain.js?v=${BUILD}`);
 // Find a sound's rule: what a sound must hold to stay in the bank while words
 // are typed (bank-find.js, tests/bank-find.test.mjs).
 const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
@@ -434,39 +437,89 @@ let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 // The notes sounding under the player's hands (the hold latch's and the
-// sustain pedal's too), by MIDI number. On a machine with four threads or
-// fewer, the engine worker hears when the first starts and the last stops
-// (`playingChanged`), so its background work and the farm's step aside while
-// notes sound: with two cores, two renderers and the engine worker beside
-// the audio thread, the voices ran short (issue 288).
+// sustain pedal's too), by MIDI number. While the audio is struggling
+// (`strain`, below), the engine worker hears when the first starts and the
+// last stops (`roomChanged`).
 class HeldNotes extends Set {
   add(n) {
     super.add(n);
-    playingChanged();
+    roomChanged();
     return this;
   }
   delete(n) {
     const had = super.delete(n);
-    playingChanged();
+    roomChanged();
     return had;
   }
   clear() {
     super.clear();
-    playingChanged();
+    roomChanged();
   }
 }
 const heldNotes = new HeldNotes();
-const SMALL_MACHINE = (navigator.hardwareConcurrency || 2) <= 4;
-let playingSaid = false;
-/** Tell the engine worker, on a small machine, when notes start sounding and
- *  when the last one stops (`playing`, never answered; worker.js
- *  `setPlaying`). The worker holds its background work back from then until
- *  a second after. */
-function playingChanged() {
-  const on = heldNotes.size > 0;
-  if (!SMALL_MACHINE || on === playingSaid) return;
-  playingSaid = on;
-  send({ type: "playing", on });
+
+// Is the audio struggling? (issue 288: a slow laptop crackled while it
+// played). Every `STRAIN_TICK_MS` while the live voice is up, main reads how
+// far the audio clock fell behind the page's since the last reading
+// (`getOutputTimestamp`) and, where the browser counts them, the underruns
+// since (`playbackStats`), and strain.js says whether the audio is running
+// short. Only while it is: an offer in PERFORM's B rests at BLEND's home (the
+// worklet's `strain`), and the engine's and the farm's background work makes
+// room while notes sound (the worker's `make_room`). On a machine with
+// headroom neither happens. Nothing in the worklet can time a quantum (its
+// scope has no clock but the audio's), so this is read from outside.
+const strain = strainRule.createStrain({ now: () => performance.now() });
+let strainAt = null; // the last output timestamp read
+let strainUnderruns = null; // the browser's underrun count at the last reading
+let roomSaid = false;
+
+function strainTick() {
+  const running = !!live && audioCtx.state === "running" && !document.hidden;
+  let lag = null;
+  let underruns = null;
+  if (running) {
+    try {
+      const ts = audioCtx.getOutputTimestamp();
+      if (ts && ts.performanceTime > 0) {
+        if (strainAt) lag = ts.performanceTime - strainAt.performanceTime - (ts.contextTime - strainAt.contextTime) * 1000;
+        strainAt = ts;
+      }
+    } catch (_) {
+      /* a browser without it: underruns, or nothing */
+    }
+    try {
+      const n = audioCtx.playbackStats ? audioCtx.playbackStats.underrunEvents : null;
+      if (typeof n === "number") {
+        if (strainUnderruns != null) underruns = Math.max(0, n - strainUnderruns);
+        strainUnderruns = n;
+      }
+    } catch (_) {
+      /* not counted here */
+    }
+  } else {
+    strainAt = null;
+  }
+  if (strain.sample({ lag, underruns, running })) strainChanged(strain.on);
+}
+
+/** The audio began, or stopped, struggling: say so to the worklet (B rests
+ *  at BLEND's home only while it does) and to the engine worker (through
+ *  `roomChanged`), and in the app's log. */
+function strainChanged(on) {
+  if (live) live.strain(on);
+  roomChanged();
+  (window.__aurLog = window.__aurLog || []).push({ type: "audio_strain", on, hold: strain.hold });
+}
+
+/** Tell the engine worker to make room for the audio while it struggles and
+ *  notes sound, and when it no longer needs to (`make_room`, never answered;
+ *  worker.js `setRoom`). The worker holds its background work back from then
+ *  until a second after. */
+function roomChanged() {
+  const on = strain.on && heldNotes.size > 0;
+  if (on === roomSaid) return;
+  roomSaid = on;
+  send({ type: "make_room", on });
 }
 
 // ---------- faces (Plan-005 task 3) ----------
@@ -5562,6 +5615,8 @@ async function bootLiveAudio() {
   master.gain.value = volume;
   renderVolVal();
   applyPerfUi();
+  // The audio's headroom, from now on (`strainTick`).
+  setInterval(strainTick, strainRule.STRAIN_TICK_MS);
   live.node.onprocessorerror = (e) => {
     (window.__aurLog = window.__aurLog || []).push({ type: "processor_error", e: String(e) });
     note("The live audio crashed. Reload to bring it back.");

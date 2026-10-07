@@ -60,7 +60,9 @@ export const MODULES = {
   "apps/web/booth.js": ["booth"],
   "apps/web/words.js": ["text_fits", "evolve_feedback", "taste_profile"],
   "apps/web/support.js": ["taste_marks", "patch_model_view", "patch_catalog"],
-  "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in"],
+  "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in", "perform_struggling_audio"],
+  // Whether the audio is struggling: the protections main switches on.
+  "apps/web/strain.js": ["perform_struggling_audio"],
   "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing"],
   // Both workers open the render cache's store through it, at boot; the
   // fixture writes and reads the store through it too (`reuseRenders`).

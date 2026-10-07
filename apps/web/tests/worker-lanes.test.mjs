@@ -83,7 +83,7 @@ test("a face the player is looking at goes before a measurement nobody waits on,
   assert.ok(idle, "worker.js has no idleOnly");
   const build = (lanes) => new Function(
     "SOON", "LATER", "FACES", "lanes", "floor", "blocked", "backgroundStep",
-    `${idle[0]}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
+    `${idle[0]}\n${line(/^const playerAsked = .*$/m)}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
   )(SOON, LATER, FACES, lanes, null, () => false, () => true);
   const order = (lanes) => {
     const next = build(lanes);
@@ -112,7 +112,7 @@ test("a preset row's face renders after everything the player is waiting on, a b
   const idle = src.match(/^const idleOnly = .*$/m);
   const next = (lanes) => new Function(
     "SOON", "LATER", "FACES", "lanes", "floor", "blocked", "backgroundStep",
-    `${idle[0]}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
+    `${idle[0]}\n${line(/^const playerAsked = .*$/m)}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
   )(SOON, LATER, FACES, lanes, null, () => false, () => true);
   // Every kind of long work queued at once, each in the lane `laneOf` gives it.
   const msgs = [
@@ -176,7 +176,8 @@ test("a yield another flow's long call ran through lets in what arrived during t
   assert.deepEqual(log, ["the other flow's call", "the request that arrived during it", "this flow goes on"]);
 });
 
-// No notes sounding unless a test says so: every background step may go.
+// No room made for the audio unless a test says so: every background step
+// may go.
 function floorJobs({ held = false } = {}) {
   const log = [];
   const lanes = [[], [], [], []];
@@ -204,6 +205,7 @@ function floorJobs({ held = false } = {}) {
     [
       line(/^const YIELD_TURN_MS = .*$/m), lift("yieldToQueue"), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
       line(/^const idleOnly = .*$/m), line(/^const laterWaiting = .*$/m), line(/^const bgWaits = .*$/m),
+      line(/^const playerAsked = .*$/m),
       lift("laneOf"), lift("blocked"), lift("seenFaceWaiting"), lift("isFatal"), lift("performReply"),
       lift("serveNow"), lift("breathe"), lift("holdFloor"), lift("guessRun"), lift("measure"),
       // Each holding the floor, as `dispatch` runs them.
@@ -320,11 +322,18 @@ test("a warm-start card measured before SKIP is measured again when the warm sta
   assert.deepEqual(measured, ["preset 0", "preset 1", "preset 0", "preset 1", "preset 2"]);
 });
 
-// Background work steps aside while notes sound on a small machine (#288):
-// the worker's own `setPlaying`, `backgroundHeld`, `backgroundStep`,
-// `backgroundLater`, `backgroundResumed` and `backgroundTurn`, on a clock and
-// timers the test moves by hand.
-function playClock() {
+// Background work makes room for the audio while it struggles and notes
+// sound (#288): the worker's own `setRoom`, `backgroundHeld`,
+// `backgroundStep`, `backgroundStepDone`, `backgroundLater`,
+// `backgroundResumed` and `backgroundTurn`, on a clock and timers the test
+// moves by hand. `playable`: the boot veil is down (nothing is held before).
+const ROOM = [
+  /^const ROOM_TAIL_MS = .*$/m, /^const ROOM_CAP_MS = .*$/m, /^const ROOM_REST_MS = .*$/m, /^const ROOM_STEP_STALE_MS = .*$/m,
+  /^let roomSince = .*$/m, /^let roomTail = .*$/m, /^let playableSaid = .*$/m, /^let stepOut = .*$/m,
+  /^let restedFrom = .*$/m, /^let restTimer = .*$/m, /^const backgroundWaiters = .*$/m,
+];
+const ROOM_FNS = ["setRoom", "backgroundHeld", "backgroundStep", "backgroundStepDone", "backgroundLater", "backgroundResumed", "backgroundTurn", "veilDown"];
+function roomClock({ playable = true, extra = [], names = [], values = [] } = {}) {
   let now = 0;
   let seq = 0;
   const timers = new Map();
@@ -350,29 +359,29 @@ function playClock() {
     get now() {
       return now;
     },
+    get timers() {
+      return [...timers.values()];
+    },
   };
   const woken = [];
   const w = new Function(
-    "performance", "setTimeout", "clearTimeout", "schedulePump", "farmSink", "walkPump",
+    "performance", "setTimeout", "clearTimeout", "schedulePump", "farmSink", "walkPump", ...names,
     [
-      line(/^const PLAY_TAIL_MS = .*$/m), line(/^const PLAY_CAP_MS = .*$/m), line(/^const PLAY_TRICKLE_MS = .*$/m),
-      line(/^let playSince = .*$/m), line(/^let playTail = .*$/m), line(/^let trickledAt = .*$/m),
-      line(/^let trickleTimer = .*$/m), line(/^const backgroundWaiters = .*$/m),
-      lift("setPlaying"), lift("backgroundHeld"), lift("backgroundStep"), lift("backgroundLater"),
-      lift("backgroundResumed"), lift("backgroundTurn"),
-      "return { setPlaying, backgroundHeld, backgroundStep, backgroundTurn };",
+      ...ROOM.map(line), ...ROOM_FNS.map(lift), ...extra,
+      `return { ${[...ROOM_FNS, ...extra.map((e) => /function (\w+)\(/.exec(e)?.[1]).filter(Boolean)].join(", ")} };`,
     ].join("\n"),
-  )(clock.performance, clock.setTimeout, clock.clearTimeout, () => woken.push(clock.now), { wake() {} }, () => {});
+  )(clock.performance, clock.setTimeout, clock.clearTimeout, () => woken.push(clock.now), { wake() {} }, () => {}, ...values);
+  if (playable) w.veilDown();
   return { ...w, clock, woken };
 }
 
-test("while notes sound and for a second after, no background step goes, and then everything held back is woken", async () => {
-  const p = playClock();
-  assert.equal(p.backgroundStep(), true, "nothing sounding: it goes");
-  p.setPlaying(true);
-  assert.equal(p.backgroundStep(), false, "a note sounding: it waits");
+test("while room is made and for a second after, no background step goes, and then everything held back is woken", async () => {
+  const p = roomClock();
+  assert.equal(p.backgroundStep(), true, "no room asked for: it goes");
+  p.setRoom(true);
+  assert.equal(p.backgroundStep(), false, "room made: it waits");
   p.clock.advance(500);
-  p.setPlaying(false);
+  p.setRoom(false);
   p.clock.advance(999);
   assert.equal(p.backgroundStep(), false, "the last note's tail: it still waits");
   const turn = p.backgroundTurn();
@@ -381,98 +390,149 @@ test("while notes sound and for a second after, no background step goes, and the
     went = true;
   });
   p.clock.advance(1);
-  assert.equal(p.backgroundHeld(), false, "a second after the last note");
+  assert.equal(p.backgroundHeld(), false, "a second after the word");
   assert.ok(p.woken.includes(1_500), "the pump was woken when the hold ended");
   await turn;
   assert.ok(went, "the fill's turn came");
   assert.equal(p.backgroundStep(), true);
 });
 
-test("a note again within the tail keeps the hold, and its clock, going", () => {
-  const p = playClock();
-  p.setPlaying(true);
+test("nothing is held before the boot veil lifts, and room asked for under it counts from then", () => {
+  const p = roomClock({ playable: false });
+  p.setRoom(true);
+  p.clock.advance(20_000);
+  assert.equal(p.backgroundStep(), true, "keys under the veil hold no batch of the fill");
+  assert.equal(p.backgroundHeld(), false);
+  p.veilDown();
+  assert.equal(p.backgroundStep(), false, "the veil down: held, the cap counted from now");
+  p.clock.advance(7_999);
+  assert.equal(p.backgroundStep(), false);
+  p.clock.advance(1);
+  assert.equal(p.backgroundStep(), true, "eight seconds after the veil");
+});
+
+test("room asked for again within the tail keeps the hold, and its clock, going", () => {
+  const p = roomClock();
+  p.setRoom(true);
   p.clock.advance(600);
-  p.setPlaying(false);
+  p.setRoom(false);
   p.clock.advance(500);
-  p.setPlaying(true);
+  p.setRoom(true);
   p.clock.advance(5_000);
   assert.equal(p.backgroundStep(), false, "still held 6.1 s on");
   assert.equal(p.woken.length, 0, "the tail's timer did not end it");
 });
 
-test("past eight seconds of notes, one background step goes a second, and each turn wakes what waits", () => {
-  const p = playClock();
-  p.setPlaying(true);
+test("past the cap, background work goes a step at a time, each a rest after the last one ended", () => {
+  const p = roomClock();
+  p.setRoom(true);
   p.clock.advance(7_999);
   assert.equal(p.backgroundStep(), false, "under the cap");
   // The step that waited wakes everything when the cap comes.
   p.clock.advance(1);
   assert.deepEqual(p.woken, [8_000]);
   assert.equal(p.backgroundStep(), true, "the cap: one step");
-  assert.equal(p.backgroundStep(), false, "and only one");
+  // A step on this thread runs 600 ms (a render) before the thread asks again.
+  p.clock.advance(600);
+  assert.equal(p.backgroundStep(), false, "it ended as the thread asked again: a rest from then");
   p.clock.advance(999);
-  assert.equal(p.backgroundStep(), false, "a second has not gone by");
+  assert.equal(p.backgroundStep(), false, "a second has not gone by since it ended");
   p.clock.advance(1);
-  assert.deepEqual(p.woken, [8_000, 9_000], "woken for the next");
-  assert.equal(p.backgroundStep(), true, "a second on, the next");
-  // Let go: the hold ends a second later, the trickle with it.
-  p.setPlaying(false);
+  assert.deepEqual(p.woken, [8_000, 9_600], "woken a rest after the step ended, not after it began");
+  assert.equal(p.backgroundStep(), true, "the next");
+  // No longer asked for: the hold ends a tail later, the steps with it.
+  p.setRoom(false);
   p.clock.advance(1_000);
   assert.equal(p.backgroundStep(), true);
   assert.equal(p.backgroundStep(), true, "not counted any more");
 });
 
-test("background work asked for while notes sound is not run at once, and the cap's turn wakes the pump for it", () => {
-  let now = 0;
-  const timers = [];
-  const woken = [];
-  const FACES = 3;
-  const lanes = [[], [], [{ type: "cable_levels" }], []];
-  const w = new Function(
-    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "blocked", "performance", "setTimeout", "clearTimeout", "schedulePump", "farmSink", "walkPump",
-    [
-      line(/^const PLAY_TAIL_MS = .*$/m), line(/^const PLAY_CAP_MS = .*$/m), line(/^const PLAY_TRICKLE_MS = .*$/m),
-      line(/^let playSince = .*$/m), line(/^let playTail = .*$/m), line(/^let trickledAt = .*$/m),
-      line(/^let trickleTimer = .*$/m), line(/^const backgroundWaiters = .*$/m),
-      lift("setPlaying"), lift("backgroundHeld"), lift("backgroundStep"), lift("backgroundLater"),
-      lift("backgroundResumed"), lift("runnable"),
-      "return { setPlaying, runnable };",
-    ].join("\n"),
-  )(NOW, SOON, LATER, FACES, lanes, null, () => false, { now: () => now },
-    (fn, ms) => timers.push({ at: now + ms, fn }), () => {}, () => woken.push(now), null, () => {});
-  assert.equal(w.runnable(), true, "nothing sounding: the pump runs it");
-  w.setPlaying(true);
-  assert.equal(w.runnable(), false, "a note sounding: no pump for it");
-  // A gesture still is.
-  lanes[NOW].push({ type: "edit_param" });
-  assert.equal(w.runnable(), true);
-  lanes[NOW].length = 0;
-  assert.equal(timers.length, 1, "its turn is set");
-  assert.equal(timers[0].at, 8_000, "at the cap");
-  now = 8_000;
-  timers[0].fn();
-  assert.deepEqual(woken, [8_000], "the pump woken at the cap");
-  assert.equal(w.runnable(), true, "and its step may go");
+test("a step past the cap on the farm runs until the farm answers, or until it goes stale", () => {
+  const p = roomClock();
+  p.setRoom(true);
+  p.clock.advance(8_000);
+  assert.equal(p.backgroundStep(true), true, "a walk handed out");
+  p.clock.advance(3_000);
+  assert.equal(p.backgroundStep(), false, "nothing else while it walks");
+  p.backgroundStepDone();
+  p.clock.advance(999);
+  assert.equal(p.backgroundStep(), false, "a rest after it answered");
+  p.clock.advance(1);
+  assert.ok(p.woken.includes(12_000), "woken a rest after the answer");
+  assert.equal(p.backgroundStep(true), true, "the next render handed out");
+  // A worker lost with it: it never answers, and is taken as ended once stale.
+  p.clock.advance(4_999);
+  assert.equal(p.backgroundStep(), false);
+  p.clock.advance(1);
+  assert.ok(p.woken.includes(17_000), "woken when it went stale");
+  assert.equal(p.backgroundStep(), false, "a rest from then");
+  p.clock.advance(1_000);
+  assert.equal(p.backgroundStep(), true);
 });
 
-test("while notes sound, nothing from later or the faces lane starts, and soon work does", () => {
+test("background work asked for while room is made is not run at once, the cap's turn wakes the pump for it, and the player's guess runs", () => {
+  const FACES = 3;
+  const lanes = [[], [], [{ type: "cable_levels" }], []];
+  const p = roomClock({
+    names: ["NOW", "SOON", "LATER", "FACES", "lanes", "floor", "blocked"],
+    values: [NOW, SOON, LATER, FACES, lanes, null, () => false],
+    extra: [line(/^const playerAsked = .*$/m), lift("runnable")],
+  });
+  assert.equal(p.runnable(), true, "no room asked for: the pump runs it");
+  p.setRoom(true);
+  assert.equal(p.runnable(), false, "room made: no pump for it");
+  // A gesture still is, and so is a guess the player asked for.
+  lanes[NOW].push({ type: "edit_param" });
+  assert.equal(p.runnable(), true);
+  lanes[NOW].length = 0;
+  lanes[LATER].push({ type: "guess", at: "node/0" });
+  assert.equal(p.runnable(), true, "What goes here? is the player's");
+  lanes[LATER].pop();
+  assert.equal(p.runnable(), false);
+  assert.ok(p.clock.timers.some((t) => t.at === 8_000), "its turn is set, at the cap");
+  p.clock.advance(8_000);
+  assert.deepEqual(p.woken, [8_000], "the pump woken at the cap");
+  assert.equal(p.runnable(), true, "and its step may go");
+});
+
+test("while room is made, nothing from later or the faces lane starts, and soon work and the player's guess do", () => {
   const FACES = 3;
   const idle = src.match(/^const idleOnly = .*$/m);
   let open = false;
-  const lanes = [[], [{ type: "perform_offer", name: "pressed offer" }], [{ type: "fit", name: "refit" }], [{ type: "face_render", name: "face" }]];
+  const lanes = [
+    [],
+    [{ type: "perform_offer", name: "pressed offer" }],
+    [{ type: "fit", name: "refit" }, { type: "guess", name: "the output's guess" }, { type: "guess", at: "node/0", name: "What goes here?" }],
+    [{ type: "face_render", name: "face" }],
+  ];
   const next = new Function(
     "SOON", "LATER", "FACES", "lanes", "floor", "blocked", "backgroundStep",
-    `${idle[0]}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
+    `${idle[0]}\n${line(/^const playerAsked = .*$/m)}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
   )(SOON, LATER, FACES, lanes, null, () => false, () => open);
   assert.equal(next().name, "pressed offer");
-  assert.equal(next(), null, "the refit waits");
-  assert.equal(lanes[LATER].length, 1);
+  assert.equal(next().name, "What goes here?", "the player's guess goes");
+  assert.equal(next(), null, "the refit and the output's guess wait");
+  assert.equal(lanes[LATER].length, 2);
   open = true;
   assert.equal(next().name, "refit");
+  assert.equal(next().name, "the output's guess");
   assert.equal(next().name, "face");
 });
 
-test("while notes sound, a background job holding the floor gives way at its next breath, and the player's does not", async () => {
+test("while room is made, the player's guess holding the floor does not give way", async () => {
+  const w = floorJobs({ held: true });
+  w.owe("g1", "g2");
+  await w.guessRun({ type: "guess", at: "node/0" });
+  assert.deepEqual(w.log, ["render g1", "render g2", "reply guess"]);
+  const bg = floorJobs({ held: true });
+  bg.owe("g1", "g2");
+  const output = { type: "guess" };
+  await bg.guessRun(output);
+  assert.deepEqual(bg.log, ["render g1"], "the output's guess gives way");
+  assert.equal(bg.lanes[LATER][0], output);
+});
+
+test("while room is made, a background job holding the floor gives way at its next breath, and the player's does not", async () => {
   const bg = floorJobs({ held: true });
   bg.owe("p1", "p2");
   const left = { type: "perform_wire", bg: true, req: 1, tree: "t" };
@@ -485,7 +545,7 @@ test("while notes sound, a background job holding the floor gives way at its nex
   assert.deepEqual(own.log, ["render p1", "render p2", "reply perform_wired"]);
 });
 
-test("while notes sound, a background render in now waits, and a gesture is served", async () => {
+test("while room is made, a background render in now waits, and a gesture is served", async () => {
   const lanes = [[{ type: "render", bg: true, name: "the pair's sound" }, { type: "edit_param", name: "a knob" }], [], [], []];
   let held = true;
   const served = [];

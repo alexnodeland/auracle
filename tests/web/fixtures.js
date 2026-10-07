@@ -174,15 +174,15 @@ const PERFORM_SEED = (() => {
 
 /** What main sends that the worker never answers, by design: a log line, a
  *  count of a pair shown, a style's name, the farm's plumbing, the warm
- *  start's cards to measure while the player chooses, whether notes are
- *  sounding (`playing`, on a small machine), and the requests that
+ *  start's cards to measure while the player chooses, room to make for a
+ *  struggling audio thread (`make_room`), and the requests that
  *  act on others (a stop, `retire`, `promote`, a cancel), whose effect is the
  *  other request's own last reply. `app.answered` does not wait for these.
  *  apps/web/tests/worker-protocol.test.mjs holds the worker to this list, and
  *  docs/architecture/web-runtime.md (The worker's replies) names them. */
 const UNANSWERED = [
   "duel_shown", "log_edit", "log_event", "set_style_name",
-  "farm_lost", "farm_ports", "warm_cards", "playing",
+  "farm_lost", "farm_ports", "warm_cards", "make_room",
   "promote", "retire", "explain_cancel", "refine_stop", "refine_from_stop",
 ];
 /** The lanes `app.answered` knows by name, as the request types in them.

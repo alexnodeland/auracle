@@ -1,5 +1,6 @@
-// PERFORM's B slot in the voice worklet (live-audio.js PROCESSOR): an offer
-// nobody hears rests, and Blend and Peek bring it in (#288). The processor is
+// PERFORM's B slot in the voice worklet (live-audio.js PROCESSOR): while main
+// says the audio is struggling (`strain`), an offer nobody hears rests, and
+// Blend and Peek bring it in; with headroom it renders always (#288). The processor is
 // the worklet's own source, run here over a stand-in for the engine's
 // LivePoly that counts what it is asked to do: render a quantum
 // (`process_ptr`) or rest through one (`rest`), and, after a rest, wake over a
@@ -117,9 +118,11 @@ function run(p, n) {
   return all;
 }
 
-/** An offer in B at a mix of 0, rested through `quanta`. */
-function offered(quanta = 50) {
+/** An offer in B at a mix of 0, through `quanta`, the audio struggling
+ *  (`strained`, so B rests) or not. */
+function offered(quanta = 50, strained = true) {
   const r = rig();
+  r.p.handle({ type: "strain", on: strained });
   r.p.handle({ type: "b_patch", tree: "b" });
   r.p.handle({ type: "b_mix", mix: 0 });
   r.b = r.made[1];
@@ -131,7 +134,27 @@ const onlyA = (xs) => xs.every((x) => x === A);
 // The largest step from one sample to the next: a click is a jump.
 const jump = (xs) => xs.slice(1).reduce((m, x, i) => Math.max(m, Math.abs(x - xs[i])), 0);
 
-test("an offer at Blend 0 rests: the worklet renders one instrument a quantum", () => {
+test("with headroom, an offer at Blend 0 renders every quantum, and Peek is heard at the next", () => {
+  const { p, b } = offered(200, false);
+  assert.equal(b.rendered, 200, "B rendered at a mix of 0");
+  assert.equal(b.rested, 0);
+  p.handle({ type: "b_mix", mix: 1 });
+  const next = quantum(p);
+  assert.ok(next.some((x) => x !== A), "B is in the very next quantum");
+  assert.ok(jump([A, ...next]) < 0.01, "on the mix's ramp, with no jump");
+});
+
+test("when the audio stops struggling, a resting offer renders again", () => {
+  const { p, b } = offered(100);
+  assert.equal(b.rendered, 0);
+  p.handle({ type: "strain", on: false });
+  run(p, 20);
+  assert.equal(b.rendered, 20, "it wakes and renders at a mix of 0");
+  assert.equal(b.resting(), false);
+  assert.ok(onlyA(quantum(p)), "still unheard at a mix of 0");
+});
+
+test("while the audio struggles, an offer at Blend 0 rests: the worklet renders one instrument a quantum", () => {
   const { p, made, b } = offered(200);
   const a = made[0];
   assert.equal(b.rendered, 0, "B rendered at a mix of 0");
@@ -141,7 +164,7 @@ test("an offer at Blend 0 rests: the worklet renders one instrument a quantum", 
   assert.ok(b.restMix.every((m) => m === 0), "it rested only where nobody heard it");
 });
 
-test("Blend brings B in at once, from 0, with no jump", () => {
+test("while the audio struggles, Blend brings a resting B in, from 0, with no jump", () => {
   const { p, b } = offered();
   p.handle({ type: "b_mix", mix: 0.5 });
   // The next quantum renders B: it starts waking.
@@ -163,7 +186,7 @@ test("Blend brings B in at once, from 0, with no jump", () => {
   assert.ok(Math.abs(after[after.length - 1] - want) < 0.01, `${after[after.length - 1]} against ${want}`);
 });
 
-test("Peek sounds all of B while held, and Blend 0 again rests it once the ramp is down", () => {
+test("while the audio struggles, Peek sounds all of B while held, and Blend 0 again rests it once the ramp is down", () => {
   const { p, b } = offered();
   p.handle({ type: "b_mix", mix: 1 });
   const peeked = run(p, WAKE + 60);

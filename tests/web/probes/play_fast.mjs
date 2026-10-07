@@ -27,11 +27,12 @@
 //                                at BLEND's home B rests (the worklet renders it only while heard)
 //   --blend=0.5                  with --offer, move BLEND there before playing: B is heard, and the
 //                                worklet renders a second four voices every quantum
-//   --b-always                   the worklet as it was before #288's fix: B rendered every quantum while
-//                                it holds an offer, at any mix (live-audio.js served with B never resting)
-//   --no-pause                   the page as it was before #288's fix: the engine worker is never told
-//                                notes are sounding (every `playing` message dropped), so its background
-//                                work and the farm's go on while you play
+//   --b-always                   B never rests: the worklet as it was before #288's fix (B rendered
+//                                every quantum while it holds an offer, at any mix), and as it is with
+//                                headroom, whatever the audio's strain (live-audio.js served so)
+//   --no-pause                   the engine worker is never told to make room (every `make_room`
+//                                message dropped): its background work and the farm's go on while you
+//                                play, as before #288's fix and as with headroom
 //   --runs=1
 //
 // What it records, in the page's clock unless said:
@@ -159,7 +160,7 @@ const PAGE = (cores, noPause) => `(() => {
   const epost = Worker.prototype.postMessage;
   Worker.prototype.postMessage = function (d, ...rest) {
     if (d && typeof d.type === "string") P.engine.push([performance.now(), d.type]);
-    if (NO_PAUSE && d && d.type === "playing") return undefined;
+    if (NO_PAUSE && d && d.type === "make_room") return undefined;
     return epost.call(this, d, ...rest);
   };
   addEventListener("keydown", (e) => { if (!e.repeat) P.keys.push([e.timeStamp, performance.now(), e.key]); }, true);
@@ -271,7 +272,7 @@ async function run(n) {
       );
       if (!src.includes("probe_on")) throw new Error("live-audio.js has no `this.held.set(m.note, vel);` to hang the probe on");
       if (flags["b-always"]) {
-        const rests = "const bRests = !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;";
+        const rests = "const bRests = this.strained && !!this.polyB && this.mixB === 0 && this.mixCur < 1e-4;";
         if (!src.includes(rests)) throw new Error("live-audio.js has no B rest to switch off");
         src = src.replace(rests, "const bRests = false;");
       }
@@ -412,6 +413,25 @@ async function run(n) {
       } else {
         console.log(`  audio clock vs the page's clock: too few getOutputTimestamp samples (${o.length})`);
       }
+      // The protections (#288): when main said the audio was struggling, against
+      // when the audio clock first fell behind (a 50 ms sample more than 4 ms behind).
+      const strains = P.worklet.filter((m) => m[1] === "strain");
+      let firstBehind = null;
+      for (let i = 1; i < P.ots.length; i++) {
+        const [c0, p0] = P.ots[i - 1];
+        const [c1, p1] = P.ots[i];
+        if (p1 - p0 - (c1 - c0) * 1000 > 4) {
+          firstBehind = p1;
+          break;
+        }
+      }
+      const rel = (x) => `${f((x - t1) / 1000, 1)} s`;
+      console.log(
+        `  protections: ${strains.length ? `strain messages at ${strains.map((m) => rel(m[0])).join(", ")} from the first key` : "no strain message (headroom)"}` +
+          `${firstBehind != null ? `; the audio clock first fell behind at ${rel(firstBehind)}` : "; the audio clock never fell behind"}` +
+          `${firstBehind != null && strains.length ? `, the protections on ${f(strains[0][0] - firstBehind, 0)} ms later` : ""}` +
+          `; make_room messages to the engine: ${P.engine.filter((m) => m[1] === "make_room").length}`,
+      );
     }
     {
       // note latency in audio time: the worklet's clock at note_on minus the context's when posted

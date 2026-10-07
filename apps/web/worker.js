@@ -361,14 +361,17 @@ function onFarmMessage(f, m) {
       // It had the job and could not do it. Not the draw's fault — and not
       // the walk's: a walk it could not run is run by this worker instead.
       if (m.walk) walkCannot(f, m);
+      backgroundStepDone();
       farmDrop(f, m.reason || "declined a job");
       return;
     case "done":
       // A guess's render on a walk crew (`crewRenders`), or a fill's draw.
+      backgroundStepDone();
       if (guessDone(f, m)) return;
       if (farmSink) farmSink.done(f, m);
       return;
     case "walked":
+      backgroundStepDone();
       walkDone(f, m);
       return;
   }
@@ -594,9 +597,9 @@ function walkPump() {
   for (const f of farm) {
     if (!walkQueue.length) break;
     if (!f.alive || !f.ready || f.job !== null) continue;
-    // Not while notes sound (`backgroundStep`): `backgroundResumed` pumps
-    // again when a walk may go.
-    if (!backgroundStep()) break;
+    // Not while room is made for the audio (`backgroundStep`):
+    // `backgroundResumed` pumps again when a walk may go.
+    if (!backgroundStep(true)) break;
     let task = walkQueue.shift();
     while (task && task.dead) task = walkQueue.shift();
     if (!task) break;
@@ -690,7 +693,7 @@ function runOwned(task, fn) {
 // outstanding). `absorb(i, result)` folds one result in — and is only ever
 // called with `i` equal to the next index in order. `stop()` reports whether
 // the caller's goal is already met, so speculative work past it is dropped.
-function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
+function runFarm({ startAt, take, absorb, stop, wantAudio, after, held = false }) {
   return new Promise((resolve) => {
     const results = new Map();  // index -> {ok, cached, samples}
     const queue = [];           // issued by `take`, not yet handed to a worker
@@ -814,10 +817,11 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
             progressed = true;
           }
         }
-        // Not while notes sound (`backgroundStep`): the farm's renders wait,
-        // and `backgroundResumed` wakes this pump when they may go.
+        // With `held` (the boot fill's, never a restore's), not while room is
+        // made for the audio (`backgroundStep`): the farm's renders wait, and
+        // `backgroundResumed` wakes this pump when they may go.
         for (const f of idle) {
-          if (!queue.length || !backgroundStep()) break;
+          if (!queue.length || (held && !backgroundStep(true))) break;
           issue(f, queue.shift());
           progressed = true;
         }
@@ -1731,7 +1735,7 @@ async function measure(m) {
         // and to a face the player is looking at (`seenFaceWaiting`).
         // With Wander on, the drifts go first, one each time; PERFORM coming
         // back into sight (`promote`) makes a demoted one the player's again.
-        if ((await breathe(laneOf(m))) || (idleOnly(m) && (laterWaiting() || seenFaceWaiting(lanes)))) {
+        if ((await breathe(laneOf(m), m)) || (idleOnly(m) && (laterWaiting() || seenFaceWaiting(lanes)))) {
           lanes[LATER].unshift(m);
           return;
         }
@@ -1816,7 +1820,7 @@ async function walkRun(m) {
       m.job = begun.job;
     }
     while (engine.perform_job_step(m.job, 1)) {
-      const yields = await breathe(laneOf(m));
+      const yields = await breathe(laneOf(m), m);
       if (m.retired) return retired();
       if (yields) {
         // Paused where it stands: the job keeps its place in the engine, and
@@ -1910,8 +1914,10 @@ function guessLost(f) {
 /** Render `jobs` on the crew, as many at once as there are idle workers, for
  *  at most `ms`. Resolves to the results that landed, by job (`{ok, cached}`;
  *  null for one a lost worker gave back). Jobs still out when the time is up
- *  are abandoned: their answers find nobody. */
-function crewRenders(jobs, ms) {
+ *  are abandoned: their answers find nobody. Unless the player `asked` (What
+ *  goes here?), a job waits while room is made for the audio, and is handed
+ *  out when its turn comes (`backgroundResumed`). */
+function crewRenders(jobs, ms, asked = false) {
   return new Promise((resolve) => {
     const out = new Map();
     const queue = [...jobs];
@@ -1931,14 +1937,22 @@ function crewRenders(jobs, ms) {
       resolve(out);
     };
     const timer = setTimeout(finish, Math.max(0, ms));
+    let waiting = false;
     const hand = () => {
       if (finished) return;
       for (const f of farm) {
         if (!queue.length) break;
         if (!f.alive || !f.ready || f.job !== null) continue;
-        // Not while notes sound (`backgroundStep`): the budget runs out
-        // meanwhile, and the floor's renders (`guessRun`) wait their turn.
-        if (!backgroundStep()) break;
+        if (!asked && !backgroundStep(true)) {
+          if (!waiting) {
+            waiting = true;
+            backgroundWaiters.push(() => {
+              waiting = false;
+              hand();
+            });
+          }
+          break;
+        }
         const job = queue.shift();
         const i = ++guessSeq;
         ids.add(i);
@@ -1984,7 +1998,7 @@ async function guessOnCrew(at, failed) {
       if (!plan.jobs.length) return null;
       const left = GUESS_BUDGET_MS - (performance.now() - t0);
       if (left <= 0 || !crewReady()) return null;
-      const results = await crewRenders(plan.jobs, left);
+      const results = await crewRenders(plan.jobs, left, !!at);
       let absorbed = 0;
       for (const [job, r] of results) {
         if (!r) continue;
@@ -2051,7 +2065,7 @@ async function guessRun(m) {
         const t = performance.now();
         if (!engine.memo_render(job.tree)) failed.push(job.key);
         m.spent += performance.now() - t;
-        if (await breathe(laneOf(m))) {
+        if (await breathe(laneOf(m), m)) {
           lanes[LATER].unshift(m);
           return;
         }
@@ -2844,82 +2858,115 @@ function seenFaceWaiting(lanes) {
   return lanes[FACES].some((q) => q.seen && !blocked(q));
 }
 
-// ---------- background work steps aside while notes sound ----------
+// ---------- background work makes room for the audio ----------
 //
-// On a machine with four threads or fewer (a two-core laptop: two renderers on
-// the farm, this worker, the page and the audio thread), the voices ran short
-// while this worker and the farm rendered beside them: the crackle of issue
-// 288 came before any offer was shown. So main says when notes start sounding and
-// when the last one stops (`playing`, never answered; only on such a machine,
-// main.js `playingChanged`), and until a second after that last note
-// (`PLAY_TAIL_MS`: its tail), no background work starts: nothing from `later`
-// or the faces lane (`nextLong`; a `later` job holding the floor gives way at
-// its next breath, `breathe`), no background render in `now` (`serveNow`: a
-// dealt pair's sounds, a warm-start card), no batch of the fill (the serial
-// fill's loop, `backgroundTurn`, and the farm's, `runFarm`), and no walk handed
-// to the crew (`walkPump`). The player's requests are served as ever, and
-// `soon` work (what the player asked for and waits on: a pressed Offer, the
-// measurement of the sound in hand) starts as ever. What has started finishes:
-// a render cannot be interrupted.
+// On a slow laptop (the 2018 MacBook Air of issue 288: two cores, so two
+// renderers on the farm beside this worker, the page and the audio thread)
+// the voices ran short while this worker and the farm rendered beside them:
+// the crackle came before any offer was shown. Main watches the audio's
+// headroom (strain.js: the audio clock falling behind, and underruns where
+// the browser counts them) and, only while the audio is struggling and notes
+// sound, says to make room (`make_room` with `on`, never answered; main.js
+// `roomChanged`). From then until a second after its word that room is no
+// longer needed (`ROOM_TAIL_MS`: a note's tail), no background work starts:
+// nothing from `later` or the faces lane (`nextLong`; a `later` job holding
+// the floor gives way at its next breath, `breathe`), no background render in
+// `now` (`serveNow`: a dealt pair's sounds, a warm-start card), no batch of the
+// fill (the serial fill's loop, `backgroundTurn`, and the farm's, `runFarm`),
+// and no walk or render handed to the crew (`walkPump`, `crewRenders`). The
+// player's requests are served as ever, `soon` work (what the player asked
+// for and waits on: a pressed Offer, the measurement of the sound in hand)
+// starts as ever, and so does a guess the player asked for (What goes here?,
+// a `guess` with `at`). What has started finishes: a render cannot be
+// interrupted. Nothing is held before the boot veil lifts (`playable`): keys
+// played under it must not keep it up, and a restore is never held, the
+// player waits on it (`runFarm`'s hold is the boot fill's alone).
 //
-// The hold latch and the sustain pedal can keep notes sounding for good, and
-// with two cores the fill would then never finish. So after `PLAY_CAP_MS` of
-// sounding (gaps under the tail count as sounding), one background step goes
-// through every `PLAY_TRICKLE_MS`, across all of those places: one job started
-// or one piece of one, one background render, one batch of the fill, one
-// render or one walk handed to the farm.
-const PLAY_TAIL_MS = 1000;
-const PLAY_CAP_MS = 8000;
-const PLAY_TRICKLE_MS = 1000;
-let playSince = null; // when notes began sounding (a gap under the tail included), or null
-let playTail = null; // the timer that ends the hold a tail after the last note
-let trickledAt = -Infinity; // when the last step went through past the cap
-let trickleTimer = null; // the timer for the next step past the cap
-const backgroundWaiters = []; // the serial fill, waiting for its turn
+// Notes can sound for good (a long passage, the hold latch, the sustain
+// pedal), and on two cores the fill would then never finish. So after
+// `ROOM_CAP_MS` of making room (gaps under the tail count), background work
+// goes on one step at a time, each starting `ROOM_REST_MS` after the last one
+// ended: one job started or one piece of one, one background render, one
+// batch of the fill, one render or one walk handed to the farm. A step on
+// this thread has ended by the time the thread asks again; one on the farm
+// ends when its answer comes (`backgroundStepDone`), or is taken as ended
+// once `ROOM_STEP_STALE_MS` have gone by without one (a lost worker).
+const ROOM_TAIL_MS = 1000;
+const ROOM_CAP_MS = 8000;
+const ROOM_REST_MS = 1000;
+const ROOM_STEP_STALE_MS = 5000;
+let roomSince = null; // when room began to be made (a gap under the tail included), or null
+let roomTail = null; // the timer that ends the hold a tail after main's word
+let playableSaid = false; // the boot veil is down: nothing is held before
+let stepOut = null; // past the cap, the step running: {farm, at}
+let restedFrom = -Infinity; // past the cap, when the last step ended
+let restTimer = null; // the timer for the next step past the cap
+const backgroundWaiters = []; // what waits for its turn (the serial fill, a guess's crew)
 
-/** Main's word: notes are sounding (`on`), or the last one has stopped. */
-function setPlaying(on) {
+/** Main's word: make room for the audio (`on`), or no longer. */
+function setRoom(on) {
   if (on) {
-    if (playTail) clearTimeout(playTail);
-    playTail = null;
-    if (playSince == null) playSince = performance.now();
+    if (roomTail) clearTimeout(roomTail);
+    roomTail = null;
+    if (roomSince == null) roomSince = performance.now();
     return;
   }
-  if (playSince == null || playTail) return;
-  playTail = setTimeout(() => {
-    playTail = null;
-    playSince = null;
-    if (trickleTimer) clearTimeout(trickleTimer);
-    trickleTimer = null;
+  if (roomSince == null || roomTail) return;
+  roomTail = setTimeout(() => {
+    roomTail = null;
+    roomSince = null;
+    stepOut = null;
+    if (restTimer) clearTimeout(restTimer);
+    restTimer = null;
     backgroundResumed();
-  }, PLAY_TAIL_MS);
+  }, ROOM_TAIL_MS);
 }
 
 /** Is background work held back now, with no step it may take? */
 function backgroundHeld() {
-  if (playSince == null) return false;
+  if (!playableSaid || roomSince == null) return false;
   const now = performance.now();
-  return now - playSince < PLAY_CAP_MS || now - trickledAt < PLAY_TRICKLE_MS;
+  if (now - roomSince < ROOM_CAP_MS) return true;
+  if (stepOut) {
+    if (stepOut.farm && now - stepOut.at < ROOM_STEP_STALE_MS) return true;
+    // A step on this thread has ended by now; a stale one on the farm is
+    // taken as ended.
+    stepOut = null;
+    restedFrom = now;
+  }
+  return now - restedFrom < ROOM_REST_MS;
 }
 
-/** May a background step start now? Past the cap, a step that may is
- *  counted, so the next waits its turn; one that may not wakes everything
- *  held back when its turn comes. */
-function backgroundStep() {
+/** May a background step start now (on the farm, with `farm`)? Past the cap,
+ *  one that may is the step running until it ends; one that may not wakes
+ *  everything held back when its turn comes. */
+function backgroundStep(farm = false) {
   if (backgroundHeld()) {
     backgroundLater();
     return false;
   }
-  if (playSince != null) trickledAt = performance.now();
+  if (playableSaid && roomSince != null) stepOut = { farm, at: performance.now() };
   return true;
 }
 
-/** Wake what is held back when the next step past the cap may go. */
+/** A farm worker answered: the step past the cap on the farm, if one was
+ *  out, has ended, and the next may go a rest later. */
+function backgroundStepDone() {
+  if (!stepOut || !stepOut.farm) return;
+  stepOut = null;
+  restedFrom = performance.now();
+  if (restTimer) clearTimeout(restTimer);
+  restTimer = null;
+  backgroundLater();
+}
+
+/** Wake what is held back when its next step may go. */
 function backgroundLater() {
-  if (trickleTimer || playSince == null) return;
-  const at = Math.max(playSince + PLAY_CAP_MS, trickledAt + PLAY_TRICKLE_MS);
-  trickleTimer = setTimeout(() => {
-    trickleTimer = null;
+  if (restTimer || !playableSaid || roomSince == null) return;
+  // (A step on this thread is never out here: `backgroundHeld` ended it.)
+  const at = stepOut ? stepOut.at + ROOM_STEP_STALE_MS : Math.max(roomSince + ROOM_CAP_MS, restedFrom + ROOM_REST_MS);
+  restTimer = setTimeout(() => {
+    restTimer = null;
     backgroundResumed();
   }, Math.max(0, at - performance.now()));
 }
@@ -2937,13 +2984,26 @@ async function backgroundTurn() {
   while (!backgroundStep()) await new Promise((resume) => backgroundWaiters.push(resume));
 }
 
+/** The boot veil is down (`playable`): from here the rest of the bank is
+ *  background work, held back while room is made for the audio, and room
+ *  asked for under the veil counts toward the cap from now. */
+function veilDown() {
+  playableSaid = true;
+  if (roomSince != null) roomSince = performance.now();
+}
+
+/** A guess the player asked for (What goes here?, the `at` it carries) is
+ *  theirs, and is never held back. */
+const playerAsked = (q) => q.type === "guess" && !!q.at;
+
 // The first request in `soon`, then `later` (a measurement nobody is waiting
 // on last, after a face the player is looking at), then the faces lane, that
 // may start now. PERFORM's own measurement of the sound it plays is not
 // `idleOnly`, so it still goes before any face.
 //
-// While notes sound, nothing from `later` or the faces lane starts
-// (`backgroundStep`); `soon` work does.
+// While room is made for the audio, nothing from `later` or the faces lane
+// starts (`backgroundStep`) but a guess the player asked for (`playerAsked`);
+// `soon` work does.
 function nextLong() {
   if (floor) return null;
   for (const lane of [SOON, LATER, FACES]) {
@@ -2953,7 +3013,10 @@ function nextLong() {
       i = lanes[LATER].findIndex((q) => !blocked(q));
     }
     if (i < 0) continue;
-    if (lane !== SOON && !backgroundStep()) return null;
+    if (lane !== SOON && !playerAsked(lanes[lane][i]) && !backgroundStep()) {
+      const asked = lanes[LATER].findIndex((q) => playerAsked(q) && !blocked(q));
+      return asked < 0 ? null : lanes[LATER].splice(asked, 1)[0];
+    }
     return lanes[lane].splice(i, 1)[0];
   }
   return null;
@@ -2969,6 +3032,7 @@ function nextLong() {
 function runnable() {
   const ready = (lane) => lanes[lane].some((q) => !blocked(q));
   if (lanes[NOW].some((q) => !q.bg) || (!floor && ready(SOON))) return true;
+  if (!floor && lanes[LATER].some((q) => playerAsked(q) && !blocked(q))) return true;
   if (!lanes[NOW].length && (floor || !(ready(LATER) || ready(FACES)))) return false;
   if (!backgroundHeld()) return true;
   backgroundLater();
@@ -3043,15 +3107,16 @@ async function runMessage(m) {
   }
 }
 
-// Between two pieces of a long job: let every message that arrived during the
-// last piece be delivered, answer the player's at once, and say whether a
+// Between two pieces of a long job `m`: let every message that arrived during
+// the last piece be delivered, answer the player's at once, and say whether a
 // background job must give the floor up: to long work the player asked for,
-// or because notes are sounding (`backgroundStep`).
-async function breathe(lane) {
+// or to make room for the audio (`backgroundStep`), unless the player asked
+// for it (`playerAsked`).
+async function breathe(lane, m = null) {
   await yieldToQueue();
   await serveNow();
   if (lane !== LATER) return false;
-  return lanes[SOON].some((q) => !blocked(q)) || !backgroundStep();
+  return lanes[SOON].some((q) => !blocked(q)) || (!(m && playerAsked(m)) && !backgroundStep());
 }
 
 // Run `job` for message `m` holding the floor; the floor is released however
@@ -3069,10 +3134,10 @@ async function holdFloor(m, job) {
 
 self.onmessage = (e) => {
   const m = e.data;
-  // Notes started or stopped sounding (`setPlaying`): taken on arrival, the
-  // engine up or not (the fill is background work too), and never answered.
-  if (m.type === "playing") {
-    setPlaying(!!m.on);
+  // Make room for the audio, or no longer (`setRoom`): taken on arrival, the
+  // engine up or not, and never answered.
+  if (m.type === "make_room") {
+    setRoom(!!m.on);
     return;
   }
   // Everything but `init` needs the engine, and `init` is async: it imports the
@@ -3393,6 +3458,7 @@ async function dispatch(m) {
           // deals the first pair, i.e. exactly today's behaviour.
           tryEngine("standardize_now");
           news({ type: "playable", status: status(), restored });
+          veilDown();
         };
 
         let st = status();
@@ -3470,6 +3536,9 @@ async function dispatch(m) {
             // the user auditions while the rest of the bank lands.
             wantAudio: (i) => i < FARM_AUDIO_AHEAD,
             after: fillProgress,
+            // Background work once the veil is down (`backgroundHeld` holds
+            // nothing before), unlike a restore, which the player waits on.
+            held: true,
           });
         };
 
