@@ -41,6 +41,7 @@ is.
 | [`build-settings.txt`](build-settings.txt) | `simd128` and `wasm-opt -O4`, in wasm |
 | [`phi_moves.py`](phi_moves.py) | How far a change that moves the sound moves φ, in each coordinate's spread |
 | [`analysis-norm-sqr.diff`](analysis-norm-sqr.diff), [`phi-moves-norm-sqr.txt`](phi-moves-norm-sqr.txt), [`ab-native-norm-sqr.txt`](ab-native-norm-sqr.txt), [`ab-wasm-norm-sqr.txt`](ab-wasm-norm-sqr.txt) | `norm_sqr().sqrt()` for `hypot` in φ's spectral frames: the diff, how far φ moves, and its runs |
+| [`revalidate/`](revalidate/) | `make revalidate`'s tables before and after the folding, and L1's and L2's `phi-stats` and `norm-peak`, with L1's diff |
 | [`quiver/`](quiver/) | The quiver changes measured in a scratch copy (each a diff against 0.4.0) and their runs: `ab-native-*` (the set), `ab-kinds-*` (one live voice of each kind), `ab-wasm-*`, `voice-wasm-*`, `phi-moves.txt` |
 
 ## How to run it again
@@ -293,8 +294,21 @@ Per tree it is 5% (First Bass, whose ladder dominates) to 25% (a large prior
 draw), more where a patch has more knobs. In the browsers' workers it is
 15.4% (Chromium) and 19.6% (Firefox) ([above](#in-the-browsers)).
 
-**`make revalidate`, before and after** (`c8541631`, then `5a6824d5`, in
-copies of their trees, at niceness 0): running at this writing; the tables and their diff follow in this section when both sides are done.
+**`make revalidate`, before and after** (`c8541631`, then `5a6824d5`, each in a
+copy of its tree, at niceness 0, load 60 to 220), in
+[`revalidate/`](revalidate/), cargo's lines, the run's header and `time`'s
+block stripped and nothing else: `phi-stats` (1,200 prior draws rendered and
+measured, the composition, φ's ranges and VIF) and `norm-peak` (150) are the
+same, line for line, and so is `climb`'s table over 16 seeds (the pool's true
+utility per refinement generation, each seed's final mean, max and gain: +2.000
+± 0.380, climbed on 14 of 16, on both). The last part, `search-check` (its own
+climb over 6 of those seeds, then MH acceptance and the rest), had run 1.5
+hours on each side under a load of about 200 without finishing, and was
+stopped unfinished when the session wound down; its climb's seeds are the
+first six of the 16 that match. `5a6824d5` is the folding before
+`0eff8f4f` removed a match guard that never fires (no knob drives no port);
+the two build the same voices (`0eff8f4f`'s digests match `c8541631`'s on the
+set and all 63 presets, and its fast tier, 651 tests, passed).
 
 ## Build settings
 
@@ -346,7 +360,15 @@ a third less, which is the difference between ten ladder voices fitting and
 not (#320). With L0 too it is the candidate to release first. L1 adds about
 as much again on the ladder presets, at the price of moving one preset's
 `centroid_std` by a tenth of a spread: a sound decision, not a speed one.
-`make revalidate` on L1 and on L2 (in their scratch workspaces): running at this writing.
+`make revalidate` on L1 and on L2, in their scratch workspaces, reached
+`phi-stats` and `norm-peak` ([`revalidate/`](revalidate/)) before the session
+wound down (their climbs were stopped unfinished). L2's tables are the
+baseline's, line for line: its moves are below what they print. L1's differ on
+132 lines ([l1-diff.txt](revalidate/l1-diff.txt)): one more of the 1,200 prior
+draws is quarantined as silent (1,168 featurized becomes 1,167), and the
+per-kind rates and φ's ranges move in their last printed digit (the filter's
+quarantine rate 5.7% to 5.9%). L1 changes what the gate lets through, which is
+a sound decision; L2 does not, at the precision the tables print.
 
 ## quiver
 
@@ -374,7 +396,7 @@ What else is quiver's to change, measured the same way:
 | 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% |
 | 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) |
 | 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped |
-| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset | A further -15 to -20% on ladder presets |
+| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets |
 | 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor |
 | 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% |
 | 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear |
