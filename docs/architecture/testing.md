@@ -960,8 +960,8 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   preset's render here, unslowed, against its time on the reference (1.1 s,
   ADR-025's estimate until it is measured on the Air), and 1 on a machine as
   slow as the reference or slower. On a 16-core M3 Max that render takes
-  0.24 to 0.26 s in Chromium and 0.29 s in Firefox, so the rate is about 4.4
-  and 3.8, and on the profile a render took 1.1 to 1.2 s in the engine
+  0.18 s in Chromium and 0.21 to 0.23 s in Firefox, so the rate is about 6
+  and 4.8 to 5.2, and on the profile a render took 1.1 to 1.3 s in the engine
   worker and on the farm. On a hosted runner the render is put at about 0.7
   to 1.2 s from the step times the nightly measured (a Xeon 8370C, 0.9 to
   1.5 s a step), so its rate is about 1 to 1.5, and the first nights'

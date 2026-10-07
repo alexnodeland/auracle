@@ -32,14 +32,17 @@
 // keeps it) a rebuilt engine or a new session calibrates again; runs from one
 // UI session on one build share a calibration.
 //
-// Measured on a 16-core M3 Max (Oct 7, the release build): Solo
-// Flight 239 ms in Chromium and 293 ms in Firefox; the library's 62 presets
-// 116 to 512 ms in Chromium, median 215 ms, Solo Flight among the middle ones
-// (Glass Pad, PERFORM's preset in the specs, 299 ms).
+// Measured on a 16-core M3 Max (Oct 7, the release build after #353 made a
+// measurement render cheaper, with other work running): Solo Flight 179 to
+// 183 ms in Chromium and 212 to 229 ms in Firefox (239 and 293 ms before
+// #353).
+// The render bench's wasm half (`make bench-render`, CPU time under node)
+// has the library's 62 presets at 97 to 491 ms, median 206 ms: Solo Flight
+// 243 ms and Glass Pad, PERFORM's preset in the specs, 291 ms.
 //
 // `referenceMs` is ADR-025's estimate, not yet a measurement on the Air: a
-// phrase render about 240 ms on an M3 Max and 1 to 1.2 s on the Air. On the
-// Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
+// phrase render about 180 to 230 ms on an M3 Max and 1 to 1.2 s on the Air.
+// On the Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
 // reference_profile.spec.js` prints the calibration render there ("one
 // render of Solo Flight … ms here"), which is the figure to set.
 const fs = require("node:fs");
