@@ -734,7 +734,7 @@ function tasteMap(under, svg) {
     c: el("circle", { r: 9, fill: "none", stroke: ink("--phos-a"), "stroke-width": 2.2, "stroke-dasharray": "4 4", opacity: 0 }, kidsG),
   });
   let rect = { x: 0, y: 0, w: 100, h: 100 };
-  const inner = () => ({ x: rect.x + 40, y: rect.y + 84, w: rect.w - 80, h: rect.h - 140 });
+  const inner = () => ({ x: rect.x + 40, y: rect.y + 84, w: rect.w - 80, h: rect.h - 140 }); // as mapPoint
   const api = {
     panel,
     /** Map units to the frame. */
@@ -844,6 +844,21 @@ function duelRun(stage, l2) {
   return { run0: l2.t0 - 0.1, step, n: 6 };
 }
 
+/** The picks the map has taken in at time t (fractional while a pick's
+ *  spark lands), the same for the duel and for the grow beat after it. */
+function duelPicks(stage, t) {
+  const l1 = stage.line("duel1");
+  const { run0, step, n } = duelRun(stage, stage.line("duel2"));
+  let picks = t < l1.t0 + (l1.t1 - l1.t0) * 0.8 ? 0 : 1;
+  for (let j = 0; j < n; j++) picks += ramp(t, run0 + j * step + 0.4, run0 + j * step + 0.75);
+  return picks;
+}
+
+/** Map units to the frame, for a map panel at rect r (tasteMap's inner box). */
+function mapPoint(r, u, v) {
+  return [r.x + 40 + u * (r.w - 80), r.y + 84 + v * (r.h - 140)];
+}
+
 function sceneDuel({ stage, beat, line }) {
   const b = beat("duel");
   const l1 = line("duel1");
@@ -863,7 +878,8 @@ function sceneDuel({ stage, beat, line }) {
       const sparkG = el("g", {}, svg);
       sparkG.style.filter = GLOW.b;
       const ptr = pointer(svg);
-      const cap = captions(over, stage, ["duel1", "duel2"], b.t1 + 0.3);
+      // duel2 fades as its last word ends, before grow1 begins.
+      const cap = captions(over, stage, ["duel1", "duel2"], b.t1 - 0.15);
       const A = V.card("A");
       const B = V.card("B");
       const cam = camera([
@@ -930,12 +946,11 @@ function sceneDuel({ stage, beat, line }) {
         }
         // Each pick flies from the card picked into the map, and the guess
         // moves when it lands.
-        let picks = t < pk ? 0 : 1;
-        for (let j = 0; j < runN; j++) {
-          const s0 = run0 + j * step;
-          picks += ramp(t, s0 + 0.4, s0 + 0.75);
-        }
-        const drawn = map.draw(MAP_SIDE, { picks, opacity: ramp(t, sh0 + 0.2, sh1 + 0.2) });
+        const picks = duelPicks(stage, t);
+        // The grow beat takes the map over at its first frame, in the same
+        // place and state, so there is one map on screen at a time.
+        const drawn = map.draw(MAP_SIDE, { picks, opacity: t < b.t1 ? ramp(t, sh0 + 0.2, sh1 + 0.2) : 0 });
+        scr.wrap.style.opacity = 1 - ramp(t, b.t1 - 0.15, b.t1 + 0.45);
         sparks.forEach((sp, j) => {
           const s0 = run0 + j * step;
           const u = ramp(t, s0, s0 + 0.42, E.io2);
@@ -971,18 +986,18 @@ function sceneGrow({ stage, beat, line }) {
     t1: b.t1,
     pre: 0.2,
     post: 0.6,
-    fin: 0.5,
     fout: 0.6,
     build(layer) {
-      const { under, svg, over } = stack(layer);
       const mapUnder = el("div", { class: "layer" }, layer);
       const mapSvg = svgLayer(layer);
-      layer.insertBefore(mapUnder, under);
-      layer.insertBefore(mapSvg, under);
       const map = tasteMap(mapUnder, mapSvg);
+      // The circuit, in a layer of its own that grows out of the patch the
+      // camera dives into.
+      const circuit = el("div", { class: "layer" }, layer);
+      const { under, svg } = stack(circuit);
+      const over = el("div", { class: "layer" }, layer);
       const { n: runN } = duelRun(stage, dl2);
-      const picks = 1 + runN;
-      const kidPlan = mapKids(picks);
+      const kidPlan = mapKids(1 + runN);
       const T = (spec) => at(stage, b, spec);
       const tGrows = T("grow1:grows");
       const tToward = T("grow1:toward");
@@ -1024,9 +1039,10 @@ function sceneGrow({ stage, beat, line }) {
       const cap = captions(over, stage, ["grow1", "grow2"], b.t1 + 0.4, { y: 968, size: 46 });
       return (tl, t) => {
         // The map comes to the middle, and new patches grow toward the guess:
-        // a first generation from the three sounds nearest it, then a second.
-        const mv = ramp(t, b.t0 - 0.2, b.t0 + 0.7, E.io3);
-        let r = {
+        // a first generation from three sounds near it, then a second.
+        const picks = duelPicks(stage, t);
+        const mv = ramp(t, b.t0, b.t0 + 0.9, E.io3);
+        const r = {
           x: lerp(MAP_SIDE.x, MAP_MID.x, mv), y: lerp(MAP_SIDE.y, MAP_MID.y, mv),
           w: lerp(MAP_SIDE.w, MAP_MID.w, mv), h: lerp(MAP_SIDE.h, MAP_MID.h, mv),
         };
@@ -1034,18 +1050,24 @@ function sceneGrow({ stage, beat, line }) {
           const a = k.gen === 1 ? tGrows - 0.1 + (j % 6) * 0.08 : tToward - 0.05 + (j % 6) * 0.08;
           return { from: k.from, to: k.to, travel: ramp(t, a, a + 0.7), heard: ramp(t, a + 0.9, a + 1.0) };
         });
-        // Then into one of them: it is a circuit.
-        const z = ramp(t, tDive, tDive + 1.1, E.in3);
-        if (z > 0) {
-          const [cx, cy] = map.at(...dive.to);
-          const sc = lerp(1, 7, z);
-          r = { x: 960 + (r.x - cx) * sc, y: 540 + (r.y - cy) * sc, w: r.w * sc, h: r.h * sc };
-        }
-        map.draw(r, { picks, kids, dimFar: ramp(t, tToward, tToward + 1.2), opacity: 1 - ramp(t, tDive + 0.7, tDive + 1.2), scale: lerp(1, 3, z) });
+        // Then into one of them, in one move: the map is scaled about that
+        // patch (log-even, so the push reads at one speed) while the patch
+        // comes to the middle, and the circuit grows out of it.
+        const z = ramp(t, tDive, tDive + 1.2, E.io3);
+        const P0 = mapPoint(r, ...dive.to);
+        const Q = [lerp(P0[0], 960, z), lerp(P0[1], 470, z)];
+        const sc = Math.exp(lerp(0, Math.log(6), z));
+        const rz = { x: Q[0] + (r.x - P0[0]) * sc, y: Q[1] + (r.y - P0[1]) * sc, w: r.w * sc, h: r.h * sc };
+        map.draw(rz, { picks, kids, dimFar: ramp(t, tToward, tToward + 1.2), opacity: (t < b.t0 ? 0 : 1) * (1 - ramp(t, tDive + 0.6, tDive + 1.1)), scale: lerp(1, 3, z) });
+        const w = ramp(t, tDive + 0.3, tDive + 1.3, E.io3);
+        const ps = Math.exp(lerp(Math.log(0.1), 0, w));
+        circuit.style.transformOrigin = "960px 465px";
+        circuit.style.transform = `translate(${lerp(Q[0] - 960, 0, w).toFixed(2)}px, ${lerp(Q[1] - 465, 0, w).toFixed(2)}px) scale(${ps.toFixed(4)})`;
+        circuit.style.opacity = ramp(t, tDive + 0.3, tDive + 0.7);
         // The circuit, built and wired.
         const L = l2.t0;
         plates.forEach((p, i) => {
-          const a0 = L + 0.3 + i * 0.25;
+          const a0 = tDive + 0.3 + i * 0.12;
           const u = ramp(t, a0, a0 + 0.5, E.out4);
           p.opacity = u;
           p.div.style.transform = `translateY(${(1 - u) * 30}px)`;
