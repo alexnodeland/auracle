@@ -347,18 +347,21 @@ pub struct SessionConfig {
     /// (max-of-linear-experts); the fitted K grows with evidence up to this
     /// cap.
     ///
-    /// K is also the fit's dominant cost driver, because single-site MH
-    /// rebuilds the whole program every step and the site count is
-    /// `d·K + n_sessions + 5` — at today's d = 44, that is 50 at K = 1 and
-    /// **226 at K = 5** (printed by `fit_bench`, so it moves with φ). Two
-    /// consequences, both measured by `auracle-taste/examples/fit_bench.rs`:
-    /// the fit is ~4× slower at the cap than at the first fit, and the step
-    /// budget is *fixed*, so a mature fit gets ~4× fewer sweeps per site than
-    /// an early one — growing K makes the fit both slower and statistically
+    /// K is also the fit's dominant cost driver. Each MH step's likelihood
+    /// scores every row through every lens, and single-site MH spreads a
+    /// fixed step budget over `d·K + n_sessions + 5` sites — at today's
+    /// d = 44, that is 50 at K = 1 and **226 at K = 5** (printed by
+    /// `fit_bench`, so it moves with φ). Two consequences, both measured by
+    /// `auracle-taste/examples/fit_bench.rs`: a step at the cap, over 100
+    /// rows, costs ~25× one of the first fit's, over 6; and the step budget
+    /// is *fixed*, so a mature fit gets ~4× fewer sweeps per site than an
+    /// early one — growing K makes the fit both slower and statistically
     /// thinner.
     ///
     /// **Open option, deliberately not taken here: cap this at 3** (sites
-    /// 226 → 138, a ~1.6× mature-fit win at no engineering cost). It is left
+    /// 226 → 138, and three lenses for the likelihood to score instead of
+    /// five, so roughly 5/3 less per mature step, estimated rather than
+    /// measured, at no engineering cost). It is left
     /// open because unlike the address hoist and the budget cut it is not a
     /// pure efficiency change — it removes model *capacity*, and capacity is
     /// the whole point of the mixture (a user with four islands of taste
@@ -441,6 +444,12 @@ pub struct SessionConfig {
     /// accuracy, 0.031 more cos and 0.037 of mean `r`, the one budget *both*
     /// instruments mark down. 10 000 is where the two instruments agree, not
     /// where a threshold was crossed.
+    ///
+    /// The native-fit column was measured with fugue's chain driver, which
+    /// rebuilt the taste program every step. The fit's own kernel deals the
+    /// same draws bit for bit in about a quarter of the time at the mature
+    /// point (`fit_bench 10000 3000`: 207 → 48 µs a step), so that column
+    /// overstates what a fit costs now; what each budget buys is unchanged.
     ///
     /// (An earlier revision of this table read the M4 gate at a single seed,
     /// `0xE05`, and concluded that 5 000 "fails outright" at r = 0.565 while
@@ -2044,7 +2053,7 @@ impl Engine {
     }
 
     /// True when the cheap between-fit updates have run out of road and a
-    /// full MCMC refit is worth its seconds: the weights have collapsed
+    /// full MCMC refit is worth its cost: the weights have collapsed
     /// (ESS below half the draws) at least once since the last fit, or the
     /// log has evidence no posterior has seen. A frontend can drive refits
     /// off this instead of a fixed vote count.

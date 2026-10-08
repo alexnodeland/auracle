@@ -215,16 +215,19 @@ sample sites. With $d = 44$ and 6 star categories, that is $44K + S + 5$: **49
 + $S$** at $K=1$ and **225 + $S$** at $K=5$. (A fused prior over correlated
 coordinates, built and off by default, would add $K$ sites per fused group.)
 
-Single-site MH re-executes the whole program on **every step**, so every site
-is reconstructed once per step. Two consequences, both measured by
-`auracle-taste/examples/fit_bench.rs`:
+Single-site MH moves one site per step, over a fixed budget of steps, and each
+step’s likelihood scores every observation through every lens. Two
+consequences, both measured by `auracle-taste/examples/fit_bench.rs`:
 
-- The fit is several times slower at the $K$ cap than at the first fit.
+- The fit is many times slower at the $K$ cap than at the first fit.
 - The step budget is **fixed**, so a mature fit gets proportionally *fewer*
   sweeps per site than an early one. Growing $K$ makes the fit both slower and
   statistically thinner.
 
-That is a real tension in the design, and it is why the
-[address table is hoisted](./posterior.md#the-address-table) out of the step loop.
-Building addresses inline cost a `format!`, a re-allocation, and a SipHash **per
-site per step**, which measured as the bulk of a mature fit’s wall time.
+That is a real tension in the design. It used to be sharper: fugue’s chain
+driver re-executed the whole program on every step, which first made the
+[address table](./posterior.md#the-address-table) worth hoisting out of the
+step loop (building addresses inline cost a `format!`, a re-allocation, and a
+SipHash **per site per step**, which measured as the bulk of a mature fit’s
+wall time), and then made a [kernel](./posterior.md#the-kernel) that never
+rebuilds the program worth writing.

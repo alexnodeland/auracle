@@ -117,8 +117,9 @@ fn a_fused_group_ignores_a_coordinate_phi_lacks() {
 ///   `taste/likelihoods.md`, `taste/posterior.md`, `design/open-questions.md`
 ///   and `design/directions.md`;
 /// - 226 as shipped (K = 5, one session) and 231 with the brightness group:
-///   `SiteAddrs`'s doc in `model.rs`, and the ~226 `BTreeMap` entries per
-///   trace in `TasteModel::fit`'s;
+///   `SiteAddrs`'s doc in `model.rs`, the 226-entry trace fugue's driver
+///   filled per step in `TasteModel::fit`'s, and the kernel's table in the
+///   reference's `taste/posterior.md`;
 /// - 50 and 226 at the two operating points in `examples/fit_bench.rs`'s
 ///   doc;
 /// - 50 and 226, and 138 for a cap at K = 3 (so lenses 4 and 5 cost 88):
