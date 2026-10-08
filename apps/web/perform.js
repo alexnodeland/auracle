@@ -29,9 +29,11 @@ const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys, leanWord } = a
 // and PATCH's θ cell draw (`pullMark`), laid on the dial (`leanMarks`).
 const { leanMarks } = await import(`./taste-geom.js${new URL(import.meta.url).search}`);
 // A sound's face and the one renderer that draws it (Plan-005 task 3): stage
-// mode draws the sound in hand's.
-const { whiten, smooth, vesselPoints, createLiveMeter, FACE_BANDS, FACE_FRAME } = await import(`./faces.js${new URL(import.meta.url).search}`);
-const { drawVessel, traceVessel, tint } = await import(`./vessel.js${new URL(import.meta.url).search}`);
+// mode draws the sound in hand's, and what sounds over it the way every live
+// face does (live-face.js).
+const { createLiveMeter, FACE_BANDS, FACE_FRAME } = await import(`./faces.js${new URL(import.meta.url).search}`);
+const { drawVessel, tint } = await import(`./vessel.js${new URL(import.meta.url).search}`);
+const { createTrace, traceHear, traceFade, traceDraw } = await import(`./live-face.js${new URL(import.meta.url).search}`);
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
@@ -3812,6 +3814,8 @@ export function createPerform(host) {
   ctlActs.append(arrangeBtn, whyBtn);
   corner.append(xyBtn, stageBtn);
   let stageOn = null; // {root, cv, trail, name, raf, entered, back, …}
+  // `liveSlots`' answer, made once.
+  const liveSlotsNow = { a: heldFace, b: null };
   function openStage() {
     if (stageOn) return;
     const rootEl = el("div", "st-stage");
@@ -3924,6 +3928,8 @@ export function createPerform(host) {
     document.documentElement.classList.remove("st-on");
     if (document.fullscreenElement) document.exitFullscreen?.().catch?.(() => {});
     if (s.back && s.back.isConnected) s.back.focus?.({ preventScroll: true });
+    // The well's faces are in sight again: they hear what still sounds.
+    host.liveWake?.();
   }
   document.addEventListener("fullscreenchange", () => {
     if (stageOn && stageOn.entered && !document.fullscreenElement) closeStage();
@@ -4077,20 +4083,18 @@ export function createPerform(host) {
   //   bands and against the same bank, so it is drawn in the vessel's
   //   coordinates, over it: the vessel's outline lit by how loud it is, and
   //   the live outline, both left to fade like phosphor. In silence the trail
-  //   fades and is then cleared, and only the face is left.
+  //   fades and is then cleared, and only the face is left. Every live face
+  //   draws this layer the same way, at its own size (live-face.js's trace);
+  //   the stage's is the full-size one, and reads everything that comes out.
   // What the still layer was drawn for: the size and the face object `faceOf`
   // gave (the same object until the tree or the bank changes).
   let stageBase = null;
   // What sounds now, measured as a face is (faces.js `createLiveMeter`: the
   // analyser's samples through the face's own Hann frame and bands), into
-  // buffers made once.
+  // buffers made once, and the trace it draws (live-face.js `createTrace`).
   const stageMeter = createLiveMeter();
   const stageTime = new Float32Array(FACE_FRAME);
-  const stageLive = new Float64Array(FACE_BANDS);
-  const stageDev = new Float64Array(FACE_BANDS);
-  let stageHas = false; // `stageLive` holds the last frame's
-  let stageLoud = 0; // how loud, eased (the mock's `s.loud`)
-  let stageLoudAt = 0; // when the stage last drew a sound
+  const stageTrace = createTrace();
   const stageBox = (W, H) => {
     const narrow = W <= 700;
     const h = Math.min(H * (narrow ? 0.62 : 0.76), W * (narrow ? 1.25 : 1.05));
@@ -4125,54 +4129,21 @@ export function createPerform(host) {
       t.style.top = `${(box.y + box.h - (band / (FACE_BANDS - 1)) * box.h).toFixed(1)}px`;
       t.style.right = `${(W - box.x + 16).toFixed(1)}px`;
     });
-    // The moving layer.
+    // The moving layer: the trail fades (cleared a moment after the last
+    // sound, and at once under reduced motion), then what sounds now, heard
+    // against the bank (how loud, as the mock reads it: −42 dBFS RMS is
+    // nothing, −8 is all), the vessel's own outline lit by it and the live
+    // outline over it, at full size (live-face.js).
     const x = st.trail;
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (st.still) x.clearRect(0, 0, W, H);
-    else if (performance.now() - stageLoudAt > 1600) {
-      // The fade never quite reaches nothing in 8-bit alpha: a moment after
-      // the last sound the trail is cleared outright.
-      x.clearRect(0, 0, W, H);
-    } else {
-      x.save();
-      x.globalCompositeOperation = "destination-out";
-      x.fillStyle = tint(green, 0.14);
-      x.fillRect(0, 0, W, H);
-      x.restore();
-    }
+    const now = performance.now();
+    traceFade(x, stageTrace, 0, 0, W, H, now, st.still, green);
     const an = st.analyser;
     if (!an || !f) return;
     an.getFloatTimeDomainData(stageTime);
-    const { db, rmsDb } = stageMeter.measure(stageTime, an.context.sampleRate);
-    // How loud, as the mock reads it: −42 dBFS (RMS) is nothing, −8 is all.
-    const target = clamp((rmsDb + 42) / 34, 0, 1);
-    stageLoud += (target - stageLoud) * (target > stageLoud ? 0.5 : 0.08);
-    if (target < 0.05) {
-      stageHas = false;
-      return;
-    }
-    stageLoudAt = performance.now();
-    whiten(db, f.stats, stageDev);
-    for (let b = 0; b < FACE_BANDS; b++) stageLive[b] = stageHas ? stageLive[b] * 0.5 + stageDev[b] * 0.5 : stageDev[b];
-    stageHas = true;
-    const live = stageLive;
+    if (!traceHear(stageTrace, stageMeter.measure(stageTime, an.context.sampleRate), f.stats, now)) return;
     if (st.still) return; // reduced motion: the face alone, nothing that moves
-    x.save();
-    // The vessel's own outline, lit by how loud it is.
-    traceVessel(x, vesselPoints(smooth(whiten(f.face.ltas, f.stats), 1), box));
-    x.strokeStyle = tint(green, 0.12 + 0.55 * stageLoud);
-    x.lineWidth = 2;
-    x.shadowColor = tint(green, 0.9);
-    x.shadowBlur = 18 + stageLoud * 56;
-    x.stroke();
-    // What sounds now, in the vessel's coordinates.
-    traceVessel(x, vesselPoints(smooth(live, 1), box));
-    x.strokeStyle = tint(st.ink.silk, 0.95);
-    x.lineWidth = 1.6 + stageLoud * 1.6;
-    x.shadowColor = tint(green, 0.95);
-    x.shadowBlur = 10 + stageLoud * 30;
-    x.stroke();
-    x.restore();
+    traceDraw(x, stageTrace, { face: f.face, stats: f.stats, box, color: green, silk: st.ink.silk, scale: 1 });
   }
 
   // ---------- first steps ----------
@@ -4765,6 +4736,15 @@ export function createPerform(host) {
     // (main.js `faceBoxOf`, the box and the face's render key), for the face
     // carried between the levels (shell.js). Null while PERFORM is hidden.
     anchor: () => (state.visible && host.faceBox ? host.faceBox(heldFace) : null),
+    // The faces in the well that hear what is played (main.js's live faces,
+    // live-face.js): the sound in hand's, and B's while it holds an offer.
+    // Null while the well shows something else (XY, How it works), stage
+    // mode covers it, or PERFORM is hidden.
+    liveSlots: () => {
+      if (!state.visible || wellMode !== "face" || stageOn) return null;
+      liveSlotsNow.b = state.offer ? offerFace : null;
+      return liveSlotsNow;
+    },
     // PATCH turned a knob; PATCH's knob writes landed on the bench.
     knobSet,
     followTree,

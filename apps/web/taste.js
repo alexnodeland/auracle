@@ -1493,13 +1493,15 @@ export function createTaste(host) {
      *  the dot is what is left once the move lands). In
      *  the page's pixels, `{id, x, y, size}` (the mark's centre, and its
      *  size as `host.drawFace` takes it), or null: not showing, or the sound
-     *  is not on the map (an offer, a preset not yet in the pool). */
-    anchor(level) {
+     *  is not on the map (an offer, a preset not yet in the pool). With
+     *  `drawn`, where the mark is drawn this frame, on its way to that place
+     *  while the map settles (what a live face lays its layer over). */
+    anchor(level, { drawn = false } = {}) {
       if (visible !== level) return null;
       const id = host.subjectId();
       if (id == null || host.isCut(id)) return null;
       if (level === "taste") {
-        const q = target.get(id);
+        const q = (drawn ? shownPos : target).get(id);
         if (!q || !W) return null;
         const r = cv.getBoundingClientRect();
         const pts = poolPoints();

@@ -386,6 +386,13 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const L = out[0];
     const R = out[1] || out[0];
+    // Each instrument's share of what is heard, for its face to read (the
+    // second and third outputs, mono, to analysers and nowhere else): A's
+    // and B's, after the mix and before the master. Silent unless written.
+    const SA = outputs[1] && outputs[1][0];
+    const SB = outputs[2] && outputs[2][0];
+    if (SA) SA.fill(0);
+    if (SB) SB.fill(0);
     // A recording: the second input, copied. No input connected is silence,
     // which still counts as recorded time (the buffer is zeros).
     const rec = this.takeRec;
@@ -459,7 +466,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (!this.mixBuf || this.mixBuf.length !== n * 2) this.mixBuf = new Float32Array(n * 2);
         const mb = this.mixBuf;
         // Equal-power, smoothed per sample (~10 ms), so a Peek is a gesture
-        // and not a click.
+        // and not a click. Each share is written as it is mixed.
         for (let i = 0; i < n; i++) {
           this.mixCur += (mixTo - this.mixCur) * 0.002;
           const th = this.mixCur * 1.5707963267948966;
@@ -467,8 +474,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
           const gb = Math.sin(th);
           mb[2 * i] = buf[2 * i] * ga + vb[2 * i] * gb;
           mb[2 * i + 1] = buf[2 * i + 1] * ga + vb[2 * i + 1] * gb;
+          if (SA) SA[i] = 0.5 * (buf[2 * i] + buf[2 * i + 1]) * ga;
+          if (SB) SB[i] = 0.5 * (vb[2 * i] + vb[2 * i + 1]) * gb;
         }
         buf = mb;
+      } else if (SA) {
+        for (let i = 0; i < n; i++) SA[i] = 0.5 * (buf[2 * i] + buf[2 * i + 1]);
       }
       for (let i = 0; i < n; i++) {
         L[i] = buf[2 * i];
@@ -601,10 +612,13 @@ export async function initLiveAudio(audioCtx, build, dest) {
   // input its CAPTURE listens to, which need not be the voices'). audio-in.js
   // connects both. Nothing connected is a quantum with no channels, and the
   // worklet writes nothing then.
+  // Three outputs: what is heard (stereo, to the master), and A's and B's
+  // shares of it (mono), each to an analyser of its own, so a face can read
+  // its own sound where the mix cannot be told apart (live-face.js).
   const node = new AudioWorkletNode(audioCtx, "auracle-voice", {
     numberOfInputs: 2,
-    numberOfOutputs: 1,
-    outputChannelCount: [2],
+    numberOfOutputs: 3,
+    outputChannelCount: [2, 1, 1],
     channelCount: 2,
     channelCountMode: "explicit",
     channelInterpretation: "speakers",
@@ -628,12 +642,29 @@ export async function initLiveAudio(audioCtx, build, dest) {
   analyserPost.fftSize = 2048;
   analyserPost.smoothingTimeConstant = 0.6;
   gain.connect(analyserPost);
+  // A's share and B's, each through a gain that follows the voices' own (a
+  // muted instrument is heard by nobody, so its face hears nothing either),
+  // to an analyser read by the faces (main.js `liveFaces`). Before the
+  // master: main adds the master's gain to what they read.
+  const share = (i) => {
+    const g = audioCtx.createGain();
+    g.gain.value = gain.gain.value;
+    const a = audioCtx.createAnalyser();
+    a.fftSize = 2048;
+    node.connect(g, i).connect(a);
+    return { g, a };
+  };
+  const shareA = share(1);
+  const shareB = share(2);
   node.port.postMessage({ type: "init", bytes }, [bytes]);
 
   return {
     node,
     analyser,
     analyserPost,
+    // What A and B each sound like now, as shares of what is heard.
+    shareA: shareA.a,
+    shareB: shareB.a,
     onMessage(fn) {
       node.port.onmessage = (e) => fn(e.data);
     },
@@ -731,7 +762,7 @@ export async function initLiveAudio(audioCtx, build, dest) {
     setVolume(v) {
       // A step assignment zippers audibly while notes sound; a 10ms time
       // constant is inaudible as a lag and silent as an artifact.
-      gain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
+      for (const g of [gain, shareA.g, shareB.g]) g.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
     },
   };
 }

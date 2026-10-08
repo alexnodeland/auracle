@@ -52,7 +52,9 @@ they are on it. Click it to go to TASTE.
 **The cards.** Each card is one sound: its [face](../faces.md), large, in a
 well, then its name, its family and blurb where it has them (a sound opened
 from the library keeps its preset’s), and **▶ PLAY** and **PICK A** (or
-**PICK B**). While a sound’s audio is on its way, *rendering…* sweeps across
+**PICK B**). While its **PLAY** sounds, what you hear is drawn over its face
+([while you play it](../faces.md#while-you-play-it)), and the other card’s
+stays still. While a sound’s audio is on its way, *rendering…* sweeps across
 its well. In the well’s corner, **⇄ CIRCUIT** flips the face to the patch’s
 modules (and back, **⇄ FACE**), and **↓ PATCH** opens the sound in
 [PATCH](./play.md) without picking. Hold <kbd>⌥</kbd> for [the model

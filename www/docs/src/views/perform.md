@@ -54,10 +54,14 @@ On the left, the sound:
 - **The well.** The sound’s [face](../faces.md), large, standing on a floor
   that reflects it, as stage mode draws it. The face is the sound as it was
   last rendered, so turning a control doesn’t change it; keeping or taking
-  does. Click it to play the phrase, as <kbd>Space</kbd> does. While B holds
-  an offer, B’s face stands beside it in amber, with **BLEND** under the two
-  (see [Blend, Peek, and B](#blend-peek-and-b)); a click on B’s face plays
-  nothing, since B is heard with **PEEK** or by holding <kbd>B</kbd>. In its corner: **XY** (see
+  does. While you play, what you hear is drawn over it as stage mode draws
+  it, and fades when the sound stops ([while you play
+  it](../faces.md#while-you-play-it)). Click it to play the phrase, as
+  <kbd>Space</kbd> does. While B holds an offer, B’s face stands beside it
+  in amber, with **BLEND** under the two (see [Blend, Peek, and
+  B](#blend-peek-and-b)), and each face answers what you hear of its own
+  sound; a click on B’s face plays nothing, since B is heard with **PEEK**
+  or by holding <kbd>B</kbd>. In its corner: **XY** (see
   [the XY pad](#the-xy-pad)) and **⇧F** for [stage mode](#stage-mode); in
   the top left, a small trace of what is sounding now.
 
