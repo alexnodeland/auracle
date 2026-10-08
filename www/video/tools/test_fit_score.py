@@ -255,12 +255,17 @@ def sigh_length():
 def with_the_bed_first(reel):
     """The approved reel as it plays under sound.json's `form.bed_first`
     (chosen on 2026-10-07): the bed's drone from the film's first frame and
-    Bloom `entrance_after_beats` later. Every note, fader and breath moves
-    that many beats later; the drone starts at the score's beat 0 and holds
-    that much longer, fading in over `marks.drone_fade_in`; the score is as
-    many whole bars long as the later end needs."""
-    lead = sound_defaults.MARKS["bed_first"]["entrance_after_beats"]
+    Bloom `entrance_after_beats` later, the score starting `preroll_bars`
+    before the film (2026-10-08) so the drone's attack is over by its first
+    frame. Every note, fader and breath moves that many beats later; the
+    drone starts at the score's beat 0 and holds that much longer, fading in
+    over `marks.drone_fade_in` from the film's start; the score is the
+    pre-roll's bars longer."""
+    first = sound_defaults.MARKS["bed_first"]
+    pre = first["preroll_bars"] * 4
+    lead = first["entrance_after_beats"] + pre
     out = copy.deepcopy(reel)
+    out["sections"] = [{**s, "bars": s["bars"] + first["preroll_bars"]} if i == 0 else s for i, s in enumerate(out["sections"])]
 
     def moved(bar, beat):
         b = (bar - 1) * 4 + beat - 1 + lead
@@ -270,8 +275,8 @@ def with_the_bed_first(reel):
         if t["name"] == "drone":
             t["notes"]["s"] = [[1, 1, round(n[2] + lead, 6), *n[3:]] for n in t["notes"]["s"]]
             fade = sound_defaults.MARKS["drone_fade_in"]
-            end = fade["over_s"] / SPB
-            t["fader"] = [["s", 1, 1, float(fade["from_db"])], ["s", int(end // 4) + 1, round(end % 4 + 1, 6), 0.0]]
+            end = pre + fade["over_s"] / SPB
+            t["fader"] = [["s", pre // 4 + 1, 1, float(fade["from_db"])], ["s", int(end // 4) + 1, round(end % 4 + 1, 6), 0.0]]
         else:
             t["notes"]["s"] = [[*moved(n[0], n[1]), *n[2:]] for n in t["notes"]["s"]]
             if t.get("fader"):
@@ -322,20 +327,26 @@ class TheDroneIsHeld(unittest.TestCase):
         score, _ = film(a_film(lines, entrance=lead))
         drone = next(t for t in score["tracks"] if t["name"] == "drone")
         exit_end = score["_film"]["exit"] + sound_defaults.MARKS["length_s"]
-        # The bed sounds first, from the film's start, the entrance its lead later.
-        self.assertAlmostEqual(score["_film"]["at"], 0.0, places=3)
+        # The bed sounds first, from the film's start, the entrance its lead
+        # later; the score starts its pre-roll before the film, where the
+        # drone is struck, so its attack is over by the first frame.
+        pre = sound_defaults.MARKS["bed_first"]["preroll_s"]
+        self.assertAlmostEqual(score["_film"]["bed"], 0.0, places=3)
+        self.assertAlmostEqual(score["_film"]["at"], -pre, places=3)
         self.assertAlmostEqual(score["_film"]["t0"], lead, places=6)
         self.assertEqual([n[3] for n in drone["notes"]["s"]], sound_defaults.BED["pedal"])
         for n in drone["notes"]["s"]:
             self.assertEqual(at(n), 0)
-            self.assertAlmostEqual(n[2] * SPB, exit_end, places=4)
+            self.assertAlmostEqual(n[2] * SPB, exit_end + pre, places=4)
         pts = drone["automation"][0]["points"]
         lows = [at(p[1:3]) for p in pts if p[3] == min(q[3] for q in pts)]
-        b1 = (lead + sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"]) / SPB
-        self.assertEqual([round(x - b1, 6) for x in lows[:4]], [0, 32, 64, 96], "lowest at each cycle's start")
+        b1 = (pre + lead + sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"]) / SPB
+        self.assertEqual([round(x - b1, 4) + 0 for x in lows[:4] if x >= b1 - 1e-4][:3], [0, 32, 64], "lowest at each cycle's start")
+        # Faded in from the film's first frame, not from the pre-roll.
         fade = sound_defaults.MARKS["drone_fade_in"]
-        self.assertEqual(drone["fader"][0], ["s", 1, 1, fade["from_db"]])
-        self.assertAlmostEqual(at(drone["fader"][1][1:3]) * SPB, fade["over_s"], places=4)
+        self.assertEqual(drone["fader"][0][3], fade["from_db"])
+        self.assertAlmostEqual(at(drone["fader"][0][1:3]) * SPB, pre, places=4)
+        self.assertAlmostEqual(at(drone["fader"][1][1:3]) * SPB, pre + fade["over_s"], places=4)
 
 
 class TheCycleKeepsItsTies(unittest.TestCase):

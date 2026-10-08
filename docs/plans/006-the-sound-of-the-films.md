@@ -51,7 +51,7 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
 3. **The mix.** *Done* (#84).
    - the voice chain;
    - the ladder (the bed at −3 LU, the demo and the marks at −18 LUFS (the
-     demo −21 since 2026-10-07), the
+     demo −22 since 2026-10-08), the
      master at −16);
    - the 2 dB duck with the 3 dB carve, and the pad's 2 dB vowel dip;
    - the app's sound normalized per demo window;

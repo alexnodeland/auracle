@@ -56,9 +56,9 @@ class TheLadder(unittest.TestCase):
             self.assertEqual(mix.LADDER[k], src["ladder"][k], k)
         self.assertIs(mix.LADDER, sound_defaults.LADDER)
         self.assertEqual((mix.LADDER["narration_lufs"], mix.LADDER["bed_rest_lu"], mix.LADDER["demo_lufs"],
-                          mix.LADDER["marks_lufs"], mix.LADDER["master_lufs"]), (-18, -3, -21, -18, -16))
-        # The demos 3 dB under the voice, the bed under them where it was
-        # (the maintainer, 2026-10-07): about -27 LUFS either way.
+                          mix.LADDER["marks_lufs"], mix.LADDER["master_lufs"]), (-18, -3, -22, -18, -16))
+        # The demos 4 dB under the voice, the bed under them where it was
+        # (the maintainer, 2026-10-07 and 8): about -27 LUFS either way.
         self.assertEqual(mix.LADDER["demo_lufs"] + mix.LADDER["bed_under_demo_lu"], -27)
 
     def test_the_bed_duck_and_master_defaults_are_read_from_sound_json(self):

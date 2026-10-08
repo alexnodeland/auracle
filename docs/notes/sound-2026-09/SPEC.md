@@ -84,7 +84,12 @@ The drone now starts with the film, its fader from −12 dB to 0 over 0.25 s
 (a click's worth, no silence), and Bloom enters two of the bed's beats later
 (1.82 s at 66 BPM; `form.bed_first.entrance_after_beats`). Everything from
 Bloom on is as above, two beats later; the reel's music comes back so
-(`tools/test_fit_score.py`'s `with_the_bed_first`).
+(`tools/test_fit_score.py`'s `with_the_bed_first`). The drone's own attack
+(Cathedral's, about 2.2 s to 90%) left the first second near silent in the
+first render (−84 dBFS at 0.1 s, −41 at 1 s), so since 2026-10-08 the score
+starts one bar before the film (`form.bed_first.preroll_bars`): the drone is
+struck there, at its level by the first frame, and the fade-in is the only
+rise heard.
 
 ### Reach, the exit (`scores/m1_reach.json`)
 
@@ -161,7 +166,7 @@ Filters are 2nd-order Butterworth, applied causally. Band splits for dynamic mov
 | Burble | Band **110–400 Hz** | **20% left** | **12 LU under the pad** |
 | Bed melody | High-pass **220 Hz** | **15% right** | **4 dB under the pad** when it sounds |
 | Marks' lead | High-pass **220 Hz** | Centre | **6 dB over the pad** when it sounds |
-| Demo | None | Centre | −18 LUFS over its window |
+| Demo | None | Centre | −22 LUFS over its window (the ladder, section 7) |
 | Narration | Section 6 | Centre (mono) | −18 LUFS |
 
 - **Below 150 Hz everything is centred:** each stem's side signal is high-passed at 150 Hz.
@@ -193,8 +198,8 @@ The de-esser's settings:
 | Narration | −18 LUFS integrated |
 | Bed at rest (before the first line, in pauses, after the last) | **−21 LUFS: 3 LU under the voice** |
 | Bed under speech | Rest level −2 dB broadband, a further −3 dB in 1–4 kHz, and the pad −2 dB in 300–600 Hz (section 8) |
-| Demo | **−21 LUFS** integrated over its window (−18 until 2026-10-07; see below) |
-| Bed under a demo | **6 LU** under the demo (about −27 LUFS, where it was). It goes down over 0.5 s from the demo's first note, and comes back over 1.0 s from its last note-off. Never ducked to silence. |
+| Demo | **−22 LUFS** integrated over its window (−18 until 2026-10-07; see below) |
+| Bed under a demo | **5 LU** under the demo (about −27 LUFS, where it was). It goes down over 0.5 s from the demo's first note, and comes back over 1.0 s from its last note-off. Never ducked to silence. |
 | Marks | −18 LUFS over their 4.5 s (section 3) |
 | Film master | The whole mix to −16 LUFS integrated, then `mix.py`'s limiter: ceiling −1.2 dBTP, 5 ms look-ahead, 80 ms release (`mix.py:133`) |
 | Cues | **None.** No whoosh, blip, shimmer or logo sting, and nothing in their place. |
@@ -212,8 +217,11 @@ The de-esser's settings:
 
 **2026-10-07, the maintainer, watching the launch film:** its Bright and
 Offer demos were "okay, but a bit too loud", and a little harsh. The demos
-come down 3 dB, to −21 LUFS, and the bed under them stays at about −27 LUFS
-(so 6 LU under the demo, from 9). The harshness is the demo's sound, recast
+come down, and the bed under them stays at about −27 LUFS. At −21 LUFS with
+the bed 6 LU under them they measured 6.1 to 6.7 dB over the bed, where the
+maintainer asked for about the Wander demo's 5.2 dB or a little under; on
+2026-10-08 they went to −22 LUFS with the bed 5 LU under them (from −18 and 9
+LU before). The harshness is the demo's sound, recast
 for the launch film from the shortlist (its notes in
 `www/video/films/launch/`).
 
@@ -225,7 +233,7 @@ These are the rules a film follows:
 2. **The first word comes 1.5–2 s after the entrance mark's last note.** The bed (the mark's last chord held on) carries the gap and does not wait for a bar or cycle boundary.
 3. The voice explains; **0.7 s** after its last word the demo starts, wherever the bed is. It is not held back for a chord change. If a re-strike would dip under the demo, the pad is re-voiced in the pause rather than waiting.
    - In the reel, the pad moves to A3 C4 on the marks' fast pad, so the demo's F3 E4 G4 A4 complete an Fmaj9 without doubling it.
-   - The bed sits 9 LU under the demo (6 LU since 2026-10-07, section 7).
+   - The bed sits 9 LU under the demo (5 LU since 2026-10-08, section 7).
 4. **The demo is never cut off:** its notes ring out on their own release. If it must end sooner, its playing ends sooner.
 5. The voice waits until the demo's tail has fallen **30 dB** under its playing level, then **0.8 s** more on the bed, then continues. The bed returns over 1.0 s from note-off and resumes its cycle; in the reel, on G6/F.
 6. **The exit mark enters 1.5–2 s after the last word ends,** wherever the bed is, handing over as in section 3.
