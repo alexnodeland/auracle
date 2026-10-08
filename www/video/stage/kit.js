@@ -852,9 +852,10 @@ export function appScreen(layer, { x = 0, y = 0, w = 1920, h = 1080, radius = 0,
   el("circle", { cx: 253, cy: 128, r: 9, fill: ink("--panel"), stroke: ink("--hairline") }, bank);
   say(bank, 253, 132, "?", { size: TYPE.label, mono: true, anchor: "middle", fill: ink("--silk-dim") });
   // The rows a recording showed (`bank`: [y, "row" | "group" | "live",
-  // name, word]), or the seeded session's list scrolled to Slow Weather.
+  // name, word]), lit where the recording lit one, or the seeded session's
+  // list scrolled to Slow Weather.
   const rows = bankRows
-    ? bankRows.map(([yy, kind, n, extra]) => ({ y: yy, n, count: kind === "group" ? extra ?? "" : null, live: kind === "live" || n === inHand, word: kind === "group" ? null : extra }))
+    ? bankRows.map(([yy, kind, n, extra]) => ({ y: yy, n, count: kind === "group" ? extra ?? "" : null, live: kind === "live", word: kind === "group" ? null : extra }))
     : (() => {
         let yy = 149;
         return BANK_ROWS.map(([n, count]) => ({ y: (yy += 41) - 41, n, count: count ?? null, live: n === inHand }));

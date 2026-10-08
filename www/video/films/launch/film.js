@@ -692,7 +692,7 @@ function scenePlay({ stage, beat, line, takes }) {
     fout: 0.6,
     build(layer) {
       const ch = take?.chrome || {};
-      const { scr, clip } = appWindow(layer, take, { level: "perform", taught: Number(ch.taught || 0), bankRows: ch.bank || null, tabs: ch.tabs || null });
+      const { scr, clip } = appWindow(layer, take, { level: "perform", taught: Number(ch.taught || 0), inHand: soundOf(take).name, bankRows: ch.bank || null, tabs: ch.tabs || null });
       const V = performView(scr, { sound: soundOf(take), faceA: take?.logs?.face || null });
       const { svg, over } = stack(layer);
       const ptr = pointer(svg);
@@ -766,7 +766,7 @@ function sceneOffer({ stage, beat, line, takes }) {
     fout: 0.6,
     build(layer) {
       const ch = take?.chrome || {};
-      const { scr, clip } = appWindow(layer, take, { level: "perform", taught: Number(ch.taught || 0), bankRows: ch.bank || null, tabs: ch.tabs || null });
+      const { scr, clip } = appWindow(layer, take, { level: "perform", taught: Number(ch.taught || 0), inHand: soundOf(take).name, bankRows: ch.bank || null, tabs: ch.tabs || null });
       const V = performView(scr, { sound: soundOf(take), faceA: take?.logs?.face || null, faceB: take?.logs?.["face b"] || null });
       const { svg, over } = stack(layer);
       const growing = say(scr.svg, 863.3, 566, "growing an offer…", { size: TYPE.value, mono: true, anchor: "middle", fill: ink("--phos-b") });
@@ -851,7 +851,7 @@ function sceneDepth({ stage, beat, line, takes }) {
       const ch = take?.chrome || {};
       // Without a take, PATCH drawn (a preview); with one, the app throughout.
       const hasClip = !!(take && take.frames);
-      const { scr, clip } = appWindow(layer, take, { level: hasClip ? "perform" : "patch", taught: Number(ch.taught || 0), bankRows: ch.bank || null, tabs: ch.tabs || null });
+      const { scr, clip } = appWindow(layer, take, { level: hasClip ? "perform" : "patch", taught: Number(ch.taught || 0), inHand: soundOf(take).name, bankRows: ch.bank || null, tabs: ch.tabs || null });
       const V = clip ? performView(scr, { sound: soundOf(take), faceA: take?.logs?.face || null }) : patchView(scr, { teach: ch.teach || null });
       if (clip) clip.wrap.style.opacity = 1;
       const { svg, over } = stack(layer);
