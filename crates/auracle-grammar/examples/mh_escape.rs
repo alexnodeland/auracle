@@ -89,7 +89,10 @@ fn main() {
         let mut chain = EvolutionChain::new(model);
         let mut trace = chain.init(&mut rng);
         for _ in 0..steps {
-            let (_g, next) = chain.step(&mut rng, &trace);
+            // A rejection leaves the (already checked) state where it is.
+            let Some((_g, next, _w)) = chain.step_scored(&mut rng, &trace) else {
+                continue;
+            };
             trace = next;
             for (addr, c) in &trace.choices {
                 if let ChoiceValue::F64(v) = c.value {

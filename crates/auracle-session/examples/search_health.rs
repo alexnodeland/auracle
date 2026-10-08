@@ -396,9 +396,12 @@ fn acceptance(seed: u64, steps: usize) -> Accept {
             let structural_sites = trace.choices.keys().filter(|a| is_structural(a)).count();
             acc.expected_structural += structural_sites as f64 / total as f64;
 
-            let (_, t) = chain.step(&mut rng, &trace);
-            let (accepted, structural) = classify(&trace, &t);
             acc.steps += 1;
+            // `None` is a rejection: the state stays, nothing is decoded or copied.
+            let Some((_, t, _)) = chain.step_scored(&mut rng, &trace) else {
+                continue;
+            };
+            let (accepted, structural) = classify(&trace, &t);
             if accepted {
                 acc.accepted += 1;
                 acc.accepted_structural += usize::from(structural);
