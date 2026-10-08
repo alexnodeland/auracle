@@ -94,7 +94,7 @@ model’s next guess, and its guess about the sound you’re playing, answer you
 last pick. This costs almost nothing.
 
 **Every sixth pick, a refit.** The model fits again from the whole log: a
-second or two of work, off the audio thread. This is where it can change its mind,
+few seconds of work at most, off the audio thread. This is where it can change its mind,
 find a new style, or move the points on your star scale.
 
 In EVOLVE, the teaching line counts down to the refit in six pips (*3 more

@@ -132,8 +132,9 @@ chosen on the recovery tables rather than against a memory ceiling.
 
 ## Between fits: sequential importance sampling
 
-A full fit costs up to a second or two and cannot run after every pick. So each new
-observation is folded into the existing draws by reweighting:
+A full fit costs about a second on a fast laptop, a few on an older one, and
+cannot run after every pick. So each new observation is folded into the
+existing draws by reweighting:
 
 $$w_s \;\leftarrow\; \frac{w_s \, p(y \mid \theta_s)}{\sum_{s'} w_{s'} \, p(y \mid \theta_{s'})}$$
 
@@ -321,9 +322,10 @@ that holds picks. The app used
 to require `needs_refit` as well, to save the time of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
 been, so a run of agreeable picks ended with the teaching meter’s countdown and
-no refit: the meter promised something it then did not do. A fit costs up to a
-second or two off the audio thread, at most once every six picks outside those two
-moments, and the pair stays audible through it.
+no refit: the meter promised something it then did not do. A fit costs about a
+second on a fast laptop, a few on an older one, off the audio thread, at most
+once every six picks outside those two moments, and the pair stays audible
+through it.
 
 ## Label alignment
 

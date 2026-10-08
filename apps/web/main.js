@@ -7779,7 +7779,7 @@ function choose(side) {
 // a run of agreeable picks ended with the pips wrapping to zero and the copy
 // reading "23 picks in" with no "● it just learned", no redrawn map and no
 // lamp: the meter counting down to something it then did not do. A fit costs
-// up to a second or two off the audio thread, at most once every sixth
+// about a second on a fast laptop (a few on the Air) off the audio thread, at most once every sixth
 // pick — the pacing `FIT_EVERY` has always set — and the pair is audible
 // through it.
 function settleFit() {
