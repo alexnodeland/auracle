@@ -174,6 +174,19 @@ fn the_accept_test_is_fugues() {
         assert_eq!(rng.next_u64(), after_one, "log α {log_alpha}");
     }
 
+    // The uniform must fall strictly below `e^{log α}`: at a `log α` whose
+    // exponential is the uniform itself, the proposal is rejected. (A seed
+    // whose uniform survives `ln` and `exp` unchanged is found, not assumed.)
+    let (mut rng, u) = (0u64..)
+        .map(|seed| {
+            let rng = StdRng::seed_from_u64(seed);
+            let u: f64 = rng.clone().gen();
+            (rng, u)
+        })
+        .find(|(_, u)| u.ln().exp() == *u)
+        .expect("a uniform that ln and exp return exactly");
+    assert!(!mh_accept(&mut rng, u.ln(), -3.0, -3.0 + u.ln()));
+
     for current in [f64::NEG_INFINITY, f64::NAN] {
         for (prop, accept) in [(-4.0, true), (f64::NEG_INFINITY, false)] {
             let mut rng = fresh();
