@@ -103,7 +103,11 @@ where
 {
     let model = EvolutionModel::new(prior, fitness).with_beta(beta);
     Box::new(move |from| {
-        let w = model.score(from).1.total_log_weight();
+        // A seed the model cannot score (a structural mismatch with the
+        // prior) is a seed outside its support, like one of zero mass.
+        let w = model
+            .score(from)
+            .map_or(f64::NEG_INFINITY, |(_, t)| t.total_log_weight());
         if !w.is_finite() {
             return Err(RefineOutcome::OutsideSupport);
         }
@@ -408,8 +412,12 @@ where
         let rng = &mut rng;
         // Metropolis on the target's weight; a proposal that cannot be made
         // (see `propose`) is no move, like one refused.
+        // A candidate the model cannot score is a refused one (−∞).
         let scored = self.propose(rng).map(|cand| {
-            let nw = self.model.score(&cand).1.total_log_weight();
+            let nw = self
+                .model
+                .score(&cand)
+                .map_or(f64::NEG_INFINITY, |(_, t)| t.total_log_weight());
             (cand, nw)
         });
         let w = self.w;

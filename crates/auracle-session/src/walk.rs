@@ -439,7 +439,12 @@ where
         }
         self.left -= 1;
         let mut by_ref = rng;
-        let (g, t) = self.chain.step(&mut by_ref, &self.trace);
+        // One model execution, the proposal. `trace` came from `init_from` or
+        // from an earlier acceptance, so it is scored as the kernel needs; a
+        // rejection keeps it, with no decode and no copy.
+        let Some((g, t, _w)) = self.chain.step_scored(&mut by_ref, &self.trace) else {
+            return;
+        };
         if violates_locks(&self.trace, &t, &self.locked) {
             return; // reject outside the kernel; stay at `trace`
         }

@@ -530,3 +530,59 @@ fn a_walk_starts_from_a_preset_at_either_edge_octave() {
         "the presets no longer hold both edge octaves, so this tests less than it says"
     );
 }
+
+/// A fitness that counts how often the model asks it for a score.
+#[derive(Clone)]
+struct Counting(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+impl fugue_evo::fitness::traits::Fitness for Counting {
+    type Genome = PatchTree;
+    type Value = f64;
+    fn evaluate(&self, _: &PatchTree) -> f64 {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        0.0
+    }
+}
+
+/// **A walk step runs the model once.** The state a step starts from is
+/// carried scored (from `init_from`, or the step that accepted it), so the
+/// only execution is the proposal's: one score of the fitness per step,
+/// accepted or refused, and a refusal leaves the state exactly where it was.
+#[test]
+fn a_walk_step_runs_the_model_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    let calls = std::sync::Arc::new(AtomicUsize::new(0));
+    let seed = auracle_grammar::presets().remove(1).1;
+    let mut run = WalkRun::begin(
+        PatchGrammarPrior::default(),
+        2.0,
+        RefineKeep::Last,
+        Counting(calls.clone()),
+        &seed,
+        &HashSet::new(),
+        60,
+    )
+    .expect("a preset is in the prior's support");
+    let mut rng = StdRng::seed_from_u64(5);
+    let (mut moved, mut refused) = (0, 0);
+    for k in 1..=60 {
+        calls.store(0, Relaxed);
+        let (was, was_w) = (run.current.clone(), run.trace.total_log_weight());
+        run.step(&mut rng);
+        assert_eq!(
+            calls.load(Relaxed),
+            1,
+            "step {k} ran the model more than once"
+        );
+        if run.current == was {
+            assert_eq!(
+                run.trace.total_log_weight(),
+                was_w,
+                "a refusal moved the state"
+            );
+            refused += 1;
+        } else {
+            moved += 1;
+        }
+    }
+    assert!(moved > 0 && refused > 0, "moved {moved}, refused {refused}");
+}
