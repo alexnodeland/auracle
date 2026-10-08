@@ -47,7 +47,9 @@ export const MODULES = {
   // render of each preset (boot_agrees, which opens no page).
   "apps/web/shipped-faces.js": ["faces", "first_run"],
   "apps/web/preset-faces.json": ["faces", "first_run", "boot_agrees"],
-  "apps/web/vessel.js": ["faces", "perform_stage", "shell_zoom"],
+  "apps/web/vessel.js": ["faces", "perform_stage", "shell_zoom", "live_faces"],
+  // The faces that hear what is played, and stage mode's moving layer.
+  "apps/web/live-face.js": ["live_faces", "perform_stage"],
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],
   "apps/web/bank-find.js": ["bank_find"],
@@ -60,7 +62,7 @@ export const MODULES = {
   "apps/web/booth.js": ["booth"],
   "apps/web/words.js": ["text_fits", "evolve_feedback", "taste_profile"],
   "apps/web/support.js": ["taste_marks", "patch_model_view", "patch_catalog"],
-  "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in", "perform_struggling_audio"],
+  "apps/web/live-audio.js": ["smoke", "patch_audible", "audio_in", "perform_struggling_audio", "live_faces"],
   // Whether the audio is struggling: the protections main switches on.
   "apps/web/strain.js": ["perform_struggling_audio"],
   // The profile's spec hands a farm worker of its own its boot, phrase and
@@ -87,6 +89,7 @@ export const VIEWS = {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "cmdk", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
+      "live_faces",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
   },

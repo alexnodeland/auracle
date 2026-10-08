@@ -147,6 +147,9 @@ const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD
 // tests/shipped-faces.test.mjs).
 const { readPresetFaces, presetFace } = await import(`./shipped-faces.js?v=${BUILD}`);
 const { drawVessel, vesselBox, shownBox } = await import(`./vessel.js?v=${BUILD}`);
+// Every face of a sound being played draws what sounds over it, as stage mode
+// does (live-face.js, tests/live-face.test.mjs): `liveFaces`, below.
+const { createLiveFaces } = await import(`./live-face.js?v=${BUILD}`);
 // How many sounds in the pool carry each module and each coordinate, read off
 // the ranked rows' s-expressions (support.js, tests/support.test.mjs).
 const { poolSupport } = await import(`./support.js?v=${BUILD}`);
@@ -265,6 +268,20 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const master = audioCtx.createGain();
 master.gain.value = 0.8;
 master.connect(audioCtx.destination);
+// Every ▶ phrase reaches the master through this bus, so what a phrase sounds
+// like can be read apart from the voices (`phraseAnalyser`): a face hears the
+// phrase of its own sound, and nothing else (`liveFaces`).
+const phraseBus = audioCtx.createGain();
+phraseBus.connect(master);
+let phraseTap = null; // made on first use
+function phraseAnalyser() {
+  if (!phraseTap) {
+    phraseTap = audioCtx.createAnalyser();
+    phraseTap.fftSize = 2048;
+    phraseBus.connect(phraseTap);
+  }
+  return phraseTap;
+}
 
 // ---------- state ----------
 // Is the primary input a finger? Read once, at the top, because half a dozen
@@ -393,6 +410,7 @@ const playCounts = new Map();
 let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let perform = null;          // from perform.js, once the voices exist
+let liveFaces = null;        // the faces that hear what is played, once the voices exist (`bootLiveFaces`)
 let explain = null;          // from explain.js, once PERFORM exists (Plan-005 task 10)
 // AUDIO IN's inputs (audio-in.js). Asks for nothing until a player adds the
 // module; every host call is wrapped, since most of these are declared below.
@@ -1176,15 +1194,194 @@ function levelAnchor(level) {
 function drawFlyingFace(ctx, key, box, { alpha = 1 } = {}) {
   const face = faceByKey.get(key);
   if (!face || !faceStats) return false;
-  return drawVessel(ctx, face, faceStats, {
+  const drew = drawVessel(ctx, face, faceStats, {
     box,
-    color: tok("--phos-a"),
+    color: INK.green,
     slices: box.h >= 20,
     glow: Math.max(4, box.h * 0.05),
     reflection: box.h >= 60,
     line: Math.max(1, box.h / 180),
     dim: alpha,
   });
+  // It is the sound you're playing in flight: what it sounds like now is
+  // drawn over it as the levels draw it, so it never stops answering.
+  if (drew && liveFaces) liveFaces.flight(ctx, { face, stats: faceStats, box, color: INK.green, alpha });
+  return drew;
+}
+
+// ---------- the faces that hear what you play (live-face.js) ----------
+// The face of a sound being played draws what sounds over it, at every level
+// and at its own size, as stage mode does: PERFORM's well (the sound in hand,
+// and B beside it), the face at OUT, the face in flight (above), the EVOLVE
+// card being played, and the sound's mark on TASTE's and LEARNING's maps.
+// What each hears is its own sound's signal, read where it can be told apart
+// (ADR-012: a measurement, never a guess):
+// - the voices' share (the worklet's second output, live-audio.js
+//   `shareA`): what the keys play, the sound in hand (on PATCH while TEACH
+//   plays a candidate, that candidate, which OUT then shows);
+// - B's share (`shareB`, the third): PERFORM's offer, as much as BLEND or
+//   Peek lets you hear of it;
+// - the phrase a ▶ plays (`phraseBus`), the sound `playingKey` names:
+//   "inhand" (Space, the bench's ▶), "duel:<id>" (an EVOLVE card's ▶) or
+//   "bank:<id>" (a bank row's).
+// The voices' A and B are mixed into one output in the worklet, so no tap
+// after it can say which is which: hence the two shares.
+const LIVE_VOICES = 1;
+const LIVE_OFFER = 2;
+const LIVE_PHRASE = 4;
+// What the faces read in a frame, taken once a frame: the phrase sounding,
+// by its key, and the render key of the sound in hand's face (`heldFace`),
+// taken only when a face asks (EVOLVE's cards, the maps' marks).
+const liveNow = { frame: -1, phrase: null, heldFrame: -1, held: "" };
+function liveFacts(frame) {
+  if (liveNow.frame !== frame) {
+    liveNow.frame = frame;
+    liveNow.phrase = playingSrc ? playingKey : null;
+  }
+  return liveNow;
+}
+function liveHeld(frame) {
+  if (liveNow.heldFrame !== frame) {
+    liveNow.heldFrame = frame;
+    const h = heldFace();
+    liveNow.held = h ? h.key : "";
+  }
+  return liveNow.held;
+}
+/** What the sound in hand's face hears: the voices, and Space's phrase while
+ *  it plays. */
+function handHears(frame) {
+  return LIVE_VOICES | (liveFacts(frame).phrase === "inhand" ? LIVE_PHRASE : 0);
+}
+// Each slot kind's picture size, the vessel's box in it and its color, taken
+// once (`FACE_OPTS`, as `faceBoxOf` and `faceImage` place it).
+const liveKinds = new Map();
+function liveKind(kind) {
+  let k = liveKinds.get(kind);
+  if (!k && FACE_SIZE[kind]) {
+    const [w, h] = FACE_SIZE[kind];
+    const o = FACE_OPTS[kind] ? FACE_OPTS[kind]() : {};
+    k = { w, h, box: o.box || vesselBox(w, h), color: o.color || INK.green, fit: FACE_FLUID.has(kind) };
+    liveKinds.set(kind, k);
+  }
+  return k;
+}
+/** Where a face slot's live layer goes (live-face.js `place`): `p` filled
+ *  over the slot, with the vessel where the slot shows it; false while the
+ *  slot draws no face or is off screen. */
+function slotPlace(p, el, hears, inHand) {
+  if (!el || !el.isConnected || !faceStats) return false;
+  const target = el.dataset.face;
+  const key = target && faceKeyOfTarget(target);
+  const face = key && faceByKey.get(key);
+  const k = face && liveKind(el.dataset.kind);
+  if (!k || !el.querySelector(":scope > img.face")) return false;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height || r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth) return false;
+  const s = k.fit ? Math.min(r.width / k.w, r.height / k.h) : 1;
+  p.host = el;
+  p.hw = r.width;
+  p.hh = r.height;
+  p.box.x = (k.fit ? (r.width - k.w * s) / 2 : 0) + k.box.x * s;
+  p.box.y = (k.fit ? (r.height - k.h * s) / 2 : 0) + k.box.y * s;
+  p.box.w = k.box.w * s;
+  p.box.h = k.box.h * s;
+  p.face = face;
+  p.stats = faceStats;
+  p.color = k.color;
+  p.hears = hears;
+  p.inHand = inHand;
+  p.key = key;
+  return true;
+}
+/** The sound's mark on TASTE's map or in LEARNING's ring, where it is drawn
+ *  this frame (`taste.anchor`, drawn), over the map's well. It hears the
+ *  sound in hand when it is that sound's (its pool face is the one you
+ *  hold), and a ▶ of that sound from the bank or EVOLVE. */
+function markPlace(p, level, host, frame) {
+  const m = taste && taste.anchor ? taste.anchor(level, { drawn: true }) : null;
+  if (!m || !host || !faceStats) return false;
+  const key = faceKeyById.get(m.id);
+  const face = key && faceByKey.get(key);
+  if (!face) return false;
+  const r = host.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  const [w, h] = mapFaceSize(m.size);
+  const own = key === liveHeld(frame);
+  const ph = liveFacts(frame).phrase;
+  const named = ph != null && (ph === `bank:${m.id}` || ph === `duel:${m.id}`);
+  p.host = host;
+  p.hw = r.width;
+  p.hh = r.height;
+  // As `vesselBox(w, h)` pads a face drawn at that size.
+  const pad = Math.min(w, h) * 0.06;
+  p.box.x = m.x - r.left - w / 2 + pad;
+  p.box.y = m.y - r.top - h / 2 + pad;
+  p.box.w = w - 2 * pad;
+  p.box.h = h - 2 * pad;
+  p.face = face;
+  p.stats = faceStats;
+  p.color = INK.green;
+  p.hears = (own ? handHears(frame) : 0) | (named ? LIVE_PHRASE : 0);
+  p.inHand = own;
+  p.key = key;
+  return true;
+}
+function bootLiveFaces() {
+  if (liveFaces) return;
+  liveFaces = createLiveFaces({
+    signals: [() => (live ? live.shareA : null), () => (live ? live.shareB : null), phraseAnalyser],
+    // The shares and the phrase bus are tapped before the master fader.
+    gainDb: () => 20 * Math.log10(Math.max(1e-6, master.gain.value)),
+    // Played now: a key down or sustained, a phrase, a monitored input.
+    held: () => heldNotes.size > 0 || sustainedNotes.size > 0 || !!playingSrc || audioIn.monitor,
+    still: prefersStill,
+    // Stage mode covers every level (it draws its own).
+    off: () => !!(perform && perform.stage && perform.stage()),
+    silk: () => INK.silk,
+    flightHears: handHears,
+  });
+  // PERFORM's well: the sound in hand, and B while it holds an offer.
+  liveFaces.add({
+    place: (p, n) => {
+      const s = currentView === "perform" && perform && perform.liveSlots ? perform.liveSlots() : null;
+      return !!s && slotPlace(p, s.a, handHears(n), true);
+    },
+  });
+  liveFaces.add({
+    place: (p) => {
+      const s = currentView === "perform" && perform && perform.liveSlots ? perform.liveSlots() : null;
+      return !!(s && s.b) && slotPlace(p, s.b, LIVE_OFFER, false);
+    },
+  });
+  // PATCH's face at OUT: what the voices play.
+  const outSlot = $("out-slot");
+  const outFace = $("out-face");
+  liveFaces.add({
+    place: (p, n) => currentView === "patch" && !outSlot.classList.contains("hidden") && slotPlace(p, outFace, handHears(n), true),
+  });
+  // EVOLVE's cards: each hears its own ▶, and the keys when it holds the
+  // sound in hand.
+  for (const [i, el] of [[0, $("face-a")], [1, $("face-b")]]) {
+    liveFaces.add({
+      place: (p, n) => {
+        if (currentView !== "evolve" || !currentDuel || !slotPlace(p, el, 0, false)) return false;
+        const ph = liveFacts(n).phrase;
+        const own = p.key === liveHeld(n);
+        p.hears = (ph != null && ph === `duel:${currentDuel[i]}` ? LIVE_PHRASE : 0) | (own ? handHears(n) : 0);
+        p.inHand = own;
+        return true;
+      },
+    });
+  }
+  // TASTE's mark and LEARNING's ring.
+  const tasteWell = $("taste-well");
+  const learnMap = $("md-map-cv")?.parentElement || null;
+  liveFaces.add({ place: (p, n) => currentView === "taste" && markPlace(p, "taste", tasteWell, n) });
+  liveFaces.add({ place: (p, n) => currentView === "learning" && markPlace(p, "learning", learnMap, n) });
+  // The meter's first run, while the page is idle rather than in the frame
+  // of the first key.
+  idleSoon(() => liveFaces.warm(audioCtx.sampleRate));
 }
 
 // Workbench state.
@@ -2308,12 +2505,13 @@ worker.onmessage = (e) => {
       const within = m.target > 0 ? Math.min(1, m.pool / m.target) : 0;
       bootPct = Math.max(bootPct, Math.min(100, (100 * (stage + within)) / stages));
       $("boot-fill").style.width = `${bootPct}%`;
-      // Say how many renderers are on it. Not decoration: a boot that is four
-      // times faster than the last one should say why, and a boot that fell
-      // back to one core should say that too.
-      const crew = m.workers > 0 ? ` · ${m.workers} renderer${m.workers > 1 ? "s" : ""}` : "";
-      $("boot-status").textContent =
-        m.label ? `${m.label}${crew}` : `heard ${m.pool} of ${m.target}${crew}`;
+      // The line says how far the listening has got, in a player's words.
+      // How many renderers are on it stays in its title, not on the line: a
+      // boot four times faster than the last should still say why, and one
+      // that fell back to one core say that, to whoever looks.
+      const status = $("boot-status");
+      status.textContent = m.label || `heard ${m.pool} of ${m.target}`;
+      status.title = m.workers > 0 ? `${m.workers} renderer${m.workers > 1 ? "s" : ""}` : "";
       bootField(m.pool, m.target);
       fillPool = m.pool;
       fillTarget = m.target;
@@ -2381,7 +2579,6 @@ worker.onmessage = (e) => {
       } else if (fillTarget > fillPool) {
         note(`Start picking. ${plural(fillTarget - fillPool, "more sound")} ${fillTarget - fillPool === 1 ? "is" : "are"} still arriving.`);
       }
-      showCoach();
       break;
     }
     // The engine has said goodbye to the farm. Reap the workers: they exist
@@ -4311,23 +4508,9 @@ function pulseOnce(el) {
   setTimeout(() => el.classList.remove("pulse-once"), 1300);
 }
 
-// First-run coach: the app invites a sound before it asks for a vote.
-let coachEl = null;
-function showCoach() {
-  if (hasPlayed || localStorage.getItem("auracle-played") || coachEl) return;
-  coachEl = document.createElement("div");
-  coachEl.className = "coach";
-  coachEl.textContent = "Press A–L, or tap a key: you’re already holding a synth.";
-  document.body.appendChild(coachEl);
-}
-
 function firstNotePlayed() {
   mark("first-sound", { via: "a key" }, { once: true });
   guide.done("patch-play");
-  if (coachEl) {
-    coachEl.remove();
-    coachEl = null;
-  }
   if (hasPlayed) return;
   hasPlayed = true;
   localStorage.setItem("auracle-played", "1");
@@ -4839,6 +5022,8 @@ function levelChanged(prev, name, { chosen = false } = {}) {
   closeCompare(); // it belongs to where it was asked
   if (explain) explain.close(); // so does a figure
   currentView = name;
+  // Another level's faces are in sight: they hear what still sounds.
+  liveFaces?.wake();
   guide.setLevel(name); // each level shows its own first steps
   if (perform) {
     if (name === "perform") perform.show();
@@ -4903,6 +5088,9 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
 // ---------- audio helpers ----------
 function ensureAudio() {
   if (audioCtx.state === "suspended") audioCtx.resume();
+  // Something is about to sound (a key, a phrase, a monitored input): the
+  // faces on screen listen for it.
+  liveFaces?.wake();
 }
 
 let playingGain = null;
@@ -4942,7 +5130,7 @@ function playBuffer(buffer, btn, key = null) {
   const g = audioCtx.createGain();
   src.buffer = buffer;
   src.connect(g);
-  g.connect(master);
+  g.connect(phraseBus);
   src.start();
   playingSrc = src;
   playingGain = g;
@@ -5179,6 +5367,8 @@ async function bootPerform() {
     play: () => toggleAudition(),
     // What comes out of the speakers, for stage mode to draw.
     outAnalyser,
+    // Stage mode left: the well's faces hear what still sounds.
+    liveWake: () => liveFaces?.wake(),
     send,
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
@@ -5604,6 +5794,8 @@ async function bootBooth() {
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  // The faces hear the voices from now on.
+  bootLiveFaces();
   // An input opened before the voices existed is connected to them now.
   if (wb.rack) audioIn.follow(wb.rack);
   bootPerform();
@@ -8532,10 +8724,13 @@ function bankRow(r, fitted) {
     if (e.target.closest("button")) return;
     if (e.detail > 1) return; // a double-click's second click: a rename, not another open
     kbdRowId = r.id;
-    // Its face as the row shows it now: opening it redraws the bank.
+    // Its face as the row shows it now: opening it redraws the bank. The
+    // sound is opened where you are, as Enter and ⌘K open one: its face
+    // flies from the row to where this level draws the sound you're playing
+    // (`takeUpCheck`). Only what says PATCH goes there (↓ PATCH, How it
+    // works' knob).
     armTakeUp(el.querySelector(":scope > .face-slot"), { id: r.id });
     openOnBench(r.id);
-    showView("patch");
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
@@ -8751,7 +8946,7 @@ function renderPresetBank(list) {
     if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      openPreset(p, el, { move: true });
+      openPreset(p, el);
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
     frag.appendChild(el);
@@ -8763,12 +8958,11 @@ function renderPresetBank(list) {
   paintFaces(list);
 }
 
-/** Open a preset, as its row does: the pool's copy if it is in the pool
- *  (and, from the row's click, PATCH), else asked of the engine with `open`.
- *  `el` is its row, if the bank draws it (its face flies from there when the
- *  sound lands, and it says it is loading); ⌘K's list opens one without a
- *  move, as Enter on a bank row does. */
-function openPreset(p, el, { move = false } = {}) {
+/** Open a preset, as its row does: the pool's copy if it is in the pool,
+ *  else asked of the engine with `open`, at the level you're at (a click,
+ *  Enter and ⌘K's list alike). `el` is its row, if the bank draws it (its
+ *  face flies from there when the sound lands, and it says it is loading). */
+function openPreset(p, el) {
   const loadedId = presetIds.get(p.index);
   const inBank = loadedId != null && !!rowOf(loadedId);
   const row = el || document.querySelector(`#bank-list .preset-item[data-index="${p.index}"]`);
@@ -8777,7 +8971,6 @@ function openPreset(p, el, { move = false } = {}) {
     armTakeUp(slot, { id: loadedId });
     openOnBench(loadedId);
     voicePresetEarly(p, loadedId);
-    if (move) showView("patch");
   } else {
     // Said at once: the engine may be busy for seconds, and a click
     // that shows nothing gets clicked again, or given up on.

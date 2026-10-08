@@ -29,9 +29,9 @@
 // - A toast on screen while a move plays is placed for the level reached:
 //   once the move lands, the lane stands where that level at rest puts it,
 //   not clear of the strips of the level left as well.
-// - A pool row opened from PERFORM goes to PATCH without flying the sound
-//   being put down, and once the sound is in hand its face flies from the
-//   row to the face at OUT, landing within 2 px of it.
+// - A pool row clicked at PERFORM or at LEARNING opens the sound where you
+//   are: no move, the sound in hand, and once it is its face flies from the
+//   row to where that level draws it (PERFORM's well face, within 2 px).
 // - However late the engine says the face of the sound in hand (a slow
 //   engine, seconds after the sound itself), the face still flies when it
 //   does: the take-up waits for the engine, not for a clock.
@@ -341,34 +341,48 @@ test("a toast up during a move stands where the level reached puts it, not clear
   await page.clock.resume();
 });
 
-test("a pool row opened from PERFORM goes to PATCH, and its face flies from the row to the face at OUT", async ({ page, app }) => {
-  await bootWithFaces(app);
-  await app.fullPool();
-  await goLevel(page, "perform");
+/** A pool row not in hand, with its face drawn: its row and its name. */
+async function rowToOpen(page) {
   const row = page.locator("#bank-list .bank-item[data-id]:not(.live)", { has: page.locator(":scope > .face-slot img.face") }).first();
   await expect(row).toBeVisible();
+  return { row, name: (await row.locator(".bi-name").textContent()).trim() };
+}
+
+/** Click a pool row at `level` and wait for its face to be taken up: the
+ *  sound is in your hands, at that level, with no move. The mark it left. */
+async function openRowAt(app, level) {
+  const { page } = app;
+  await goLevel(page, level);
+  const { row, name } = await rowToOpen(page);
   const t0 = await app.now();
   await row.locator(".bi-name").click();
+  await app.engine((timeout) => expect(page.locator("#live-label")).toHaveText(name, { timeout }), { ms: 60_000 });
   const [taken] = await app.engine(async (timeout) => {
     await expect.poll(() => app.marks("taken-up", { after: t0 }), { timeout }).toHaveLength(1);
     return app.marks("taken-up", { after: t0 });
   });
   await landed(page);
-  // The move to PATCH carried nothing: the sound being put down is not the
-  // one arriving.
-  const moves = (await app.marks("level-landed", { after: t0 })).map((m) => m.detail);
-  expect(moves).toEqual([expect.objectContaining({ to: "patch", flew: null })]);
-  // The row's face landed on the face at OUT.
-  expect(taken.detail.level).toBe("patch");
-  near(taken.detail.flew, await drawnVessel(page, "#out-face", OUT));
+  await expect(page.locator("body")).toHaveAttribute("data-level", level);
+  await expect(page.locator(`.rail-stop[data-level="${level}"]`)).toHaveAttribute("aria-current", "location");
+  expect(await app.marks("level-landed", { after: t0 }), `no move from ${level}`).toEqual([]);
+  expect(taken.detail.level).toBe(level);
+  return taken;
+}
+
+test("a pool row clicked at PERFORM or LEARNING opens the sound there, and its face flies from the row to that level", async ({ page, app }) => {
+  await bootWithFaces(app);
+  await app.fullPool();
+  // At PERFORM the row's face lands on the well's.
+  const taken = await openRowAt(app, "perform");
+  near(taken.detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
+  await openRowAt(app, "learning");
 });
 
 test("a sound opened from the bank flies into your hands however late the engine says its face", async ({ page, app }) => {
   await bootWithFaces(app);
   await app.fullPool();
-  await goLevel(page, "perform");
-  const row = page.locator("#bank-list .bank-item[data-id]:not(.live)", { has: page.locator(":scope > .face-slot img.face") }).first();
-  await expect(row).toBeVisible();
+  await goLevel(page, "patch");
+  const { row } = await rowToOpen(page);
   await app.delay("faces", FACES_LATE_MS);
   const t0 = await app.now();
   await row.locator(".bi-name").click();

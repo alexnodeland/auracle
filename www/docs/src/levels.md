@@ -39,7 +39,8 @@ As you move, the face of the sound you’re playing flies from where one level
 draws it to where the next does: PERFORM’s well, the face at **OUT** in
 PATCH, its mark on TASTE’s map, its ring on LEARNING’s, and the card in
 EVOLVE that holds it, if one does. Where a level doesn’t draw it, the face
-fades instead of flying. A light travels along the levels from the stop you
+fades instead of flying. Played as it flies, the face keeps drawing what you
+hear over it ([while you play it](./faces.md#while-you-play-it)). A light travels along the levels from the stop you
 left to the one you reach, and at either end of the zoom the levels nod and
 nothing moves. With reduced motion set on your system every move is
 instant.
@@ -88,8 +89,8 @@ It lists, in three groups:
   safe; and links to the films and to this guide’s keys and gestures.
 - **SOUNDS:** the pool, then the presets, each with its face. With nothing
   typed it shows five; with a query, the eight that match best. Choosing one
-  puts it in your hands at the level you’re at, as <kbd>Enter</kbd> on its
-  row in the bank does.
+  puts it in your hands at the level you’re at, as a click or <kbd>Enter</kbd>
+  on its row in the bank does.
 
 Each command prints its key beside it, where it has one, so the list teaches
 the keys as you use it, and a setting that is on says *on*. A name’s start

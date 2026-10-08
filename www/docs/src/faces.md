@@ -56,8 +56,7 @@ the face.
   made of it.
 - **[PERFORM](./views/perform.md)**, beside the sound in your hands, and
   beside **B** once an offer has grown. B grows out of the face, and goes
-  back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen,
-  and what you play is drawn over it.
+  back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen.
 - **AUDIO IN**, in the square on the module in the rack: the face of your
   input as it plays, drawn from the last few hundredths of a second, before
   the patch. It is there only while the input carries a signal. See
@@ -98,6 +97,28 @@ A face changes only when something real does:
   A change too small to move a face by a pixel’s worth isn’t redrawn.
 
 Faces are redrawn in place. Nothing in a face moves on its own.
+
+## While you play it
+
+The face of a sound you’re playing answers what you hear. Over the face,
+what sounds now is drawn in the face’s own bands against the same bank: its
+outline lights up as loud as the sound is, and the outline of what you hear
+this moment is drawn over it and fades like phosphor. When the sound stops,
+it fades and is gone, and the face is as it was.
+
+It happens wherever the face of what you’re playing is, at that face’s own
+size: PERFORM’s well, the face at **OUT** in PATCH, the face flying between
+the levels, the EVOLVE card whose **PLAY** you pressed, the sound’s mark on
+TASTE’s map and its ring on LEARNING’s, and the whole screen in stage mode.
+A small face, like a mark on the map, only brightens its outline.
+
+Each face answers its own sound and nothing else. With an offer in B,
+PERFORM’s two faces each answer what you hear of their own sound: at
+BLEND’s home only yours, holding <kbd>B</kbd> only B’s, and both between.
+An EVOLVE card answers its own **PLAY**, not the other card’s.
+
+With reduced motion set on your system, nothing is drawn over a face: it
+stays still while you play.
 
 ## Share a sound as a card
 

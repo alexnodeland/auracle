@@ -5384,39 +5384,6 @@ input[type="range"]::-moz-range-thumb {
    rack legitimately shows the sound you are hearing. The amber header line
    carries the "this is a candidate" state. */
 
-/* ---------- first-run coach mark on the piano ---------- */
-.coach {
-  position: fixed;
-  left: 50%;
-  /* Lands ON the keybed it points at — above the keybar it overprinted the
-     TEACH strip and clipped the pick buttons. */
-  bottom: calc(var(--keybar-h) - 42px);
-  transform: translateX(-50%);
-  z-index: 57;
-  font-family: var(--font-silk);
-  font-size: var(--t-body);
-  color: var(--phos-b);
-  background: var(--panel-94);
-  border: 1px solid var(--phos-b-deep);
-  border-radius: 999px;
-  padding: var(--s2) var(--s4);
-  box-shadow: var(--cast);
-  pointer-events: none;
-  animation: coach-bob 1.6s ease-in-out infinite; /* token-exempt: a loop's period, not a transition */
-}
-.coach::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  width: 8px; height: 8px;
-  transform: translateX(-50%) rotate(45deg);
-  background: var(--panel);
-  border-right: 1px solid var(--phos-b-deep);
-  border-bottom: 1px solid var(--phos-b-deep);
-}
-@keyframes coach-bob { 50% { transform: translate(-50%, -4px); } }
-
 /* ---------- keybar drawers ---------- */
 /* The arp row belongs to the ARP button: recessed and inert until it runs. */
 .perf-ctl.idle { opacity: 0.45; }
@@ -5571,6 +5538,10 @@ html.handheld .handheld-gate {
    its place always has. */
 .face-slot { display: inline-block; flex: none; vertical-align: middle; }
 .face-slot .face { display: block; pointer-events: none; }
+/* What sounds now, over the face of a sound being played (live-face.js):
+   a layer laid over the face's slot (or the map's well), the size of it,
+   which never moves anything and takes no pointer. */
+.face-live { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 /* PATCH's teach strip: the face, then the name. */
 .pd-side .face-slot { margin-right: var(--s1); }
 /* An EVOLVE card's face, before its name; the name keeps the head's free
@@ -6631,10 +6602,6 @@ body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7)
   .guide { left: var(--s3); bottom: var(--s3); max-width: calc((100% - var(--rail-w)) / 2 - var(--s3)); }
   .guide .next { font-size: var(--t-value); gap: var(--s2); padding-left: var(--s3); }
 }
-/* One voice per lesson: while the pill's step 1 says what the keybed coach
-   says, the coach waits. */
-body[data-level="perform"]:has(#guide:not(.hidden)) .coach { display: none; }
-
 /* A preset row whose load is on its way: said at once, where the eye is. A
    bank row whose bench open is on its way says the same, until the rack is
    the patch it names (a bench open is a render, and on a busy engine a row

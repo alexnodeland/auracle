@@ -465,7 +465,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
 | **PASS** | PERFORM's pad: pass on the offer in B without growing another; heard, a pick for what you had, with UNDO | skip, reject, discard |
-| **first steps** | Each level's first-visit steps, one at a time in a pill bottom left (PERFORM's: play, turn, offer, zoom out to TASTE, the model view; PATCH's: play it, a knob, a lock, ⚡); its × is *Stop showing these*, for that level's | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
+| **first steps** | Each level's first-visit steps, one at a time in a pill bottom left (PERFORM's: play, turn, offer, zoom out to TASTE, the model view; PATCH's: play it, a knob, a lock, ⚡); its × is *Stop showing these*, for that level's | guide (that is the site), tutorial, tips, coach |
 | *Press ⌥↑ to zoom out to TASTE, the sound among all sounds* / *Pinch to zoom out to TASTE, …* | PERFORM's fourth first step; the line is TASTE's own from `#where` | scroll out, go up, zoom to the map |
 | *Hold ⌥ to see what the model believes* / *Hold MODEL to see …* | PERFORM's fifth first step, ticked as the view comes up | what the model thinks, lens |
 | **▶ PLAY** | An EVOLVE card's button: its phrase | SAMPLE, audition |
