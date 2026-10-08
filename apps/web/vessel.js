@@ -8,8 +8,9 @@
 // What it draws is a fact of the render (ADR-012): the engine's face
 // (`auracle_features::face`, filed by `WasmEngine::face_of`) against the
 // bank's mean and spread (faces.js). Nothing here moves; a caller redraws when
-// the render or the bank changes. Stage mode's moving trail (what you hear,
-// fading like phosphor) is stage mode's own, drawn over this.
+// the render or the bank changes. What you hear, fading like phosphor, is
+// drawn over this on a layer of its own (live-face.js), by stage mode and by
+// every face of a sound being played.
 import { FACE_SLICES, whiten, smooth, vesselPoints, layerWeight } from "./faces.js";
 
 /** `#rrggbb` → "r, g, b" for an rgba() with its own alpha. */

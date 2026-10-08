@@ -195,7 +195,9 @@ you change it with the app open. With it on, the cable pulses, glows, and
 transitions stop; a move between the levels is instant, with no face
 traveling and no light along the levels; the rack jumps to a new layout or
 view instead of gliding, and the bank’s rows jump to the model view’s order
-rather than glide; and a card waiting for its sound stops sweeping. The scope still moves,
+rather than glide; a card waiting for its sound stops sweeping; and nothing
+is drawn over a sound’s face while you play it, where it otherwise lights up
+with what you hear. The scope still moves,
 because what it shows is the sound, but it redraws ten times a second rather
 than every frame. The guide and the reference follow the setting too.
 

@@ -1273,8 +1273,9 @@ class App {
     return this.config("fail", { match: asPattern(match), message, fatal, once });
   }
 
-  /** A preset opened as a player opens one onto PERFORM: PRESETS, its row,
-   *  and once the rack holds it, the PERFORM stop, until PERFORM names it;
+  /** A preset opened as a player opens one onto PERFORM: PRESETS, its row
+   *  (which opens it at the level you're at), and once the rack holds it,
+   *  the PERFORM stop (from wherever the test was), until PERFORM names it;
    *  then, unless `reach` is false, `reached({ wired })`. Engine waits. */
   async openOnPerform(name, { reach = true, wired = false } = {}) {
     const { page } = this;

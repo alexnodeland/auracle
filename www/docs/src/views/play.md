@@ -22,7 +22,8 @@ it.</figcaption>
 
 ## Open a sound and change it
 
-1. Click a row in the [bank](../bank.md). It opens as the sound you’re playing.
+1. At PATCH, click a row in the [bank](../bank.md). It opens here as the sound
+   you’re playing (a row opens its sound at whichever level you’re at).
 2. Play it from the keybed. Hold a chord, or run the arpeggiator.
 3. Drag a knob, and hear it change.
 4. Press **KEEP AS NEW** in the edit bar to add your edit to the pool as a new
@@ -136,8 +137,10 @@ the standard phrase, as <kbd>Space</kbd> does. Pressed while an edit is still on
 its way, it wears a dotted amber ring and plays once the edit lands; press it
 again to take that back. Space plays the same phrase from PERFORM and EVOLVE,
 and waits the same way: *▶ waiting for the edit…* stands in for the name in
-the menu bar until it lands. Coming to PATCH from another level, the face
-flies here from where that level drew it (or fades in, from a level that
+the menu bar until it lands. While you play, what you hear is drawn over the
+face, and fades when the sound stops ([while you play
+it](../faces.md#while-you-play-it)). Coming to PATCH from another level, the
+face flies here from where that level drew it (or fades in, from a level that
 doesn’t draw it), and a sound opened from the bank flies here from its row
 once it is in your hands.
 

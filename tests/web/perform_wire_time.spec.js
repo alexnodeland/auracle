@@ -62,6 +62,9 @@ async function take(page, app, at) {
   await row.scrollIntoViewIfNeeded();
   const clicked = await app.now();
   const before = (await app.marks("perform-wired")).some((m) => m.detail?.name === name);
+  // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+  // level you're at.
+  await app.level("patch");
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: LIMIT_MS });
   const opening = (await app.replies("bench_opening", { after: clicked })).pop();
@@ -154,6 +157,9 @@ test("a sound playing on a guess whose measurement fails keeps playing, says it 
   const open = async (at, prepare = async () => {}) => {
     const row = page.locator("#bank-list .bank-item[data-id]").nth(at);
     const name = (await row.locator(".bi-name").textContent()).trim();
+    // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+    // level you're at.
+    await app.level("patch");
     await row.click();
     await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
     const since = await app.now();
@@ -196,6 +202,9 @@ test("a predicted panel plays the controls the gate passes and listens on the re
   const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
   const name = (await row.locator(".bi-name").textContent()).trim();
   const since = await app.now();
+  // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+  // level you're at.
+  await app.level("patch");
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
   // What the engine said it could play this sound on: the gate's controls.
@@ -318,6 +327,9 @@ test("a control held still while its sound's measurement lands is not moved, and
   await bankTab(page, "pool");
   const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
   const name = (await row.locator(".bi-name").textContent()).trim();
+  // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+  // level you're at.
+  await app.level("patch");
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
   const since = await app.now();
@@ -374,6 +386,9 @@ test("a Take from a sound on a guess carries the guess over as a guess", { tag: 
   await bankTab(page, "pool");
   const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
   const name = (await row.locator(".bi-name").textContent()).trim();
+  // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+  // level you're at.
+  await app.level("patch");
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
   // The guess's measurement never reaches the engine: the sound stays on it.
@@ -408,6 +423,9 @@ test("a sound opened while a graft waits plays its guess, and the graft is not j
   await bankTab(page, "pool");
   const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
   const name = (await row.locator(".bi-name").textContent()).trim();
+  // Opened at PATCH, then taken into PERFORM: a row opens its sound at the
+  // level you're at.
+  await app.level("patch");
   await row.click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
   const shown = await app.now();

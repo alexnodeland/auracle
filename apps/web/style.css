@@ -5538,6 +5538,10 @@ html.handheld .handheld-gate {
    its place always has. */
 .face-slot { display: inline-block; flex: none; vertical-align: middle; }
 .face-slot .face { display: block; pointer-events: none; }
+/* What sounds now, over the face of a sound being played (live-face.js):
+   a layer laid over the face's slot (or the map's well), the size of it,
+   which never moves anything and takes no pointer. */
+.face-live { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 /* PATCH's teach strip: the face, then the name. */
 .pd-side .face-slot { margin-right: var(--s1); }
 /* An EVOLVE card's face, before its name; the name keeps the head's free
