@@ -191,11 +191,12 @@ PR_TITLE="<the title>" PR_BODY="$(cat <scratch>/pr-<topic>.md)" \
   python3 "$WT/scripts/pr_checks.py" links
 ```
 
-The `@mergifyio queue` comment is the act of enqueueing, for now: the
-`queue` label queues a PR through Mergify's auto-merge conditions, which act
-only once the maintainer switches on Merge Protections in Mergify's
-dashboard. Put the label on anyway; once Merge Protections is on, the label
-alone queues the PR and the comment is only for putting one back. The PR
+The `queue` label is the act of enqueueing: it queues a PR through
+Mergify's auto-merge conditions, since the maintainer switched on Merge
+Protections in Mergify's dashboard (2026-10-08). The `@mergifyio queue`
+comment is only for putting one back; posted through some tools its
+mention is rewritten and Mergify never reads it, so check that Mergify's
+queue status comment appears. The PR
 enters Mergify's merge queue once its own `CI`, the fast lane, its
 `PR checks` and its `Mutants in the changed code` are green;
 the queue runs the full gate on its batch and merges it (`process.md` § CI
