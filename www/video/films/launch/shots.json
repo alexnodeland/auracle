@@ -12,7 +12,7 @@
       "beat": "play",
       "pre": 1.0,
       "own_setup": true,
-      "cast": ["Slow Weather"],
+      "cast": ["Tidal"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".btab .bt-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -37,13 +37,14 @@
         {"op": "click", "sel": "#choose-b"},
         {"op": "wait", "ms": 1500},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
-        {"op": "preset", "name": "Slow Weather"},
+        {"op": "preset", "name": "Tidal"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Slow Weather"},
+        {"op": "measured", "name": "Tidal"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
         {"op": "log", "name": "controls", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ': ' + k.querySelector('.pf-k-sub').textContent + (k.classList.contains('search') ? ' (search)' : '')).join(' | ')"},
         {"op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')"},
+        {"op": "log", "name": "sound", "js": "JSON.stringify({ name: document.querySelector('.pf-name').textContent, cap: document.querySelector('.pf-cap').textContent, blurb: document.querySelector('.pf-blurb').textContent, status: document.querySelector('.pf-status').textContent, controls: [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => { const w = k.querySelector('.pf-k-where'); return { name: k.querySelector('.pf-k-name').textContent, ends: k.querySelector('.pf-k-ends').textContent, sub: k.querySelector('.pf-k-sub').textContent, search: k.classList.contains('search'), vel: k.classList.contains('vel'), where: w && w.style.display !== 'none' ? [+w.getAttribute('cx'), +w.getAttribute('cy')] : null }; }), hood: [...document.querySelectorAll('.pf-hood-row')].map((r) => [r.querySelector('.pf-hood-mod').textContent, r.querySelector('.pf-hood-name').textContent.slice(r.querySelector('.pf-hood-mod').textContent.length).trim(), r.querySelector('.pf-hood-val').textContent, parseFloat(r.querySelector('.pf-hood-fill').style.width) / 100 || 0]) })"},
         {"op": "log", "name": "face", "js": "document.querySelector('.pf-faces > .pf-face .face')?.src || ''"},
         {"op": "log", "name": "chrome", "js": "JSON.stringify({ taught: document.getElementById('duel-count')?.textContent || '0', teach: document.getElementById('pt-teach')?.textContent || '', tabs: [...document.querySelectorAll('.btab')].map((t) => t.innerText.trim().split(/\\s+/)), bank: [...document.querySelectorAll('.bank-list > *')].map((e) => [Math.round(e.getBoundingClientRect().y), e.classList.contains('bank-group') ? 'group' : e.classList.contains('live') ? 'live' : 'row', ...e.innerText.trim().split('\\n').map((s) => s.trim()).filter(Boolean)]).filter(([y]) => y > 120 && y < 1010) })"}
       ],
@@ -54,9 +55,9 @@
         {"at": "play2+8.01", "op": "log", "name": "bright", "js": "document.querySelector(\".pf-knob[data-i='0']\").getAttribute('aria-valuetext') + ' || ' + document.querySelector('.pf-hood-row').textContent.replace(/\\s+/g, ' ').trim()"},
         {"at": "play3:Let", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -95, "ms": 700},
         {"at": "play3:Let+0.8", "op": "until", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent.includes('gliding')", "ms": 60000, "stamp": "glide"},
-        {"at": "play3+4.28", "op": "hold", "keys": ["a", "d", "g"], "ms": 9000},
-        {"at": "play3+4.58", "op": "log", "name": "wander", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent + ' || ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.getAttribute('aria-valuetext')).join(' | ')"},
-        {"at": "play3+12.98", "op": "log", "name": "wander after", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent + ' || ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.getAttribute('aria-valuetext')).join(' | ') + ' || ' + document.querySelector('.pf-status').textContent"}
+        {"at": "play3+4.29", "op": "hold", "keys": ["a", "d", "g"], "ms": 9000},
+        {"at": "play3+4.59", "op": "log", "name": "wander", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent + ' || ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.getAttribute('aria-valuetext')).join(' | ')"},
+        {"at": "play3+12.99", "op": "log", "name": "wander after", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent + ' || ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.getAttribute('aria-valuetext')).join(' | ') + ' || ' + document.querySelector('.pf-status').textContent"}
       ]
     },
     {
@@ -64,7 +65,7 @@
       "beat": "offer",
       "pre": 1.0,
       "own_setup": true,
-      "cast": ["Slow Weather"],
+      "cast": ["Tidal"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".btab .bt-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -89,13 +90,14 @@
         {"op": "click", "sel": "#choose-b"},
         {"op": "wait", "ms": 1500},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
-        {"op": "preset", "name": "Slow Weather"},
+        {"op": "preset", "name": "Tidal"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Slow Weather"},
+        {"op": "measured", "name": "Tidal"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
         {"op": "log", "name": "controls", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ': ' + k.querySelector('.pf-k-sub').textContent + (k.classList.contains('search') ? ' (search)' : '')).join(' | ')"},
         {"op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')"},
+        {"op": "log", "name": "sound", "js": "JSON.stringify({ name: document.querySelector('.pf-name').textContent, cap: document.querySelector('.pf-cap').textContent, blurb: document.querySelector('.pf-blurb').textContent, status: document.querySelector('.pf-status').textContent, controls: [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => { const w = k.querySelector('.pf-k-where'); return { name: k.querySelector('.pf-k-name').textContent, ends: k.querySelector('.pf-k-ends').textContent, sub: k.querySelector('.pf-k-sub').textContent, search: k.classList.contains('search'), vel: k.classList.contains('vel'), where: w && w.style.display !== 'none' ? [+w.getAttribute('cx'), +w.getAttribute('cy')] : null }; }), hood: [...document.querySelectorAll('.pf-hood-row')].map((r) => [r.querySelector('.pf-hood-mod').textContent, r.querySelector('.pf-hood-name').textContent.slice(r.querySelector('.pf-hood-mod').textContent.length).trim(), r.querySelector('.pf-hood-val').textContent, parseFloat(r.querySelector('.pf-hood-fill').style.width) / 100 || 0]) })"},
         {"op": "log", "name": "face", "js": "document.querySelector('.pf-faces > .pf-face .face')?.src || ''"},
         {"op": "log", "name": "chrome", "js": "JSON.stringify({ taught: document.getElementById('duel-count')?.textContent || '0', teach: document.getElementById('pt-teach')?.textContent || '', tabs: [...document.querySelectorAll('.btab')].map((t) => t.innerText.trim().split(/\\s+/)), bank: [...document.querySelectorAll('.bank-list > *')].map((e) => [Math.round(e.getBoundingClientRect().y), e.classList.contains('bank-group') ? 'group' : e.classList.contains('live') ? 'live' : 'row', ...e.innerText.trim().split('\\n').map((s) => s.trim()).filter(Boolean)]).filter(([y]) => y > 120 && y < 1010) })"}
       ],
@@ -117,7 +119,7 @@
       "beat": "depth",
       "pre": 1.0,
       "own_setup": true,
-      "cast": ["Slow Weather"],
+      "cast": ["Tidal"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".btab .bt-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -143,9 +145,9 @@
         {"op": "wait", "ms": 1500},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
         {"op": "midi", "device": "MIDI keyboard"},
-        {"op": "preset", "name": "Slow Weather"},
+        {"op": "preset", "name": "Tidal"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Slow Weather"},
+        {"op": "measured", "name": "Tidal"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
         {"op": "midi", "cc": 74, "values": [64, 72], "ms": 300},
@@ -153,6 +155,7 @@
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
         {"op": "log", "name": "controls", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ': ' + k.querySelector('.pf-k-sub').textContent + (k.classList.contains('search') ? ' (search)' : '')).join(' | ')"},
         {"op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')"},
+        {"op": "log", "name": "sound", "js": "JSON.stringify({ name: document.querySelector('.pf-name').textContent, cap: document.querySelector('.pf-cap').textContent, blurb: document.querySelector('.pf-blurb').textContent, status: document.querySelector('.pf-status').textContent, controls: [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => { const w = k.querySelector('.pf-k-where'); return { name: k.querySelector('.pf-k-name').textContent, ends: k.querySelector('.pf-k-ends').textContent, sub: k.querySelector('.pf-k-sub').textContent, search: k.classList.contains('search'), vel: k.classList.contains('vel'), where: w && w.style.display !== 'none' ? [+w.getAttribute('cx'), +w.getAttribute('cy')] : null }; }), hood: [...document.querySelectorAll('.pf-hood-row')].map((r) => [r.querySelector('.pf-hood-mod').textContent, r.querySelector('.pf-hood-name').textContent.slice(r.querySelector('.pf-hood-mod').textContent.length).trim(), r.querySelector('.pf-hood-val').textContent, parseFloat(r.querySelector('.pf-hood-fill').style.width) / 100 || 0]) })"},
         {"op": "log", "name": "face", "js": "document.querySelector('.pf-faces > .pf-face .face')?.src || ''"},
         {"op": "log", "name": "chrome", "js": "JSON.stringify({ taught: document.getElementById('duel-count')?.textContent || '0', teach: document.getElementById('pt-teach')?.textContent || '', tabs: [...document.querySelectorAll('.btab')].map((t) => t.innerText.trim().split(/\\s+/)), bank: [...document.querySelectorAll('.bank-list > *')].map((e) => [Math.round(e.getBoundingClientRect().y), e.classList.contains('bank-group') ? 'group' : e.classList.contains('live') ? 'live' : 'row', ...e.innerText.trim().split('\\n').map((s) => s.trim()).filter(Boolean)]).filter(([y]) => y > 120 && y < 1010) })"}
       ],

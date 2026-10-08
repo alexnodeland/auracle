@@ -128,25 +128,24 @@ function takeClock(stage, take) {
   };
 }
 
-/** The sound as a take showed it in PERFORM: its controls' lines and the
- *  knobs under the hood, over Slow Weather's measured defaults. */
+/** The sound as a take showed it in PERFORM (its `sound` log: the head, each
+ *  control with its caption and amber dot, the knobs under the hood), and its
+ *  first offer's changes; kit's Slow Weather only where a take has none (a
+ *  dry run with no takes). */
 function soundOf(take) {
   const s = { ...SLOW_WEATHER, controls: SLOW_WEATHER.controls.map((c) => ({ ...c })), hood: SLOW_WEATHER.hood.map((h) => [...h]) };
-  const subs = take?.logs?.controls;
-  if (subs) {
-    for (const part of subs.split(" | ")) {
-      const m = /^(\w+): (.*?)( \(search\))?$/.exec(part);
-      const c = m && s.controls.find((x) => x.name === m[1]);
-      if (c) c.sub = m[2];
-    }
+  let seen = null;
+  try {
+    seen = take?.logs?.sound ? JSON.parse(take.logs.sound) : null;
+  } catch (e) {
+    seen = null;
   }
-  const hood = take?.logs?.hood;
-  if (hood) {
-    for (const part of hood.split(" | ")) {
-      const h = s.hood.find(([mod, p]) => part.startsWith(`${mod} ${p}`));
-      if (h) h[2] = part.slice(`${h[0]} ${h[1]}`.length).trim();
-    }
+  if (seen) {
+    for (const k of ["name", "cap", "blurb", "status"]) if (seen[k] != null) s[k] = seen[k];
+    if (seen.controls?.length) s.controls = seen.controls.map((c) => ({ ...c, where: c.where || null }));
+    if (seen.hood?.length) s.hood = seen.hood;
   }
+  if (take?.logs?.offer) s.offer = take.logs.offer.split(/\s*\+\d+ more|grown toward/)[0].replace(/,\s*$/, "");
   return s;
 }
 
@@ -912,7 +911,7 @@ function sceneDepth({ stage, beat, line, takes }) {
 // ---------------------------------------------------------------------------
 // CLOSE — every note in this film; free, open, in the browser.
 
-const BANK = ["Slow Weather", "Cathedral", "Morph Pad", "Long Room", "Tidal", "Rotor", "Wobble Board", "Solo Flight", "Held Under", "Ceiling", "Dub Echo", "Choirboy"].filter((n) => PRESETS.includes(n));
+const BANK = ["Tidal", "Cathedral", "Morph Pad", "Long Room", "Slow Weather", "Rotor", "Wobble Board", "Solo Flight", "Held Under", "Ceiling", "Dub Echo", "Choirboy"].filter((n) => PRESETS.includes(n));
 
 function sceneClose({ stage, beat, line }) {
   const b = beat("close");

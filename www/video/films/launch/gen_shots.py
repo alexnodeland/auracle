@@ -19,18 +19,23 @@
 # forecasts of its own to show), so TAUGHT and the model's state are the same
 # in every take and run forward from the film's drawn duel, as a returning
 # player's: the first-run coach and the
-# guide pill are done, so neither covers the keys or the well. Cast: Slow
-# Weather, the films' pad (shotgen.CAST). Each take logs what the app showed
-# (its faces, controls, hood and bank) for the drawing around it.
+# guide pill are done, so neither covers the keys or the well. Cast: Tidal,
+# from the shortlist's pads (shotgen.cast): its Bright is a filter that opens
+# from about 240 Hz to 580 Hz of spectral centroid with a 2-6 kHz share under
+# 4% at the top of its turn, where Slow Weather (the films' pad) reached
+# 2.4 kHz and 46%; the launch film's demos are heard alone, so they are cast
+# soft. Each take logs what the app showed (the sound's head, controls, hood,
+# faces and bank) for the drawing around it, so the drawn screen is the
+# take's sound.
 import json
 import os
 import sys
 
 FILM = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(FILM, "..", "..", "tools"))
-from shotgen import INIT as SEED_INIT, CAST, QUIET, WIRING, taught, dump  # noqa: E402
+from shotgen import INIT as SEED_INIT, QUIET, WIRING, cast, taught, dump  # noqa: E402
 
-SOUND = CAST["pad"]
+SOUND = cast("Tidal", Bright="both")
 tl = json.load(open(os.path.join(FILM, "timeline.json")))
 DEMO = {d["id"]: d for d in tl.get("demos", [])}
 LINE = {l["id"]: l for l in tl["lines"]}
@@ -68,6 +73,19 @@ def play_ms(demo_id):
 FACE_A = {"op": "log", "name": "face", "js": "document.querySelector('.pf-faces > .pf-face .face')?.src || ''"}
 HOOD = {"op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' | ')"}
 SUBS = {"op": "log", "name": "controls", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ': ' + k.querySelector('.pf-k-sub').textContent + (k.classList.contains('search') ? ' (search)' : '')).join(' | ')"}
+# The head and the controls as PERFORM drew them: name, family, blurb and
+# status; each control's name, ends, caption, search, the amber dot's place
+# (.pf-k-where's cx, cy) and the "vel" tick; the hood's rows with their fills.
+HEAD = {"op": "log", "name": "sound", "js": (
+    "JSON.stringify({ name: document.querySelector('.pf-name').textContent, cap: document.querySelector('.pf-cap').textContent, "
+    "blurb: document.querySelector('.pf-blurb').textContent, status: document.querySelector('.pf-status').textContent, "
+    "controls: [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => { const w = k.querySelector('.pf-k-where'); "
+    "return { name: k.querySelector('.pf-k-name').textContent, ends: k.querySelector('.pf-k-ends').textContent, sub: k.querySelector('.pf-k-sub').textContent, "
+    "search: k.classList.contains('search'), vel: k.classList.contains('vel'), "
+    "where: w && w.style.display !== 'none' ? [+w.getAttribute('cx'), +w.getAttribute('cy')] : null }; }), "
+    "hood: [...document.querySelectorAll('.pf-hood-row')].map((r) => [r.querySelector('.pf-hood-mod').textContent, "
+    "r.querySelector('.pf-hood-name').textContent.slice(r.querySelector('.pf-hood-mod').textContent.length).trim(), "
+    "r.querySelector('.pf-hood-val').textContent, parseFloat(r.querySelector('.pf-hood-fill').style.width) / 100 || 0]) })")}
 CHROME = {"op": "log", "name": "chrome", "js": (
     "JSON.stringify({ taught: document.getElementById('duel-count')?.textContent || '0', "
     "teach: document.getElementById('pt-teach')?.textContent || '', "
@@ -91,7 +109,7 @@ shots = []
 # under way when its demo's chord comes in. The glide is logged (`glide`).
 shots.append({
     "id": "l-play", "beat": "play", "pre": 1.0, "own_setup": True,
-    "setup": TAUGHT_SETUP + perform() + [SUBS, HOOD, FACE_A, CHROME],
+    "setup": TAUGHT_SETUP + perform() + [SUBS, HOOD, HEAD, FACE_A, CHROME],
     "marks": {"bright": BRIGHT, "wander": WANDER, "hood": ".pf-hood", "well": ".pf-well", "deck": ".pf-deck"},
     "actions": [
         {"at": demo_at("bright"), "op": "hold", "keys": CHORD, "ms": play_ms("bright")},
@@ -114,7 +132,7 @@ shots.append({
 # closes (TAKE_SETTLE_MS).
 shots.append({
     "id": "l-offer", "beat": "offer", "pre": 1.0, "own_setup": True,
-    "setup": TAUGHT_SETUP + perform() + [SUBS, HOOD, FACE_A, CHROME],
+    "setup": TAUGHT_SETUP + perform() + [SUBS, HOOD, HEAD, FACE_A, CHROME],
     "marks": {"offer": ".pf-pad.primary", "take": PAD("Take"), "pass": PAD("Pass"), "well": ".pf-well"},
     "actions": [
         {"at": "offer1:Press", "op": "click", "sel": ".pf-pad.primary"},
@@ -147,7 +165,7 @@ shots.append({
         {"op": "midi", "cc": 74, "values": [64, 72], "ms": 300},
         {"op": "log", "name": "cc", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
         QUIET,
-        SUBS, HOOD, FACE_A, CHROME,
+        SUBS, HOOD, HEAD, FACE_A, CHROME,
     ],
     "marks": {"patch": RAIL("patch"), "taste": RAIL("taste"), "learning": RAIL("learning"), "well": ".pf-well"},
     "actions": [
