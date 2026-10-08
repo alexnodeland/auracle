@@ -37,9 +37,10 @@ const CAP_Y = 968;
 export async function build(stage) {
   await Promise.all(["600 20px Jost", "600 20px 'IBM Plex Mono'"].map((f) => document.fonts.load(f)));
   const takes = await loadTakes(stage);
+  const giant = await (await fetch("giant_patch.json", { cache: "no-store" })).json();
   const beat = (id) => stage.tl.beats.find((b) => b.id === id);
   const line = (id) => stage.line(id);
-  const ctx = { stage, beat, line, takes };
+  const ctx = { stage, beat, line, takes, giant };
   sceneOpen(ctx);
   sceneTitle(ctx);
   sceneDuel(ctx);
@@ -190,27 +191,136 @@ function onFrame([z, fx, fy], x, y) {
 }
 
 // ---------------------------------------------------------------------------
-// OPEN — a sound; then the circuit it lives in: the modules to wire together,
-// where the feedback goes, and how each choice shapes the sound.
+// OPEN — a sound; then the circuit it lives in, and every circuit around it:
+// the modules to wire together, where the feedback goes, and how each choice
+// shapes the sound.
 
-// The circuit, as PATCH lays one out: an oscillator into a filter, a delay
-// and the output, its delay fed back into the filter's second input (a
-// cable that runs backwards, routed as PATCH routes one: out, down to a bus
-// under the plates, back, and up into the socket), and the sound at OUT.
-const OPEN_RACK = [
-  { name: "supersaw", x: 110, w: 300, knobs: 3, labels: ["detune", "mix", "oct"], values: ["60%", "55%", "0"] },
-  { name: "filter", kind: "ladder", x: 500, w: 300, knobs: 3, labels: ["cutoff", "res", "mod"], values: ["632 Hz", "Q 0.8", "50%"] },
-  { name: "delay", x: 890, w: 300, knobs: 3, labels: ["time", "feedback", "mix"], values: ["0.72 s", "35%", "35%"] },
-  { name: "env / out", x: 1280, w: 240, knobs: 2, labels: ["attack", "release"], values: ["1.45 s", "1.58 s"] },
-];
-const OPEN_Y = 420;
-const OPEN_H = 180;
-const OUT_SCREEN = { x: 1600, y: 400, w: 250, h: 220 };
+// The field: every preset the app ships, as PATCH describes and lays it out
+// (giant_patch.json, written by giant_patch.mjs from the engine's own rack
+// description: each module's kind, its knobs where the preset sets them, the
+// cables), packed in shelves around Dub Echo, a vco into a filter into a
+// delay that feeds its output back to its input. The opening starts inside
+// Dub Echo's OUT and pulls back until the whole library is in frame. They
+// are side by side, not one patch: a tree that large is over the grammar's
+// ceilings.
+const FIELD = { gapX: 220, gapY: 190, aspect: 16 / 9, center: "Dub Echo" };
 
-function sceneOpen({ stage, beat, line }) {
+function packField(racks) {
+  // Shelves as wide as makes the field the frame's shape.
+  FIELD.shelf = Math.sqrt(racks.reduce((a, r) => a + (r.w + FIELD.gapX) * (r.h + FIELD.gapY), 0) * FIELD.aspect) * 1.04;
+  const pack = (order) => {
+    const shelves = [];
+    let cur = null;
+    for (const r of order) {
+      if (!cur || (cur.items.length && cur.w + r.w > FIELD.shelf)) {
+        cur = { items: [], w: 0, h: 0 };
+        shelves.push(cur);
+      }
+      cur.items.push({ r, x: cur.w });
+      cur.w += r.w + FIELD.gapX;
+      cur.h = Math.max(cur.h, r.h);
+    }
+    const placed = [];
+    let y = 0;
+    for (const s of shelves) {
+      const off = (FIELD.shelf - (s.w - FIELD.gapX)) / 2;
+      for (const it of s.items) placed.push({ rack: it.r, x: off + it.x, y: y + (s.h - it.r.h) / 2 });
+      y += s.h + FIELD.gapY;
+    }
+    return { placed, w: FIELD.shelf, h: y - FIELD.gapY };
+  };
+  // Dub Echo goes where the rack nearest the field's middle would be.
+  let order = racks.slice();
+  for (let pass = 0; pass < 3; pass++) {
+    const { placed, w, h } = pack(order);
+    const mid = (p) => Math.hypot(p.x + p.rack.w / 2 - w / 2, p.y + p.rack.h / 2 - h / 2);
+    const near = placed.reduce((a, p) => (mid(p) < mid(a) ? p : a)).rack;
+    const c = order.find((r) => r.name === FIELD.center);
+    if (near === c) break;
+    order = order.filter((r) => r !== c);
+    order.splice(order.indexOf(near), 0, c);
+  }
+  return pack(order);
+}
+
+/** The opening's field, its knobs and its camera, the same for the open and
+ *  for the title (whose cloud rises from those knobs). */
+let OPEN_FIELD = null;
+function openField(stage, giant) {
+  if (OPEN_FIELD) return OPEN_FIELD;
+  const { placed, w: FW, h: FH } = packField(giant.racks);
+  const center = placed.find((p) => p.rack.name === FIELD.center);
+  const R = rng(23);
+  const knobs = [];
+  const T = (spec) => at(stage, stage.tl.beats.find((x) => x.id === "open"), spec);
+  const l2 = stage.line("open2");
+  const cRack = { x: center.x + center.rack.w / 2, y: center.y + center.rack.h / 2 };
+  const maxD = Math.max(...placed.map((p) => Math.hypot(p.x + p.rack.w / 2 - cRack.x, p.y + p.rack.h / 2 - cRack.y)));
+  const tChoice = T("open2:choice");
+  const tLift = stage.tl.beats.find((x) => x.id === "title").t0 - 0.8;
+  placed.forEach((p, ri) => {
+    const d = Math.hypot(p.x + p.rack.w / 2 - cRack.x, p.y + p.rack.h / 2 - cRack.y) / maxD;
+    p.dist = d;
+    p.rack.modules.forEach((m, mi) => {
+      m.knobs.forEach(([label, v], ki) => {
+        const n = m.knobs.length;
+        const kx = p.x + m.x + (m.w * (ki + 1)) / (n + 1);
+        const ky = p.y + m.y + m.h * 0.5;
+        const turns = R() < 0.6;
+        const dir = R() < 0.5 ? -1 : 1;
+        knobs.push({
+          ri, mi, ki, label, v, x: kx, y: ky,
+          // How each choice shapes the sound: a wave of turns from Dub Echo
+          // outward, as many hands at once.
+          turnAt: turns ? tChoice - 0.25 + 1.3 * d + 0.5 * R() : null,
+          turnBy: dir * (0.12 + 0.22 * R()) * (v + dir * 0.3 > 1 || v + dir * 0.3 < 0 ? -1 : 1),
+          // When its dot lifts off, into the title.
+          lift: tLift + 0.75 * R(),
+          spin: (R() - 0.5) * 1.6,
+          size: 1 + R() * 2.4,
+        });
+      });
+    });
+  });
+  // The camera: inside Dub Echo's OUT, then back to Dub Echo, then out over
+  // the field as the line names what a circuit holds. [t, log zoom, fx, fy].
+  const sc = center.rack.scope;
+  const S0 = { x: center.x + sc.x, y: center.y + sc.y, w: sc.w, h: sc.h };
+  const z0 = Math.max(1920 / S0.w, 1080 / S0.h) * 1.04;
+  // The field fills the frame and runs off its edges: more than one screen holds.
+  const zEnd = Math.max(1920 / FW, 1080 / FH) * 1.12;
+  const fc = { x: FW / 2, y: FH / 2 };
+  const via = (u) => [lerp(cRack.x, fc.x, u), lerp(cRack.y, fc.y, u)];
+  const pull0 = l2.t0 - 0.6;
+  const K = [
+    [pull0, Math.log(z0), S0.x + S0.w / 2, S0.y + S0.h / 2],
+    [T("open2:circuit") + 0.5, Math.log(1920 / (center.rack.w + 420)), cRack.x, cRack.y],
+    [T("open2:together") + 0.6, Math.log(0.42), ...via(0.35)],
+    [T("open2:goes") + 0.5, Math.log(0.26), ...via(0.7)],
+    [T("open2:sound") + 0.3, Math.log(zEnd), fc.x, fc.y],
+  ];
+  const cam = (t) => {
+    if (t <= K[0][0]) return { s: z0, fx: K[0][2], fy: K[0][3] };
+    for (let i = 1; i < K.length; i++) {
+      if (t <= K[i][0]) {
+        const u = ramp(t, K[i - 1][0], K[i][0], i === 1 ? E.io4 : E.io3);
+        return { s: Math.exp(lerp(K[i - 1][1], K[i][1], u)), fx: lerp(K[i - 1][2], K[i][2], u), fy: lerp(K[i - 1][3], K[i][3], u) };
+      }
+    }
+    const k = K[K.length - 1];
+    return { s: Math.exp(k[1]), fx: k[2], fy: k[3] };
+  };
+  const toFrame = (c, x, y) => [960 + c.s * (x - c.fx), 540 + c.s * (y - c.fy)];
+  const valueAt = (k, t) => (k.turnAt == null ? k.v : clamp(k.v + k.turnBy * ramp(t, k.turnAt, k.turnAt + 0.7, E.io3)));
+  OPEN_FIELD = { placed, FW, FH, center, knobs, S0, z0, cam, toFrame, valueAt, T, pull0, end: K[K.length - 1][0] };
+  return OPEN_FIELD;
+}
+
+function sceneOpen({ stage, beat, line, giant }) {
   const b = beat("open");
   const l1 = line("open1");
   const l2 = line("open2");
+  const OF = openField(stage, giant);
   stage.scene({
     id: "open",
     t0: b.t0,
@@ -218,47 +328,81 @@ function sceneOpen({ stage, beat, line }) {
     post: 1.0,
     fout: 1.0,
     build(layer) {
-      const world = el("div", { class: "layer" }, layer);
-      world.style.transformOrigin = "0 0";
-      const ground = place(el("div", {}, world), { x: 0, y: 0, w: 1920, h: 1080 });
-      ground.style.background = `radial-gradient(60% 55% at 55% 45%, ${inkA("--white", 0.035)}, transparent 70%), linear-gradient(180deg, ${ink("--panel-lo")}, ${ink("--rack")})`;
-      const under = el("div", { class: "layer" }, world);
-      const svg = svgLayer(world);
-      for (let x = 12; x < 1920; x += 24) for (let y = 12; y < 1080; y += 24) el("circle", { cx: x, cy: y, r: 1.05, fill: inkA("--white", 0.025) }, svg);
-      const plates = OPEN_RACK.map((m, i) => plate(under, svg, { x: m.x, y: OPEN_Y, w: m.w, h: OPEN_H, name: m.name, kind: m.kind || "", knobs: m.knobs, labels: m.labels, values: m.values, seed: 40 + i }));
-      // OUT: its jack, and the scope the sound draws on.
-      const S0 = OUT_SCREEN;
-      say(svg, 1560, OPEN_Y + OPEN_H / 2 - 22, "out", { size: 22, weight: 500, anchor: "middle", fill: ink("--silk-dim") });
-      const outJack = [1560, OPEN_Y + OPEN_H / 2];
-      el("circle", { cx: outJack[0], cy: outJack[1], r: 9, fill: ink("--bezel"), stroke: ink("--phos-a"), "stroke-width": 2 }, svg);
-      const scr = place(el("div", { class: "screen" }, under), S0);
-      void scr;
-      // The cables: the chain, then the delay's feedback into the filter.
-      const chain = [
-        cable(svg, { p0: plates[0].out, p1: plates[1].in, sag: 8, width: 4 }),
-        cable(svg, { p0: plates[1].out, p1: plates[2].in, sag: 8, width: 4 }),
-        cable(svg, { p0: plates[2].out, p1: plates[3].in, sag: 8, width: 4 }),
-        cable(svg, { p0: plates[3].out, p1: outJack, sag: 4, width: 4 }),
-      ];
-      const fbIn = [plates[1].in[0], OPEN_Y + OPEN_H * 0.8];
-      el("circle", { cx: fbIn[0], cy: fbIn[1], r: 8, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 2 }, svg);
-      const fbOut = [plates[2].out[0], OPEN_Y + OPEN_H * 0.8];
-      el("circle", { cx: fbOut[0], cy: fbOut[1], r: 8, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 2 }, svg);
-      const bus = OPEN_Y + OPEN_H + 46;
-      const fbD = `M${fbOut[0]} ${fbOut[1]} H${fbOut[0] + 26} V${bus} H${fbIn[0] - 26} V${fbIn[1]} H${fbIn[0]}`;
-      const fbG = el("g", {}, svg);
-      fbG.style.filter = `drop-shadow(1px 3px 3px ${inkA("--black", 0.55)})`;
-      const fbCase = el("path", { d: fbD, fill: "none", stroke: inkA("--black", 0.5), "stroke-width": 9.6, "stroke-linejoin": "round" }, fbG);
-      const fbLine = el("path", { d: fbD, fill: "none", stroke: inkA("--phos-a", 0.82), "stroke-width": 4, "stroke-linejoin": "round" }, fbG);
-      const fbLen = fbLine.getTotalLength();
-      for (const p of [fbCase, fbLine]) p.setAttribute("stroke-dasharray", `${fbLen} ${fbLen}`);
-      const fbPulse = el("path", { d: fbD, fill: "none", stroke: ink("--phos-a-pulse"), "stroke-width": 2, "stroke-dasharray": `26 ${fbLen}`, opacity: 0 }, fbG);
-      const fbTag = say(svg, (fbIn[0] + fbOut[0]) / 2, bus + 34, "delay → filter · feedback", { size: 20, mono: true, anchor: "middle", fill: ink("--silk-dim") });
+      const { placed, FW, FH, center, knobs, S0, z0, cam, valueAt, T, pull0 } = OF;
+      const world = el("div", {}, layer);
+      Object.assign(world.style, { position: "absolute", left: "0px", top: "0px", width: `${FW}px`, height: `${FH}px`, transformOrigin: "0 0" });
+      const back = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
+      back.style.background = `radial-gradient(60% 55% at 50% 45%, ${inkA("--white", 0.035)}, transparent 70%), linear-gradient(180deg, ${ink("--panel-lo")}, ${ink("--rack")})`;
+      layer.insertBefore(back, world);
+      const under = el("div", {}, world);
+      Object.assign(under.style, { position: "absolute", left: "0px", top: "0px", width: `${FW}px`, height: `${FH}px` });
+      const svg = el("svg", { width: FW, height: FH, viewBox: `0 0 ${FW} ${FH}` }, world);
+      Object.assign(svg.style, { position: "absolute", left: "0px", top: "0px", overflow: "visible" });
+      const cableG = el("g", {}, svg);
+      const knobG = el("g", {}, svg);
+
+      // Every rack: its plates, its cables, its OUT and the scope there.
+      const racks = placed.map((p, ri) => {
+        const isCenter = p === center;
+        const plates = p.rack.modules.map((m, mi) => {
+          const pl = plate(under, knobG, {
+            x: p.x + m.x, y: p.y + m.y, w: m.w, h: m.h, name: m.title, kind: m.kind, knobs: m.knobs.length,
+            labels: m.knobs.map(([l]) => l), color: m.mod ? "b" : "a", seed: 40 + ri * 7 + mi,
+          });
+          pl.knobs.forEach((k, ki) => k.k.set(m.knobs[ki][1], { lit: 0.8, glowOn: false }));
+          return pl;
+        });
+        const cab = p.rack.wires.map(([from, to, kind]) => {
+          const a = plates[from];
+          const m = p.rack.modules[to];
+          const p1 = kind === "mod" ? [p.x + m.x + m.w / 2, p.y + m.y + m.h] : plates[to].in;
+          return { c: cable(cableG, { p0: a.out, p1, sag: kind === "mod" ? 24 : 8, width: 4, color: kind === "mod" ? "b" : "a" }), kind };
+        });
+        const amp = plates[p.rack.modules.findIndex((m) => m.title === "env / out")] || plates[0];
+        const outJack = [p.x + p.rack.out.x, p.y + p.rack.out.y];
+        cab.push({ c: cable(cableG, { p0: amp.out, p1: outJack, sag: 4, width: 4 }), kind: "out" });
+        // Wired in signal order: from the leftmost source to OUT.
+        cab.forEach((c, i) => (c.x = i < p.rack.wires.length ? plates[p.rack.wires[i][0]].out[0] : Infinity));
+        cab.slice().sort((a, b2) => a.x - b2.x).forEach((c, i) => (c.step = i));
+        const sc = p.rack.scope;
+        const scr = place(el("div", { class: "screen" }, under), { x: p.x + sc.x, y: p.y + sc.y, w: sc.w, h: sc.h });
+        void scr;
+        say(knobG, outJack[0], outJack[1] - 22, "out", { size: 22, weight: 500, anchor: "middle", fill: ink("--silk-dim") });
+        const tr = isCenter ? null : scope(knobG, { x: p.x + sc.x + 10, y: p.y + sc.y + 14, w: sc.w - 20, h: sc.h - 28, width: 5, points: 120, glow: false, wave: voiceWave({ f: 1.6 + (ri % 5) * 0.4, bright: 0.25 + (ri % 3) * 0.2, seed: 60 + ri }) });
+        // A delay, a phaser or a flanger feeds its output back to its input:
+        // drawn as PATCH draws a cable that runs backwards (out, down to a bus
+        // under the plate, back, and up into the socket).
+        const loops = p.rack.modules.flatMap((m, mi) => {
+          if (!m.fb) return [];
+          const pl = plates[mi];
+          const [ox, oy] = pl.out;
+          const [ix, iy] = pl.in;
+          const bus = p.y + m.y + m.h + 36;
+          const d = `M${ox} ${oy} H${ox + 28} V${bus} H${ix - 28} V${iy} H${ix}`;
+          const g = el("g", {}, cableG);
+          const casing = el("path", { d, fill: "none", stroke: inkA("--black", 0.5), "stroke-width": 9.6, "stroke-linejoin": "round" }, g);
+          const ln = el("path", { d, fill: "none", stroke: inkA("--phos-a", 0.82), "stroke-width": 6, "stroke-linejoin": "round" }, g);
+          const len = ln.getTotalLength();
+          for (const q of [casing, ln]) q.setAttribute("stroke-dasharray", `${len} ${len}`);
+          const pulse = el("path", { d, fill: "none", stroke: ink("--phos-a-pulse"), "stroke-width": 4, "stroke-dasharray": `60 ${len}`, opacity: 0 }, g);
+          const tag = say(cableG, (ox + ix) / 2, bus + 44, `${m.title} · feedback`, { size: 34, mono: true, anchor: "middle", fill: ink("--silk-dim") });
+          return [{ g, casing, ln, pulse, len, tag, knob: pl.knobs[m.knobs.findIndex(([l]) => l === "feedback")] }];
+        });
+        return { p, plates, cab, tr, loops, isCenter, outJack };
+      });
+      const C = racks.find((r) => r.isCenter);
+      const lit = new Map();
+      knobs.forEach((k) => lit.set(k, racks[k.ri].plates[k.mi].knobs[k.ki]));
       const ptr = pointer(svg);
 
-      // The sound at OUT, on its scope: drawn in screen space, so the trace
-      // keeps its width however far the camera is from it.
+      // The sound at Dub Echo's OUT, on its scope: drawn in screen space, so
+      // the trace keeps its width however far the camera is from it.
       const top = svgLayer(layer);
+      // A knob being turned lights where it is, in screen space, so a turn
+      // reads at any distance.
+      const sparkG = el("g", {}, top);
+      sparkG.style.filter = GLOW.a;
+      const sparks = knobs.filter((k) => k.turnAt != null).map((k) => ({ k, c: el("circle", { r: 0, fill: "none", stroke: ink("--phos-a"), "stroke-width": 2, opacity: 0 }, sparkG) }));
       const trace = scope(top, { x: 0, y: 0, w: 1920, h: 1080, width: 4, points: 520, wave: voiceWave({ f: 2.2, bright: 0.45, seed: 5 }) });
       // Until the pull-back the scope draws the bed we hear (ADR-012): its
       // drone's F2 and C3 (sound.json key.pedal, 2:3), and from Bloom on its
@@ -283,75 +427,123 @@ function sceneOpen({ stage, beat, line }) {
       const t2 = textBlock(layer, { x: 960, y: 900, w: 1720, cls: "voice", size: 52, align: "center", ax: 0.5, ay: 0.5 });
       const w2 = words(t2, "Finding it means knowing your circuit: which *modules* to wire together, where the _feedback_ goes, and how each choice *shapes the sound*.");
 
-      // The camera: inside the scope at OUT, pulling back to the rack as the
-      // second line begins. The sound fades as the patch comes apart, and
-      // comes back as it is wired again.
-      const sc = { cx: S0.x + S0.w / 2, cy: S0.y + S0.h / 2 };
-      const z0 = Math.max(1920 / S0.w, 1080 / S0.h) * 1.04;
-      const T = (spec) => at(stage, b, spec);
-      const pull0 = l2.t0 - 0.6;
-      const pull1 = pull0 + 2.6;
+      // The words' moments.
       const tWire = [T("open2:modules"), T("open2:wire"), T("open2:together"), T("open2:together") + 0.55];
+      const tWave = T("open2:wire");
       const tFb = T("open2:feedback") - 0.2;
       const tChoice = T("open2:choice") - 0.1;
       const tShapes = T("open2:shapes") - 0.1;
+      // Dub Echo's own turns: the filter's cutoff on "choice", the delay's
+      // feedback on "shapes".
+      const cutK = C.plates[2].knobs[0];
+      const fbK = C.loops[0]?.knob;
       return (tl, t) => {
-        const u = ramp(t, pull0, pull1, E.io4);
-        const s = Math.exp(lerp(Math.log(z0), 0, u));
-        const fx = lerp(sc.cx, 960, u);
-        const fy = lerp(sc.cy, 540, u);
-        world.style.transform = `translate(${960 - s * fx}px, ${540 - s * fy}px) scale(${s})`;
-        // Where the scope sits on the frame now.
-        const sx = 960 + s * (S0.x - fx);
-        const sy = 540 + s * (S0.y - fy);
-        const sw = s * S0.w;
-        const sh = s * S0.h;
-        // The cables, one by one under the words, each plugged by the hand.
+        const c = cam(t);
+        world.style.transform = `translate(${960 - c.s * c.fx}px, ${540 - c.s * c.fy}px) scale(${c.s})`;
+        // Where Dub Echo's scope sits on the frame now.
+        const sx = 960 + c.s * (S0.x - c.fx);
+        const sy = 540 + c.s * (S0.y - c.fy);
+        const sw = c.s * S0.w;
+        const sh = c.s * S0.h;
+        const u = clamp(Math.log(z0 / c.s) / Math.log(z0));
+        // Dub Echo wired cable by cable, by the hand; every other circuit
+        // wires itself in a wave outward from it.
         const draws = tWire.map((a) => ramp(t, a - 0.35, a + 0.25, E.io2));
-        chain.forEach((c, i) => c.update(t, { draw: draws[i], flow: ramp(t, tWire[i] + 0.25, tWire[i] + 0.8) }));
-        plates.forEach((p, i) => (p.opacity = ramp(t, pull0 + 0.6 + i * 0.15, pull0 + 1.2 + i * 0.15)));
-        const fb = ramp(t, tFb, tFb + 0.9, E.io2);
-        const off = fbLen * (1 - fb);
-        fbCase.setAttribute("stroke-dashoffset", off);
-        fbLine.setAttribute("stroke-dashoffset", off);
-        fbPulse.setAttribute("opacity", fb >= 1 ? 0.85 : 0);
-        fbPulse.setAttribute("stroke-dashoffset", -((t * 380) % (fbLen + 26)) + 26);
-        fbTag.setAttribute("opacity", ramp(t, tFb + 0.6, tFb + 1.0));
-        // Each choice shapes the sound: the filter opens, the feedback rises.
+        for (const r of racks) {
+          const near = r.p.dist;
+          const show = r.isCenter ? ramp(t, pull0 + 0.6, pull0 + 1.2) : ramp(t, tWave - 0.9 + 1.6 * near, tWave - 0.3 + 1.6 * near);
+          r.plates.forEach((pl) => (pl.opacity = show));
+          r.cab.forEach(({ c: cb, step }) => {
+            const dr = r.isCenter ? draws[Math.min(step, 3)] : ramp(t, tWave + 1.5 * near + step * 0.12, tWave + 0.5 + 1.5 * near + step * 0.12, E.io2);
+            cb.update(t, { draw: dr, flow: r.isCenter ? ramp(t, tWire[Math.min(step, 3)] + 0.25, tWire[Math.min(step, 3)] + 0.8) : 0, opacity: show });
+          });
+          // Where the feedback goes: Dub Echo's delay first, then every loop in the field.
+          r.loops.forEach((lp, li) => {
+            const a = r.isCenter ? tFb : tFb + 0.35 + 0.9 * near + li * 0.1;
+            const f = ramp(t, a, a + 0.9, E.io2);
+            const off = lp.len * (1 - f);
+            lp.casing.setAttribute("stroke-dashoffset", off);
+            lp.ln.setAttribute("stroke-dashoffset", off);
+            lp.g.style.opacity = show;
+            lp.g.style.filter = f > 0 && t < a + 3.4 ? GLOW.a : "none";
+            lp.pulse.setAttribute("opacity", f >= 1 ? 0.9 : 0);
+            lp.pulse.setAttribute("stroke-dashoffset", -((t * 520) % (lp.len + 30)) + 30);
+            lp.tag.setAttribute("opacity", ramp(t, a + 0.6, a + 1.0) * show);
+          });
+          if (r.tr) {
+            const turned = r.plates.reduce((n, pl) => n + pl.knobs.length, 0);
+            void turned;
+            r.tr.g.style.opacity = show;
+          }
+        }
+        // How each choice shapes the sound: knobs turn all over the field;
+        // a knob whose dot has lifted off for the title dims.
+        const racksTurn = new Map();
+        for (const k of knobs) {
+          const kk = lit.get(k);
+          const v = valueAt(k, t);
+          const turning = k.turnAt != null && t >= k.turnAt && t < k.turnAt + 0.8;
+          const gone = ramp(t, k.lift, k.lift + 0.3);
+          if (k.turnAt != null && t >= k.turnAt - 0.05) racksTurn.set(k.ri, Math.max(racksTurn.get(k.ri) || 0, ramp(t, k.turnAt, k.turnAt + 0.7)));
+          kk.k.set(v, { lit: 0.8 * (1 - 0.7 * gone) + (turning ? 0.2 : 0), glowOn: turning });
+        }
+        for (const sp of sparks) {
+          const e = fade(t, sp.k.turnAt, sp.k.turnAt + 0.15, sp.k.turnAt + 0.6, sp.k.turnAt + 1.1);
+          if (e <= 0) {
+            if (sp.on) sp.c.setAttribute("opacity", 0);
+            sp.on = false;
+            continue;
+          }
+          sp.on = true;
+          const [x, y] = OF.toFrame(c, sp.k.x, sp.k.y);
+          sp.c.setAttribute("cx", x.toFixed(1));
+          sp.c.setAttribute("cy", y.toFixed(1));
+          sp.c.setAttribute("r", (Math.max(3, 24 * c.s) * (0.8 + 0.4 * e)).toFixed(1));
+          sp.c.setAttribute("opacity", (0.9 * e).toFixed(3));
+        }
+        racks.forEach((r, ri) => {
+          if (!r.tr) return;
+          const ch = racksTurn.get(ri) || 0;
+          r.tr.wave = voiceWave({ f: 1.6 + (ri % 5) * 0.4 + 0.6 * ch, bright: 0.25 + (ri % 3) * 0.2 + 0.3 * ch, detune: 0.012 + 0.02 * ch, seed: 60 + ri });
+          r.tr.update(t, { amp: 0.6, ox: t * 0.12 });
+        });
+        // Dub Echo's choices.
         const c1 = ramp(t, tChoice, tChoice + 0.9, E.io3);
         const c2 = ramp(t, tShapes, tShapes + 0.9, E.io3);
-        plates[1].knobs[0].k.set(0.4 + 0.35 * c1, { glowOn: c1 > 0 && c1 < 1 });
-        plates[1].knobs[0].lbl[0].textContent = c1 > 0.5 ? "2.4 kHz" : "632 Hz";
-        plates[2].knobs[1].k.set(0.35 + 0.3 * c2, { glowOn: c2 > 0 && c2 < 1 });
-        plates[2].knobs[1].lbl[0].textContent = c2 > 0.5 ? "62%" : "35%";
-        // The sound at OUT: playing, then silent while the patch is apart,
-        // then back once OUT is wired, and changed by every choice.
+        cutK.k.set(clamp(0.5 + 0.3 * c1), { glowOn: c1 > 0 && c1 < 1 });
+        if (fbK) fbK.k.set(clamp(0.75 - 0.35 * c2), { glowOn: c2 > 0 && c2 < 1 });
+        const fb = C.loops.length ? ramp(t, tFb, tFb + 0.9, E.io2) : 0;
+        // The sound at OUT: the bed, then silent while the patch is apart,
+        // back once OUT is wired, and changed by every choice.
         const live = Math.max(1 - ramp(t, pull0 + 0.3, pull0 + 1.0), draws[3]);
         const opening = t < pull0 + 0.3;
-        if (opening) {
-          trace.wave = bedWave(ramp(t, te, te + 1.5));
-        } else trace.wave = voiceWave({ f: 2.2 + 0.8 * fb, bright: 0.25 + 0.3 * fb + 0.35 * c1 + 0.1 * c2, detune: 0.012 + 0.03 * c2, seed: 5 });
+        if (opening) trace.wave = bedWave(ramp(t, te, te + 1.5));
+        else trace.wave = voiceWave({ f: 2.2 + 0.8 * fb, bright: 0.25 + 0.3 * fb + 0.35 * c1 + 0.1 * c2, detune: 0.012 + 0.03 * c2, seed: 5 });
         const level = opening ? clamp(0.12 + 0.88 * Math.sqrt(clamp(envAt(t) / envPeak))) : 1;
-        trace.path.setAttribute("stroke-width", lerp(4, 2.2, u));
+        trace.path.setAttribute("stroke-width", lerp(4, 1.6, u));
+        trace.g.style.opacity = 1 - ramp(t, T("open2:sound") + 0.6, T("open2:sound") + 1.4);
         trace.update(t, { draw: 1, amp: 0.55 * level * live, ox: t * 0.12, rect: { x: sx + sw * 0.05, y: sy + sh * 0.12, w: sw * 0.9, h: sh * 0.76 } });
-        // The hand plugs each cable.
+        // The hand plugs Dub Echo's cables and its feedback, then leaves the
+        // field to turn its own knobs.
         const leg = (i) => {
-          const c = [plates[0], plates[1], plates[2], plates[3]][i].out;
-          const d = i < 3 ? [plates[i + 1].in[0], plates[i + 1].in[1]] : outJack;
-          return [[tWire[i] - 0.4, c[0], c[1]], [tWire[i] + 0.25, d[0], d[1]]];
+          const a = C.cab[i].c;
+          void a;
+          const from = i < 3 ? C.plates[3 - i].out : C.plates[0].out;
+          const to = i < 3 ? C.plates[2 - i].in : C.outJack;
+          return [[tWire[i] - 0.4, from[0], from[1]], [tWire[i] + 0.25, to[0], to[1]]];
         };
-        const path = [[tWire[0] - 1.2, 300, 1150], ...[0, 1, 2, 3].flatMap(leg), [tFb - 0.1, fbOut[0], fbOut[1]], [tFb + 0.9, fbIn[0], fbIn[1]],
-          [tChoice - 0.05, plates[1].knobs[0].cx + 6, plates[1].knobs[0].cy + 10], [tChoice + 0.9, plates[1].knobs[0].cx + 6, plates[1].knobs[0].cy - 20],
-          [tShapes - 0.05, plates[2].knobs[1].cx + 6, plates[2].knobs[1].cy + 10], [tShapes + 0.9, plates[2].knobs[1].cx + 6, plates[2].knobs[1].cy - 20],
-          [tShapes + 2.0, plates[2].knobs[1].cx + 120, plates[2].knobs[1].cy + 160]];
+        const lp = C.loops[0];
+        const fbPath = lp ? [[tFb - 0.1, ...C.plates[1].out], [tFb + 0.9, ...C.plates[1].in]] : [];
+        const path = [[tWire[0] - 1.2, C.plates[3].out[0] - 200, C.plates[3].out[1] + 500], ...[0, 1, 2, 3].flatMap(leg), ...fbPath,
+          [tFb + 2.0, C.plates[1].in[0] - 300, C.plates[1].in[1] + 600]];
         const p = glide(t, path);
-        const held = draws.some((d) => d > 0 && d < 1) || (fb > 0 && fb < 1) || (c1 > 0 && c1 < 1) || (c2 > 0 && c2 < 1);
-        ptr.update({ x: p.x, y: p.y, o: fade(t, tWire[0] - 1.2, tWire[0] - 0.7, tShapes + 1.4, tShapes + 2.0), click: held ? 0.1 : null, scale: 1.1 });
+        const held = draws.some((d) => d > 0 && d < 1) || (fb > 0 && fb < 1);
+        ptr.update({ x: p.x, y: p.y, o: fade(t, tWire[0] - 1.2, tWire[0] - 0.7, tFb + 1.0, tFb + 1.6), click: held ? 0.1 : null, scale: 1.1 / Math.max(0.4, c.s) });
         // The words.
         t1.style.opacity = fade(t, l1.t0 - 0.3, l1.t0 + 0.2, pull0 - 0.3, pull0 + 0.3);
         reveal(w1, t, l1.t0, l1.t1);
-        shade.style.opacity = ramp(t, pull0 + 0.8, pull1);
-        t2.style.opacity = ramp(t, l2.t0 - 0.2, l2.t0 + 0.3);
+        shade.style.opacity = ramp(t, pull0 + 0.8, pull0 + 2.4);
+        t2.style.opacity = fade(t, l2.t0 - 0.2, l2.t0 + 0.3, l2.t1 + 0.3, l2.t1 + 0.9);
         reveal(w2, t, l2.t0, l2.t1);
         void tl;
       };
@@ -360,11 +552,13 @@ function sceneOpen({ stage, beat, line }) {
 }
 
 // ---------------------------------------------------------------------------
-// TITLE — a posterior contracting onto one taste is the mark.
+// TITLE — the field's knobs lift off as a cloud, and the cloud contracts into
+// the mark: read inward, the mark is a posterior contracting onto one taste.
 
-function sceneTitle({ stage, beat, line }) {
+function sceneTitle({ stage, beat, line, giant }) {
   const b = beat("title");
   const l = line("title1");
+  const OF = openField(stage, giant);
   stage.scene({
     id: "title",
     t0: b.t0,
@@ -374,24 +568,19 @@ function sceneTitle({ stage, beat, line }) {
     fout: 0.6,
     build(layer) {
       const svg = svgLayer(layer);
-      const R = rng(11);
-      const N = 420;
+      const M = { cx: 960, cy: 470, size: 300 };
+      // One dot for every knob in frame when the field stops, starting on it.
+      const c = OF.cam(OF.end + 1);
+      const parts = [];
       const cloudG = el("g", {}, svg);
       cloudG.style.filter = GLOW.b;
-      const parts = [];
-      for (let i = 0; i < N; i++) {
-        const ang = R() * Math.PI * 2;
-        const rad = 180 + Math.pow(R(), 0.6) * 900;
-        parts.push({
-          a0: ang,
-          r0: rad,
-          spin: (R() - 0.5) * 1.6,
-          s: 1 + R() * 2.6,
-          d: R() * 0.35,
-          c: el("circle", { r: 2, fill: ink("--phos-b") }, cloudG),
-        });
+      for (const k of OF.knobs) {
+        const [x, y] = OF.toFrame(c, k.x, k.y);
+        if (x < -10 || x > 1930 || y < -10 || y > 1090) continue;
+        const dx = x - M.cx;
+        const dy = (y - M.cy) / 0.82;
+        parts.push({ k, r0: Math.hypot(dx, dy), a0: Math.atan2(dy, dx), lift: k.lift - b.t0, c: el("circle", { r: 0, fill: ink("--phos-b"), opacity: 0 }, cloudG) });
       }
-      const M = { cx: 960, cy: 470, size: 300 };
       const mk = mark(svg, M);
       const lock = place(el("div", { class: "lk" }, layer), { x: 0, y: 0 });
       lock.style.fontSize = "var(--t-frame-14)";
@@ -414,18 +603,19 @@ function sceneTitle({ stage, beat, line }) {
       const wmX = left + markPx + gap;
 
       return (tl) => {
-        const c0 = -0.8;
         const c1 = 1.9;
-        const u = ramp(tl, c0, c1, E.io3);
         for (const p of parts) {
-          const uu = clamp((u - p.d) / (1 - p.d));
+          // It lifts off its knob, glows, and is drawn into the swirl.
+          const on = ramp(tl, p.lift, p.lift + 0.3);
+          const uu = ramp(tl, p.lift + 0.2, c1 - 0.1 + 0.25 * (p.lift + 0.8), E.lin);
           const e = E.io3(uu);
           const r = lerp(p.r0, 0, e);
-          const a = p.a0 + p.spin * (1 - e) * 2 + e * 1.2;
-          p.c.setAttribute("cx", M.cx + r * Math.cos(a));
-          p.c.setAttribute("cy", M.cy + r * Math.sin(a) * 0.82);
-          p.c.setAttribute("r", (p.s * (1 - 0.6 * e)).toFixed(2));
-          p.c.setAttribute("opacity", (fade(tl, c0, c0 + 0.6) * (1 - ramp(uu, 0.82, 1, E.lin))).toFixed(3));
+          const a = p.a0 + e * (1.2 + 2 * p.k.spin);
+          const rise = 14 * on * (1 - e);
+          p.c.setAttribute("cx", (M.cx + r * Math.cos(a)).toFixed(1));
+          p.c.setAttribute("cy", (M.cy + r * Math.sin(a) * 0.82 - rise).toFixed(1));
+          p.c.setAttribute("r", (p.k.size * (0.5 + 0.5 * on) * (1 - 0.6 * e)).toFixed(2));
+          p.c.setAttribute("opacity", (on * (1 - ramp(uu, 0.82, 1, E.lin))).toFixed(3));
         }
         // The mark assembles: core, then inner ring, outer ring, tile.
         const core = E.outBack(ramp(tl, c1 - 0.45, c1 + 0.2, E.lin));
@@ -447,8 +637,8 @@ function sceneTitle({ stage, beat, line }) {
         desc.style.opacity = ramp(tl, c1 + 2.3, c1 + 3.0, E.io2);
         desc.style.letterSpacing = `${lerp(0.4, 0.26, ramp(tl, c1 + 2.3, c1 + 3.2, E.out4))}em`;
         place(desc, { y: 700 });
-        // A slow push-in over the whole scene.
-        layer.style.transform = `scale(${lerp(1.0, 1.035, ramp(tl, 0, b.t1 - b.t0, E.lin))})`;
+        // A slow push-in once the mark is made.
+        layer.style.transform = `scale(${lerp(1.0, 1.035, ramp(tl, c1, b.t1 - b.t0, E.lin))})`;
         layer.style.transformOrigin = "50% 50%";
         void l;
       };
