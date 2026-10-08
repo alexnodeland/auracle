@@ -161,6 +161,7 @@
       ],
       "marks": {"patch": ".rail-stop[data-level='patch']", "taste": ".rail-stop[data-level='taste']", "learning": ".rail-stop[data-level='learning']", "well": ".pf-well"},
       "actions": [
+        {"at": "depth1-0.4", "op": "hold", "keys": ["a", "d", "g"], "ms": 14675},
         {"at": "depth1:Open", "op": "click", "sel": ".rail-stop[data-level='patch']"},
         {"at": "depth1:Open+1.2", "op": "log", "name": "face", "js": "document.querySelector('#out-face .face')?.src || ''"},
         {"at": "depth1:Open+1.2", "op": "mark", "name": "filter", "sel": "#rack-svg g[data-mid]:has(text:text-is('filter'))"},

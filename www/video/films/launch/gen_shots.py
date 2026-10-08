@@ -158,7 +158,9 @@ shots.append({
 # toast gone before the shot); in PATCH its turns move the cutoff's amber
 # reading and ghost. Under depth2, out to TASTE (the sound's mark on the
 # map), then LEARNING (its forecasts, from the session's picks). Seen, not
-# heard: no notes.
+# heard: a chord is held so the face answers, but the film plays none of it.
+BEAT = {x["id"]: x for x in tl["beats"]}
+DEPTH_HOLD_MS = int(round((BEAT["depth"]["t1"] - LINE["depth1"]["t0"] + 0.4) * 1000))
 shots.append({
     "id": "l-circuit", "beat": "depth", "pre": 1.0, "own_setup": True,
     "setup": TAUGHT_SETUP + [{"op": "midi", "device": "MIDI keyboard"}] + perform() + [
@@ -169,6 +171,11 @@ shots.append({
     ],
     "marks": {"patch": RAIL("patch"), "taste": RAIL("taste"), "learning": RAIL("learning"), "well": ".pf-well"},
     "actions": [
+        # A chord held through the beat, so the face (live at every level
+        # since #379) answers the sound as it flies from level to level and
+        # as Bright turns the cutoff. The film does not hear it: a take is
+        # heard only in its demos (app_audio.py --demos).
+        {"at": "depth1-0.4", "op": "hold", "keys": CHORD, "ms": DEPTH_HOLD_MS},
         {"at": "depth1:Open", "op": "click", "sel": RAIL("patch")},
         {"at": "depth1:Open+1.2", "op": "log", "name": "face", "js": "document.querySelector('#out-face .face')?.src || ''"},
         {"at": "depth1:Open+1.2", "op": "mark", "name": "filter", "sel": "#rack-svg g[data-mid]:has(text:text-is('filter'))"},
