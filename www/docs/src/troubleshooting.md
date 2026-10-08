@@ -89,7 +89,7 @@ different builds.
 The instrument runs on a real-time audio thread.
 
 - **Another tab doing heavy work** can starve it. Close that tab.
-- **A refit is running.** A few seconds of work, off the audio thread; it
+- **A refit is running.** A second or two of work, off the audio thread; it
   shouldn’t cause dropouts, and if it does, that’s worth reporting.
 - **A click when a sound changes** shouldn’t happen. If you hear one, it’s a
   bug.

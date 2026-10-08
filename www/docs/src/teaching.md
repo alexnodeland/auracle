@@ -93,8 +93,8 @@ It learns at two speeds.
 model’s next guess, and its guess about the sound you’re playing, answer your
 last pick. This costs almost nothing.
 
-**Every sixth pick, a refit.** The model fits again from the whole log: a few
-seconds of work, off the audio thread. This is where it can change its mind,
+**Every sixth pick, a refit.** The model fits again from the whole log: a
+second or two of work, off the audio thread. This is where it can change its mind,
 find a new style, or move the points on your star scale.
 
 In EVOLVE, the teaching line counts down to the refit in six pips (*3 more

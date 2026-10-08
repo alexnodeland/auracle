@@ -146,7 +146,7 @@ hover-to-reveal means never.
   the bank, a generation’s walks, Wander, measuring in the background) waits
   while notes sound and for a second after, going on a step at a time after
   eight seconds of playing.
-- **At a refit:** seconds of work, off the audio thread. You can keep playing
+- **At a refit:** a second or two of work, off the audio thread. You can keep playing
   through it.
 - **Storage:** your session, in IndexedDB. Tens of megabytes at most, mostly
   the log of what you taught it.

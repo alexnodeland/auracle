@@ -63,6 +63,12 @@ did not move.
 What is left of a mature step is the likelihood: the same 226 sites over 6
 rows take 6.1 µs a step.
 
+The engine the app runs shows the same: `WasmEngine::fit` in Node over the
+release build, on a 4-core Linux machine, took 479 ms before and 33 ms after
+for a first fit (6 duels), and 3.9 s before and 0.95 s after for a mature one
+(100 duels, $K=5$), each the least of five, the fit’s own alignment and style
+shares included. Both builds ended on the same ranking, byte for byte.
+
 ### The address table
 
 `SiteAddrs::new` builds every site address **once** per fit, and the program
@@ -126,7 +132,7 @@ chosen on the recovery tables rather than against a memory ceiling.
 
 ## Between fits: sequential importance sampling
 
-A full fit costs seconds and cannot run after every pick. So each new
+A full fit costs up to a second or two and cannot run after every pick. So each new
 observation is folded into the existing draws by reweighting:
 
 $$w_s \;\leftarrow\; \frac{w_s \, p(y \mid \theta_s)}{\sum_{s'} w_{s'} \, p(y \mid \theta_{s'})}$$
@@ -312,11 +318,11 @@ The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other
 moments refit at once: the end of the warm start, and opening a taste profile
 that holds picks. The app used
-to require `needs_refit` as well, to save the seconds of a fit whose posterior
+to require `needs_refit` as well, to save the time of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
 been, so a run of agreeable picks ended with the teaching meter’s countdown and
-no refit: the meter promised something it then did not do. A fit costs a few
-seconds off the audio thread, at most once every six picks outside those two
+no refit: the meter promised something it then did not do. A fit costs up to a
+second or two off the audio thread, at most once every six picks outside those two
 moments, and the pair stays audible through it.
 
 ## Label alignment
