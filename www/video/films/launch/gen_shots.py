@@ -178,6 +178,8 @@ shots.append({
         {"at": "depth2:Underneath", "op": "click", "sel": RAIL("taste")},
         {"at": "depth2:bets", "op": "log", "name": "taste", "js": "document.querySelector('#view-taste')?.innerText.slice(0, 200) || ''"},
         {"at": "depth2:keeps-0.8", "op": "click", "sel": RAIL("learning")},
+        {"at": "depth2:keeps", "op": "mark", "name": "fc", "sel": "#md-fc"},
+        {"at": "depth2:keeps", "op": "mark", "name": "strip", "sel": "#md-strip-cv"},
         {"at": "depth2:public", "op": "log", "name": "learning", "js": "document.querySelector('#view-learning')?.innerText.slice(0, 400) || ''"},
     ],
 })

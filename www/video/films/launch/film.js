@@ -647,6 +647,169 @@ function sceneTitle({ stage, beat, line, giant }) {
 }
 
 // ---------------------------------------------------------------------------
+// The taste map, drawn to explain (not a session's): the pool's sounds as
+// green dots, your sound as a dashed silk ring (no one knows where it is),
+// and the model's guess as an amber dot inside a dashed amber halo, its
+// uncertainty. Each pick moves the guess toward your sound and tightens the
+// halo; then new patches grow from the sounds nearest the guess, hollow and
+// dashed until they are heard, toward it.
+
+const MAP_T = [0.71, 0.35];
+const MAP_S0 = [0.28, 0.68];
+const MAP_POOL = (() => {
+  const R = rng(31);
+  const out = [];
+  while (out.length < 38) {
+    const p = [0.06 + 0.88 * R(), 0.08 + 0.84 * R()];
+    if (Math.hypot(p[0] - MAP_T[0], p[1] - MAP_T[1]) > 0.1) out.push(p);
+  }
+  return out;
+})();
+
+/** The guess after n picks (n may be fractional, between two picks). */
+function mapGuess(n) {
+  const at = (k) => {
+    const f = Math.pow(0.74, k);
+    const w = Math.pow(0.7, k);
+    return [MAP_T[0] + (MAP_S0[0] - MAP_T[0]) * f + 0.07 * Math.sin(k * 2.1) * w * (k > 0 ? 1 : 0), MAP_T[1] + (MAP_S0[1] - MAP_T[1]) * f + 0.06 * Math.cos(k * 1.7) * w * (k > 0 ? 1 : 0)];
+  };
+  const k = Math.floor(n);
+  const u = E.io3(n - k);
+  const a = at(k);
+  const b = at(k + 1);
+  return { p: [lerp(a[0], b[0], u), lerp(a[1], b[1], u)], r: 0.36 / (1 + 0.42 * n) };
+}
+
+/** New patches toward the guess at n picks: two from each of three pool
+ *  sounds a little way from it, then one from each of those. */
+function mapKids(n) {
+  const g = mapGuess(n).p;
+  const R = rng(37);
+  const near = MAP_POOL.map((p, i) => [Math.hypot(p[0] - g[0], p[1] - g[1]), i]).filter(([d]) => d > 0.22).sort((a, b) => a[0] - b[0]).slice(0, 3).map(([, i]) => MAP_POOL[i]);
+  const step = (from, f) => {
+    const dx = g[0] - from[0];
+    const dy = g[1] - from[1];
+    const side = (R() - 0.5) * 0.5;
+    return [from[0] + dx * f - dy * side, from[1] + dy * f + dx * side];
+  };
+  const gen1 = near.flatMap((p) => [0, 1].map(() => ({ from: p, to: step(p, 0.42 + 0.12 * R()), gen: 1 })));
+  const gen2 = gen1.map((k) => ({ from: k.to, to: step(k.to, 0.5 + 0.15 * R()), gen: 2 }));
+  return [...gen1, ...gen2];
+}
+
+function tasteMap(under, svg) {
+  const panel = el("div", {}, under);
+  Object.assign(panel.style, {
+    position: "absolute", border: `1px solid ${ink("--hairline")}`, borderRadius: "var(--r3)",
+    background: `radial-gradient(120% 100% at 50% 40%, ${ink("--panel")}, ${ink("--bezel")} 70%)`,
+    boxShadow: `inset 0 0 0 1px ${inkA("--black", 0.6)}, 0 18px 50px ${inkA("--black", 0.45)}`,
+  });
+  const g = el("g", {}, svg);
+  const head = say(g, 0, 0, "Taste", { size: 22 });
+  const sub = say(g, 0, 0, "what it has learned", { size: 20, caps: false, fill: ink("--silk-dim") });
+  const note = say(g, 0, 0, "an illustration", { size: 17, mono: true, anchor: "end", fill: ink("--silk-mute") });
+  const count = say(g, 0, 0, "", { size: 22, mono: true, fill: ink("--phos-b-dim") });
+  const lineG = el("g", {}, g);
+  const pool = MAP_POOL.map(() => el("circle", { r: 5, fill: ink("--phos-a-dim"), opacity: 0.8 }, g));
+  const target = el("circle", { r: 26, fill: "none", stroke: ink("--silk"), "stroke-width": 2, "stroke-dasharray": "5 6", opacity: 0.85 }, g);
+  const tLbl = say(g, 0, 0, "your sound", { size: 20, caps: false, fill: ink("--silk") });
+  const haloG = el("g", {}, g);
+  const halo = el("ellipse", { fill: inkA("--phos-b", 0.06), stroke: ink("--phos-b"), "stroke-width": 2, "stroke-dasharray": "7 7" }, haloG);
+  const guessG = el("g", {}, g);
+  guessG.style.filter = GLOW.b;
+  const guess = el("circle", { r: 8, fill: ink("--phos-b") }, guessG);
+  const gLbl = say(g, 0, 0, "its guess", { size: 20, mono: true, fill: ink("--phos-b") });
+  const kidsG = el("g", {}, g);
+  const kids = [];
+  const kidEl = () => ({
+    line: el("line", { stroke: ink("--silk-dim"), "stroke-width": 1.6, "stroke-dasharray": "4 5", opacity: 0 }, lineG),
+    c: el("circle", { r: 9, fill: "none", stroke: ink("--phos-a"), "stroke-width": 2.2, "stroke-dasharray": "4 4", opacity: 0 }, kidsG),
+  });
+  let rect = { x: 0, y: 0, w: 100, h: 100 };
+  const inner = () => ({ x: rect.x + 40, y: rect.y + 84, w: rect.w - 80, h: rect.h - 140 });
+  const api = {
+    panel,
+    /** Map units to the frame. */
+    at(u, v) {
+      const i = inner();
+      return [i.x + u * i.w, i.y + v * i.h];
+    },
+    /** Draw: the panel at `r`; the guess after `picks`; `kids` as
+     *  [{from, to, travel, heard}] with travel and heard in [0, 1]. */
+    draw(r, { picks = 0, opacity = 1, kids: ks = [], dimFar = 0, scale = 1 } = {}) {
+      rect = r;
+      place(panel, r);
+      panel.style.opacity = opacity;
+      g.style.opacity = opacity;
+      head.setAttribute("x", r.x + 28);
+      head.setAttribute("y", r.y + 46);
+      sub.setAttribute("x", r.x + 112);
+      sub.setAttribute("y", r.y + 46);
+      note.setAttribute("x", r.x + r.w - 26);
+      note.setAttribute("y", r.y + 46);
+      count.setAttribute("x", r.x + 28);
+      count.setAttribute("y", r.y + r.h - 24);
+      const n = Math.max(0, picks);
+      count.textContent = n >= 1 ? `${Math.floor(n + 1e-6)} pick${Math.floor(n + 1e-6) > 1 ? "s" : ""}` : "";
+      const G = mapGuess(n);
+      const [gx, gy] = api.at(...G.p);
+      MAP_POOL.forEach((p, i) => {
+        const [x, y] = api.at(...p);
+        pool[i].setAttribute("cx", x);
+        pool[i].setAttribute("cy", y);
+        pool[i].setAttribute("r", 5 * scale);
+        const d = Math.hypot(p[0] - G.p[0], p[1] - G.p[1]);
+        pool[i].setAttribute("opacity", (0.85 * (1 - dimFar * clamp((d - 0.25) / 0.3))).toFixed(3));
+      });
+      const [tx, ty] = api.at(...MAP_T);
+      target.setAttribute("cx", tx);
+      target.setAttribute("cy", ty);
+      target.setAttribute("r", 26 * scale);
+      tLbl.setAttribute("x", tx + 34 * scale);
+      tLbl.setAttribute("y", ty - 26 * scale);
+      const i = inner();
+      halo.setAttribute("cx", gx);
+      halo.setAttribute("cy", gy);
+      halo.setAttribute("rx", (G.r * i.w).toFixed(1));
+      halo.setAttribute("ry", (G.r * i.w * 0.72).toFixed(1));
+      guess.setAttribute("cx", gx);
+      guess.setAttribute("cy", gy);
+      guess.setAttribute("r", 8 * scale);
+      gLbl.setAttribute("x", gx + 16 * scale);
+      gLbl.setAttribute("y", gy + 36 * scale);
+      while (kids.length < ks.length) kids.push(kidEl());
+      kids.forEach((k, j) => {
+        const s = ks[j];
+        if (!s || s.travel <= 0) {
+          k.c.setAttribute("opacity", 0);
+          k.line.setAttribute("opacity", 0);
+          return;
+        }
+        const [ax, ay] = api.at(...s.from);
+        const [bx, by] = api.at(...s.to);
+        const u = E.io3(s.travel);
+        const x = lerp(ax, bx, u);
+        const y = lerp(ay, by, u);
+        k.line.setAttribute("x1", ax);
+        k.line.setAttribute("y1", ay);
+        k.line.setAttribute("x2", x);
+        k.line.setAttribute("y2", y);
+        k.line.setAttribute("opacity", 0.8);
+        k.c.setAttribute("cx", x);
+        k.c.setAttribute("cy", y);
+        k.c.setAttribute("r", (5 + 4 * clamp(s.travel * 2)) * scale);
+        // Hollow and dashed while it grows; solid once it is heard.
+        k.c.setAttribute("fill", s.heard > 0.5 ? ink("--phos-a") : "none");
+        k.c.setAttribute("stroke-dasharray", s.heard > 0.5 ? "none" : "4 4");
+        k.c.setAttribute("opacity", 1);
+      });
+      return { guess: [gx, gy] };
+    },
+  };
+  return api;
+}
+
+// ---------------------------------------------------------------------------
 // DUEL — EVOLVE plays you two sounds; you pick; every pick teaches it.
 
 // Pairs of the bank's own sounds, each drawn with its face: the pool a
@@ -662,6 +825,17 @@ const PAIRS = [
   ["Wobble Board", "Solo Flight"],
 ].filter(([a, b]) => PRESETS.includes(a) && PRESETS.includes(b));
 
+// Where EVOLVE goes when the map comes in beside it, and where the map sits.
+const DUEL_SMALL = { k: 0.6, x: 70 };
+const MAP_SIDE = { x: 1030, y: 150, w: 830, h: 700 };
+const MAP_MID = { x: 250, y: 70, w: 1420, h: 800 };
+
+/** The run of picks after the first: one each half beat, from `run0`. */
+function duelRun(stage, l2) {
+  const step = 30 / stage.tl.grid.bpm;
+  return { run0: l2.t0 - 0.1, step, n: 6 };
+}
+
 function sceneDuel({ stage, beat, line }) {
   const b = beat("duel");
   const l1 = line("duel1");
@@ -674,9 +848,12 @@ function sceneDuel({ stage, beat, line }) {
     post: 0.6,
     fin: 0.4,
     build(layer) {
-      const scr = appScreen(layer, { ...F, radius: 3, level: "evolve" });
+      const { under, svg, over } = stack(layer);
+      const scr = appScreen(under, { ...F, radius: 3, level: "evolve" });
       const V = evolveView(scr, { a: PAIRS[0][0], b: PAIRS[0][1] });
-      const { svg, over } = stack(layer);
+      const map = tasteMap(under, svg);
+      const sparkG = el("g", {}, svg);
+      sparkG.style.filter = GLOW.b;
       const ptr = pointer(svg);
       const cap = captions(over, stage, ["duel1", "duel2"], b.t1 + 0.3);
       const A = V.card("A");
@@ -684,19 +861,31 @@ function sceneDuel({ stage, beat, line }) {
       const cam = camera([
         [b.t0 - 0.4, 1.0, 960, 540],
         [l1.t0 + 0.6, 1.18, 1050, 600],
-        [l2.t0 - 0.2, 1.18, 1050, 600],
-        [l2.t0 + 0.8, 1.0, 960, 540],
+        [l2.t0 - 1.2, 1.18, 1050, 600],
+        [l2.t0 - 0.2, 1.0, 960, 540],
       ]);
+      const { run0, step, n: runN } = duelRun(stage, l2);
+      const sh0 = l2.t0 - 1.0;
+      const sh1 = l2.t0 - 0.1;
+      const sparks = Array.from({ length: runN }, () => el("circle", { r: 7, fill: ink("--phos-b"), opacity: 0 }, sparkG));
+      scr.wrap.style.transformOrigin = "0 0";
       let shown = 0;
       return (tl, t) => {
         const c = cam(t);
         scr.cam(...c);
+        // EVOLVE steps aside for the map as the picks begin.
+        const s = ramp(t, sh0, sh1, E.io3);
+        const k = lerp(1, DUEL_SMALL.k, s);
+        const tx = lerp(0, DUEL_SMALL.x - F.x, s);
+        const ty = lerp(0, 540 - (F.h * DUEL_SMALL.k) / 2 - F.y, s);
+        scr.wrap.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`;
+        const toShown = ([x, y]) => [F.x + tx + k * (x - F.x), F.y + ty + k * (y - F.y)];
         const d1 = l1.t1 - l1.t0;
         // First pair, played out by hand: PLAY A, PLAY B, PICK B.
         const hA = l1.t0 + d1 * 0.22;
         const hB = l1.t0 + d1 * 0.45;
         const pk = l1.t0 + d1 * 0.8;
-        const fp = (card, which) => onFrame(c, ...(which === "play" ? card.play.pos : card.pick.pos));
+        const fp = (card, which) => toShown(onFrame(c, ...(which === "play" ? card.play.pos : card.pick.pos)));
         const path = [
           [l1.t0 - 0.5, 1200, 1060],
           [hA, ...fp(A, "play")],
@@ -708,35 +897,50 @@ function sceneDuel({ stage, beat, line }) {
         ];
         const p = glide(t, path);
         const clickAt = [hA, hB, pk].find((x) => t >= x && t < x + 0.5);
-        ptr.update({ x: p.x + 4, y: p.y + 6, o: fade(t, l1.t0 - 0.5, l1.t0 - 0.1, l2.t0 + 0.4, l2.t0 + 0.8), click: clickAt != null ? (t - clickAt) / 0.5 : null, scale: 1.1 });
-        // After the first pick, a run of pairs, one a beat, each answered.
-        const spb = 60 / stage.tl.grid.bpm;
-        const run0 = l2.t0 - 0.1;
-        const k = t < run0 ? -1 : Math.floor((t - run0) / spb);
-        const picks = t < pk ? 0 : 1 + Math.max(0, Math.min(k + 1, 9));
+        ptr.update({ x: p.x + 4, y: p.y + 6, o: fade(t, l1.t0 - 0.5, l1.t0 - 0.1, sh0, sh0 + 0.4), click: clickAt != null ? (t - clickAt) / 0.5 : null, scale: 1.1 });
+        // After the first pick, a run of pairs, one each half beat, each answered.
+        const kk = t < run0 ? -1 : Math.min(runN - 1, Math.floor((t - run0) / step));
         let pair = PAIRS[0];
-        if (k >= 0) pair = PAIRS[(k + 1) % PAIRS.length];
+        if (kk >= 0) pair = PAIRS[(kk + 1) % PAIRS.length];
         const idx = PAIRS.indexOf(pair);
         if (idx !== shown) {
           A.show(pair[0]);
           B.show(pair[1]);
           shown = idx;
         }
-        if (k < 0) {
+        const pickB = (j) => (j * 7 + 3) % 3 !== 0;
+        if (kk < 0) {
           const aOn = fade(t, hA, hA + 0.15, hB - 0.1, hB + 0.2);
           const bOn = fade(t, hB, hB + 0.15, pk + 0.6, pk + 1.0);
           A.set({ lit: aOn, play: fade(t, hA, hA + 0.08, hA + 0.25, hA + 0.4) });
           B.set({ lit: bOn, play: fade(t, hB, hB + 0.08, hB + 0.25, hB + 0.4), picked: ramp(t, pk, pk + 0.2), pickDown: fade(t, pk, pk + 0.08, pk + 0.25, pk + 0.4) });
         } else {
-          const ph = ((t - run0) / spb) % 1;
-          const pickB = (k * 7 + 3) % 3 !== 0;
+          const ph = (t - run0) / step - kk;
           const flash = ph < 0.55 ? 1 - ph / 0.55 : 0;
-          A.set({ picked: pickB ? 0 : flash, pickDown: pickB ? 0 : flash });
-          B.set({ picked: pickB ? flash : 0, pickDown: pickB ? flash : 0 });
+          A.set({ picked: pickB(kk) ? 0 : flash, pickDown: pickB(kk) ? 0 : flash });
+          B.set({ picked: pickB(kk) ? flash : 0, pickDown: pickB(kk) ? flash : 0 });
         }
+        // Each pick flies from the card picked into the map, and the guess
+        // moves when it lands.
+        let picks = t < pk ? 0 : 1;
+        for (let j = 0; j < runN; j++) {
+          const s0 = run0 + j * step;
+          picks += ramp(t, s0 + 0.4, s0 + 0.75);
+        }
+        const drawn = map.draw(MAP_SIDE, { picks, opacity: ramp(t, sh0 + 0.2, sh1 + 0.2) });
+        sparks.forEach((sp, j) => {
+          const s0 = run0 + j * step;
+          const u = ramp(t, s0, s0 + 0.42, E.io2);
+          if (u <= 0 || u >= 1) return sp.setAttribute("opacity", 0);
+          const from = fp(pickB(j) ? B : A, "pick");
+          sp.setAttribute("cx", lerp(from[0], drawn.guess[0], u));
+          sp.setAttribute("cy", lerp(from[1], drawn.guess[1], E.out2(u)) - Math.sin(u * Math.PI) * 90);
+          sp.setAttribute("opacity", 1 - u * 0.3);
+        });
         // Every pick is taught: the pips toward the first fit, and TAUGHT.
-        V.pips(Math.min(6, picks));
-        scr.taught(picks);
+        const whole = Math.floor(picks + 1e-6);
+        V.pips(Math.min(6, whole));
+        scr.taught(whole);
         cap(t);
         void tl;
       };
@@ -745,12 +949,14 @@ function sceneDuel({ stage, beat, line }) {
 }
 
 // ---------------------------------------------------------------------------
-// GROW — real circuits, built and wired, growing toward the taste.
+// GROW — new patches grow toward the guess; and each is a real circuit,
+// built and wired.
 
 function sceneGrow({ stage, beat, line }) {
   const b = beat("grow");
   const l1 = line("grow1");
   const l2 = line("grow2");
+  const dl2 = line("duel2");
   stage.scene({
     id: "grow",
     t0: b.t0,
@@ -761,6 +967,20 @@ function sceneGrow({ stage, beat, line }) {
     fout: 0.6,
     build(layer) {
       const { under, svg, over } = stack(layer);
+      const mapUnder = el("div", { class: "layer" }, layer);
+      const mapSvg = svgLayer(layer);
+      layer.insertBefore(mapUnder, under);
+      layer.insertBefore(mapSvg, under);
+      const map = tasteMap(mapUnder, mapSvg);
+      const { n: runN } = duelRun(stage, dl2);
+      const picks = 1 + runN;
+      const kidPlan = mapKids(picks);
+      const T = (spec) => at(stage, b, spec);
+      const tGrows = T("grow1:grows");
+      const tToward = T("grow1:toward");
+      const tDive = l2.t0 - 0.4;
+      // The one the camera dives into: the second generation's nearest to your sound.
+      const dive = kidPlan.filter((k) => k.gen === 2).reduce((a, k) => (Math.hypot(k.to[0] - MAP_T[0], k.to[1] - MAP_T[1]) < Math.hypot(a.to[0] - MAP_T[0], a.to[1] - MAP_T[1]) ? k : a));
       // A patch as PATCH lays one out: the audio chain in a row, its
       // modulator under the filter, each plate with its readouts.
       const P = [
@@ -793,41 +1013,60 @@ function sceneGrow({ stage, beat, line }) {
         place(c, { x: 150 + i * 560, y: 700 });
         return c;
       });
-      const cap = captions(over, stage, ["grow1", "grow2"], b.t1 + 0.4, { y: 900, size: 54 });
+      const cap = captions(over, stage, ["grow1", "grow2"], b.t1 + 0.4, { y: 968, size: 46 });
       return (tl, t) => {
-        const L2 = l2.t0 - b.t0;
-        // Plates arrive one by one, cables plug in behind them.
+        // The map comes to the middle, and new patches grow toward the guess:
+        // a first generation from the three sounds nearest it, then a second.
+        const mv = ramp(t, b.t0 - 0.2, b.t0 + 0.7, E.io3);
+        let r = {
+          x: lerp(MAP_SIDE.x, MAP_MID.x, mv), y: lerp(MAP_SIDE.y, MAP_MID.y, mv),
+          w: lerp(MAP_SIDE.w, MAP_MID.w, mv), h: lerp(MAP_SIDE.h, MAP_MID.h, mv),
+        };
+        const kids = kidPlan.map((k, j) => {
+          const a = k.gen === 1 ? tGrows - 0.1 + (j % 6) * 0.08 : tToward - 0.05 + (j % 6) * 0.08;
+          return { from: k.from, to: k.to, travel: ramp(t, a, a + 0.7), heard: ramp(t, a + 0.9, a + 1.0) };
+        });
+        // Then into one of them: it is a circuit.
+        const z = ramp(t, tDive, tDive + 1.1, E.in3);
+        if (z > 0) {
+          const [cx, cy] = map.at(...dive.to);
+          const sc = lerp(1, 7, z);
+          r = { x: 960 + (r.x - cx) * sc, y: 540 + (r.y - cy) * sc, w: r.w * sc, h: r.h * sc };
+        }
+        map.draw(r, { picks, kids, dimFar: ramp(t, tToward, tToward + 1.2), opacity: 1 - ramp(t, tDive + 0.7, tDive + 1.2), scale: lerp(1, 3, z) });
+        // The circuit, built and wired.
+        const L = l2.t0;
         plates.forEach((p, i) => {
-          const a0 = -0.2 + i * 0.28;
-          const u = ramp(tl, a0, a0 + 0.5, E.out4);
+          const a0 = L + 0.3 + i * 0.25;
+          const u = ramp(t, a0, a0 + 0.5, E.out4);
           p.opacity = u;
           p.div.style.transform = `translateY(${(1 - u) * 30}px)`;
         });
         cab.forEach((c, i) => {
-          const a0 = 0.5 + i * 0.3;
-          c.update(t, { draw: ramp(tl, a0, a0 + 0.6, E.io2), flow: ramp(tl, a0 + 0.6, a0 + 1.2) });
+          const a0 = L + 1.0 + i * 0.3;
+          c.update(t, { draw: ramp(t, a0, a0 + 0.6, E.io2), flow: ramp(t, a0 + 0.6, a0 + 1.2), opacity: ramp(t, L + 0.3, L + 0.8) });
         });
-        outCable.update(t, { draw: ramp(tl, 1.8, 2.3), flow: ramp(tl, 2.3, 2.8) });
-        out.style.opacity = ramp(tl, 2.0, 2.4);
-        // The LFO turns the filter's cutoff; the envelope opens and closes.
+        outCable.update(t, { draw: ramp(t, L + 2.2, L + 2.7), flow: ramp(t, L + 2.7, L + 3.2), opacity: ramp(t, L + 2.0, L + 2.2) });
+        out.style.opacity = ramp(t, L + 2.4, L + 2.8);
+        // The LFO turns the filter's cutoff; then the filter becomes a ladder
+        // and the tail opens, as later generations changed them.
         plates[1].knobs[0].k.set(0.45 + 0.28 * Math.sin(t * 2 * Math.PI * 0.25), { glowOn: true });
         plates[4].knobs[0].k.set(0.3, { col: "b" });
-        // Evolution: at the second line the filter becomes a ladder and the
-        // tail opens.
-        const swap = ramp(tl, L2 + 0.9, L2 + 1.3, E.io3);
+        const swap = ramp(t, L + 2.9, L + 3.3, E.io3);
         const kind = plates[1].div.querySelector(".mono");
         if (kind) kind.textContent = swap > 0.5 ? "ladder" : "svf lp";
-        plates[1].div.style.borderColor = swap > 0.5 ? inkA("--phos-b", 0.8 * (1 - ramp(tl, L2 + 1.3, L2 + 3))) : "";
-        const rel = ramp(tl, L2 + 2.2, L2 + 3.0);
+        plates[1].div.style.borderColor = swap > 0.5 ? inkA("--phos-b", 0.8 * (1 - ramp(t, L + 3.3, L + 5))) : "";
+        const rel = ramp(t, L + 3.7, L + 4.4);
         plates[3].knobs[3].k.set(0.25 + 0.5 * rel, { glowOn: rel > 0 && rel < 1 });
         plates[3].knobs[3].lbl[0].textContent = rel > 0.5 ? "1.6 s" : "0.3 s";
         chips.forEach((c, i) => {
-          const a0 = L2 + 0.3 + i * 0.9;
-          const u = ramp(tl, a0, a0 + 0.5, E.out3);
+          const a0 = L + 2.0 + i * 0.9;
+          const u = ramp(t, a0, a0 + 0.5, E.out3);
           c.style.opacity = u;
           c.style.transform = `translateY(${(1 - u) * 14}px)`;
         });
         cap(t);
+        void tl;
         void l1;
       };
     },
@@ -863,6 +1102,62 @@ function crossToTake(stage, scr, clip, ck, t, c, x0, x1) {
   clip.wrap.style.opacity = u;
   scr.wrap.style.opacity = 1 - ramp(t, x1, x1 + 0.1);
   if (u > 0) stage.wait(clip.seek(ck.clipTime(t), { z: c[0], fx: c[1], fy: c[2] }));
+}
+
+/** Where the kit (and the app, at 1920 × 1080) puts PERFORM's hood row i:
+ *  the start of its name, in app px. */
+function hoodRowAt(i) {
+  return [1068 + (i % 3) * 249.35, 683.8 + Math.floor(i / 3) * 22 + 9];
+}
+
+/** Amber wires over the app: what a control reaches, drawn as the model's
+ *  (dashed, amber). Each frame, `update(pairs, { draw, opacity, flow })`
+ *  takes [from, to] in frame px; `flow` sends a dot along each. */
+function amberWires(svg, n) {
+  const g = el("g", {}, svg);
+  g.style.filter = GLOW.b;
+  const ws = Array.from({ length: n }, () => ({
+    path: el("path", { fill: "none", stroke: ink("--phos-b"), "stroke-width": 2.2, "stroke-dasharray": "6 6", "stroke-linecap": "round" }, g),
+    dot: el("circle", { r: 4.5, fill: ink("--phos-b"), opacity: 0 }, g),
+    end: el("circle", { r: 5, fill: "none", stroke: ink("--phos-b"), "stroke-width": 2, opacity: 0 }, g),
+  }));
+  return {
+    update(pairs, { draw = 1, opacity = 1, flow = null } = {}) {
+      g.style.opacity = opacity;
+      ws.forEach((w, i) => {
+        const pr = pairs[i];
+        if (!pr || opacity <= 0) {
+          w.path.setAttribute("d", "");
+          w.dot.setAttribute("opacity", 0);
+          w.end.setAttribute("opacity", 0);
+          return;
+        }
+        const [[x0, y0], [x1, y1]] = pr;
+        const my = Math.max(y0, y1);
+        const d = `M${x0.toFixed(1)} ${y0.toFixed(1)} C${x0.toFixed(1)} ${(my + 60).toFixed(1)} ${(x1 - 90).toFixed(1)} ${y1.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+        w.path.setAttribute("d", d);
+        const len = w.path.getTotalLength();
+        // Drawn from the control outward (a dot leading), then dashed.
+        if (draw < 1) {
+          const p = w.path.getPointAtLength(len * clamp(draw));
+          w.dot.setAttribute("cx", p.x);
+          w.dot.setAttribute("cy", p.y);
+          w.dot.setAttribute("opacity", draw > 0 ? 1 : 0);
+          w.path.setAttribute("stroke-dasharray", `${(len * clamp(draw)).toFixed(1)} ${len.toFixed(1)}`);
+        } else w.path.setAttribute("stroke-dasharray", "6 6");
+        if (draw >= 1 && flow != null) {
+          const u = (flow + i * 0.17) % 1;
+          const p = w.path.getPointAtLength(len * u);
+          w.dot.setAttribute("cx", p.x);
+          w.dot.setAttribute("cy", p.y);
+          w.dot.setAttribute("opacity", Math.sin(u * Math.PI));
+        } else if (draw >= 1) w.dot.setAttribute("opacity", 0);
+        w.end.setAttribute("cx", x1);
+        w.end.setAttribute("cy", y1);
+        w.end.setAttribute("opacity", draw >= 1 ? 1 : 0);
+      });
+    },
+  };
 }
 
 function scenePlay({ stage, beat, line, takes }) {
@@ -904,9 +1199,32 @@ function scenePlay({ stage, beat, line, takes }) {
         [b.t1 + 1, 1.4, 1300, 700],
       ]);
       const chord = new Set([60, 64, 67]);
+      // What Bright reaches on this patch: the hood's rows whose knob its
+      // caption names (the take's own words, "cutoff"); and what Wander walks,
+      // every knob under the hood (the knobs the controls are turning).
+      const snd = soundOf(take);
+      const brightSub = (snd.controls[0]?.sub || "").split(/\s*·\s*/).map((w) => w.replace(/\s*\+\d+$/, "").trim());
+      const rows = snd.hood.map((h, i) => ({ knob: h[1], at: hoodRowAt(i) }));
+      const bRows = rows.filter((r) => brightSub.includes(r.knob));
+      const bWires = amberWires(svg, bRows.length);
+      const wWires = amberWires(svg, rows.length);
+      const tFinds = at(stage, b, "play2:finds");
+      const tKnobs = at(stage, b, "play3:knobs");
       return (tl, t) => {
         const c = cam(t);
         scr.cam(...c);
+        const bk = onFrame(c, V.knobs[0].cx, V.knobs[0].cy + 34);
+        bWires.update(bRows.map((r) => [bk, onFrame(c, ...r.at)]), {
+          draw: ramp(t, tFinds, tFinds + 0.9, E.io2),
+          opacity: fade(t, tFinds - 0.05, tFinds + 0.1, dB.off + 0.3, dB.off + 0.8),
+          flow: t >= tTurn && t < tTurn + 3.2 ? (t - tTurn) / 0.9 : null,
+        });
+        const wk = onFrame(c, V.wander.cx, V.wander.cy - 18);
+        wWires.update(rows.map((r) => [wk, onFrame(c, ...r.at)]), {
+          draw: ramp(t, tKnobs, tKnobs + 1.0, E.io2),
+          opacity: fade(t, tKnobs - 0.05, tKnobs + 0.1, dW.off + 0.2, dW.off + 0.7),
+          flow: t >= tKnobs + 1.0 ? (t - tKnobs - 1.0) / 1.6 : null,
+        });
         // Drawn: the keys under the first line, and the pointer on its way to Bright.
         scr.keys.update(t >= l1.t0 && t < l1.t1 + 0.6 ? chord : new Set());
         V.scope.update(t, { amp: t >= l1.t0 ? 0.35 : 0.05, ox: t * 0.3 });
@@ -930,7 +1248,6 @@ function scenePlay({ stage, beat, line, takes }) {
         ptr.update({ x: px, y: py, o: fade(t, x0 - 1.0, x0 - 0.5, tLet + 1.0, tLet + 1.5), click: held ? 0.1 : null, scale: 1.1 });
         cap(t);
         void tl;
-        void dW;
       };
     },
   });
@@ -971,6 +1288,18 @@ function sceneOffer({ stage, beat, line, takes }) {
       const x1 = o2.t0 - 0.1;
       const offerPad = ck?.mark("offer") || V.pads.offer.pos;
       const takePad = ck?.mark("take") || V.pads.take.pos;
+      // The offer grows from the sound in hand: a bud leaves A's face and
+      // grows into B's slot while the app grows it, hollow and dashed until B
+      // is ready (perform.js's offer, timed by the take's own wait), then it
+      // is B. After Take, the pick it counts as rises to TAUGHT: dashed, as
+      // it is counted once Take's window closes (TAKE_SETTLE_MS).
+      const budG = el("g", {}, svg);
+      const budLine = el("line", { stroke: ink("--silk-dim"), "stroke-width": 2, "stroke-dasharray": "5 6", opacity: 0 }, budG);
+      const bud = el("circle", { r: 0, fill: "none", stroke: ink("--phos-a"), "stroke-width": 2.6, "stroke-dasharray": "6 6", opacity: 0 }, budG);
+      const plus = el("div", { class: "pill b" }, over, "+1 pick");
+      Object.assign(plus.style, { borderStyle: "dashed", opacity: 0 });
+      const A0 = [514, 606];
+      const B0 = [863.3, 586];
       const cam = camera([
         [b.t0 - 0.6, 1.0, 960, 540],
         [tPress - 0.3, 1.28, 1100, 640],
@@ -990,6 +1319,27 @@ function sceneOffer({ stage, beat, line, takes }) {
         growing.setAttribute("opacity", fade(t, tPress + 0.2, tPress + 0.4, ready - 0.2, ready));
         V.offered(ramp(t, ready - 0.1, ready + 0.6, E.lin));
         V.blend(0);
+        const g0 = tPress + 0.3;
+        const gu = ramp(t, g0, ready, E.io2);
+        const [ax, ay] = onFrame(c, ...A0);
+        const [bx2, by2] = onFrame(c, ...B0);
+        const bo = fade(t, g0, g0 + 0.2, ready + 0.1, ready + 0.6) * (1 - ramp(t, x0, x1));
+        const cxB = lerp(ax, bx2, gu);
+        const cyB = lerp(ay, by2, gu) - Math.sin(gu * Math.PI) * 40;
+        bud.setAttribute("cx", cxB);
+        bud.setAttribute("cy", cyB);
+        bud.setAttribute("r", (lerp(10, 80, gu) * c[0]).toFixed(1));
+        bud.setAttribute("opacity", bo);
+        budLine.setAttribute("x1", ax);
+        budLine.setAttribute("y1", ay);
+        budLine.setAttribute("x2", cxB);
+        budLine.setAttribute("y2", cyB);
+        budLine.setAttribute("opacity", 0.8 * bo);
+        const pu = ramp(t, tTake + 0.35, tTake + 1.5, E.io3);
+        const [px0, py0] = onFrame(c, ...takePad);
+        const [px1, py1] = onFrame(c, 1521, 60);
+        place(plus, { x: lerp(px0, px1, pu), y: lerp(py0 - 40, py1, pu) - Math.sin(pu * Math.PI) * 60, ax: 0.5, ay: 0.5 });
+        plus.style.opacity = fade(t, tTake + 0.3, tTake + 0.5, tTake + 2.6, tTake + 3.2);
         crossToTake(stage, scr, clip, ck, t, c, x0, x1);
         // The hand: Offer, then (in the demo) Blend from home past half, then Take.
         const bl = ck?.meta?.rects?.blend;
@@ -1066,6 +1416,18 @@ function sceneDepth({ stage, beat, line, takes }) {
         [b.t1 + 1, 1.35, 1450, 800],
       ]);
       const tag = callout(over, svg, { x: 0, y: 0, tx: 0, ty: 0, text: "◂ Bright, in PERFORM", color: "b" });
+      // In LEARNING, its forecasts: a dot on the strip for each pick, placed
+      // where it bet before the pick, and the count of those that came true.
+      const rc = (name, fb) => {
+        const r = take?.meta?.rects?.[name];
+        return r ? [r.x + r.w / 2, r.y + r.h / 2] : fb;
+      };
+      const stripAt = rc("strip", [1450, 872]);
+      const fcR = take?.meta?.rects?.fc;
+      const scoreAt = fcR ? [fcR.x + 20, fcR.y + fcR.h * 0.35] : [1125, 836];
+      const betTag = callout(over, svg, { x: 0, y: 0, tx: 0, ty: 0, text: "a bet before each pick", color: "b" });
+      const scoreTag = callout(over, svg, { x: 0, y: 0, tx: 0, ty: 0, text: "and how many came true", color: "b" });
+      const tLearn = tKeeps + 0.9;
       const cap = captions(over, stage, ["depth1", "depth2"], b.t1 + 0.5);
       return (tl, t) => {
         const c = cam(t);
@@ -1089,6 +1451,12 @@ function sceneDepth({ stage, beat, line, takes }) {
         const [kx, ky] = onFrame(c, ...cutoff);
         tag.move(kx + 22 * c[0], ky - 6, kx + 120, ky - 120);
         tag.update(ramp(t, tWatch - 0.2, tWatch + 0.6, E.io2) * (1 - ramp(t, tUnder - 0.8, tUnder - 0.4)));
+        const [sx, sy] = onFrame(c, ...stripAt);
+        betTag.move(sx, sy - 8, sx - 60, sy - 150);
+        betTag.update(ramp(t, tLearn, tLearn + 0.6, E.io2));
+        const [qx, qy] = onFrame(c, ...scoreAt);
+        scoreTag.move(qx, qy, qx - 50, qy - 110);
+        scoreTag.update(ramp(t, tLearn + 0.7, tLearn + 1.3, E.io2));
         cap(t);
         void tl;
         void l1;
