@@ -427,6 +427,10 @@ function sceneOpen({ stage, beat, line, giant }) {
       const t2 = textBlock(layer, { x: 960, y: 900, w: 1720, cls: "voice", size: 52, align: "center", ax: 0.5, ay: 0.5 });
       const w2 = words(t2, "Finding it means knowing your circuit: which *modules* to wire together, where the _feedback_ goes, and how each choice *shapes the sound*.");
 
+      // How many of the field's knobs have turned, as the old wall counted them.
+      const counter = textBlock(layer, { x: 1860, y: 1040, w: 700, cls: "mono", size: 22, align: "right", ax: 1, ay: 1 });
+      counter.style.color = ink("--silk-dim");
+      const turnTimes = knobs.filter((k) => k.turnAt != null).map((k) => k.turnAt).sort((x, y) => x - y);
       // The words' moments.
       const tWire = [T("open2:modules"), T("open2:wire"), T("open2:together"), T("open2:together") + 0.55];
       const tWave = T("open2:wire");
@@ -539,6 +543,10 @@ function sceneOpen({ stage, beat, line, giant }) {
         const p = glide(t, path);
         const held = draws.some((d) => d > 0 && d < 1) || (fb > 0 && fb < 1);
         ptr.update({ x: p.x, y: p.y, o: fade(t, tWire[0] - 1.2, tWire[0] - 0.7, tFb + 1.0, tFb + 1.6), click: held ? 0.1 : null, scale: 1.1 / Math.max(0.4, c.s) });
+        let turned = 0;
+        while (turned < turnTimes.length && turnTimes[turned] <= t) turned++;
+        counter.textContent = turned ? `${turned} of ${knobs.length} knobs turned` : "";
+        counter.style.opacity = fade(t, turnTimes[0], turnTimes[0] + 0.3, T("open2:sound") + 1.0, T("open2:sound") + 1.5);
         // The words.
         t1.style.opacity = fade(t, l1.t0 - 0.3, l1.t0 + 0.2, pull0 - 0.3, pull0 + 0.3);
         reveal(w1, t, l1.t0, l1.t1);

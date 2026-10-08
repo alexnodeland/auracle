@@ -291,8 +291,9 @@ LANDING_ROWS = {
     "making": ["sounddesign", "composing"],
 }
 # The hero's silent loop: the launch film's opening, which carries its own
-# words on screen, so it reads with the sound off.
-LOOPS = {"launch": (0.0, 17.2)}
+# words on screen, so it reads with the sound off: from the sound at OUT to
+# the whole library's knobs turning, as open2's last word ends.
+LOOPS = {"launch": (0.0, 20.6)}
 # The four views' films, each in its tab of *Four views, one loop* on the
 # landing page (the pane marker `films:pane-<tab>`), playing its own silent
 # loop in place of the screenshot. Their loop windows are the films' own
