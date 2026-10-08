@@ -5,10 +5,9 @@
 //! performed can be replayed instead of re-rendered. That matters because the
 //! engine performs the *same* featurization repeatedly and unavoidably:
 //!
-//! - `fugue-ppl`'s adaptive single-site MH executes the model **twice per
-//!   step**, once to re-score the current trace — which is bit-identically the
-//!   tree the previous step accepted. Every refinement step therefore renders
-//!   one tree it has already rendered.
+//! - A refinement walk runs the model once per step (the proposal), and a
+//!   rejected step proposes a tree the walk may already have rendered; the
+//!   drift walks and the chain's seed score re-render trees the same way.
 //! - `Engine::insert_candidate` re-featurizes the tree the refinement walk (or
 //!   the edit bench) just featurized, to obtain the φ it admits it with.
 //!
@@ -401,7 +400,7 @@ impl RenderMemo {
 ///
 /// `want_audio` says whether the caller has any use for samples. It is not a
 /// hint: with it `false` this function never converts f64→f32 and never
-/// touches the audio tier, so the refinement surrogate — which runs this twice
+/// touches the audio tier, so the refinement surrogate — which runs this once
 /// per MH step and discards audio every time — pays for φ and nothing else.
 /// Asking for audio you will not play costs a ~565 KB conversion on a miss and
 /// keeps a buffer alive on a hit, which is the whole expense the memo exists

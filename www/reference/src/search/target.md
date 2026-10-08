@@ -89,22 +89,21 @@ is meaningless against any other scaling; see
 refinement generation is played. Asking for samples would undo the memo: a miss
 would convert about 223,000 `f64`s (the 5.05 s phrase at 44,100 Hz) that it then
 drops, and a hit would copy that buffer, about 0.9 MB as `f32`, out of the audio
-tier. Twice per MH step, 80 times per seed at 40 steps, that is tens of
+tier. Once per MH step, 40 times per seed at 40 steps, that is tens of
 megabytes of churn for a value discarded on the next line.
 
 ## Why the render memo matters
 
 It is what makes the walk affordable at all.
 
-`adaptive_single_site_mh` executes the model **twice per step**: once to
-re-score the current trace (bit-identically the tree the previous step
-accepted, and therefore already featurized) and once for the proposal. Without
-a memo, **one render in two is a recomputation of a number the walk already
-has.**
+A walk step executes the model once, for the proposal; the current state is
+carried scored from the step before and is not run again. A walk still
+revisits trees (the seed, a state it returns to, the drift walks), and a
+render is the one expensive thing the model does, so a revisit that is
+recomputed is a number the walk already had.
 
-At ~600 ms per render, a 40-step walk from each of 10 seeds is 800 renders
-without the memo and 400 with it. That is the difference between a generation
-taking half a minute and taking a minute, per generation, forever.
+At ~600 ms per render, that is the difference between a generation taking half
+a minute and taking a minute, per generation, forever.
 
 ## What is not sampled from this
 
