@@ -118,11 +118,8 @@ class Dump(unittest.TestCase):
 # The walkthroughs whose shots.json is written by hand, not by a generator,
 # and why each still plays presets off the shortlist. A new hand-written film
 # has to be added here, with its reason, or be cast.
-LAUNCH = ("launch's three footage shots are seen, not heard (illustrated.sh lays no app sound); "
-          "they are recast when launch moves to N3 (Plan-006 task 8)")
 REPLACED = "replaced by the view films (VIEWS.md), and not to be recorded again"
 HAND_WRITTEN = {
-    "launch": {"Glass Pad": LAUNCH, "First Bass": LAUNCH},
     "circuit": {"Glass Pad": REPLACED, "Loom": REPLACED, "First Bass": REPLACED},
     "perform": {"Glass Pad": REPLACED},
     "zzprobe": {"Glass Pad": "a rehearsal probe of playing's wander shot, never recorded or published"},

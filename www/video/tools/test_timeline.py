@@ -217,19 +217,34 @@ class NothingSnapsOnN3(unittest.TestCase):
 
 class TheReel(unittest.TestCase):
     def test_the_reels_timeline_comes_back(self):
-        # SPEC section 9's table, laid out from its lines, gaps and demo.
-        tl, _ = timeline.lay_out(reel_script(), REEL_DURS)
+        # SPEC section 9's table, laid out from its lines, gaps and demo,
+        # with the bed first (sound.json form.bed_first, 2026-10-07): the
+        # reel's every time, `lead` later.
+        lead = sound_defaults.MARKS["bed_first"]["entrance_after_s"]
+        tl, arr = timeline.lay_out(reel_script(), REEL_DURS)
         ls, (d,), m = lines(tl), tl["demos"], tl["marks"]
         want = {"title1": 6.25, "title2": 8.82, "named2": 14.045, "named3": 27.39, "named4": 30.625}
         for k, v in want.items():
-            self.assertAlmostEqual(ls[k]["t0"], v, places=2, msg=k)
-        self.assertAlmostEqual(d["pause"], 18.27, places=2)
-        self.assertAlmostEqual(d["t0"], 18.97, places=2)
-        self.assertAlmostEqual(d["off"], 25.47, places=2)
-        self.assertAlmostEqual(ls["named4"]["t1"], 33.772, places=2)
-        self.assertAlmostEqual(m["entrance"], 0.0)
-        self.assertAlmostEqual(m["exit"], 35.522, places=2)
-        self.assertAlmostEqual(tl["duration"], 42.62, places=2)
+            self.assertAlmostEqual(ls[k]["t0"], lead + v, places=2, msg=k)
+        self.assertAlmostEqual(d["pause"], lead + 18.27, places=2)
+        self.assertAlmostEqual(d["t0"], lead + 18.97, places=2)
+        self.assertAlmostEqual(d["off"], lead + 25.47, places=2)
+        self.assertAlmostEqual(ls["named4"]["t1"], lead + 33.772, places=2)
+        self.assertAlmostEqual(m["entrance"], lead, places=3)
+        self.assertAlmostEqual(m["exit"], lead + 35.522, places=2)
+        self.assertAlmostEqual(tl["duration"], lead + 42.62, places=2)
+        self.assertAlmostEqual(arr["sections"][0]["t0"], 0.0, places=3)
+
+    def test_the_bed_sounds_first_and_bloom_comes_two_beats_later(self):
+        tl, arr = timeline.lay_out(reel_script(), REEL_DURS)
+        self.assertEqual(sound_defaults.MARKS["bed_first"]["entrance_after_beats"], 2)
+        self.assertAlmostEqual(tl["marks"]["entrance"], 2 * 60 / 66, places=3)
+        self.assertAlmostEqual(arr["sections"][0]["t0"], 0.0, places=3, msg="the bed starts with the film")
+        # A cold open holds the entrance back, and the bed starts its lead before it.
+        s = reel_script()
+        s["beats"].insert(0, {"id": "open", "lead": 12.0, "lines": []})
+        tl, arr = timeline.lay_out(s, REEL_DURS)
+        self.assertAlmostEqual(arr["sections"][0]["t0"], 12.0 - 2 * 60 / 66, places=3)
 
     def test_with_its_measured_tail_everything_after_the_demo_comes_sooner(self):
         assumed, _ = timeline.lay_out(reel_script(1.12), REEL_DURS)

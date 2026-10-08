@@ -37,8 +37,8 @@ SCORES = {
 LADDER = {
     "narration_lufs": -18,
     "bed_rest_lu": -3,
-    "demo_lufs": -18,
-    "bed_under_demo_lu": -9,
+    "demo_lufs": -22,
+    "bed_under_demo_lu": -5,
     "bed_under_demo_down_s": 0.5,
     "bed_under_demo_up_s": 1.0,
     "marks_lufs": -18,
@@ -125,13 +125,19 @@ MARKS = {
     "drone_under_pad_lu": 6,
     "drone_fade_in": {
         "from_db": -12,
-        "over_s": 1.5,
+        "over_s": 0.25,
     },
     "into_the_bed": {
         "bed_bar_1_at_s": 1.5,
         "bed_e4_at_s": 4.5,
         "burble_enters_bar": 2,
         "pad_to_bed_level_s": 4.0,
+    },
+    "bed_first": {
+        "entrance_after_beats": 2,
+        "entrance_after_s": 1.818182,
+        "preroll_bars": 1,
+        "preroll_s": 3.636364,
     },
     "passing_chord_beats": [1, 2],
     "hold_bars": 1,
@@ -285,7 +291,7 @@ PARTS = {
         "eq": None,
         "pan": 0,
         "level": {
-            "lufs": -18,
+            "lufs": -22,
             "over": "its window",
         },
     },

@@ -26,11 +26,16 @@
     "cycle": ["Fmaj9", "G6/F", "Bbmaj7/F", "Bbm6/F"],
     "length": "The cycle repeats for as long as the film needs. The drone is held, never re-struck, and the pad's ties carry across cycles.",
     "film": [
-      "The entrance mark (Bloom) blooms into the bed, and the first word follows it closely.",
+      "The bed sounds from the first frame (its drone first), and the entrance mark (Bloom) comes in `bed_first.entrance_after_beats` later, blooms into the bed, and the first word follows it closely.",
       "Narration, with demos in the grammar (`grammar`).",
       "The exit mark (Reach) follows the last word closely and resolves to F."
     ],
-    "motif": "The motif plays only as the two marks. The bed never quotes it: not its head, its sequence or a variant."
+    "motif": "The motif plays only as the two marks. The bed never quotes it: not its head, its sequence or a variant.",
+    "bed_first": {
+      "about": "Chosen by the maintainer on 2026-10-07, watching the launch film: the bed (the drone) sounds from the film's first frame, under the opening's waveform, so what is seen is what is heard; Bloom follows a moment later. It was silence, then the bed and Bloom together. The entrance is two of the bed's beats in (1.82 s at 66 BPM), set on the grid (the drone articulates no bar before it), and the drone opens with `marks.drone_fade_in`, short enough that there is no silence. The drone's own attack (Cathedral's, 10-90% in about 2.2 s) would leave the first second near silent, so the score starts `preroll_bars` before the film (2026-10-08): the drone is struck there, already at its level when the film's first frame comes, and the fade-in is the only rise heard.",
+      "entrance_after_beats": 2,
+      "preroll_bars": 1
+    }
   },
   "cast": {
     "about": "SPEC section 2. Every note is a bank preset played by the engine. `knobs` are the tweaks the finals used, each with the preset's stock value; every other knob is stock. The generator writes each part's preset, voices, trim, transpose and `used` knobs, the lead's `bend` times and the drone's `breath` into every track of the scores that plays it. The lead's `legato` and `swell` are checked against the scores, and the demo against the reel it played in.",
@@ -155,7 +160,7 @@
     "length_s": 4.5,
     "lead_over_pad_db": 6,
     "drone_under_pad_lu": 6,
-    "drone_fade_in": { "from_db": -12, "over_s": 1.5 },
+    "drone_fade_in": { "from_db": -12, "over_s": 0.25 },
     "in_a_film": "The lead and the marks' pad are scaled together so the mark's 4.5 s, with the drone and anything under it, is the ladder's `marks_lufs`.",
     "bloom": {
       "role": "entrance",
@@ -295,7 +300,7 @@
       "demo": {
         "eq": null,
         "pan": 0,
-        "level": { "lufs": -18, "over": "its window" }
+        "level": { "lufs": -22, "over": "its window" }
       },
       "narration": {
         "eq": "voice_chain",
@@ -334,11 +339,11 @@
     ]
   },
   "ladder": {
-    "about": "SPEC section 7. `bed_rest_lu` is against the narration (so -21 LUFS) and `bed_under_demo_lu` against the demo (about -27 LUFS); the bed under speech is the duck (`duck`). No cues: no whoosh, blip, shimmer or logo sting, and nothing in their place.",
+    "about": "SPEC section 7. `bed_rest_lu` is against the narration (so -21 LUFS) and `bed_under_demo_lu` against the demo (about -27 LUFS); the bed under speech is the duck (`duck`). The demos were -18 LUFS with the bed 9 LU under them until 2026-10-07, when the maintainer heard the launch film's Bright and Offer demos as a bit too loud, and asked for them at about the Wander demo's height over the bed (5.2 dB) or a little under: they are 4 dB down, with the bed 5 LU under them (-21 LUFS and 6 LU on 2026-10-07, measured 6.1 to 6.7 dB over the bed; -22 and 5 LU from 2026-10-08), the bed under them where it was. No cues: no whoosh, blip, shimmer or logo sting, and nothing in their place.",
     "narration_lufs": -18,
     "bed_rest_lu": -3,
-    "demo_lufs": -18,
-    "bed_under_demo_lu": -9,
+    "demo_lufs": -22,
+    "bed_under_demo_lu": -5,
     "bed_under_demo_down_s": 0.5,
     "bed_under_demo_up_s": 1.0,
     "marks_lufs": -18,

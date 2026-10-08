@@ -8,6 +8,14 @@
 #
 #   www/video/tools/illustrated.sh FILM POSTER_SECONDS
 #
+# A film that cuts to the real app (films/FILM/shots.json, as launch does)
+# records its takes first (tools/footage.mjs, one browser, a quiet machine):
+# a take is recorded again when it is missing or its shot or the timing it
+# was recorded to has changed (a re-voice moves its actions), FOOTAGE=1 records them all
+# again, and SHOTS=a,b those shots. Its takes are heard only in its demos
+# (app_audio.py --demos). DRAFT (any value but 0) encodes a fast MP4 and the
+# 720p preview, no WebM, for review.
+#
 # Run voice.sh FILM first, and sounds.sh once. The mix takes the ladder and
 # the duck from www/brand/sound.json (mix.py's defaults); the films have no
 # cues (ADR-014). A film laid out before the grammar is mixed as it was before
@@ -17,6 +25,43 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"
 cd "$ROOT/www/video"
+# The film's takes of the real app, when it has any (out/FILM/shots/). A take
+# is stale when the shot or the timing it was recorded to has changed since:
+# its signature (the shot's spec, and the timeline's lines, beats, demos and
+# marks, not the envelopes a mix writes into it) is kept beside it.
+TAKE_SIG='
+import hashlib, json, os, sys
+mode, f = sys.argv[1], sys.argv[2]
+tl = json.load(open(f"films/{f}/timeline.json"))
+timing = {k: tl.get(k) for k in ("lines", "beats", "demos", "marks")}
+def sig(shot):
+    return hashlib.sha256(json.dumps([shot, timing], sort_keys=True).encode()).hexdigest()
+shots = json.load(open(f"films/{f}/shots.json"))["shots"]
+path = lambda i, ext: f"out/{f}/shots/{i}.{ext}"
+if mode == "need":
+    def stale(s):
+        try:
+            return open(path(s["id"], "timing")).read().strip() != sig(s)
+        except OSError:
+            return True
+    print(",".join(s["id"] for s in shots if not os.path.exists(path(s["id"], "frames.json")) or stale(s)))
+else:
+    for s in shots:
+        if s["id"] in sys.argv[3].split(",") and os.path.exists(path(s["id"], "frames.json")):
+            open(path(s["id"], "timing"), "w").write(sig(s) + "\n")
+'
+if [ -f "films/$F/shots.json" ]; then
+  NEED=$(python3 -c "$TAKE_SIG" need "$F")
+  [ "${FOOTAGE:-0}" = 1 ] && NEED=$(python3 -c "import json,sys;print(','.join(s['id'] for s in json.load(open(sys.argv[1]))['shots']))" "films/$F/shots.json")
+  [ -n "${SHOTS:-}" ] && NEED="$SHOTS"
+  if [ -n "$NEED" ]; then
+    python3 "$ROOT/scripts/wasm_pkg.py" check
+    mkdir -p "out/$F"
+    tools/one_browser.sh node tools/footage.mjs "$F" --shot "$NEED" 2>&1 | tee "out/$F/record.log" | grep -v '^\s*$' | tail -20
+    python3 -c "$TAKE_SIG" stamp "$F" "$NEED"
+  fi
+  python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"
+fi
 # The demos' measured tails, when there are any (tools/demo_tail.py).
 DEMOS=(); [ -f "out/$F/demos.json" ] && DEMOS=(--demos "out/$F/demos.json")
 # The summary line, and any demo laid out on an estimated tail or snap ignored.
@@ -33,14 +78,33 @@ if [ "$ON_N3" = 1 ]; then
   (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/$BED.film.json" "www/video/out/$F/music" --jobs 2 | tail -2)
   MUSIC=(--score "out/$F/$BED.film.json" --music "out/$F/music/$BED")
 else
+  # The bed the script names (launch's is Signal), fitted to the film's
+  # arrangement; Study when the script names none of the scores here.
+  read -r OLD OLD_SLUG < <(python3 -c "
+import json, os, re, sys
+bed = str(json.load(open(sys.argv[1]))['music'].get('bed', '')).lower()
+name = bed if bed and os.path.exists(f'sound/{bed}.json') else 'study'
+print(name, re.sub('[^a-z0-9]+', '_', json.load(open(f'sound/{name}.json'))['title'].lower()).strip('_'))
+" "films/$F/script.json")
   A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
-  python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
-  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 2 | tail -2)
-  MUSIC=(--music "out/$F/music/study")
+  python3 tools/fit_score.py "sound/$OLD.json" "out/$F/$OLD.fitted.json" $A | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/$OLD.fitted.json" "www/video/out/$F/music" --jobs 2 | tail -2)
+  MUSIC=(--music "out/$F/music/$OLD_SLUG")
 fi
-MIX=(--voice "out/$F/voice" "${MUSIC[@]}"
+# The app's own sound, from the takes: only in the demos.
+APP=()
+if [ -f "films/$F/shots.json" ]; then
+  python3 tools/app_audio.py "$F" --demos > "out/$F/app.json"
+  APP=(--app "out/$F/app.json")
+fi
+MIX=(--voice "out/$F/voice" "${MUSIC[@]}" ${APP[@]+"${APP[@]}"}
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -1
 node tools/render.mjs "$F" --jobs 3 | tr '\r' '\n' | tail -1
-python3 tools/mix.py "$F" "${MIX[@]}" --encode --poster "$POSTER" | tail -1
-ls -la "out/$F/$F.mp4" "out/$F/$F.webm"
+if [ -n "${DRAFT:-}" ] && [ "$DRAFT" != 0 ]; then
+  python3 tools/mix.py "$F" "${MIX[@]}" --encode --draft --preview --poster "$POSTER" | tail -2
+  ls -la "out/$F/$F.mp4" "out/$F/$F-preview.mp4"
+else
+  python3 tools/mix.py "$F" "${MIX[@]}" --encode --poster "$POSTER" | tail -1
+  ls -la "out/$F/$F.mp4" "out/$F/$F.webm"
+fi

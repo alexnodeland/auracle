@@ -1,43 +1,31 @@
 {
  "film": "launch",
- "bpm": 100,
+ "bpm": 66,
  "meter": 4,
- "bed": "signal",
+ "bed": "n3",
  "sections": [
   {
-   "section": "intro",
-   "bars": 5,
+   "section": "s",
+   "bars": 34,
    "t0": 0.0
-  },
-  {
-   "section": "build",
-   "bars": 9,
-   "t0": 12.0
-  },
-  {
-   "section": "main_a",
-   "bars": 5,
-   "t0": 33.6
-  },
-  {
-   "section": "main_b",
-   "bars": 5,
-   "t0": 45.6
-  },
-  {
-   "section": "breakdown",
-   "bars": 7,
-   "t0": 57.6
-  },
-  {
-   "section": "finale",
-   "bars": 8,
-   "t0": 74.4
-  },
-  {
-   "section": "end",
-   "bars": 2,
-   "t0": 93.6
   }
- ]
+ ],
+ "demos": [
+  [
+   50.878,
+   55.878
+  ],
+  [
+   61.279,
+   70.279
+  ],
+  [
+   81.256,
+   87.756
+  ]
+ ],
+ "marks": {
+  "entrance": 1.818,
+  "exit": 116.068
+ }
 }

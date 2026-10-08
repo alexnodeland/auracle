@@ -920,7 +920,10 @@ def main():
             if (at is None) != (want is None) or (at is not None and abs(at - want) > 0.0015):
                 sys.exit(f"mix.py: the score puts the {k} mark at {at} s and the timeline at {want} s: write the score "
                          f"again from this timeline (fit_score.py --film films/{args.film} {args.score})")
-        t0 = placed["t0"]
+        # Where the score starts: its `at` (the bed sounds before the
+        # entrance, sound.json form.bed_first), or the entrance for a score
+        # written before that rule.
+        t0 = placed.get("at", placed["t0"])
         S = {}
         for r, x in each_score_stem(score, args.music):
             if not np.isfinite(x).all():

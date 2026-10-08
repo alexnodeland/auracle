@@ -50,7 +50,8 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    - `make dev-check` fails on drift.
 3. **The mix.** *Done* (#84).
    - the voice chain;
-   - the ladder (the bed at −3 LU, the demo and the marks at −18 LUFS, the
+   - the ladder (the bed at −3 LU, the demo and the marks at −18 LUFS (the
+     demo −22 since 2026-10-08), the
      master at −16);
    - the 2 dB duck with the 3 dB carve, and the pad's 2 dB vowel dip;
    - the app's sound normalized per demo window;
@@ -87,8 +88,11 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    - `stingers.json` is gone, with `stage.sfx()`, its 25 call sites (launch,
      taste, math, engine, dsp, and the tour's title card), `render.mjs
      --cues` and `mix.py`'s count of them. The stage has no sound of its own.
-   - Signal, launch's bed until it is re-voiced, loses its riser and its
-     closing hit; its last section (`end`) is the finale ringing out.
+   - Signal, launch's bed until it was re-voiced, lost its riser and its
+     closing hit. Launch is on N3 now (the first film there, 8 October): Bloom
+     and Reach, three demos from its takes of the app (Bright, Wander, Blend
+     and Take), heard only in their demos (`app_audio.py --demos`), their
+     tails measured from the takes.
    - The two marks take the cues' place: `timeline.py` puts Bloom 1.75 s
      before a film's first word and Reach 1.75 s after its last, where every
      logo sting stood (an outro's end card), as each film moves to N3.
@@ -118,9 +122,9 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    - `shotgen.dump` refuses an off-list preset (loaded, opened, played on
      the warm start or dropped as a fixture) unless the shot's `uncast`
      gives the reason, and `tools/test_shotgen.py` holds every walkthrough
-     to it in `make dev-check`; the four written by hand (launch's footage,
-     seen and not heard; `circuit` and `perform`, replaced; `zzprobe`, a
-     probe) are listed there with why. The exceptions, each because a
+     to it in `make dev-check`; the three written by hand (`circuit` and
+     `perform`, replaced; `zzprobe`, a probe; launch's takes are generated
+     and cast since it moved to N3) are listed there with why. The exceptions, each because a
      line names the preset or describes its circuit: view-patch's one patch
      (Glass Pad, seven shots: read3 to read5 and hear5), its chains (Ask The
      Dice) and Steps (Loom); view-perform's Bell Jar (named9) and Loom
