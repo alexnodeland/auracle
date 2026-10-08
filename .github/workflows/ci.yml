@@ -1153,10 +1153,16 @@ jobs:
   # is cut from a green main that has therefore already deployed
   # (CONTRIBUTING.md § Cutting a release). A red run deploys nothing; the last
   # green one stays live.
+  #
+  # `!cancelled()` because a run on main that reuses the queue's verdict skips
+  # most of the jobs `ci` needs, and a job with no status function in its `if`
+  # is skipped whenever any job upstream of it was, however far up: without it
+  # every such run built the site and never deployed it. `ci`'s own result is
+  # the verdict on those skips.
   deploy:
     name: Deploy to Pages
     needs: [ci, site]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.ci.result == 'success' && needs.site.outputs.pages_artifact != ''
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.ci.result == 'success' && needs.site.result == 'success' && needs.site.outputs.pages_artifact != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
