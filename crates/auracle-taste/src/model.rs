@@ -514,6 +514,54 @@ impl SiteAddrs {
     }
 }
 
+/// What the likelihood reads of a fit's data: the standardized rows, the
+/// coordinates each imputed ([`FitSet::absent`]), and each row's recency
+/// weight. A pure function of the config and the data, so it is built once
+/// per fit, not once per MH step: the rows used to be cloned out of the
+/// [`FitSet`] and the weights recomputed (a `powf` per row) every time the
+/// program was rebuilt.
+#[derive(Clone, Debug)]
+struct Evidence {
+    /// Standardized feedback and its session, in log order.
+    rows: Vec<(Feedback, usize)>,
+    /// Imputed coordinates per row, index-parallel to `rows` (may be short).
+    absent: Vec<Vec<usize>>,
+    /// Per-row likelihood weight: newest = 1, halving every
+    /// `recency_half_life` rows back.
+    weights: Vec<f64>,
+}
+
+impl Evidence {
+    fn new(cfg: &TasteConfig, data: &FitSet) -> Self {
+        let n_obs = data.rows.len();
+        let weights = match cfg.recency_half_life {
+            Some(hl) if hl > 0.0 => (0..n_obs)
+                .map(|i| 0.5f64.powf((n_obs - 1 - i) as f64 / hl))
+                .collect(),
+            _ => vec![1.0; n_obs],
+        };
+        Self {
+            rows: data.rows.clone(),
+            absent: data.absent.clone(),
+            weights,
+        }
+    }
+
+    /// The weighted log-likelihood of every row under one draw: what the
+    /// program's single `factor` carries.
+    fn loglik(&self, s: &TasteSample) -> f64 {
+        self.rows
+            .iter()
+            .zip(self.weights.iter())
+            .enumerate()
+            .map(|(i, ((o, session), w))| {
+                let absent = self.absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
+                w * obs_loglik_with(o, *session, s, absent)
+            })
+            .sum()
+    }
+}
+
 /// The taste model: prior over latents + observation-log likelihood.
 #[derive(Clone, Debug)]
 pub struct TasteModel {
@@ -530,38 +578,26 @@ impl TasteModel {
     /// The fugue program. Returns the decoded [`TasteSample`]; the
     /// observation likelihood enters as a single `factor`.
     ///
-    /// Builds a fresh [`SiteAddrs`] each call, so it is the right entry point
-    /// for one-shot uses ([`Self::prior_sample`]). Inference paths that
-    /// rebuild the program per step must hoist the table out of the loop and
-    /// call [`Self::model_at`] — that is what [`Self::fit`] does.
+    /// Builds a fresh [`SiteAddrs`] and a fresh copy of the evidence each
+    /// call, so it is the right entry point for one-shot uses
+    /// ([`Self::prior_sample`]); an inference path that rebuilt the program
+    /// per step would build both once, outside its loop.
     pub fn model(&self, data: &FitSet) -> Model<TasteSample> {
         let addrs = Arc::new(SiteAddrs::new(&self.cfg, data.n_sessions().max(1)));
-        self.model_at(data, &addrs)
+        self.model_at(&Arc::new(Evidence::new(&self.cfg, data)), &addrs)
     }
 
-    /// The fugue program over a precomputed address table.
+    /// The fugue program over a precomputed address table and evidence.
     ///
     /// `addrs` must have been built by [`SiteAddrs::new`] from this model's
-    /// config and this `data`'s session count; it is cheap to clone and is
-    /// intended to be built once per fit and shared across every MH step.
-    ///
-    /// The observation list and the address table both ride in
-    /// [`Arc`]: the model is reconstructed every MH step, and
-    /// this keeps that reconstruction O(1) in the log size and
+    /// config and the data's session count, and `evidence` by
+    /// [`Evidence::new`] from this config and the same data. Both ride in
+    /// [`Arc`] and are built once per fit: the model is reconstructed every
+    /// MH step, and this keeps that reconstruction O(1) in the log size and
     /// allocation-free in the address count.
-    pub fn model_at(&self, data: &FitSet, addrs: &Arc<SiteAddrs>) -> Model<TasteSample> {
+    fn model_at(&self, evidence: &Arc<Evidence>, addrs: &Arc<SiteAddrs>) -> Model<TasteSample> {
         let cfg = self.cfg.clone();
-        let obs = Arc::new(data.rows.clone());
-        let absent = Arc::new(data.absent.clone());
-        // Per-observation likelihood weights: newest = 1, halving every
-        // `recency_half_life` observations back.
-        let n_obs = data.rows.len();
-        let weights = Arc::new(match cfg.recency_half_life {
-            Some(hl) if hl > 0.0 => (0..n_obs)
-                .map(|i| 0.5f64.powf((n_obs - 1 - i) as f64 / hl))
-                .collect(),
-            _ => vec![1.0; n_obs],
-        });
+        let evidence = evidence.clone();
         let sigma = cfg.sigma_theta();
         let sigma_within = cfg.sigma_within();
         let sigma_group = cfg.sigma_group();
@@ -614,8 +650,7 @@ impl TasteModel {
                     .iter()
                     .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid tau prior")))
                     .collect();
-                let obs = obs.clone();
-                let weights = weights.clone();
+                let evidence = evidence.clone();
                 fugue::sequence_vec(tau_models).bind(move |tau| {
                     // Cutpoint raws: n_stars − 1 Normal sites (ordered by
                     // transform).
@@ -624,8 +659,7 @@ impl TasteModel {
                         .iter()
                         .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid cut prior")))
                         .collect();
-                    let obs = obs.clone();
-                    let weights = weights.clone();
+                    let evidence = evidence.clone();
                     fugue::sequence_vec(cut_models).bind(move |cut_raw| {
                         let theta: Vec<Vec<f64>> = (0..k_styles)
                             .map(|ki| theta_flat[ki * d..(ki + 1) * d].to_vec())
@@ -642,15 +676,7 @@ impl TasteModel {
                             cuts.push(c);
                         }
                         let s = TasteSample { theta, tau, cuts };
-                        let ll: f64 = obs
-                            .iter()
-                            .zip(weights.iter())
-                            .enumerate()
-                            .map(|(i, ((o, session), w))| {
-                                let absent = absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
-                                w * obs_loglik_with(o, *session, &s, absent)
-                            })
-                            .sum();
+                        let ll = evidence.loglik(&s);
                         factor(ll).map(move |_| s)
                     })
                 })
@@ -709,10 +735,12 @@ impl TasteModel {
         n_samples: usize,
         n_warmup: usize,
     ) -> TastePosterior {
-        // Hoisted out of the step loop: the address table is identical for
-        // every one of the `n_samples + n_warmup` reconstructions.
+        // Hoisted out of the step loop: the address table and the evidence
+        // (the rows, what each imputed, and the recency weights) are identical
+        // for every one of the `n_samples + n_warmup` reconstructions.
         let addrs = Arc::new(SiteAddrs::new(&self.cfg, data.n_sessions().max(1)));
-        let model_fn = || self.model_at(data, &addrs);
+        let evidence = Arc::new(Evidence::new(&self.cfg, data));
+        let model_fn = || self.model_at(&evidence, &addrs);
         // The stride is known before the chain runs, because the driver pushes
         // exactly `n_samples` draws — so asking it to retain only every
         // `stride`-th is the same subsequence `step_by` produced, without ever
