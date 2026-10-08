@@ -62,7 +62,7 @@ README = os.path.join(ROOT, "README.md")
 APP = os.path.join(ROOT, "apps", "web", "index.html")
 SITE_URL = "https://auracle.alexnodeland.com/"
 CHAPTER_NAMES = {
-    "launch": {"open": "The problem", "title": "Auracle", "duel": "Two patches, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
+    "launch": {"open": "Knowing your circuit", "title": "Auracle", "duel": "Two sounds, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
     "taste": {"hook": "Choosing, not describing", "hears": "What it listens for", "evidence": "A pick is evidence", "posterior": "Every taste that still fits", "lenses": "More than one taste", "forecast": "Forecasts, scored", "search": "The search", "reading": "Reading what it learned", "playing": "Learning while you play", "outro": "In the open"},
     "tour": {"title": "A tour of Auracle", "views": "The four views", "bank": "The bank", "dock": "The dock", "header": "Up top", "first": "Your first visit", "next": "Where to go next"},
     "view-evolve": {"title": "EVOLVE", "turn1": "The duel", "turn2": "Play it yourself", "turn3": "Point it", "turn4": "What a pick does", "turn5": "Fair questions", "turn6": "A generation", "turn7": "Stars, save, cut", "turn8": "A working rhythm", "outro": "Next: TASTE"},
@@ -291,8 +291,9 @@ LANDING_ROWS = {
     "making": ["sounddesign", "composing"],
 }
 # The hero's silent loop: the launch film's opening, which carries its own
-# words on screen, so it reads with the sound off.
-LOOPS = {"launch": (0.0, 17.2)}
+# words on screen, so it reads with the sound off: from the sound at OUT to
+# the whole library's knobs turning, as open2's last word ends.
+LOOPS = {"launch": (0.0, 20.6)}
 # The four views' films, each in its tab of *Four views, one loop* on the
 # landing page (the pane marker `films:pane-<tab>`), playing its own silent
 # loop in place of the screenshot. Their loop windows are the films' own

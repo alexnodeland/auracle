@@ -14,9 +14,9 @@ sounds, and it learns what you like, breeds new sounds toward it, and shows you
 what it learned. Every sound is a patch you can open and change.
 
 <!-- films:readme -->
-<a href="https://auracle.alexnodeland.com/"><img src="www/landing/assets/film/launch-play.jpg" alt="Watch the launch film (1:38)" width="720"></a>
+<a href="https://auracle.alexnodeland.com/"><img src="www/landing/assets/film/launch-play.jpg" alt="Watch the launch film (2:03)" width="720"></a>
 
-**[▶ Watch the launch film](https://auracle.alexnodeland.com/)** (1:38) · [How Auracle learns what you like](https://auracle.alexnodeland.com/docs/films.html#film-taste) (1:49) · [Under the hood](https://auracle.alexnodeland.com/docs/films.html#film-engine) (2:17) · [The math](https://auracle.alexnodeland.com/docs/films.html#film-math) (2:46) · [The sound engine](https://auracle.alexnodeland.com/docs/films.html#film-dsp) (2:49)
+**[▶ Watch the launch film](https://auracle.alexnodeland.com/)** (2:03) · [How Auracle learns what you like](https://auracle.alexnodeland.com/docs/films.html#film-taste) (1:49) · [Under the hood](https://auracle.alexnodeland.com/docs/films.html#film-engine) (2:17) · [The math](https://auracle.alexnodeland.com/docs/films.html#film-math) (2:46) · [The sound engine](https://auracle.alexnodeland.com/docs/films.html#film-dsp) (2:49)
 <!-- /films:readme -->
 
 ## Play it

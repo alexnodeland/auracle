@@ -135,7 +135,7 @@ def bank() -> set[str]:
 
 NEEDED = (
     "key.pedal", "tempo.bpm", "tempo.beats_per_bar", "tempo.marks_bpm",
-    "form.cycle", "form.cycle_bars", "form.bars_per_chord",
+    "form.cycle", "form.cycle_bars", "form.bars_per_chord", "form.bed_first.entrance_after_beats", "form.bed_first.preroll_bars",
     "cast.shortlist.roles", "cast.shortlist.criteria", "cast.room.preset", "cast.room.stock",
     "cast.parts.drone.breath", "cast.parts.lead.bend", "cast.parts.lead.legato.s", "cast.parts.lead.swell",
     "cast.parts.demo.heard_in", "cast.parts.demo.bright",
@@ -527,6 +527,12 @@ def defaults(src: dict) -> dict:
         "MARKS": {
             **{k: strip(src["marks"][k]) for k in ("length_s", "lead_over_pad_db", "drone_under_pad_lu", "drone_fade_in")},
             "into_the_bed": numbers(src["marks"]["bloom"]["into_the_bed"]),
+            "bed_first": {
+                "entrance_after_beats": src["form"]["bed_first"]["entrance_after_beats"],
+                "entrance_after_s": round(src["form"]["bed_first"]["entrance_after_beats"] * beat, 6),
+                "preroll_bars": src["form"]["bed_first"]["preroll_bars"],
+                "preroll_s": round(src["form"]["bed_first"]["preroll_bars"] * tempo["beats_per_bar"] * beat, 6),
+            },
             "passing_chord_beats": src["marks"]["reach"]["out_of_the_bed"]["passing_chord_beats"],
             "hold_bars": src["marks"]["reach"]["out_of_the_bed"]["hold_bars"],
         },

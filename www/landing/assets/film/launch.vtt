@@ -1,74 +1,78 @@
 WEBVTT
 
-00:00:02.400 --> 00:00:05.697
+00:00:08.068 --> 00:00:11.366
 Every synthesizer has a
 sound in it that's yours.
 
-00:00:06.397 --> 00:00:10.105
-Finding it means turning
-hundreds of knobs, one at a time.
+00:00:12.066 --> 00:00:17.216
+Finding it means knowing your circuit:
+which modules to wire together, where the
 
-00:00:13.200 --> 00:00:16.927
+00:00:17.216 --> 00:00:20.563
+feedback goes, and how each
+choice shapes the sound.
+
+00:00:22.763 --> 00:00:26.491
 Auracle is a synthesizer
 that searches for your sound.
 
-00:00:18.900 --> 00:00:20.456
-It plays you two patches.
+00:00:27.991 --> 00:00:30.204
+In EVOLVE, it plays you two sounds.
 
-00:00:20.456 --> 00:00:22.510
+00:00:30.204 --> 00:00:32.291
 You pick the one you like better.
 
-00:00:23.010 --> 00:00:25.037
+00:00:32.791 --> 00:00:34.818
 Every pick teaches it your taste,
 
-00:00:25.487 --> 00:00:27.585
+00:00:35.268 --> 00:00:37.366
 and it grows new patches toward it.
 
-00:00:28.085 --> 00:00:32.565
+00:00:37.866 --> 00:00:42.346
 Not samples. Real modular circuits,
 built and wired from scratch.
 
-00:00:34.200 --> 00:00:35.383
-Then you play it.
+00:00:43.746 --> 00:00:45.663
+Then you play it, in PERFORM.
 
-00:00:36.283 --> 00:00:39.898
+00:00:46.563 --> 00:00:50.178
 Turn Bright, and it finds the knobs
 that make this patch brighter.
 
-00:00:40.698 --> 00:00:44.283
+00:00:56.994 --> 00:01:00.579
 Let it wander, and the knobs turn
 themselves toward your taste.
 
-00:00:46.000 --> 00:00:49.940
+00:01:12.146 --> 00:01:16.086
 Press Offer, and a new version
 grows from the sound in your hands.
 
-00:00:50.640 --> 00:00:52.874
+00:01:16.786 --> 00:01:19.020
 Blend into it. Take it, or pass.
 
-00:00:52.874 --> 00:00:54.410
+00:01:19.020 --> 00:01:20.556
 Either way, it learns.
 
-00:00:58.100 --> 00:00:59.887
-Open the circuit any time.
+00:01:30.245 --> 00:01:32.644
+Open the sound in PATCH any time.
 
-00:00:59.887 --> 00:01:04.285
-Every knob is real, and you can
-watch the performance turn them.
+00:01:32.644 --> 00:01:36.715
+Every knob is real, and you
+can watch PERFORM turn them.
 
-00:01:04.985 --> 00:01:10.281
+00:01:37.415 --> 00:01:42.711
 Underneath, a model of your taste bets on
 every choice before you make it, and keeps
 
-00:01:10.281 --> 00:01:11.290
+00:01:42.711 --> 00:01:43.720
 score in public.
 
-00:01:15.400 --> 00:01:17.637
+00:01:45.520 --> 00:01:47.758
 Every note in this film is Auracle.
 
-00:01:18.637 --> 00:01:21.690
+00:01:48.758 --> 00:01:51.810
 Free, open source, and
 running in your browser.
 
-00:01:33.900 --> 00:01:35.007
+00:01:53.210 --> 00:01:54.318
 Play it today.

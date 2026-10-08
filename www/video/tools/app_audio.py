@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """The recorded app sound under a walkthrough, as mix.py's --app list.
 
-usage: app_audio.py FILM [--gain-db G] > out/FILM/app.json
+usage: app_audio.py FILM [--gain-db G] [--demos] > out/FILM/app.json
+
+With --demos, a shot is heard only in the timeline's demo slots (from a
+demo's line ending to the next line: the pause, the demo and its tail), and
+is a picture everywhere else: an illustrated film that cuts to the app under
+its narration (the launch film), whose app is never heard under the voice
+(ADR-014).
 
 Each window's `gain_db` defaults to www/brand/sound.json's
 `before_the_grammar.app_gain_db` (-3). mix.py uses it as it is for a film laid
@@ -91,11 +97,24 @@ def windows(shot, beat, meta, lines):
     return out
 
 
+def demo_slots(tl):
+    """Each demo's slot, as mix.py's demo_slots: from its line's end to the
+    next line's start (or the next demo's, or the film's end)."""
+    demos = tl.get("demos", [])
+    starts = sorted([l["t0"] for l in tl["lines"]] + [d["pause"] for d in demos])
+    out = []
+    for d in demos:
+        nxt = [s for s in starts if s > d["off"]]
+        out.append((d["pause"], nxt[0] if nxt else tl["duration"]))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("film")
     ap.add_argument("--gain-db", type=float, default=sound_defaults.BEFORE_THE_GRAMMAR["app_gain_db"],
                     help="the app's gain (default: sound.json before_the_grammar.app_gain_db)")
+    ap.add_argument("--demos", action="store_true", help="heard only in the timeline's demo slots")
     args = ap.parse_args()
     fdir = os.path.join(VIDEO, "films", args.film)
     sdir = os.path.join(VIDEO, "out", args.film, "shots")
@@ -112,7 +131,10 @@ def main():
             continue
         meta = json.load(open(meta_f))
         for a, z, t in windows(shot, b, meta, lines):
-            out.append({"file": wav, "t": round(t, 4), "from": round(a, 4), "to": round(z, 4), "gain_db": float(args.gain_db)})
+            for a2, z2 in (demo_slots(tl) if args.demos else [(a, z)]):
+                lo, hi = max(a, a2), min(z, z2)
+                if hi > lo:
+                    out.append({"file": wav, "t": round(t, 4), "from": round(lo, 4), "to": round(hi, 4), "gain_db": float(args.gain_db)})
     print(json.dumps(out, indent=1))
 
 

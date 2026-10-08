@@ -2,65 +2,65 @@
  "launch": {
   "title": "Auracle",
   "description": "The launch film: what Auracle is, what it feels like to play, and what is underneath.",
-  "duration": 98.4,
+  "duration": 123.17,
   "chapters": [
    {
     "t": 0.0,
-    "name": "The problem"
+    "name": "Knowing your circuit"
    },
    {
-    "t": 12.0,
+    "t": 21.56,
     "name": "Auracle"
    },
    {
-    "t": 18.6,
-    "name": "Two patches, one pick"
+    "t": 27.69,
+    "name": "Two sounds, one pick"
    },
    {
-    "t": 25.49,
+    "t": 35.27,
     "name": "Real circuits"
    },
    {
-    "t": 33.6,
+    "t": 43.15,
     "name": "Playing it"
    },
    {
-    "t": 45.6,
+    "t": 71.75,
     "name": "Offers"
    },
    {
-    "t": 57.6,
+    "t": 89.75,
     "name": "Underneath"
    },
    {
-    "t": 74.4,
+    "t": 104.52,
     "name": "Every note"
    },
    {
-    "t": 93.6,
+    "t": 112.91,
     "name": "Play it"
    }
   ],
   "transcript": [
    "Every synthesizer has a sound in it that's yours.",
-   "Finding it means turning hundreds of knobs, one at a time.",
+   "Finding it means knowing your circuit: which modules to wire together, where the feedback goes, and how each choice shapes the sound.",
    "Auracle is a synthesizer that searches for your sound.",
-   "It plays you two patches. You pick the one you like better.",
+   "In EVOLVE, it plays you two sounds. You pick the one you like better.",
    "Every pick teaches it your taste,",
    "and it grows new patches toward it.",
    "Not samples. Real modular circuits, built and wired from scratch.",
-   "Then you play it.",
+   "Then you play it, in PERFORM.",
    "Turn Bright, and it finds the knobs that make this patch brighter.",
    "Let it wander, and the knobs turn themselves toward your taste.",
    "Press Offer, and a new version grows from the sound in your hands.",
    "Blend into it. Take it, or pass. Either way, it learns.",
-   "Open the circuit any time. Every knob is real, and you can watch the performance turn them.",
+   "Open the sound in PATCH any time. Every knob is real, and you can watch PERFORM turn them.",
    "Underneath, a model of your taste bets on every choice before you make it, and keeps score in public.",
    "Every note in this film is Auracle.",
    "Free, open source, and running in your browser.",
    "Play it today."
   ],
-  "mp4_bytes": 28663144
+  "mp4_bytes": 40842949
  },
  "taste": {
   "title": "How Auracle learns what you like",
