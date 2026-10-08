@@ -231,10 +231,9 @@ Findings come back ranked, and review is **one round**:
 
 - The operator pushes an agent's branch and opens the PR, in the merge queue:
   `gh pr create --base main --head claude/<topic> --title "<type>(<scope>): <what is true now>" --body-file <file> --label queue`,
-  then comments `@mergifyio queue` on it, which queues it until the label
-  alone does ([CI and merging](#ci-and-merging)).
+  and the label queues it ([CI and merging](#ci-and-merging)).
   A contributor opens theirs from their own branch or fork, and the
-  maintainer adds the label and the comment once it is reviewed.
+  maintainer adds the label once it is reviewed.
 - **The title** is the squash commit's subject on `main`, so it starts as a
   commit's does (root `AGENTS.md` rule 8): a type (`feat`, `fix`, `docs`,
   `tests`, `test`, `ci`, `build`, `refactor`, `perf`, `chore`, `revert`,
@@ -377,13 +376,12 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   ([ADR-021](decisions/021-merges-go-through-mergifys-queue.md),
   [ADR-023](decisions/023-the-gate-runs-in-the-queue.md)). Mergify's queue,
   set up in `.mergify.yml`, is how a PR reaches `main`:
-  - A reviewed PR is opened with the `queue` label, and a
-    `@mergifyio queue` comment queues it. The comment is the act of
-    enqueueing for now: the label queues a PR through Mergify's auto-merge
-    conditions, which act only while Merge Protections is active for the
-    repository in Mergify's dashboard, and that is the maintainer's to switch
-    on. Once it is, the label alone queues a PR, and the comment is only for
-    putting one back.
+  - A reviewed PR is opened with the `queue` label, and the label queues
+    it, through Mergify's auto-merge conditions. They act while Merge
+    Protections is active for the repository in Mergify's dashboard, which
+    the maintainer switched on on 2026-10-08 (not enforced). A
+    `@mergifyio queue` comment is for putting a PR back that left the
+    queue, or the box Mergify's comment offers.
   - It enters the queue once its fast lane's `CI`, its `PR checks` and its
     `Mutants in the changed code` are green. All three are
     required of every PR, in either of `.mergify.yml`'s queues. A crate
