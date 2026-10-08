@@ -1,8 +1,7 @@
 # Mergify's merge queue: how a PR reaches `main` (ADR-021, ADR-023,
-# docs/process.md § CI and merging). The operator comments `@mergifyio
-# queue` on a reviewed PR, which also carries the `queue` label; once Merge
-# Protections is active for the repository, the label alone queues it
-# (`merge_protections_settings`, at the end).
+# docs/process.md § CI and merging). The operator labels a reviewed PR
+# `queue`, and the label alone queues it: Merge Protections is active for
+# the repository (`merge_protections_settings`, at the end).
 #
 # Two steps (ADR-023). A PR's own run of `CI` is the fast lane: Lint, Web,
 # the Rust tests and their coverage, and the browser specs the change
@@ -162,8 +161,8 @@ priority_rules:
 # Mergify's auto-merge conditions are the way its docs give for queueing on
 # a label: with the merge queue on, a PR that matches them is queued. They take effect only
 # while Merge Protections is active for the repository in Mergify's
-# dashboard, which is the maintainer's to switch on; until then the label
-# does nothing, and `@mergifyio queue` is how a PR is queued. A
+# dashboard; the maintainer switched it on on 2026-10-08 (not enforced: no
+# protection rule is defined here), so the label queues a PR. A
 # `pull_request_rules` rule with the `queue` action did not queue on the
 # label here (#190), so there is none. `@mergifyio queue` also puts back a
 # PR that left the queue.
