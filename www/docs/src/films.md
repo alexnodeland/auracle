@@ -10,7 +10,7 @@ The narration is synthetic (Kokoro-82M, offline).
 
 ## Start here
 
-### Auracle <span class="film-len">1:38</span>
+### Auracle <span class="film-len">2:03</span>
 
 <figure class="film" id="film-launch">
 <video controls preload="none" playsinline poster="../assets/film/launch.jpg">
@@ -21,20 +21,20 @@ The narration is synthetic (Kokoro-82M, offline).
 </figure>
 
 <ol class="film-chapters">
-<li><a href="../assets/film/launch.mp4#t=0.0" data-film="launch" data-t="0.00">0:00</a> The problem</li>
-<li><a href="../assets/film/launch.mp4#t=12.0" data-film="launch" data-t="12.00">0:12</a> Auracle</li>
-<li><a href="../assets/film/launch.mp4#t=18.6" data-film="launch" data-t="18.60">0:19</a> Two patches, one pick</li>
-<li><a href="../assets/film/launch.mp4#t=25.5" data-film="launch" data-t="25.49">0:25</a> Real circuits</li>
-<li><a href="../assets/film/launch.mp4#t=33.6" data-film="launch" data-t="33.60">0:34</a> Playing it</li>
-<li><a href="../assets/film/launch.mp4#t=45.6" data-film="launch" data-t="45.60">0:46</a> Offers</li>
-<li><a href="../assets/film/launch.mp4#t=57.6" data-film="launch" data-t="57.60">0:58</a> Underneath</li>
-<li><a href="../assets/film/launch.mp4#t=74.4" data-film="launch" data-t="74.40">1:14</a> Every note</li>
-<li><a href="../assets/film/launch.mp4#t=93.6" data-film="launch" data-t="93.60">1:34</a> Play it</li>
+<li><a href="../assets/film/launch.mp4#t=0.0" data-film="launch" data-t="0.00">0:00</a> Knowing your circuit</li>
+<li><a href="../assets/film/launch.mp4#t=21.6" data-film="launch" data-t="21.56">0:22</a> Auracle</li>
+<li><a href="../assets/film/launch.mp4#t=27.7" data-film="launch" data-t="27.69">0:28</a> Two sounds, one pick</li>
+<li><a href="../assets/film/launch.mp4#t=35.3" data-film="launch" data-t="35.27">0:35</a> Real circuits</li>
+<li><a href="../assets/film/launch.mp4#t=43.1" data-film="launch" data-t="43.15">0:43</a> Playing it</li>
+<li><a href="../assets/film/launch.mp4#t=71.8" data-film="launch" data-t="71.75">1:12</a> Offers</li>
+<li><a href="../assets/film/launch.mp4#t=89.8" data-film="launch" data-t="89.75">1:30</a> Underneath</li>
+<li><a href="../assets/film/launch.mp4#t=104.5" data-film="launch" data-t="104.52">1:45</a> Every note</li>
+<li><a href="../assets/film/launch.mp4#t=112.9" data-film="launch" data-t="112.91">1:53</a> Play it</li>
 </ol>
 
 <details class="film-transcript"><summary>Transcript</summary>
 
-Every synthesizer has a sound in it that's yours. Finding it means turning hundreds of knobs, one at a time. Auracle is a synthesizer that searches for your sound. It plays you two patches. You pick the one you like better. Every pick teaches it your taste, and it grows new patches toward it. Not samples. Real modular circuits, built and wired from scratch. Then you play it. Turn Bright, and it finds the knobs that make this patch brighter. Let it wander, and the knobs turn themselves toward your taste. Press Offer, and a new version grows from the sound in your hands. Blend into it. Take it, or pass. Either way, it learns. Open the circuit any time. Every knob is real, and you can watch the performance turn them. Underneath, a model of your taste bets on every choice before you make it, and keeps score in public. Every note in this film is Auracle. Free, open source, and running in your browser. Play it today.
+Every synthesizer has a sound in it that's yours. Finding it means knowing your circuit: which modules to wire together, where the feedback goes, and how each choice shapes the sound. Auracle is a synthesizer that searches for your sound. In EVOLVE, it plays you two sounds. You pick the one you like better. Every pick teaches it your taste, and it grows new patches toward it. Not samples. Real modular circuits, built and wired from scratch. Then you play it, in PERFORM. Turn Bright, and it finds the knobs that make this patch brighter. Let it wander, and the knobs turn themselves toward your taste. Press Offer, and a new version grows from the sound in your hands. Blend into it. Take it, or pass. Either way, it learns. Open the sound in PATCH any time. Every knob is real, and you can watch PERFORM turn them. Underneath, a model of your taste bets on every choice before you make it, and keeps score in public. Every note in this film is Auracle. Free, open source, and running in your browser. Play it today.
 
 </details>
 

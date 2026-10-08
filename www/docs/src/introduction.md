@@ -9,7 +9,7 @@ for. It learns your ear, and every generation grows a little closer.</p>
 <source src="../assets/film/launch.mp4" type="video/mp4">
 <track kind="captions" src="../assets/film/launch.vtt" srclang="en" label="English" default>
 </video>
-<figcaption>The launch film: what Auracle is, what it feels like to play, and what is underneath. <span class="film-len">1:38</span> · <a href="films.html#film-launch">chapters and transcript</a></figcaption>
+<figcaption>The launch film: what Auracle is, what it feels like to play, and what is underneath. <span class="film-len">2:03</span> · <a href="films.html#film-launch">chapters and transcript</a></figcaption>
 </figure>
 <!-- /film:launch -->
 
