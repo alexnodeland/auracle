@@ -35,8 +35,11 @@
 //! moves every later cut, and so every star row; a μ moves only the prior.
 //! Each recomputed number comes from the code `Evidence::loglik` runs (the
 //! same `dot`, the same `Evidence::term`), and the total is the terms summed
-//! in row order as it sums them, so the proposal's log-weight is the number
-//! the whole program would give, bit for bit.
+//! in row order as it sums them. The prior is kept the same way: each
+//! site's term, a move recomputing its own (and a μ's, those of the θ drawn
+//! about it), all of them summed from 0 in execution order as the trace sums
+//! them. So the proposal's log-weight is the number the whole program would
+//! give, bit for bit (a running total updated by differences would not be).
 
 use fugue::core::numerical::nan_to_neg_inf;
 use fugue::runtime::handler::run;
@@ -46,7 +49,7 @@ use rand::{Rng, RngCore};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{dot, Evidence, Layout, SiteAddrs, TasteModel, TasteSample};
+use super::{dot, prior_total, Evidence, Layout, SiteAddrs, SitePrior, TasteModel, TasteSample};
 use crate::observe::{Feedback, FitSet};
 
 /// Run the chain: `n_warmup` adapting steps, then `n_samples` with the
@@ -107,9 +110,13 @@ struct Chain<'a> {
     prop_scored: Scored,
 }
 
-/// A state's likelihood in its parts.
+/// A state's log-weight in its parts.
 #[derive(Clone, Debug)]
 struct Scored {
+    /// Every site's log-prior, in execution order (`Layout::prior_term`).
+    prior: Vec<f64>,
+    /// The prior's terms summed (`prior_total`).
+    lp: f64,
     /// Every candidate's utility under every lens, `[c·K + k]`, candidates
     /// in row order (a duel's `a` then `b`).
     dots: Vec<f64>,
@@ -131,6 +138,8 @@ struct Rows<'a> {
     keeps: Vec<Vec<usize>>,
     /// The star rows.
     stars: Vec<usize>,
+    /// For each μ (by its slot), the slots of the θ drawn about it.
+    about: Vec<Vec<usize>>,
 }
 
 /// What moving one site changes of the likelihood.
@@ -170,7 +179,13 @@ impl<'a> Rows<'a> {
             cands: vec![0],
             keeps: vec![Vec::new(); layout.cut_at - layout.tau_at],
             stars: Vec::new(),
+            about: vec![Vec::new(); layout.theta_at],
         };
+        for (slot, prior) in layout.priors.iter().enumerate() {
+            if let SitePrior::About { mu, .. } = prior {
+                rows.about[*mu].push(slot);
+            }
+        }
         for (r, (o, session)) in evidence.rows.iter().enumerate() {
             match o {
                 Feedback::Duel { a, b, .. } => rows.phis.extend([&a[..], &b[..]]),
@@ -188,9 +203,14 @@ impl<'a> Rows<'a> {
         rows
     }
 
-    /// Score a state from nothing.
-    fn score(&self, evidence: &Evidence, s: &TasteSample) -> Scored {
+    /// Score a state, its values `vals` and its draw `s`, from nothing.
+    fn score(&self, layout: &Layout, evidence: &Evidence, vals: &[f64], s: &TasteSample) -> Scored {
+        let prior: Vec<f64> = (0..vals.len())
+            .map(|slot| layout.prior_term(slot, vals))
+            .collect();
         let mut scored = Scored {
+            lp: prior_total(prior.iter().copied()),
+            prior,
             dots: self
                 .phis
                 .iter()
@@ -214,10 +234,25 @@ impl<'a> Rows<'a> {
         evidence.term(r, s, first.iter().copied(), second.iter().copied())
     }
 
-    /// Rescore `scored`, a score of the state before the move, for `s`, the
-    /// state after it: only what `reach` reaches.
-    fn rescore(&self, evidence: &Evidence, s: &TasteSample, reach: Reach, scored: &mut Scored) {
-        let rows: &[usize] = match reach {
+    /// Rescore `scored`, a score of the state before the site at `slot`
+    /// moved, for the state after it (its values `vals` and its draw `s`):
+    /// only the site's prior (and, for a μ, the prior of each θ drawn about
+    /// it), and the likelihood's parts the site reaches.
+    fn rescore(
+        &self,
+        layout: &Layout,
+        evidence: &Evidence,
+        vals: &[f64],
+        s: &TasteSample,
+        slot: usize,
+        scored: &mut Scored,
+    ) {
+        scored.prior[slot] = layout.prior_term(slot, vals);
+        for &theta in self.about.get(slot).map_or(&[][..], Vec::as_slice) {
+            scored.prior[theta] = layout.prior_term(theta, vals);
+        }
+        scored.lp = prior_total(scored.prior.iter().copied());
+        let rows: &[usize] = match layout.reach(slot) {
             Reach::Nothing => return,
             Reach::Lens(k) => {
                 for (c, phi) in self.phis.iter().enumerate() {
@@ -238,9 +273,14 @@ impl<'a> Rows<'a> {
         scored.ll = scored.terms.iter().sum();
     }
 
-    /// Make `to` equal `from` again after a move that reached `reach`.
-    fn sync(&self, reach: Reach, from: &Scored, to: &mut Scored) {
-        let rows: &[usize] = match reach {
+    /// Make `to` equal `from` again after the site at `slot` moved.
+    fn sync(&self, layout: &Layout, slot: usize, from: &Scored, to: &mut Scored) {
+        to.prior[slot] = from.prior[slot];
+        for &theta in self.about.get(slot).map_or(&[][..], Vec::as_slice) {
+            to.prior[theta] = from.prior[theta];
+        }
+        to.lp = from.lp;
+        let rows: &[usize] = match layout.reach(slot) {
             Reach::Nothing => return,
             Reach::Lens(k) => {
                 for c in 0..self.phis.len() {
@@ -295,8 +335,8 @@ impl<'a> Chain<'a> {
         };
         layout.decode_into(&cur, &mut cur_s);
         let rows = Rows::new(layout, evidence);
-        let cur_scored = rows.score(evidence, &cur_s);
-        let cur_lw = log_weight(layout, &cur, cur_scored.ll);
+        let cur_scored = rows.score(layout, evidence, &cur, &cur_s);
+        let cur_lw = log_weight(&cur_scored);
         Self {
             layout,
             evidence,
@@ -333,10 +373,15 @@ impl<'a> Chain<'a> {
     fn propose(&mut self, slot: usize, value: f64) -> f64 {
         self.prop[slot] = value;
         self.layout.decode_into(&self.prop, &mut self.prop_s);
-        let reach = self.layout.reach(slot);
-        self.rows
-            .rescore(self.evidence, &self.prop_s, reach, &mut self.prop_scored);
-        log_weight(self.layout, &self.prop, self.prop_scored.ll)
+        self.rows.rescore(
+            self.layout,
+            self.evidence,
+            &self.prop,
+            &self.prop_s,
+            slot,
+            &mut self.prop_scored,
+        );
+        log_weight(&self.prop_scored)
     }
 
     /// Take the proposal at `slot` (log-weight `prop_lw`) or leave it, and
@@ -350,16 +395,15 @@ impl<'a> Chain<'a> {
         } else {
             self.prop[slot] = self.cur[slot];
         }
-        let reach = self.layout.reach(slot);
         self.rows
-            .sync(reach, &self.cur_scored, &mut self.prop_scored);
+            .sync(self.layout, slot, &self.cur_scored, &mut self.prop_scored);
     }
 }
 
 /// A state's log-weight as the program's trace totals it: the log-prior in
-/// execution order, plus the factor `ll`, a NaN read as −∞ (module doc).
-fn log_weight(layout: &Layout, vals: &[f64], ll: f64) -> f64 {
-    layout.log_prior(vals) + nan_to_neg_inf(ll)
+/// execution order, plus the factor, a NaN read as −∞ (module doc).
+fn log_weight(scored: &Scored) -> f64 {
+    scored.lp + nan_to_neg_inf(scored.ll)
 }
 
 /// fugue's `gen_index` (`pub(crate)` there): an index drawn over `u64`, so

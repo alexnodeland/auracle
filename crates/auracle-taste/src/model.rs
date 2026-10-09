@@ -723,13 +723,17 @@ impl Layout {
     }
 
     /// The state's log-prior, summed from 0 in execution order, as the
-    /// program's trace accumulates it.
+    /// program's trace accumulates it. The fit's kernel keeps the terms and
+    /// sums them with [`prior_total`]; this is the whole computation, the
+    /// reference its tests check it against.
+    #[cfg(test)]
     fn log_prior(&self, vals: &[f64]) -> f64 {
-        let mut lp = 0.0;
-        for (slot, x) in vals.iter().enumerate() {
-            lp += self.normal(slot, vals).log_prob(x);
-        }
-        lp
+        prior_total((0..vals.len()).map(|slot| self.prior_term(slot, vals)))
+    }
+
+    /// The log-prior of the site at `slot`'s value in the state `vals`.
+    fn prior_term(&self, slot: usize, vals: &[f64]) -> f64 {
+        self.normal(slot, vals).log_prob(&vals[slot])
     }
 
     /// Decode a state's values into the draw the program would return.
@@ -743,6 +747,16 @@ impl Layout {
             out,
         );
     }
+}
+
+/// A state's log-prior from its sites' terms in execution order: summed from
+/// 0, as the program's trace accumulates it.
+fn prior_total(terms: impl Iterator<Item = f64>) -> f64 {
+    let mut lp = 0.0;
+    for t in terms {
+        lp += t;
+    }
+    lp
 }
 
 /// Decode the sites' values into a [`TasteSample`], reusing `out`'s buffers:
@@ -919,14 +933,20 @@ impl TasteModel {
     /// | this kernel | **1.9** | **47.8** |
     ///
     /// What was left of a mature step then was the likelihood over its 100
-    /// rows, recomputed whole though one site moved. So a step now
-    /// recomputes only what its site reaches (`kernel.rs`): a θ coordinate
-    /// its lens's utility of each candidate and then each row's term from
-    /// the kept utilities, a τ its session's keeps, a cut the stars, a μ
-    /// nothing; and the terms are summed as `Evidence::loglik` sums them, so
-    /// the draws stay bit-identical. On another machine (a 4-core Linux
-    /// box), the mature step went from 22.8 µs to 8.1 µs, the first fit's
-    /// stayed under 1 µs, and the checksums did not move.
+    /// rows, recomputed whole though one site moved, and the prior over its
+    /// 226 sites. So a step now recomputes only what its site reaches
+    /// (`kernel.rs`): its own prior term (a μ's, those of the θ about it
+    /// too), and of the likelihood, for a θ coordinate its lens's utility of
+    /// each candidate and then each row's term from the kept utilities, for
+    /// a τ its session's keeps, for a cut the stars, for a μ nothing. The
+    /// terms are summed as the whole computations sum them, so the draws
+    /// stay bit-identical. On another machine (a 4-core Linux box), µs per
+    /// step:
+    ///
+    /// | | first fit | mature fit | split probe |
+    /// |---|---|---|---|
+    /// | every row and site rescored | 0.9 | 22.8 | 3.0 |
+    /// | only what the site reaches | **0.6** | **7.1** | **0.7** |
     ///
     /// # The chain is thinned as it runs
     ///

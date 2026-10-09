@@ -211,10 +211,10 @@ fn imputed_at_mean(mut data: FitSet) -> FitSet {
     data
 }
 
-/// The chain's kept likelihood is the whole one: its total is, bit for bit,
-/// what `Evidence::loglik` computes from the state, and its log-weight what
-/// the program's trace would total, and the proposal's buffers are back to
-/// the current state's.
+/// The chain's kept likelihood and prior are the whole ones: its likelihood
+/// is, bit for bit, what `Evidence::loglik` computes from the state, and its
+/// log-weight what the program's trace would total, and the proposal's
+/// buffers are back to the current state's.
 fn assert_whole(chain: &Chain, evidence: &Evidence, layout: &Layout, at: &str) {
     let ll = evidence.loglik(&chain.cur_s);
     assert_eq!(chain.cur_scored.ll.to_bits(), ll.to_bits(), "{at}: total");
@@ -225,6 +225,8 @@ fn assert_whole(chain: &Chain, evidence: &Evidence, layout: &Layout, at: &str) {
             .iter()
             .chain(&s.terms)
             .chain([&s.ll])
+            .chain(&s.prior)
+            .chain([&s.lp])
             .map(|v| v.to_bits())
             .collect()
     };
