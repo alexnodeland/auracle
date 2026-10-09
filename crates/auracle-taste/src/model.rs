@@ -23,7 +23,9 @@
 //! One `factor` carries the total log-likelihood: Bradley–Terry for duels,
 //! `σ(u − τ_s)` for keep/kill, cumulative-logit ordinal for stars. Inference
 //! is fugue's adaptive single-site MH — every site is `F64`, so the generic
-//! chain applies unchanged.
+//! chain applies unchanged — run by a kernel of the fit's own that deals
+//! fugue's draws without rebuilding the program each step
+//! ([`TasteModel::fit`]).
 //!
 //! Default `σ_θ = 1/(√d · s_K)`, making the prior utility of a standardized
 //! candidate roughly unit-variance — likelihood scales stay sane at any
@@ -41,24 +43,24 @@
 //! switching); call [`TastePosterior::aligned`] before per-style summaries.
 //!
 //! Posterior draws carry **importance weights**. A full MCMC fit costs
-//! seconds, which is far too slow to run after every vote, so between fits the
-//! session layer folds each new observation in by sequential importance
-//! sampling ([`TastePosterior::reweighted`]): `w_s ← w_s · p(y | θ_s)`. That
-//! is exact — the weighted draws target the updated posterior — and it costs
-//! O(S). It degrades gracefully rather than silently: effective sample size
+//! thousands of likelihood evaluations, far too many to run after every
+//! vote, so between fits the session layer folds each new observation in by
+//! sequential importance sampling ([`TastePosterior::reweighted`]):
+//! `w_s ← w_s · p(y | θ_s)`. That is exact — the weighted draws target the
+//! updated posterior — and it costs O(S). It degrades gracefully rather than silently: effective sample size
 //! ([`TastePosterior::ess`]) falls as the weights concentrate, and that is the
 //! signal to pay for a real refit.
 
 use fugue::runtime::handler::run;
 use fugue::runtime::interpreters::PriorHandler;
-use fugue::{
-    adaptive_mcmc_chain_thinned, addr, factor, sample, Address, Model, ModelExt, Normal, Trace,
-};
+use fugue::{addr, factor, sample, Address, Distribution, Model, ModelExt, Normal, Trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::observe::{Feedback, FitSet};
+
+mod kernel;
 
 /// SD of the maximum of K iid standard normals, K = 1..=5. See the module doc.
 pub const MAX_NORMAL_SD: [f64; 5] = [1.000, 0.826, 0.748, 0.701, 0.669];
@@ -447,17 +449,16 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
 
 /// The MCMC site addresses of one taste program, built once.
 ///
-/// Single-site MH re-executes the whole program on **every step**, so every
-/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **226** as
-/// shipped (K = 5, d = 44, one session, and no fused group, since the fused
-/// prior defaults to off; a group would add K) — is reconstructed
-/// 26 000 times per fit. Building each address inline
-/// (`addr!(format!("theta{k}"), i)`) therefore cost a `format!` into a
+/// There is one per `sample()` node — `d·K + S + (n_stars − 1) + K·G` of
+/// them, **226** as shipped (K = 5, d = 44, one session, and no fused group,
+/// since the fused prior defaults to off; a group would add K). The fit now
+/// builds the program once, for its starting draw ([`TasteModel::fit`]), but
+/// fugue's chain driver rebuilt it on every step, and building each address
+/// inline (`addr!(format!("theta{k}"), i)`) then cost a `format!` into a
 /// `String`, a re-allocation into `Arc<str>` and a SipHash of that string,
 /// *per site per step*: ~3.7 M allocations per mature fit, and measurably the
-/// bulk of the fit's wall time (see `examples/fit_bench.rs` — the fit is
-/// `steps × sites`-shaped, and the likelihood is ~20 % of it even at
-/// n_obs = 100).
+/// bulk of the fit's wall time (`examples/fit_bench.rs`). The fit's kernel
+/// keys its per-site proposal scales by these addresses too.
 ///
 /// The addresses are a pure function of `(k_styles, n_features, n_stars,
 /// n_sessions)`, none of which move during a fit, so they are built once and
@@ -483,7 +484,7 @@ pub struct SiteAddrs {
 
 impl SiteAddrs {
     /// Total `sample()` nodes in the program — what single-site MH divides its
-    /// step budget across, and the number the fit's cost is linear in.
+    /// step budget across.
     ///
     /// `d·K + S + (n_stars − 1) + K·G`, where `G` is the number of fused
     /// groups. At K = 5, d = 44, S = 1 and one brightness group that is
@@ -493,6 +494,15 @@ impl SiteAddrs {
     /// checks them against the live feature set.)
     pub fn site_count(&self) -> usize {
         self.theta.len() + self.tau.len() + self.cut.len() + self.mu.len()
+    }
+
+    /// Every address in the program's execution order: μ, θ, τ, cuts.
+    fn in_program_order(&self) -> impl Iterator<Item = &Address> {
+        self.mu
+            .iter()
+            .chain(&self.theta)
+            .chain(&self.tau)
+            .chain(&self.cut)
     }
 
     /// Build the address table for `cfg` over a log spanning `n_sessions`.
@@ -514,6 +524,196 @@ impl SiteAddrs {
     }
 }
 
+/// What the likelihood reads of a fit's data: the standardized rows, the
+/// coordinates each imputed ([`FitSet::absent`]), and each row's recency
+/// weight. A pure function of the config and the data, so it is built once
+/// per fit, not once per MH step: the rows used to be cloned out of the
+/// [`FitSet`] and the weights recomputed (a `powf` per row) every time the
+/// program was rebuilt.
+#[derive(Clone, Debug)]
+struct Evidence {
+    /// Standardized feedback and its session, in log order.
+    rows: Vec<(Feedback, usize)>,
+    /// Imputed coordinates per row, index-parallel to `rows` (may be short).
+    absent: Vec<Vec<usize>>,
+    /// Per-row likelihood weight: newest = 1, halving every
+    /// `recency_half_life` rows back.
+    weights: Vec<f64>,
+}
+
+impl Evidence {
+    fn new(cfg: &TasteConfig, data: &FitSet) -> Self {
+        let n_obs = data.rows.len();
+        let weights = match cfg.recency_half_life {
+            Some(hl) if hl > 0.0 => (0..n_obs)
+                .map(|i| 0.5f64.powf((n_obs - 1 - i) as f64 / hl))
+                .collect(),
+            _ => vec![1.0; n_obs],
+        };
+        Self {
+            rows: data.rows.clone(),
+            absent: data.absent.clone(),
+            weights,
+        }
+    }
+
+    /// The weighted log-likelihood of every row under one draw: what the
+    /// program's single `factor` carries.
+    fn loglik(&self, s: &TasteSample) -> f64 {
+        self.rows
+            .iter()
+            .zip(self.weights.iter())
+            .enumerate()
+            .map(|(i, ((o, session), w))| {
+                let absent = self.absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
+                w * obs_loglik_with(o, *session, s, absent)
+            })
+            .sum()
+    }
+}
+
+/// Every site's prior, in the program's execution order: the μ sites, then
+/// θ, then τ, then the cut raws. That is the order the program draws and
+/// scores them in, and the order of a state's values in the fit's kernel
+/// (`kernel.rs`), so a log-prior summed over it is the program's own sum,
+/// term for term. Built once per fit from the config and the address table,
+/// and read by both, so the two cannot disagree about a prior.
+#[derive(Clone, Debug)]
+struct Layout {
+    /// One prior per site, in execution order.
+    priors: Vec<SitePrior>,
+    /// Where θ starts (after the μ sites).
+    theta_at: usize,
+    /// Where τ starts.
+    tau_at: usize,
+    /// Where the cut raws start; they run to the end.
+    cut_at: usize,
+    /// K, the number of θ rows.
+    k_styles: usize,
+    /// d, the length of each.
+    n_features: usize,
+}
+
+/// One site's prior.
+#[derive(Clone, Copy, Debug)]
+enum SitePrior {
+    /// The same `Normal` in every state.
+    Fixed(Normal),
+    /// A fused θ coordinate: `Normal(μ, sd)` about the value of the μ site
+    /// at this index of the state (μ sites come first, so it is also the
+    /// index into the program's list of drawn μ).
+    About { mu: usize, sd: f64 },
+}
+
+impl Layout {
+    fn new(cfg: &TasteConfig, addrs: &SiteAddrs) -> Self {
+        let d = cfg.n_features;
+        let n_groups = cfg.effective_fused().len();
+        let group_of = cfg.group_of();
+        let mut priors: Vec<SitePrior> = addrs
+            .mu
+            .iter()
+            .map(|_| {
+                SitePrior::Fixed(
+                    Normal::new(0.0, cfg.sigma_group()).expect("valid group mean prior"),
+                )
+            })
+            .collect();
+        let theta_at = priors.len();
+        // A coordinate in a fused group is drawn about that group's latent
+        // mean rather than about zero, which is why the means come first.
+        priors.extend((0..addrs.theta.len()).map(|idx| {
+            let (k, i) = (idx / d, idx % d);
+            match group_of[i] {
+                Some(g) => SitePrior::About {
+                    mu: k * n_groups + g,
+                    sd: cfg.sigma_within(),
+                },
+                None => SitePrior::Fixed(
+                    Normal::new(0.0, cfg.sigma_theta()).expect("valid theta prior"),
+                ),
+            }
+        }));
+        let tau_at = priors.len();
+        let unit = Normal::new(0.0, 1.0).expect("valid unit prior");
+        priors.extend(addrs.tau.iter().map(|_| SitePrior::Fixed(unit)));
+        let cut_at = priors.len();
+        priors.extend(addrs.cut.iter().map(|_| SitePrior::Fixed(unit)));
+        Self {
+            priors,
+            theta_at,
+            tau_at,
+            cut_at,
+            k_styles: cfg.k_styles,
+            n_features: d,
+        }
+    }
+
+    /// The prior of the site at `slot`, given the μ values drawn so far
+    /// (the state's leading values, or the program's list of μ).
+    fn normal(&self, slot: usize, mu: &[f64]) -> Normal {
+        match self.priors[slot] {
+            SitePrior::Fixed(n) => n,
+            SitePrior::About { mu: m, sd } => {
+                Normal::new(mu[m], sd).expect("valid fused theta prior")
+            }
+        }
+    }
+
+    /// The state's log-prior, summed from 0 in execution order, as the
+    /// program's trace accumulates it.
+    fn log_prior(&self, vals: &[f64]) -> f64 {
+        let mut lp = 0.0;
+        for (slot, x) in vals.iter().enumerate() {
+            lp += self.normal(slot, vals).log_prob(x);
+        }
+        lp
+    }
+
+    /// Decode a state's values into the draw the program would return.
+    fn decode_into(&self, vals: &[f64], out: &mut TasteSample) {
+        decode_into(
+            self.k_styles,
+            self.n_features,
+            &vals[self.theta_at..self.tau_at],
+            &vals[self.tau_at..self.cut_at],
+            &vals[self.cut_at..],
+            out,
+        );
+    }
+}
+
+/// Decode the sites' values into a [`TasteSample`], reusing `out`'s buffers:
+/// θ in `k_styles` rows, τ as drawn, and the ordered cutpoints from their
+/// raw sites (`c₁ = −2 + 1.5·raw₀`, each next one `exp(−0.5 + 0.7·raw_j)`
+/// above the last). The program and the kernel both decode through this.
+fn decode_into(
+    k_styles: usize,
+    d: usize,
+    theta_flat: &[f64],
+    tau: &[f64],
+    cut_raw: &[f64],
+    out: &mut TasteSample,
+) {
+    out.theta.resize_with(k_styles, Vec::new);
+    for (k, row) in out.theta.iter_mut().enumerate() {
+        row.clear();
+        row.extend_from_slice(&theta_flat[k * d..(k + 1) * d]);
+    }
+    out.tau.clear();
+    out.tau.extend_from_slice(tau);
+    out.cuts.clear();
+    let mut c = f64::NAN;
+    for (j, r) in cut_raw.iter().enumerate() {
+        c = if j == 0 {
+            -2.0 + 1.5 * r
+        } else {
+            c + (-0.5 + 0.7 * r).exp()
+        };
+        out.cuts.push(c);
+    }
+}
+
 /// The taste model: prior over latents + observation-log likelihood.
 #[derive(Clone, Debug)]
 pub struct TasteModel {
@@ -530,43 +730,33 @@ impl TasteModel {
     /// The fugue program. Returns the decoded [`TasteSample`]; the
     /// observation likelihood enters as a single `factor`.
     ///
-    /// Builds a fresh [`SiteAddrs`] each call, so it is the right entry point
-    /// for one-shot uses ([`Self::prior_sample`]). Inference paths that
-    /// rebuild the program per step must hoist the table out of the loop and
-    /// call [`Self::model_at`] — that is what [`Self::fit`] does.
+    /// Builds a fresh [`SiteAddrs`] and a fresh copy of the evidence each
+    /// call, so it is the right entry point for one-shot uses
+    /// ([`Self::prior_sample`]); an inference path that rebuilt the program
+    /// per step would build both once, outside its loop.
     pub fn model(&self, data: &FitSet) -> Model<TasteSample> {
         let addrs = Arc::new(SiteAddrs::new(&self.cfg, data.n_sessions().max(1)));
-        self.model_at(data, &addrs)
+        let layout = Arc::new(Layout::new(&self.cfg, &addrs));
+        self.model_at(&Arc::new(Evidence::new(&self.cfg, data)), &addrs, &layout)
     }
 
-    /// The fugue program over a precomputed address table.
+    /// The fugue program over a precomputed address table, layout and
+    /// evidence.
     ///
     /// `addrs` must have been built by [`SiteAddrs::new`] from this model's
-    /// config and this `data`'s session count; it is cheap to clone and is
-    /// intended to be built once per fit and shared across every MH step.
-    ///
-    /// The observation list and the address table both ride in
-    /// [`Arc`]: the model is reconstructed every MH step, and
-    /// this keeps that reconstruction O(1) in the log size and
+    /// config and the data's session count, `layout` by [`Layout::new`] from
+    /// the config and `addrs`, and `evidence` by [`Evidence::new`] from the
+    /// config and the same data. All three ride in [`Arc`] and are built once
+    /// per use, so building the program is O(1) in the log size and
     /// allocation-free in the address count.
-    pub fn model_at(&self, data: &FitSet, addrs: &Arc<SiteAddrs>) -> Model<TasteSample> {
-        let cfg = self.cfg.clone();
-        let obs = Arc::new(data.rows.clone());
-        let absent = Arc::new(data.absent.clone());
-        // Per-observation likelihood weights: newest = 1, halving every
-        // `recency_half_life` observations back.
-        let n_obs = data.rows.len();
-        let weights = Arc::new(match cfg.recency_half_life {
-            Some(hl) if hl > 0.0 => (0..n_obs)
-                .map(|i| 0.5f64.powf((n_obs - 1 - i) as f64 / hl))
-                .collect(),
-            _ => vec![1.0; n_obs],
-        });
-        let sigma = cfg.sigma_theta();
-        let sigma_within = cfg.sigma_within();
-        let sigma_group = cfg.sigma_group();
-        let group_of = Arc::new(cfg.group_of());
-        let n_groups = cfg.effective_fused().len();
+    fn model_at(
+        &self,
+        evidence: &Arc<Evidence>,
+        addrs: &Arc<SiteAddrs>,
+        layout: &Arc<Layout>,
+    ) -> Model<TasteSample> {
+        let evidence = evidence.clone();
+        let layout = layout.clone();
 
         // μ: one latent mean per fused group per style, sampled *before* θ so
         // the members of a group can be drawn around it. With nothing fused
@@ -575,82 +765,54 @@ impl TasteModel {
         let mu_models: Vec<Model<f64>> = addrs
             .mu
             .iter()
-            .map(|a| {
-                sample(
-                    a.clone(),
-                    Normal::new(0.0, sigma_group).expect("valid group mean prior"),
-                )
-            })
+            .enumerate()
+            .map(|(slot, a)| sample(a.clone(), layout.normal(slot, &[])))
             .collect();
 
-        let (d, k_styles) = (cfg.n_features, cfg.k_styles);
         let addrs_outer = addrs.clone();
         fugue::sequence_vec(mu_models).bind(move |mu| {
             let addrs = addrs_outer.clone();
-            let group_of = group_of.clone();
-            // θ: k_styles × n_features Normal sites. A coordinate in a fused
-            // group is drawn about that group's latent mean rather than about
-            // zero — which is the whole of the change, and why the group mean had
-            // to be sampled first.
+            // θ: k_styles × n_features Normal sites, a fused coordinate about
+            // its group's mean (`Layout`).
             let theta_models: Vec<Model<f64>> = addrs
                 .theta
                 .iter()
                 .enumerate()
-                .map(|(idx, a)| {
-                    let (k, i) = (idx / d, idx % d);
-                    let (mean, sd) = match group_of[i] {
-                        Some(g) => (mu[k * n_groups + g], sigma_within),
-                        None => (0.0, sigma),
-                    };
-                    sample(a.clone(), Normal::new(mean, sd).expect("valid theta prior"))
-                })
+                .map(|(idx, a)| sample(a.clone(), layout.normal(layout.theta_at + idx, &mu)))
                 .collect();
 
-            let addrs = addrs.clone();
             fugue::sequence_vec(theta_models).bind(move |theta_flat| {
                 // τ: one Normal site per session.
                 let tau_models: Vec<Model<f64>> = addrs
                     .tau
                     .iter()
-                    .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid tau prior")))
+                    .enumerate()
+                    .map(|(s, a)| sample(a.clone(), layout.normal(layout.tau_at + s, &[])))
                     .collect();
-                let obs = obs.clone();
-                let weights = weights.clone();
                 fugue::sequence_vec(tau_models).bind(move |tau| {
                     // Cutpoint raws: n_stars − 1 Normal sites (ordered by
                     // transform).
                     let cut_models: Vec<Model<f64>> = addrs
                         .cut
                         .iter()
-                        .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid cut prior")))
+                        .enumerate()
+                        .map(|(j, a)| sample(a.clone(), layout.normal(layout.cut_at + j, &[])))
                         .collect();
-                    let obs = obs.clone();
-                    let weights = weights.clone();
                     fugue::sequence_vec(cut_models).bind(move |cut_raw| {
-                        let theta: Vec<Vec<f64>> = (0..k_styles)
-                            .map(|ki| theta_flat[ki * d..(ki + 1) * d].to_vec())
-                            .collect();
-                        // Ordered cutpoints from raw sites.
-                        let mut cuts = Vec::with_capacity(cut_raw.len());
-                        let mut c = f64::NAN;
-                        for (j, r) in cut_raw.iter().enumerate() {
-                            c = if j == 0 {
-                                -2.0 + 1.5 * r
-                            } else {
-                                c + (-0.5 + 0.7 * r).exp()
-                            };
-                            cuts.push(c);
-                        }
-                        let s = TasteSample { theta, tau, cuts };
-                        let ll: f64 = obs
-                            .iter()
-                            .zip(weights.iter())
-                            .enumerate()
-                            .map(|(i, ((o, session), w))| {
-                                let absent = absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
-                                w * obs_loglik_with(o, *session, &s, absent)
-                            })
-                            .sum();
+                        let mut s = TasteSample {
+                            theta: Vec::new(),
+                            tau: Vec::new(),
+                            cuts: Vec::new(),
+                        };
+                        decode_into(
+                            layout.k_styles,
+                            layout.n_features,
+                            &theta_flat,
+                            &tau,
+                            &cut_raw,
+                            &mut s,
+                        );
+                        let ll = evidence.loglik(&s);
                         factor(ll).map(move |_| s)
                     })
                 })
@@ -664,44 +826,50 @@ impl TasteModel {
     /// summary storage). Each MH step moves one site, so budget steps ≈
     /// `sites × desired effective sweeps`.
     ///
-    /// # The chain is thinned at the driver, not after it
+    /// # The chain is fugue's, run over a value array
     ///
-    /// 97 % of the chain is discarded, and it is discarded *as it is produced*.
-    /// That used to happen one line after the whole chain was built:
-    /// `adaptive_mcmc_chain` materialized every step — a `(TasteSample, Trace)`
-    /// per iteration pushed into a `Vec` returned by value — and only then did
-    /// `step_by(stride)` keep every 20th. At K = 5 that is ~10 000 `Trace`
-    /// clones of ~226 `BTreeMap` entries held live at once to keep 500, scaling
-    /// with `n_samples`: a plausible mobile-Safari OOM rather than mere waste
-    /// on a 32-bit heap.
+    /// The kernel is fugue-ppl 0.2.3's adaptive single-site chain
+    /// (`adaptive_mcmc_chain_thinned`), with the program taken out of the
+    /// loop. fugue's driver rebuilds and re-runs the whole program on every
+    /// step, which here meant 226 boxed `sample` nodes, their closures and a
+    /// fresh 226-entry `BTreeMap` trace per step, to move one number: that
+    /// rebuild, not the likelihood, was most of a refit's time. The program's
+    /// structure never changes (every site is a real-valued `Normal`, none
+    /// conditional on another's value), so `kernel.rs` holds the state as an
+    /// array of values in execution order and scores a proposal with the
+    /// program's own pieces (`Layout`'s priors, `decode_into`,
+    /// `Evidence::loglik`).
     ///
-    /// It could not be fixed here — the retention was inside fugue's chain
-    /// driver, and the pieces needed to reimplement that driver with identical
-    /// RNG consumption (`single_site_mh_step`, `propose_and_score`,
-    /// `SingleSiteProposalHandler`) are private or `pub(crate)`. So it was
-    /// fixed *there*: `adaptive_mcmc_chain_thinned` (fugue-ppl 0.2.2) takes a
-    /// stride and pushes only on `i % thin == 0`.
+    /// **The draws are bit-identical to fugue's driver's.** The start is a
+    /// prior run of the program itself; the sites are visited in fugue's
+    /// order and drawn from the stream as fugue draws them (the site, then
+    /// the Gaussian step, then the uniform for the accept test when one is
+    /// needed); the log-weight is summed in the trace's order; adaptation
+    /// runs in warmup only; and every `stride`-th draw is kept. The kernel's
+    /// tests check it against fugue's driver bit for bit, and `fit_bench`'s
+    /// checksums are unchanged.
     ///
-    /// **The draws are bit-identical to what the old code returned.** `thin`
-    /// gates the push and nothing else: every transition still runs, so the RNG
-    /// is consumed in the same order and quantity, and `0, stride, 2·stride, …`
-    /// is exactly what `step_by(stride)` kept. `fit_bench`'s per-fit checksum
-    /// is the auracle-side witness; fugue's own
-    /// `thinning_retains_exactly_the_draws_step_by_would` is the upstream one.
+    /// Measured with `fit_bench 10000 3000` (13 000 steps), µs per step:
     ///
-    /// Measured, `fit_bench 10000 3000` under `/usr/bin/time -l`:
-    ///
-    /// | | peak RSS | mature-fit checksum |
+    /// | | first fit (K = 1, 6 rows, 50 sites) | mature fit (K = 5, 100 rows, 226 sites) |
     /// |---|---|---|
-    /// | before | 303.1 MB | `07d204764b58c88b` |
-    /// | after | **18.2 MB** | `07d204764b58c88b` |
+    /// | fugue's driver | 22.7 | 207.1 |
+    /// | this kernel | **1.9** | **47.8** |
     ///
-    /// **16.7× less peak memory for the same draws** — the checksum is the
-    /// point of that table, not a footnote to it. What stays resident is the
-    /// 500 draws the posterior actually keeps, so the peak no longer scales
-    /// with `mcmc_samples` at all: the budget is free to be chosen on the
-    /// recovery tables (`SessionConfig::mcmc_samples`) rather than against a
-    /// memory ceiling.
+    /// What is left of a mature step is the likelihood over its 100 rows
+    /// (`fit_bench`'s split probe, the mature sites over 6 rows, runs at
+    /// 6.1 µs a step).
+    ///
+    /// # The chain is thinned as it runs
+    ///
+    /// 97 % of the chain is discarded, and it is discarded *as it is
+    /// produced*: only every `stride`-th draw of the sampling phase is ever
+    /// copied out, so what stays resident is the 500 draws the posterior
+    /// keeps, and the peak no longer scales with `mcmc_samples` (when the
+    /// whole chain was materialized and thinned after, `fit_bench 10000
+    /// 3000` peaked at 303.1 MB; thinned at the driver, 18.2 MB). The budget
+    /// is free to be chosen on the recovery tables
+    /// (`SessionConfig::mcmc_samples`) rather than against a memory ceiling.
     pub fn fit<R: Rng>(
         &self,
         rng: &mut R,
@@ -709,22 +877,12 @@ impl TasteModel {
         n_samples: usize,
         n_warmup: usize,
     ) -> TastePosterior {
-        // Hoisted out of the step loop: the address table is identical for
-        // every one of the `n_samples + n_warmup` reconstructions.
-        let addrs = Arc::new(SiteAddrs::new(&self.cfg, data.n_sessions().max(1)));
-        let model_fn = || self.model_at(data, &addrs);
-        // The stride is known before the chain runs, because the driver pushes
-        // exactly `n_samples` draws — so asking it to retain only every
-        // `stride`-th is the same subsequence `step_by` produced, without ever
-        // holding the other 95% live. See `KEEP`. Rounded up, so at most
-        // `KEEP` are retained at any budget: rounded down, a budget just
-        // under twice `KEEP` kept every draw, nearly twice as many.
+        // Every `stride`-th draw of the sampling phase is kept. See `KEEP`.
+        // Rounded up, so at most `KEEP` are retained at any budget: rounded
+        // down, a budget just under twice `KEEP` kept every draw, nearly
+        // twice as many.
         let stride = n_samples.div_ceil(KEEP).max(1);
-        let samples: Vec<TasteSample> =
-            adaptive_mcmc_chain_thinned(rng, model_fn, n_samples, n_warmup, stride)
-                .into_iter()
-                .map(|(s, _): (TasteSample, Trace)| s)
-                .collect();
+        let samples = kernel::chain(self, rng, data, n_samples, n_warmup, stride);
         TastePosterior {
             cfg: self.cfg.clone(),
             weights: vec![1.0 / samples.len().max(1) as f64; samples.len()],
@@ -871,7 +1029,7 @@ impl TastePosterior {
     /// importance sampling: `w_s ← w_s · p(y | θ_s)`, renormalized.
     ///
     /// This is what makes each duel respond to the one before it. A full
-    /// refit costs seconds of MCMC and cannot run per-vote; without this the
+    /// refit costs thousands of MCMC steps and cannot run per-vote; without this the
     /// acquisition function reads a frozen posterior and re-asks the same
     /// question until the next refit.
     ///

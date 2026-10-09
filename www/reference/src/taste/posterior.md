@@ -16,9 +16,11 @@ with these defaults (`SessionConfig` in `engine.rs`, and `KEEP` in
 | Retained draws | ≤ 500 (`KEEP`), by thinning |
 
 Every site is an `f64` (there are
-[no discrete latents](./utility.md#what-max-utility-buys-structurally)), so the
-generic chain applies with no custom kernel. Adaptation tunes per-site proposal scales
-during warmup.
+[no discrete latents](./utility.md#what-max-utility-buys-structurally)), so
+fugue’s generic chain applies, and no site is conditional on another’s value,
+so the program’s structure never changes. The fit runs that chain
+[over an array of the sites’ values](#the-kernel) rather than through the
+program. Adaptation tunes per-site proposal scales during warmup.
 
 Each MH step moves **one** site, so a useful way to budget is $\text{steps}
 \approx \text{sites} \times \text{desired effective sweeps}$. At $K=5$,
@@ -32,16 +34,52 @@ The result is uniformly weighted:
 TastePosterior { cfg, samples, weights: vec![1.0 / n; n] }
 ```
 
+### The kernel
+
+fugue’s chain driver runs the whole program on every MH step: it rebuilds
+$225 + S$ `sample` nodes and their closures, and fills a fresh trace of as many
+`BTreeMap` entries, to move one number. That rebuild, not the likelihood, was
+most of a refit’s time. Since the structure never changes, `TasteModel::fit`
+runs a kernel of its own (`model/kernel.rs`). The state is an array of the
+sites’ values in the program’s execution order, and a step proposes one value,
+decodes the array into a draw, and scores it with the program’s own pieces:
+the same priors, the same cutpoint transform and the same likelihood sum.
+
+It is fugue’s kernel, not a new one. The start is a prior run of the program
+itself. The site is drawn over the trace’s address order as fugue draws it, its
+scale comes from fugue’s own `DiminishingAdaptation`, and the Gaussian step and
+the accept test are fugue’s, reading the random stream in the same order. The
+log-weight is summed in the trace’s order. So a seed deals the same draws, bit
+for bit: the kernel’s tests run it against fugue’s driver over seeds and
+configurations (fused groups, several sessions, stars, imputed coordinates, a
+recency half-life, a stride longer than the chain), and `fit_bench`’s checksums
+did not move.
+
+| µs per step, `fit_bench 10000 3000` | first fit ($K=1$, 6 rows, 50 sites) | mature fit ($K=5$, 100 rows, 226 sites) |
+|---|---|---|
+| fugue’s driver | 22.7 | 207.1 |
+| the kernel | **1.9** | **47.8** |
+
+What is left of a mature step is the likelihood: the same 226 sites over 6
+rows take 6.1 µs a step.
+
+The engine the app runs shows the same: `WasmEngine::fit` in Node over the
+release build, on a 4-core Linux machine, took 479 ms before and 33 ms after
+for a first fit (6 duels), and 3.9 s before and 0.95 s after for a mature one
+(100 duels, $K=5$), each the least of five, the fit’s own alignment and style
+shares included. Both builds ended on the same ranking, byte for byte.
+
 ### The address table
 
-`SiteAddrs::new` builds every site address **once** per fit, and the model
+`SiteAddrs::new` builds every site address **once** per fit, and the program
 clones `Address` (an `Arc` refcount bump plus a cached hash) into each node.
+The kernel keys its proposal scales by the same addresses.
 
-Building addresses inline (`addr!(format!("theta{k}"), i)`) cost a `format!`
-into a `String`, a re-allocation into `Arc<str>`, and a SipHash of that string,
-**per site per step**: roughly 3.7 M allocations per mature fit, and measurably
-the bulk of the fit’s wall time (`examples/fit_bench.rs`; the fit is `steps ×
-sites`-shaped and the likelihood is only ~20% of it even at 100 observations).
+When fugue’s driver rebuilt the program on every step, building addresses
+inline (`addr!(format!("theta{k}"), i)`) cost a `format!` into a `String`, a
+re-allocation into `Arc<str>`, and a SipHash of that string, **per site per
+step**: roughly 3.7 M allocations per mature fit, and measurably the bulk of
+the fit’s wall time then (`examples/fit_bench.rs`).
 
 The addresses are a pure function of $(K, d, n_{\text{stars}}, S)$, none of
 which move during a fit. And they are produced by the *same* `addr!`
@@ -61,11 +99,15 @@ held live at once to retain 500: **303.1 MB peak RSS** at the shipped budget,
 scaling with `n_samples`, and a plausible mobile-Safari OOM on a 32-bit heap
 rather than mere waste.
 
-It could not be fixed here. The retention was inside fugue’s chain driver, and
-the pieces needed to reimplement that driver with identical RNG consumption
+It could not be fixed here then. The retention was inside fugue’s chain driver,
+and the pieces needed to reimplement that driver with identical RNG consumption
 (`single_site_mh_step`, `propose_and_score`, `SingleSiteProposalHandler`) are
 private or `pub(crate)`; forking fugue’s inference core into this crate would
-have traded a memory spike for a correctness hazard on every upgrade.
+have traded a memory spike for a correctness hazard on every upgrade. (The
+[kernel](#the-kernel) has since done that reimplementation, for time rather
+than memory, and its tests against fugue’s driver are what guard that hazard:
+a fugue upgrade that changes the chain fails them. It keeps every
+`stride`-th draw as it runs, as the driver does.)
 
 So it was fixed **upstream** instead, as
 [fugue-ppl 0.2.2](https://github.com/alexnodeland/fugue/pull/47):
@@ -90,8 +132,9 @@ chosen on the recovery tables rather than against a memory ceiling.
 
 ## Between fits: sequential importance sampling
 
-A full fit costs seconds and cannot run after every pick. So each new
-observation is folded into the existing draws by reweighting:
+A full fit costs about a second on a fast laptop, a few on an older one, and
+cannot run after every pick. So each new observation is folded into the
+existing draws by reweighting:
 
 $$w_s \;\leftarrow\; \frac{w_s \, p(y \mid \theta_s)}{\sum_{s'} w_{s'} \, p(y \mid \theta_{s'})}$$
 
@@ -276,12 +319,13 @@ The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other
 moments refit at once: the end of the warm start, and opening a taste profile
 that holds picks. The app used
-to require `needs_refit` as well, to save the seconds of a fit whose posterior
+to require `needs_refit` as well, to save the time of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
 been, so a run of agreeable picks ended with the teaching meter’s countdown and
-no refit: the meter promised something it then did not do. A fit costs a few
-seconds off the audio thread, at most once every six picks outside those two
-moments, and the pair stays audible through it.
+no refit: the meter promised something it then did not do. A fit costs about a
+second on a fast laptop, a few on an older one, off the audio thread, at most
+once every six picks outside those two moments, and the pair stays audible
+through it.
 
 ## Label alignment
 

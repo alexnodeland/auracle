@@ -130,12 +130,13 @@ measurement that would settle it.
   session-length knob this needed (`--rounds`) is now in `learn_synthetic`
   beside `--pool`, so the next person can ask a third regime without patching
   a constant.
-- **Fit cost at the K cap.** Single-site MH re-executes the whole program per
-  step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (225 + S sites over a fixed 10,000
-  steps ≈ 44 sweeps per site). The address table is hoisted out of the step
-  loop and the chain no longer holds itself in memory, so what is left is purely
-  the statistical shape of the problem: the budget can now be chosen on the
+- **Fit cost at the K cap.** A mature [fit](../taste/posterior.md) is both
+  slower and statistically thinner than an early one: every step’s likelihood
+  scores every lens, and 225 + S sites over a fixed 10,000 steps is ≈ 44 sweeps
+  per site. The fit no longer rebuilds the program per step
+  ([the kernel](../taste/posterior.md#the-kernel)) and the chain no longer holds
+  itself in memory, so what is left is the likelihood and the statistical shape
+  of the problem: the budget can now be chosen on the
   recovery tables rather than against a memory ceiling. The written-down option
   (cap $K$ at 3) is gated on `style_share` evidence from real sessions.
 

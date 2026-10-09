@@ -7774,13 +7774,14 @@ function choose(side) {
 // redraws your taste map"), and a promise kept only sometimes teaches the
 // player the meter is noise. It used to be gated on the engine's own
 // `status.needs_refit` as well — the importance weights collapsing since the
-// last fit — to save the seconds of a fit whose posterior had not gone
+// last fit — to save the time of a fit whose posterior had not gone
 // stale. Which picks those were depended on how surprising they had been, so
 // a run of agreeable picks ended with the pips wrapping to zero and the copy
 // reading "23 picks in" with no "● it just learned", no redrawn map and no
 // lamp: the meter counting down to something it then did not do. A fit costs
-// a few seconds off the audio thread, at most once every sixth pick — the
-// pacing `FIT_EVERY` has always set — and the pair is audible through it.
+// about a second on a fast laptop (a few on the Air) off the audio thread, at most once every sixth
+// pick — the pacing `FIT_EVERY` has always set — and the pair is audible
+// through it.
 function settleFit() {
   if (!fitDue || fitting) return;
   // The sixth pick is still inside its undo window: the fit waits for it.
