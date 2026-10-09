@@ -1082,16 +1082,102 @@ enum Tracks<'a> {
     Follow(&'a [TrackFeed], &'a [f64], usize, usize),
 }
 
+/// Frames per block of a voice's quantum walked in blocks: the worklet's
+/// quantum, so a quantum is one call (quiver cuts it into its own 64s).
+const VOICE_BLOCK: usize = 128;
+
 /// Render one sounding voice's `frames` into the interleaved `out`, metering
 /// it when `meter` is given, and park it once its release tail is silent.
+///
+/// A voice nothing reads frame by frame (no meter, no TRACK lead or
+/// follower) is ticked in blocks (quiver's `tick_block`, bit for bit its
+/// ticks, at about two thirds of the CPU), cut where a retrigger re-raises
+/// its gate. A voice the meter reads, or that leads or follows a TRACK, is
+/// ticked frame by frame: the meter captures every frame's levels, and the
+/// lead hands each frame's tracked note to the followers. Nothing else
+/// changes a voice inside a quantum (the knobs' ramps, glide and bend move
+/// between quanta), and each voice runs its whole quantum before the next
+/// starts, so the voices' draws on quiver's random stream come in the same
+/// order either way.
 fn tick_voice(
+    v: &mut Voice,
+    frames: usize,
+    out: &mut [f32],
+    meter: Option<&mut Meter>,
+    tracks: Tracks,
+) {
+    let held = v.note.is_some();
+    let tail_silent = if meter.is_none() && matches!(tracks, Tracks::None) {
+        tick_voice_blocks(v, frames, out, held)
+    } else {
+        tick_voice_frames(v, frames, out, meter, tracks, held)
+    };
+    if held {
+        v.silent_run = 0;
+    } else {
+        if tail_silent == frames as u32 {
+            v.silent_run += tail_silent;
+        } else {
+            v.silent_run = tail_silent;
+        }
+        if v.silent_run >= PARK_AFTER {
+            v.running = false;
+        }
+    }
+}
+
+/// [`tick_voice`]'s frames in blocks; returns the silent frames its quantum
+/// ends on.
+fn tick_voice_blocks(v: &mut Voice, frames: usize, out: &mut [f32], held: bool) -> u32 {
+    let (mut l, mut r) = ([0.0; VOICE_BLOCK], [0.0; VOICE_BLOCK]);
+    let mut tail_silent = 0u32;
+    let mut done = 0;
+    while done < frames {
+        let mut n = (frames - done).min(VOICE_BLOCK);
+        // Re-raise *after* the tick that takes the count to 0, as a frame
+        // walk does: the block ends there.
+        if v.regate_in > 0 {
+            n = n.min(v.regate_in as usize);
+        }
+        v.voice.patch.tick_block(&mut l[..n], &mut r[..n]);
+        if v.regate_in > 0 {
+            v.regate_in -= n as u32;
+            if v.regate_in == 0 {
+                v.voice.gate.set(GATE_ON);
+            }
+        }
+        for (i, (l, r)) in l[..n].iter().zip(&r[..n]).enumerate() {
+            tail_silent = mix_frame(v, &mut out[(done + i) * 2..], *l, *r, held, tail_silent);
+        }
+        done += n;
+    }
+    tail_silent
+}
+
+/// One frame of a voice into `out`'s first two samples; returns the silent
+/// frames counted so far.
+#[inline(always)]
+fn mix_frame(v: &Voice, out: &mut [f32], l: f64, r: f64, held: bool, tail_silent: u32) -> u32 {
+    let g = v.vel * std::f32::consts::SQRT_2 * VOLT_SCALE;
+    out[0] += l as f32 * g * v.pan_l;
+    out[1] += r as f32 * g * v.pan_r;
+    if !held && l.abs() + r.abs() < SILENCE_EPS {
+        tail_silent + 1
+    } else {
+        0
+    }
+}
+
+/// [`tick_voice`]'s frames one at a time; returns the silent frames its
+/// quantum ends on.
+fn tick_voice_frames(
     v: &mut Voice,
     frames: usize,
     out: &mut [f32],
     mut meter: Option<&mut Meter>,
     mut tracks: Tracks,
-) {
-    let held = v.note.is_some();
+    held: bool,
+) -> u32 {
     let mut tail_silent = 0u32;
     for f in 0..frames {
         if let Tracks::Follow(feeds, buf, stride, filled) = &tracks {
@@ -1126,27 +1212,9 @@ fn tick_voice(
                 v.voice.gate.set(GATE_ON);
             }
         }
-        let g = v.vel * std::f32::consts::SQRT_2 * VOLT_SCALE;
-        out[f * 2] += l as f32 * g * v.pan_l;
-        out[f * 2 + 1] += r as f32 * g * v.pan_r;
-        if !held && l.abs() + r.abs() < SILENCE_EPS {
-            tail_silent += 1;
-        } else {
-            tail_silent = 0;
-        }
+        tail_silent = mix_frame(v, &mut out[f * 2..], l, r, held, tail_silent);
     }
-    if held {
-        v.silent_run = 0;
-    } else {
-        if tail_silent == frames as u32 {
-            v.silent_run += tail_silent;
-        } else {
-            v.silent_run = tail_silent;
-        }
-        if v.silent_run >= PARK_AFTER {
-            v.running = false;
-        }
-    }
+    tail_silent
 }
 
 #[wasm_bindgen]

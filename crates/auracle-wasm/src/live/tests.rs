@@ -3226,3 +3226,78 @@ fn the_open_voice_wakes_as_a_held_key_does() {
     let gate = lead.open.as_ref().expect("the lead").voice.gate.get();
     assert_eq!(gate, 0.0, "the lead's gate is its tracker's");
 }
+
+/// **A voice's quantum in blocks is its quantum frame by frame, bit for
+/// bit** (#397). Each tree (prior draws, some of whose sources draw quiver's
+/// shared random stream, and the first presets) plays one voice twice from
+/// the same seed, once through `tick_voice_blocks` and once through
+/// `tick_voice_frames`: a held note, a steal's one-frame drop of the gate, a
+/// drop that outlasts a quantum, quanta shorter and longer than a block, and
+/// the release tail down to silence. The samples, the silent frames each
+/// quantum ends on and the gate are the same, so a block that ran past a
+/// re-raise, or a quantum cut short, would show here.
+#[test]
+fn a_voice_in_blocks_plays_what_it_plays_frame_by_frame() {
+    let mut rng = StdRng::seed_from_u64(0xB10C);
+    // Draws that listen, or are silence, are left out: nothing is written to
+    // the input here, so they would be silent.
+    let mut trees: Vec<PatchTree> = (0..12)
+        .map(|_| PatchGrammarPrior::default().sample_with_rng(&mut rng))
+        .filter(|t| !t.listens() && !matches!(t.root, AudioNode::Silence { .. }))
+        .collect();
+    trees.extend(
+        auracle_grammar::presets()
+            .into_iter()
+            .take(6)
+            .map(|(_, t)| t),
+    );
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let play = |tree: &PatchTree, blocks: bool| {
+        quiver::rng::seed(3);
+        let mut v = build_voice(tree, 44_100.0, &input, false).expect("builds");
+        v.note = Some(60);
+        v.running = true;
+        v.voice.gate.set(GATE_ON);
+        let mut heard: Vec<u32> = Vec::new();
+        let mut ends: Vec<(u32, u64)> = Vec::new();
+        let mut quantum = |v: &mut Voice, frames: usize| {
+            let mut out = vec![0.0f32; frames * 2];
+            let held = v.note.is_some();
+            let silent = if blocks {
+                tick_voice_blocks(v, frames, &mut out, held)
+            } else {
+                tick_voice_frames(v, frames, &mut out, None, Tracks::None, held)
+            };
+            heard.extend(out.iter().map(|s| s.to_bits()));
+            ends.push((silent, v.voice.gate.get().to_bits()));
+        };
+        for frames in [128, 100, 300, 128] {
+            quantum(&mut v, frames);
+        }
+        for drop in [1, 200] {
+            v.voice.gate.set(0.0);
+            v.regate_in = drop;
+            for frames in [128, 77, 128, 128] {
+                quantum(&mut v, frames);
+            }
+        }
+        v.note = None;
+        v.voice.gate.set(0.0);
+        for _ in 0..400 {
+            quantum(&mut v, 128);
+        }
+        (heard, ends)
+    };
+    for (i, tree) in trees.iter().enumerate() {
+        let (blocks, frames) = (play(tree, true), play(tree, false));
+        assert!(blocks.0 == frames.0, "tree {i}: other samples");
+        assert_eq!(blocks.1, frames.1, "tree {i}: other ends");
+        assert!(
+            blocks.0.iter().any(|b| f32::from_bits(*b) != 0.0),
+            "tree {i}: silent, so the comparison proves nothing"
+        );
+    }
+}
