@@ -32,7 +32,7 @@ taste.*).
 | **Amber glow** | How much it guesses you’d like the sound: brighter and wider is more |
 | **The sound's mark** | Its [face](../faces.md), or a dot until the face arrives. The face of the sound you’re playing lights up while you play it |
 | **Mark size** | How unsure it is: bigger is less sure |
-| **Dashed ring** | No guess yet: before the first fit, with **TASTE** on, every glow is a dashed ring |
+| **Dashed ring** | No guess yet: before the first fit, and after you open a taste file until its fit lands, with **TASTE** on, every glow is a dashed ring |
 | **Green ring** | The sound you’re playing |
 | **Dotted ring** | A sound on its way to you, after a click |
 

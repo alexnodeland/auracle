@@ -3949,7 +3949,10 @@ worker.onmessage = (e) => {
           duelsSinceFit = 0;
           fitting = true;
           lampOn("fit");
-          send({ type: "fit" });
+          // The player's: they opened the file to see its taste, so it goes
+          // ahead of background work (`soon`), and TASTE draws the file's
+          // sounds as a guess, dashed, until it lands (#300).
+          send({ type: "fit", player: true });
         }
         note(n > 0
           ? `Opened that taste file: ${taughtSentence(taughtKinds())}. Redrawing your taste map…`
@@ -6883,9 +6886,16 @@ const RENDER_SETTLE_MS = 180;
 // in its `now` lane, a render at a time, so a preset clicked while the
 // table's sounds render is opened next. ▶ on a side still waiting asks again,
 // as the player's own request (`awaitRender`).
+//
+// Asked once per pair put up: `placePair` asks at once, and a refit that
+// follows in the same turn (`settleFit`) finds them asked.
+let pairRendersAsked = null;
 function requestPairRendersNow() {
   clearTimeout(renderWanted);
   if (!currentDuel) return;
+  const key = currentDuel.join();
+  if (pairRendersAsked === key) return;
+  pairRendersAsked = key;
   for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
@@ -7544,12 +7554,15 @@ function placePair(pair, meta) {
     send({ type: "duel_shown", a: currentDuel[0], b: currentDuel[1] });
   }
   renderPlayDuel();
-  // The pair is on the table; a refit armed by the last vote can now be
-  // enqueued *behind* this pair's audio rather than in front of it.
-  settleFit();
+  // The table's sounds are asked for now, with no settle delay: the pair is
+  // up, and a refit armed by the last pick is about to queue (#300).
+  requestPairRendersNow();
   // A pair waiting that is the one just put up is no next pair, and the one
   // after is dealt.
   dealer.placed(currentDuel);
+  // Then the refit armed by the last vote, *behind* this pair's sounds and
+  // the deal of the pair after, never in front of them.
+  settleFit();
 }
 
 // ---------- the next pair, dealt ahead ----------

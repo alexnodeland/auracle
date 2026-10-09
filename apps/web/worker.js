@@ -601,12 +601,13 @@ function walkPump() {
     // `backgroundResumed` pumps again when a walk may go. ⚡'s walk is the
     // player's own (`refine_from`), so it goes ahead even then, as What
     // goes here? does: only a generation's walks wait.
-    const mine = backgroundHeld() ? walkQueue.findIndex((t) => t.request === "refine_from" && !t.dead) : -1;
+    const mine = backgroundHeld() ? walkQueue.findIndex((t) => (t.request === "refine_from" || t.player) && !t.dead) : -1;
     if (mine < 0 && !backgroundStep(true)) break;
     let task = walkQueue.splice(Math.max(mine, 0), 1)[0];
     while (task && task.dead) task = walkQueue.shift();
     if (!task) break;
-    if (f.ctx !== task.ctx) {
+    // A refit (`fitRun`) carries all it reads in its one message.
+    if (!task.fit && f.ctx !== task.ctx) {
       f.port.postMessage({ type: "walk_context", text: task.ctx });
       f.ctx = task.ctx;
     }
@@ -614,7 +615,8 @@ function walkPump() {
     const timer = setTimeout(() => walkTimeout(task.id), WALK_TIMEOUT_MS);
     walkInflight.set(task.id, { task, f, timer });
     if (task.start) task.start();
-    f.port.postMessage({ type: "walk", i: task.id, job: task.job });
+    if (task.fit) f.port.postMessage({ type: "fit", i: task.id, task: task.job });
+    else f.port.postMessage({ type: "walk", i: task.id, job: task.job });
   }
 }
 
@@ -630,7 +632,8 @@ function walkSettle(f, i) {
 function walkDone(f, m) {
   const task = walkSettle(f, m.i);
   if (task && !task.dead) {
-    if (Number.isFinite(m.ms)) {
+    // A refit's time is not a walk's: the job slot's estimate is the walks'.
+    if (!task.fit && Number.isFinite(m.ms)) {
       walkTimes.push(m.ms);
       if (walkTimes.length > 30) walkTimes.shift();
     }
@@ -687,6 +690,113 @@ function runOwned(task, fn) {
   } catch (err) {
     engineError(task.request || "refine", null, err, null, task.to);
   }
+}
+
+// ---------- the refit (#300) ----------
+//
+// A refit is one MCMC call: about a second on a fast laptop, four on the
+// reference machine for a mature log, and on this thread every request
+// waited behind it, the next pair's sounds, ▶, a save, a bank open. So it
+// runs on the farm. The engine exports what the fit reads (`fit_export`:
+// the evidence on the scale it is fitted on, and the generator its own
+// `fit` would use), a crew worker fits it (`farm_fit`, handed out as a walk
+// is), and the engine installs what comes back (`fit_install`), folding in
+// whatever was recorded meanwhile as a pick between fits is folded in. The
+// posterior is the one this thread would have fitted, draw for draw
+// (ADR-001). Until it lands the engine answers with the posterior it has.
+//
+// One fit is out at a time (`blocked`): a fit asked for meanwhile is for a
+// longer log, and goes when this one lands. A generation and ⚡ wait for it,
+// as it waits for them. With no crew (`?farm=0`, a machine of two threads or
+// fewer, a crew that would not start) or a crew that could not run it, the
+// fit runs here from the same export, back in its lane (`fitHere`): after
+// the player's requests and the pair's sounds, the one call it always was.
+let fitOut = null; // {m, task, at}: the fit out, and its request
+
+function fitRun(m) {
+  // Back in its lane after the farm could not run it.
+  if (fitOut && fitOut.m === m) return fitLand(m, () => glue.farm_fit(fitOut.task), false);
+  // A binary without the split fits here, as it always did.
+  if (typeof engine.fit_export !== "function" || typeof glue.farm_fit !== "function") {
+    beginLongOp();
+    try {
+      engine.fit();
+      fitAnswer(m, { farm: false });
+    } finally {
+      endLongOp();
+    }
+    return;
+  }
+  const task = engine.fit_export();
+  // Nothing to fit (an empty log): answered as the fit that changed nothing.
+  if (!task) return fitAnswer(m, { farm: false });
+  fitOut = { m, task, at: performance.now() };
+  crewUp().then(
+    (crewed) => {
+      if (!crewed) return fitHere(m);
+      walkSubmit(
+        {
+          fit: true,
+          job: task,
+          request: "fit",
+          to: m,
+          player: !!m.player,
+          done: (result, ms) => fitLand(m, () => result, true, ms),
+          fail: () => fitHere(m),
+        },
+        true,
+      );
+    },
+    () => fitHere(m),
+  );
+}
+
+/** The farm could not run it: back to the front of its lane, to be fitted
+ *  here when the lane's turn comes. */
+function fitHere(m) {
+  if (!fitOut || fitOut.m !== m) return;
+  lanes[laneOf(m)].unshift(m);
+  schedulePump();
+}
+
+/** Fit (`fit()`: the result's text) and install, and answer `m`. */
+function fitLand(m, fit, farm, ms = null) {
+  const here = !farm;
+  if (here) beginLongOp();
+  try {
+    const t0 = performance.now();
+    const result = fit();
+    const t1 = performance.now();
+    const verdict = engine.fit_install(result);
+    const t2 = performance.now();
+    const reply = fitReply();
+    const t3 = performance.now();
+    answer(m, {
+      ...reply,
+      farm,
+      // Where its time went, for the app's log and the budgets: the fit
+      // itself, what installing it held this thread for, the views the
+      // reply carries, and the whole from export to answer.
+      took: { fit: farm ? ms : t1 - t0, install: t2 - t1, views: t3 - t2, out: t3 - fitOut.at },
+      ...(verdict === "ok" ? {} : { refused: verdict }),
+    });
+  } finally {
+    if (here) endLongOp();
+    fitOut = null;
+    schedulePump();
+  }
+}
+
+/** What a refit answers with: the views, the status and the bench's guess
+ *  under the posterior now installed. */
+function fitReply() {
+  lastStylesObs = -1;
+  obsAtFit = status().observations;
+  return { type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() };
+}
+
+function fitAnswer(m, extra) {
+  answer(m, { ...fitReply(), ...extra });
 }
 
 // Drive a wave of off-engine renders to completion.
@@ -2806,8 +2916,11 @@ function laneOf(m) {
     case "explain":
     case "explain_lesson":
       return SOON;
-    case "perform_drift":
+    // A refit is work nobody waits on, but a taste file's is the player's:
+    // they opened the file to see its taste (#300).
     case "fit":
+      return m.player ? SOON : LATER;
+    case "perform_drift":
     // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
     case "styles":
     case "cable_levels":
@@ -2851,16 +2964,22 @@ const bootCrewLive = () => !booted && farmCrew_ === 0 && !farmClosed && farm.som
 const walking = () => gen != null || evolving != null;
 function blocked(m) {
   switch (m.type) {
+    // One fit at a time: a fit asked for while one is out is for a longer
+    // log, and goes when that one lands. The fit out is its own request
+    // back in a lane when the farm could not run it (`fitHere`).
     case "fit":
-      return walking();
+      return walking() || (fitOut != null && fitOut.m !== m);
     // A face's render waits for the bank to finish arriving: half a second
     // each, they would slow the fill (a preset's face on the warm start, a
     // row stored before faces).
     case "face_render":
       return !booted;
+    // …and a generation or ⚡ waits for a fit out on the farm, as a fit
+    // waits for them: each is bred and admitted under the posterior it
+    // started under.
     case "refine":
     case "refine_from":
-      return walking() || bootCrewLive();
+      return walking() || bootCrewLive() || fitOut != null;
     // The guess's crew phase waits for boot's crew the same way: started
     // while the bank is still arriving, it can raise no crew of its own and
     // ranks only the floor's eight candidates, where a few seconds later a
@@ -3680,26 +3799,18 @@ async function dispatch(m) {
         // a crew of their own when they want one.
         bootCrewDone();
         news({ type: "filled", status: st, restored });
-        // Taste continuity: re-fit from the restored log so the map and
-        // styles come back with the bank.
-        //
-        // `engine.fit()` blocks this worker for seconds, and on the restore path
-        // the fill loop never ran, so nothing has yielded since `playable` went
-        // out. Main has already answered it with a `{type:"duel"}` and will
-        // follow with the pair's two `{type:"render"}`s — all of which would sit
-        // behind the fit, dropping the veil onto a frozen, empty duel table.
-        // Drain them first: three breaths, each answering every request of the
-        // player's that has arrived by then — the duel, then its renders.
+        // Taste continuity: a session saved with its fit came back with it
+        // (`SessionState::fit`), and fits nothing. One saved before the fit
+        // was kept, or whose saved fit no longer describes what came back,
+        // is fitted again once, as background work after boot, on the farm
+        // (#300): it used to be fitted here, inside `init`, and the table's
+        // sounds waited behind it.
         if (restored > 0 && st.observations > 0) {
-          for (let i = 0; i < 3; i++) await breathe(LATER);
-          beginLongOp();
-          try {
-            engine.fit();
+          if (st.has_posterior) {
             lastStylesObs = -1;
-            obsAtFit = status().observations;
-            news({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
-          } finally {
-            endLongOp();
+            obsAtFit = st.observations;
+          } else {
+            lanes[LATER].push({ type: "fit", restore: true });
           }
         }
       } catch (err) {
@@ -3932,15 +4043,7 @@ async function dispatch(m) {
       break;
     }
     case "fit": {
-      beginLongOp();
-      try {
-        engine.fit();
-        lastStylesObs = -1;
-        obsAtFit = status().observations;
-        post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
-      } finally {
-        endLongOp();
-      }
+      fitRun(m);
       break;
     }
     case "refine": {

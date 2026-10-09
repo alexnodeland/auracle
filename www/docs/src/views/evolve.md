@@ -149,7 +149,11 @@ If the engine can’t deal a pair, the cards stay dimmed with **▶ PLAY**,
 Your picks count before the refit, too. Each one is folded into the model
 at once by reweighting the guesses it already holds, so its next forecast
 answers your last pick. The refit is the full version: inference over every
-pick so far, a few seconds of work off the audio thread.
+pick so far, a few seconds of work in a render worker beside the engine, so
+the next pair, **▶ PLAY** and everything else answer while it runs. Picks you
+make meanwhile are folded into it when it lands. On a computer with no render
+workers the engine does the refit itself, after the pair’s sounds, and
+anything you ask for while it runs waits for it.
 
 While a refit runs, the job slot in the menu bar says *refitting your taste
 map…*, and the amber lamp after the wordmark is lit. The reference has [the fit and the

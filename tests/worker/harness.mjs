@@ -441,8 +441,13 @@ export async function workerFor(t, options) {
  *  send instead (`{type: "cannot", …}`, as farm.js's says when its instance
  *  is broken), or `null` to sit on the job until the test answers it with
  *  `crew.answer(k, reply)`. `answered(k, reply)` hears each answer just
- *  after worker `k` sent it. */
-export function fakeCrew(n, { ready = true, render = null, job = null, answered = null } = {}) {
+ *  after worker `k` sent it.
+ *
+ *  A refit (`fit`, worker.js `fitRun`) is fitted as farm.js fits it
+ *  (`farmFit`), unless `fit(k, msg)` decides: a reply to send instead (a
+ *  `cannot`, as a broken instance says, after which the engine drops that
+ *  worker and fits it itself), or `null` to sit on it. */
+export function fakeCrew(n, { ready = true, render = null, job = null, fit = null, answered = null } = {}) {
   const heard = [];
   const ports = [];
   const ends = [];
@@ -458,6 +463,12 @@ export function fakeCrew(n, { ready = true, render = null, job = null, answered 
     port1.on("message", (m) => {
       got.push(m);
       if (readyAtStart(k) && m.type === "phrase" && got.filter((x) => x.type === "phrase").length === 1) port1.postMessage({ type: "ready", build: V });
+      if (m.type === "fit") {
+        const decided = fit ? fit(k, m) : undefined;
+        if (decided === null) return;
+        if (decided) return send(k, decided);
+        return void farmFit(m).then((reply) => send(k, reply));
+      }
       if (m.type !== "job") return;
       const decided = job ? job(k, m) : undefined;
       if (decided === null) return;
@@ -476,6 +487,23 @@ export function fakeCrew(n, { ready = true, render = null, job = null, answered 
     answer: send,
     close: () => ends.forEach((p) => p.close()),
   };
+}
+
+// The engine's glue in this thread, for a fit run as a farm worker runs it.
+let farmGlue = null;
+
+/** A farm worker's answer to a refit (`msg`, as the engine worker sent it):
+ *  farm.js's, over the same built engine, in this thread. */
+export async function farmFit(msg) {
+  if (!farmGlue) {
+    farmGlue = await import(`${GLUE}?v=farm`);
+    farmGlue.initSync({ module: new WebAssembly.Module(readFileSync(WASM)) });
+  }
+  const t0 = performance.now();
+  const result = farmGlue.farm_fit(msg.task);
+  return result
+    ? { type: "walked", i: msg.i, result, ms: performance.now() - t0 }
+    : { type: "cannot", i: msg.i, walk: true, reason: "fit did not parse" };
 }
 
 /** The engine calls between two places in a trace (exclusive), by name. */

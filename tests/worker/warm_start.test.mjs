@@ -113,7 +113,9 @@ test("the session teach it makes is the one it made when nothing was measured ah
   // …and the same first fit.
   const [fa] = await ahead.send({ type: "fit" });
   const [fb] = await cold.send({ type: "fit" });
-  assert.deepEqual(plain([fa]), plain([fb]), "the first fit differs");
+  // (Where each fit's time went, `took`, is this machine's.)
+  const fit = ({ took, ...r }) => r;
+  assert.deepEqual(plain([fa]).map(fit), plain([fb]).map(fit), "the first fit differs");
   await ahead.close();
   await cold.close();
 });

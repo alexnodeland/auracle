@@ -30,7 +30,7 @@ It is kept as you play:
 | **SAVED** | Everything you saved |
 | Names | The names you gave sounds and styles |
 | The log | Every pick, star, cut, and kept edit |
-| Your taste | What the model learned, with its standardizer |
+| Your taste | What the model learned (its fitted guesses, at most 500), with its standardizer |
 | Layout and settings | Rack positions, the keybed’s size and width, the scope, and which of the catalog's groups are open |
 | **SET ASIDE** | What you unplugged, across reloads |
 | The clip | The seconds of your input AUDIO IN captured for the model, with the session |
@@ -44,7 +44,9 @@ Monitoring is never kept: it starts off every time.
 A session comes back one sound at a time, with the bar counting them. A sound
 the render workers measured as the app loaded, or that an earlier return
 measured, is read back rather than rendered again, so a return is usually
-quick. A sound that joined while you played (a generation’s, an edit you
+quick. Your taste comes back as it was, so nothing is fitted while it loads. A
+session saved by an earlier version is fitted again once, just after it
+loads, while you play. A sound that joined while you played (a generation’s, an edit you
 kept, a patch file you opened) is rendered again on the next return; see
 [Boot is slow, or stalls](./troubleshooting.md#boot-is-slow-or-stalls).
 
@@ -76,7 +78,9 @@ To bring it back, or to move a taught model to another machine:
    **REPLACE IT**.
 
 Once it’s open, the model fits from the file: *Opened that taste file: 52
-picks, 4 stars, and 2 cuts. Redrawing your taste map…*
+picks, 4 stars, and 2 cuts. Redrawing your taste map…* Until that fit lands
+there is no guess yet, and [TASTE](./views/taste.md) draws every glow as a
+dashed ring.
 
 ### A patch
 
