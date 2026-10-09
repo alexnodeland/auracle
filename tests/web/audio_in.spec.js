@@ -399,11 +399,25 @@ test("an unplugged input silences its module and says so, and plays again when i
 test("a capture cut short drops its take, and the tap stops", async ({ page, app }) => {
   await boot(page, app);
   await openPreset(page, app, "Glass Pad");
+  // Fake Mic A silent: the first listen's capture is armed, and waits for a
+  // signal before it rolls.
+  await page.evaluate(() => window.__pwLevel("mic-a", false));
   await placeAudioIn(page);
-  await expect.poll(async () => (await state(page)).capture, { timeout: 15_000 }).toBe("rolling");
-  // Another sound, with no AUDIO IN: its input closes under the capture.
+  await laneLive(app);
+  await expect.poll(async () => (await state(page)).capture).toBe("armed");
+  // Another sound, with no AUDIO IN: its input closes under the capture when
+  // its bench lands. That bench is the engine's to make, which on a slow
+  // runner took longer than the capture's 6 s (#350), so it is kept from
+  // main until the capture rolls, and then the cut is the page's own work.
+  await app.answered({ lanes: ["bench"] });
+  await app.hold("bench");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-  await app.engine((timeout) => expect(page.locator("#rack-svg .ain-lane")).toHaveCount(0, { timeout }), { ms: 30_000 });
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).map((h) => h.type), { timeout }).toContain("bench"), { ms: 30_000 });
+  await page.evaluate(() => window.__pwLevel("mic-a", true));
+  await expect.poll(async () => (await state(page)).capture, { timeout: 15_000 }).toBe("rolling");
+  await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(1);
+  await app.release();
+  await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__pwTapSaid), { timeout: 5_000 }).toContain("drop");
   // Nothing comes of it: no clip goes to the engine, over a window that
   // outlasts the 6 s capture.
