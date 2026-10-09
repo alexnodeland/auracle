@@ -290,9 +290,9 @@ dependencies = [
 
 [[package]]
 name = "quiver-dsp"
-version = "0.4.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a757850ac615fd8526db516193b5d140b80234979d15e74fffa685c8dd9d1725"
+checksum = "5c139989580323408467b9e9472449eb0be41a748f29c33a3943239d936a28c4"
 dependencies = [
  "libm",
  "portable-atomic",

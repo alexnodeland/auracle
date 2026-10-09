@@ -43,6 +43,7 @@ is.
 | [`phi_moves.py`](phi_moves.py) | How far a change that moves the sound moves φ, in each coordinate's spread |
 | [`analysis-norm-sqr.diff`](analysis-norm-sqr.diff), [`phi-moves-norm-sqr.txt`](phi-moves-norm-sqr.txt), [`ab-native-norm-sqr.txt`](ab-native-norm-sqr.txt), [`ab-wasm-norm-sqr.txt`](ab-wasm-norm-sqr.txt) | `norm_sqr().sqrt()` for `hypot` in φ's spectral frames: the diff, how far φ moves, and its runs |
 | [`revalidate/`](revalidate/) | `make revalidate`'s tables before and after the folding, and L1's and L2's `phi-stats` and `norm-peak`, with L1's diff |
+| [`blocks/`](blocks/) | The block walk: the native and wasm A/B of the set on 0.5.1 (`*-051.txt`) and on 0.5.0, one live voice of each kind (`voice_ab.mjs`) and the live sweep on 0.5.0, and 0.5.0's L1: φ's moves, `make revalidate`'s diff and both climbs |
 | [`quiver/`](quiver/) | The quiver changes measured in a scratch copy (each a diff against 0.4.0) and their runs: `ab-native-*` (the set), `ab-kinds-*` (one live voice of each kind), `ab-wasm-*`, `voice-wasm-*`, `phi-moves.txt` |
 
 ## How to run it again
@@ -147,6 +148,38 @@ build `620502fd93f0a2bc`.
   0.006 and in one seed's final gain by 0.02 (a chaotic divergence from the last
   digit), and `search-check` was not run. `perform-wirings` re-measured, and
   `preset-faces` wrote the same faces.
+
+Measured on 2026-10-09 on a 4-core Xeon VM shared with another agent's jobs
+(every figure a thread's CPU time, the least of its repeats, both sides
+alternated; the load each run saw is in its file), [`blocks/`](blocks/):
+
+- **quiver-dsp 0.5.1** carries the block walk (`Patch::tick_block`,
+  quiver#54). 0.5.0 also carried L1, the ladder's one fixed-point pass
+  (quiver#55); on it the 8-seed `climb`'s mean gain fell from +2.218 to
+  +1.702 (a paired −0.52 ± 0.32), and 0.5.1 reverts it. Every render is
+  main's, bit for bit: `bench_render --digest` and `--digest --bank` give
+  main's digests, so φ does not move and nothing was revalidated.
+- **A measurement render ticks its voices in blocks** of 64 frames, the same
+  samples bit for bit (`render.rs`'s `Walk`; `--digest` and `--digest --bank`
+  equal the same build's frame walk). A patch that listens, a watched render
+  (the cable probe), and a chord voice that follows a TRACK or draws quiver's
+  shared random stream while it rings keep a tick per frame.
+- **A render takes about a third less CPU**: on 0.5.1 the set went from 2280
+  to 1477 ms natively (0.65, load 9 to 11) and from 3053 to 2029
+  ms in wasm (0.66, load 8 to 9). Long Way Down gains least (1.04 natively,
+  0.76 in wasm): its random source draws the shared stream, so its dyad's
+  voice walks frames for as long as it rings.
+- **A live voice costs about a third**: `LivePoly` ticks each voice's quantum
+  as one block. Measured on 0.5.0, whose difference from 0.5.1 is the ladder
+  alone (so a ladder's figures here include L1's cut): one voice of each kind
+  summed from 924 to 309 ms per voice-second in wasm (0.33; a saw voice 11.5
+  to 3.6), 491 to 162 natively; a preset's four voices a median 0.38 of their
+  cost (`live_cost.mjs --sweep-only`), and on a CPU 4.5 times slower A and B
+  together over a whole quantum on 1 or 2 presets of 62, against 40 to 44.
+- What 0.5.0's L1 did, kept for the record: φ moved on 11 of 62 presets, at
+  most 0.096 of a spread (`phi-moves.txt`), one more prior draw quarantined as
+  silent (`revalidate-diff.txt`), and the climbs (`climb-before.txt`,
+  `climb-after.txt`).
 
 ## The render, by stage
 

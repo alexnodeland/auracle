@@ -122,7 +122,7 @@ pub const RENDER_EPOCH: u32 = 3;
 /// Hand-maintained rather than read from the build, because Cargo does not
 /// expose a dependency's version to `env!`; `quiver_version_matches_the_lock`
 /// reads `Cargo.lock` and fails the suite the moment the two disagree.
-pub const QUIVER_DSP_VERSION: &str = "0.4.1";
+pub const QUIVER_DSP_VERSION: &str = "0.5.1";
 
 /// The persistent cache's namespace for one stimulus:
 /// `"e<epoch>:q<quiver version>:<spec hash>"`.

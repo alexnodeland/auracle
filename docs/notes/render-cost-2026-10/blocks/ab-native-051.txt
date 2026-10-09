@@ -1,0 +1,29 @@
+# ab_native.py BEFORE AFTER 3 3: 9c81dca (quiver-dsp 0.4.1) against quiver-dsp 0.5.1 with the block walk, 2026-10-09
+round 1 before:     2404 ms for the set, load 9
+round 1 after :     1619 ms for the set, load 9
+round 2 before:     2436 ms for the set, load 9
+round 2 after :     1583 ms for the set, load 9
+round 3 before:     2462 ms for the set, load 9
+round 3 after :     1596 ms for the set, load 10
+
+tree                    before     after  after/before
+First Bass               154.3     143.8         0.932
+Ceiling                  181.0     151.9         0.839
+Detune Dream              65.8      41.2         0.626
+Long Way Down            114.4     119.0         1.040
+Glass Pad                150.9      87.7         0.581
+Choirboy                 109.0      79.6         0.730
+draw 1                    51.7      24.3         0.470
+draw 2                    81.3      54.0         0.664
+draw 3                    48.9      21.7         0.444
+draw 4                    70.5      33.6         0.477
+draw 5                    90.7      56.7         0.625
+draw 6                    68.5      31.7         0.463
+draw 7                    58.9      36.7         0.623
+draw 8                   121.5      65.4         0.538
+draw 9                   243.8     105.6         0.433
+draw 10                  132.5     100.8         0.761
+draw 11                  341.2     196.9         0.577
+draw 12                  195.3     126.4         0.647
+set                     2280.2    1477.0         0.648
+load average 11, after

@@ -1,0 +1,32 @@
+# bench_render.mjs --reps=3 --rounds=3: 9c81dca's package (a721b1b764d59a82) against quiver-dsp 0.5.0's (44e46e65b18ad207; one-pass ladder, since reverted), node v22.22.0, 2026-10-09
+bench_render (wasm, node v22.22.0): 18 trees, least of 3 over 3 rounds each, this thread's CPU ms
+before: /tmp/claude-0/-home-user/82914afd-e049-5f3c-a740-76e6e16ab08f/scratchpad/block-walk/auracle-before/apps/web/pkg (release aa28c8b2209f)
+after: /home/user/auracle/.claude/worktrees/quiver-050/apps/web/pkg (release 885e992c6208)
+load average 17 on 4 cores, before
+round 1 before: load 17
+round 1 after: load 17
+round 2 before: load 17
+round 2 after: load 17
+round 3 before: load 17
+round 3 after: load 17
+tree                    before     after  after/before
+First Bass               193.9     117.6         0.606
+Ceiling                  206.2     132.8         0.644
+Detune Dream              99.8      59.8         0.599
+Long Way Down            187.5     187.3         0.999
+Glass Pad                175.8     115.9         0.659
+Choirboy                 139.9      99.2         0.709
+draw 1                    78.1      34.9         0.447
+draw 2                   119.6      75.3         0.629
+draw 3                    86.7      31.4         0.362
+draw 4                   123.9      51.9         0.419
+draw 5                   134.2      72.0         0.537
+draw 6                   130.1      50.7         0.390
+draw 7                    90.6      51.3         0.566
+draw 8                   185.5     100.3         0.541
+draw 9                   351.1     158.3         0.451
+draw 10                  175.0     152.0         0.869
+draw 11                  452.1     340.2         0.752
+draw 12                  306.7     218.2         0.711
+set                     3236.9    2049.1         0.633
+load average 17, after
