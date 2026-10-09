@@ -60,14 +60,47 @@ did not move.
 | fugue’s driver | 22.7 | 207.1 |
 | the kernel | **1.9** | **47.8** |
 
-What is left of a mature step is the likelihood: the same 226 sites over 6
-rows take 6.1 µs a step.
+What was left of a mature step then was the likelihood: the same 226 sites
+over 6 rows took 6.1 µs a step.
 
 The engine the app runs shows the same: `WasmEngine::fit` in Node over the
 release build, on a 4-core Linux machine, took 479 ms before and 33 ms after
 for a first fit (6 duels), and 3.9 s before and 0.95 s after for a mature one
 (100 duels, $K=5$), each the least of five, the fit’s own alignment and style
 shares included. Both builds ended on the same ranking, byte for byte.
+
+**A step recomputes only what its site reaches.** Rescoring a proposal with
+the whole likelihood redid every row though one site moved: at $K=5$ over 100
+duels, a thousand dot products of 44 to move one θ coordinate. So the chain
+keeps, for its current state, every candidate’s utility under every lens,
+every row’s weighted term and every site’s prior term, and a proposal
+recomputes only what its site moves:
+
+| The site | What is recomputed |
+|---|---|
+| θ<sub>k,i</sub> | its prior term; lens $k$’s utility of every candidate, then every row’s term from the kept utilities |
+| μ (a fused group’s mean) | its prior term and those of the θ drawn about it; the likelihood is unchanged |
+| τ<sub>s</sub> | its prior term; the keep/kill rows of session $s$ |
+| a cut | its prior term; every star row (the cuts decode cumulatively, so one raw moves every later cut) |
+
+It stays bit-identical. A row’s term is one function whether its utilities
+were just computed or kept from an earlier step, so the two cannot drift, and
+the totals are the kept terms summed the way the whole computations sum them:
+the rows in order by the same `sum`, the prior from 0 in execution order. (A
+running total patched by each step’s difference would not be the same number.)
+The kernel’s tests check the kept totals against the whole ones bit for bit,
+after every move of every kind of site and every step of a chain, and
+`fit_bench`’s checksums did not move.
+
+| µs per step, `fit_bench 10000 3000`, another 4-core Linux machine | first fit | mature fit | 226 sites over 6 rows |
+|---|---|---|---|
+| every row and site rescored | 0.9 | 22.8 | 3.0 |
+| only what the site reaches | **0.6** | **7.1** | **0.7** |
+
+`WasmEngine::fit` in Node on that machine, the least of each build’s ten or
+more runs: a first fit
+from 17.8 ms to 11.8 ms, a mature one from 436 ms to 202 ms, and both builds
+ended on the same ranking, byte for byte.
 
 ### The address table
 
@@ -132,7 +165,8 @@ chosen on the recovery tables rather than against a memory ceiling.
 
 ## Between fits: sequential importance sampling
 
-A full fit costs about a second on a fast laptop, a few on an older one, and
+A full fit costs under half a second on a fast laptop, about two on an older
+one, and
 cannot run after every pick. So each new observation is folded into the
 existing draws by reweighting:
 
@@ -322,8 +356,9 @@ that holds picks. The app used
 to require `needs_refit` as well, to save the time of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
 been, so a run of agreeable picks ended with the teaching meter’s countdown and
-no refit: the meter promised something it then did not do. A fit costs about a
-second on a fast laptop, a few on an older one, off the audio thread, at most
+no refit: the meter promised something it then did not do. A fit costs under
+half a second on a fast laptop, about two on an older one, off the audio
+thread, at most
 once every six picks outside those two moments, and the pair stays audible
 through it.
 
