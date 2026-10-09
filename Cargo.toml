@@ -81,7 +81,7 @@ codegen-units = 16
 # `set_param_by_id` now returns false for a cabled port (`Compiler::constant`).
 # `auracle_features::QUIVER_DSP_VERSION` must move with this line — a test
 # reads Cargo.lock and fails when it does not.
-quiver-dsp = "0.5.0"
+quiver-dsp = "0.5.1"
 # default-features off: `checkpoint`/`parallel` don't compile on wasm32 and
 # nothing here uses them; `ppl` is the layer we build on.
 fugue-evo = { version = "0.4.0", default-features = false, features = ["std", "ppl"] }
