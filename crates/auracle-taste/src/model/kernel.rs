@@ -23,6 +23,20 @@
 //! (`log_alpha >= 0.0`, then `exp`) cannot tell apart, so they are left out.
 //! fugue's trace also adds a zero log-likelihood and starts the factor sum
 //! at zero: the same +0.0, and the same reasoning.
+//!
+//! # A step recomputes only what its site reaches
+//!
+//! The likelihood is a sum over rows, and each row reads its candidates'
+//! lens utilities `θ_k · φ`. The chain keeps, for the current state, every
+//! candidate's utility under every lens and every row's weighted term
+//! ([`Scored`]), and a proposal recomputes only what its site moves
+//! ([`Reach`]): a θ_k coordinate moves lens k's utility of every candidate,
+//! and so every row; a τ_s moves session s's keep/kill rows; a cut raw
+//! moves every later cut, and so every star row; a μ moves only the prior.
+//! Each recomputed number comes from the code `Evidence::loglik` runs (the
+//! same `dot`, the same `Evidence::term`), and the total is the terms summed
+//! in row order as it sums them, so the proposal's log-weight is the number
+//! the whole program would give, bit for bit.
 
 use fugue::core::numerical::nan_to_neg_inf;
 use fugue::runtime::handler::run;
@@ -32,8 +46,8 @@ use rand::{Rng, RngCore};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{Evidence, Layout, SiteAddrs, TasteModel, TasteSample};
-use crate::observe::FitSet;
+use super::{dot, Evidence, Layout, SiteAddrs, TasteModel, TasteSample};
+use crate::observe::{Feedback, FitSet};
 
 /// Run the chain: `n_warmup` adapting steps, then `n_samples` with the
 /// scales frozen, keeping the state after sampling steps `0, stride,
@@ -72,20 +86,178 @@ pub(super) fn chain<R: Rng>(
     kept
 }
 
-/// The chain's state: the current values and their draw and log-weight, and
-/// a proposal buffer that equals the current values between steps.
+/// The chain's state: the current values, their draw, likelihood and
+/// log-weight, and a proposal's buffers, which equal the current ones
+/// between steps.
 struct Chain<'a> {
     layout: &'a Layout,
     evidence: &'a Evidence,
+    /// Which rows and candidates each site reaches.
+    rows: Rows<'a>,
     /// Each site's address (adaptation is keyed by it) and its slot in the
     /// values, in the trace's order: the order fugue picks a site from.
     sites: Vec<(Address, usize)>,
     adaptation: DiminishingAdaptation,
     cur: Vec<f64>,
     cur_s: TasteSample,
+    cur_scored: Scored,
     cur_lw: f64,
     prop: Vec<f64>,
     prop_s: TasteSample,
+    prop_scored: Scored,
+}
+
+/// A state's likelihood in its parts.
+#[derive(Clone, Debug)]
+struct Scored {
+    /// Every candidate's utility under every lens, `[c·K + k]`, candidates
+    /// in row order (a duel's `a` then `b`).
+    dots: Vec<f64>,
+    /// Every row's weighted log-likelihood (`Evidence::term`).
+    terms: Vec<f64>,
+    /// The terms summed, as `Evidence::loglik` sums them.
+    ll: f64,
+}
+
+/// The evidence's rows as the kernel walks them, built once per chain.
+struct Rows<'a> {
+    /// K.
+    k: usize,
+    /// Each candidate's φ, in row order.
+    phis: Vec<&'a [f64]>,
+    /// Row `r`'s candidates are `cands[r]..cands[r + 1]`.
+    cands: Vec<usize>,
+    /// Each session's keep/kill rows.
+    keeps: Vec<Vec<usize>>,
+    /// The star rows.
+    stars: Vec<usize>,
+}
+
+/// What moving one site changes of the likelihood.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Reach {
+    /// A μ: nothing; it enters only the prior of the θ about it.
+    Nothing,
+    /// A coordinate of lens k: that lens's utility of every candidate, and
+    /// so every row.
+    Lens(usize),
+    /// Session s's τ: its keep/kill rows.
+    Session(usize),
+    /// A cut raw: every star row (the cuts decode cumulatively).
+    Cuts,
+}
+
+impl Layout {
+    /// What moving the site at `slot` reaches.
+    fn reach(&self, slot: usize) -> Reach {
+        if slot < self.theta_at {
+            Reach::Nothing
+        } else if slot < self.tau_at {
+            Reach::Lens((slot - self.theta_at) / self.n_features)
+        } else if slot < self.cut_at {
+            Reach::Session(slot - self.tau_at)
+        } else {
+            Reach::Cuts
+        }
+    }
+}
+
+impl<'a> Rows<'a> {
+    fn new(layout: &Layout, evidence: &'a Evidence) -> Self {
+        let mut rows = Self {
+            k: layout.k_styles,
+            phis: Vec::new(),
+            cands: vec![0],
+            keeps: vec![Vec::new(); layout.cut_at - layout.tau_at],
+            stars: Vec::new(),
+        };
+        for (r, (o, session)) in evidence.rows.iter().enumerate() {
+            match o {
+                Feedback::Duel { a, b, .. } => rows.phis.extend([&a[..], &b[..]]),
+                Feedback::KeepKill { x, .. } => {
+                    rows.phis.push(x);
+                    rows.keeps[*session].push(r);
+                }
+                Feedback::Stars { x, .. } => {
+                    rows.phis.push(x);
+                    rows.stars.push(r);
+                }
+            }
+            rows.cands.push(rows.phis.len());
+        }
+        rows
+    }
+
+    /// Score a state from nothing.
+    fn score(&self, evidence: &Evidence, s: &TasteSample) -> Scored {
+        let mut scored = Scored {
+            dots: self
+                .phis
+                .iter()
+                .flat_map(|phi| s.theta.iter().map(move |t| dot(t, phi)))
+                .collect(),
+            terms: vec![0.0; self.cands.len() - 1],
+            ll: 0.0,
+        };
+        for r in 0..scored.terms.len() {
+            scored.terms[r] = self.term(evidence, s, &scored.dots, r);
+        }
+        scored.ll = scored.terms.iter().sum();
+        scored
+    }
+
+    /// Row `r`'s term under `s`, from the utilities in `dots`.
+    fn term(&self, evidence: &Evidence, s: &TasteSample, dots: &[f64], r: usize) -> f64 {
+        let (c, end) = (self.cands[r], self.cands[r + 1]);
+        let first = &dots[c * self.k..(c + 1) * self.k];
+        let second = &dots[(c + 1) * self.k..end * self.k];
+        evidence.term(r, s, first.iter().copied(), second.iter().copied())
+    }
+
+    /// Rescore `scored`, a score of the state before the move, for `s`, the
+    /// state after it: only what `reach` reaches.
+    fn rescore(&self, evidence: &Evidence, s: &TasteSample, reach: Reach, scored: &mut Scored) {
+        let rows: &[usize] = match reach {
+            Reach::Nothing => return,
+            Reach::Lens(k) => {
+                for (c, phi) in self.phis.iter().enumerate() {
+                    scored.dots[c * self.k + k] = dot(&s.theta[k], phi);
+                }
+                for r in 0..scored.terms.len() {
+                    scored.terms[r] = self.term(evidence, s, &scored.dots, r);
+                }
+                scored.ll = scored.terms.iter().sum();
+                return;
+            }
+            Reach::Session(session) => &self.keeps[session],
+            Reach::Cuts => &self.stars,
+        };
+        for &r in rows {
+            scored.terms[r] = self.term(evidence, s, &scored.dots, r);
+        }
+        scored.ll = scored.terms.iter().sum();
+    }
+
+    /// Make `to` equal `from` again after a move that reached `reach`.
+    fn sync(&self, reach: Reach, from: &Scored, to: &mut Scored) {
+        let rows: &[usize] = match reach {
+            Reach::Nothing => return,
+            Reach::Lens(k) => {
+                for c in 0..self.phis.len() {
+                    to.dots[c * self.k + k] = from.dots[c * self.k + k];
+                }
+                to.terms.copy_from_slice(&from.terms);
+                to.ll = from.ll;
+                return;
+            }
+            Reach::Session(session) => &self.keeps[session],
+            Reach::Cuts => &self.stars,
+        };
+        for &r in rows {
+            to.terms[r] = from.terms[r];
+        }
+        to.ll = from.ll;
+    }
 }
 
 impl<'a> Chain<'a> {
@@ -105,22 +277,38 @@ impl<'a> Chain<'a> {
                 (a.clone(), slot)
             })
             .collect();
+        Self::at(layout, evidence, sites, cur)
+    }
+
+    /// A chain over `sites` (each site's address and slot, in the trace's
+    /// order) that starts at the values `cur`.
+    fn at(
+        layout: &'a Layout,
+        evidence: &'a Evidence,
+        sites: Vec<(Address, usize)>,
+        cur: Vec<f64>,
+    ) -> Self {
         let mut cur_s = TasteSample {
             theta: Vec::new(),
             tau: Vec::new(),
             cuts: Vec::new(),
         };
         layout.decode_into(&cur, &mut cur_s);
-        let cur_lw = log_weight(layout, evidence, &cur, &cur_s);
+        let rows = Rows::new(layout, evidence);
+        let cur_scored = rows.score(evidence, &cur_s);
+        let cur_lw = log_weight(layout, &cur, cur_scored.ll);
         Self {
             layout,
             evidence,
+            rows,
             sites,
             adaptation: DiminishingAdaptation::new(0.44, 0.7),
             prop: cur.clone(),
             prop_s: cur_s.clone(),
+            prop_scored: cur_scored.clone(),
             cur,
             cur_s,
+            cur_scored,
             cur_lw,
         }
     }
@@ -128,31 +316,50 @@ impl<'a> Chain<'a> {
     /// One transition, fugue's `single_site_mh_step`. There is always a site
     /// to move: every program has at least one τ.
     fn step<R: Rng>(&mut self, rng: &mut R, adapt: bool) {
-        let (addr, slot) = &self.sites[gen_index(rng, self.sites.len())];
-        let slot = *slot;
-        let scale = self.adaptation.get_scale(addr);
+        let site = gen_index(rng, self.sites.len());
+        let slot = self.sites[site].1;
+        let scale = self.adaptation.get_scale(&self.sites[site].0);
         let x = self.cur[slot];
-        self.prop[slot] = x + scale * gaussian_z(rng);
-        self.layout.decode_into(&self.prop, &mut self.prop_s);
-        let prop_lw = log_weight(self.layout, self.evidence, &self.prop, &self.prop_s);
+        let prop_lw = self.propose(slot, x + scale * gaussian_z(rng));
         let accept = mh_accept(rng, prop_lw - self.cur_lw, self.cur_lw, prop_lw);
         if adapt {
-            self.adaptation.update(addr, accept);
+            self.adaptation.update(&self.sites[site].0, accept);
         }
+        self.settle(slot, accept, prop_lw);
+    }
+
+    /// Move the proposal's site at `slot` to `value` and score it: its
+    /// log-weight. Recomputes only the likelihood's parts the site reaches.
+    fn propose(&mut self, slot: usize, value: f64) -> f64 {
+        self.prop[slot] = value;
+        self.layout.decode_into(&self.prop, &mut self.prop_s);
+        let reach = self.layout.reach(slot);
+        self.rows
+            .rescore(self.evidence, &self.prop_s, reach, &mut self.prop_scored);
+        log_weight(self.layout, &self.prop, self.prop_scored.ll)
+    }
+
+    /// Take the proposal at `slot` (log-weight `prop_lw`) or leave it, and
+    /// bring the proposal's buffers back to the current state's.
+    fn settle(&mut self, slot: usize, accept: bool, prop_lw: f64) {
         if accept {
             self.cur[slot] = self.prop[slot];
             std::mem::swap(&mut self.cur_s, &mut self.prop_s);
+            std::mem::swap(&mut self.cur_scored, &mut self.prop_scored);
             self.cur_lw = prop_lw;
         } else {
-            self.prop[slot] = x;
+            self.prop[slot] = self.cur[slot];
         }
+        let reach = self.layout.reach(slot);
+        self.rows
+            .sync(reach, &self.cur_scored, &mut self.prop_scored);
     }
 }
 
 /// A state's log-weight as the program's trace totals it: the log-prior in
-/// execution order, plus the factor, a NaN read as −∞ (module doc).
-fn log_weight(layout: &Layout, evidence: &Evidence, vals: &[f64], s: &TasteSample) -> f64 {
-    layout.log_prior(vals) + nan_to_neg_inf(evidence.loglik(s))
+/// execution order, plus the factor `ll`, a NaN read as −∞ (module doc).
+fn log_weight(layout: &Layout, vals: &[f64], ll: f64) -> f64 {
+    layout.log_prior(vals) + nan_to_neg_inf(ll)
 }
 
 /// fugue's `gen_index` (`pub(crate)` there): an index drawn over `u64`, so

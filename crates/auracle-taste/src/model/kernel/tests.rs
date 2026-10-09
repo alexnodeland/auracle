@@ -195,3 +195,184 @@ fn the_accept_test_is_fugues() {
         }
     }
 }
+
+/// `mixed_log` with every keep's and star's coordinates 2 and 9 imputed, at
+/// the standardized mean (0) where the standardizer imputes them: two lenses
+/// equal off those coordinates then tie on every such candidate, and the
+/// lens that prices the imputed variance is the tie's.
+fn imputed_at_mean(mut data: FitSet) -> FitSet {
+    for (r, (o, _)) in data.rows.iter_mut().enumerate() {
+        if let Feedback::KeepKill { x, .. } | Feedback::Stars { x, .. } = o {
+            x[2] = 0.0;
+            x[9] = 0.0;
+            data.absent[r] = vec![2, 9];
+        }
+    }
+    data
+}
+
+/// The chain's kept likelihood is the whole one: its total is, bit for bit,
+/// what `Evidence::loglik` computes from the state, and its log-weight what
+/// the program's trace would total, and the proposal's buffers are back to
+/// the current state's.
+fn assert_whole(chain: &Chain, evidence: &Evidence, layout: &Layout, at: &str) {
+    let ll = evidence.loglik(&chain.cur_s);
+    assert_eq!(chain.cur_scored.ll.to_bits(), ll.to_bits(), "{at}: total");
+    let lw = layout.log_prior(&chain.cur) + nan_to_neg_inf(ll);
+    assert_eq!(chain.cur_lw.to_bits(), lw.to_bits(), "{at}: log-weight");
+    let bits = |s: &Scored| -> Vec<u64> {
+        s.dots
+            .iter()
+            .chain(&s.terms)
+            .chain([&s.ll])
+            .map(|v| v.to_bits())
+            .collect()
+    };
+    assert!(
+        bits(&chain.prop_scored) == bits(&chain.cur_scored),
+        "{at}: the proposal's score is not the current one's"
+    );
+    assert!(chain.prop == chain.cur, "{at}: the proposal's values");
+}
+
+/// A step recomputes only what its site reaches, and lands on the number the
+/// whole likelihood gives: every site of a program with μ (a fused group), θ
+/// over three lenses, τ over two sessions (each with keeps) and cuts is moved by hand, its
+/// proposal scored against `Evidence::loglik` of the proposed draw bit for
+/// bit, and taken or left in turn; then the chain runs on its own, checked
+/// after every step. The log holds duels, keeps and stars, imputed
+/// coordinates and a recency half-life, and starts with lenses 0 and 1 tied
+/// on every keep and star, so the imputed variance is priced by the last of
+/// two equal lenses until a move breaks the tie.
+#[test]
+fn every_step_scores_what_the_whole_likelihood_gives() {
+    let mut cfg = TasteConfig::mixture(D, 3);
+    cfg.fused = vec![vec![0, 1, 3]];
+    cfg.fused_rho = Some(0.3);
+    cfg.recency_half_life = Some(6.0);
+    let data = imputed_at_mean(mixed_log(6, 30, 2));
+    let model = TasteModel::new(cfg);
+    let addrs = Arc::new(SiteAddrs::new(&model.cfg, data.n_sessions()));
+    let layout = Arc::new(Layout::new(&model.cfg, &addrs));
+    let evidence = Arc::new(Evidence::new(&model.cfg, &data));
+    let mut rng = StdRng::seed_from_u64(9);
+    let (_, start) = run(
+        PriorHandler {
+            rng: &mut rng,
+            trace: Trace::default(),
+        },
+        model.model_at(&evidence, &addrs, &layout),
+    );
+    let fresh = Chain::new(&layout, &evidence, &addrs, &start);
+    // Lens 1 is lens 0 but on the imputed coordinates, where it is larger,
+    // and lens 2 is half of lens 0 off them, so the two tie at the top
+    // wherever lens 0 likes a keep or a star.
+    let mut vals = fresh.cur.clone();
+    let lens = |k: usize, i: usize| layout.theta_at + k * D + i;
+    for i in 0..D {
+        let imputed = i == 2 || i == 9;
+        vals[lens(1, i)] = vals[lens(0, i)] + if imputed { 1.5 } else { 0.0 };
+        if !imputed {
+            vals[lens(2, i)] = 0.5 * vals[lens(0, i)];
+        }
+    }
+    let mut chain = Chain::at(&layout, &evidence, fresh.sites.clone(), vals);
+    assert_whole(&chain, &evidence, &layout, "the start");
+    let tied = |chain: &Chain| {
+        let r = chain.rows.keeps.iter().flatten().chain(&chain.rows.stars);
+        r.filter(|&&r| {
+            let d = &chain.cur_scored.dots[chain.rows.cands[r] * 3..][..3];
+            d[0] == d[1] && d[1] >= d[2]
+        })
+        .count()
+    };
+    assert!(tied(&chain) > 3, "only {} rows tie", tied(&chain));
+    // The tie matters: lens 1 prices the imputed variance, and lens 0 would
+    // price it lower.
+    let as_if_lens_0 = {
+        let mut s = chain.cur_s.clone();
+        s.theta[1] = s.theta[0].clone();
+        evidence.loglik(&s)
+    };
+    assert_ne!(chain.cur_scored.ll, as_if_lens_0);
+
+    // Every site by hand, the moves that keep the tie first (μ, τ, cuts and
+    // the lenses' imputed coordinates), each taken or left in turn.
+    let keeps_tie = |slot: usize| {
+        slot < layout.theta_at
+            || slot >= layout.tau_at
+            || [2, 9].contains(&((slot - layout.theta_at) % D))
+    };
+    let (first, then): (Vec<usize>, Vec<usize>) = (0..chain.cur.len()).partition(|&s| keeps_tie(s));
+    let mut reached = Vec::new();
+    for (n, &slot) in first.iter().chain(&then).enumerate() {
+        let at = format!("move {n}, slot {slot}");
+        let value = chain.cur[slot] + 0.4 * (n as f64 * 0.7).sin();
+        let lw = chain.propose(slot, value);
+        let ll = evidence.loglik(&chain.prop_s);
+        assert_eq!(
+            chain.prop_scored.ll.to_bits(),
+            ll.to_bits(),
+            "{at}: proposal"
+        );
+        let want = layout.log_prior(&chain.prop) + nan_to_neg_inf(ll);
+        assert_eq!(lw.to_bits(), want.to_bits(), "{at}: proposal's log-weight");
+        chain.settle(slot, n % 2 == 0, lw);
+        assert_whole(&chain, &evidence, &layout, &at);
+        assert_eq!(chain.cur[slot] == value, n % 2 == 0, "{at}: taken or left");
+        if n + 1 == first.len() {
+            assert!(tied(&chain) > 3, "the moves that keep the tie broke it");
+        }
+        reached.push(layout.reach(slot));
+    }
+    for kind in [
+        Reach::Nothing,
+        Reach::Lens(2),
+        Reach::Session(1),
+        Reach::Cuts,
+    ] {
+        assert!(reached.contains(&kind), "no move reached {kind:?}");
+    }
+
+    // And the chain on its own, warmup and sampling, after every step.
+    let mut moved = 0;
+    for n in 0..3000 {
+        let before = chain.cur_lw;
+        chain.step(&mut rng, n < 1000);
+        moved += usize::from(chain.cur_lw != before);
+        assert_whole(&chain, &evidence, &layout, &format!("step {n}"));
+    }
+    assert!(moved > 300, "only {moved} of 3000 steps moved");
+}
+
+/// What each site reaches, by its slot in a program's execution order: μ
+/// first, then θ lens by lens, τ by session, and the cut raws.
+#[test]
+fn a_site_reaches_what_its_slot_says() {
+    let mut cfg = TasteConfig::mixture(4, 2);
+    cfg.fused = vec![vec![0, 1]];
+    cfg.fused_rho = Some(0.3);
+    let addrs = SiteAddrs::new(&cfg, 2);
+    let layout = Layout::new(&cfg, &addrs);
+    let want = [
+        Reach::Nothing,
+        Reach::Nothing,
+        Reach::Lens(0),
+        Reach::Lens(0),
+        Reach::Lens(0),
+        Reach::Lens(0),
+        Reach::Lens(1),
+        Reach::Lens(1),
+        Reach::Lens(1),
+        Reach::Lens(1),
+        Reach::Session(0),
+        Reach::Session(1),
+        Reach::Cuts,
+        Reach::Cuts,
+        Reach::Cuts,
+        Reach::Cuts,
+        Reach::Cuts,
+    ];
+    let got: Vec<Reach> = (0..addrs.site_count()).map(|s| layout.reach(s)).collect();
+    assert_eq!(got, want);
+}

@@ -278,10 +278,7 @@ impl TasteSample {
     /// best style thinks it is. Reduces to `u_0` at K = 1. This is the one
     /// utility every likelihood and ranking uses.
     pub fn utility_mix(&self, phi: &[f64]) -> f64 {
-        self.theta
-            .iter()
-            .map(|t| dot(t, phi))
-            .fold(f64::NEG_INFINITY, f64::max)
+        mix_of(self.dots(phi))
     }
 
     /// Probability this sample assigns to "a beats b".
@@ -291,9 +288,14 @@ impl TasteSample {
 
     /// Which style lens is this candidate's best (its island).
     pub fn best_style(&self, phi: &[f64]) -> usize {
-        (0..self.theta.len())
-            .max_by(|&i, &j| dot(&self.theta[i], phi).total_cmp(&dot(&self.theta[j], phi)))
-            .unwrap_or(0)
+        best_of(self.dots(phi))
+    }
+
+    /// Each lens's utility of a candidate, `θ_k · φ` in `k` order: what
+    /// every utility, ranking and likelihood here is computed from. The fit's
+    /// kernel keeps these per candidate and recomputes one lens's at a time.
+    fn dots<'a>(&'a self, phi: &'a [f64]) -> impl Iterator<Item = f64> + Clone + 'a {
+        self.theta.iter().map(move |t| dot(t, phi))
     }
 
     /// Log-likelihood this draw assigns to one standardized observation.
@@ -317,6 +319,21 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     // which keeps release's `debug-assertions = false`, and the app ships
     // release.)
     a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// The mixture utility from the lenses' utilities in `k` order: their max,
+/// folded from −∞ ([`TasteSample::utility_mix`]).
+fn mix_of(dots: impl Iterator<Item = f64>) -> f64 {
+    dots.fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// The best lens from the lenses' utilities in `k` order: the index of their
+/// max by `total_cmp`, the **last** of equal ones, as `max_by` returns it
+/// ([`TasteSample::best_style`]); 0 when there are none.
+fn best_of(dots: impl Iterator<Item = f64>) -> usize {
+    dots.enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map_or(0, |(k, _)| k)
 }
 
 /// Numerically stable `log σ(x)`.
@@ -368,11 +385,14 @@ fn attenuate(var: f64) -> f64 {
 /// is unknown, and its prior is the unit normal the standardizer defines. So
 /// its contribution `θ_i · x_i` has variance `θ_i²`, read off the expert that
 /// actually scores this candidate.
-fn imputed_var(s: &TasteSample, x: &[f64], absent: &[usize]) -> f64 {
+///
+/// `dots` are the candidate's lens utilities in `k` order, which pick that
+/// expert ([`best_of`]).
+fn imputed_var(s: &TasteSample, dots: impl Iterator<Item = f64>, absent: &[usize]) -> f64 {
     if absent.is_empty() {
         return 0.0;
     }
-    let k = s.best_style(x);
+    let k = best_of(dots);
     absent
         .iter()
         .filter_map(|&i| s.theta[k].get(i))
@@ -381,15 +401,45 @@ fn imputed_var(s: &TasteSample, x: &[f64], absent: &[usize]) -> f64 {
 }
 
 fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usize]) -> f64 {
+    let (first, second) = candidates(o);
+    row_loglik(o, session, s, absent, s.dots(first), s.dots(second))
+}
+
+/// An observation's candidates: a duel's `a` and `b`, or the one `x` and an
+/// empty second.
+fn candidates(o: &Feedback) -> (&[f64], &[f64]) {
     match o {
-        Feedback::Duel { a, b, chose_a } => {
+        Feedback::Duel { a, b, .. } => (a, b),
+        Feedback::KeepKill { x, .. } | Feedback::Stars { x, .. } => (x, &[]),
+    }
+}
+
+/// [`obs_loglik_with`] from the candidates' lens utilities in `k` order
+/// ([`TasteSample::dots`]): `first` of a duel's `a` or the one `x`, `second`
+/// of a duel's `b` (read only for a duel). Every likelihood of an
+/// observation is this function, whether its utilities were just computed
+/// or kept by the fit's kernel from an earlier step, so the two cannot
+/// drift apart.
+fn row_loglik<I>(
+    o: &Feedback,
+    session: usize,
+    s: &TasteSample,
+    absent: &[usize],
+    first: I,
+    second: I,
+) -> f64
+where
+    I: Iterator<Item = f64> + Clone,
+{
+    match o {
+        Feedback::Duel { chose_a, .. } => {
             // Nothing to correct: both candidates carry the same absence, so
             // the imputed terms cancel in the difference and the observation
             // is silent about those axes rather than wrong about them.
-            let d = s.utility_mix(a) - s.utility_mix(b);
+            let d = mix_of(first) - mix_of(second);
             log_sigmoid(if *chose_a { d } else { -d })
         }
-        Feedback::KeepKill { x, kept } => {
+        Feedback::KeepKill { kept, .. } => {
             // A session with no τ site (reweighting against a posterior fit
             // before that session existed) contributes no threshold evidence.
             let Some(tau) = s.tau.get(session) else {
@@ -398,10 +448,10 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
             // Here there is no second candidate to cancel against, so the
             // imputed coordinates enter the comparison as if they were
             // measured at the mean. They were not measured at all.
-            let d = (s.utility_mix(x) - tau) * attenuate(imputed_var(s, x, absent));
+            let d = (mix_of(first.clone()) - tau) * attenuate(imputed_var(s, first, absent));
             log_sigmoid(if *kept { d } else { -d })
         }
-        Feedback::Stars { x, rating } => {
+        Feedback::Stars { rating, .. } => {
             // Same correction as keep/kill, and for the same reason: an
             // ordinal rating is a comparison of `u` against fixed cutpoints
             // with nothing to cancel the imputation against. The attenuation
@@ -410,8 +460,8 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
             // correction at all at `u = 0` and moved the probability *away*
             // from the marginalised truth elsewhere (0.205 against 0.133 at
             // `u = 1.5`, by Monte Carlo).
-            let a = attenuate(imputed_var(s, x, absent));
-            let u = s.utility_mix(x);
+            let a = attenuate(imputed_var(s, first.clone(), absent));
+            let u = mix_of(first);
             let k = *rating as usize;
             let n_cats = s.cuts.len() + 1;
             let k = k.min(n_cats - 1);
@@ -558,17 +608,29 @@ impl Evidence {
     }
 
     /// The weighted log-likelihood of every row under one draw: what the
-    /// program's single `factor` carries.
+    /// program's single `factor` carries. Its rows' [`Self::term`]s, summed
+    /// in row order by `sum`: the fit's kernel sums its kept terms the same
+    /// way, so the two totals are one number.
     fn loglik(&self, s: &TasteSample) -> f64 {
         self.rows
             .iter()
-            .zip(self.weights.iter())
             .enumerate()
-            .map(|(i, ((o, session), w))| {
-                let absent = self.absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
-                w * obs_loglik_with(o, *session, s, absent)
+            .map(|(i, (o, _))| {
+                let (first, second) = candidates(o);
+                self.term(i, s, s.dots(first), s.dots(second))
             })
             .sum()
+    }
+
+    /// Row `i`'s weighted log-likelihood under `s`, from its candidates'
+    /// lens utilities ([`row_loglik`]).
+    fn term<I>(&self, i: usize, s: &TasteSample, first: I, second: I) -> f64
+    where
+        I: Iterator<Item = f64> + Clone,
+    {
+        let (o, session) = &self.rows[i];
+        let absent = self.absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
+        self.weights[i] * row_loglik(o, *session, s, absent, first, second)
     }
 }
 
@@ -856,9 +918,15 @@ impl TasteModel {
     /// | fugue's driver | 22.7 | 207.1 |
     /// | this kernel | **1.9** | **47.8** |
     ///
-    /// What is left of a mature step is the likelihood over its 100 rows
-    /// (`fit_bench`'s split probe, the mature sites over 6 rows, runs at
-    /// 6.1 µs a step).
+    /// What was left of a mature step then was the likelihood over its 100
+    /// rows, recomputed whole though one site moved. So a step now
+    /// recomputes only what its site reaches (`kernel.rs`): a θ coordinate
+    /// its lens's utility of each candidate and then each row's term from
+    /// the kept utilities, a τ its session's keeps, a cut the stars, a μ
+    /// nothing; and the terms are summed as `Evidence::loglik` sums them, so
+    /// the draws stay bit-identical. On another machine (a 4-core Linux
+    /// box), the mature step went from 22.8 µs to 8.1 µs, the first fit's
+    /// stayed under 1 µs, and the checksums did not move.
     ///
     /// # The chain is thinned as it runs
     ///
@@ -1298,12 +1366,9 @@ impl TastePosterior {
         let mut lens = Vec::with_capacity(self.k_styles());
         for (i, s) in self.samples.iter().enumerate() {
             lens.clear();
-            lens.extend(s.theta.iter().map(|t| dot(t, phi)));
-            us.push(lens.iter().copied().fold(f64::NEG_INFINITY, f64::max));
-            let best = (0..lens.len())
-                .max_by(|&a, &b| lens[a].total_cmp(&lens[b]))
-                .unwrap_or(0);
-            resp[best] += self.weight(i);
+            lens.extend(s.dots(phi));
+            us.push(mix_of(lens.iter().copied()));
+            resp[best_of(lens.iter().copied())] += self.weight(i);
         }
         (self.summarize_values(&us), resp)
     }
