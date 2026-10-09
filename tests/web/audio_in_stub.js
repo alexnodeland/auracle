@@ -23,6 +23,9 @@ const STUB = `(() => {
     ],
     tracks: [],
     queries: 0,
+    // The inputs a spec has silenced (__pwLevel): opened, a device in
+    // this set plays its tone at no level.
+    quiet: new Set(),
     // Set before boot: Fake Mic A is mono and its track's settings name no
     // channel count, as Safari's do.
     monoA: (() => { try { return sessionStorage.getItem("__pwMonoA") === "1"; } catch (_) { return false; } })(),
@@ -38,12 +41,13 @@ const STUB = `(() => {
   };
   let ctx = null;
   const toneCtx = () => ctx || (ctx = new AudioContext());
-  function tone(freq, mono) {
+  const TONE_GAIN = 0.25;
+  function tone(freq, mono, id) {
     const c = toneCtx();
     const o = c.createOscillator();
     o.frequency.value = freq;
     const g = c.createGain();
-    g.gain.value = 0.25;
+    g.gain.value = mic.quiet.has(id) ? 0 : TONE_GAIN;
     const d = mono
       ? new MediaStreamAudioDestinationNode(c, { channelCount: 1, channelCountMode: "explicit" })
       : c.createMediaStreamDestination();
@@ -60,7 +64,7 @@ const STUB = `(() => {
       m.connect(d);
     }
     o.start();
-    return { stream: d.stream, osc: o };
+    return { stream: d.stream, osc: o, gain: g };
   }
   const md = navigator.mediaDevices;
   md.getUserMedia = async (c) => {
@@ -73,7 +77,7 @@ const STUB = `(() => {
     const dev = want ? mic.devices.find((d) => d.deviceId === want && d.present) : defaultDev();
     if (!dev) throw new DOMException("Requested device not found", "NotFoundError");
     const mono = mic.monoA && dev.deviceId === "mic-a";
-    const { stream, osc } = tone(dev.freq, mono);
+    const { stream, osc, gain } = tone(dev.freq, mono, dev.deviceId);
     const track = stream.getAudioTracks()[0];
     // As Chrome and Edge answer: an unconstrained ask opens the pseudo-device
     // "default", whose settings and label name it, not the real input.
@@ -85,7 +89,7 @@ const STUB = `(() => {
     });
     const defaultLabel = mic.defaultOwn ? "Default audio input" : "Default - " + dev.label;
     Object.defineProperty(track, "label", { value: asDefault ? defaultLabel : dev.label });
-    mic.tracks.push({ id: dev.deviceId, track, osc });
+    mic.tracks.push({ id: dev.deviceId, track, osc, gain });
     return stream;
   };
   // As Chrome and Edge list them: the pseudo-device "default" first, in the
@@ -128,6 +132,14 @@ const STUB = `(() => {
     const d = mic.devices.find((x) => x.deviceId === id);
     if (d) d.present = true;
     md.dispatchEvent(new Event("devicechange"));
+  };
+  // An input falls silent (on false) or carries its tone again, as a
+  // player stops and starts playing into it: on its open streams, and on any
+  // opened later.
+  window.__pwLevel = (id, on) => {
+    if (on) mic.quiet.delete(id);
+    else mic.quiet.add(id);
+    for (const t of mic.tracks) if (t.id === id) t.gain.gain.value = on ? TONE_GAIN : 0;
   };
   window.__pwLiveTracks = () => {
     const out = {};
