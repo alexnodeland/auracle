@@ -1713,8 +1713,8 @@ impl WasmEngine {
         }
     }
 
-    /// Re-fit the taste posterior from the log (MCMC: about a second on a fast
-    /// laptop, a few on the Air — worker!).
+    /// Re-fit the taste posterior from the log (MCMC: under half a second on
+    /// a fast laptop, about two on the Air — worker!).
     pub fn fit(&mut self) {
         let mut rng = self.rng.fit(self.engine.log.len());
         self.engine.fit_posterior(&mut rng);
