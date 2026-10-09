@@ -57,7 +57,10 @@ Two loops share one pool of patches.
 8. **Refit.** `fit_posterior` standardizes φ from the log (`standardize.rs`)
    and runs MCMC (`mcmc_samples`, `mcmc_warmup`) on the max-of-experts model
    (`model.rs`) with up to `k_styles` lenses. The new posterior is aligned to
-   the previous one's lenses, so styles keep their identity and names.
+   the previous one's lenses, so styles keep their identity and names. It is
+   three steps (`fit_job`, `FitJob::run`, `install_fit`), so the app runs the
+   MCMC on a farm worker while the engine answers, and a saved session keeps
+   the fitted draws (`SessionState::fit`), so a restore fits nothing.
    Between refits, votes reweight the existing draws, and every reply to a
    pick carries what the reweighted draws say (`belief.rs`, `Engine::belief`).
 9. **Refine.** EVOLVE POOL runs a generation: `refine_seeds` typed MH walks

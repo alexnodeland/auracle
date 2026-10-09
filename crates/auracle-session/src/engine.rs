@@ -4587,7 +4587,7 @@ impl Engine {
         self.posterior = None;
         self.fitted_on = 0;
         // A fit of the log this replaced is for nobody now.
-        self.log_epoch += 1;
+        self.log_epoch = self.log_epoch.wrapping_add(1);
     }
 }
 

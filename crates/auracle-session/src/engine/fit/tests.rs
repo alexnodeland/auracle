@@ -157,6 +157,7 @@ fn picks_recorded_while_a_fit_runs_are_folded_into_it_as_after_it() {
         "no pick collapsed the weights"
     );
     assert_eq!(then.resamples_since_fit, during.resamples_since_fit);
+    assert!(then.resamples_since_fit <= 5, "more resamples than picks");
     assert_eq!(during.fitted_on(), 8);
     assert!(during.needs_refit());
 }
@@ -527,4 +528,79 @@ fn a_job_carries_the_lenses_it_replaces_and_its_fit_is_aligned_to_them() {
     here.fit_posterior(&mut StdRng::seed_from_u64(2));
     there.install_fit(elsewhere(&job, 2)).unwrap();
     assert_eq!(posterior_bits(&here), posterior_bits(&there));
+}
+
+/// Between fits a pick reweights the draws, and resamples them only when the
+/// weights collapse below half the draws (`fold_in`, the step a fit landing
+/// late takes for each pick made while it ran).
+#[test]
+fn a_pick_between_fits_reweights_and_resamples_only_when_the_weights_collapse() {
+    let mut engine = picked(23, 8);
+    engine.fit_posterior(&mut StdRng::seed_from_u64(3));
+    let n = engine.posterior.as_ref().unwrap().samples.len() as f64;
+    // A pick the model agrees with: reweighted, not resampled.
+    let ranked = engine.ranked();
+    let (best, worst) = (ranked[0].0, ranked[ranked.len() - 1].0);
+    engine.record_duel(best, worst, true);
+    let p = engine.posterior.as_deref().unwrap();
+    assert_eq!(engine.resamples_since_fit, 0, "an agreeable pick resampled");
+    assert!(
+        p.weights.iter().any(|w| *w != p.weights[0]),
+        "the weights did not move"
+    );
+    assert!(p.ess() >= n / 2.0);
+    // Picks against it: whenever the weights fall below half, they are
+    // resampled, and each pick is counted once at most.
+    for i in 1..=5 {
+        contrary_picks(&mut engine, 1);
+        let p = engine.posterior.as_deref().unwrap();
+        assert!(p.ess() >= n / 2.0, "pick {i} left the weights collapsed");
+        assert!(engine.resamples_since_fit <= i);
+    }
+    assert!(
+        engine.resamples_since_fit > 0,
+        "no pick collapsed the weights"
+    );
+}
+
+#[test]
+fn a_fit_records_the_pools_style_shares() {
+    let mut engine = picked(24, 8);
+    let before = engine.style_shares().len();
+    let fitted = elsewhere(&engine.fit_job().unwrap(), 6);
+    engine.install_fit(fitted).unwrap();
+    assert_eq!(engine.style_shares().len(), before + 1);
+    let record = engine.style_shares().last().unwrap();
+    assert_eq!((record.observations, record.k), (8, 1));
+    assert!((record.shares.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+}
+
+/// The scale a fit is on is refitted over the pool and every sound judged,
+/// one no longer in the pool included, not the one the engine was using.
+#[test]
+fn a_job_is_on_the_scale_of_the_pool_and_every_sound_judged() {
+    let mut engine = picked(25, 4);
+    let names = phi_names();
+    let far: Vec<f64> = engine.pool[0]
+        .features
+        .phi()
+        .iter()
+        .map(|x| x * 3.0 + 7.0)
+        .collect();
+    engine
+        .log
+        .observations
+        .push(auracle_taste::Observation::new(
+            Feedback::KeepKill {
+                x: far.clone(),
+                kept: true,
+            },
+            0,
+            &names,
+        ));
+    let job = engine.fit_job().unwrap();
+    let mut rows: Vec<Vec<f64>> = engine.pool.iter().map(|c| c.features.phi()).collect();
+    rows.push(far);
+    assert_eq!(job.standardizer, Standardizer::fit(&rows));
+    assert_ne!(Some(&job.standardizer), engine.standardizer.as_deref());
 }

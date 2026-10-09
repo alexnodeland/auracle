@@ -462,6 +462,7 @@ fn a_fit_on_the_farm_installs_the_draws_fit_makes() {
     // The seed whole, as a JSON integer, past what a double would carry.
     let seed: u64 = serde_json::from_str(&parsed["rng_seed"].to_string()).unwrap();
     assert_eq!(seed, there.rng.fit_seed(observations));
+    assert_eq!(seed, mix_seed(mix_seed(0xF17, 5), observations as u64));
     here.fit();
     let fitted = farm_fit(&task);
     assert_eq!(there.fit_install(&fitted), "ok");
