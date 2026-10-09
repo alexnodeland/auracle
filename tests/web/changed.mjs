@@ -75,6 +75,8 @@ export const MODULES = {
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
   // What waits for the hand: a refit's views over the bank and the maps.
   "apps/web/hand.js": ["evolve_refit", "taste_marks", "bank_row"],
+  // What a refit landing does: the meter, the lamp, the views it holds.
+  "apps/web/refit.js": ["evolve_refit", "evolve_truth", "evolve_feedback"],
 };
 export const EVERYWHERE = /^(apps\/web\/(main\.js|worker\.js|index\.html|style\.css)|crates\/|Cargo\.(toml|lock)$)/;
 

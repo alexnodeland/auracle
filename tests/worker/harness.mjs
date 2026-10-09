@@ -130,6 +130,8 @@ async function host() {
     const fn = d.value;
     proto[name] = function (...args) {
       const e = called(name);
+      // A call the test answers itself (`stub`): what it returns, unrun.
+      if (stubs.has(name)) return stubs.get(name);
       const before = misses(this);
       try {
         return fn.apply(this, args);
@@ -140,6 +142,8 @@ async function host() {
     };
   }
 
+  // Engine calls answered by the test, by name (`EngineWorker.stub`).
+  const stubs = new Map();
   // What `during` posts arrives on this channel, between two turns of the
   // thread's event loop, as a message main posts mid-call does.
   const loop = new MessageChannel();
@@ -166,6 +170,7 @@ async function host() {
     const h = data && data.__harness;
     if (!h) return deliver(data);
     if (h.op === "during") armed.push({ call: h.call, left: h.nth || 1, msg: h.msg, tag: h.tag });
+    if (h.op === "stub") stubs.set(h.call, h.returns);
     if (h.op === "trace") say({ op: "trace", id: h.id, trace });
     if (h.op === "idb") say({ op: "idb", id: h.id, dbs: idb ? idb.dump() : null });
   });
@@ -347,6 +352,13 @@ class EngineWorker {
       this.traces.set(id, { resolve, reject });
       this.thread.postMessage({ __harness: { op: "idb", id } });
     });
+  }
+
+  /** From now on, answer the engine's `call` with `returns` without running
+   *  it: an engine that says what this one cannot be made to (an export that
+   *  does not parse). Still in the trace. */
+  stub(call, returns) {
+    this.thread.postMessage({ __harness: { op: "stub", call, returns } });
   }
 
   /** Keep main's answers to `farm_want` back until `releaseFarm`. */

@@ -535,19 +535,30 @@ posterior it has: a pick is folded into it, a deal is dealt under it.
 So in a seeded session a deal asked for while a fit is out is dealt under
 the posterior before it, where on one thread it waited for the fit.
 
-When it lands, main says *● it just learned* at once, and what it
-re-settles (the bank's order and numbers, the map, LEARNING's bars) waits
-while the pointer is over one of them: it applies when the pointer leaves, or
-after `HAND_REST_MS` (1 s) of rest over it (`hand.js`, ADR-025's rule for a
-region; a views post that comes first is newer, and the refit's is dropped).
+When it lands (`landRefit` in `refit.js`), main says *● it just learned*
+at once and asks again, under the new posterior, what reads it (the bench's
+guess, PATCH's and EVOLVE's guesses, PERFORM's leans). Only the views and
+what is drawn from them (the bank's order and numbers, the map, LEARNING's
+bars) wait while the pointer is over one of them: they apply when the pointer
+leaves, or after `HAND_REST_MS` (1 s) of rest over it (`hand.js`, ADR-025's
+rule for a region; a views post that comes first is newer, and the refit's
+views are dropped). PATCH's guess is asked again, not held: what it moves on
+the rack is that request's own answer, which patch.js lands when the bench
+has settled and no knob is held. A fit the engine refused to install
+(`refused: "stale"`: a taste file replaced the log while it ran) taught
+nothing: the meter says nothing, no views land, and `fitting` stays set while
+the file's own fit is out.
 
 One fit is out at a time (`blocked`): a fit asked for meanwhile (the next
 sixth pick, a taste file) is for a longer log, and goes when this one lands;
 main sends none while one runs (`fitting`). A generation and ⚡ wait for a
-fit out, as a fit waits for them, and a fit, like them, waits for boot's
-crew to be reaped: handed to it, it died with the crew when boot ended and
-waited out the walk watchdog (`WALK_TIMEOUT_MS`), so a sixth pick made while
-the pool fills is fitted once the fill is over. A fit of a log replaced while it ran (a
+fit out, as a fit waits for them. While the bank is still arriving on
+boot's crew (the warm start's fit, a sixth pick made during the fill), the
+fit runs on the engine worker from its export, at its turn in the lane, as
+before the farm: boot's crew is busy with the fill and is reaped under any
+walk it holds when the fill ends (a fit handed to it waited out the walk
+watchdog, `WALK_TIMEOUT_MS`), and a fit that waited for the fill left the
+model untaught for as long as the bank took. A fit of a log replaced while it ran (a
 taste file opened) is refused at install (`refused: "stale"`), and the
 file's own fit follows it.
 
@@ -568,7 +579,7 @@ A restore fits nothing when the session was saved with its fit: the draws and
 their weights are kept in the saved session (`SessionState::fit`, at most 500
 draws), and installed as the bank comes back, when the log and the
 standardizer came back exactly as saved (`Engine::restore_fit`). A session
-saved before the fit was kept, or one a migration or repair touched, comes
+saved before the fit was kept, or one a migration or repair touched (a last visit too short to stand alone, merged into the one before it, is one), comes
 back unfitted and is fitted once after boot, on the farm, as the worker's own
 `fit` (its `fitted` carries no `re`). It used to be fitted inside `init`,
 three breaths after `playable`, with the table's sounds behind it.

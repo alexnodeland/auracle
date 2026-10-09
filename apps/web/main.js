@@ -226,6 +226,8 @@ const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./mark
 // A background result waits while the pointer is over what it would move
 // (hand.js, tests/hand.test.mjs): a refit's views land through it (#300).
 const { createHand } = await import(`./hand.js?v=${BUILD}`);
+// What a refit landing does (refit.js, tests/refit.test.mjs).
+const { landRefit } = await import(`./refit.js?v=${BUILD}`);
 const hand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
 // The regions a refit re-settles: the bank's rows, TASTE's map and EVOLVE's
 // small one, LEARNING's bars.
@@ -2938,32 +2940,40 @@ worker.onmessage = (e) => {
       break;
     }
     case "fitted": {
-      fitting = false;
-      lampOff("fit");
-      // The meter's refit has landed: now, and not when it was sent, it has
-      // learned. Said until the next pick (see `renderTeach`).
-      if (meterFitting) {
-        meterFitting = false;
-        learnedShown = true;
-        mark("fitted");
-      }
-      applyStatus(m.status);
-      // The fit ran on the farm while the player went on (#300), so what it
-      // re-settles (the bank's order, the map, LEARNING's bars) waits while
-      // the pointer is over one of them, and lands when it leaves or rests
-      // (ADR-025: never under the hand). A views post that comes first is
-      // newer, and this one is dropped (`applyViews`).
-      hand.after("views", () => {
-        applyViews(m.views);
-        // The bench's guess under the model just fitted ("was" is the old one).
-        if (m.bench && wb.subjectId != null) applyBelief(m.bench);
-        patchView.refit(); // and the next module's, ranked again under it
-        // Under the model view: the tag's count, and EVOLVE's guess for the
-        // pair on the table asked again under the model just fitted.
-        shell.modelTagChanged();
-        askPairGuess();
-        if (perform) perform.posteriorChanged();
-        refreshInstruments();
+      // The rule is refit.js's: a refused fit taught nothing, and an
+      // installed one moves everything at once but the views, which wait for
+      // the hand (ADR-025).
+      landRefit(m, {
+        hand,
+        lampOff: () => lampOff("fit"),
+        // The fit a taste file asked for is still out (its lamp is lit).
+        stillFitting: () => { fitting = lampJobs.has("fit"); },
+        learned: () => {
+          fitting = false;
+          // The meter's refit has landed: now, and not when it was sent, it
+          // has learned. Said until the next pick (see `renderTeach`).
+          if (meterFitting) {
+            meterFitting = false;
+            learnedShown = true;
+            mark("fitted");
+          }
+        },
+        status: (st) => applyStatus(st),
+        // The views, and the bank, the maps and LEARNING drawn from them.
+        views: (v) => {
+          applyViews(v);
+          refreshInstruments();
+        },
+        posteriorChanged: (r) => {
+          // The bench's guess under the model just fitted ("was" is the old one).
+          if (r.bench && wb.subjectId != null) applyBelief(r.bench);
+          patchView.refit(); // and the next module's, ranked again under it
+          // Under the model view: the tag's count, and EVOLVE's guess for the
+          // pair on the table asked again under the model just fitted.
+          shell.modelTagChanged();
+          askPairGuess();
+          if (perform) perform.posteriorChanged();
+        },
       });
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -6893,14 +6903,11 @@ $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
 $("pd-skip").onclick = () => anotherPair();
-// Renders are ~0.6 s of engine work each and the worker is one thread, so a
-// render requested for a pair the user has already voted past sits at the head
-// of the queue and delays the *next* deal behind it. That is what made rapid
-// voting feel lossy: the vote itself is instant, the deal is not.
-//
-// So the artwork is requested only once the pair has survived a moment on
-// screen. Vote faster than that and no render is ever enqueued, which is
-// exactly right — nobody is looking at it.
+// A pair put up by a pick or a deal (`placePair`) asks for its sounds at
+// once, ahead of the refit it may send (#300); the pair after is dealt, and its
+// sounds fetched, ahead (the dealer's `fetch`). The settle delay is left only
+// for a pair put back by a taken-back pick (`retractVote`'s `loadSide`): ⌘Z
+// pressed again at once asks for nothing.
 let renderWanted = null;
 const RENDER_SETTLE_MS = 180;
 

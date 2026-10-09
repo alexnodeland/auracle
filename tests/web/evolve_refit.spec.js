@@ -240,16 +240,16 @@ test("a refit that lands while the pointer is over the bank waits for it to leav
   // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   const f = await app.last("fitted");
   const reversed = { ...f.views, ranked: [...f.views.ranked].reverse() };
-  // The pointer over the bank, moving: the refit's views wait.
+  // The pointer over the bank: the refit's views wait. Read in the task that
+  // hands the refit to main (the tap dispatches it there and then), so no
+  // rest of the pointer, on any runner's clock, can have released them yet.
   const box = await page.locator("#bank-list").boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + 40);
-  await app.inject({ type: "fitted", views: reversed, status: f.status });
-  for (let i = 0; i < 8; i++) {
-    await page.mouse.move(box.x + box.width / 2, box.y + 40 + (i % 2) * 20);
-    // eslint-disable-next-line playwright/no-wait-for-timeout -- the pointer moving over the bank
-    await page.waitForTimeout(250);
-  }
-  expect(await order(), "the bank re-sorted under the pointer").toBe(before);
+  const held = await page.evaluate((d) => {
+    window.__tap.inject(d);
+    return [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((r) => r.dataset.id).join();
+  }, { type: "fitted", views: reversed, status: f.status });
+  expect(held, "the bank re-sorted under the pointer").toBe(before);
   // It leaves: the views land.
   await page.mouse.move(box.x - 200, box.y + 40);
   await expect.poll(order).not.toBe(before);

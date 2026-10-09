@@ -716,21 +716,16 @@ let fitOut = null; // {m, task, at}: the fit out, and its request
 function fitRun(m) {
   // Back in its lane after the farm could not run it.
   if (fitOut && fitOut.m === m) return fitLand(m, () => glue.farm_fit(fitOut.task), false);
-  // A binary without the split fits here, as it always did.
-  if (typeof engine.fit_export !== "function" || typeof glue.farm_fit !== "function") {
-    beginLongOp();
-    try {
-      engine.fit();
-      fitAnswer(m, { farm: false });
-    } finally {
-      endLongOp();
-    }
-    return;
-  }
   const task = engine.fit_export();
   // Nothing to fit (an empty log): answered as the fit that changed nothing.
   if (!task) return fitAnswer(m, { farm: false });
   fitOut = { m, task, at: performance.now() };
+  // While the bank is still arriving on boot's crew (a warm start's fit, a
+  // sixth pick made during the fill), the fit is this thread's, here and
+  // now, as it was before the farm: boot's crew is busy with the fill and
+  // reaped under any walk it holds when the fill ends, and a fit that waited
+  // for the fill left the model untaught for as long as the bank took.
+  if (bootCrewLive()) return fitLand(m, () => glue.farm_fit(task), false);
   crewUp().then(
     (crewed) => {
       if (!crewed) return fitHere(m);
@@ -767,7 +762,12 @@ function fitLand(m, fit, farm, ms = null) {
     const t0 = performance.now();
     const result = fit();
     const t1 = performance.now();
-    const verdict = engine.fit_install(result);
+    // An export this thread's own `farm_fit` could not read (`""`: a broken
+    // export, nothing a crew did) is no fit to install: the engine fits the
+    // log as it stands, the one call it always was.
+    let verdict = "ok";
+    if (result) verdict = engine.fit_install(result);
+    else engine.fit();
     const t2 = performance.now();
     const reply = fitReply();
     const t3 = performance.now();
@@ -2966,11 +2966,9 @@ function blocked(m) {
   switch (m.type) {
     // One fit at a time: a fit asked for while one is out is for a longer
     // log, and goes when that one lands. The fit out is its own request
-    // back in a lane when the farm could not run it (`fitHere`). And, like
-    // a walk, it waits for boot's crew to be reaped: handed to it, it died
-    // with the crew when boot ended, and waited out the watchdog.
+    // back in a lane when the farm could not run it (`fitHere`).
     case "fit":
-      return walking() || bootCrewLive() || (fitOut != null && fitOut.m !== m);
+      return walking() || (fitOut != null && fitOut.m !== m);
     // A face's render waits for the bank to finish arriving: half a second
     // each, they would slow the fill (a preset's face on the warm start, a
     // row stored before faces).

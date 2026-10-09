@@ -10,7 +10,21 @@
 // is handed is fitted as farm.js fits it (`farmFit`), held, or declined.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { workerFor, fakeCrew, farmFit } from "./harness.mjs";
+
+const glue = await import(new URL("../../apps/web/pkg/auracle_wasm.js", import.meta.url).href);
+glue.initSync({ module: readFileSync(new URL("../../apps/web/pkg/auracle_wasm_bg.wasm", import.meta.url)) });
+
+/** A farm worker's render, as farm.js makes it (`farm_render`). */
+function render(tree, phrase) {
+  const job = glue.farm_render(tree, phrase, false);
+  try {
+    return { ok: job.ok, cached: job.ok ? job.cached : "" };
+  } finally {
+    job.free();
+  }
+}
 
 const SEED = 1;
 // A test that hangs fails here, well inside the CI job's limit.
@@ -51,10 +65,14 @@ test("a refit runs on the farm, and a pick and a sound asked for while it runs a
   assert.equal(stars.recorded, true);
   const [sound] = await w.send({ type: "render", id: warm.first });
   assert.equal(sound.type, "render");
-  // A second fit waits for the first: one out at a time.
+  // A second fit waits for the first: one out at a time. Work queued in its
+  // lane behind it (`styles`, also `later`) is answered past it, so the lane
+  // was served, and the engine exported no second fit.
   const again = { type: "fit" };
   w.post(again);
-  await w.send({ type: "taste_views" });
+  await w.send({ type: "styles" });
+  const exports = (await w.trace()).filter((e) => e.ev === "call" && e.name === "fit_export");
+  assert.equal(exports.length, 1, "a second fit was exported while the first was out");
   assert.equal(held.length, 1, "a second fit went out beside the first");
   assert.deepEqual(w.repliesOf("fitted"), [], "a fit was answered before the farm's landed");
 
@@ -145,4 +163,103 @@ test("a restore with its fit fits nothing, and one saved before fits once after 
   assert.equal(refit.re, undefined, "the restore's fit answered a request");
   assert.equal(model(refit), model(fitted), "the restore fitted another model");
   await w.close();
+});
+
+test("a refit with nothing to fit is answered at once, from no farm", { timeout: TIMEOUT }, async (t) => {
+  const crew = fakeCrew(1);
+  t.after(() => crew.close());
+  const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
+  const [r] = await w.send({ type: "fit" });
+  assert.equal(r.type, "fitted");
+  assert.equal(r.farm, false);
+  assert.equal(r.status.has_posterior, false);
+  assert.deepEqual(w.repliesOf("farm_want"), [], "a crew was raised for nothing to fit");
+  await w.close();
+});
+
+test("a refit whose crew worker dies with it is fitted here, back in its lane", { timeout: TIMEOUT }, async (t) => {
+  const held = [];
+  const crew = fakeCrew(1, { fit: (k, m) => (held.push(m), null) });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
+  await teach(w);
+  const fit = { type: "fit" };
+  w.post(fit);
+  await heard(() => held.length > 0);
+  // Main reports the crew's one worker gone (`farm_lost`): the fit it held
+  // is no one's, and with no worker left it is fitted here.
+  const [want] = w.repliesOf("farm_want");
+  w.post({ type: "farm_lost", index: 0, crew: want.crew, reason: "terminated" });
+  const [r] = await w.answers(fit);
+  assert.equal(r.type, "fitted");
+  assert.equal(r.farm, false);
+  assert.equal(r.status.has_posterior, true);
+  await w.close();
+});
+
+test("a refit whose export does not parse is fitted here by the engine's own fit", { timeout: TIMEOUT }, async (t) => {
+  const w = await workerFor(t, { seed: SEED });
+  await teach(w);
+  w.stub("fit_export", "{}");
+  const [r] = await w.send({ type: "fit" });
+  assert.equal(r.type, "fitted");
+  assert.equal(r.farm, false);
+  assert.equal(r.refused, undefined);
+  assert.equal(r.status.has_posterior, true);
+  const trace = await w.trace();
+  assert.ok(callAt(trace, "fit") >= 0, "the engine did not fit it itself");
+  assert.equal(callAt(trace, "fit_install"), -1, "an unreadable fit was installed");
+  await w.close();
+});
+
+test("a generation asked for while a refit is out waits for it, then walks on the crew", { timeout: TIMEOUT }, async (t) => {
+  const held = [];
+  let first = true;
+  const crew = fakeCrew(1, {
+    fit: (k, m) => {
+      if (first) return void (first = false); // the first, fitted as farm.js does
+      held.push(m);
+      return null;
+    },
+  });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
+  await teach(w);
+  await w.send({ type: "fit" });
+  const fit = { type: "fit" };
+  w.post(fit);
+  await heard(() => held.length > 0);
+  const breed = { type: "refine" };
+  w.post(breed);
+  // Its lane is served past it, and no walk went out while the refit was.
+  await w.send({ type: "styles" });
+  const walks = () => crew.heard[0].filter((m) => m.type === "walk").length;
+  assert.equal(walks(), 0, "a generation walked while a refit was out");
+  crew.answer(0, await farmFit(held[0]));
+  await w.answers(fit);
+  await heard(() => walks() > 0);
+  w.post({ type: "refine_stop" });
+  const replies = await w.answers(breed);
+  assert.equal(replies.at(-1).type, "refined");
+  await w.close();
+});
+
+test("a refit asked while the bank arrives on boot's crew is fitted here, and the crew is handed none", { timeout: TIMEOUT }, async (t) => {
+  // Boot's crew renders the eight the app is handed over at, as farm.js
+  // does, and sits on every render after: the bank is still arriving
+  // throughout.
+  let jobs = 0;
+  const crew = fakeCrew(1, { render, job: () => (++jobs <= 8 ? undefined : null) });
+  t.after(() => crew.close());
+  const w = await workerFor(t, { boot: false });
+  w.post({ type: "init", seed: SEED, seeded: false, poolSize: 12, playableAt: 8, saved: null, farmPorts: crew.ports }, { transfer: crew.ports });
+  await w.reply("playable");
+  await teach(w);
+  const [r] = await w.send({ type: "fit" });
+  assert.equal(r.type, "fitted");
+  assert.equal(r.farm, false);
+  assert.equal(r.status.has_posterior, true);
+  assert.deepEqual(w.repliesOf("filled"), [], "the bank finished arriving first");
+  assert.ok(!crew.heard[0].some((m) => m.type === "fit"), "boot's crew was handed the fit");
+  await w.stop();
 });
