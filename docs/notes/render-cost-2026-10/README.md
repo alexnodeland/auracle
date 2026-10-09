@@ -123,7 +123,7 @@ performance core's.
 
 Measured on 2026-10-09 on a 4-core Linux machine (a node v22 process's CPU time,
 the least of three repeats, nothing else running for the wasm A/B), `make wasm`
-build `a75387180e8f160c`.
+build `620502fd93f0a2bc`.
 
 - **quiver-dsp 0.4.1** carries L0 and L2 (the cheaper module paths and the
   Padé-clamped `tanh` in the diode ladder) and the shorter graph walk. This
