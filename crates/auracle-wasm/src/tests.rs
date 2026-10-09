@@ -443,6 +443,63 @@ fn taught_wasm(seed: u64) -> WasmEngine {
     engine
 }
 
+/// **A refit exported, fitted on a farm worker and installed is the refit
+/// the engine makes itself** (#300), draw for draw: the export takes the
+/// generator `fit` would (the session seed and the log's length), and the
+/// texts cross the worker untouched. Its refusals are named.
+#[test]
+fn a_fit_on_the_farm_installs_the_draws_fit_makes() {
+    let (mut here, mut there) = twins(0xF17);
+    for e in [&mut here, &mut there] {
+        let ids = pool_ids(e);
+        e.record_duel(ids[0], ids[1], true);
+        e.record_duel(ids[2], ids[3], false);
+    }
+    let task = there.fit_export();
+    let parsed: serde_json::Value = serde_json::from_str(&task).unwrap();
+    let observations = there.engine.log.len();
+    assert_eq!(parsed["job"]["observations"], observations);
+    // The seed whole, as a JSON integer, past what a double would carry.
+    let seed: u64 = serde_json::from_str(&parsed["rng_seed"].to_string()).unwrap();
+    assert_eq!(seed, there.rng.fit_seed(observations));
+    here.fit();
+    let fitted = farm_fit(&task);
+    assert_eq!(there.fit_install(&fitted), "ok");
+    let draws = |e: &WasmEngine| {
+        let p = e.engine.posterior.as_deref().unwrap();
+        p.samples
+            .iter()
+            .flat_map(|s| s.theta.iter().flatten().chain(&s.tau).chain(&s.cuts))
+            .chain(&p.weights)
+            .map(|x| x.to_bits())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(draws(&here), draws(&there));
+    // And what a save keeps of it, and of the scale and the shares it moved.
+    let kept = |e: &WasmEngine| {
+        let v: serde_json::Value = serde_json::from_str(&e.export_session()).unwrap();
+        (
+            v["fit"].clone(),
+            v["profile"].clone(),
+            v["style_shares"].clone(),
+        )
+    };
+    assert_eq!(kept(&here), kept(&there));
+    assert!(!kept(&there).0.is_null(), "the save keeps no fit");
+
+    // Refusals: a text that is not a fit, one over another φ, and one of a
+    // log replaced since (a taste file opened while it ran).
+    assert_eq!(farm_fit("{}"), "");
+    assert_eq!(there.fit_install(""), "unparseable");
+    let mut shape: serde_json::Value = serde_json::from_str(&fitted).unwrap();
+    shape["posterior"]["cfg"]["n_features"] = serde_json::json!(1);
+    assert_eq!(there.fit_install(&shape.to_string()), "shape");
+    assert!(there.import_profile(&there.export_profile()));
+    assert_eq!(there.fit_install(&fitted), "stale");
+    // Nothing to fit, nothing exported.
+    assert_eq!(WasmEngine::new(1, 6).fit_export(), "");
+}
+
 /// Plan and render a guess the way the worker does with no farm
 /// (`memo_render`, one job at a time, a job that does not vet into
 /// `failed`), then rank. Returns the ranking and the failed keys.

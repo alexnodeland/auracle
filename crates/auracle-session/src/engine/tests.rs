@@ -4678,8 +4678,8 @@ fn a_posterior_with_no_draws_deals_uniform_pairs() {
 /// Nothing leaves the pool until a generation ends, so a save made while one
 /// runs holds its children and the members they displace; the reload holds
 /// them all, and the next finish trims the pool back to its size, before any
-/// fit (there is no posterior yet: every member ranks alike), sparing what
-/// is saved.
+/// refit (under the fit the session was saved with, which the reload keeps),
+/// sparing what is saved.
 #[test]
 fn a_session_saved_mid_generation_reloads_over_size_and_is_trimmed() {
     let mut engine = taught(0x0E5);
@@ -4698,7 +4698,10 @@ fn a_session_saved_mid_generation_reloads_over_size_and_is_trimmed() {
     let saved = engine.pool[0].id;
     assert!(engine.set_pinned(saved, true));
     let mut back = reload(&engine);
-    assert!(back.posterior.is_none());
+    assert!(
+        back.posterior.is_some(),
+        "the reload came back without its fit"
+    );
     assert_eq!(back.pool.len(), engine.pool.len());
     let gone = back.refine_finish();
     assert_eq!(gone.len(), over);

@@ -375,11 +375,13 @@ fn fnv1a64(state: u64, bytes: &[u8]) -> u64 {
 
 /// Standard base64 (RFC 4648, padded), as quiver's `Capture` writes it. The
 /// same codec `auracle_features`' audition clips use; each crate keeps its
-/// own copy because the grammar cannot depend on the features crate.
-mod base64 {
+/// own copy because the grammar cannot depend on the features crate. Public
+/// for the crates above it: a saved session's fitted draws use it too.
+pub mod base64 {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-    pub(super) fn encode(bytes: &[u8]) -> String {
+    /// `bytes` as base64.
+    pub fn encode(bytes: &[u8]) -> String {
         let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
         for chunk in bytes.chunks(3) {
             let b = [
@@ -399,7 +401,8 @@ mod base64 {
         out
     }
 
-    pub(super) fn decode(text: &str) -> Option<Vec<u8>> {
+    /// The bytes `text` holds, or `None` when it is not padded base64.
+    pub fn decode(text: &str) -> Option<Vec<u8>> {
         let text = text.as_bytes();
         if !text.len().is_multiple_of(4) {
             return None;
