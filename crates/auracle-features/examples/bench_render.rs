@@ -630,8 +630,8 @@ fn kind_trees() -> Vec<(String, PatchTree)> {
 
 /// What one voice of each module kind costs: [`kind_trees`], each compiled
 /// as the live voice is (every knob live) and as a render's voice is (knobs
-/// folded), held on C4 for a second, in this thread's CPU ms per second of
-/// one voice (the least of `reps`), and what it adds to the saw voice it is
+/// folded), held on C4 for a second and ticked in 128-frame blocks, in this
+/// thread's CPU ms per second of one voice (the least of `reps`), and what it adds to the saw voice it is
 /// built on. With `path`, the trees are written there as the set file is,
 /// for `auracle-wasm/examples/voice_cost.mjs`.
 fn kinds(reps: usize, path: Option<String>) {
@@ -663,9 +663,15 @@ fn kinds(reps: usize, path: Option<String>) {
             }
             .expect("compiles");
             v.gate.set(5.0);
-            let mut s = 0.0;
-            for _ in 0..sr as usize {
-                s += v.patch.tick().0;
+            // In blocks of the worklet's quantum, as the live voice and a
+            // render tick (`tick_block`).
+            let (mut l, mut r) = ([0.0; 128], [0.0; 128]);
+            let (mut s, mut left) = (0.0, sr as usize);
+            while left > 0 {
+                let n = left.min(128);
+                v.patch.tick_block(&mut l[..n], &mut r[..n]);
+                s += l[..n].iter().sum::<f64>();
+                left -= n;
             }
             s
         })

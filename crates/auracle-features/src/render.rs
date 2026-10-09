@@ -15,6 +15,10 @@
 //! cursor-mode stream would leave a voice built mid-block silent until the
 //! next block, and this render has only one). A patch that does not listen
 //! gets no stream at all, so its render is what it always was.
+//!
+//! A render nothing watches, of a patch that does not listen, ticks in
+//! blocks instead: quiver's `tick_block`, bit for bit the samples a tick per
+//! frame gives, at about two thirds of the CPU (see `Walk`).
 
 use std::sync::Arc;
 
@@ -102,6 +106,10 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
 /// is the render it would have been (`crate::probe`'s tests hold that bit for
 /// bit). Chord voices are not shown to it.
 pub(crate) trait VoiceObserver {
+    /// Whether it reads nothing, so the render may tick in blocks: an
+    /// observer that reads the voice sees it after every frame, which only a
+    /// tick per frame shows it.
+    const BLIND: bool = false;
     /// The main voice, compiled, before its first tick.
     fn start(&mut self, voice: &auracle_grammar::CompiledVoice);
     /// The main voice, just ticked.
@@ -110,6 +118,7 @@ pub(crate) trait VoiceObserver {
 
 /// No observer: [`render_phrase`] itself.
 impl VoiceObserver for () {
+    const BLIND: bool = true;
     #[inline(always)]
     fn start(&mut self, _: &auracle_grammar::CompiledVoice) {}
     #[inline(always)]
@@ -185,34 +194,8 @@ pub(crate) fn render_built<O: VoiceObserver>(
     let mut spans = Vec::with_capacity(spec.notes.len());
     obs.start(&voice);
 
-    let tick_all =
-        |voice: &mut auracle_grammar::CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
-            let (l, r) = voice.patch.tick();
-            let mut s = (l + r) * 0.5 / 5.0;
-            for cv in chord.iter_mut().filter(|cv| !cv.parked) {
-                // A chord voice plays the note the main voice's TRACKs hear
-                // this frame (a no-op for a patch without one).
-                voice.lead(&cv.voice);
-                let (cl, cr) = cv.voice.patch.tick();
-                let c = (cl + cr) * 0.5 / 5.0;
-                s += c;
-                if !cv.gated {
-                    if c.abs() < PARK_ABS {
-                        cv.quiet_run += 1;
-                        if cv.quiet_run >= PARK_RUN {
-                            cv.parked = true;
-                        }
-                    } else {
-                        cv.quiet_run = 0;
-                    }
-                }
-            }
-            // Every voice has read this frame; the next tick reads the next.
-            if let Some(stream) = &input {
-                stream.advance();
-            }
-            s
-        };
+    let walk = Walk::of(&voice, O::BLIND && input.is_none());
+    let input = input.as_ref();
 
     for note in &spec.notes {
         // Retire the previous note's chord voices only once parked; a voice
@@ -226,7 +209,7 @@ pub(crate) fn render_built<O: VoiceObserver>(
                 // on the tracked note, not on C4 while a cold tracker settles)
                 // and its amp keeps this note's gate, so it stops with the
                 // dyad. For a patch with no TRACK it is the same voice.
-                let v = build.voice(tree, spec.sample_rate, input.as_ref(), true)?;
+                let v = build.voice(tree, spec.sample_rate, input, true)?;
                 v.pitch.set(voct);
                 v.gate.set(5.0);
                 chord_voices.push(ChordVoice {
@@ -242,22 +225,30 @@ pub(crate) fn render_built<O: VoiceObserver>(
         let on_start = samples.len();
         note_onsets.push(on_start);
         voice.gate.set(5.0);
-        for _ in 0..(note.on_s * spec.sample_rate) as usize {
-            let s = tick_all(&mut voice, &mut chord_voices);
-            samples.push(s);
-            obs.tick(&voice);
-        }
+        let frames = (note.on_s * spec.sample_rate) as usize;
+        walk.run(
+            frames,
+            &mut voice,
+            &mut chord_voices,
+            input,
+            &mut samples,
+            obs,
+        );
         let on_end = samples.len();
         voice.gate.set(0.0);
         for cv in chord_voices.iter_mut().filter(|cv| cv.gated) {
             cv.voice.gate.set(0.0);
             cv.gated = false;
         }
-        for _ in 0..(note.off_s * spec.sample_rate) as usize {
-            let s = tick_all(&mut voice, &mut chord_voices);
-            samples.push(s);
-            obs.tick(&voice);
-        }
+        let frames = (note.off_s * spec.sample_rate) as usize;
+        walk.run(
+            frames,
+            &mut voice,
+            &mut chord_voices,
+            input,
+            &mut samples,
+            obs,
+        );
         spans.push(NoteSpan {
             voct: note.voct,
             chord: note.chord.len(),
@@ -272,6 +263,152 @@ pub(crate) fn render_built<O: VoiceObserver>(
         note_onsets,
         spans,
     })
+}
+
+/// Frames per block of a block walk: quiver's own block (`tick_block` cuts a
+/// longer call into these), so a block here is one of its blocks.
+const BLOCK: usize = 64;
+
+/// How a render ticks its voices.
+///
+/// A block walk is `tick_block` per voice: the main voice through a block,
+/// then each ringing chord voice through the same block, their samples summed
+/// frame by frame in the order a tick per frame sums them (the main voice,
+/// then the chord voices in order), so each sample is the same bits. Each
+/// voice's own block is bit for bit its ticks (quiver's contract); what a
+/// block walk changes is only the order in which *different* voices run their
+/// frames, so it is exact whenever no voice reads what another changes within
+/// a frame. Three things do, and each keeps a tick per frame:
+///
+/// - **The clip** (a patch that listens): its stream is on the host's clock
+///   and advances after every voice has read a frame, so it needs a tick per
+///   frame (the module doc). The whole render walks frames.
+/// - **An observer** that reads the voice after each frame
+///   ([`VoiceObserver::BLIND`] false). The whole render walks frames.
+/// - **Coupled chord voices** ([`Walk::of`]): a TRACK's follower is led
+///   frame by frame by the main voice ([`CompiledVoice::lead`]), and the
+///   kinds that draw quiver's thread-wide random stream (noise,
+///   `karplus_strong`: the grammar seeds no module's own stream, and
+///   [`render_built`] seeds the thread's) take their draws in tick order
+///   across every voice. While a chord voice of such a patch rings, the
+///   render walks frames; once each is parked, the main voice alone walks in
+///   blocks (within one patch, quiver runs the drawers frame by frame itself).
+///
+/// A chord voice that parks inside a block has run the rest of that block
+/// past its park point; those samples are not heard, and a parked voice never
+/// ticks again (only [`render_built`]'s `retain` touches it, to drop it), so
+/// they change nothing but its own state, which nothing reads, and the
+/// random stream, which a coupled voice never reaches in a block.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Walk {
+    /// A tick per frame for every voice.
+    Frames,
+    /// Blocks for every voice.
+    Blocks,
+    /// Blocks while no chord voice rings, a tick per frame while one does.
+    BlocksAlone,
+}
+
+impl Walk {
+    /// The walk for a render of `voice`, in blocks only if `blocks` allows.
+    fn of(voice: &CompiledVoice, blocks: bool) -> Walk {
+        let draws = voice
+            .patch
+            .nodes()
+            .any(|(_, _, m)| m.shares_state() == Some(quiver::port::SharedState::RANDOM_STREAM));
+        let coupled = draws || !voice.tracker_keys().is_empty();
+        match (blocks, coupled) {
+            (false, _) => Walk::Frames,
+            (true, false) => Walk::Blocks,
+            (true, true) => Walk::BlocksAlone,
+        }
+    }
+
+    /// `count` frames of every voice, their sum pushed onto `samples`.
+    fn run<O: VoiceObserver>(
+        self,
+        count: usize,
+        voice: &mut CompiledVoice,
+        chord: &mut [ChordVoice],
+        input: Option<&Arc<AudioInputStream>>,
+        samples: &mut Vec<f64>,
+        obs: &mut O,
+    ) {
+        let (mut l, mut r) = ([0.0; BLOCK], [0.0; BLOCK]);
+        let mut left = count;
+        while left > 0 {
+            let frames = match self {
+                Walk::Frames => true,
+                Walk::Blocks => false,
+                Walk::BlocksAlone => chord.iter().any(|cv| !cv.parked),
+            };
+            if frames {
+                samples.push(tick_frame(voice, chord, input));
+                obs.tick(voice);
+                left -= 1;
+                continue;
+            }
+            let n = left.min(BLOCK);
+            voice.patch.tick_block(&mut l[..n], &mut r[..n]);
+            let base = samples.len();
+            samples.extend(l[..n].iter().zip(&r[..n]).map(|(l, r)| (l + r) * 0.5 / 5.0));
+            for cv in chord.iter_mut().filter(|cv| !cv.parked) {
+                cv.voice.patch.tick_block(&mut l[..n], &mut r[..n]);
+                for (i, s) in samples[base..].iter_mut().enumerate() {
+                    let c = (l[i] + r[i]) * 0.5 / 5.0;
+                    *s += c;
+                    if cv.heard(c) {
+                        break;
+                    }
+                }
+            }
+            left -= n;
+        }
+    }
+}
+
+/// One frame of every voice: the main voice, then each chord voice still
+/// ringing, in order, summed; then the clip's stream moves to the next frame.
+fn tick_frame(
+    voice: &mut CompiledVoice,
+    chord: &mut [ChordVoice],
+    input: Option<&Arc<AudioInputStream>>,
+) -> f64 {
+    let (l, r) = voice.patch.tick();
+    let mut s = (l + r) * 0.5 / 5.0;
+    for cv in chord.iter_mut().filter(|cv| !cv.parked) {
+        // A chord voice plays the note the main voice's TRACKs hear this
+        // frame (a no-op for a patch without one).
+        voice.lead(&cv.voice);
+        let (cl, cr) = cv.voice.patch.tick();
+        let c = (cl + cr) * 0.5 / 5.0;
+        s += c;
+        cv.heard(c);
+    }
+    // Every voice has read this frame; the next tick reads the next.
+    if let Some(stream) = input {
+        stream.advance();
+    }
+    s
+}
+
+impl ChordVoice {
+    /// Count `c`, this voice's latest sample, toward parking it: once
+    /// released, [`PARK_RUN`] samples in a row under [`PARK_ABS`] park it.
+    /// Returns whether it parked.
+    fn heard(&mut self, c: f64) -> bool {
+        if !self.gated {
+            if c.abs() < PARK_ABS {
+                self.quiet_run += 1;
+                if self.quiet_run >= PARK_RUN {
+                    self.parked = true;
+                }
+            } else {
+                self.quiet_run = 0;
+            }
+        }
+        self.parked
+    }
 }
 
 /// The stream a listening patch reads during a render of `spec`: the
