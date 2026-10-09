@@ -294,6 +294,33 @@ fn a_fused_prior_beats_a_flat_one_on_a_correlated_cluster() {
     );
 }
 
+/// Where two lenses tie at the top of a keep or a star, the imputed
+/// variance is the **last** one's, as [`TasteSample::best_style`] names it:
+/// the lens a candidate's absent coordinates are priced on is the one the
+/// rest of the model calls its lens, at a tie too. Here lenses 0 and 1 both
+/// rate `x` at 0.5 (they differ only on the imputed coordinate, which `x`
+/// holds at the mean), lens 2 lower, so lens 1's θ₁² = 4 is the variance,
+/// not lens 0's 0.
+#[test]
+fn a_tie_prices_the_imputed_axes_on_the_last_lens() {
+    let s = TasteSample {
+        theta: vec![vec![0.5, 0.0], vec![0.5, 2.0], vec![0.2, 9.0]],
+        tau: vec![0.25],
+        cuts: vec![-1.0, 0.0, 1.0],
+    };
+    let x = vec![1.0, 0.0];
+    assert_eq!(s.best_style(&x), 1);
+    let a = attenuate(4.0);
+    let keep = Feedback::KeepKill {
+        x: x.clone(),
+        kept: true,
+    };
+    assert_eq!(s.loglik_with(&keep, 0, &[1]), log_sigmoid((0.5 - 0.25) * a));
+    let stars = Feedback::Stars { x, rating: 1 };
+    let want = log_sigmoid(a * (0.0 - 0.5)) + log_sigmoid(-a * (-1.0 - 0.5)) + log1mexp(a);
+    assert_eq!(s.loglik_with(&stars, 0, &[1]), want);
+}
+
 /// An imputed coordinate makes a keep/kill verdict *less certain*, and
 /// leaves a duel alone.
 ///
