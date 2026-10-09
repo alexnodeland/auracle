@@ -110,12 +110,21 @@ function haloAlpha(page, x, y) {
  *  the last sound's: the pointer's move may not have reached the map yet, or
  *  never does, when the last card, beside its own sound, covers this one. So
  *  the pointer leaves the map first, the last card goes, and the read waits
- *  for the card to name this sound. */
+ *  for the card to name this sound. The point must be the map's own, too: a
+ *  toast in the lane at the window's bottom right (the warm start's, for its
+ *  four seconds) can stand over a sound near the map's corner, and a pointer
+ *  moved there reaches the toast, not the map. */
 async function plateOf(page, q, id) {
   const plate = page.locator("#taste-plate");
   await page.mouse.move(1, 1);
   await expect(plate).not.toHaveClass(/\bon\b/);
   const box = await page.locator("#taste-crt").boundingBox();
+  await expect
+    .poll(() => page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id || null, [box.x + q.x, box.y + q.y]), {
+      message: `sound ${id}'s place on the map is uncovered`,
+      timeout: 10_000,
+    })
+    .toBe("taste-crt");
   await page.mouse.move(box.x + q.x, box.y + q.y);
   await expect(plate).toHaveAttribute("data-id", String(id));
   await expect(plate).toHaveClass(/\bon\b/);
