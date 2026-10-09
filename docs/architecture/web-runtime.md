@@ -541,7 +541,10 @@ region; a views post that comes first is newer, and the refit's is dropped).
 One fit is out at a time (`blocked`): a fit asked for meanwhile (the next
 sixth pick, a taste file) is for a longer log, and goes when this one lands;
 main sends none while one runs (`fitting`). A generation and ⚡ wait for a
-fit out, as a fit waits for them. A fit of a log replaced while it ran (a
+fit out, as a fit waits for them, and a fit, like them, waits for boot's
+crew to be reaped: handed to it, it died with the crew when boot ended and
+waited out the walk watchdog (`WALK_TIMEOUT_MS`), so a sixth pick made while
+the pool fills is fitted once the fill is over. A fit of a log replaced while it ran (a
 taste file opened) is refused at install (`refused: "stale"`), and the
 file's own fit follows it.
 

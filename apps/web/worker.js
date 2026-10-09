@@ -2966,9 +2966,11 @@ function blocked(m) {
   switch (m.type) {
     // One fit at a time: a fit asked for while one is out is for a longer
     // log, and goes when that one lands. The fit out is its own request
-    // back in a lane when the farm could not run it (`fitHere`).
+    // back in a lane when the farm could not run it (`fitHere`). And, like
+    // a walk, it waits for boot's crew to be reaped: handed to it, it died
+    // with the crew when boot ended, and waited out the watchdog.
     case "fit":
-      return walking() || (fitOut != null && fitOut.m !== m);
+      return walking() || bootCrewLive() || (fitOut != null && fitOut.m !== m);
     // A face's render waits for the bank to finish arriving: half a second
     // each, they would slow the fill (a preset's face on the warm start, a
     // row stored before faces).
