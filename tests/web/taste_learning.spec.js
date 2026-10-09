@@ -105,11 +105,20 @@ function haloAlpha(page, x, y) {
   }, [x, y]);
 }
 
-/** Hover a sound on the map and read its card. */
-async function plateOf(page, q) {
+/** Hover sound `id` on the map (at `q`) and read its card, once the card
+ *  names that sound (#350). Read as soon as a card showed, it could still be
+ *  the last sound's: the pointer's move may not have reached the map yet, or
+ *  never does, when the last card, beside its own sound, covers this one. So
+ *  the pointer leaves the map first, the last card goes, and the read waits
+ *  for the card to name this sound. */
+async function plateOf(page, q, id) {
+  const plate = page.locator("#taste-plate");
+  await page.mouse.move(1, 1);
+  await expect(plate).not.toHaveClass(/\bon\b/);
   const box = await page.locator("#taste-crt").boundingBox();
   await page.mouse.move(box.x + q.x, box.y + q.y);
-  await expect(page.locator("#taste-plate")).toHaveClass(/\bon\b/);
+  await expect(plate).toHaveAttribute("data-id", String(id));
+  await expect(plate).toHaveClass(/\bon\b/);
   return {
     name: await page.locator("#taste-plate .ts-pl-name").textContent(),
     like: await page.locator("#taste-plate .ts-pl-like").textContent(),
@@ -184,7 +193,7 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
   // As fitted: each card says the bank's number for it.
   const fit = await page.evaluate(() => Object.fromEntries((window.__tap.facts.ratings || window.__tap.facts.views.ratings).ranked.map((r) => [r.id, r.mean])));
   for (const id of [lone, ...others]) {
-    expect((await plateOf(page, pos[id])).like).toMatch(new RegExp(`^would like: ${pct(fit[id])}% · `));
+    expect((await plateOf(page, pos[id], id)).like).toMatch(new RegExp(`^would like: ${pct(fit[id])}% · `));
   }
 
   // A pick's reply that rates the lone sound far up and every other far
@@ -199,8 +208,8 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
     for (const row of r.ranked) row.mean = row.id === lone ? 4 : -4;
     window.__tap.inject({ type: "status", status: window.__tap.facts.status, recorded: true, vote: { kind: "stars", id: lone, rating: 5, prev: 0 }, ratings: r });
   }, lone);
-  expect((await plateOf(page, pos[lone])).like).toMatch(/^would like: 98% · fairly sure$/);
-  for (const id of others) expect((await plateOf(page, pos[id])).like).toMatch(/^would like: 2% · fairly sure$/);
+  expect((await plateOf(page, pos[lone], lone)).like).toMatch(/^would like: 98% · fairly sure$/);
+  for (const id of others) expect((await plateOf(page, pos[id], id)).like).toMatch(/^would like: 2% · fairly sure$/);
   await page.mouse.move(1, 1);
   await expect.poll(() => haloAlpha(page, ...ring), { timeout: 5_000 }).toBeGreaterThan(before + 10);
   const otherAfter = await haloAlpha(page, ...otherRing);
@@ -214,7 +223,7 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
     window.__tap.inject({ type: "fitted", views: v, status: window.__tap.facts.status });
   });
   await expect(page.locator("#taste-live")).toHaveText("It fitted your taste again. Every rating settled.");
-  for (const id of [lone, ...others]) expect((await plateOf(page, pos[id])).like).toMatch(/^would like: 73% · fairly sure$/);
+  for (const id of [lone, ...others]) expect((await plateOf(page, pos[id], id)).like).toMatch(/^would like: 73% · fairly sure$/);
 });
 
 test("LEARNING's weights, forecasts and math are the engine's numbers, and copy as JSON gives them back", async ({ page, app, context }) => {
@@ -409,7 +418,7 @@ test("the track replays what the engine posted at each pick, and is still there 
   const ids = Object.keys(pos).map(Number).slice(0, 3);
   const before = [];
   for (const id of ids) {
-    const like = (await plateOf(page, pos[id])).like;
+    const like = (await plateOf(page, pos[id], id)).like;
     expect(like).toMatch(new RegExp(`^would like: ${pct(posted[id])}% · `));
     before.push(like);
   }
@@ -426,7 +435,7 @@ test("the track replays what the engine posted at each pick, and is still there 
   await expect(page.locator("#taste-tlabel")).toHaveText(`now · after ${n + 1} picks`);
   await scrubTo(page, `after ${n} picks`);
   for (let i = 0; i < ids.length; i++) {
-    expect((await plateOf(page, pos[ids[i]])).like, "the same moment after a reload").toBe(before[i]);
+    expect((await plateOf(page, pos[ids[i]], ids[i])).like, "the same moment after a reload").toBe(before[i]);
   }
 });
 
