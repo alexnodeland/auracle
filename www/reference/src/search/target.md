@@ -102,8 +102,10 @@ revisits trees (the seed, a state it returns to, the drift walks), and a
 render is the one expensive thing the model does, so a revisit that is
 recomputed is a number the walk already had.
 
-At ~600 ms per render, that is the difference between a generation taking half
-a minute and taking a minute, per generation, forever.
+A render of the audition phrase costs about a third of a second of CPU in
+wasm on a fast laptop (quiver-dsp 0.4.1; 5.9 s for the 18 trees of
+`make bench-render`) and over a second on the reference MacBook Air, so every
+revisit the memo answers is a whole render the generation does not wait for.
 
 ## What is not sampled from this
 
