@@ -1136,11 +1136,12 @@ fn tick_voice_blocks(v: &mut Voice, frames: usize, out: &mut [f32], held: bool) 
         let mut n = (frames - done).min(VOICE_BLOCK);
         // Re-raise *after* the tick that takes the count to 0, as a frame
         // walk does: the block ends there.
-        if v.regate_in > 0 {
+        let regate = v.regate_in > 0;
+        if regate {
             n = n.min(v.regate_in as usize);
         }
         v.voice.patch.tick_block(&mut l[..n], &mut r[..n]);
-        if v.regate_in > 0 {
+        if regate {
             v.regate_in -= n as u32;
             if v.regate_in == 0 {
                 v.voice.gate.set(GATE_ON);

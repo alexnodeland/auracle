@@ -3301,3 +3301,109 @@ fn a_voice_in_blocks_plays_what_it_plays_frame_by_frame() {
         );
     }
 }
+
+/// **A released voice parks once [`PARK_AFTER`] silent frames have run in a
+/// row, and not a quantum sooner.** A voice let go of and fallen silent keeps
+/// running while its silent frames add up across quanta, so a tail that dips
+/// under the threshold for a moment is not cut; on the quantum that takes the
+/// run to `PARK_AFTER` it stops, and costs nothing after.
+#[test]
+fn a_released_voice_parks_after_its_silent_run() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let mut v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    // Never pressed, so silent from its first frame; let go of, so running
+    // only until its silent run parks it.
+    v.running = true;
+    let quantum = 128;
+    let quanta = (PARK_AFTER as usize).div_ceil(quantum);
+    let mut out = vec![0.0f32; quantum * 2];
+    for q in 1..quanta {
+        tick_voice(&mut v, quantum, &mut out, None, Tracks::None);
+        assert!(v.running, "parked after {q} silent quanta of {quanta}");
+    }
+    tick_voice(&mut v, quantum, &mut out, None, Tracks::None);
+    assert!(!v.running, "still running after {PARK_AFTER} silent frames");
+    assert!(
+        out.iter().all(|s| *s == 0.0),
+        "a voice never pressed sounded"
+    );
+}
+
+/// **A voice at full velocity, panned to the centre, plays its patch's ±5 V
+/// as ±1 full scale on each side**: velocity's gain, the equal-power pan
+/// (√½ a side at the centre, which the √2 makes up) and the volt scale
+/// together. Each frame of the voice's quantum is its patch's output, ticked
+/// alone on a twin voice, over 5.
+#[test]
+fn a_centred_voice_at_full_velocity_plays_its_volts_at_full_scale() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let mut v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    let mut twin = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    for voice in [&mut v, &mut twin] {
+        voice.note = Some(60);
+        voice.running = true;
+        voice.voice.gate.set(GATE_ON);
+    }
+    let frames = 512;
+    let mut out = vec![0.0f32; frames * 2];
+    tick_voice(&mut v, frames, &mut out, None, Tracks::None);
+    let mut loudest = 0.0f64;
+    for f in 0..frames {
+        let (l, r) = twin.voice.patch.tick();
+        loudest = loudest.max(l.abs());
+        for (got, volts) in [(out[f * 2], l), (out[f * 2 + 1], r)] {
+            let want = volts / 5.0;
+            assert!(
+                (got as f64 - want).abs() <= 1e-6 * want.abs().max(1e-3),
+                "frame {f}: {got} for {volts} V"
+            );
+        }
+    }
+    assert!(loudest > 0.5, "too quiet to show a gain ({loudest} V)");
+}
+
+/// **A frame is silent when |L|+|R| is below [`SILENCE_EPS`], and only a
+/// released voice counts it**: under it a frame adds one to the silent run it
+/// ends; at it (each side half of it, which sums to it exactly, or all of it
+/// on one side) or over it, the run starts again; and a held voice counts
+/// none, however quiet (a slow attack).
+#[test]
+fn a_frame_is_silent_below_the_threshold_on_both_sides_together() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    let mut out = [0.0f32; 2];
+    let mut frame = |l: f64, r: f64, held: bool| mix_frame(&v, &mut out, l, r, held, 5);
+    let half = SILENCE_EPS / 2.0;
+    assert_eq!(half + half, SILENCE_EPS, "the halves sum to the threshold");
+    assert_eq!(
+        frame(half / 2.0, half / 2.0, false),
+        6,
+        "quiet: the run goes on"
+    );
+    assert_eq!(
+        frame(-half / 2.0, half / 2.0, false),
+        6,
+        "quiet, either sign"
+    );
+    assert_eq!(frame(half, half, false), 0, "at the threshold together");
+    assert_eq!(
+        frame(half, -half, false),
+        0,
+        "at it together, opposite signs"
+    );
+    assert_eq!(frame(SILENCE_EPS, 0.0, false), 0, "at it on one side");
+    assert_eq!(frame(0.0, 0.5, false), 0, "loud on one side");
+    assert_eq!(frame(0.0, 0.0, true), 0, "held: never silent");
+}
