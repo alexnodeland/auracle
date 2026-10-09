@@ -340,7 +340,9 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
             .map(|(s, w)| Complex::new(s * w, 0.0))
             .collect();
         fft.process(&mut buf);
-        let mag: Vec<f64> = buf[..bins].iter().map(|c| c.norm()).collect();
+        // norm_sqr().sqrt(), not norm(): wasm has no hardware FMA, so hypot there
+        // is a software-FMA routine (7.5% of a render).
+        let mag: Vec<f64> = buf[..bins].iter().map(|c| c.norm_sqr().sqrt()).collect();
         let power: f64 = mag.iter().map(|m| m * m).sum();
 
         frame_rms
@@ -663,7 +665,9 @@ pub fn motion_bands(x: &[f64], sr: f64, on_start: usize, on_end: usize) -> [f64;
         fft.process(&mut buf);
         let (mut msum, mut wsum) = (0.0, 0.0);
         for (i, c) in buf[..MOTION_FRAME / 2].iter().enumerate() {
-            let m = c.norm();
+            // norm_sqr().sqrt(), not norm(): wasm has no hardware FMA, so hypot there
+            // is a software-FMA routine (7.5% of a render).
+            let m = c.norm_sqr().sqrt();
             msum += m;
             wsum += i as f64 * bin_hz * m;
         }

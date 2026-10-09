@@ -154,6 +154,25 @@ fn motion_bands_separate_rate() {
     }
 }
 
+/// The brightness track is read from the spectrum, not only the level: a tone
+/// whose pitch swings 4 Hz at a steady loudness has no level motion at all, and
+/// its centroid motion must still register in the band holding that rate.
+#[test]
+fn motion_bands_hear_brightness_moving_at_a_steady_level() {
+    let n = (1.8 * SR) as usize;
+    let x: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / SR;
+            0.3 * (TAU * 1000.0 * t + 100.0 * (TAU * 4.0 * t).sin()).sin()
+        })
+        .collect();
+    let m = motion_bands(&x, SR, 0, n);
+    assert!(
+        m[1] > MOTION_FLOOR + 3.0,
+        "a 4 Hz pitch swing at a steady level barely registered: {m:?}"
+    );
+}
+
 /// A span too short to hold a slow cycle reports the floor rather than a
 /// number computed from a handful of frames.
 #[test]
