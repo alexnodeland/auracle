@@ -94,4 +94,10 @@ exclude_re = [
     # (e^-LN_2 rounds to 0.5, and expm1 to -0.5). The function's other
     # mutants, `==` and `<` in the same place included, are caught.
     'crates/auracle-taste/src/model\.rs:\d+:\d+: replace > with >= in log1mexp$',
+    # The brightness group's guard, `bright.len() > 1`, as `>=`: a change no
+    # build can show (#300). The two differ only when exactly one of its
+    # three names is in φ, and φ holds all three
+    # (`a_job_allows_a_lens_for_every_twenty_picks_begun_and_fuses_brightness`
+    # reads them); the `==` and `<` beside it are caught there.
+    'crates/auracle-session/src/engine/fit\.rs:\d+:\d+: replace > with >= in Engine::fit_job$',
 ]

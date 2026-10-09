@@ -11,7 +11,7 @@ saying so is what makes migration tractable.</p>
 | `BankEntry` | A patch’s **tree** (with any [CAPTURE take](./genome/grammar.md#capture-a-recorded-take-as-a-source) in it), id, origin, name, pinned flag, and `unjudged` when it was kept as new and has not been in a pick yet (left out when false). Renders and features are **re-derived** on import. A sound kept aside because its only take couldn’t be read is a bank entry too, written back JSON-equal to what was loaded |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
-| `TastePosterior` | A snapshot. Recomputable from the log |
+| `TastePosterior` | A snapshot, kept with the session (`SessionState::fit`: its draws, at most 500, and their weights, with how many observations it was fitted on), so a restore fits nothing. Recomputable from the log, and recomputed when the log or the standardizer comes back changed |
 | `OwnSound` | [A sound of your own](./features/own-sound.md): its name and the raw $\varphi$ of the coordinates its file measures, **by name**. Never the audio |
 
 Two of these choices carry the design.
@@ -40,6 +40,14 @@ is a set of numbers whose units have been lost.
 The posterior itself is not in a profile. It does not need to be: it is
 recomputable from these two, and shipping a fitted model would mean shipping
 something that could disagree with the evidence it was fitted from.
+
+A saved session does keep it, as a cache: a refit costs seconds on a slow
+laptop, and a restore that refitted held the first pair's sounds behind it.
+It is installed only when the log and the standardizer came back exactly as
+they were saved: a migration, a repair or a merged session sets it aside, and
+the session is fitted again after it loads. So it never disagrees with the
+evidence it is restored beside. A session saved before it was kept loads the
+same way, with no posterior until that fit.
 
 ## Names, not indices
 
