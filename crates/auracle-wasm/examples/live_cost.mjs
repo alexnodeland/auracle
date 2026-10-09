@@ -19,8 +19,9 @@
 //   --gate=0.59       with --sweep-only: exit 1 if any preset's four voices cost more than this
 //                     many ms of CPU a quantum (the least of the sweep's repeats), naming them.
 //                     0.59 ms is a whole 48 kHz quantum on a CPU 4.5x slower than the M3 Max
-//                     these figures were taken on (quiver-dsp 0.4.1; 0.5.0's voices cost a median
-//                     0.38 of that, #397); 11 of the 62 presets (the ladders) were over it.
+//                     these figures were taken on (quiver-dsp 0.4.1; the block walk's voices
+//                     cost a median 0.38 of that, #397); 11 of the 62 presets (the ladders)
+//                     were over it.
 //                     While an offer is in B the worklet renders eight voices, so the same number is
 //                     then 0.30 for four (half of it: 50 of 62 presets were over); only while the
 //                     audio is struggling does B rest at a mix of 0, and cost nothing. The figures are

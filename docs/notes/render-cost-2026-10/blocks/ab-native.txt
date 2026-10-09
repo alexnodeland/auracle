@@ -1,4 +1,4 @@
-# ab_native.py BEFORE AFTER 3 3: 9c81dca (quiver-dsp 0.4.1) against 31d7783 (0.5.0, renders in blocks), 2026-10-09, a 4-core Xeon VM shared with another agent's jobs
+# ON 0.5.0 (one-pass ladder, since reverted). ab_native.py BEFORE AFTER 3 3: 9c81dca (quiver-dsp 0.4.1) against 0.5.0 with the block walk, 2026-10-09, a 4-core Xeon VM shared with another agent's jobs
 round 1 before:     2365 ms for the set, load 19
 round 1 after :     1574 ms for the set, load 19
 round 2 before:     2808 ms for the set, load 19

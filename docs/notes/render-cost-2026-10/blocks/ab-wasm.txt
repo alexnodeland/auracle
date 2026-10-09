@@ -1,4 +1,4 @@
-# bench_render.mjs --reps=3 --rounds=3: 9c81dca's package (a721b1b764d59a82) against 31d7783's (44e46e65b18ad207), node v22.22.0, 2026-10-09
+# bench_render.mjs --reps=3 --rounds=3: 9c81dca's package (a721b1b764d59a82) against quiver-dsp 0.5.0's (44e46e65b18ad207; one-pass ladder, since reverted), node v22.22.0, 2026-10-09
 bench_render (wasm, node v22.22.0): 18 trees, least of 3 over 3 rounds each, this thread's CPU ms
 before: /tmp/claude-0/-home-user/82914afd-e049-5f3c-a740-76e6e16ab08f/scratchpad/block-walk/auracle-before/apps/web/pkg (release aa28c8b2209f)
 after: /home/user/auracle/.claude/worktrees/quiver-050/apps/web/pkg (release 885e992c6208)

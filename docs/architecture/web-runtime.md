@@ -1809,9 +1809,10 @@ What the worklet renders each quantum (`process` in `live-audio.js`):
   and PEEK or BLEND is heard at the next quantum (ADR-025). That doubles the
   audio thread's work: on quiver-dsp 0.4.1, on a CPU 4.5 times slower than an
   M3 Max, 47 to 50 of the 62 presets were then over a whole quantum, against
-  11 with A alone (#288). quiver-dsp 0.5.0's block walk took a preset's four
+  11 with A alone (#288). The block walk (quiver-dsp 0.5.1) took a preset's four
   voices to a median 0.38 of their cost (`live_cost.mjs --sweep-only` on both
-  builds, on a 4-core Xeon, #397): on a CPU 4.5 times slower than that one,
+  builds, on a 4-core Xeon, #397; measured on 0.5.0, whose one-pass ladder
+  0.5.1 reverted): on a CPU 4.5 times slower than that one,
   A and B together went from 40 to 44 presets over a whole quantum to 1 or 2.
   So only while the audio is struggling ([Is the audio
   struggling?](#is-the-audio-struggling)), and while its mix is 0 (BLEND at
