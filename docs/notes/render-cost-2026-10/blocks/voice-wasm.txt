@@ -1,0 +1,53 @@
+# voice_ab.mjs (beside this file) over bench_render --kinds's trees: 9c81dca's package against 31d7783's, alternated per kind in one process, 2026-10-09
+ms of this thread's CPU per voice-second, 5 s a rep, least of 3, alternated; load 15
+kind                     before    after   ratio
+saw voice                 11.45     3.63   0.317
+Vco                       13.93     3.81   0.273
+Supersaw                  14.74     5.12   0.347
+Noise                     11.99     3.78   0.315
+Mix                       15.98     5.60   0.350
+Filter SvfLp              12.00     3.20   0.267
+Filter Ladder             26.38    13.59   0.515
+Fold                      11.19     3.20   0.286
+Delay                     15.94     3.97   0.249
+Chorus                    21.53     7.20   0.334
+Reverb                    19.08     6.85   0.359
+Wavetable                 16.35     5.60   0.343
+Pluck                     14.40     3.80   0.264
+Distortion                17.59     5.58   0.317
+Bitcrush                  14.34     4.70   0.328
+Phaser                    21.52    10.39   0.483
+RingMod                   20.69     7.85   0.379
+Formant                   13.57     5.29   0.390
+Flanger                   20.96     9.19   0.439
+Tremolo                   16.62     4.50   0.271
+Vibrato                   18.06     5.32   0.295
+Eq                        19.15     8.75   0.457
+Granular                  19.13     9.54   0.499
+Shift                     17.19     5.60   0.326
+Comp                      20.78     5.58   0.269
+Duck                      20.73     7.20   0.347
+Gate                      20.61     5.60   0.272
+Vocoder                   19.14     8.77   0.458
+Silence                   10.00     2.67   0.267
+AudioIn                   10.12     3.90   0.385
+Track                     17.57     4.42   0.252
+Capture                   14.83     6.45   0.435
+mod Lfo                   19.62     7.08   0.361
+mod Env                   13.58     4.72   0.348
+mod Rand                  22.24     6.40   0.288
+mod Follow                17.31     4.76   0.275
+mod Euclid                20.76     5.82   0.280
+mod Quantize              28.73     8.56   0.298
+mod Slew                  20.57     5.60   0.272
+mod Rectify               23.13     7.68   0.332
+mod Hold                  25.46     7.17   0.282
+mod Min                   27.13     8.11   0.299
+mod Max                   26.39     8.00   0.303
+mod And                   29.14     8.80   0.302
+mod Or                    27.17     8.77   0.323
+mod Xor                   29.88     9.26   0.310
+mod Switch                29.87     8.17   0.273
+mod Steps                 25.78     9.78   0.379
+all kinds                 924.4    309.3   0.335
+load 15, after

@@ -97,6 +97,13 @@ block, and a render has only one.) The test renders a dyad over a clip that is
 silent until the dyad and a tone after it, and the dyad’s render is the mono
 render doubled, bit for bit.
 
+A patch that does not listen has no stream to keep in step, and its render
+ticks each voice in blocks of 64 frames (`tick_block`): the same samples, bit
+for bit, at about two thirds of the CPU. Its chord voice still ticks frame by
+frame beside the main voice while it rings if it follows a TRACK, or if its
+sources draw quiver’s shared random stream (noise, a plucked string), whose
+draws come in tick order across the voices.
+
 Frame $n$ of the render reads frame $n$ of the clip: a clip shorter than the
 phrase falls silent at its end.
 

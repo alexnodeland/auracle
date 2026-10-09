@@ -52,7 +52,10 @@ history of each choice.
   (`import_session_checked`) is kept only for a binary without the deferred
   surface.
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
-  voice per note, allocation-free per quantum, no clock.
+  voice per note, allocation-free per quantum, no clock. Each voice ticks its
+  quantum as one block (quiver's `tick_block`, bit for bit its ticks), cut
+  where a steal re-raises its gate; the voice the meter reads and a TRACK's
+  lead and followers tick frame by frame.
 
 ## The levels
 
@@ -1804,9 +1807,14 @@ What the worklet renders each quantum (`process` in `live-audio.js`):
   (`b_mix`, smoothed over about 10 ms). It is rendered every quantum while it
   holds an offer, at any mix, so its envelopes and tails are in step with A
   and PEEK or BLEND is heard at the next quantum (ADR-025). That doubles the
-  audio thread's work: on a CPU 4.5 times slower than an M3 Max, 47 to 50 of
-  the 62 presets are then over a whole quantum, against 11 with A alone
-  (#288). So only while the audio is struggling ([Is the audio
+  audio thread's work: on quiver-dsp 0.4.1, on a CPU 4.5 times slower than an
+  M3 Max, 47 to 50 of the 62 presets were then over a whole quantum, against
+  11 with A alone (#288). The block walk (quiver-dsp 0.5.1) took a preset's four
+  voices to a median 0.38 of their cost (`live_cost.mjs --sweep-only` on both
+  builds, on a 4-core Xeon, #397; measured on 0.5.0, whose one-pass ladder
+  0.5.1 reverted): on a CPU 4.5 times slower than that one,
+  A and B together went from 40 to 44 presets over a whole quantum to 1 or 2.
+  So only while the audio is struggling ([Is the audio
   struggling?](#is-the-audio-struggling)), and while its mix is 0 (BLEND at
   home and PEEK let go, or PERFORM out of sight) and the ramp down to it is
   over, the worklet **rests** B (`strain`, `LivePoly::rest`): it follows the

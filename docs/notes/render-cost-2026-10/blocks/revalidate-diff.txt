@@ -1,0 +1,170 @@
+# make phi-stats norm-peak on 9c81dca and on 31d7783 (0.5.0), diffed; cargo's lines stripped
+67,69c67,69
+< featurized:    1168 (97%)
+< quarantined:   silent=31 overlevel=0 dc=1 nonfinite=0
+< base quarantine rate: 2.7%
+---
+> featurized:    1167 (97%)
+> quarantined:   silent=32 overlevel=0 dc=1 nonfinite=0
+> base quarantine rate: 2.8%
+72,74c72,74
+< vco                455          1.8%      -0.9
+< supersaw           359          2.2%      -0.4
+< noise              206          1.0%      -1.7
+---
+> vco                455          1.8%      -1.0
+> supersaw           359          2.5%      -0.2
+> noise              206          1.0%      -1.8
+76,78c76,78
+< pluck              116          1.7%      -0.9
+< formant            135          3.0%      +0.3
+< silence             14         71.4%     +68.8  <-- silenced
+---
+> pluck              116          1.7%      -1.0
+> formant            135          3.0%      +0.2
+> silence             14         71.4%     +68.7  <-- silenced
+81,89c81,89
+< filter             387          5.7%      +3.0
+< fold               144          4.9%      +2.2
+< delay              166          3.6%      +0.9
+< chorus             126          4.8%      +2.1
+< reverb              99          2.0%      -0.6
+< distortion         148          1.4%      -1.3
+< bitcrush            40          0.0%      -2.7
+< phaser              53          0.0%      -2.7
+< ringmod             34          2.9%      +0.3
+---
+> filter             387          5.9%      +3.2
+> fold               144          4.9%      +2.1
+> delay              166          4.2%      +1.5
+> chorus             126          4.8%      +2.0
+> reverb              99          2.0%      -0.7
+> distortion         148          1.4%      -1.4
+> bitcrush            40          0.0%      -2.8
+> phaser              53          0.0%      -2.8
+> ringmod             34          2.9%      +0.2
+91,102c91,102
+< tremolo             69          4.3%      +1.7
+< vibrato             50          6.0%      +3.3
+< eq                  97          3.1%      +0.4
+< granular            21          4.8%      +2.1
+< shift               55          3.6%      +1.0
+< comp                43          2.3%      -0.3
+< duck                29          3.4%      +0.8
+< gate                17          0.0%      -2.7
+< vocoder             19         10.5%      +7.9
+< lfo                457          3.1%      +0.4
+< env                513          2.9%      +0.3
+< rand               176          2.3%      -0.4
+---
+> tremolo             69          4.3%      +1.6
+> vibrato             50          6.0%      +3.2
+> eq                  97          3.1%      +0.3
+> granular            21          4.8%      +2.0
+> shift               55          3.6%      +0.9
+> comp                43          2.3%      -0.4
+> duck                29          3.4%      +0.7
+> gate                17          0.0%      -2.8
+> vocoder             19         10.5%      +7.8
+> lfo                457          3.3%      +0.5
+> env                513          3.1%      +0.4
+> rand               176          2.3%      -0.5
+104,110c104,110
+< euclid             104          2.9%      +0.2
+< steps               92          4.3%      +1.7
+< quantize            48          0.0%      -2.7
+< slew                28          0.0%      -2.7
+< rectify             31          3.2%      +0.6
+< hold                40          5.0%      +2.3
+< min                  8          0.0%      -2.7
+---
+> euclid             104          2.9%      +0.1
+> steps               92          4.3%      +1.6
+> quantize            48          0.0%      -2.8
+> slew                28          0.0%      -2.8
+> rectify             31          3.2%      +0.5
+> hold                40          5.0%      +2.2
+> min                  8          0.0%      -2.8
+112,115c112,115
+< and                  6          0.0%      -2.7
+< or                   7          0.0%      -2.7
+< xor                 13         15.4%     +12.7  <-- silenced
+< switch               7          0.0%      -2.7
+---
+> and                  6          0.0%      -2.8
+> or                   7          0.0%      -2.8
+> xor                 13         15.4%     +12.6  <-- silenced
+> switch               7          0.0%      -2.8
+118c118
+< centroid_mean:p2     0.044     0.659     0.959
+---
+> centroid_mean:p2     0.044     0.658     0.959
+120c120
+< rolloff_mean:p2      0.021     0.561     0.992
+---
+> rolloff_mean:p2      0.021     0.559     0.992
+123c123
+< zcr_mean:p2          0.000     0.484     0.942
+---
+> zcr_mean:p2          0.000     0.482     0.942
+126,129c126,129
+< crest:p2             0.511     1.851     4.029
+< attack_s:p2         -5.298    -1.336     0.655
+< tail_ratio:p2       -6.908    -4.936     0.495
+< bass_fraction:p2     0.000     0.209     1.000
+---
+> crest:p2             0.511     1.854     4.029
+> attack_s:p2         -5.298    -1.341     0.655
+> tail_ratio:p2       -6.908    -4.933     0.495
+> bass_fraction:p2     0.000     0.211     1.000
+131c131
+< high_ratio:p2       -5.600    -0.338     3.761
+---
+> high_ratio:p2       -5.600    -0.340     3.761
+133,135c133,135
+< motion_slow:p2      -6.644    -4.906     1.536
+< motion_mid:p2       -6.644    -5.083     1.819
+< motion_fast:p2      -6.644    -5.464     1.529
+---
+> motion_slow:p2      -6.644    -4.914     1.110
+> motion_mid:p2       -6.644    -5.085     1.822
+> motion_fast:p2      -6.644    -5.467     1.530
+141c141
+< n_formant            0.000     0.116     2.000
+---
+> n_formant            0.000     0.117     2.000
+143c143
+< n_filter             0.000     0.521     6.000
+---
+> n_filter             0.000     0.519     6.000
+149,151c149,151
+< n_lfo                0.000     0.526     5.000
+< n_env                0.000     0.607     5.000
+< n_rand               0.000     0.241     3.000
+---
+> n_lfo                0.000     0.525     5.000
+> n_env                0.000     0.606     5.000
+> n_rand               0.000     0.242     3.000
+157c157
+< amp_attack           0.000     0.497     1.000
+---
+> amp_attack           0.000     0.496     1.000
+164c164
+< rolloff_mean:p2       18.7  <-- collinear
+---
+> rolloff_mean:p2       18.6  <-- collinear
+168c168
+< centroid_std:p2        6.7
+---
+> centroid_std:p2        6.6
+178d177
+< motion_slow:p2         3.9
+180c179,180
+< crest:p2               3.3
+---
+> motion_slow:p2         3.8
+> crest:p2               3.5
+187d186
+< rms_std:p2             2.3
+188a188
+> rms_std:p2             2.3

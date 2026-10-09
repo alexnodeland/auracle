@@ -1,0 +1,23 @@
+# make climb SEEDS=8 (search_health --climb 8) on 9c81dca, 2026-10-09
+== 1. pool true utility per refinement generation ==
+(pool 48, 60 duels, 6 generations, 8 seeds)
+gen        mean u      max u     Δ mean
+0          -0.000      5.812          —
+1           0.812      6.248     +0.812
+2           1.527      7.399     +0.715
+3           1.896      7.501     +0.369
+4           2.161      7.973     +0.265
+5           2.256      7.797     +0.094
+6           2.218      7.759     -0.038
+  mean gain: +2.218 ± 0.416 (se)   climbed on 8/8
+  median gain: +1.927   10% trimmed: +2.232 ± 0.422 (se, n=6)
+seed     final mean  final max       gain
+e05           1.439      6.676     +1.439
+f06           3.545      9.456     +3.545
+1007          2.416      7.858     +2.416
+1108          1.254      6.688     +1.254
+1209          0.707      6.929     +0.707
+130a          1.375      6.945     +1.375
+140b          3.645      9.500     +3.645
+150c          3.362      8.023     +3.362
+

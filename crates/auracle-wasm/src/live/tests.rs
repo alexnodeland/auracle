@@ -3226,3 +3226,184 @@ fn the_open_voice_wakes_as_a_held_key_does() {
     let gate = lead.open.as_ref().expect("the lead").voice.gate.get();
     assert_eq!(gate, 0.0, "the lead's gate is its tracker's");
 }
+
+/// **A voice's quantum in blocks is its quantum frame by frame, bit for
+/// bit** (#397). Each tree (prior draws, some of whose sources draw quiver's
+/// shared random stream, and the first presets) plays one voice twice from
+/// the same seed, once through `tick_voice_blocks` and once through
+/// `tick_voice_frames`: a held note, a steal's one-frame drop of the gate, a
+/// drop that outlasts a quantum, quanta shorter and longer than a block, and
+/// the release tail down to silence. The samples, the silent frames each
+/// quantum ends on and the gate are the same, so a block that ran past a
+/// re-raise, or a quantum cut short, would show here.
+#[test]
+fn a_voice_in_blocks_plays_what_it_plays_frame_by_frame() {
+    let mut rng = StdRng::seed_from_u64(0xB10C);
+    // Draws that listen, or are silence, are left out: nothing is written to
+    // the input here, so they would be silent.
+    let mut trees: Vec<PatchTree> = (0..12)
+        .map(|_| PatchGrammarPrior::default().sample_with_rng(&mut rng))
+        .filter(|t| !t.listens() && !matches!(t.root, AudioNode::Silence { .. }))
+        .collect();
+    trees.extend(
+        auracle_grammar::presets()
+            .into_iter()
+            .take(6)
+            .map(|(_, t)| t),
+    );
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let play = |tree: &PatchTree, blocks: bool| {
+        quiver::rng::seed(3);
+        let mut v = build_voice(tree, 44_100.0, &input, false).expect("builds");
+        v.note = Some(60);
+        v.running = true;
+        v.voice.gate.set(GATE_ON);
+        let mut heard: Vec<u32> = Vec::new();
+        let mut ends: Vec<(u32, u64)> = Vec::new();
+        let mut quantum = |v: &mut Voice, frames: usize| {
+            let mut out = vec![0.0f32; frames * 2];
+            let held = v.note.is_some();
+            let silent = if blocks {
+                tick_voice_blocks(v, frames, &mut out, held)
+            } else {
+                tick_voice_frames(v, frames, &mut out, None, Tracks::None, held)
+            };
+            heard.extend(out.iter().map(|s| s.to_bits()));
+            ends.push((silent, v.voice.gate.get().to_bits()));
+        };
+        for frames in [128, 100, 300, 128] {
+            quantum(&mut v, frames);
+        }
+        for drop in [1, 200] {
+            v.voice.gate.set(0.0);
+            v.regate_in = drop;
+            for frames in [128, 77, 128, 128] {
+                quantum(&mut v, frames);
+            }
+        }
+        v.note = None;
+        v.voice.gate.set(0.0);
+        for _ in 0..400 {
+            quantum(&mut v, 128);
+        }
+        (heard, ends)
+    };
+    for (i, tree) in trees.iter().enumerate() {
+        let (blocks, frames) = (play(tree, true), play(tree, false));
+        assert!(blocks.0 == frames.0, "tree {i}: other samples");
+        assert_eq!(blocks.1, frames.1, "tree {i}: other ends");
+        assert!(
+            blocks.0.iter().any(|b| f32::from_bits(*b) != 0.0),
+            "tree {i}: silent, so the comparison proves nothing"
+        );
+    }
+}
+
+/// **A released voice parks once [`PARK_AFTER`] silent frames have run in a
+/// row, and not a quantum sooner.** A voice let go of and fallen silent keeps
+/// running while its silent frames add up across quanta, so a tail that dips
+/// under the threshold for a moment is not cut; on the quantum that takes the
+/// run to `PARK_AFTER` it stops, and costs nothing after.
+#[test]
+fn a_released_voice_parks_after_its_silent_run() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let mut v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    // Never pressed, so silent from its first frame; let go of, so running
+    // only until its silent run parks it.
+    v.running = true;
+    let quantum = 128;
+    let quanta = (PARK_AFTER as usize).div_ceil(quantum);
+    let mut out = vec![0.0f32; quantum * 2];
+    for q in 1..quanta {
+        tick_voice(&mut v, quantum, &mut out, None, Tracks::None);
+        assert!(v.running, "parked after {q} silent quanta of {quanta}");
+    }
+    tick_voice(&mut v, quantum, &mut out, None, Tracks::None);
+    assert!(!v.running, "still running after {PARK_AFTER} silent frames");
+    assert!(
+        out.iter().all(|s| *s == 0.0),
+        "a voice never pressed sounded"
+    );
+}
+
+/// **A voice at full velocity, panned to the centre, plays its patch's ±5 V
+/// as ±1 full scale on each side**: velocity's gain, the equal-power pan
+/// (√½ a side at the centre, which the √2 makes up) and the volt scale
+/// together. Each frame of the voice's quantum is its patch's output, ticked
+/// alone on a twin voice, over 5.
+#[test]
+fn a_centred_voice_at_full_velocity_plays_its_volts_at_full_scale() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let mut v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    let mut twin = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    for voice in [&mut v, &mut twin] {
+        voice.note = Some(60);
+        voice.running = true;
+        voice.voice.gate.set(GATE_ON);
+    }
+    let frames = 512;
+    let mut out = vec![0.0f32; frames * 2];
+    tick_voice(&mut v, frames, &mut out, None, Tracks::None);
+    let mut loudest = 0.0f64;
+    for f in 0..frames {
+        let (l, r) = twin.voice.patch.tick();
+        loudest = loudest.max(l.abs());
+        for (got, volts) in [(out[f * 2], l), (out[f * 2 + 1], r)] {
+            let want = volts / 5.0;
+            assert!(
+                (got as f64 - want).abs() <= 1e-6 * want.abs().max(1e-3),
+                "frame {f}: {got} for {volts} V"
+            );
+        }
+    }
+    assert!(loudest > 0.5, "too quiet to show a gain ({loudest} V)");
+}
+
+/// **A frame is silent when |L|+|R| is below [`SILENCE_EPS`], and only a
+/// released voice counts it**: under it a frame adds one to the silent run it
+/// ends; at it (each side half of it, which sums to it exactly, or all of it
+/// on one side) or over it, the run starts again; and a held voice counts
+/// none, however quiet (a slow attack).
+#[test]
+fn a_frame_is_silent_below_the_threshold_on_both_sides_together() {
+    let tree: PatchTree = serde_json::from_str(&plucked_json()).expect("a tree");
+    let input = Arc::new(AudioInputStream::new(
+        LIVE_INPUT_CHANNELS,
+        LIVE_INPUT_FRAMES,
+    ));
+    let v = build_voice(&tree, 44_100.0, &input, false).expect("builds");
+    let mut out = [0.0f32; 2];
+    let mut frame = |l: f64, r: f64, held: bool| mix_frame(&v, &mut out, l, r, held, 5);
+    let half = SILENCE_EPS / 2.0;
+    assert_eq!(half + half, SILENCE_EPS, "the halves sum to the threshold");
+    assert_eq!(
+        frame(half / 2.0, half / 2.0, false),
+        6,
+        "quiet: the run goes on"
+    );
+    assert_eq!(
+        frame(-half / 2.0, half / 2.0, false),
+        6,
+        "quiet, either sign"
+    );
+    assert_eq!(frame(half, half, false), 0, "at the threshold together");
+    assert_eq!(
+        frame(half, -half, false),
+        0,
+        "at it together, opposite signs"
+    );
+    assert_eq!(frame(SILENCE_EPS, 0.0, false), 0, "at it on one side");
+    assert_eq!(frame(0.0, 0.5, false), 0, "loud on one side");
+    assert_eq!(frame(0.0, 0.0, true), 0, "held: never silent");
+}

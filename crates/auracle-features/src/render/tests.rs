@@ -616,3 +616,203 @@ fn a_folded_render_is_the_live_render() {
         );
     }
 }
+
+/// An observer that reads nothing but counts the frames it is shown: a
+/// render it watches walks a tick per frame (`VoiceObserver::BLIND` is
+/// false), so beside [`render_phrase`] it is the frame walk the block walk
+/// must equal.
+struct Frames(usize);
+
+impl VoiceObserver for Frames {
+    fn start(&mut self, _: &CompiledVoice) {}
+    fn tick(&mut self, _: &CompiledVoice) {
+        self.0 += 1;
+    }
+}
+
+/// The trees beside the presets that a block walk must get right: chord
+/// voices that draw quiver's thread-wide stream (noise, a plucked string, a
+/// random modulation), a TRACK whose dyad is a follower led frame by frame
+/// (on an internal source, so the render is not one that listens), a grain
+/// cloud over a saw (its own seeded stream), and a long release whose dyad voice parks
+/// inside a block.
+fn walk_trees() -> Vec<(&'static str, PatchTree)> {
+    use auracle_grammar::term::{NoiseColor, PitchBand};
+    use auracle_grammar::TRACK_SENSITIVITY_DEFAULT;
+    let around = |root: AudioNode| PatchTree {
+        amp: crate::tests::amp(),
+        root,
+    };
+    let saw = || vco(Waveform::Saw).root;
+    let noise = || AudioNode::Noise {
+        color: NoiseColor::Pink,
+        uid: Uid::NEW,
+    };
+    let rand = || ModNode::Rand {
+        rate: 0.7,
+        glide: 0.2,
+        uid: Uid::NEW,
+    };
+    vec![
+        ("noise", around(noise())),
+        (
+            "a string",
+            around(AudioNode::Pluck {
+                uid: Uid::NEW,
+                octave: 0,
+                damping: 0.4,
+                brightness: 0.6,
+                mod_depth: 0.5,
+                modulation: rand(),
+            }),
+        ),
+        (
+            "a random wobble",
+            around(AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Square,
+                octave: 0,
+                detune: 0.5,
+                mod_depth: 0.6,
+                modulation: rand(),
+            }),
+        ),
+        (
+            "TRACK",
+            around(AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.5,
+                input: Box::new(saw()),
+                listen: Box::new(vco(Waveform::Sine).root),
+            }),
+        ),
+        (
+            "grains",
+            around(AudioNode::Granular {
+                position: 0.3,
+                size: 0.4,
+                density: 0.6,
+                mod_depth: 0.2,
+                input: Box::new(saw()),
+                modulation: ModNode::None,
+                uid: Uid::NEW,
+            }),
+        ),
+        (
+            "a long release",
+            PatchTree {
+                amp: AmpEnv {
+                    release: 0.6,
+                    ..crate::tests::amp()
+                },
+                root: saw(),
+            },
+        ),
+    ]
+}
+
+/// **A render in blocks is the render a tick per frame gives, bit for bit**
+/// (#397). Every preset and each of [`walk_trees`] is rendered on the
+/// standard phrase, whose dyad compiles a chord voice mid-render that parks
+/// in the low note's release, once as [`render_phrase`] renders it (in
+/// blocks, or in blocks while no coupled chord voice rings) and once watched
+/// (a tick per frame, every frame shown to the observer): the samples, the
+/// onsets and the spans are the same. This fails if a chord voice that draws
+/// the shared random stream, or follows a TRACK, ran in blocks beside the
+/// main voice, if a parked voice's tail past its park point were summed, or
+/// if a watched render skipped a frame.
+#[test]
+fn a_block_walk_is_the_frame_walk() {
+    let spec = PhraseSpec::default();
+    let mut trees: Vec<(String, PatchTree)> = auracle_grammar::presets()
+        .into_iter()
+        .map(|(name, t)| (name.to_string(), t))
+        .collect();
+    trees.extend(walk_trees().into_iter().map(|(n, t)| (n.to_string(), t)));
+    let bits = |r: &RenderedPhrase| r.samples.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    // A thread per worker, the trees dealt round: quiver's stream is a
+    // thread's, and a render seeds it before it compiles.
+    let workers = 4;
+    std::thread::scope(|s| {
+        for w in 0..workers {
+            let (trees, spec) = (&trees, &spec);
+            s.spawn(move || {
+                for (name, tree) in trees.iter().skip(w).step_by(workers) {
+                    let blocks = render_phrase(tree, spec).expect("renders");
+                    let mut frames = Frames(0);
+                    let walked = render_phrase_observed(tree, spec, &mut frames).expect("renders");
+                    assert!(bits(&blocks) == bits(&walked), "{name}: other samples");
+                    assert_eq!(blocks.note_onsets, walked.note_onsets, "{name}");
+                    assert_eq!(frames.0, walked.samples.len(), "{name}: a frame unseen");
+                    assert!(
+                        blocks.samples.iter().any(|x| x.abs() > 1e-3),
+                        "{name}: silent, so the comparison proves nothing"
+                    );
+                }
+            });
+        }
+    });
+}
+
+/// **A render walks frames only where a voice reads what another changes**:
+/// a render that may not walk blocks (watched, or listening) walks frames;
+/// one whose chord voices would draw the shared random stream or follow a
+/// TRACK walks blocks only while they are parked; any other walks blocks.
+/// The grains seed their own stream, so they draw nothing another voice
+/// reads.
+#[test]
+fn the_walk_couples_only_voices_that_share_state() {
+    let walk_of = |tree: &PatchTree, blocks: bool| {
+        let voice = Build::Folded
+            .voice(tree, 44_100.0, None, false)
+            .expect("compiles");
+        Walk::of(&voice, blocks)
+    };
+    for (name, tree) in walk_trees() {
+        let alone = matches!(name, "noise" | "a string" | "a random wobble" | "TRACK");
+        let want = if alone {
+            Walk::BlocksAlone
+        } else {
+            Walk::Blocks
+        };
+        assert_eq!(walk_of(&tree, true), want, "{name}");
+        assert_eq!(walk_of(&tree, false), Walk::Frames, "{name}");
+    }
+}
+
+/// **A released chord voice parks after [`PARK_RUN`] quiet samples in a
+/// row**, not one sooner; a sample at or over [`PARK_ABS`] starts the count
+/// again, and a held voice never parks, however quiet (a slow attack).
+#[test]
+fn a_released_voice_parks_after_a_quiet_run() {
+    let tree = vco(Waveform::Saw);
+    let voice = Build::Folded
+        .voice(&tree, 44_100.0, None, false)
+        .expect("compiles");
+    let mut cv = ChordVoice {
+        voice,
+        quiet_run: 0,
+        parked: false,
+        gated: true,
+    };
+    for _ in 0..2 * PARK_RUN {
+        assert!(!cv.heard(0.0), "a held voice parked");
+    }
+    assert_eq!(cv.quiet_run, 0);
+    cv.gated = false;
+    for _ in 0..PARK_RUN - 1 {
+        assert!(!cv.heard(PARK_ABS / 2.0));
+    }
+    assert!(
+        !cv.heard(PARK_ABS),
+        "a sample at the threshold is not quiet"
+    );
+    assert_eq!(cv.quiet_run, 0);
+    for _ in 0..PARK_RUN - 1 {
+        assert!(!cv.heard(-PARK_ABS / 2.0));
+    }
+    assert!(cv.heard(0.0), "the run's last quiet sample parks it");
+    assert!(cv.parked);
+}
