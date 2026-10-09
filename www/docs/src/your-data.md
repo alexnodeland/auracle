@@ -44,9 +44,11 @@ Monitoring is never kept: it starts off every time.
 A session comes back one sound at a time, with the bar counting them. A sound
 the render workers measured as the app loaded, or that an earlier return
 measured, is read back rather than rendered again, so a return is usually
-quick. Your taste comes back as it was, so nothing is fitted while it loads. A
-session saved by an earlier version is fitted again once, just after it
-loads, while you play. A sound that joined while you played (a generation’s, an edit you
+quick. Your taste comes back as it was, so nothing is fitted while it loads. It is
+fitted again once, just after it loads and while you play, when what it was
+learned from came back changed: a session saved by an earlier version, or one
+whose last visit was too short to stand alone and was merged into the visit
+before it. A sound that joined while you played (a generation’s, an edit you
 kept, a patch file you opened) is rendered again on the next return; see
 [Boot is slow, or stalls](./troubleshooting.md#boot-is-slow-or-stalls).
 

@@ -15,7 +15,9 @@
   model learned is kept with your session now, so it comes back as it was
   and nothing is fitted while it loads: your first ▶ and the first sound you
   open from the bank no longer wait behind a refit. A session saved by an
-  earlier version is fitted once, after it loads, while you play (#300).
+  earlier version, or one whose last visit was too short to stand alone and
+  was merged into the visit before it, is fitted once, after it loads, while
+  you play (#300).
 - **A taste file you open is fitted ahead of background work.** Its fit used
   to queue behind work you hadn't asked for, such as an offer grown ahead;
   until it lands, TASTE shows every sound as a guess (#300).
