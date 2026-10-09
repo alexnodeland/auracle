@@ -119,6 +119,35 @@ performance core's.
   `panic = "abort"` and `wasm-opt -O3`; `simd128` measured 2.2% faster in wasm
   and `wasm-opt -O4` 1.1%, both within the spread here ([build settings](#build-settings)).
 
+## Built
+
+Measured on 2026-10-09 on a 4-core Linux machine (a node v22 process's CPU time,
+the least of three repeats, nothing else running for the wasm A/B), `make wasm`
+build `a75387180e8f160c`.
+
+- **quiver-dsp 0.4.1** carries L0 and L2 (the cheaper module paths and the
+  Padé-clamped `tanh` in the diode ladder) and the shorter graph walk. This
+  workspace takes it as `quiver-dsp = "0.4.1"`.
+- **`norm_sqr().sqrt()`** replaces `hypot` at both spectral sites in
+  `auracle-features/src/audio.rs`.
+- **A wasm render takes 39% less CPU**: the set of 18 trees, 9691 ms before and
+  5870 ms after, in one process with both packages run alternately
+  (every tree between 0.50 and 0.71 of its time).
+- **A native render takes about 32% less**: 6048 ms to 4122 ms over the set.
+  The before run shared the machine with other jobs (load 6 to 20) and the
+  after run did not (load 1), so read this as an upper bound; the wasm figure
+  is the paired one.
+- **A live ladder voice costs about half**: 95.7 ms per voice-second before,
+  49.7 after in wasm; the saw voice alone went from 37.0 to 20.0
+  (`voice_cost.mjs`, the process's CPU time on node 22).
+- **φ moves by at most 1.34e-11 of a spread** (`phi_moves.py` over
+  `bench_render --phi`, 17 of 18 trees moved, `Ceiling` most). `phi-stats` and
+  `norm-peak` print the same tables; `climb` (8 seeds on both sides, the
+  maintainer's call, in place of 16) differs in generations 4 to 6 by at most
+  0.006 and in one seed's final gain by 0.02 (a chaotic divergence from the last
+  digit), and `search-check` was not run. `perform-wirings` re-measured, and
+  `preset-faces` wrote the same faces.
+
 ## The render, by stage
 
 `bench_render --stages`: each stage of the farm's job timed on its own, the
