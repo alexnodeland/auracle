@@ -281,7 +281,7 @@ edited sound again.
 ### Refit
 
 The model fitting again from everything you have taught it: a few seconds of
-work, off the audio thread, every sixth pick. Between refits each answer is
+work at most, off the audio thread, every sixth pick. Between refits each answer is
 folded in at once. The amber lamp after the wordmark lights while a refit runs, and
 EVOLVE’s line says *● learning from your last 6 picks…* until it lands, then
 *● it just learned*.

@@ -1,11 +1,13 @@
 //! Wall-time harness for [`TasteModel::fit`] — the fit stall, isolated.
 //!
-//! The fit is the app's second-largest user-facing wait (every sixth vote),
-//! and its cost is dominated by **model reconstruction**, not by the
-//! likelihood: fugue's single-site MH rebuilds the whole program once per MH
-//! step, so the bill is `steps × sites` with the observation loop as a
-//! rounding error. This harness is the instrument that claim is measured
-//! with — it runs the two operating points the session layer actually visits:
+//! The fit is the app's second-largest user-facing wait (every sixth vote).
+//! Its cost used to be dominated by **model reconstruction**: fugue's
+//! single-site MH driver rebuilt the whole program once per MH step, so the
+//! bill was `steps × sites`. The fit's own kernel moves a value array
+//! instead, and what is left per step is mostly the likelihood, which grows
+//! with K and the observation count. This harness is the instrument both
+//! claims are measured with — it runs the two operating points the session
+//! layer actually visits:
 //!
 //! | point | K | n_obs | sites (`dK + S + (n_stars−1) + KG`) |
 //! |---|---|---|---|
@@ -23,9 +25,10 @@
 //!
 //! Each point prints wall time and a **draw checksum** over every f64 in the
 //! posterior. The checksum is the bit-exactness gate: any change that only
-//! removes work (hoisting address construction, thinning retention) must
-//! leave it identical, because the model's addresses and the RNG consumption
-//! order are unchanged. Only a change to the MCMC *budget* may move it.
+//! removes work (hoisting address construction, thinning retention, the
+//! kernel that replaced fugue's driver) must leave it identical, because the
+//! model's addresses and the RNG consumption order are unchanged. Only a
+//! change to the MCMC *budget* or the model may move it.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -215,8 +218,8 @@ fn main() {
     point("first-fit", 1, 6, 1, samples, warmup);
     point("mature-fit", 5, 100, 1, samples, warmup);
     // Control: the mature site count with the first fit's observation count.
-    // `mature-fit − split-probe` is the likelihood; `split-probe` is (almost
-    // all) reconstruction. This is the reconstruction-vs-likelihood split,
-    // measured rather than modelled.
+    // `mature-fit − split-probe` is the likelihood over the 94 extra rows;
+    // `split-probe` is the rest of a step (the prior over every site, and
+    // six rows). This is the per-step split, measured rather than modelled.
     point("split-probe", 5, 6, 1, samples, warmup);
 }
