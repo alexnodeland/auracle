@@ -94,13 +94,6 @@ exclude_re = [
     # (e^-LN_2 rounds to 0.5, and expm1 to -0.5). The function's other
     # mutants, `==` and `<` in the same place included, are caught.
     'crates/auracle-taste/src/model\.rs:\d+:\d+: replace > with >= in log1mexp$',
-    # The resample between fits, `ess < samples / 2`, as `<=`: a change no
-    # pick can show (#300). It differs only when a reweight leaves the
-    # effective sample size at exactly half the draws, a sum of squared
-    # weights landing on one value of a continuum. The function's other
-    # mutants (`==`, `>`, the `/` and the count) are caught by
-    # `a_pick_between_fits_reweights_and_resamples_only_when_the_weights_collapse`.
-    'crates/auracle-session/src/engine\.rs:\d+:\d+: replace < with <= in Engine::fold_in$',
     # The brightness group's guard, `bright.len() > 1`, as `>=`: a change no
     # build can show (#300). The two differ only when exactly one of its
     # three names is in φ, and φ holds all three

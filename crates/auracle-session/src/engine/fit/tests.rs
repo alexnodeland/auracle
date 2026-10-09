@@ -604,3 +604,32 @@ fn a_job_is_on_the_scale_of_the_pool_and_every_sound_judged() {
     assert_eq!(job.standardizer, Standardizer::fit(&rows));
     assert_ne!(Some(&job.standardizer), engine.standardizer.as_deref());
 }
+
+/// Weights at exactly half the draws' worth are kept, not resampled: four
+/// equal draws, half the weight on each of two, and a pick every draw reads
+/// alike leaves the effective sample size at exactly two of four.
+#[test]
+fn weights_at_exactly_half_the_draws_are_kept() {
+    let d = phi_names().len();
+    let mut engine = Engine::new(PatchGrammarPrior::default(), small());
+    let same = auracle_taste::TasteSample {
+        theta: vec![vec![0.0; d]],
+        tau: vec![0.0],
+        cuts: vec![-1.0, 0.0, 1.0, 2.0],
+    };
+    engine.posterior = Some(Arc::new(TastePosterior {
+        cfg: TasteConfig::mixture(d, 1),
+        samples: vec![same; 4],
+        weights: vec![0.5, 0.5, 0.0, 0.0],
+    }));
+    let pick = Feedback::Duel {
+        a: vec![1.0; d],
+        b: vec![-1.0; d],
+        chose_a: true,
+    };
+    engine.fold_in(&pick, 0);
+    let p = engine.posterior.as_deref().unwrap();
+    assert_eq!(p.ess(), 2.0);
+    assert_eq!(engine.resamples_since_fit, 0, "resampled at exactly half");
+    assert_eq!(p.weights, vec![0.5, 0.5, 0.0, 0.0]);
+}
