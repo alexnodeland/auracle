@@ -1,0 +1,72 @@
+# live_cost.mjs --sweep-only --list --sweep-reps=2, before (9c81dca), run 1 of 2 alternated, 2026-10-09
+live_cost.mjs  48000 Hz, quantum 128 frames = 2.667 ms budget, node v22.22.0, Intel(R) Xeon(R) Processor @ 2.10GHz
+text codecs: the worklet's polyfill (live-audio.js)   load average at start 15
+
+SWEEP  62 presets, 4 voices held, cpu ms/quantum (least of 2)   load 15
+  cheapest Gut String 0.140   median Bell Jar 0.366   p90 Coin Toss 0.483   heaviest Loom 0.744
+  top five: Loom 0.744, Tidal 0.522, Loudhailer 0.521, Fifth Wheel 0.503, Ember 0.490
+  over 25% of the budget: 1, over 50%: 0, over 100%: 0 (of 62)
+  on a CPU 4.5x slower (4 voices | 8 with a B slot rendered): over the whole quantum 1 | 40, over 50% 40 | 61, over 25% 61 | 62 of 62
+  voices that fit in 50% of a quantum there: 0: 0 presets, 1: 1 presets, 2: 22 presets, 3: 17 presets, 4+: 22 presets
+    Gut String             plk            0.140 ms = 5% here, 24% on the slower CPU
+    Folded Lead            saw·fold       0.174 ms = 7% here, 29% on the slower CPU
+    Dub Echo               sqr·lp·dly     0.204 ms = 8% here, 34% on the slower CPU
+    Falling Sign           sqr·lp         0.204 ms = 8% here, 34% on the slower CPU
+    Pluck                  tri·bp         0.214 ms = 8% here, 36% on the slower CPU
+    Sub & Sparkle          sin·mix        0.233 ms = 9% here, 39% on the slower CPU
+    Woodblock              plk·bp         0.238 ms = 9% here, 40% on the slower CPU
+    Sweep Machine          ssaw·phsr      0.240 ms = 9% here, 41% on the slower CPU
+    Telegraph              tri·lp·dly     0.248 ms = 9% here, 42% on the slower CPU
+    Flint                  noiz·hp        0.252 ms = 9% here, 42% on the slower CPU
+    Held Under             saw·lp·comp    0.258 ms = 10% here, 43% on the slower CPU
+    Gated Snare            noiz·hp·gate   0.258 ms = 10% here, 44% on the slower CPU
+    Handheld               sqr·crsh       0.259 ms = 10% here, 44% on the slower CPU
+    Wrong Number           tri·bp         0.264 ms = 10% here, 45% on the slower CPU
+    Sea Change             ssaw·vib       0.271 ms = 10% here, 46% on the slower CPU
+    Detune Dream           ssaw·cho·dly   0.272 ms = 10% here, 46% on the slower CPU
+    Heartbeat              sqr·lp·trem    0.272 ms = 10% here, 46% on the slower CPU
+    Hornet                 sqr·bp         0.279 ms = 10% here, 47% on the slower CPU
+    Morse                  ssaw·bp·gate   0.279 ms = 10% here, 47% on the slower CPU
+    Sour Mash              saw·mix·fold   0.284 ms = 11% here, 48% on the slower CPU
+    Ticker                 noiz·bp        0.288 ms = 11% here, 49% on the slower CPU
+    Jet Wash               noiz·flng      0.288 ms = 11% here, 49% on the slower CPU
+    Noise Wash             noiz·lp        0.303 ms = 11% here, 51% on the slower CPU
+    Ricochet               sqr·bp·dly     0.303 ms = 11% here, 51% on the slower CPU
+    Tine                   sin·mix·cho    0.308 ms = 12% here, 52% on the slower CPU
+    Morph Pad              wsaw·lp·rvb    0.311 ms = 12% here, 53% on the slower CPU
+    One Way                tri·fold·rvb   0.316 ms = 12% here, 53% on the slower CPU
+    Glass Rain             tri·gran       0.340 ms = 13% here, 57% on the slower CPU
+    Twelve String          plk·shft·rvb   0.348 ms = 13% here, 59% on the slower CPU
+    Reese                  saw·mix·lp     0.363 ms = 14% here, 61% on the slower CPU
+    Two Minds              ssaw·lp        0.365 ms = 14% here, 62% on the slower CPU
+    Bell Jar               sin·fold·rvb   0.366 ms = 14% here, 62% on the slower CPU
+    Rotor                  sqr·lp·cho     0.371 ms = 14% here, 63% on the slower CPU
+    Ghost Bell             sin·ring·rvb   0.373 ms = 14% here, 63% on the slower CPU
+    Undertow               ssaw·lp·rvb    0.383 ms = 14% here, 65% on the slower CPU
+    Pump Room              ssaw·lp·cho·duck 0.385 ms = 14% here, 65% on the slower CPU
+    Cathedral              tri·lp·rvb     0.387 ms = 15% here, 65% on the slower CPU
+    Vox Machina            ssaw·voc       0.390 ms = 15% here, 66% on the slower CPU
+    Cloud Chamber          tri·gran·rvb   0.391 ms = 15% here, 66% on the slower CPU
+    Wobble Board           saw·ladr       0.395 ms = 15% here, 67% on the slower CPU
+    Ask The Dice           saw·lp         0.399 ms = 15% here, 67% on the slower CPU
+    Static Ocean           noiz·bp·rvb    0.407 ms = 15% here, 69% on the slower CPU
+    Long Way Down          ssaw·mix·bp    0.408 ms = 15% here, 69% on the slower CPU
+    First Bass             saw·ladr       0.411 ms = 15% here, 69% on the slower CPU
+    Acid Line              saw·ladr       0.414 ms = 16% here, 70% on the slower CPU
+    Choirboy               vox·rvb        0.414 ms = 16% here, 70% on the slower CPU
+    Iron Bass              saw·tube·ladr  0.419 ms = 16% here, 71% on the slower CPU
+    Anvil                  sqr·fold·ladr  0.420 ms = 16% here, 71% on the slower CPU
+    Slow Weather           ssaw·bp·rvb    0.421 ms = 16% here, 71% on the slower CPU
+    Solo Flight            ssaw·lp·cho    0.421 ms = 16% here, 71% on the slower CPU
+    Glass Pad              ssaw·lp·cho    0.428 ms = 16% here, 72% on the slower CPU
+    Long Room              sin·lp·dly·rvb 0.433 ms = 16% here, 73% on the slower CPU
+    Inside Out             saw·mix·hp·cho 0.435 ms = 16% here, 73% on the slower CPU
+    Deadfall               sin·ladr       0.471 ms = 18% here, 79% on the slower CPU
+    Nine Against Four      ssaw·lp·rvb    0.482 ms = 18% here, 81% on the slower CPU
+    Coin Toss              saw·ladr       0.483 ms = 18% here, 82% on the slower CPU
+    Ceiling                saw·ladr       0.486 ms = 18% here, 82% on the slower CPU
+    Ember                  sin·mix·lp·rvb 0.490 ms = 18% here, 83% on the slower CPU
+    Fifth Wheel            saw·ladr·shft  0.503 ms = 19% here, 85% on the slower CPU
+    Loudhailer             saw·ladr·eq    0.521 ms = 20% here, 88% on the slower CPU
+    Tidal                  ssaw·lp·cho    0.522 ms = 20% here, 88% on the slower CPU
+    Loom                   saw·mix·ladr·rvb 0.744 ms = 28% here, 126% on the slower CPU

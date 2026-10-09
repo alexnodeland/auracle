@@ -1,0 +1,29 @@
+# ab_native.py BEFORE AFTER 3 3: 9c81dca (quiver-dsp 0.4.1) against 31d7783 (0.5.0, renders in blocks), 2026-10-09, a 4-core Xeon VM shared with another agent's jobs
+round 1 before:     2365 ms for the set, load 19
+round 1 after :     1574 ms for the set, load 19
+round 2 before:     2808 ms for the set, load 19
+round 2 after :     1563 ms for the set, load 18
+round 3 before:     2442 ms for the set, load 18
+round 3 after :     1497 ms for the set, load 18
+
+tree                    before     after  after/before
+First Bass               179.6     111.7         0.622
+Ceiling                  159.1     118.9         0.747
+Detune Dream              82.2      44.9         0.546
+Long Way Down            142.9     128.1         0.896
+Glass Pad                133.7      72.9         0.545
+Choirboy                 109.6      64.6         0.589
+draw 1                    48.7      20.4         0.419
+draw 2                    73.9      45.0         0.609
+draw 3                    41.8      19.5         0.467
+draw 4                    68.2      33.1         0.485
+draw 5                   111.1      50.9         0.458
+draw 6                    80.3      32.4         0.403
+draw 7                    68.5      41.3         0.603
+draw 8                   116.0      71.3         0.615
+draw 9                   229.9     124.7         0.542
+draw 10                  131.2      96.4         0.735
+draw 11                  289.0     209.8         0.726
+draw 12                  178.4     124.6         0.698
+set                     2244.1    1410.5         0.629
+load average 17, after
