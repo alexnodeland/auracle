@@ -532,6 +532,12 @@ posterior it has: a pick is folded into it, a deal is dealt under it.
 So in a seeded session a deal asked for while a fit is out is dealt under
 the posterior before it, where on one thread it waited for the fit.
 
+When it lands, main says *● it just learned* at once, and what it
+re-settles (the bank's order and numbers, the map, LEARNING's bars) waits
+while the pointer is over one of them: it applies when the pointer leaves, or
+after `HAND_REST_MS` (1 s) of rest over it (`hand.js`, ADR-025's rule for a
+region; a views post that comes first is newer, and the refit's is dropped).
+
 One fit is out at a time (`blocked`): a fit asked for meanwhile (the next
 sixth pick, a taste file) is for a longer log, and goes when this one lands;
 main sends none while one runs (`fitting`). A generation and ⚡ wait for a

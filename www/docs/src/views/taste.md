@@ -139,7 +139,9 @@ brightness rather than easing there.
 Every sixth pick the model fits your taste again from everything it has
 learned. Then the map is drawn again, and every glow and every place settles
 to the new one together. The map turns rather than flips: a place you
-recognize stays near where you left it.
+recognize stays near where you left it. If your pointer is on the map when
+the refit lands, it waits until you move off it, or rest a second, so
+nothing moves under your hand.
 
 ```admonish info collapsible=true title="How it works: the map"
 Each sound’s place starts from the two directions in which your sounds differ

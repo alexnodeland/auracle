@@ -223,6 +223,19 @@ const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
 // What pointing at EVOLVE POOL marks in the bank: the seeds, and what may or
 // will be replaced (marks.js, tests/marks.test.mjs).
 const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./marks.js?v=${BUILD}`);
+// A background result waits while the pointer is over what it would move
+// (hand.js, tests/hand.test.mjs): a refit's views land through it (#300).
+const { createHand } = await import(`./hand.js?v=${BUILD}`);
+const hand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
+// The regions a refit re-settles: the bank's rows, TASTE's map and EVOLVE's
+// small one, LEARNING's bars.
+for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
+  const el = $(id);
+  if (!el) continue;
+  el.addEventListener("pointerenter", () => hand.enter());
+  el.addEventListener("pointermove", () => hand.move());
+  el.addEventListener("pointerleave", () => hand.leave());
+}
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -2934,17 +2947,24 @@ worker.onmessage = (e) => {
         learnedShown = true;
         mark("fitted");
       }
-      applyViews(m.views);
       applyStatus(m.status);
-      // The bench's guess under the model just fitted ("was" is the old one).
-      if (m.bench && wb.subjectId != null) applyBelief(m.bench);
-      patchView.refit(); // and the next module's, ranked again under it
-      // Under the model view: the tag's count, and EVOLVE's guess for the
-      // pair on the table asked again under the model just fitted.
-      shell.modelTagChanged();
-      askPairGuess();
-      if (perform) perform.posteriorChanged();
-      refreshInstruments();
+      // The fit ran on the farm while the player went on (#300), so what it
+      // re-settles (the bank's order, the map, LEARNING's bars) waits while
+      // the pointer is over one of them, and lands when it leaves or rests
+      // (ADR-025: never under the hand). A views post that comes first is
+      // newer, and this one is dropped (`applyViews`).
+      hand.after("views", () => {
+        applyViews(m.views);
+        // The bench's guess under the model just fitted ("was" is the old one).
+        if (m.bench && wb.subjectId != null) applyBelief(m.bench);
+        patchView.refit(); // and the next module's, ranked again under it
+        // Under the model view: the tag's count, and EVOLVE's guess for the
+        // pair on the table asked again under the model just fitted.
+        shell.modelTagChanged();
+        askPairGuess();
+        if (perform) perform.posteriorChanged();
+        refreshInstruments();
+      });
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
       // it goes out now rather than waiting for a seventh. Mid-deal, the
@@ -4796,6 +4816,8 @@ function esc(s) {
 // Returns the ids that vanished, so a caller can fold the count into whatever
 // it was going to say anyway rather than firing a second toast.
 function applyViews(next) {
+  // Newer than a refit's views still waiting for the hand (`fitted`).
+  hand.drop("views");
   const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const prevNames = new Map(((views && views.ranked) || []).map((r) => [r.id, r.name]));
   // Every name a row has had, last one wins: what was replaced is named by the

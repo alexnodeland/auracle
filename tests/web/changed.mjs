@@ -73,6 +73,8 @@ export const MODULES = {
   "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
   // The toast lane's queue: main.js's `note` hands it every toast.
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
+  // What waits for the hand: a refit's views over the bank and the maps.
+  "apps/web/hand.js": ["evolve_refit", "taste_marks", "bank_row"],
 };
 export const EVERYWHERE = /^(apps\/web\/(main\.js|worker\.js|index\.html|style\.css)|crates\/|Cargo\.(toml|lock)$)/;
 

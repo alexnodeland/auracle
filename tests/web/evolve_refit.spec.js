@@ -16,7 +16,7 @@
 // next pair up and its ▶ sounding, with no request the player made held
 // behind a fit. The order is asserted; the times are budgets (ADR-022),
 // taken on the page's clock in the gesture's own task.
-const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { test, expect, goLevel, bankTab, modelView } = require("./fixtures");
 
 /** A mature session: the picks a player has made by then. */
 const MATURE = 60;
@@ -226,4 +226,32 @@ test("on the reference profile a mature session's picks put the next pair up and
   // A save carries the fitted draws now: from the request to the session's
   // text back, on the reference profile.
   console.log(`saves (ms): ${saveTimes(await app.log({ after: t0 })).map((x) => x.toFixed(0)).join(", ")}`);
+});
+
+test("a refit that lands while the pointer is over the bank waits for it to leave", async ({ page, app }) => {
+  await app.boot();
+  await app.filled();
+  await app.teach(6);
+  await goLevel(page, "evolve");
+  await bankTab(page, "pool");
+  await modelView(page, true);
+  const order = () => page.locator("#bank-list .bank-item[data-id]").evaluateAll((rows) => rows.map((r) => r.dataset.id).join());
+  const before = await order();
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
+  const f = await app.last("fitted");
+  const reversed = { ...f.views, ranked: [...f.views.ranked].reverse() };
+  // The pointer over the bank, moving: the refit's views wait.
+  const box = await page.locator("#bank-list").boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + 40);
+  await app.inject({ type: "fitted", views: reversed, status: f.status });
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.move(box.x + box.width / 2, box.y + 40 + (i % 2) * 20);
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- the pointer moving over the bank
+    await page.waitForTimeout(250);
+  }
+  expect(await order(), "the bank re-sorted under the pointer").toBe(before);
+  // It leaves: the views land.
+  await page.mouse.move(box.x - 200, box.y + 40);
+  await expect.poll(order).not.toBe(before);
+  await modelView(page, false);
 });
