@@ -24,15 +24,22 @@ async function openPreset(app, name) {
   await page.locator(".bank-item", { hasText: name }).first().click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 60_000 });
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
-  await rackAtRest(page);
+  // At rest once the open's arrival (its plates and cables coming in, the
+  // camera's fit) has played out, read a frame at a time. Here it rests about
+  // a second after the open, at four times slower too, but on a machine
+  // loaded far past its cores the frames slowed it past expect's own 10 s
+  // (#350): it is bounded as an engine wait, whose time a slow runner's test
+  // is given.
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
 }
 
 /** The rack at rest: whatever an open or an edit set moving has stopped.
  *  The camera's fit and the plates' moves are tweens drawn a frame at a time,
  *  so the view box and every plate are where they were three frames ago; a
  *  departing patch's plates and cables (`.rack-exit`) are gone; and no
- *  animation that ends (an arrival's fade) is still running. */
-async function rackAtRest(page) {
+ *  animation that ends (an arrival's fade) is still running. Within
+ *  `timeout` (expect's own by default). */
+async function rackAtRest(page, { timeout } = {}) {
   await expect.poll(() => page.evaluate(() => new Promise((done) => {
     const svg = document.getElementById("rack-svg");
     const look = () => `${svg.getAttribute("viewBox")}|${[...svg.querySelectorAll(".rack-plates g[data-key]")].map((g) => `${g.getAttribute("transform")};${g.style.transform}`).join(",")}`;
@@ -41,7 +48,7 @@ async function rackAtRest(page) {
       const ending = svg.getAnimations({ subtree: true }).filter((x) => x.playState === "running" && x.effect && x.effect.getComputedTiming().endTime !== Infinity);
       done(a === look() && !svg.querySelector(".rack-exit") && ending.length === 0);
     })));
-  })), { message: "the rack came to rest" }).toBe(true);
+  })), { timeout, message: "the rack came to rest" }).toBe(true);
 }
 
 /** The tree on the bench, as the engine last described it (its `bench`). */

@@ -23,6 +23,24 @@ const railNameX = (page) =>
 /** Click the drawn guess's body (its × is at the top right). */
 const takeDrawn = (page) => page.locator("#rack-svg .guess-plate .gp-body").click({ position: { x: 18, y: 60 } });
 
+/** NEW PATCH, and the ranking PATCH draws for the patch from nothing: the
+ *  first guess the page asked for once the new patch's bench had landed. A
+ *  ranking asked before it, for the sound the patch was started from, can be
+ *  served on the new tree, and the page drops it (patch.js `onGuess`: asked
+ *  on an older structure) and asks again; on a slow runner that second
+ *  ranking outlasted the wait for its plate, and the plate the spec looked
+ *  for was the one dropped (#350). An engine wait. */
+async function newPatchGuess(app) {
+  const { page } = app;
+  const t0 = await app.now();
+  await page.locator("#patch-new-btn").click();
+  let rewrite = null;
+  await app.engine((timeout) => expect.poll(async () => (rewrite = (await app.sent({ type: "edit_set_tree" }, { after: t0 }))[0] || null) != null, { timeout }).toBe(true), { ms: 30_000 });
+  const fresh = await app.replyTo(rewrite, { timeout: 30_000 });
+  await expect(page.locator("#rack-subject")).toHaveText("New patch");
+  return guessAfter(app, fresh._at);
+}
+
 test("the model's guess is drawn at its socket with its reason and forecast, and is added, skipped, and skipped by an undo", { tag: "@slow" }, async ({ page, app }) => {
   await app.boot({ warmed: false });
   await app.warmStart();
@@ -116,10 +134,7 @@ test("beside the guess, the patch's face and its face with the guess, each as re
   await expect(plates).toHaveCount(1);
 
   // A patch from nothing has no sound, so no face as it is: only the guess's.
-  const t0 = await app.now();
-  await page.locator("#patch-new-btn").click();
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout }), { ms: 30_000 });
-  const empty = (await rankedGuess(app, { after: t0 })).data.guesses[0];
+  const empty = (await newPatchGuess(app)).data.guesses[0];
   await app.engine((timeout) => expect(faces).toHaveCount(1, { timeout }), { ms: 60_000 });
   await expect(page.locator("#rack-svg .rack-guess .gp-face-word")).toHaveText(["with it"]);
   expect(await faces.first().getAttribute("data-face")).toBe(`g${empty.key}`);
@@ -285,10 +300,7 @@ test("a guess added after its socket was filled is refused, and the refusal says
   await openPreset(app, "Reese");
   // A patch from nothing: its one socket is empty, and the guess is a source
   // for it.
-  const t0 = await app.now();
-  await page.locator("#patch-new-btn").click();
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout }), { ms: 30_000 });
-  const g = await rankedGuess(app, { after: t0 });
+  const g = await newPatchGuess(app);
   // An empty patch's candidates are the sources for its one socket.
   expect(g.data.guesses[0].op.op).toBe("replace");
   await app.engine((timeout) => expect(page.locator("#rack-svg .guess-plate")).toHaveAttribute("data-socket", g.data.guesses[0].socket, { timeout }), { ms: 15_000 });
