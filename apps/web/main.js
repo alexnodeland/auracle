@@ -223,6 +223,21 @@ const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
 // What pointing at EVOLVE POOL marks in the bank: the seeds, and what may or
 // will be replaced (marks.js, tests/marks.test.mjs).
 const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./marks.js?v=${BUILD}`);
+// A background result waits while the pointer is over what it would move
+// (hand.js, tests/hand.test.mjs): a refit's views land through it (#300).
+const { createHand } = await import(`./hand.js?v=${BUILD}`);
+// What a refit landing does (refit.js, tests/refit.test.mjs).
+const { landRefit } = await import(`./refit.js?v=${BUILD}`);
+const hand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
+// The regions a refit re-settles: the bank's rows, TASTE's map and EVOLVE's
+// small one, LEARNING's bars.
+for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
+  const el = $(id);
+  if (!el) continue;
+  el.addEventListener("pointerenter", () => hand.enter());
+  el.addEventListener("pointermove", () => hand.move());
+  el.addEventListener("pointerleave", () => hand.leave());
+}
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -2925,26 +2940,41 @@ worker.onmessage = (e) => {
       break;
     }
     case "fitted": {
-      fitting = false;
-      lampOff("fit");
-      // The meter's refit has landed: now, and not when it was sent, it has
-      // learned. Said until the next pick (see `renderTeach`).
-      if (meterFitting) {
-        meterFitting = false;
-        learnedShown = true;
-        mark("fitted");
-      }
-      applyViews(m.views);
-      applyStatus(m.status);
-      // The bench's guess under the model just fitted ("was" is the old one).
-      if (m.bench && wb.subjectId != null) applyBelief(m.bench);
-      patchView.refit(); // and the next module's, ranked again under it
-      // Under the model view: the tag's count, and EVOLVE's guess for the
-      // pair on the table asked again under the model just fitted.
-      shell.modelTagChanged();
-      askPairGuess();
-      if (perform) perform.posteriorChanged();
-      refreshInstruments();
+      // The rule is refit.js's: a refused fit taught nothing, and an
+      // installed one moves everything at once but the views, which wait for
+      // the hand (ADR-025).
+      landRefit(m, {
+        hand,
+        lampOff: () => lampOff("fit"),
+        // The fit a taste file asked for is still out (its lamp is lit).
+        stillFitting: () => { fitting = lampJobs.has("fit"); },
+        learned: () => {
+          fitting = false;
+          // The meter's refit has landed: now, and not when it was sent, it
+          // has learned. Said until the next pick (see `renderTeach`).
+          if (meterFitting) {
+            meterFitting = false;
+            learnedShown = true;
+            mark("fitted");
+          }
+        },
+        status: (st) => applyStatus(st),
+        // The views, and the bank, the maps and LEARNING drawn from them.
+        views: (v) => {
+          applyViews(v);
+          refreshInstruments();
+        },
+        posteriorChanged: (r) => {
+          // The bench's guess under the model just fitted ("was" is the old one).
+          if (r.bench && wb.subjectId != null) applyBelief(r.bench);
+          patchView.refit(); // and the next module's, ranked again under it
+          // Under the model view: the tag's count, and EVOLVE's guess for the
+          // pair on the table asked again under the model just fitted.
+          shell.modelTagChanged();
+          askPairGuess();
+          if (perform) perform.posteriorChanged();
+        },
+      });
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
       // it goes out now rather than waiting for a seventh. Mid-deal, the
@@ -3949,7 +3979,10 @@ worker.onmessage = (e) => {
           duelsSinceFit = 0;
           fitting = true;
           lampOn("fit");
-          send({ type: "fit" });
+          // The player's: they opened the file to see its taste, so it goes
+          // ahead of background work (`soon`), and TASTE draws the file's
+          // sounds as a guess, dashed, until it lands (#300).
+          send({ type: "fit", player: true });
         }
         note(n > 0
           ? `Opened that taste file: ${taughtSentence(taughtKinds())}. Redrawing your taste map…`
@@ -4793,6 +4826,8 @@ function esc(s) {
 // Returns the ids that vanished, so a caller can fold the count into whatever
 // it was going to say anyway rather than firing a second toast.
 function applyViews(next) {
+  // Newer than a refit's views still waiting for the hand (`fitted`).
+  hand.drop("views");
   const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const prevNames = new Map(((views && views.ranked) || []).map((r) => [r.id, r.name]));
   // Every name a row has had, last one wins: what was replaced is named by the
@@ -6868,14 +6903,11 @@ $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
 $("pd-skip").onclick = () => anotherPair();
-// Renders are ~0.6 s of engine work each and the worker is one thread, so a
-// render requested for a pair the user has already voted past sits at the head
-// of the queue and delays the *next* deal behind it. That is what made rapid
-// voting feel lossy: the vote itself is instant, the deal is not.
-//
-// So the artwork is requested only once the pair has survived a moment on
-// screen. Vote faster than that and no render is ever enqueued, which is
-// exactly right — nobody is looking at it.
+// A pair put up by a pick or a deal (`placePair`) asks for its sounds at
+// once, ahead of the refit it may send (#300); the pair after is dealt, and its
+// sounds fetched, ahead (the dealer's `fetch`). The settle delay is left only
+// for a pair put back by a taken-back pick (`retractVote`'s `loadSide`): ⌘Z
+// pressed again at once asks for nothing.
 let renderWanted = null;
 const RENDER_SETTLE_MS = 180;
 
@@ -6883,9 +6915,16 @@ const RENDER_SETTLE_MS = 180;
 // in its `now` lane, a render at a time, so a preset clicked while the
 // table's sounds render is opened next. ▶ on a side still waiting asks again,
 // as the player's own request (`awaitRender`).
+//
+// Asked once per pair put up: `placePair` asks at once, and a refit that
+// follows in the same turn (`settleFit`) finds them asked.
+let pairRendersAsked = null;
 function requestPairRendersNow() {
   clearTimeout(renderWanted);
   if (!currentDuel) return;
+  const key = currentDuel.join();
+  if (pairRendersAsked === key) return;
+  pairRendersAsked = key;
   for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
@@ -7544,12 +7583,15 @@ function placePair(pair, meta) {
     send({ type: "duel_shown", a: currentDuel[0], b: currentDuel[1] });
   }
   renderPlayDuel();
-  // The pair is on the table; a refit armed by the last vote can now be
-  // enqueued *behind* this pair's audio rather than in front of it.
-  settleFit();
+  // The table's sounds are asked for now, with no settle delay: the pair is
+  // up, and a refit armed by the last pick is about to queue (#300).
+  requestPairRendersNow();
   // A pair waiting that is the one just put up is no next pair, and the one
   // after is dealt.
   dealer.placed(currentDuel);
+  // Then the refit armed by the last vote, *behind* this pair's sounds and
+  // the deal of the pair after, never in front of them.
+  settleFit();
 }
 
 // ---------- the next pair, dealt ahead ----------

@@ -413,7 +413,7 @@ test("the requests the tap does not wait on are exactly the ones the worker neve
   const through = {
     faces: ["faces"], face_cancel: ["faceCancel"], refine: ["breedOpen"], refine_from: ["evolveFrom"],
     perform_wire: ["measure"], perform_offer: ["walkRun"], perform_drift: ["walkRun"],
-    guess: ["guessCrewPhase", "guessRun"],
+    guess: ["guessCrewPhase", "guessRun"], fit: ["fitAnswer"],
   };
   const internal = ["face_lookup", "face_render", "breed_step", "warm_card"];
   const answersIt = /\b(answer|performReply)\(m\b|\bpost\(/;

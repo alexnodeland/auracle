@@ -43,8 +43,7 @@ use auracle_grammar::{
     normalize_tree, tree_diff, validate_tree, DiffEntry, PatchGrammarPrior, PatchTree, Take,
 };
 use auracle_taste::{
-    Feedback, FitSet, Observation, ObservationLog, Provenance, Standardizer, TasteConfig,
-    TasteModel, TastePosterior,
+    Feedback, Observation, ObservationLog, Provenance, Standardizer, TastePosterior,
 };
 use fugue::Trace;
 use rand::rngs::StdRng;
@@ -57,7 +56,9 @@ use crate::naming::{claim_name, NameScale, NAME_FLOOR};
 use crate::walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult};
 
 mod deal;
+mod fit;
 pub use deal::DealSchedule;
+pub use fit::{FitJob, FitRefused, FitResult, SavedFit};
 
 /// The φ coordinate names, as owned strings (what the log records).
 pub fn phi_names() -> Vec<String> {
@@ -916,6 +917,18 @@ pub struct SessionState {
     /// saved before it existed, and from any without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub own_sound: Option<crate::own::OwnSound>,
+    /// The fitted posterior's draws and weights, so a restore installs them
+    /// and needs no fit (#300). Absent from sessions saved before it was
+    /// kept, and from any not yet fitted: such a session is fitted again
+    /// after it loads. A saved fit that no longer describes the log or the
+    /// standardizer that came back (a migration or a repair touched them) is
+    /// set aside the same way ([`Engine::import_state_deferred`]).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "fit::tolerant"
+    )]
+    pub fit: Option<SavedFit>,
 }
 
 /// Which clip the patches that listen are measured with, as
@@ -1301,6 +1314,13 @@ pub struct Engine {
     /// resampled since the last full MCMC fit — the staleness signal behind
     /// [`Engine::needs_refit`].
     resamples_since_fit: usize,
+    /// How many observations of the log the posterior was fitted on (0 with
+    /// none): the ones after it are folded in by reweighting.
+    fitted_on: usize,
+    /// Bumped whenever the log is replaced rather than appended to (a
+    /// restore, a taste file), so a fit made off the engine for the log
+    /// before is refused when it comes back ([`Engine::install_fit`]).
+    log_epoch: u64,
     /// The featurization memo every featurize in this engine consults.
     memo: RenderMemo,
     /// Ids whose audition buffer is resident under [`RenderPolicy::Lazy`],
@@ -1391,6 +1411,8 @@ impl Engine {
             dealt_unshown: VecDeque::new(),
             pending_checks: VecDeque::new(),
             resamples_since_fit: 0,
+            fitted_on: 0,
+            log_epoch: 0,
             memo: RenderMemo::default(),
             audio_lru: VecDeque::new(),
             fill_seed: None,
@@ -1937,6 +1959,14 @@ impl Engine {
     /// is free and lossless — it re-expresses the same evidence on a scale
     /// that still matches where the data actually is.
     fn refit_standardizer(&mut self) {
+        if let Some(sz) = self.evidence_standardizer() {
+            self.adopt_standardizer(Arc::new(sz));
+        }
+    }
+
+    /// The standardizer [`Engine::refit_standardizer`] would fit now, without
+    /// adopting it: `None` when there is nothing to fit it on.
+    fn evidence_standardizer(&self) -> Option<Standardizer> {
         let names = phi_names();
         // The reference population is *the patches the user has encountered*,
         // each counted once — the live pool plus anything in the log that has
@@ -1956,10 +1986,11 @@ impl Engine {
                 rows.push(row);
             }
         }
-        if rows.is_empty() {
-            return;
-        }
-        let sz = Arc::new(Standardizer::fit(&rows));
+        (!rows.is_empty()).then(|| Standardizer::fit(&rows))
+    }
+
+    /// Re-express the pool on `sz` and make it the engine's scale.
+    fn adopt_standardizer(&mut self, sz: Arc<Standardizer>) {
         for c in &mut self.pool {
             c.phi_std = sz.transform(&c.features.phi());
         }
@@ -1969,73 +2000,18 @@ impl Engine {
     /// Fit (or re-fit) the taste posterior from the observation log. The
     /// stored posterior is label-aligned (safe for per-style summaries) and
     /// its importance weights are reset to uniform.
+    ///
+    /// The three steps of a fit made elsewhere, run here in one go:
+    /// [`Engine::fit_job`] (what the fit reads), [`FitJob::run`] (the MCMC)
+    /// and [`Engine::install_fit`]. So a fit run on another thread from the
+    /// same job, with the same generator, installs the same posterior.
     pub fn fit_posterior<R: Rng>(&mut self, rng: &mut R) {
-        if self.log.is_empty() {
-            return;
-        }
-        self.refit_standardizer();
-        let Some(sz) = self.standardizer.clone() else {
+        let Some(job) = self.fit_job() else {
             return;
         };
-        let names = phi_names();
-        let d = names.len();
-        // Style capacity grows with evidence: one lens per ~20 observations,
-        // capped by config. Idle lenses collapse to ~0 share on their own,
-        // so K is an upper bound the data may or may not use.
-        let k = (1 + self.log.len() / OBS_PER_STYLE)
-            .min(self.cfg.k_styles)
-            .max(1);
-        let mut taste_cfg = TasteConfig::mixture(d, k);
-        taste_cfg.recency_half_life = self.cfg.recency_half_life;
-        // The brightness cluster shares a latent mean per style. Resolved by
-        // *name* here because this is the layer that knows them; the taste
-        // crate is handed indices and never learns what they mean. A name that
-        // is not in φ simply does not join the group, so a stimulus-tag bump
-        // or a dropped column degrades to the flat prior rather than panicking
-        // or silently fusing the wrong coordinate.
-        let bright: Vec<usize> = ["rolloff_mean", "zcr_mean", "centroid_mean"]
-            .iter()
-            .filter_map(|want| names.iter().position(|n| n.split(':').next() == Some(want)))
-            .collect();
-        if bright.len() > 1 {
-            taste_cfg.fused = vec![bright];
-        }
-        let model = TasteModel::new(taste_cfg);
-        let data = FitSet::build(&self.log, &names, &sz);
-        let posterior = model.fit(rng, &data, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);
-        // Aligned to the **previous** fit's lenses, not merely to itself. MCMC
-        // has no reason to return the lenses in the same order twice — with
-        // probability ≈ 1 − 1/K! two consecutive fits disagree — and everything
-        // keyed by lens index (`style_names`, the style shares, the panel's
-        // lens colours) would silently attach to a different taste after every
-        // refit. Lens `i` now stays the lens that most resembles the old lens
-        // `i`; a lens added because the log grew takes an index the old fit
-        // did not claim, so no name has to move.
-        let reference: Vec<Vec<f64>> = self
-            .posterior
-            .as_ref()
-            .filter(|p| p.cfg.n_features == d)
-            .map(|p| (0..p.k_styles()).map(|k| p.theta_mean(k)).collect())
-            .unwrap_or_default();
-        let posterior = Arc::new(posterior.aligned_to(&reference));
-        // Measured against the pool the fit is about to be used on, which is
-        // the population the shares are a statement about — not against the
-        // log, whose φ are the things already judged.
-        let pool_phis: Vec<Vec<f64>> = self
-            .pool
-            .iter()
-            .filter(|c| !c.phi_std.is_empty())
-            .map(|c| c.phi_std.clone())
-            .collect();
-        if !pool_phis.is_empty() {
-            self.style_shares.push(StyleShareRecord {
-                observations: self.log.len(),
-                k,
-                shares: posterior.style_share(&pool_phis),
-            });
-        }
-        self.posterior = Some(posterior);
-        self.resamples_since_fit = 0;
+        let fitted = job.run(rng);
+        // A job made and installed with nothing between them cannot be stale.
+        let _ = self.install_fit(fitted);
     }
 
     /// Style shares recorded at each fit, oldest first. See
@@ -3635,18 +3611,26 @@ impl Engine {
             provenance,
         ));
         if self.cfg.sis_between_fits {
-            if let Some(p) = &self.posterior {
-                let mut updated = p.reweighted(&standardized, self.session);
-                // Degenerate weights make the acquisition function read a
-                // one-point "posterior" as certainty. Resample back to a
-                // uniform set rather than let that happen; the impoverishment
-                // is bounded by how soon the next full refit lands.
-                if updated.ess() < updated.samples.len() as f64 / 2.0 {
-                    updated = updated.resampled();
-                    self.resamples_since_fit += 1;
-                }
-                self.posterior = Some(Arc::new(updated));
+            self.fold_in(&standardized, self.session);
+        }
+    }
+
+    /// Fold one standardized observation into the posterior by reweighting
+    /// its draws (sequential importance sampling): a pick's update between
+    /// fits, and a fit's for what was recorded while it ran
+    /// ([`Engine::install_fit`]). Nothing before a fit.
+    fn fold_in(&mut self, standardized: &Feedback, session: usize) {
+        if let Some(p) = &self.posterior {
+            let mut updated = p.reweighted(standardized, session);
+            // Degenerate weights make the acquisition function read a
+            // one-point "posterior" as certainty. Resample back to a
+            // uniform set rather than let that happen; the impoverishment
+            // is bounded by how soon the next full refit lands.
+            if updated.ess() < updated.samples.len() as f64 / 2.0 {
+                updated = updated.resampled();
+                self.resamples_since_fit += 1;
             }
+            self.posterior = Some(Arc::new(updated));
         }
     }
 
@@ -4162,6 +4146,7 @@ impl Engine {
                 .as_ref()
                 .and_then(|c| serde_json::to_value(c).ok()),
             own_sound: self.own.clone(),
+            fit: self.saved_fit(),
         }
     }
 
@@ -4205,7 +4190,12 @@ impl Engine {
     pub fn import_state_deferred(&mut self, state: SessionState) -> Vec<BankEntry> {
         // The clip first: every bank entry that listens is measured with it.
         self.restore_clip(state.audition_clip);
+        // As saved, to tell whether the saved fit still describes them once
+        // the import has migrated and repaired what it had to.
+        let saved_log = state.profile.log.clone();
+        let saved_sz = state.profile.standardizer.clone();
         self.import_profile(state.profile);
+        self.restore_fit(state.fit, &saved_log, saved_sz.as_ref());
         self.lineage = state.lineage;
         self.generation = state.generation;
         self.style_names = state.style_names;
@@ -4595,6 +4585,9 @@ impl Engine {
         }
         self.session = self.log.n_sessions();
         self.posterior = None;
+        self.fitted_on = 0;
+        // A fit of the log this replaced is for nobody now.
+        self.log_epoch = self.log_epoch.wrapping_add(1);
     }
 }
 

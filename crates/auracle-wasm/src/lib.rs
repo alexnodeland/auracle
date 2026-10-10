@@ -62,9 +62,9 @@ use auracle_grammar::{
     PatchGrammarPrior, PatchTree, StructOp,
 };
 use auracle_session::{
-    run_walk, BankEntry, ClipChange, ClipStatus, DealSchedule, EditOutcome, Engine, GuessMemory,
-    GuessSkip, Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy, SessionConfig,
-    SessionState, WalkContext, WalkJob, WalkResult,
+    run_walk, BankEntry, ClipChange, ClipStatus, DealSchedule, EditOutcome, Engine, FitJob,
+    FitResult, GuessMemory, GuessSkip, Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy,
+    SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -454,6 +454,31 @@ pub fn farm_walk(context_json: &str, job_json: &str) -> String {
     serde_json::to_string(&result).unwrap_or_default()
 }
 
+/// A refit as the engine hands it to a farm worker ([`WasmEngine::fit_export`]):
+/// the job, and the seed of the generator it is fitted with.
+#[derive(Serialize, serde::Deserialize)]
+struct FitTask {
+    job: FitJob,
+    /// The fit's generator's seed ([`Streams::fit`]), whole: the text is never
+    /// parsed in JavaScript, so a seed past 2⁵³ crosses unchanged.
+    rng_seed: u64,
+}
+
+/// Run a refit with **no [`Engine`] anywhere in sight**: what a farm worker
+/// does with [`WasmEngine::fit_export`]'s text. Returns the fit as the text
+/// [`WasmEngine::fit_install`] takes, or `""` when the task does not parse (a
+/// broken caller or instance: the engine then fits it itself). A pure function
+/// of the task, so the posterior is the one [`WasmEngine::fit`] would make
+/// from the same evidence (#300).
+#[wasm_bindgen]
+pub fn farm_fit(task_json: &str) -> String {
+    let Ok(task) = serde_json::from_str::<FitTask>(task_json) else {
+        return String::new();
+    };
+    let fit = task.job.run(&mut StdRng::seed_from_u64(task.rng_seed));
+    serde_json::to_string(&fit).unwrap_or_default()
+}
+
 /// [`WasmEngine::audition_clip`]'s reply: the status, and the sentence the
 /// app shows for it. Serialized from this struct (ADR-002).
 #[derive(Serialize)]
@@ -763,7 +788,12 @@ impl Streams {
     /// A fit's generator: a function of the session seed and how many
     /// observations it is fitted on, and of nothing that happened in between.
     fn fit(&self, observations: usize) -> StdRng {
-        StdRng::seed_from_u64(mix_seed(mix_seed(self.seed, 5), observations as u64))
+        StdRng::seed_from_u64(self.fit_seed(observations))
+    }
+
+    /// The seed of [`Streams::fit`]'s generator, for a fit run elsewhere.
+    fn fit_seed(&self, observations: usize) -> u64 {
+        mix_seed(mix_seed(self.seed, 5), observations as u64)
     }
 }
 
@@ -1718,6 +1748,38 @@ impl WasmEngine {
     pub fn fit(&mut self) {
         let mut rng = self.rng.fit(self.engine.log.len());
         self.engine.fit_posterior(&mut rng);
+    }
+
+    /// A refit as data, for a farm worker ([`farm_fit`]): what it reads and
+    /// the generator [`WasmEngine::fit`] would fit it with, as text the
+    /// worker passes on unparsed. `""` with nothing to fit. Changes nothing:
+    /// the engine keeps answering with the posterior it has until the fit is
+    /// installed ([`WasmEngine::fit_install`]).
+    pub fn fit_export(&self) -> String {
+        match self.engine.fit_job() {
+            Some(job) => {
+                let rng_seed = self.rng.fit_seed(job.observations);
+                serde_json::to_string(&FitTask { job, rng_seed }).unwrap_or_default()
+            }
+            None => String::new(),
+        }
+    }
+
+    /// Install a fit [`farm_fit`] made: `"ok"`, or why not (`"stale"`: the
+    /// log it fitted was replaced since, as by a taste file; `"shape"`: not
+    /// over this build's φ; `"unparseable"`). Export, fit elsewhere and
+    /// install, with nothing between, is [`WasmEngine::fit`]; what was
+    /// recorded while it ran is folded in as a pick between fits is.
+    pub fn fit_install(&mut self, fit_json: &str) -> String {
+        let Ok(fit) = serde_json::from_str::<FitResult>(fit_json) else {
+            return "unparseable".into();
+        };
+        match self.engine.install_fit(fit) {
+            Ok(()) => "ok",
+            Err(auracle_session::FitRefused::Stale) => "stale",
+            Err(auracle_session::FitRefused::Shape) => "shape",
+        }
+        .into()
     }
 
     /// Open a generation with its jobs kept in the engine; returns the parent

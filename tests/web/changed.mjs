@@ -67,12 +67,16 @@ export const MODULES = {
   "apps/web/strain.js": ["perform_struggling_audio"],
   // The profile's spec hands a farm worker of its own its boot, phrase and
   // job, as main and the engine do.
-  "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "reference_profile"],
+  "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "reference_profile", "evolve_refit"],
   // Both workers open the render cache's store through it, at boot; the
   // fixture writes and reads the store through it too (`reuseRenders`).
   "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
   // The toast lane's queue: main.js's `note` hands it every toast.
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
+  // What waits for the hand: a refit's views over the bank and the maps.
+  "apps/web/hand.js": ["evolve_refit", "taste_marks", "bank_row"],
+  // What a refit landing does: the meter, the lamp, the views it holds.
+  "apps/web/refit.js": ["evolve_refit", "evolve_truth", "evolve_feedback"],
 };
 export const EVERYWHERE = /^(apps\/web\/(main\.js|worker\.js|index\.html|style\.css)|crates\/|Cargo\.(toml|lock)$)/;
 

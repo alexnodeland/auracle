@@ -436,12 +436,13 @@ to a pinned `role="alert"` strip that stays until resolved.
 - **EVOLUTION** strip: per-generation utility trace plus a humanized diff of
   what each step actually did ("cutoff 0.31→0.78, +chorus · Δtaste +0.42").
 - All feedback surfaces emit into one observation stream; the posterior
-  re-fits **at most** every 6 duels, and only when the engine's own
-  `status().needs_refit` says the between-fit importance updates have run out
-  of road — signalled by the round lamp after the wordmark, the "listening"
-  light, which the job slot beside the sound in hand names. The duel pair's
-  audio is requested ahead of the fit, so the cards are always audible while
-  it runs. Profiles export the log **with** its standardizer.
+  re-fits every sixth pick, signalled by the round lamp after the wordmark,
+  the "listening" light, which the job slot beside the sound in hand names.
+  The fit runs on a farm worker while the engine answers (`fitRun`; with no
+  farm, in the engine after the pair's sounds), the duel pair's audio and the
+  pair after are asked for ahead of it, and a saved session keeps the fitted
+  draws, so a restore fits nothing. Profiles export the log **with** its
+  standardizer.
 
 Keyboard: `1`/`2` play A/B, `←`/`→` choose.
 

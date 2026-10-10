@@ -19,7 +19,7 @@ the architecture more than any design preference did.</p>
 |---|---|---|
 | **Main** | UI, Web Audio graph | `main.js`, never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js`: pool fill, fits, refinement, workbench |
-| **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation’s walks and ⚡ |
+| **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation’s walks and ⚡, `task → posterior` for a refit |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -201,6 +201,32 @@ crew the engine walks that very job (`refine_from_walk`). A generation and ⚡
 take turns in the engine worker, and a refit waits for both, so a ⚡ child is never absorbed into a generation
 at whatever job count its walk finished on. The engine keeps a ⚡ seed out of
 every eviction until its walk is absorbed or stopped.
+
+### The refit on the farm
+
+A refit is one MCMC call, about a second on a fast laptop and about four on
+the reference machine for a mature log. The engine worker does only its two
+ends (`fit_export`, then `fit_install`), and a render worker the MCMC
+(`farm_fit`), handed out as a walk is. The export is the evidence as the fit
+reads it, `Engine::fit_job`: the log standardized on the scale it is fitted
+on (the standardizer refitted over the pool and the log, not yet adopted),
+the model's configuration, the chain's length, the last fit's lenses, and
+the seed of the generator the engine's own `fit` would use (the session seed
+and the log's length). The render worker aligns the new lenses to those (a
+search over every permutation, for every draw) and sends the draws back as
+bytes. The install adopts the scale and folds in the observations recorded
+since the export, as a pick between fits is.
+With nothing between them the three are the engine's `fit`, draw for draw:
+`fit_posterior` is the three in a row, and
+`a_fit_on_the_farm_installs_the_draws_fit_makes` holds it across the wire.
+Until the fit lands the engine answers with the posterior it has, so a deal
+asked for meanwhile is dealt under it. One fit is out at a time, a
+generation and ⚡ wait for it, and with no crew the engine fits the same
+export itself, after the player's requests.
+
+A saved session keeps the posterior's draws and weights (`SessionState::fit`),
+so a restore installs them and fits nothing, when the log and the
+standardizer come back exactly as saved.
 
 Replacement waits for the end: children join the pool as they are absorbed,
 and `refine_finish` retires the weakest members not kept (saved, or kept as

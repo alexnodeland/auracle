@@ -1,9 +1,10 @@
 // AURACLE render farm worker — a wasm instance and nothing else.
 //
-// It owns no Engine, no pool, no RNG and no session state. It has two jobs,
+// It owns no Engine, no pool, no RNG and no session state. It has three jobs,
 // each a pure function of its arguments: `farm_render(tree, phrase) ->
-// {features, samples}` for boot's fill and restore, and `farm_walk(context,
-// job) -> result` for a generation's walks and ⚡ evolve from this. So any farm
+// {features, samples}` for boot's fill and restore, `farm_walk(context,
+// job) -> result` for a generation's walks and ⚡ evolve from this, and
+// `farm_fit(task) -> fit` for the taste model's refit. So any farm
 // worker is interchangeable with any other and with the engine worker itself.
 // That is what lets the engine hand out work by *index*, re-issue a lost job
 // to whoever is free, and throw away speculative work past the stop point
@@ -152,6 +153,10 @@ async function onJob(m) {
     onWalk(m);
     return;
   }
+  if (m.type === "fit") {
+    onFit(m);
+    return;
+  }
   if (m.type !== "job") return;
 
   // `cannot`, emphatically not `done ok:false`. A vetting failure and a
@@ -255,6 +260,36 @@ function onWalk(m) {
   // not a walk that found nothing. The engine runs that job itself.
   if (!result) {
     port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "walk did not parse" });
+    return;
+  }
+  port.postMessage({ type: "walked", i: m.i, result, ms: performance.now() - t0 });
+}
+
+// ---------- a refit (#300) ----------
+//
+// The taste model's refit, one MCMC call of seconds on a slow laptop, run
+// here so the engine worker answers the player while it runs: `farm_fit` is
+// the fit with no engine anywhere, a pure function of the task the engine
+// exported (`fit_export`: the evidence on its scale and the generator's
+// seed), so the posterior is the one the engine would have fitted itself.
+// The engine installs what comes back (`fit_install`). Answered as a walk
+// is, so the engine's walk queue hands it out, times it and takes it back
+// from a worker that dies.
+function onFit(m) {
+  if (!wasm || typeof wasm.farm_fit !== "function" || phrase == null) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "not initialized" });
+    return;
+  }
+  const t0 = performance.now();
+  let result = "";
+  try {
+    result = wasm.farm_fit(m.task);
+  } catch (e) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: String((e && e.message) || e) });
+    return;
+  }
+  if (!result) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "fit did not parse" });
     return;
   }
   port.postMessage({ type: "walked", i: m.i, result, ms: performance.now() - t0 });
