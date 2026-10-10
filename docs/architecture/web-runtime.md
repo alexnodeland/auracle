@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-06
+last_updated: 2026-10-09
 related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
@@ -289,10 +289,11 @@ served within a lane (`laneOf` in `worker.js`):
   ([The warm start's cards](#the-warm-starts-cards)).
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands, a control's figure, the
-  lesson on filters).
+  lesson on filters, the refit of a taste file just opened).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
   offers, Wander's drift, booth pre-warms, the model's guess, the cable
-  probe).
+  probe). A refit only starts here: it runs on the farm
+  ([The refit runs on the farm](#the-refit-runs-on-the-farm)).
 
 Queueing cannot help a request that arrives while a long call is *running*,
 so long jobs are cut into pieces and `breathe` between pieces, answering every
@@ -345,7 +346,9 @@ took:
 - a step of an offer or a drift: up to 2.1 s;
 - a background render of a dealt pair's sound: up to 1.6 s (1.7 s at 6×);
 - a cable probe: up to 0.95 s (3.6 s at 6×);
-- a refit, one MCMC call: 0.75 s;
+- with no farm (`?farm=0`, or a crew that could not start), a refit, one
+  MCMC call: 0.75 s (on the farm it holds this thread only for its export
+  and its install, [The refit runs on the farm](#the-refit-runs-on-the-farm));
 - a preset's insert (an open's, which is a `now` request ahead of it, or a
   booth pre-warm's): up to 1.4 s (1.8 s at 6×); the warm start inserts nine
   in one call, 8 s when none was measured while the player chose, and a
@@ -493,7 +496,97 @@ generation waits for the running one or for ⚡, and ⚡ for a generation or
 another ⚡ — so the `refine` stream is drawn in the order they were asked for
 and a ⚡ child never lands inside a generation. Main disables each button
 while the other runs, with the reason on hover. Neither starts before boot's
-crew is gone.
+crew is gone, and neither starts while a refit is out on the farm.
+
+### The refit runs on the farm
+
+A refit is one MCMC call: about a second on a fast laptop and about four on
+the reference machine for a mature log (after #391). On the engine worker it
+held everything behind it: the next pair's sounds, ▶, a save, a bank open, a
+card flip (#300). So the engine worker does only its two cheap ends, and a
+crew worker does the fit (`fitRun` in `worker.js`):
+
+1. **Export** (`fit_export`, `Engine::fit_job`): what the fit reads, as text
+   the worker passes on unparsed: the log standardized on the scale it is
+   fitted on (the standardizer refitted over the pool and the log, not yet
+   adopted), the model's configuration, the chain's length, the lenses of
+   the posterior it replaces (each one's θ mean), and the seed of the
+   generator the engine's own `fit` would use (the session seed and the
+   log's length, ADR-001). Nothing in the engine changes.
+2. **Fit** (`farm_fit` in a crew worker, `FitJob::run`): the MCMC, and the
+   new lenses aligned to those (every permutation of the lenses, for every
+   draw), a pure function of the export, handed out as a walk is
+   (`walkSubmit`: the crew raised if none stands, the watchdog, a worker
+   that dies giving it back). farm.js answers `walked`. The draws cross as
+   bytes (`packed`: each number `f64` little-endian, in base64), not as
+   JSON numbers.
+3. **Install** (`fit_install`, `Engine::install_fit`): the scale becomes the
+   engine's, the pool's style shares are recorded, and every observation
+   recorded since the export is folded in by reweighting, as a pick between
+   fits is. Then `fitted` answers the request, with where its time went
+   (`took`: the fit, the install, the views the reply carries, and the whole
+   from export to answer) and `farm`.
+
+Export, fit and install with nothing between them is the engine's `fit`,
+draw for draw (`Engine::fit_posterior` is the three in a row;
+`a_fit_on_the_farm_installs_the_draws_fit_makes` pins it in the bindings,
+through the texts). Until the fit lands the engine answers with the
+posterior it has: a pick is folded into it, a deal is dealt under it.
+So in a seeded session a deal asked for while a fit is out is dealt under
+the posterior before it, where on one thread it waited for the fit.
+
+When it lands (`landRefit` in `refit.js`), main says *● it just learned*
+at once and asks again, under the new posterior, what reads it (the bench's
+guess, PATCH's and EVOLVE's guesses, PERFORM's leans). Only the views and
+what is drawn from them (the bank's order and numbers, the map, LEARNING's
+bars) wait while the pointer is over one of them: they apply when the pointer
+leaves, or after `HAND_REST_MS` (1 s) of rest over it (`hand.js`, ADR-025's
+rule for a region; a views post that comes first is newer, and the refit's
+views are dropped). PATCH's guess is asked again, not held: what it moves on
+the rack is that request's own answer, which patch.js lands when the bench
+has settled and no knob is held. A fit the engine refused to install
+(`refused: "stale"`: a taste file replaced the log while it ran) taught
+nothing: the meter says nothing, no views land, and `fitting` stays set while
+the file's own fit is out.
+
+One fit is out at a time (`blocked`): a fit asked for meanwhile (the next
+sixth pick, a taste file) is for a longer log, and goes when this one lands;
+main sends none while one runs (`fitting`). A generation and ⚡ wait for a
+fit out, as a fit waits for them. While the bank is still arriving on
+boot's crew (the warm start's fit, a sixth pick made during the fill), the
+fit runs on the engine worker from its export, at its turn in the lane, as
+before the farm: boot's crew is busy with the fill and is reaped under any
+walk it holds when the fill ends (a fit handed to it waited out the walk
+watchdog, `WALK_TIMEOUT_MS`), and a fit that waited for the fill left the
+model untaught for as long as the bank took. A fit of a log replaced while it ran (a
+taste file opened) is refused at install (`refused: "stale"`), and the
+file's own fit follows it.
+
+With no crew (`?farm=0`, a machine of two threads or fewer, a crew that would
+not start), or a crew that could not run it (a worker that declined it, or the
+watchdog), the fit runs on the engine worker from the same export, back at the
+front of its lane (`fitHere`): after the player's requests and the pair's
+sounds, as the one long call it always was there, said with `busy` and `idle`.
+That path still holds a request arriving during it for the whole fit; it is
+not cut into steps.
+
+A taste file's fit is the player's (`player: true`, `soon`, and handed to a
+crew ahead of background walks while room is made for the audio): they opened
+the file to see its taste. TASTE draws the file's sounds as guesses, hollow
+and dashed, until it lands (the map has no fit meanwhile).
+
+A restore fits nothing when the session was saved with its fit: the draws and
+their weights are kept in the saved session (`SessionState::fit`, at most 500
+draws), and installed as the bank comes back, when the log and the
+standardizer came back exactly as saved (`Engine::restore_fit`). A session
+saved before the fit was kept, or one a migration or repair touched (a last visit too short to stand alone, merged into the one before it, is one), comes
+back unfitted and is fitted once after boot, on the farm, as the worker's own
+`fit` (its `fitted` carries no `re`). It used to be fitted inside `init`,
+three breaths after `playable`, with the table's sounds behind it.
+`tests/worker/fit.test.mjs` holds the order (a pick and a sound answered while
+the fit is out, one fit at a time, the farm's fit equal to the one made with
+no farm, a crew that declines it, a restore that fits nothing and one that
+fits once after boot).
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
 or the main thread's in-flight queue deadlocks. The few requests that are
@@ -2063,7 +2156,9 @@ cut) registers how to take itself back (`holdTakeBack` in `main.js`) and
 leaves when its window closes. ⌘Z takes back the newest one at any level; only
 with none left does it reach the bench's edit undo, and only in PATCH.
 Elsewhere it changes nothing and says so. The sixth pick's refit is sent when
-that pick commits (`settleFit`), so it keeps its window too.
+that pick commits (`settleFit`), so it keeps its window too, and never ahead of
+the next pair: `placePair` asks for the table's sounds and deals the pair
+after before it sends the refit.
 
 ## Modes
 

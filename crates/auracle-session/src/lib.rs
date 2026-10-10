@@ -47,9 +47,10 @@ pub use belief::{Belief, BeliefRow};
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
-    Contribution, DealSchedule, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent,
-    LineageEvent, Origin, Profile, ReadmitError, RefineKeep, RefineOutcome, RenderPolicy,
-    SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS, OBS_PER_STYLE,
+    Contribution, DealSchedule, DuelChoice, EditOutcome, Engine, Explanation, FitJob, FitRefused,
+    FitResult, ImplicitEvent, LineageEvent, Origin, Profile, ReadmitError, RefineKeep,
+    RefineOutcome, RenderPolicy, SavedFit, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
+    MIN_SESSION_OBS, OBS_PER_STYLE,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use guess::{

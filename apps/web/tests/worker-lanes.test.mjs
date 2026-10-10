@@ -591,3 +591,20 @@ test("while room is made, a background render in now waits, and a gesture is ser
   await serveNow();
   assert.deepEqual(served, ["a knob", "the pair's sound"]);
 });
+
+test("a refit waits for a walk and for the refit out, and a generation for the refit out (#300)", () => {
+  const rules = (walking, crew, out) => new Function(
+    "NOW", "SOON", "LATER", "walking", "bootCrewLive", "fitOut",
+    `${lift("blocked")}\nreturn blocked;`,
+  )(NOW, SOON, LATER, () => walking, () => crew, out);
+  const fit = { type: "fit" };
+  assert.equal(rules(false, false, null)(fit), false, "a refit with nothing out waits");
+  assert.equal(rules(true, false, null)(fit), true, "a refit went beside a walk");
+  assert.equal(rules(false, true, null)(fit), false, "a refit waited for boot's crew (it is fitted here then: `fitRun`)");
+  assert.equal(rules(false, false, { m: {} })(fit), true, "two refits out at once");
+  assert.equal(rules(false, false, { m: fit })(fit), false, "the refit out, back in its lane, waits for itself");
+  for (const type of ["refine", "refine_from"]) {
+    assert.equal(rules(false, false, { m: fit })({ type }), true, `${type} went while a refit was out`);
+    assert.equal(rules(false, false, null)({ type }), false, `${type} waits with nothing out`);
+  }
+});

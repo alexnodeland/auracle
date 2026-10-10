@@ -34,19 +34,21 @@ test("a capture hands every farm worker standing the new phrase", { timeout: TIM
   const crew = fakeCrew(2);
   t.after(() => crew.close());
   const w = await workerFor(t, { seed: SEED, crew: () => crew.ports });
-  // A crew stands after a walk: the model's guess raises one (it needs a
-  // taste and a patch on the bench), and keeps it a minute after
-  // (`CREW_IDLE_MS`).
+  // A crew stands after a refit or a walk: the refit raises one and is
+  // fitted on it (#300), the model's guess walks on it
+  // (it needs a taste and a patch on the bench), and it is kept a minute
+  // after (`CREW_IDLE_MS`).
   const warm = (await w.send({ type: "warm_start", picked: [0, 1, 2], rest: [3, 4, 5, 6, 7, 8] })).at(-1);
+  const at = w.replies.length;
   await w.send({ type: "fit" });
   await w.send({ type: "edit_begin", id: warm.first });
   const ask = { type: "guess", token: 1 };
-  const at = w.post(ask);
+  w.post(ask);
   await w.answers(ask);
   // Standing: main was asked for it and handed both workers, the worker
   // greeted each (its handshake phrase, no clip yet), and has not reaped it.
   const [wanted] = w.repliesOf("farm_want", { after: at });
-  assert.ok(wanted, "the guess raised a crew");
+  assert.ok(wanted, "the refit raised no crew");
   for (const h of crew.heard) assert.deepEqual(h.filter((m) => m.type === "phrase").map(withClip), [false], "a worker was not greeted, or heard a clip before any capture");
   assert.ok(crew.heard.some((h) => h.some((m) => m.type === "job")), "the crew was handed none of the guess's renders");
   assert.deepEqual(w.repliesOf("farm_done", { where: { crew: wanted.crew } }), [], "the crew was reaped before the capture");
