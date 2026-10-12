@@ -226,7 +226,7 @@ The character stays the same, and the tone moves with the moment.
 | The guide (`www/docs`) | A player learning a view or a task | How to do it and what each part does | Plain, long form | A page per view or task |
 | View films and illustrated films | A musician learning one view or one idea | To see it work and know when they'd reach for it | Narration | 2 to 6 minutes |
 | The reference (`www/reference`) | The curious, and contributors | How it works and why, in enough detail to disagree with | Technical | As long as the argument needs |
-| README | Someone arriving at the repo | What it is, how to run it, where to read more | Plain | One screen before "Run it" |
+| README | Someone arriving at the repo | What it is, how to run it, where to read more | Plain | The banner, the film and how to play it before "Run it" |
 | CHANGELOG | A player reading what changed | What is true now, and what was wrong before | Plain | One or two sentences an entry |
 
 Every surface starts with the musician's experience. Depth comes after it and
@@ -649,7 +649,9 @@ The check counts the British spellings listed in `BRITISH` in `www/checkwords.py
   it for a sentence that trails off.
 - **The middle dot ( · )** separates items in a label, a status line, or a
   tooltip, never in prose.
-- **No exclamation marks.** No emoji in copy or headings, the README included.
+- **No exclamation marks.** No emoji in copy or headings. The README is the
+  one exception: an emoji may mark a section heading, a row of a table, or a
+  link in its navigation, and never stands in for a word.
 - **A list item** ends with a period only if it is a sentence. Keep the items
   of one list parallel.
 
@@ -780,12 +782,19 @@ levels follow the film sound's specification (RFC-007, to be written).
 ### README
 
 The order:
-1. The lockup.
-2. The long line.
-3. How to run it, in three commands or fewer.
-4. Where to read more (the guide, the reference, `docs/`).
+1. The lockup: the animated banner in `.github/readme/hero.svg`, with the
+   mark at rest (only the faint rings around it and the trace under it move).
+2. The long line, one row of badges, and one line of links (play, the guide,
+   the reference, the films, contributing).
+3. How to play it, and how to run it in three commands or fewer.
+4. How it learns, what it does, and how it is built, each with its figure.
+5. Where to read more (the guide, the reference, `docs/`).
 
-It has no badges wall and no Title Case headings.
+It has one row of badges, never a wall, and no Title Case headings. An
+animated figure that shows a mechanism says so when it is a stand-in, as the
+loop's does ([ADR-012](../../docs/decisions/012-motion-shows-what-the-engine-does.md)).
+Its colors are the rack palette's, by value, since an `<img>` cannot read a
+custom property.
 
 ### CHANGELOG
 
