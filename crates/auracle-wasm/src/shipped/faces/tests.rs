@@ -73,4 +73,12 @@ fn a_fingerprint_moves_with_the_namespace_and_the_clip() {
         "a clip is not in the namespace"
     );
     assert_ne!(faces_fingerprint(&captured), same, "another clip");
+    let clip = AuditionClip::from_interleaved(&hum, 1, 44_100.0, &standard).expect("a clip");
+    let on = |slot: usize| PhraseSpec {
+        clips: [(slot, clip.clone())].into(),
+        ..PhraseSpec::default()
+    };
+    assert_ne!(faces_fingerprint(&on(2)), same, "a slot's own clip");
+    assert_ne!(faces_fingerprint(&on(2)), faces_fingerprint(&on(3)));
+    assert_ne!(faces_fingerprint(&on(2)), faces_fingerprint(&captured));
 }

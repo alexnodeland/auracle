@@ -340,6 +340,101 @@ fn the_session_clip_crosses_the_boundary() {
     assert_eq!(engine.phrase_json(), before);
 }
 
+/// **Each input slot's clip crosses the boundary.** A capture for slot 1
+/// is that slot's alone: the reply names its clip and the `u32` id of the
+/// one sound that reads slot 1, the other slots still hear the reference,
+/// and the farm's phrase carries it, so the farm renders a sound hearing
+/// slots 0 and 1, each with its own clip, under the key the engine stores
+/// it by. Saved and restored, each slot's clip comes back. A slot past the
+/// last is refused and changes nothing, and `set_audition_clip` still sets
+/// every slot's.
+#[test]
+fn each_input_slots_clip_crosses_the_boundary() {
+    use auracle_grammar::term::{AudioNode, InputChannel};
+    let mut engine = WasmEngine::new(5, 4);
+    while engine.fill_step(4) > 0 {}
+    let reply = |s: String| -> serde_json::Value { serde_json::from_str(&s).unwrap() };
+    let tone = |hz: f32| -> Vec<f32> {
+        (0..48_000)
+            .map(|i| 0.3 * (i as f32 * hz / 48_000.0 * std::f32::consts::TAU).sin())
+            .collect()
+    };
+    let input = |slot: u8| {
+        Box::new(AudioNode::AudioIn {
+            uid: auracle_grammar::Uid::NEW,
+            input: slot,
+            gain: auracle_grammar::INPUT_GAIN_UNITY,
+            channel: InputChannel::Both,
+        })
+    };
+    let mut two = presets()[0].1.clone();
+    two.root = AudioNode::Mix {
+        uid: auracle_grammar::Uid::NEW,
+        balance: 0.3,
+        a: input(0),
+        b: input(1),
+    };
+    let two_json = serde_json::to_string(&two).unwrap();
+    let id = engine.import_patch(&two_json, "Two");
+    assert!(id > 0);
+    let reference = reply(engine.input_clip(0))["id"].clone();
+
+    let one = reply(engine.set_input_clip(1, tone(220.0), 1, 48_000.0));
+    assert_eq!(one["ok"], true, "{one}");
+    assert_eq!(one["clip"]["source"], "captured");
+    assert_eq!(one["remeasured"], serde_json::json!([id]));
+    let one_id = one["clip"]["id"].clone();
+    assert_eq!(reply(engine.input_clip(1))["id"], one_id);
+    assert_eq!(reply(engine.input_clip(0))["id"], reference);
+    assert_eq!(reply(engine.audition_clip())["source"], "reference");
+    let zero = reply(engine.set_input_clip(0, tone(880.0), 1, 48_000.0));
+    assert_eq!(zero["ok"], true);
+    let zero_id = zero["clip"]["id"].clone();
+    assert_ne!(zero_id, one_id);
+
+    let phrase = engine.phrase_json();
+    assert!(phrase.contains("\"clips\""));
+    let job = farm_render(&two_json, &phrase, false);
+    assert!(job.ok());
+    let row: CachedFeatures = serde_json::from_str(&job.cached()).unwrap();
+    assert_eq!(
+        format!("{}/{}", cache_namespace(&phrase), row.key),
+        farm_key(&two_json, &phrase)
+    );
+    let stored = engine
+        .engine
+        .pool
+        .iter()
+        .find(|c| c.id == id as u64)
+        .unwrap();
+    assert_eq!(row.key, stored.key, "the farm and the engine disagree");
+
+    let mut back = WasmEngine::new(6, 4);
+    assert!(back.import_session(&engine.export_session()) > 0);
+    assert_eq!(reply(back.input_clip(0))["id"], zero_id);
+    assert_eq!(reply(back.input_clip(1))["id"], one_id);
+    assert_eq!(back.phrase_json(), phrase);
+
+    let past = reply(engine.set_input_clip(8, tone(220.0), 1, 48_000.0));
+    assert_eq!(past["ok"], false);
+    assert_eq!(past["note"], refused_note(&ClipError::Slot(8)));
+    assert_eq!(past["error"], "there is no input slot 8");
+    assert_eq!(past["remeasured"], serde_json::json!([]));
+    assert_eq!(engine.phrase_json(), phrase, "a refusal changes nothing");
+    assert_eq!(
+        reply(engine.input_clip(8))["error"],
+        "there is no input slot 8"
+    );
+    assert_eq!(reply(engine.clear_input_clip(8))["ok"], false);
+
+    let cleared = reply(engine.clear_input_clip(1));
+    assert_eq!(cleared["ok"], true);
+    assert_eq!(cleared["clip"]["id"], reference);
+    assert_eq!(cleared["remeasured"], serde_json::json!([id]));
+    let every = reply(engine.set_audition_clip(tone(330.0), 1, 48_000.0));
+    assert_eq!(reply(engine.input_clip(0))["id"], every["clip"]["id"]);
+}
+
 /// The menu bar's TAUGHT tooltip splits the count by kind from
 /// `status()`: a duel is a pick, a rating a star, a keep/kill a cut, and
 /// the three add up to `observations`.

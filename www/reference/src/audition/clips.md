@@ -33,9 +33,10 @@ silence floor, an RMS of $10^{-4}$), because every patch that listens would
 fail the vet over it.
 
 The clip rides inside the stimulus, as `PhraseSpec::clip`. `None` means the
-reference. A spec without a clip serializes exactly as it did before clips
-existed, which is what keeps every existing cache key and fingerprint where it
-was.
+reference. An input slot can have a clip of its own, in `PhraseSpec::clips`,
+which an AUDIO IN on that slot reads in its place (`PhraseSpec::slot_clip`).
+A spec without a clip serializes exactly as it did before clips existed, which
+is what keeps every existing cache key and fingerprint where it was.
 
 ## The reference signal
 
@@ -86,7 +87,8 @@ tail ends with the amp’s release, for this patch as for any.
 ## Rendering on the host’s clock
 
 `render_phrase` gives a patch that listens one quiver `AudioInputStream` for
-the whole render, built with `with_host_clock`. The whole clip is written once,
+each input slot it reads, for the whole render, built with `with_host_clock`;
+slots that hear the same clip share one stream. The whole clip is written once,
 as one block, and the render calls `advance()` after each frame’s tick of every
 voice, never `tick_block`. That is quiver’s rule for a frame-by-frame host, and
 it is what keeps the [chord voices](./phrase.md#chord-voices) in step: a chord
@@ -110,11 +112,13 @@ phrase falls silent at its end.
 A patch that does not listen gets no stream at all, so its render, and every
 row cached from it, is the same whatever clip the session holds.
 
-The compiler binds the stream: `compile_with_input` (and `compile_for_render`,
+The compiler binds the streams: `compile_with_input` (and `compile_for_render`,
 the same voice with its knobs folded, which a measurement render uses) builds
-every AUDIO IN in the patch on the stream it is given, and `compile` builds them on a stream
-nothing writes (silent), which is the same voice for any patch that does not
-listen. The live instrument, `LivePoly`, binds its own stream: quiver’s cursor
+each AUDIO IN in the patch on the stream it is given for that AUDIO IN’s slot
+(`InputStreams`), a slot it is given none for on a stream nothing writes
+(silent), and `compile` builds them all so, which is the same voice for any
+patch that does not listen. The live instrument, `LivePoly`, binds its own
+stream to every slot (`InputStreams::every`): quiver’s cursor
 mode, built once in `LivePoly::new`, which the worklet calls in its port
 handler and never in `process()`, and which every voice it rebuilds shares.
 The worklet writes each quantum’s input through `input_ptr` and `write_input`,
@@ -136,9 +140,12 @@ Two clips never share a cached row, and a new clip costs no row it does not
 have to.
 
 - **`render_key`** is unchanged for a patch that does not listen. For one that
-  does, a `0xfe` separator and the clip’s content id (the reference’s when the
-  spec has none) follow the spec. The clip’s samples are never hashed per key:
-  the id already is their hash.
+  does, when every slot it reads hears one clip, a `0xfe` separator and the
+  clip’s content id (the reference’s when the spec has none) follow the spec.
+  When its slots hear different clips, each slot it reads follows instead, in
+  order, as a `0xfd` separator, the slot and its clip’s id. A clip on a slot
+  the patch does not read moves nothing. The clip’s samples are never hashed
+  per key: the id already is their hash.
 - **`cache_namespace`** never sees the clip. The farm’s store is stamped with
   its namespace and cleared when the stamp changes, so a clip there would throw
   away every cached render each time a player captured one.
@@ -204,7 +211,10 @@ The clip is saved in `SessionState.audition_clip`, in its saved form:
 
 Interleaved 16-bit little-endian samples in base64: about 600 KB of text for
 five seconds of mono. The reference is never saved; no clip means the
-reference.
+reference. The slots’ own clips are saved beside it in
+`SessionState.audition_clips`, an object from the slot (`"0"` to `"7"`) to the
+same form: one per slot at most, and a slot whose clip is the one every slot
+hears is not written, so the file holds at most nine clips.
 
 A saved clip is untrusted input, and `AuditionClip::from_saved` holds it to the
 bound quiver’s `Capture` uses for its saved take:
@@ -222,13 +232,19 @@ The session holds the clip as raw JSON and checks it on the way in, so a clip
 that cannot be read costs the session its clip and nothing else. It is
 restored before the bank is measured. An unreadable one restores as the
 reference, and the clip’s status (`Engine::audition_clip_status`, the wasm
-binding `audition_clip`) says why, in `unreadable`.
+binding `audition_clip`) says why, in `unreadable`. A slot’s own clip that
+cannot be read costs that slot alone, which hears the one every slot hears,
+and its status (`Engine::slot_clip_status`, the binding `input_clip`) says
+why. A session saved before slots had clips of their own restores its one
+clip on every slot.
 
 Setting a clip (`Engine::set_audition_clip`) measures the pool’s members that
 listen again, and only them. A member that no longer vets under the new clip
 keeps the measurement it had and is reported as `unmeasured`: a clip change
 never deletes a patch. Observations already in the log keep the $\varphi$
-they were logged with.
+they were logged with. Setting it also takes each slot’s own clip away.
+Setting one slot’s (`Engine::set_slot_clip`, the binding `set_input_clip`)
+measures again only the members that read that slot.
 
 ## Breeding a patch that listens
 
@@ -244,9 +260,10 @@ engine, with the seed’s inputs held and any CAPTURE’s take carried through
 
 ## What is open
 
-- **One clip for every input.** The session has one clip, and every AUDIO IN
-  reads it whatever its input slot. A clip per input would make the render
-  depend on the slot.
+- **One clip for every input.** The app captures one clip, and every AUDIO IN
+  reads it whatever its input slot. The engine keeps a clip per slot
+  (`set_input_clip`), so a render can depend on the slot, but the app does not
+  capture one per input yet.
 - **One live input.** `LivePoly` binds one input stream, so in the live voices
   every AUDIO IN reads the device of the patch’s first one; the app opens
   each other input for its module’s meter only, and says so.

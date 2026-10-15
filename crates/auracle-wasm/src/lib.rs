@@ -3855,7 +3855,8 @@ impl WasmEngine {
     // ------------------------------------------------------------------
 
     /// Measure the sounds that listen with a clip captured from the player's
-    /// input: `samples` interleaved, `channels` per frame (1 or 2), at
+    /// input, on every input slot (a slot's own clip, from
+    /// [`Self::set_input_clip`], goes): `samples` interleaved, `channels` per frame (1 or 2), at
     /// `sample_rate` (the AudioContext's; the engine resamples it to the
     /// phrase's, quantizes it to 16 bits and cuts it to the phrase's length).
     /// The pool's members that listen are measured again with it, and it is
@@ -3893,8 +3894,69 @@ impl WasmEngine {
         }
     }
 
+    /// [`Self::set_audition_clip`] for the sounds that listen on input slot
+    /// `slot` (`0..INPUT_SLOTS`) alone: its own clip, over the one every
+    /// slot hears. Only the members that read that slot are measured again,
+    /// and `clip` in the reply is that slot's. A slot past the last is
+    /// refused as a clip that couldn't be used, and changes nothing.
+    pub fn set_input_clip(
+        &mut self,
+        slot: u32,
+        samples: Vec<f32>,
+        channels: u32,
+        sample_rate: f64,
+    ) -> String {
+        let slot = slot as usize;
+        let made = AuditionClip::from_interleaved(
+            &samples,
+            channels as usize,
+            sample_rate,
+            &self.engine.cfg.phrase,
+        )
+        .and_then(|clip| self.engine.set_slot_clip(slot, Some(clip)));
+        self.slot_reply(slot, made)
+    }
+
+    /// Take input slot `slot`'s own clip away, so its sounds hear the one
+    /// every slot hears, and measure them again. Replies as
+    /// [`Self::set_input_clip`] does.
+    pub fn clear_input_clip(&mut self, slot: u32) -> String {
+        let slot = slot as usize;
+        let change = self.engine.set_slot_clip(slot, None);
+        self.slot_reply(slot, change)
+    }
+
+    /// Which clip the sounds that listen on input slot `slot` are measured
+    /// with, as [`Self::audition_clip`] replies for every slot; for a slot
+    /// past the last, `{"error":"…"}`.
+    pub fn input_clip(&self, slot: u32) -> String {
+        let slot = slot as usize;
+        match self.engine.slot_clip_status(slot) {
+            Some(status) => serde_json::to_string(&ClipView {
+                note: clip_note(&status),
+                clip: &status,
+            })
+            .unwrap_or_default(),
+            None => serde_json::json!({ "error": ClipError::Slot(slot).to_string() }).to_string(),
+        }
+    }
+
+    /// The reply to a change of `slot`'s clip, as [`Self::clip_reply`] for
+    /// every slot's. A slot past the last reports every slot's clip.
+    fn slot_reply(&self, slot: usize, made: Result<ClipChange, ClipError>) -> String {
+        let status = self
+            .engine
+            .slot_clip_status(slot)
+            .unwrap_or_else(|| self.engine.audition_clip_status());
+        let (refused, change) = match made {
+            Ok(change) => (None, change),
+            Err(e) => (Some(e), ClipChange::default()),
+        };
+        Self::reply_with(&status, refused, change)
+    }
+
     /// Go back to measuring the sounds that listen with the built-in
-    /// reference, and measure them again. Replies as
+    /// reference, on every input slot, and measure them again. Replies as
     /// [`Self::set_audition_clip`] does.
     pub fn clear_audition_clip(&mut self) -> String {
         let change = self.engine.set_audition_clip(None);
@@ -3916,14 +3978,17 @@ impl WasmEngine {
     }
 
     fn clip_reply(&self, refused: Option<ClipError>, change: ClipChange) -> String {
-        let status = self.engine.audition_clip_status();
+        Self::reply_with(&self.engine.audition_clip_status(), refused, change)
+    }
+
+    fn reply_with(status: &ClipStatus, refused: Option<ClipError>, change: ClipChange) -> String {
         let reply = ClipReply {
             ok: refused.is_none(),
             note: refused
                 .as_ref()
-                .map_or_else(|| clip_note(&status), refused_note),
+                .map_or_else(|| clip_note(status), refused_note),
             error: refused.map(|e| e.to_string()),
-            clip: &status,
+            clip: status,
             remeasured: change.remeasured.iter().map(|id| *id as u32).collect(),
             unmeasured: change.unmeasured.iter().map(|id| *id as u32).collect(),
         };
