@@ -3617,6 +3617,210 @@ fn an_unreadable_clip_restores_as_the_reference_and_says_so() {
     );
 }
 
+/// [`listening_patch`] reading input slot `slot`, its filter at `cutoff`.
+fn listening_on(slot: u8, cutoff: f64) -> auracle_grammar::PatchTree {
+    use auracle_grammar::term::AudioNode;
+    let mut t = listening_patch();
+    if let AudioNode::Filter {
+        cutoff: c, input, ..
+    } = &mut t.root
+    {
+        *c = cutoff;
+        if let AudioNode::AudioIn { input, .. } = input.as_mut() {
+            *input = slot;
+        }
+    }
+    t
+}
+
+/// [`listening_patch`] hearing input slots 0 and 1, mixed.
+fn listening_to_two() -> auracle_grammar::PatchTree {
+    use auracle_grammar::term::AudioNode;
+    let mut t = listening_patch();
+    let AudioNode::Filter { input, .. } = &mut t.root else {
+        unreachable!("listening_patch is a filter over an input")
+    };
+    let one = listening_on(1, 0.5);
+    let AudioNode::Filter { input: other, .. } = one.root else {
+        unreachable!("listening_patch is a filter over an input")
+    };
+    let zero = std::mem::replace(
+        input,
+        Box::new(AudioNode::Silence {
+            uid: auracle_grammar::Uid::NEW,
+        }),
+    );
+    **input = AudioNode::Mix {
+        uid: auracle_grammar::Uid::NEW,
+        balance: 0.3,
+        a: zero,
+        b: other,
+    };
+    t
+}
+
+/// A captured clip of a steady `hz` tone, the phrase's length.
+fn tone_clip(spec: &auracle_features::PhraseSpec, hz: f64) -> AuditionClip {
+    let x: Vec<f32> = (0..spec.total_samples())
+        .map(|i| (0.4 * (std::f64::consts::TAU * hz * i as f64 / spec.sample_rate).sin()) as f32)
+        .collect();
+    AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
+}
+
+/// **A slot's clip measures again only the members that read that slot.**
+/// A clip for slot 1 moves the listener on slot 1 and leaves the one on
+/// slot 0 and the patch that does not listen as they were; the slot's
+/// status names it while every other slot's still names the reference.
+/// The same clip again changes nothing, a slot past the last is refused,
+/// taking the slot's clip away measures it again with every slot's, and a
+/// clip for every slot takes each slot's own away.
+#[test]
+fn a_slots_clip_remeasures_only_the_patches_that_read_it() {
+    let (mut engine, zero, deaf) = listening_engine();
+    engine.cfg.pool_size += 1;
+    let one = engine
+        .insert_preset(listening_on(1, 0.7), "listens on 1")
+        .expect("a listener on slot 1 vets on the reference");
+    let at = |e: &Engine, id: u64| {
+        let c = &e.pool[e.find(id).unwrap()];
+        (c.key.clone(), c.features.phi())
+    };
+    let before = [at(&engine, zero), at(&engine, one), at(&engine, deaf)];
+    let clip = sweep_clip(&engine.cfg.phrase);
+    let change = engine.set_slot_clip(1, Some(clip.clone())).unwrap();
+    assert_eq!(change.remeasured, vec![one]);
+    assert!(change.unmeasured.is_empty());
+    assert_eq!(at(&engine, zero), before[0]);
+    assert_eq!(at(&engine, deaf), before[2]);
+    assert_ne!(at(&engine, one).0, before[1].0, "its key names the clip");
+    assert_ne!(
+        at(&engine, one).1,
+        before[1].1,
+        "and φ was measured with it"
+    );
+    let status = |e: &Engine, slot| e.slot_clip_status(slot).unwrap();
+    assert_eq!(status(&engine, 1).id, clip.id());
+    assert_eq!(status(&engine, 1).source, ClipSource::Captured);
+    assert_eq!(status(&engine, 0).source, ClipSource::Reference);
+    assert_eq!(engine.audition_clip_status().source, ClipSource::Reference);
+    assert_eq!(
+        engine.set_slot_clip(1, Some(clip.clone())),
+        Ok(ClipChange::default())
+    );
+    assert_eq!(
+        engine.set_slot_clip(INPUT_SLOTS, Some(clip.clone())),
+        Err(auracle_features::ClipError::Slot(INPUT_SLOTS))
+    );
+    assert_eq!(engine.slot_clip_status(INPUT_SLOTS), None);
+    let change = engine.set_slot_clip(1, None).unwrap();
+    assert_eq!(change.remeasured, vec![one]);
+    assert_eq!(at(&engine, one), before[1], "back on the reference");
+    engine.set_slot_clip(1, Some(clip.clone())).unwrap();
+    let every = tone_clip(&engine.cfg.phrase, 330.0);
+    let change = engine.set_audition_clip(Some(every.clone()));
+    assert_eq!(change.remeasured, vec![zero, one]);
+    assert_eq!(status(&engine, 1).id, every.id());
+}
+
+/// **Each slot's clip is saved with the session and restored**, so a
+/// patch hearing two inputs measures as it did after a reload; a slot whose
+/// clip is the one every slot hears is not written twice; and a session
+/// with no slot clips saves without the field, as before it existed.
+#[test]
+fn each_slots_clip_is_saved_and_restored() {
+    let (mut engine, _, _) = listening_engine();
+    let none = serde_json::to_value(engine.export_state()).unwrap();
+    assert!(none.get("audition_clips").is_none());
+    engine.cfg.pool_size += 1;
+    let two = engine
+        .insert_preset(listening_to_two(), "listens to two")
+        .expect("a patch hearing two inputs vets on the reference");
+    let spec = engine.cfg.phrase.clone();
+    let (a, b, c) = (
+        sweep_clip(&spec),
+        tone_clip(&spec, 220.0),
+        tone_clip(&spec, 440.0),
+    );
+    engine.set_audition_clip(Some(c.clone()));
+    engine.set_slot_clip(0, Some(a.clone())).unwrap();
+    engine.set_slot_clip(1, Some(b.clone())).unwrap();
+    engine.set_slot_clip(5, Some(c.clone())).unwrap();
+    let phi = engine.pool[engine.find(two).unwrap()].features.phi();
+    let state = engine.export_state();
+    let slots = state.audition_clips.as_ref().unwrap().as_object().unwrap();
+    let written: Vec<&String> = slots.keys().collect();
+    assert_eq!(written, ["0", "1"], "slot 5's clip is every slot's");
+    let text = serde_json::to_string(&state).unwrap();
+    let mut cfg = engine.cfg.clone();
+    cfg.phrase = cfg.phrase.without_clip();
+    let mut back = Engine::new(PatchGrammarPrior::default(), cfg);
+    back.import_state(serde_json::from_str(&text).unwrap());
+    let ids: Vec<String> = [0, 1, 5, 7]
+        .map(|s| back.slot_clip_status(s).unwrap().id)
+        .into();
+    assert_eq!(ids, [a.id(), b.id(), c.id(), c.id()]);
+    assert_eq!(back.audition_clip_status().id, c.id());
+    assert_eq!(back.pool[back.find(two).unwrap()].features.phi(), phi);
+}
+
+/// **A slot's saved clip that cannot be read costs that slot its clip.**
+/// The slot hears every slot's clip and its status says why; the other
+/// slots' clips come back; a key that names no slot is passed over; and a
+/// session saved before slots had clips restores its one clip on every
+/// slot.
+#[test]
+fn an_unreadable_slot_clip_costs_that_slot_alone() {
+    let (mut engine, _, _) = listening_engine();
+    let spec = engine.cfg.phrase.clone();
+    let (a, b) = (sweep_clip(&spec), tone_clip(&spec, 220.0));
+    engine.set_slot_clip(0, Some(a.clone())).unwrap();
+    engine.set_slot_clip(1, Some(b.clone())).unwrap();
+    let mut state = engine.export_state();
+    let slots = state.audition_clips.as_mut().unwrap();
+    slots["1"]["channels"] = 7.into();
+    slots["9"] = slots["0"].clone();
+    slots["x"] = slots["0"].clone();
+    let text = serde_json::to_string(&state).unwrap();
+    let mut cfg = engine.cfg.clone();
+    cfg.phrase = cfg.phrase.without_clip();
+    let mut back = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+    back.import_state(serde_json::from_str(&text).unwrap());
+    assert_eq!(back.slot_clip_status(0).unwrap().id, a.id());
+    assert_eq!(back.slot_clip_status(0).unwrap().unreadable, None);
+    let lost = back.slot_clip_status(1).unwrap();
+    assert_eq!(lost.source, ClipSource::Reference);
+    assert!(lost.unreadable.is_some(), "the fallback is reported");
+    assert_eq!(back.slot_clip_status(2).unwrap().unreadable, None);
+    assert_eq!(back.audition_clip_status().unreadable, None);
+    let kept: Vec<usize> = back.cfg.phrase.clips.keys().copied().collect();
+    assert_eq!(kept, [0]);
+    // Giving the slot a clip again clears the report.
+    back.set_slot_clip(1, Some(b.clone())).unwrap();
+    assert_eq!(back.slot_clip_status(1).unwrap().unreadable, None);
+    // A session from before: one clip, and every slot hears it.
+    let mut old = engine.export_state();
+    old.audition_clip = serde_json::to_value(&a).ok();
+    old.audition_clips = None;
+    let mut back = Engine::new(PatchGrammarPrior::default(), cfg);
+    back.import_state(old);
+    assert!(back.cfg.phrase.clips.is_empty());
+    for slot in 0..INPUT_SLOTS {
+        assert_eq!(back.slot_clip_status(slot).unwrap().id, a.id());
+    }
+}
+
+/// After a restore whose one clip could not be read, every slot without a
+/// clip of its own reports why it hears the reference.
+#[test]
+fn an_unreadable_clip_is_reported_on_every_slot_that_hears_it() {
+    let (mut engine, _, _) = listening_engine();
+    engine.set_audition_clip(Some(sweep_clip(&engine.cfg.phrase)));
+    let mut state = engine.export_state();
+    state.audition_clip.as_mut().unwrap()["channels"] = 7.into();
+    let back = restore(&engine, state);
+    assert!(back.slot_clip_status(3).unwrap().unreadable.is_some());
+}
+
 // ---- CAPTURE takes in the session file (Plan-007 task 6) ----
 
 /// A sound that mixes a CAPTURE holding a take (a decaying tone, two

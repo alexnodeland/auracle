@@ -30,17 +30,18 @@
 //! does not know which surface produced an event. Candidates carry stable
 //! `id`s — pool positions shift on eviction, ids never do.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, render_playback, Audition, AuditionClip, ClipSource, Features, PhraseSpec,
-    RenderMemo, SavedClip,
+    featurize_memo, render_playback, Audition, AuditionClip, ClipError, ClipSource, Features,
+    PhraseSpec, RenderMemo, SavedClip,
 };
 use auracle_grammar::prior::N_OPS;
 use auracle_grammar::rng::gen_index;
 use auracle_grammar::{
     normalize_tree, tree_diff, validate_tree, DiffEntry, PatchGrammarPrior, PatchTree, Take,
+    INPUT_SLOTS,
 };
 use auracle_taste::{
     Feedback, Observation, ObservationLog, Provenance, Standardizer, TastePosterior,
@@ -912,6 +913,19 @@ pub struct SessionState {
     /// reference, and [`Engine::audition_clip_status`] says why.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audition_clip: Option<serde_json::Value>,
+    /// The clips of the input slots that have one of their own
+    /// (`PhraseSpec::clips`), as an object from the slot (`"0"` to `"7"`) to
+    /// the clip's saved form. Absent when no slot has one, so a session
+    /// without them saves, and a session saved before them restores, as
+    /// before.
+    ///
+    /// Bounded as `audition_clip` is: a clip for each slot at most, each held
+    /// to `MAX_CLIP_SECONDS`, and a slot whose clip is `audition_clip`'s is
+    /// not written. Held as raw JSON for the same reason: a slot's clip that
+    /// cannot be read costs that slot its clip, and it hears
+    /// `audition_clip`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audition_clips: Option<serde_json::Value>,
     /// A sound of your own, as the coordinates of φ its file measures, by
     /// name ([`crate::own::OwnSound`]): never the audio. Absent from sessions
     /// saved before it existed, and from any without one.
@@ -1370,6 +1384,8 @@ pub struct Engine {
     /// Why the last restore measured with the reference though the session
     /// held a clip; see [`ClipStatus::unreadable`].
     clip_unreadable: Option<String>,
+    /// The same, for each input slot whose own saved clip could not be read.
+    slot_unreadable: BTreeMap<usize, String>,
     /// Sounds the last restore **held back**: a CAPTURE's take could not be
     /// read, and without it the sound did not render (the take was its only
     /// source). Never in the pool, so never dealt, fitted, mapped, wired or
@@ -1428,6 +1444,7 @@ impl Engine {
             retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
             clip_unreadable: None,
+            slot_unreadable: BTreeMap::new(),
             held: Vec::new(),
             pending_held: HashMap::new(),
             own: None,
@@ -4145,6 +4162,7 @@ impl Engine {
                 .clip
                 .as_ref()
                 .and_then(|c| serde_json::to_value(c).ok()),
+            audition_clips: self.saved_slot_clips(),
             own_sound: self.own.clone(),
             fit: self.saved_fit(),
         }
@@ -4189,7 +4207,7 @@ impl Engine {
     /// pool, so clearing before it would change the scale a restore lands on.
     pub fn import_state_deferred(&mut self, state: SessionState) -> Vec<BankEntry> {
         // The clip first: every bank entry that listens is measured with it.
-        self.restore_clip(state.audition_clip);
+        self.restore_clip(state.audition_clip, state.audition_clips);
         // As saved, to tell whether the saved fit still describes them once
         // the import has migrated and repaired what it had to.
         let saved_log = state.profile.log.clone();
@@ -4271,28 +4289,67 @@ impl Engine {
         bank
     }
 
-    /// Install a session's saved clip, or the reference when there is none
+    /// Install a session's saved clips, or the reference when there is none
     /// or it cannot be read (and remember why, for
-    /// [`Engine::audition_clip_status`]).
-    fn restore_clip(&mut self, saved: Option<serde_json::Value>) {
+    /// [`Engine::audition_clip_status`]): `saved` for every slot, and
+    /// `slots`, the slots' own ([`SessionState::audition_clips`]), over it.
+    fn restore_clip(&mut self, saved: Option<serde_json::Value>, slots: Option<serde_json::Value>) {
         self.clip_unreadable = None;
-        self.cfg.phrase.clip = match saved {
-            None => None,
-            Some(v) => match serde_json::from_value::<SavedClip>(v)
+        self.slot_unreadable.clear();
+        let rate = self.cfg.phrase.sample_rate;
+        let read = |v: serde_json::Value| {
+            serde_json::from_value::<SavedClip>(v)
                 .map_err(|e| e.to_string())
                 .and_then(|s| AuditionClip::from_saved(&s).map_err(|e| e.to_string()))
-            {
-                Ok(clip) => Some(clip.at_rate(self.cfg.phrase.sample_rate)),
-                Err(why) => {
-                    self.clip_unreadable = Some(why);
-                    None
-                }
-            },
+                .map(|clip| clip.at_rate(rate))
         };
+        self.cfg.phrase.clip = match saved.map(read) {
+            None => None,
+            Some(Ok(clip)) => Some(clip),
+            Some(Err(why)) => {
+                self.clip_unreadable = Some(why);
+                None
+            }
+        };
+        self.cfg.phrase.clips.clear();
+        let Some(serde_json::Value::Object(slots)) = slots else {
+            return;
+        };
+        // Only the slots there are: a key that names none is not a clip.
+        for (slot, v) in slots {
+            let Some(slot) = slot.parse::<usize>().ok().filter(|s| *s < INPUT_SLOTS) else {
+                continue;
+            };
+            match read(v) {
+                Ok(clip) => {
+                    self.cfg.phrase.clips.insert(slot, clip);
+                }
+                Err(why) => {
+                    self.slot_unreadable.insert(slot, why);
+                }
+            }
+        }
     }
 
-    /// Measure the patches that listen with `clip` from now on (`None`: the
-    /// built-in reference), and measure again the pool members that listen.
+    /// The slots' own clips, as [`SessionState::audition_clips`] saves
+    /// them: each slot whose clip is not the one every other slot hears.
+    fn saved_slot_clips(&self) -> Option<serde_json::Value> {
+        let every = self.cfg.phrase.audition_clip();
+        let slots: serde_json::Map<String, serde_json::Value> = self
+            .cfg
+            .phrase
+            .clips
+            .iter()
+            .filter(|(_, c)| **c != every)
+            .filter_map(|(slot, c)| Some((slot.to_string(), serde_json::to_value(c).ok()?)))
+            .collect();
+        (!slots.is_empty()).then_some(serde_json::Value::Object(slots))
+    }
+
+    /// Measure the patches that listen with `clip` from now on, on every
+    /// input slot (`None`: the built-in reference), and measure again the
+    /// pool members that listen. A slot's own clip
+    /// ([`Engine::set_slot_clip`]) goes: `clip` is every slot's.
     ///
     /// Only those: a patch that does not listen measures the same under any
     /// clip, and its render key does not carry one. A member that no longer
@@ -4304,14 +4361,47 @@ impl Engine {
     pub fn set_audition_clip(&mut self, clip: Option<AuditionClip>) -> ClipChange {
         let clip = clip.map(|c| c.at_rate(self.cfg.phrase.sample_rate));
         self.clip_unreadable = None;
-        if self.cfg.phrase.clip == clip {
+        self.slot_unreadable.clear();
+        if self.cfg.phrase.clip == clip && self.cfg.phrase.clips.is_empty() {
             return ClipChange::default();
         }
         self.cfg.phrase.clip = clip;
+        self.cfg.phrase.clips.clear();
+        self.remeasure_listeners(|_| true)
+    }
+
+    /// Measure the patches that listen on input slot `slot` with `clip`
+    /// from now on (`None`: the clip every other slot hears, as
+    /// [`Engine::set_audition_clip`] set it), and measure again the pool
+    /// members that read that slot, as [`Engine::set_audition_clip`] does
+    /// for every slot. A slot past the last is refused, and nothing changes.
+    pub fn set_slot_clip(
+        &mut self,
+        slot: usize,
+        clip: Option<AuditionClip>,
+    ) -> Result<ClipChange, ClipError> {
+        if slot >= INPUT_SLOTS {
+            return Err(ClipError::Slot(slot));
+        }
+        let clip = clip.map(|c| c.at_rate(self.cfg.phrase.sample_rate));
+        self.slot_unreadable.remove(&slot);
+        if self.cfg.phrase.clips.get(&slot) == clip.as_ref() {
+            return Ok(ClipChange::default());
+        }
+        match clip {
+            Some(clip) => self.cfg.phrase.clips.insert(slot, clip),
+            None => self.cfg.phrase.clips.remove(&slot),
+        };
+        Ok(self.remeasure_listeners(|t| t.input_slots().contains(&slot)))
+    }
+
+    /// Measure again, under the phrase's clips as they are now, every pool
+    /// member that listens and `reads`.
+    fn remeasure_listeners(&mut self, reads: impl Fn(&PatchTree) -> bool) -> ClipChange {
         let want_audio = self.wants_admitted_audio();
         let mut change = ClipChange::default();
         for i in 0..self.pool.len() {
-            if !self.pool[i].tree.listens() {
+            if !self.pool[i].tree.listens() || !reads(&self.pool[i].tree) {
                 continue;
             }
             let id = self.pool[i].id;
@@ -4340,13 +4430,37 @@ impl Engine {
     /// Which clip the patches that listen are measured with, and, after a
     /// restore whose clip could not be read, why it is the reference.
     pub fn audition_clip_status(&self) -> ClipStatus {
-        let clip = self.cfg.phrase.audition_clip();
+        Self::clip_status(
+            &self.cfg.phrase.audition_clip(),
+            self.clip_unreadable.clone(),
+        )
+    }
+
+    /// Which clip the patches that listen on input slot `slot` are measured
+    /// with: its own, or the one every other slot hears; and, after a restore
+    /// whose clip for it could not be read, why. `None` for a slot past the
+    /// last.
+    pub fn slot_clip_status(&self, slot: usize) -> Option<ClipStatus> {
+        (slot < INPUT_SLOTS).then(|| {
+            let unreadable = match self.cfg.phrase.clips.contains_key(&slot) {
+                true => None,
+                false => self
+                    .slot_unreadable
+                    .get(&slot)
+                    .or(self.clip_unreadable.as_ref())
+                    .cloned(),
+            };
+            Self::clip_status(&self.cfg.phrase.slot_clip(slot), unreadable)
+        })
+    }
+
+    fn clip_status(clip: &AuditionClip, unreadable: Option<String>) -> ClipStatus {
         ClipStatus {
             source: clip.source(),
             id: clip.id().to_string(),
             seconds: clip.seconds(),
             channels: clip.channel_count(),
-            unreadable: self.clip_unreadable.clone(),
+            unreadable,
         }
     }
 
