@@ -2220,6 +2220,7 @@ fn input_streams_advance_each_stream_once() {
     let b = stream_of(&[0.0; 16]);
     assert!(InputStreams::none().is_none());
     assert!(InputStreams::none().with(INPUT_SLOTS, &a).is_none());
+    assert!(!InputStreams::none().with(3, &a).is_none());
     let every = InputStreams::every(&a).with(5, &b);
     assert!(!every.is_none());
     assert!(Arc::ptr_eq(every.slot(0).unwrap(), &a));
