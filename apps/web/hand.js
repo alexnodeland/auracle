@@ -7,6 +7,11 @@
 // unit-tested (tests/hand.test.mjs). main.js tells it where the pointer is
 // (`enter`, `move`, `leave` from each region's pointer events) and hands it
 // what would move one (`after`): a refit's views land through it (#300).
+//
+// The other half is the rule for a control rather than a region
+// (`heldOrTouched`, `HAND_HOLD_MS`): a control held, however still, or
+// touched or let go less than 1.5 s ago. perform.js imports it, and holds a
+// measurement that would move PERFORM's controls or XY pad back on it (#304).
 
 /** How long the pointer rests over a region before a waiting result applies. */
 export const HAND_REST_MS = 1000;

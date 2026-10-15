@@ -271,8 +271,11 @@ A measurement never moves a control you are holding. While your hand is on a
 control or the XY pad, and for a second and a half after you let go, a
 measurement that lands waits: the control stays where you put it, and
 nothing you hear jumps. Then the measurement takes over. A control that was
-still listening springs back when you let go, and starts turning once the
-measurement is in.
+still listening keeps saying so until the measurement is in; then it says
+*after you let go*, and the status line *heard: the controls turn after you
+let go*. It springs back when you let go, and starts turning a second and a
+half later. Pressing a pad is not a hand on the controls: a sound you open
+right after plays at once.
 
 ### Long-press to hear it
 

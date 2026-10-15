@@ -1546,17 +1546,26 @@ control turns, so nothing you hear moves and a turned control keeps its
 place (unless the measurement closed the half it is on, where it stops at
 the centre).
 
-No wiring lands under the hand (#304). A first measurement, a wiring read
-from the cache (`wire`'s hit, `measurePanel`'s), a background re-check, a
-guess's measurement and a Take's all wait while a control or the XY pad is
-held, however still, and for 1.5 s after the last touch or release
-(`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule beside
-`createHand`). What waits is kept in `state.deferredWire`, dropped by a patch
-change, and lands from the quarter-second tick once the hand is off
-(`landDeferred`): a first measurement wires the controls (`landFirst`), a
-cache hit is read again (`wire`), and the rest is taken in place
-(`applyRechecked`). Until then a control still being listened to keeps
-listening, and one already playing keeps its wiring and its place.
+No wiring lands under the hand (#304). A first measurement, a background
+re-check, a guess's measurement and a Take's all wait while a control or the
+XY pad is held, however still, and for 1.5 s after the last touch or release
+of one (`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule
+beside `createHand`, over `state.controlTouch`). Only a control's hand
+counts: a control, the XY pad, a MIDI pot or a control's arrow keys
+(`touchControl`); a pad or a pad's key is not a hand on the controls, and
+neither is the page's first moment. A wiring read from the cache for the
+sound just opened or a control just placed (`wire`'s hit, `measurePanel`'s)
+answers the player (ADR-025), so it waits only while a control is held
+(`handHeld`), not for the 1.5 s after. What waits is kept in
+`state.deferredWire`, dropped by a patch change or by a wiring applied
+directly (`applyWired`, `applyRechecked`), and lands from the
+quarter-second tick (`landDeferred`): a first measurement wires the controls
+(`landFirst`), a cache hit is read again (`wire`), and the rest goes through
+`applyRechecked`, which takes a re-check in place when it turns the same
+knobs and re-centres through `applyWired` when it does not, or when it
+replaces a wiring a Take carried over. Until then a control already playing
+keeps its wiring and its place, and one with nothing to turn says it turns
+after you let go.
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
