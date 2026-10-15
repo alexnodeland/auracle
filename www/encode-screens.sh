@@ -9,8 +9,8 @@
 #
 # Raw inputs expected in that directory (see SCREENSHOTS.md for the state each
 # one is captured in):
-#   play.png  perform.png  evolve.png  taste.png  styles.png  directions.png
-#   trust.png  nodebank.png  warmstart.png
+#   perform.png  play.png (PATCH)  evolve.png  taste.png  learning.png
+#   cmdk.png (⌘K open)  warmstart.png
 #
 # Encoder: cwebp (with ImageMagick for the crops) when both are installed,
 # otherwise Pillow through encode-screens.py. ENCODER=pillow forces the second.
@@ -27,7 +27,7 @@ if [ "${ENCODER:-}" != pillow ] && command -v magick >/dev/null && command -v cw
   # smears the amber and green glyphs specifically, which `-sharp_yuv` fixes,
   # and the `text` preset spends its bit budget on edges rather than on the
   # flat faceplates. Checked against the source at 2× magnification — the mono
-  # numerals on the knobs (`8.23 Hz`, `+4.0 dB`) are indistinguishable, at 30%
+  # numerals on the knobs are indistinguishable, at 30%
   # of the lossless size.
   enc() { cwebp -quiet -preset text -sharp_yuv -q 90 "$1" -o "$2"; }
   crop() { magick "$RAW/$1" -crop "$2" +repage "$OUT/tmp.png"; enc "$OUT/tmp.png" "$OUT/$3"; rm -f "$OUT/tmp.png"; }
@@ -53,49 +53,56 @@ done >"$BEFORE"
 # are *crops* rather than shrunken frames — a figure that has to be read gets
 # there by showing less, never by being published larger.
 frame() { enc "$RAW/$1" "$OUT/$2"; }
-frame play.png       play.webp
 frame perform.png    perform.webp
+frame play.png       play.webp
 frame evolve.png     evolve.webp
 frame taste.png      taste-map.webp
-frame styles.png     taste-styles.webp
-frame directions.png taste-directions.webp
-frame trust.png      taste-trust.webp
-frame nodebank.png   node-bank.webp
+frame learning.png   learning.webp
+frame cmdk.png       cmdk.webp
 
 # Detail figures, cropped 1:1 out of the same captures. These are the ones a
 # reader is meant to be able to read; each lands at its captured size, and the
 # pages that show them carry that size in their width/height attributes — so a
 # rectangle that changes size changes those too. capture-screens.mjs writes
 # rects.json beside the frames: where each subject actually landed.
+#
+# Not made here since the shell (Plan-008): spec-card.webp and node-bank.webp,
+# whose shot (the old node bank's spec strip) went with the strip. They stay
+# as they were until the catalog's card has a shot of its own. Kept too, for
+# the TASTE film until it is re-made: taste-trust.webp (its forecast scene)
+# and taste-styles.webp and taste-directions.webp (its reading scene), shots
+# of TASTE's old tabs, which the shell retired, so nothing here makes them.
 
-# The node bank's spec card: one sentence, the port map, the parameters it will
-# arrive with, what the model believes, and the "heard as" line. Exactly the
-# strip (#spec-dock), border to border, opened to fit the card.
-crop nodebank.png  927x133+266+598  spec-card.webp
 # Rack detail: knobs at true positions in musical units, green audio cables,
-# amber modulation cables with named destinations. Positioned clear of the
-# minimap, which sits bottom-left of the frame. The one rectangle that depends
-# on the patch as well as the layout: re-aim it when the PATCH shot changes.
-crop play.png      560x300+448+188  rack-detail.webp
-# The teaching meter (#duel-mid, 1160x56) with 6px either side and 2px above
-# and below, and the line saying how the pair was dealt inside it.
-crop evolve.png    1172x60+260+59   teach-meter.webp
+# amber modulation cables with named destinations. Clear of the minimap,
+# which sits bottom-left of the frame. The one rectangle that depends on the
+# patch as well as the layout: re-aim it when the PATCH shot changes.
+crop play.png      560x300+540+370  rack-detail.webp
 # The bank (Plan-008 PR B): its head (the three tabs and Find a sound) and
 # its rows, at rest, from under the menu bar (56px) to the keys bar.
 crop play.png      280x766+0+56     bank.webp
-# One row out of it, pointed at so its actions show, for the page that names
-# its parts: the list's second slot, which is where the capture scrolls the
-# bench row. (The capture for 2026-10 was the bank's own: PATCH after the warm
-# start, the second row hovered.)
-crop play.png      280x40+0+197     bank-row.webp
+# One row out of it, the one on the bench, its actions showing, for the page
+# that names its parts. Where the row lands depends on the capture, so the
+# rectangle is read from rects.json's play.row (from the bank's left edge, at
+# the bank's width); the fixed one is for a capture with no rects.json.
+ROW="$(python3 -c '
+import json, sys
+try:
+    r = json.load(open(sys.argv[1]))["play"]
+    b, w = r["bank"], r["row"]
+    print("%dx%d+%d+%d" % (b["w"], w["h"], b["x"], w["y"]))
+except (OSError, KeyError, ValueError):
+    pass
+' "$RAW/rects.json")"
+if [ -n "$ROW" ]; then echo "bank-row: $ROW, from rects.json"; else ROW=280x40+0+317; echo "bank-row: no rects.json, the fixed $ROW"; fi
+crop play.png      "$ROW"           bank-row.webp
 # The three-pick warm start, cropped to the card, border to border. The rest of
 # the frame is the app behind a scrim and carries nothing.
-crop warmstart.png 760x468+340+216  warm-start.webp
-# The DIRECTIONS plot on its own. The landing page shows this beside a column
-# of prose, in about 700px — a full frame at that width is 0.46× and unreadable,
-# so the figure there is the panel rather than the app around it. The panel is
-# 639 tall now; its last 18px are empty and stay out of the figure.
-crop directions.png 1160x621+266+140 directions-detail.webp
+crop warmstart.png 760x473+340+214  warm-start.webp
+# LEARNING's panels on their own: what it weighs, where liking rises and its
+# forecasts. The landing page shows this beside a column of prose, in about
+# 700px, where a whole 1440px frame is 0.46× and unreadable.
+crop learning.png  1016x607+304+195 learning-detail.webp
 
 echo
 printf '%-26s %9s %9s\n' "asset" "before" "after"
