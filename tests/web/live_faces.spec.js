@@ -67,10 +67,11 @@ const lit = (page, sel) => page.evaluate((s) => window.__lit(s), sel);
 /** The sound held: one that sounds as long as a key is down and stops soon
  *  after it is up (`amp(0.03, 0.35, 0.55, 0.2)`: a fast attack, a sustain,
  *  a short release). The sound a boot deals is any of the pool's, and an
- *  unseeded one (the nightly hunt's) dealt a bell still ringing 10 s after
- *  the key was up (#423), a pluck gone before the face flew (#416) or before
- *  the face lit at PERFORM (#398), and one whose output never reached
- *  -40 dB while the key was down (#414). */
+ *  unseeded one (the nightly hunt's) dealt Soft Bell and Bright Key, still
+ *  lit 10 s after the key was up (#423), and Soft Pluck, gone before the
+ *  face flew (#416), as their traces show. #398's PERFORM faces stayed
+ *  unlit for 30 s and #414's output peaked at -78 dB while the key was held
+ *  (seen in their logs; their sounds unknown). */
 const HELD = "First Bass";
 
 /** Boot at PATCH (its face lands at once: PERFORM's wait behind its first
@@ -90,7 +91,7 @@ async function boot(app, opts) {
   // stands for, and the face in flight lands on) is the engine's answer
   // after the open's, so it is waited for too.
   await bankTab(page, "pool");
-  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item.live > .face-slot > *").first()).toBeVisible({ timeout }));
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item.live > .face-slot > img.face").first()).toBeVisible({ timeout }));
 }
 
 /** A key held until the face's layer lights (the voices may still be
