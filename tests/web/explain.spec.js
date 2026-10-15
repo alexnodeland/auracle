@@ -381,12 +381,8 @@ test("asking about a control moves no label", async ({ page, app }) => {
   expect(await labels()).toEqual(at);
 });
 
-test("a turn with an answer open asks the engine once it rests, not on every move", { tag: "@quarantine", annotation: { type: "issue", description: "#336" } }, async ({ page, app }) => {
-  await boot(page, app);
-  await openOnPerform(app, "Reese");
-  await askAbout(page, app, 0);
-  const before = await app.now();
-  // Three seconds of drag on BRIGHT, up and down, a move every 50 ms.
+/** Three seconds of drag on BRIGHT, up and down, a move every 50 ms. */
+async function dragBright(page) {
   const b = await knob(page, 0).boundingBox();
   const x = b.x + b.width / 2;
   const y = b.y + b.height / 3;
@@ -397,12 +393,75 @@ test("a turn with an answer open asks the engine once it rests, not on every mov
     await page.waitForTimeout(DRAG_STEP_MS);
   }
   await page.mouse.up();
+}
+
+// How long a turn rests before its figure follows (explain.js `FOLLOW_MS`).
+const FOLLOW_MS = 300;
+
+test("a turn with an answer open asks the engine once it rests, not on every move", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
+  const before = await app.now();
+  // Every move the page was handed, on its own clock: the clock the follow
+  // timer runs on.
+  await page.evaluate(() => {
+    const at = (window.__pwMoves = []);
+    document.addEventListener("pointermove", () => at.push(performance.now()), true);
+  });
+  await dragBright(page);
   await settled(page, app);
   // Nothing more is asked once it has answered.
   await app.quiet();
   const asked = (await app.sent({ type: "explain" }, { after: before })).length;
+  // A loaded runner hands the page some of the 50 ms moves 300 ms or more
+  // apart: the turn rested there, and the figure followed it, as it should.
+  // So each such rest the page saw may ask once more (#336); on a machine
+  // that kept the pace there are none.
+  const moves = await page.evaluate(() => window.__pwMoves);
+  const rests = moves.slice(1).filter((t, i) => t - moves[i] >= FOLLOW_MS).length;
+  console.log(`${moves.length} moves, ${rests} rests of ${FOLLOW_MS} ms or more in the drag, ${asked} asks`);
+  expect(moves.length, "the drag's moves reached the page").toBeGreaterThanOrEqual(60);
   expect(asked).toBeGreaterThanOrEqual(1);
-  expect(asked).toBeLessThanOrEqual(2);
+  expect(asked, `asked more than once a rest (${rests} in the drag)`).toBeLessThanOrEqual(2 + rests);
+});
+
+test("on a page that stalls mid-drag, a turn asks once a rest, not again on every reply", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
+  const before = await app.now();
+  // Every move the page was handed, on its own clock: the clock the follow
+  // timer runs on.
+  await page.evaluate(() => {
+    const at = (window.__pwMoves = []);
+    document.addEventListener("pointermove", () => at.push(performance.now()), true);
+    // A loaded machine, made: the page busy 400 ms of every 600, so the
+    // drag rests where it stalls and the replies land mid-turn. Without the
+    // follow timer's hold on a reply's own ask this asked 27 times for 15
+    // rests; with it, about one a rest.
+    window.__pwStall = setInterval(() => {
+      const t = performance.now();
+      while (performance.now() - t < 400);
+    }, 600);
+  });
+  await dragBright(page);
+  await page.evaluate(() => clearInterval(window.__pwStall));
+  expect(await page.evaluate(() => window.__pwMoves.slice(1).some((t, i) => t - window.__pwMoves[i] >= 300)), "the stall made the drag rest").toBe(true);
+  await settled(page, app);
+  // Nothing more is asked once it has answered.
+  await app.quiet();
+  const asked = (await app.sent({ type: "explain" }, { after: before })).length;
+  // A loaded runner hands the page some of the 50 ms moves 300 ms or more
+  // apart: the turn rested there, and the figure followed it, as it should.
+  // So each such rest the page saw may ask once more (#336); on a machine
+  // that kept the pace there are none.
+  const moves = await page.evaluate(() => window.__pwMoves);
+  const rests = moves.slice(1).filter((t, i) => t - moves[i] >= FOLLOW_MS).length;
+  console.log(`${moves.length} moves, ${rests} rests of ${FOLLOW_MS} ms or more in the drag, ${asked} asks`);
+  expect(moves.length, "the drag's moves reached the page").toBeGreaterThanOrEqual(60);
+  expect(asked).toBeGreaterThanOrEqual(1);
+  expect(asked, `asked more than once a rest (${rests} in the drag)`).toBeLessThanOrEqual(2 + rests);
 });
 
 test("Space plays with an answer open and in the lesson, after a click on its buttons too", async ({ page, app }) => {

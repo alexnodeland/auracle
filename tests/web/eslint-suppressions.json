@@ -263,9 +263,6 @@
     "auracle/no-aur-in-spec": {
       "count": 1
     },
-    "auracle/no-runner-clock": {
-      "count": 1
-    },
     "playwright/no-conditional-expect": {
       "count": 2
     },

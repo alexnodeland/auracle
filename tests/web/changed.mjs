@@ -67,10 +67,10 @@ export const MODULES = {
   "apps/web/strain.js": ["perform_struggling_audio"],
   // The profile's spec hands a farm worker of its own its boot, phrase and
   // job, as main and the engine do.
-  "apps/web/farm.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "reference_profile", "evolve_refit"],
+  "apps/web/farm.js": ["faces", "farm_close", "evolve_breeds_beside_you", "evolve_generation_timing", "reference_profile", "evolve_refit"],
   // Both workers open the render cache's store through it, at boot; the
   // fixture writes and reads the store through it too (`reuseRenders`).
-  "apps/web/render-store.js": ["faces", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
+  "apps/web/render-store.js": ["faces", "farm_close", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
   // The toast lane's queue: main.js's `note` hands it every toast.
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
   // What waits for the hand: a refit's views over the bank and the maps.
@@ -93,7 +93,7 @@ export const VIEWS = {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "cmdk", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "narrow_gate", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
-      "live_faces", "boot_modules",
+      "live_faces", "boot_modules", "farm_close",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
   },

@@ -329,8 +329,8 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     which the nightly job starts. A spec's own route for `worker.js` or
     `farm.js` and a profile's cannot both hold (the one registered last
     answers): give the engine's code to `workerPrefix` and the farm's to
-    `farmPrefix`, which a profile keeps (`patch_guess.spec.js` slows boot's
-    crew with `farmPrefix`).
+    `farmPrefix`, which a profile keeps (`patch_guess.spec.js` holds boot's
+    crew's renders at a gate with `farmPrefix`).
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its
