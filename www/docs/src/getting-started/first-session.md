@@ -39,10 +39,9 @@ about thirty seconds, which is the difference between a model that has a
 guess by the end of this session and one that doesn’t.
 
 <figure>
-<img src="../img/warm-start.webp" alt="The warm-start card: nine named presets in a three-by-three grid, each with a one-line description and a play button, and two buttons below." loading="lazy" width="760" height="473">
+<img src="../img/warm-start.webp" alt="The warm-start card: PICK THE THREE YOU’D REACH FOR over nine named presets in a three-by-three grid, each with its face, a short description and a play button, and SKIP and PICK ANY THREE below." loading="lazy" width="760" height="473">
 <figcaption><strong>The warm start.</strong> Nine presets, one per family
-first. The screenshot predates the current wording: the card now reads PICK
-THE THREE YOU’D REACH FOR.</figcaption>
+first.</figcaption>
 </figure>
 
 1. Press **▶** on a card to hear it. Press it again to stop.

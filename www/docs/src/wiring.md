@@ -96,7 +96,7 @@ the readout at its foot; focus it from the keyboard and a card opens beside
 the catalog:
 
 <figure>
-<img src="./img/spec-card.webp" alt="The formant oscillator’s spec card: a glyph, the name FORMANT, its ports, a sentence describing it, its default settings, a heard line, and a line on what the model makes of it." loading="eager" width="950" height="108">
+<img src="./img/spec-card.webp" alt="The formant oscillator’s spec card: a glyph, the name FORMANT, its ports, a sentence describing it, its default settings, a heard line, and a line on what the model makes of it." loading="eager" width="927" height="133">
 <figcaption><strong>A spec card.</strong> What the module does, what it takes
 and gives, what it arrives set to, and what the model makes of it. The
 screenshot shows the older wording, <em>has no lean either way</em>; the card

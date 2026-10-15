@@ -14,7 +14,7 @@ sources to the amp, out through **OUT** into the sound’s
 on the next note you play.
 
 <figure>
-<img src="../img/play.webp" alt="PATCH: the bank on the left, the patch's head (its family, its name, how many modules it has) above the well, the modules in signal order across the well, zoomed in, with a map of the whole patch in its corner, and the keybed docked below." loading="eager" width="1440" height="900">
+<img src="../img/play.webp" alt="PATCH: the bank on the left, the patch's head (its name and how many modules and modulators it has) above the well, the modules in signal order across the well, zoomed in, with a map of the whole patch in its corner, and the keybed docked below." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The bank on the left, the head and the
 well in the middle, the keybed below. Everything here is live while you edit
 it.</figcaption>
