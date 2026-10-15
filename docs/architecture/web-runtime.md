@@ -1650,7 +1650,11 @@ a new tree, so PERFORM hears it separately: `sendEdit` calls
 edit's reply calls `perform.followTree` (its tree text follows, so a first
 measurement, Keep and offers start from the edited patch). PATCH draws an
 amber "performed" pointer only where `perform.movedOn` names a reason: a
-control or expression offset, a Wander or Back glide, or a drift not yet kept.
+control or expression offset, a Wander or Back glide, a drift not yet kept,
+or velocity: the offset the last struck held note's velocity wrote on a knob
+at note-on (`noteStruck`, `velocityOffset`), dropped when the note is let go
+or a write to that knob reaches every voice. Velocity is not a move from
+home: the moved bar asks `movedOn` without it.
 
 ## Timing marks
 

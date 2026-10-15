@@ -1280,7 +1280,9 @@ export function createPerform(host) {
   // from home (a finished drift, or controls folded into the centre by a
   // re-measurement) and has not kept. A base that merely disagrees with the
   // bench is none of these, and is not a performance.
-  function movedOn(addr) {
+  // `velocity`: name velocity's part too, for PATCH's drawing. The moved bar
+  // asks without it: a held note is not the sound leaving home.
+  function movedOn(addr, velocity = false) {
     if (!state.cur) return null;
     const base = state.cur.knobs.get(addr);
     if (base == null) return null;
@@ -1292,7 +1294,7 @@ export function createPerform(host) {
       if (!(state.c[i] + p)) return;
       if (w.knobs.some(([a, g]) => a === addr && g)) why.push(w.name);
     });
-    if (velocityOffset(addr)) why.push("velocity");
+    if (velocity && velocityOffset(addr)) why.push("velocity");
     const g = state.glide;
     if (g && g.from.has(addr) && Math.abs((g.to.has(addr) ? g.to.get(addr) : g.from.get(addr)) - g.from.get(addr)) > 1e-4) {
       why.push(g.why || "a glide");
@@ -4773,8 +4775,9 @@ export function createPerform(host) {
     // A note went down at `vel` (main's note path, attract's included).
     noteStruck,
     // Why PERFORM is playing a knob away from the patch (the controls on it,
-    // "Wander", "Back"…), or null: what PATCH draws a ghost for, and says.
-    movedOn,
+    // "Wander", "Back", "velocity"…), or null: what PATCH draws a ghost for,
+    // and says.
+    movedOn: (addr) => movedOn(addr, true),
     // Where PERFORM draws the sound you're playing: its face in the well
     // (main.js `faceBoxOf`, the box and the face's render key), for the face
     // carried between the levels (shell.js). Null while PERFORM is hidden.
