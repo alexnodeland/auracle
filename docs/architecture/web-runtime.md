@@ -727,7 +727,10 @@ in `tests/marks.test.mjs`), and TASTE
 draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
 arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
 every halo on the map moves to the ratings it carries, in one tween; a views
-post settles every halo and every place at once. LEARNING's arrow (which way
+post settles every halo at once, and every place with them unless the hand
+is on the map (the pointer over it, a touch until a rest after the lift, or
+a sound's card up), where the places wait for it to leave or rest
+(taste.js's own `createHand`, `holdRegion` in `hand.js`). LEARNING's arrow (which way
 liking rises on the map) turns with the same ratings. `views.ranked` and
 `views.map` still change only when views are posted, so the bank's numbers
 (shown under the model view) follow the last refit. A pick in EVOLVE reaches the worker when its undo
