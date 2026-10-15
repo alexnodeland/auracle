@@ -3803,7 +3803,7 @@ fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn Grap
 /// Built per slot ([`Self::with`]) for a render that gives each input its
 /// own signal, or with one stream on every slot ([`Self::every`]) for a
 /// caller that has one input to give.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct InputStreams {
     slots: [Option<Arc<AudioInputStream>>; INPUT_SLOTS],
 }
@@ -3811,7 +3811,9 @@ pub struct InputStreams {
 impl InputStreams {
     /// No slot bound: every AUDIO IN is silent.
     pub fn none() -> Self {
-        Self::default()
+        InputStreams {
+            slots: std::array::from_fn(|_| None),
+        }
     }
 
     /// `stream` on every slot: every AUDIO IN reads it, whatever its slot.
