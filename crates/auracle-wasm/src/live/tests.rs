@@ -492,23 +492,40 @@ fn a_unison_stack_stays_centred_when_the_limit_moves() {
     );
 }
 
-/// In unison under the arp, a lowered limit lets the stack's voices past it
-/// go at once, and the arp's next step presses the stack at its new size.
+/// In unison under the arp, an octave up, the stack plays a note no key
+/// holds: a lowered limit lets the voices past it go at once, counted as let
+/// go after every tail and press before, and the arp's next step presses the
+/// stack at its new size.
 #[test]
 fn a_lowered_limit_trims_the_arps_unison_stack() {
     quiver::rng::seed(7);
     let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    // Ten tails, let go first.
+    for n in 40..50 {
+        poly.note_on(n, 1.0);
+    }
+    poly.all_off();
+    poly.set_voice_limit(6);
     poly.set_unison(true, 1.0, 1.0);
-    poly.set_arp(true, 0, 4.0, 120.0, 1.0, 1, 0.0);
+    // Down, two octaves: the first step plays 69 over the key 57.
+    poly.set_arp(true, 1, 4.0, 120.0, 1.0, 2, 0.0);
     poly.note_on(57, 1.0);
-    poly.process(128);
     let held = |p: &LivePoly| p.voices.iter().filter(|v| v.note.is_some()).count();
-    assert_eq!(held(&poly), 10, "the arp pressed the whole stack");
+    let mut steps = 0;
+    while poly.voices[0].note != Some(69) {
+        poly.process(128);
+        steps += 1;
+        assert!(steps < 2000, "the arp never played 69");
+    }
+    assert_eq!(held(&poly), 6, "the arp pressed the stack");
     poly.set_voice_limit(4);
-    assert_eq!(held(&poly), 4);
-    assert!(poly.voices[4..]
+    assert_eq!(held_notes(&poly), vec![69; 4]);
+    assert!(poly.voices[4..6]
         .iter()
         .all(|v| v.note.is_none() && v.running));
+    // Let go now: after the older tails, and after the stack's press.
+    assert!(poly.voices[4].released > poly.voices[6].released);
+    assert!(poly.voices[4].released > poly.voices[0].stamp);
 }
 
 /// A unison stack held through a swap comes back as wide as the limit, on

@@ -1848,17 +1848,16 @@ impl LivePoly {
             // down whose note was let go stays silent).
             let sounding = self.voices.iter().find_map(|v| v.note);
             let key = self.held.iter().find(|(n, _)| Some(*n) == sounding);
-            match key {
-                Some(&(note, vel)) if !self.arp_on => self.press(note, vel),
-                _ => {
-                    // Nothing held, or the arp's: its next step presses the
-                    // stack anew. Let the voices past the limit go.
-                    self.counter += 1;
-                    let at = self.counter;
-                    for v in self.voices.iter_mut().skip(self.limit) {
-                        if v.note.is_some() {
-                            Self::release(v, at);
-                        }
+            if let Some(&(note, vel)) = key {
+                self.press(note, vel);
+            } else {
+                // The arp's note a step off its key: its next step presses
+                // the stack anew. Let the voices past the limit go.
+                self.counter += 1;
+                let at = self.counter;
+                for v in self.voices.iter_mut().skip(self.limit) {
+                    if v.note.is_some() {
+                        Self::release(v, at);
                     }
                 }
             }
