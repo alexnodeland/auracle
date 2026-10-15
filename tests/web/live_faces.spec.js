@@ -20,7 +20,8 @@
 // pixels, and, where it must know the output sounds, the output through an
 // analyser on everything the app connects to the destination, as
 // perform_stage.spec.js does.
-const { test, expect, goLevel, landed } = require("./fixtures");
+const { test, expect, goLevel, landed, bankTab } = require("./fixtures");
+const { openPreset } = require("./patch_page");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -63,8 +64,17 @@ const INIT = `(() => {
 const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
 const lit = (page, sel) => page.evaluate((s) => window.__lit(s), sel);
 
+/** The sound held: one that sounds as long as a key is down and stops soon
+ *  after it is up (`amp(0.03, 0.35, 0.55, 0.2)`: a fast attack, a sustain,
+ *  a short release). The sound a boot deals is any of the pool's, and an
+ *  unseeded one (the nightly hunt's) dealt a bell still ringing 10 s after
+ *  the key was up (#423), a pluck gone before the face flew (#416) or before
+ *  the face lit at PERFORM (#398), and one whose output never reached
+ *  -40 dB while the key was down (#414). */
+const HELD = "First Bass";
+
 /** Boot at PATCH (its face lands at once: PERFORM's wait behind its first
- *  measurement), with the face of the sound you're playing at OUT. */
+ *  measurement), with HELD in hand, its face at OUT. */
 async function boot(app, opts) {
   const { page } = app;
   await page.addInitScript(INIT);
@@ -74,7 +84,13 @@ async function boot(app, opts) {
     } catch (_) {}
   });
   await app.boot(opts);
+  await openPreset(app, HELD);
   await app.engine((timeout) => expect(page.locator("#out-face img.face")).toBeVisible({ timeout }));
+  // HELD has just joined the pool: its own face there (what TASTE's mark
+  // stands for, and the face in flight lands on) is the engine's answer
+  // after the open's, so it is waited for too.
+  await bankTab(page, "pool");
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item.live > .face-slot > *").first()).toBeVisible({ timeout }));
 }
 
 /** A key held until the face's layer lights (the voices may still be
