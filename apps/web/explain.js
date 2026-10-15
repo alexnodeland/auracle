@@ -742,8 +742,22 @@ export function createExplain(host) {
   const keyOf = (st) => JSON.stringify([st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
   let busy = 0; // the token of the one request out, or 0
   let busyT = 0;
+  // When the control was last turned (`controlTurned`).
+  let lastTurn = 0;
   function request(st, key) {
     if (busy) return;
+    // A turn in progress is the follow timer's to ask for, once it rests: a
+    // reply that lands mid-turn draws what it measured and asks for nothing,
+    // or a drag on a loaded machine asked again on every reply (#336).
+    // The timer is armed here too, for what is left of the rest, so the
+    // answer asks even when nothing else set it (opened again just after a
+    // turn).
+    const since = performance.now() - lastTurn;
+    if (since < FOLLOW_MS) {
+      clearTimeout(followT);
+      followT = setTimeout(() => shown && render(), FOLLOW_MS - since);
+      return;
+    }
     token += 1;
     out.set(token, key);
     busy = token;
@@ -935,11 +949,18 @@ export function createExplain(host) {
       else return close();
     }
     // A turn in progress is the follow timer's to answer, once it rests.
-    if (performance.now() - lastTurn < FOLLOW_MS) return;
+    // The timer is armed here too, for what is left of the rest, so the
+    // answer asks even when nothing else set it (opened again just after a
+    // turn).
+    const since = performance.now() - lastTurn;
+    if (since < FOLLOW_MS) {
+      clearTimeout(followT);
+      followT = setTimeout(() => shown && render(), FOLLOW_MS - since);
+      return;
+    }
     const st = perf()?.explainOf(shown.i);
     if (st && keyOf(st) !== shown.key) render();
   }
-  let lastTurn = 0;
   function controlTurned(i) {
     if (!shown || shown.i !== i || !pop.classList.contains("on")) return;
     lastTurn = performance.now();
