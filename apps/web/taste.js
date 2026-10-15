@@ -40,60 +40,8 @@
 
 // The hold rule (hand.js): a views post moves the halos at once, and the
 // places, and LEARNING's order of weights, wait while the hand is on them.
-const { createHand } = await import(`./hand.js${new URL(import.meta.url).search}`);
+const { createHand, holdRegion } = await import(`./hand.js${new URL(import.meta.url).search}`);
 
-/** How long after a touch on a region a result still waits: a finger has no
- *  hover, so the hold outlasts it (the app's hold rule, #297). */
-const TOUCH_HOLD_MS = 1500;
-
-/** One region a result waits on: `el`'s pointer (over it, or a touch in the
- *  last `TOUCH_HOLD_MS`) and any `extra()` holds (a sound active on the map)
- *  make one hold, told to `hand` only as it starts and ends. `refresh()`
- *  says an extra hold changed; `release()` lets go when the region is
- *  hidden, where no pointerleave will come. */
-function holdRegion(el, hand, extra = () => false) {
-  let over = false, touched = false, touchT = 0, held = false;
-  function refresh() {
-    const now = over || touched || extra();
-    if (now === held) return;
-    held = now;
-    if (held) hand.enter();
-    else hand.leave();
-  }
-  el.addEventListener("pointerenter", (e) => {
-    if (e.pointerType === "mouse") over = true;
-    refresh();
-  });
-  el.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "mouse") return;
-    clearTimeout(touchT);
-    touched = true;
-    refresh();
-    hand.move();
-  });
-  el.addEventListener("pointermove", (e) => {
-    if (e.pointerType === "mouse") over = true;
-    if (held) hand.move();
-    else refresh();
-  });
-  el.addEventListener("pointerleave", (e) => {
-    if (e.pointerType === "mouse") over = false;
-    else {
-      clearTimeout(touchT);
-      touchT = setTimeout(() => { touched = false; refresh(); }, TOUCH_HOLD_MS);
-    }
-    refresh();
-  });
-  return {
-    refresh,
-    release() {
-      clearTimeout(touchT);
-      over = false;
-      touched = false;
-      refresh();
-    },
-  };
-}
 const newHand = () => createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
 
 export function createTaste(host) {
@@ -255,7 +203,7 @@ export function createTaste(host) {
   // over the map, a views post moves the halos and the places wait, to
   // settle on pointer-leave or after a rest (hand.js).
   const mapHand = newHand();
-  const mapHold = holdRegion(well, mapHand, () => active != null);
+  const mapHold = holdRegion(well, mapHand, { extra: () => active != null });
   let scrub = null; // the track's moment shown, an index into the history, or null for now
   const halosOn = () => fitted() || tasteOn() || scrub != null;
 
@@ -615,6 +563,8 @@ export function createTaste(host) {
   cv.addEventListener("keydown", (e) => {
     if (e.key.startsWith("Arrow")) {
       e.preventDefault();
+      // A step is the hand moving on the map: the places' rest starts again.
+      mapHold.moved();
       stepTo(e.key);
     } else if (e.key === "Enter" && active != null) {
       e.preventDefault();
@@ -1568,6 +1518,10 @@ export function createTaste(host) {
     // shown at now (`setScrub`, `setView`).
     if (visible !== "taste" || scrub != null) return;
     adopt({ move: true });
+    // The card goes with its sound (at once under reduced motion, where no
+    // glide re-places it), or closes when the new map has no place for it.
+    renderPlate();
+    placePlate();
     if (say) live.textContent = words.refitSaid();
     kick();
   }

@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHand, heldOrTouched, HAND_HOLD_MS, HAND_REST_MS } from "../hand.js";
+import { createHand, heldOrTouched, holdRegion, HAND_HOLD_MS, HAND_REST_MS } from "../hand.js";
 
 /** A clock and timers the test moves by hand. */
 function clock() {
@@ -124,4 +124,102 @@ test("a control let go is under the hand for 1.5 s from the release, then not", 
 
 test("a panel never touched is not under the hand", () => {
   assert.equal(heldOrTouched(false, -Infinity, 0), false);
+});
+
+/** An element that only dispatches what a test fires at it. */
+function element() {
+  const on = new Map();
+  return {
+    addEventListener: (type, fn) => on.set(type, fn),
+    fire: (type, pointerType = "mouse") => on.get(type)?.({ pointerType }),
+  };
+}
+
+/** A hand that counts what it is told. */
+function counted(c) {
+  const hand = createHand(c);
+  const told = { enter: 0, leave: 0 };
+  return {
+    told,
+    hand: { ...hand, enter: () => (told.enter++, hand.enter()), leave: () => (told.leave++, hand.leave()) },
+  };
+}
+
+test("a region's mouse holds what waits until it leaves, and the hand is told once each way", () => {
+  const c = clock();
+  const { hand, told } = counted(c);
+  const el = element();
+  holdRegion(el, hand, c);
+  el.fire("pointerenter");
+  el.fire("pointermove");
+  el.fire("pointermove");
+  let ran = 0;
+  hand.after("places", () => ran++);
+  c.advance(500);
+  el.fire("pointermove");
+  c.advance(900);
+  assert.equal(ran, 0, "moving keeps it waiting");
+  el.fire("pointerleave");
+  assert.equal(ran, 1);
+  assert.deepEqual(told, { enter: 1, leave: 1 });
+});
+
+test("a touch holds what waits until a rest after the finger lifts", () => {
+  const c = clock();
+  const { hand, told } = counted(c);
+  const el = element();
+  holdRegion(el, hand, c);
+  el.fire("pointerenter", "touch");
+  el.fire("pointerdown", "touch");
+  c.advance(700);
+  el.fire("pointermove", "touch");
+  c.advance(200);
+  el.fire("pointerleave", "touch"); // the finger lifts at 900 ms
+  c.advance(100);
+  let ran = 0;
+  hand.after("places", () => ran++); // a result lands at 1000 ms
+  c.advance(HAND_REST_MS - 101);
+  assert.equal(ran, 0, "still waiting just before a rest after the lift");
+  c.advance(1);
+  assert.equal(ran, 1, "applies a rest after the lift");
+  assert.deepEqual(told, { enter: 1, leave: 1 });
+});
+
+test("an extra hold (a card up) holds without the pointer, and its arrow steps start the rest again", () => {
+  const c = clock();
+  const hand = createHand(c);
+  const el = element();
+  let up = false;
+  const region = holdRegion(el, hand, { ...c, extra: () => up });
+  up = true;
+  region.refresh();
+  assert.equal(hand.held(), true);
+  let ran = 0;
+  hand.after("places", () => ran++);
+  for (let i = 0; i < 6; i++) {
+    c.advance(300);
+    region.moved();
+  }
+  assert.equal(ran, 0, "steps every 300 ms keep it waiting");
+  c.advance(HAND_REST_MS);
+  assert.equal(ran, 1, "a rest after the last step lets it go");
+  up = false;
+  region.refresh();
+  assert.equal(hand.held(), false);
+});
+
+test("a region released while hidden lets go of the mouse and a touch", () => {
+  const c = clock();
+  const hand = createHand(c);
+  const el = element();
+  const region = holdRegion(el, hand, c);
+  el.fire("pointerenter");
+  el.fire("pointerdown", "touch");
+  let ran = 0;
+  hand.after("places", () => ran++);
+  region.release();
+  assert.equal(ran, 1);
+  assert.equal(hand.held(), false);
+  c.advance(5_000);
+  assert.equal(hand.held(), false);
 });
