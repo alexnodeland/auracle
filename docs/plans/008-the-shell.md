@@ -33,9 +33,9 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
 | C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
-| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | built on `claude/preset-faces` with #153's C2b follow-ups, in review |
+| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | merged (#257) |
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | merged (#331) |
-| D: ⌘K, and the guide for the levels | #132 | built on `claude/shell-d`, in review; the screenshots' re-capture is #343 |
+| D: ⌘K, and the guide for the levels | #132 | merged (#344); the screenshots' re-capture is #343 |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
 | PATCH's specs on the shared fixture | #136 | merged (#168) |
 | After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | not started |
