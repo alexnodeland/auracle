@@ -965,13 +965,14 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   page. The rate is measured once a run, on its first boot that asks: one
   preset's render here, unslowed, against its time on the reference (1.1 s,
   ADR-025's estimate until it is measured on the Air), and 1 on a machine as
-  slow as the reference or slower. On a 16-core M3 Max that render takes
-  0.18 s in Chromium and 0.21 to 0.23 s in Firefox, so the rate is about 6
-  and 4.8 to 5.2, and on the profile a render took 1.1 to 1.3 s in the engine
-  worker and on the farm. On a hosted runner the render is put at about 0.7
-  to 1.2 s from the step times the nightly measured (a Xeon 8370C, 0.9 to
-  1.5 s a step), so its rate is about 1 to 1.5, and the first nights'
-  calibration lines will say. `AURACLE_BROWSER=firefox` runs the specs in
+  slow as the reference or slower. Before quiver-dsp 0.4.1 and 0.5.1 made a render
+  about three times cheaper (#393, #406), that render took 0.18 s in
+  Chromium and 0.21 to 0.23 s in Firefox on a 16-core M3 Max (a rate of
+  about 6 and 4.8 to 5.2), and 377 to 383 ms on a hosted runner (×2.9, the
+  nightly's calibration lines of 2026-10-08); on 2026-10-15 the runners
+  took 120 to 134 ms (×8.2 to ×9.2). The 1.1 s estimate predates both
+  changes, so the profile now holds a runner about three times slower than
+  the Air would be. `AURACLE_BROWSER=firefox` runs the specs in
   Firefox; on Linux its AudioContext starts only with an audio server
   running (PulseAudio), which Playwright's image lacks and the nightly job
   starts.
@@ -1060,6 +1061,7 @@ the least of `REPS` repeats in thread CPU ms per render, with the load
 average. It is a measurement, not a gate: nothing in CI runs it. The nightly
 *Speed budgets* job (#299) judges what a player waits on, with each runner
 slowed until a calibration render takes the reference machine's time
+(ADR-025's estimate of it)
 (`tests/web/profile.js`), not what a render costs on its own; and
 time is never an `expect` ([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)).
 To compare two builds, run them alternately on the same machine:
