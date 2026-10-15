@@ -206,9 +206,13 @@ for (const [title, session, as] of [
 ]) test(title, async ({ page, app }) => {
   await app.boot(session);
   // Only a seed in the address deals by the fill's schedule (#211): the
-  // page says which it is with `init`.
+  // page says which it is with `init`. The first boot's address is the
+  // fixture's to choose (AURACLE_SEED=random, as the nightly hunt runs, has
+  // none), so what is held is the address the page loaded (#359).
   const [init] = await app.sent({ type: "init" });
-  expect(init.seeded, "seeded only with a seed in the address").toBe(session.seed !== null);
+  const addressed = new URL(page.url()).searchParams.has("seed");
+  if (session.seed === null) expect(addressed, "a session with no seed has none in the address").toBe(false);
+  expect(init.seeded, "seeded only with a seed in the address").toBe(addressed);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
   const deals = [];
