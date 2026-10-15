@@ -75,7 +75,7 @@ export const MODULES = {
   "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
   // What waits for the hand: a refit's views over the bank and the maps,
   // and a measurement over PERFORM's controls (`heldOrTouched`).
-  "apps/web/hand.js": ["evolve_refit", "taste_marks", "bank_row", "perform_recentre", "perform_wire_time"],
+  "apps/web/hand.js": ["evolve_refit", "taste_marks", "taste_hold", "bank_row", "perform_recentre", "perform_wire_time"],
   // What a refit landing does: the meter, the lamp, the views it holds.
   "apps/web/refit.js": ["evolve_refit", "evolve_truth", "evolve_feedback"],
 };

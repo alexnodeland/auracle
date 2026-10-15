@@ -6,7 +6,9 @@
 // still a guess. A pick draws as what it teaches: an arrow from the sound
 // passed to the sound picked, and every halo on the map moves at once, because
 // a pick reweights the posterior's draws and with them every rating. A refit
-// settles every halo, and every place, together.
+// settles every halo, and every place, together; while the hand is on the
+// map (the pointer over it, or a sound's card up) the places wait for it to
+// let go (hand.js), and nothing moves under it.
 //
 // LEARNING is the model room: the weights of the style you choose, which way
 // liking rises on the map, the forecasts it made before each pick and how they

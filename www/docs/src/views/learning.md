@@ -44,6 +44,8 @@ fold*), the technical name beside it, a bar, and the weight.
 The bars move with every pick. A pick reweights the model’s draws, and after
 each one LEARNING asks for the weights under the reweighted draws and moves
 every bar to them; a refit, a generation or a file you open moves them too.
+While your pointer is on the bars only their lengths move; they take their
+new order, sliding there, when you move off them or rest a second.
 
 **Point at a weight** (or Tab to it) and the small map beside it shades every
 sound by how much of that quality it has: brighter and larger for more,
