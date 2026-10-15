@@ -1057,8 +1057,10 @@ or to the prior does not move it) as a farm worker does, natively
 (`auracle-features`' `examples/bench_render.rs`) and in wasm on the built
 engine under node (`auracle-wasm`'s `examples/bench_render.mjs`), each tree
 the least of `REPS` repeats in thread CPU ms per render, with the load
-average. It is a measurement, not a gate: nothing in CI runs it yet (the
-nightly speed budgets, #299, are where a render's budget will be judged), and
+average. It is a measurement, not a gate: nothing in CI runs it. The nightly
+*Speed budgets* job (#299) judges what a player waits on, with each runner
+slowed until a calibration render takes the reference machine's time
+(`tests/web/profile.js`), not what a render costs on its own; and
 time is never an `expect` ([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)).
 To compare two builds, run them alternately on the same machine:
 `docs/notes/render-cost-2026-10/ab_native.py` for two native binaries, and
