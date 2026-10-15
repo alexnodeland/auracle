@@ -337,6 +337,107 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
   expect(glass.bands).not.toEqual(reese.bands);
 });
 
+// Every frequency the page sets on a lowpass Biquad (the lesson's live
+// filter), with the pointermove it was set in: a capture listener on the
+// window opens each move before the canvas hears it, and a bubble listener
+// closes it after, so a set between the two was made in the event's own task.
+const LIVE_TAP = `(() => {
+  window.__xlLive = { sets: [], moves: [] };
+  const make = BaseAudioContext.prototype.createBiquadFilter;
+  BaseAudioContext.prototype.createBiquadFilter = function (...a) {
+    const n = make.apply(this, a);
+    n.frequency.__xl = n;
+    window.__xlLive.node = n;
+    return n;
+  };
+  const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, "value");
+  Object.defineProperty(AudioParam.prototype, "value", {
+    get() { return d.get.call(this); },
+    set(v) {
+      d.set.call(this, v);
+      if (this.__xl && this.__xl.type === "lowpass") window.__xlLive.sets.push({ hz: v, t: performance.now() });
+    },
+    configurable: true,
+  });
+  // A move with the button held: a drag.
+  const inLesson = (e) => e.buttons & 1 && e.target && e.target.closest && e.target.closest(".xl-filter");
+  window.addEventListener("pointermove", (e) => {
+    if (inLesson(e)) window.__xlLive.moves.push({ at: performance.now(), from: window.__xlLive.sets.length });
+  }, { capture: true });
+  window.addEventListener("pointermove", (e) => {
+    if (!inLesson(e)) return;
+    const m = window.__xlLive.moves[window.__xlLive.moves.length - 1];
+    m.to = window.__xlLive.sets.length;
+    m.valuenow = Number(e.target.getAttribute("aria-valuenow"));
+  });
+})();`;
+
+test("the lesson's cutoff is heard as it moves: the live filter is set in the move's own task, then the render takes over", async ({ page, app }) => {
+  await page.addInitScript(INIT);
+  await page.addInitScript(LIVE_TAP);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, profile: "air" });
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
+  await page.locator(".xp.on .xp-learn").click();
+  await lessonReply(app, { cutoff: false }, 60_000);
+  await page.locator(".xl.on .xl-next").click();
+  await expect(page.locator(".xl.on .xl-h")).toHaveText("A filter lets some through");
+  // It plays at once, through the live filter, before any filtered render
+  // has landed.
+  const asked = await app.now();
+  await page.keyboard.press(" ");
+  await sounds(page, "the sound through the live filter plays");
+  // The live filter is the lesson's Butterworth: 3 dB down at its cutoff.
+  const atCut = await page.evaluate(() => {
+    const n = window.__xlLive.node;
+    const hz = n.frequency.value;
+    const mag = new Float32Array(1);
+    n.getFrequencyResponse(Float32Array.of(hz), mag, new Float32Array(1));
+    return 20 * Math.log10(mag[0]);
+  });
+  expect(atCut).toBeCloseTo(-3.01, 1);
+  // A drag down the graph: every move sets the filter where the handle is,
+  // inside the move's own task.
+  const box = await page.locator(".xl.on .xl-filter").boundingBox();
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width - 30, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, y, { steps: 12 });
+  await page.mouse.up();
+  const { moves, sets } = await page.evaluate(() => window.__xlLive);
+  expect(moves.length).toBeGreaterThanOrEqual(12);
+  let worst = 0;
+  for (const m of moves) {
+    expect(m.to, "the filter is set in the move's own task").toBeGreaterThan(m.from);
+    const set = sets[m.to - 1];
+    expect(Math.round(set.hz)).toBe(m.valuenow);
+    worst = Math.max(worst, set.t - m.at);
+  }
+  // From the move reaching the page (the in-page clock, as every budget
+  // starts): the browser's own wait to dispatch a pointermove is not the
+  // app's.
+  app.budget("a lesson cutoff move on the page → the live filter set", worst, 16);
+  // The render for where the hand left it lands and is asked once the hand
+  // is still: its cutoff is the one the live filter holds.
+  const held = await page.evaluate(() => window.__xlLive.node.frequency.value);
+  const f = await app.engine(
+    async (ms) => {
+      let found = null;
+      await expect
+        .poll(async () => {
+          found = (await app.replies("explain_lesson", { where: { cutoff: true } })).find((r) => Math.abs(r.data.cutoff_hz - held) < 1e-3 * held) || null;
+          return found != null;
+        }, { timeout: ms, message: "the render for the cutoff held" })
+        .toBe(true);
+      return found;
+    },
+    { ms: 90_000 },
+  );
+  expect(f.data.portrait).toBeTruthy();
+  expect((await app.sent({ type: "explain_lesson" }, { after: asked })).length).toBeGreaterThan(0);
+  await sounds(page, "the measured render plays in the live filter's place");
+});
+
 test("under reduced motion a figure is drawn whole at once, and holds", async ({ page, app }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await boot(page, app);
