@@ -80,11 +80,60 @@ const WATCH = `(() => {
   });
 })();`;
 
+// A gate on the farm's walks (farm.js, ahead of it: `app.boot`'s
+// `farmPrefix`): each walk a farm worker is handed waits, said on a
+// BroadcastChannel by its id, until the page lets that id through, or every
+// walk (`all`). So a generation is still breeding while the test picks
+// because the test holds it open, not because the machine was slow enough:
+// on an idle 16-core machine the farm bred all ten before three picks (#367).
+const WALK_GATE = `(() => {
+  const ch = new BroadcastChannel("pw-walks");
+  const held = [];
+  const let_ = new Set();
+  let all = false;
+  const free = (i) => all || let_.has(i);
+  ch.onmessage = (e) => {
+    if (e.data && e.data.all) all = true;
+    else if (e.data && e.data.let != null) let_.add(e.data.let);
+    for (const h of held.splice(0)) {
+      if (free(h.ev.data.i)) h.fn.call(h.port, h.ev);
+      else held.push(h);
+    }
+  };
+  const on = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage");
+  Object.defineProperty(MessagePort.prototype, "onmessage", {
+    configurable: true,
+    get() { return on.get.call(this); },
+    set(fn) {
+      const port = this;
+      on.set.call(this, fn && function (ev) {
+        const d = ev.data;
+        if (d && d.type === "walk" && !free(d.i)) {
+          held.push({ fn, port, ev });
+          ch.postMessage({ held: d.i });
+          return;
+        }
+        return fn.call(this, ev);
+      });
+    },
+  });
+})();`;
+// The page's side of the gate: the ids held so far, and the two keys.
+const GATE_PAGE = `(() => {
+  const ch = new BroadcastChannel("pw-walks");
+  const held = (window.__pwHeld = []);
+  ch.onmessage = (e) => { if (e.data && e.data.held != null) held.push(e.data.held); };
+  window.__pwLet = (i) => ch.postMessage({ let: i });
+  window.__pwAll = () => ch.postMessage({ all: true });
+})();`;
+
 /** Boot, seeded, and teach it: six picks in EVOLVE and their refit, a model
- *  to breed toward, with the lamp out. */
-async function taught(page, app, query = "") {
+ *  to breed toward, with the lamp out. `gated`: the farm's walks wait at the
+ *  gate (WALK_GATE). */
+async function taught(page, app, query = "", { gated = false } = {}) {
   await page.addInitScript(WATCH);
-  await app.boot({ random: 20260928, query });
+  if (gated) await page.addInitScript(GATE_PAGE);
+  await app.boot({ random: 20260928, query, farmPrefix: gated ? WALK_GATE : "" });
   await app.teach(6);
   await expect(page.locator("#wm-lamp")).not.toHaveClass(/\bthinking\b/);
   await expect(page.locator("#job-slot")).toBeHidden();
@@ -107,7 +156,7 @@ const bankIds = (page) =>
 
 test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair while it breeds", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
-  await taught(page, app);
+  await taught(page, app, "", { gated: true });
   await app.engine((timeout) => page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout }), { ms: 60_000 });
   const before = await bankIds(page);
   const mark = await app.toastMark();
@@ -123,8 +172,20 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   await expect(page.locator("#job-slot")).toBeVisible();
   await expect(page.locator("#job-text")).toHaveText(/^⚡ breeding( \d+\/10.*|…)$/);
   await expect(page.locator("#wm-lamp")).toHaveClass(/\bthinking\b/);
-  await app.engine((timeout) => expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout }), { ms: 30_000 });
   await expect(page.locator("#evolve-stop")).toBeVisible();
+
+  // The walks through the gate one at a time, in the order they were
+  // handed out (the order they are absorbed in), until one has bred a child:
+  // the rest wait there while the picks are made.
+  for (let k = 0; ; k++) {
+    await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
+    const id = await page.evaluate((n) => [...window.__pwHeld].sort((a, b) => a - b)[n], k);
+    await page.evaluate((i) => window.__pwLet(i), id);
+    const r = await app.reply("refine_child", { where: (d) => d.index === k, timeout: 300_000 });
+    if (r.child > 0) break;
+    expect(k, "no walk of ten bred a child").toBeLessThan(9);
+  }
+  await app.engine((timeout) => expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout }), { ms: 30_000 });
 
   // The first child lands at the top, under "new · generation N", and the ranked
   // rows below it keep their order. (No pick is pending here: a vote
@@ -143,8 +204,9 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // Nothing has left the bank yet: replacement waits for the end.
   expect(before.filter((id) => !mid.includes(id)), "a patch left the bank before the generation ended").toEqual([]);
 
-  // Picks while it breeds: each next pair is dealt while it still breeds
-  // (the order is the assertion), each deal's time a budget (ADR-022).
+  // Picks while it breeds (its other walks wait at the gate): each next
+  // pair is dealt while it still breeds, each deal's time a budget
+  // (ADR-022).
   const pickFrom = await app.now();
   for (let i = 0; i < 3; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled();
@@ -152,16 +214,16 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
     await page.locator(i % 2 ? "#choose-b" : "#choose-a").click();
     await expect(page.locator("#choose-a")).toBeEnabled();
     // The deal this pick asked for, answered, before the next pick: each
-    // pick's deal is measured, and the picks land while the generation runs
-    // (on a fast farm it is over in seconds).
+    // pick's deal is measured.
     await expect.poll(async () => latencies(await app.log({ after: t }), "duel", "duel").length).toBeGreaterThan(0);
   }
   const midway = await page.locator("#evolve-btn").evaluate((b) => b.classList.contains("breeding"));
   const deals = latencies(await app.log(), "duel", "duel", pickFrom);
   console.log(`deal latency during the generation (ms): ${JSON.stringify(deals)}; still breeding after the picks: ${midway}`);
-  expect(midway, "the generation ended before the picks could test it").toBe(true);
+  expect(midway, "the generation ended while its walks were held").toBe(true);
   expect(deals.length).toBeGreaterThanOrEqual(3);
   deals.forEach((ms, i) => app.budget(`pick ${i + 1}'s next pair while it breeds`, ms, 1_000));
+  await page.evaluate(() => window.__pwAll());
 
   await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 480_000 });
   const t1 = await app.now();
