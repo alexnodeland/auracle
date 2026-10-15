@@ -40,8 +40,9 @@ A fresh session has no fitted model, so TASTE is empty and the bank has no
 predictions — which shows the product at its least interesting. So the script
 **teaches** one the way a person would: the three-pick warm start, then duels in
 EVOLVE with EVOLVE POOL every ten picks, to at least 44 picks and three
-generations (`--picks`, `--gens`), where styles have separated — the committed
-shots have three lenses each claiming about a third of the bank. Every vote
+generations (`--picks`, `--gens`), where styles have separated. The committed
+shots come from a session of 61 picks and three generations, where LEARNING
+shows four styles, each holding between a fifth and a third of the pool. Every vote
 comes from one consistent synthetic listener (dark and tonal over bright and
 noisy, slow and sustained over short, read off the names the app gives patches
 from their measured features): a coin-flip voter would teach the model nothing,
@@ -60,8 +61,9 @@ debris rather than dressing up the product:
   a 1-module patch shows nothing. 6–10 modules is the range where plates,
   knobs, values and both cable colours are all legible. The script takes the
   highest-ranked evolution patch in that range with a modulation chain that the
-  listener likes, rates it five stars with the row's ★, scrolls the rail so its row sits
-  near the top (the bank-row crop follows `rects.json`'s `play.row`), turns the minimap on and zooms `⌘=` two steps
+  listener likes, rates it five stars with the row's ★, scrolls its row into view (the
+  bank-row crop is measured from `rects.json`'s `play.row` when the frame is
+  taken, and the run warns when the row is cut off by the list's edge), turns the minimap on and zooms `⌘=` two steps
   above the fitted zoom — more while knob labels are under the rack's 8px
   silkscreen floor — then pans the few pixels that keep the frame's edges
   between rows of plates rather than through their titles.
@@ -84,7 +86,7 @@ Before each shot the guide pill's first steps are closed with its own ×
 A shot of a broken app is worse than no shot, and the app logs its own failures
 loudly, so any page error or `console.error` stops the run before the next
 frame. Toasts are waited out rather than removed, the pointer is parked in the
-menu bar, a style name too long for its chip is reported, and `rects.json`
+menu bar, a style name too long for its chip on LEARNING is reported, and `rects.json`
 beside the frames records where each crop's subject landed.
 
 ## Encode

@@ -426,7 +426,8 @@ async function groom(page) {
   await engineQuiet(page);
   await emptyTray(page);
   // The rows carry the model's predictions once a fitted posterior is up. A
-  // restored session refits on load, and until then the rail is unranked.
+  // restored session comes back with its saved fit (#409), so this is quick;
+  // a fresh one waits for its first fit.
   await bankTab(page, "pool");
   await until(page, () => /%/.test(document.querySelector("#bank-list .bank-item .bi-pct")?.textContent || ""),
     null, "the bank's predictions", 600_000);
@@ -442,21 +443,12 @@ async function groom(page) {
     await page.click(".bank-item.live .star[data-s='5']");
   }
   await modelIdle(page);
-  // The rail scrolled by whole rows so the row on the bench sits in its second
-  // slot, under the row the model ranks next above it. The same slot in every
-  // capture is what keeps bank-row's crop rectangle a fixed one.
+  // The row on the bench is scrolled into view. The bank re-renders after
+  // this, so where it lands is not fixed: shotPlay measures the row when the
+  // frame is taken, rects.json carries it as play.row, and encode-screens.sh
+  // crops bank-row from that rectangle.
   await page.waitForTimeout(800); // the row's own smooth scroll-into-view
-  const at = await page.evaluate(() => {
-    const list = document.getElementById("bank-list");
-    const rows = [...list.querySelectorAll(".bank-item")];
-    const i = rows.findIndex((r) => r.classList.contains("live"));
-    if (i < 0 || rows.length < 2) return { i, slot: -1 };
-    const pitch = rows[1].offsetTop - rows[0].offsetTop;
-    list.scrollTop = Math.max(0, i - 1) * pitch;
-    return { i, slot: Math.round((rows[i].offsetTop - rows[0].offsetTop - list.scrollTop) / pitch) };
-  });
-  log(`    bench row: bank row ${at.i + 1}, rail slot ${at.slot + 1}`);
-  log("    bank-row's crop is the row's rectangle in rects.json (play.row)");
+  await page.evaluate(() => document.querySelector("#bank-list .bank-item.live")?.scrollIntoView({ block: "nearest" }));
   // The minimap on, so the zoomed-in frame still shows the whole patch.
   if ((await page.getAttribute("#rack-map-btn", "aria-pressed")) !== "true") await page.click("#rack-map-btn");
   // The camera auto-fits on open; then ⌘= steps: two, and more while the
@@ -503,6 +495,14 @@ async function shotPlay(page) {
   await settle(page);
   await until(page, () => !document.querySelector(".bl-stale"), null, "the model's guess to be current", 120_000);
   await measure(page, "play", { bank: ".bank", row: ".bank-item.live", frame: "#rack-frame", minimap: "#rack-map" });
+  // bank-row is cropped from play.row: a row the list's edge cuts off would
+  // be cropped as half a row.
+  const cut = await page.evaluate(() => {
+    const list = document.getElementById("bank-list").getBoundingClientRect();
+    const row = document.querySelector("#bank-list .bank-item.live")?.getBoundingClientRect();
+    return !row || row.top < list.top || row.bottom > list.bottom;
+  });
+  if (cut) log("  !! the bench row is not wholly inside the bank's list: bank-row.webp will be wrong");
   await shoot(page, "play");
 }
 
@@ -520,6 +520,10 @@ async function shotLearning(page) {
   await until(page, () => document.querySelectorAll("#md-bars > *").length > 0, null, "what it weighs", 60_000);
   await settle(page);
   await measure(page, "learning", { weighs: ".md-weighs", map: ".md-mapp", forecasts: ".md-fcp" });
+  // A style name the chip cuts off reads as a typo in a figure.
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll(".md-chip-name")].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.value || n.placeholder));
+  for (const name of clipped) log(`  !! the style name "${name}" runs past its chip on LEARNING`);
   await shoot(page, "learning");
 }
 
@@ -610,16 +614,6 @@ async function shotPerform(page, preset = "Ceiling") {
     await page.waitForTimeout(120);
     await page.keyboard.up(k);
   }
-  // PERFORM's first steps tick off as they happen: the chord was the first,
-  // and the other two are what anyone does next — turn a lit control, then
-  // ask for an offer. Done, the strip retires, and B holds an offer.
-  if (/Turn/.test((await page.locator(".pf-step.now").textContent().catch(() => "")) || "")) {
-    const box = await page.locator(".pf-knob").first().boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    for (let i = 1; i <= 4; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 6);
-    await page.mouse.up();
-  }
   // OFFER's own key, N: B fills with a variant, and PEEK, TAKE and PASS
   // stop saying they need one (their data-wait).
   if (await page.locator('.pf-pads [data-wait="needs an offer"]').count()) {
@@ -655,7 +649,7 @@ if (PROFILE) {
   ctx = await browser.newContext(context);
 }
 // Passive instrumentation: count the workers' replies by type, so a wait can
-// be for the reply itself (see `booted`) rather than a guess at how long it
+// be for the reply itself (see `engineQuiet`) rather than a guess at how long it
 // takes. An extra listener on each worker; the app's own handlers see the
 // same messages as ever.
 await ctx.addInitScript(() => {

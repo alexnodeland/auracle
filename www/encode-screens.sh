@@ -27,7 +27,7 @@ if [ "${ENCODER:-}" != pillow ] && command -v magick >/dev/null && command -v cw
   # smears the amber and green glyphs specifically, which `-sharp_yuv` fixes,
   # and the `text` preset spends its bit budget on edges rather than on the
   # flat faceplates. Checked against the source at 2× magnification — the mono
-  # numerals on the knobs (`8.23 Hz`, `+4.0 dB`) are indistinguishable, at 30%
+  # numerals on the knobs are indistinguishable, at 30%
   # of the lossless size.
   enc() { cwebp -quiet -preset text -sharp_yuv -q 90 "$1" -o "$2"; }
   crop() { magick "$RAW/$1" -crop "$2" +repage "$OUT/tmp.png"; enc "$OUT/tmp.png" "$OUT/$3"; rm -f "$OUT/tmp.png"; }
@@ -82,8 +82,20 @@ crop play.png      560x300+540+370  rack-detail.webp
 # its rows, at rest, from under the menu bar (56px) to the keys bar.
 crop play.png      280x766+0+56     bank.webp
 # One row out of it, the one on the bench, its actions showing, for the page
-# that names its parts: rects.json's play.row, from the bank's left edge.
-crop play.png      280x40+0+317     bank-row.webp
+# that names its parts. Where the row lands depends on the capture, so the
+# rectangle is read from rects.json's play.row (from the bank's left edge, at
+# the bank's width); the fixed one is for a capture with no rects.json.
+ROW="$(python3 -c '
+import json, sys
+try:
+    r = json.load(open(sys.argv[1]))["play"]
+    b, w = r["bank"], r["row"]
+    print("%dx%d+%d+%d" % (b["w"], w["h"], b["x"], w["y"]))
+except (OSError, KeyError, ValueError):
+    pass
+' "$RAW/rects.json")"
+if [ -n "$ROW" ]; then echo "bank-row: $ROW, from rects.json"; else ROW=280x40+0+317; echo "bank-row: no rects.json, the fixed $ROW"; fi
+crop play.png      "$ROW"           bank-row.webp
 # The three-pick warm start, cropped to the card, border to border. The rest of
 # the frame is the app behind a scrim and carries nothing.
 crop warmstart.png 760x473+340+214  warm-start.webp
