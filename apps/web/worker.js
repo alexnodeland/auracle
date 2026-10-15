@@ -1307,7 +1307,7 @@ function newTrees(ranked) {
     }
     const json = engine.tree_json_of(r.id);
     if (!json || json === "null") continue;
-    (out ||= {})[r.id] = { json, makeup: engine.makeup_of(r.id), first: performFirst(json) };
+    (out ||= {})[r.id] = { json, makeup: engine.makeup_of(r.id), first: performFirst(json), controls: performControls ?? null };
     now.set(r.id, r.sexpr);
   }
   treesSent.clear();

@@ -1150,18 +1150,24 @@ function setFaceSlot(el, kind, t) {
 // bench's own render's face (`faceOf`: the engine's `face_of_key`), and it
 // lands only where a level draws that same face (the same render key).
 
+/** The render key of the face a slot draws, read without layout; null while
+ *  it draws none. */
+function faceKeyOf(el) {
+  if (!el || !el.isConnected || !faceStats) return null;
+  const target = el.dataset.face;
+  const key = target && faceKeyOfTarget(target);
+  if (!key || !faceByKey.has(key) || !el.querySelector("img.face") || !FACE_SIZE[el.dataset.kind]) return null;
+  return key;
+}
 /** Where a face slot draws its face, in the page's pixels (the vessel's own
  *  box: a large face fitted into its well, `FACE_FLUID`, a small one at its
  *  size), and the render key of the face drawn there; null while it draws
  *  none or is not on screen. */
 function faceBoxOf(el) {
-  if (!el || !el.isConnected || !faceStats) return null;
-  const target = el.dataset.face;
-  const key = target && faceKeyOfTarget(target);
-  if (!key || !faceByKey.has(key) || !el.querySelector("img.face")) return null;
+  const key = faceKeyOf(el);
+  if (!key) return null;
   const kind = el.dataset.kind;
   const size = FACE_SIZE[kind];
-  if (!size) return null;
   const r = el.getBoundingClientRect();
   if (!r.width || !r.height) return null;
   const [w, h] = size;
@@ -2900,10 +2906,12 @@ worker.onmessage = (e) => {
       // a later click has superseded an earlier one.
       if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
       if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
+      // Its `first` is predicted for the panel in force now, which the one
+      // held since its rows (`poolTrees`) may not be.
+      if (perform && m.first) perform.firstKnown(m.json, m.first);
       // Voiced at the click already (`openOnBench`, `voicePresetEarly`):
       // this only confirms it.
       if (earlyOpen && earlyOpen.id === m.id) break;
-      if (perform && m.first) perform.firstKnown(m.json, m.first);
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
@@ -5258,10 +5266,13 @@ function toggleAudition() {
 function stepBank(d) {
   const rows = bankRows;
   if (rows.length === 0) return;
-  const cur = rows.findIndex((r) => r.id === wb.subjectId);
+  // From the sound last asked for, not the bench's: a second ] pressed
+  // before the first step's bench lands steps on past it.
+  const from = benchPending != null ? benchPending : wb.subjectId;
+  const cur = rows.findIndex((r) => r.id === from);
   const idx = Math.max(0, Math.min(rows.length - 1, (cur < 0 ? (d > 0 ? -1 : rows.length) : cur) + d));
   const next = rows[idx];
-  if (!next || next.id === wb.subjectId) return;
+  if (!next || next.id === from) return;
   bankScrollTo = next.id;
   bankScrollAt = performance.now();
   // Stepping is what "the highlighted row" means to someone who just pressed
@@ -5836,8 +5847,8 @@ async function bootBooth() {
       if (!p) return;
       const id = presetIds.get(p.index);
       if (id != null && rowOf(id)) {
+        if (!poolTrees.has(id)) voicePresetEarly(p, id);
         openOnBench(id, { auto: true });
-        voicePresetEarly(p, id);
       } else {
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
@@ -8829,8 +8840,10 @@ function bankRow(r, fitted) {
     // flies from the row to where this level draws the sound you're playing
     // (`takeUpCheck`). Only what says PATCH goes there (↓ PATCH, How it
     // works' knob).
-    voicePoolEarly(r.id); // heard first: the face's box is a layout read
+    // Its face's key first, while the row is still the bank's (voicing
+    // redraws the bank), with no layout read; then heard.
     armTakeUp(el.querySelector(":scope > .face-slot"), { id: r.id });
+    voicePoolEarly(r.id);
     openOnBench(r.id);
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
@@ -9044,7 +9057,10 @@ function renderPresetBank(list) {
       </div>`;
     const hear = el.querySelector(".bi-hear");
     hear.onclick = () => previewPreset(p, hear);
-    if (presetClicks.has(p.index)) el.classList.add("loading");
+    if (presetClicks.has(p.index)) {
+      el.classList.add("loading");
+      el.setAttribute("aria-busy", "true");
+    }
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
       openPreset(p, el);
@@ -9068,11 +9084,13 @@ function openPreset(p, el) {
   const inBank = loadedId != null && !!rowOf(loadedId);
   const row = el || document.querySelector(`#bank-list .preset-item[data-index="${p.index}"]`);
   const slot = row ? row.querySelector(":scope > .face-slot") : null;
+  // The row's face is read (its key, no layout) before the voices take the
+  // sound: voicing redraws the bank, and this row with it.
   if (inBank) {
-    voicePoolEarly(loadedId);
     armTakeUp(slot, { id: loadedId });
+    if (poolTrees.has(loadedId)) voicePoolEarly(loadedId);
+    else voicePresetEarly(p, loadedId);
     openOnBench(loadedId);
-    voicePresetEarly(p, loadedId);
   } else {
     // Said at once: the engine may be busy for seconds, and a click
     // that shows nothing gets clicked again, or given up on.
@@ -9081,17 +9099,17 @@ function openPreset(p, el) {
     // It used to open when it landed, and this one was then refused.
     benchSeq += 1;
     presetClicks.set(p.index, benchSeq);
-    // Into the voices first, from the shipped file: the rest of this task
-    // reads layout (the row's face, for its flight).
-    voicePresetEarly(p);
-    takes.benchMoved(null); // a preset on its way: the bench is moving on
-    openAskedAt = performance.now();
     if (row) {
       row.classList.add("loading");
       row.setAttribute("aria-busy", "true");
     }
-    send({ type: "load_preset", index: p.index, open: true });
     armTakeUp(slot, { index: p.index });
+    // Into the voices, from the shipped file. That redraws the bank, whose
+    // new row says it is loading (`presetClicks`).
+    voicePresetEarly(p);
+    takes.benchMoved(null); // a preset on its way: the bench is moving on
+    openAskedAt = performance.now();
+    send({ type: "load_preset", index: p.index, open: true });
   }
 }
 
@@ -9703,7 +9721,9 @@ function voiceEarly(json, makeup, { id = null, index = null, label }) {
   if (!same) live.setPatch(json, makeup);
   // The voices have it: in the task that asked for it, which the budget
   // specs assert. PERFORM and the menu bar's chip follow in the same task.
-  mark("voiced", { id, index, name: label });
+  // `patched` is false when they already played this tree (uids aside) and
+  // no `setPatch` ran.
+  mark("voiced", { id, index, name: label, patched: !same });
   if (!same) setLivePatchJson(json, makeup);
   // TASTE's ring follows the sound in hand (`inHandId`).
   if (id != null) drawTaste();
@@ -9799,10 +9819,12 @@ let takeUpArm = null; // {id} or {index}, and the render key of the face its row
 function takeUpFor(arm, id) {
   return arm.id != null ? arm.id === id : presetIds.get(arm.index) === id;
 }
-/** Remember the row's face as the open is asked for. */
+/** Remember the row's face as the open is asked for: its key only, with no
+ *  layout read, ahead of the voices taking the sound (which redraws the bank,
+ *  so the row is read before it). Where it is is read when it flies. */
 function armTakeUp(slot, which) {
-  const a = faceBoxOf(slot);
-  takeUpArm = a ? { ...which, key: a.key } : null;
+  const key = faceKeyOf(slot);
+  takeUpArm = key ? { ...which, key } : null;
 }
 /** The armed sound is in hand and its face is known: it flies, from where
  *  its row draws it now. No clock decides: the face of the bench's render
@@ -9832,10 +9854,19 @@ function takeUpCheck() {
  *  `bench_opening` voices it. A caller with layout to read first (a row's
  *  face, for its flight) calls this before it, and `openOnBench` after. */
 function voicePoolEarly(id) {
-  if (id === wb.subjectId || (earlyOpen && earlyOpen.id === id)) return;
+  if (earlyOpen ? earlyOpen.id === id : id === wb.subjectId) return;
   const held = poolTrees.get(id);
-  if (!held) return;
-  if (perform && held.first) perform.firstKnown(held.json, held.first);
+  // The bench's own sound asked for again while another open waits (back
+  // from an audition, its row clicked again): the voices go back to it now,
+  // as an early open of its own, so the open being left, landing first,
+  // does not take them (`voicesLater`).
+  if (!held) {
+    if (id === wb.subjectId) unvoiceEarly();
+    return;
+  }
+  // Its `first` was predicted for the panel in force when it was sent: for
+  // another panel, PERFORM waits for the one `bench_opening` brings.
+  if (perform && held.first && (held.controls ?? null) === perform.panelControls()) perform.firstKnown(held.json, held.first);
   voiceEarly(held.json, held.makeup, { id, label: benchName(id) });
 }
 

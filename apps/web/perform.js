@@ -4864,6 +4864,12 @@ export function createPerform(host) {
     ensureWired,
     patchChanged,
     firstKnown,
+    // The panel's set as a `perform_wire` names it to the worker (null for
+    // the six): what a `first` predicted for this panel was asked with.
+    panelControls() {
+      const c = asked(setOf(state.panel)).controls;
+      return c ? JSON.stringify(c) : null;
+    },
     // The bench refused a tree PERFORM committed (main's `edit_rejected`):
     // a graft that committed it is not pending any more (`graftIntent`).
     commitRefused(json) {

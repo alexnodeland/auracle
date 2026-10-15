@@ -65,6 +65,8 @@ test("each pool member's tree and makeup reach main once, beside the first rows 
     const [tree] = await w.send({ type: "tree_json", id });
     assert.equal(x.json, tree.json, `member ${id}'s tree is the engine's`);
     assert.ok(Number.isFinite(x.makeup) && x.makeup > 0, `member ${id} has a makeup`);
+    // Its `first` is for the panel it was predicted for: the six, named null.
+    assert.equal(x.controls, null, `member ${id}'s first says which panel it was predicted for`);
   }
   const bytes = JSON.stringify(Object.fromEntries(held)).length;
   console.log(`${ids.length} members' trees: ${(bytes / 1024).toFixed(1)} KB, ${(bytes / ids.length / 1024).toFixed(1)} KB each`);
