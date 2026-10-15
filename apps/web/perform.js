@@ -34,6 +34,7 @@ const { leanMarks } = await import(`./taste-geom.js${new URL(import.meta.url).se
 const { createLiveMeter, FACE_BANDS, FACE_FRAME } = await import(`./faces.js${new URL(import.meta.url).search}`);
 const { drawVessel, tint } = await import(`./vessel.js${new URL(import.meta.url).search}`);
 const { createTrace, traceHear, traceFade, traceDraw } = await import(`./live-face.js${new URL(import.meta.url).search}`);
+const { heldOrTouched } = await import(`./hand.js${new URL(import.meta.url).search}`);
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
@@ -1091,11 +1092,13 @@ export function createPerform(host) {
     state.lastTouch = performance.now();
     renderWander();
   }
-  // A re-measured wiring (a re-check, a guess's measurement) waits while a
-  // hand is on the controls: a control or the XY pad held, however still,
-  // and for 1.5 s after the last touch or release (#290: "a hand on a
-  // control is never moved by the switch"). #304 makes this the app's rule.
-  const handsBusy = () => knobs.some((k) => k.held) || xyHeld || performance.now() - state.lastTouch < 1500;
+  // A wiring landing (a first measurement, one read from the cache, a
+  // re-check, a guess's or a Take's measurement) waits while a hand is on
+  // the controls: a control or the XY pad held, however still, and for 1.5 s
+  // after the last touch or release (#304, the app's rule: `heldOrTouched`
+  // in hand.js). It waits in `state.deferredWire`, and lands from the
+  // quarter-second tick once the hand is off (`landDeferred`).
+  const handsBusy = () => heldOrTouched(knobs.some((k) => k.held) || xyHeld, state.lastTouch, performance.now());
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
   }
@@ -1930,10 +1933,20 @@ export function createPerform(host) {
       renderStatus();
       knobs.forEach(paintKnob);
       shippedReady.then(() => {
-        if (state.gen !== gen || state.wire || !state.measuring || inFlight("perform_wire")) return;
+        if (state.gen !== gen || state.wire || !state.measuring || state.deferredWire || inFlight("perform_wire")) return;
         state.measuring = false;
         wire();
       });
+      return;
+    }
+    if (hit && handsBusy()) {
+      // A wiring read from the cache re-centres every control
+      // (`applyWired`): under a hand it waits, listening, and is read again
+      // once the hand is off.
+      state.measuring = true;
+      state.deferredWire = { rewire: true };
+      renderStatus();
+      knobs.forEach(paintKnob);
       return;
     }
     if (hit) {
@@ -2074,13 +2087,7 @@ export function createPerform(host) {
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
     if (state.visible && incoming !== (state.incoming || null)) renderStatus();
-    if (state.deferredWire && !handsBusy()) {
-      const d = state.deferredWire;
-      state.deferredWire = null;
-      applyRechecked(d);
-      knobs.forEach(paintKnob);
-      renderHood();
-    }
+    if (state.deferredWire && !handsBusy()) landDeferred();
     // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
@@ -2668,6 +2675,34 @@ export function createPerform(host) {
     }
   }
 
+  // A sound's first measurement: the controls are wired around where the
+  // sound is now.
+  function landFirst(data, set) {
+    applyWired(data);
+    markWired("measured");
+    // The panel changed while its first measurement ran: the controls it
+    // shares play now, and its own set is measured next.
+    if (setOf(set).join(",") !== setOf(state.panel).join(",")) measurePanel();
+  }
+  // What waited for the hand lands, as it would have when it came: a first
+  // measurement wires the controls, a cache hit is read again (`wire`), and
+  // anything else is taken in place (`applyRechecked`). A patch change drops
+  // it (`patchChanged`), so it is always of the sound in hand.
+  function landDeferred() {
+    const d = state.deferredWire;
+    state.deferredWire = null;
+    if (d.rewire) {
+      state.measuring = false;
+      wire();
+    } else if (d.first) landFirst(d.data, d.set);
+    else applyRechecked(d.data);
+    knobs.forEach(paintKnob);
+    renderHood();
+    renderHow();
+    renderPalette();
+    renderStatus();
+  }
+
   // A background re-check landed on a patch already playing on a wiring. If
   // every control still turns the same knobs, the fresh numbers are taken in
   // place: nothing re-centres, and the sound does not move — each knob's base
@@ -2796,7 +2831,8 @@ export function createPerform(host) {
       // A measurement of a set the panel no longer holds (the player placed
       // or hid a control while it ran) is kept in the cache, above, and not
       // played: the panel's own set is measured, or already is.
-      const forPanel = setOf(p.set || p.cacheAs?.set || PANEL_DEFAULT).join(",") === setOf(state.panel).join(",");
+      const measuredSet = p.set || p.cacheAs?.set || PANEL_DEFAULT;
+      const forPanel = setOf(measuredSet).join(",") === setOf(state.panel).join(",");
       if (!forPanel && state.wire && m.data) {
         state.revalidating = inFlight("perform_wire");
         measurePanel();
@@ -2812,7 +2848,7 @@ export function createPerform(host) {
         // measurement still out (the panel's new set) keeps it re-checking.
         state.revalidating = inFlight("perform_wire");
         if (m.data) {
-          if (handsBusy()) state.deferredWire = m.data;
+          if (handsBusy()) state.deferredWire = { data: m.data };
           else applyRechecked(m.data);
         } else if (p.cacheAs.carried) {
           // A wiring borrowed from another sound is not this patch's: with no
@@ -2845,13 +2881,11 @@ export function createPerform(host) {
         // Not a failure: said once, as it always was, until the line is
         // next drawn.
         renderStatus(m.error ? undefined : "the model hasn’t heard enough sounds to measure against yet");
-      } else {
-        applyWired(m.data);
-        markWired("measured");
-        // The panel changed while its first measurement ran: the controls
-        // it shares play now, and its own set is measured next.
-        if (!forPanel) measurePanel();
-      }
+      } else if (handsBusy()) {
+        // A first measurement under a hand waits, listening, until the hand
+        // is off (`landDeferred`): it would re-centre the controls under it.
+        state.deferredWire = { data: m.data, first: true, set: measuredSet };
+      } else landFirst(m.data, measuredSet);
       knobs.forEach(paintKnob);
       renderHood();
       renderHow();
@@ -4530,7 +4564,8 @@ export function createPerform(host) {
     }
     const set = setOf(state.panel);
     const hit = knownWiring(wireKey(state.cur.json, set));
-    if (hit) {
+    if (hit && handsBusy()) state.deferredWire = { data: structuredClone(hit.data) };
+    else if (hit) {
       applyRechecked(structuredClone(hit.data));
       knobs.forEach(paintKnob);
       renderHood();

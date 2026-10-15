@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHand, HAND_REST_MS } from "../hand.js";
+import { createHand, heldOrTouched, HAND_HOLD_MS, HAND_REST_MS } from "../hand.js";
 
 /** A clock and timers the test moves by hand. */
 function clock() {
@@ -108,4 +108,20 @@ test("entering with a result already waiting starts its rest from the entry", ()
   hand.enter(); // into a second region, at once
   c.advance(HAND_REST_MS);
   assert.equal(ran, 1);
+});
+
+test("a control held, however still, is under the hand", () => {
+  assert.equal(heldOrTouched(true, 0, 60_000), true);
+});
+
+test("a control let go is under the hand for 1.5 s from the release, then not", () => {
+  assert.equal(HAND_HOLD_MS, 1500);
+  const released = 10_000;
+  assert.equal(heldOrTouched(false, released, released), true);
+  assert.equal(heldOrTouched(false, released, released + HAND_HOLD_MS - 1), true);
+  assert.equal(heldOrTouched(false, released, released + HAND_HOLD_MS), false);
+});
+
+test("a panel never touched is not under the hand", () => {
+  assert.equal(heldOrTouched(false, -Infinity, 0), false);
 });

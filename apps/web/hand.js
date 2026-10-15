@@ -11,6 +11,19 @@
 /** How long the pointer rests over a region before a waiting result applies. */
 export const HAND_REST_MS = 1000;
 
+/** How long after the last touch or release a control still counts as under
+ *  the hand (decided on #304, 2026-10-06). */
+export const HAND_HOLD_MS = 1500;
+
+/** The other half of the rule, for a control rather than a region: a result
+ *  that would move a control waits while one is held (`held`, however still)
+ *  or was touched or let go less than `HAND_HOLD_MS` ago (`lastTouch` and
+ *  `now` on one clock). PERFORM's controls and XY pad wait on it
+ *  (`handsBusy` in perform.js). */
+export function heldOrTouched(held, lastTouch, now) {
+  return !!held || now - lastTouch < HAND_HOLD_MS;
+}
+
 export function createHand({ now, setTimer, clearTimer }) {
   let over = 0; // regions the pointer is over
   let movedAt = 0;
