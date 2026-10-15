@@ -246,7 +246,7 @@ for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
 const guide = createGuide({
   el: $("guide"),
   ends: {
-    perform: "That is the loop. Every offer you take or pass teaches it what you like.",
+    perform: "That is the loop. Every offer you hear, then take or pass, teaches it what you like.",
     patch: "That is the patch: turn it, lock what you love, and ⚡ breeds around what you kept.",
   },
 });

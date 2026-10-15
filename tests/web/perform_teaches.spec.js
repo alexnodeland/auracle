@@ -55,11 +55,14 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   const p1 = await picks();
   await peek();
   await page.locator(".pf-pad", { hasText: "Take" }).click();
+  await expect(page.locator("#toasts")).toContainText("Took B. That counts as a pick over what you had.", { timeout: 10_000 });
   await app.engine((timeout) => expect.poll(picks, { timeout }).toBe(p1 + 1), { ms: 60_000 });
   const p2 = await picks();
   // an unheard offer answered teaches nothing
   await grow();
   await page.locator(".pf-pad", { hasText: "Take" }).click();
+  // …and says so, as an unheard pass does.
+  await expect(page.locator("#toasts")).toContainText("Took B. Not counted, because you hadn’t heard it.", { timeout: 10_000 });
   // Nothing is counted: watched past the take's eight-second window, and past
   // a whole offer's worth of engine time.
   await app.quiet(12_000);

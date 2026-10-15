@@ -761,8 +761,9 @@ asks, without stopping the music. Once you have heard B, your answer counts:
 | Press **NEXT** or **PASS** | What you had over B: *Passed on B. That counts as a pick for what you had.* |
 
 Heard means PEEK held, or BLEND past half, for at least a second while notes
-were sounding. An offer you answer without hearing it teaches nothing, and a
-pass says so: *Skipped B. Not counted, because you hadn’t heard it.*
+were sounding. An offer you answer without hearing it teaches nothing, and
+the toast says so: a take reads *Took B. Not counted, because you hadn’t heard
+it.*, a pass *Skipped B. Not counted, because you hadn’t heard it.*
 
 Each answer can be taken back while its toast is up. A take carries **DON’T
 COUNT IT** for eight seconds, since taking a sound to hear it in place isn’t

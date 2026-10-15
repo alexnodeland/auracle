@@ -2044,7 +2044,12 @@ export function createPerform(host) {
   }
   function answerOffer(took) {
     const pt = holdAnswer(took);
-    if (!pt) return;
+    if (!pt) {
+      // Unheard: B is your sound now, but nothing is recorded, and the take
+      // says so as an unheard pass does.
+      if (!state.quiet && state.offer) host.note("Took B. Not counted, because you hadn’t heard it.", { replace: "pf-offer" });
+      return;
+    }
     pt.toast = host.note("Took B. That counts as a pick over what you had.", {
       undo: () => {
         if (pt.sent) {
