@@ -8,8 +8,9 @@ A patch that reads the player’s input (an
 [`AudioIn`](../genome/grammar.md#audio-in-the-players-input) anywhere in its
 term, `PatchTree::listens`) would otherwise be rated on whatever the room
 sounded like when it was rendered. Taste would chase the room. So every AUDIO
-IN in a measurement render reads the session’s **audition clip**: a capture of
-the player’s input, or, before one exists, a built-in reference signal
+IN in a measurement render reads an **audition clip**: its input slot’s own
+if it has one, else the session’s, a capture of the player’s input, or, before
+one exists, a built-in reference signal
 ([RFC-008](https://github.com/alexnodeland/auracle/blob/main/docs/proposals/008-audio-in.md),
 part 2). The features, the vet, the walks and the render farm all render with
 it, so a patch that listens is measured, rated and bred like any other.

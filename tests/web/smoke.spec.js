@@ -60,7 +60,8 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The three `audition_clip` methods are the
 // session's clip (Plan-007 task 3), on every input slot, and the three
-// `input_clip` methods each slot's own (#147), and the live voice's input surface is what
+// `input_clip` methods each slot's own (#147), and the live voice's input
+// surface is what
 // the worklet writes the player's input through, with the open voice that
 // holds a patch that listens open while it is monitored (task 4), and `rest`
 // and `resting` are PERFORM's B at a mix of 0, which the worklet rests rather

@@ -8,7 +8,7 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 
 | File | Holds |
 | --- | --- |
-| `phrase.rs` | `PhraseSpec`: the standard audition phrase, its seed, and its audition clip |
+| `phrase.rs` | `PhraseSpec`: the standard audition phrase, its seed, and its audition clips (every slot's, and each slot's own) |
 | `clip.rs` | `AuditionClip`: what an AUDIO IN is measured with (a capture, or the built-in `reference`), its bounded saved form |
 | `render.rs` | Headless render of a compiled voice under the phrase (compiled with `compile_for_render`: its knobs folded) |
 | `probe.rs` | The cable probe: every audio cable's RMS and peak over one render of the phrase, read through the compiler's taps without changing the render (Plan-005 task 9e); `examples/cable_probe` measures its cost and proves the render bit-identical on every preset |

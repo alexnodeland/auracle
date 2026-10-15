@@ -869,8 +869,8 @@ fn build_voice(
     input: &Arc<AudioInputStream>,
     follow: bool,
 ) -> Result<Voice, String> {
-    // The live input on every slot, until the host gives each its own
-    // (#147's web half).
+    // The live input on every slot, until the worklet binds a stream per
+    // slot (#148).
     let input = InputStreams::every(input);
     let voice = if follow {
         compile_follower(tree, sample_rate, &input)

@@ -7,13 +7,14 @@ use crate::PatchGrammarPrior;
 use crate::PARAM_MAX;
 use quiver::prelude::AudioInputStream as Stream;
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+
 /// `stream` on every slot, or no slot bound: the one-stream binding most of
 /// these tests play an input through.
 fn bind(stream: Option<&Arc<Stream>>) -> InputStreams {
     stream.map_or_else(InputStreams::none, InputStreams::every)
 }
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 
 const SR: f64 = 44_100.0;
 

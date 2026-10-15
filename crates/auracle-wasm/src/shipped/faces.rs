@@ -92,8 +92,8 @@ impl PresetFaces {
 
 /// What a face is measured with, other than the preset: the render namespace
 /// (the stimulus, `RENDER_EPOCH`, the quiver version), the clips a preset
-/// that listens hears (every slot's, and each slot's own), and the face's own encoding (its bands, slices, range,
-/// floor and step). A change to any of them makes every shipped face stale,
+/// that listens hears (every slot's, and each slot's own), and the face's
+/// own encoding (its bands, slices, range, floor and step). A change to any of them makes every shipped face stale,
 /// and the currency test says which by name, rendering nothing.
 pub fn faces_fingerprint(phrase: &PhraseSpec) -> String {
     // A slot's own clip is named after the one every slot hears, and only

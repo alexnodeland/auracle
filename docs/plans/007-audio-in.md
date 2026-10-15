@@ -94,9 +94,11 @@ measured with audition clips, from quiver to the PATCH plate.
    - capturing a few seconds on first listen; *done* (task 4's web half): 6 s
      of the input once it carries a signal, through the worker's
      `set_audition_clip` message to `WasmEngine::set_audition_clip`;
-   - storing clips with the session; *done*: one session clip, saved as 16-bit
+   - storing clips with the session; *done*: the session clip and a clip per
+     input slot (`audition_clips`, #147's engine half), each saved as 16-bit
      base64 and bounded like quiver's `Capture`; an unreadable one restores as
-     the reference and says so;
+     the clip under it (a slot's as the session's, the session's as the
+     reference) and says so;
    - `featurize`, the vet, and walks rendering with them; *done*: the clip
      rides in `PhraseSpec`, a listening patch renders on a host-clock stream,
      its render key (and so the farm's stored key, and PERFORM's wiring key)
@@ -104,8 +106,12 @@ measured with audition clips, from quiver to the PATCH plate.
      fill's farm result for a listener measured under another clip (or vetted
      out under one) is measured on the engine instead (`Engine::absorb_prior`),
      and a restore's falls back to `bank_render`. The farm's phrase is re-sent
-     after a capture and a restore that installs one (task 4). Open: a clip
-     per input (#147; the keys through any input: #148).
+     after a capture and a restore that installs one (task 4). *Done*
+     (engine, #147): a clip per input slot (`PhraseSpec::clips`), a stream
+     per slot each AUDIO IN reads by its own slot, and a render key that
+     names each slot's clip when they differ. Open: #147's web half (a
+     capture per device, NEW CLIP per input), and the live voices' stream
+     per slot (#148).
 4. **Web capture.** *Done* (web), the live face included (#104,
    `the square draws the input's live face…` in `audio_in.spec.js`)
    (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
