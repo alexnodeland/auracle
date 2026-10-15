@@ -57,10 +57,11 @@ impl ExplainRender {
 /// The lesson's cutoff knob (0–1) as its corner in Hz on the held note:
 /// the grammar's own map ([`auracle_grammar::cutoff_hz`]), with the knob
 /// read as [`WasmEngine::lesson_filter`] reads it (clamped to 0–1, a value
-/// that is not a number taken as the middle). The page sets its live
-/// preview filter from the same map (`hzOfKnob` in `explain.js`).
-#[wasm_bindgen]
-pub fn lesson_cutoff_hz(cutoff: f64) -> f64 {
+/// that is not a number taken as the middle): the `cutoff_hz` its reply
+/// carries. Not exported: the page sets its live filter from its own copy
+/// of the map (`hzOfKnob` in `explain.js`), and the lesson's spec checks the
+/// two agree through that reply.
+fn lesson_cutoff_hz(cutoff: f64) -> f64 {
     cutoff_hz(lesson_knob(cutoff))
 }
 
