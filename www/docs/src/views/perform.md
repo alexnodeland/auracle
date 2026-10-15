@@ -342,14 +342,21 @@ sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
 2. **A filter lets some through.** A lowpass filter from the instrument's own
    modules is put on the sound, and you drag its **cutoff** along the graph
    (or use the arrow keys, and <kbd>Home</kbd> and <kbd>End</kbd> for its
-   ends). Each position is rendered: the filter's own curve
-   lights the graph, the shape's top narrows above the cutoff while the
-   unfiltered shape stays dashed behind it, and **PLAY … THROUGH IT** plays
-   the filtered sound, looping, so a new cutoff is heard in place. Each
-   cutoff is played as loud as the sound itself (every phrase the instrument
-   plays is set to one loudness), so you hear it darken, not fade. The
-   cutoff is the knob's value in its own unit on the held note, as PATCH
-   shows a filter's cutoff.
+   ends). **PLAY … THROUGH IT** plays the sound, looping, through a
+   lowpass in your browser as soon as you move the cutoff, so you hear it
+   while you drag; its curve is drawn dashed amber, a guess at the
+   instrument's filter. Where you leave the cutoff, the sound is rendered
+   with the instrument's own filter, and the render takes over: it fades in
+   over the browser's filter, its measured curve lights the graph in place
+   of the guess, and the shape's top narrows above the cutoff while the
+   unfiltered shape stays dashed behind it. The render is played as loud as
+   the sound itself (every phrase the instrument plays is set to one
+   loudness), so you hear it darken, not fade; through the browser's filter
+   the level is an estimate from the sound's spectrum, so it can step a
+   little when the render comes in. The browser's filter goes after the
+   whole sound, and the instrument's inside it, so the two can differ until
+   the render lands. The cutoff is the knob's value in its own unit on the
+   held note, as PATCH shows a filter's cutoff.
 
    A sound with no room for one more module (about one pool sound in ten;
    none of the presets) gets the filter after it instead, at one cutoff for
