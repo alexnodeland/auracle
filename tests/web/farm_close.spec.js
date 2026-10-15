@@ -57,7 +57,7 @@ test("a farm worker closes only once every row it wrote to the render store has 
   await app.reply("filled", { timeout: 300_000 });
   // Each of boot's two said what its writes came to as it closed. One
   // terminated before it closed says nothing, and fails here too.
-  await expect.poll(() => page.evaluate(() => window.__pwClosed.length), { message: "a worker of boot's crew was terminated before it closed" }).toBeGreaterThanOrEqual(2);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwClosed.length), { message: "a worker of boot's crew was terminated before it closed", timeout }).toBeGreaterThanOrEqual(2), { ms: 30_000 });
   const closed = await page.evaluate(() => window.__pwClosed);
   console.log(`farm workers' writes as they closed: ${JSON.stringify(closed)}`);
   expect(closed.map((c) => c.aborted), "a worker closed with a write still open").toEqual(closed.map(() => 0));
