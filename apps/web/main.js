@@ -5290,9 +5290,10 @@ const RENDER_WAIT_MS = 12_000;
 const RENDER_POLL_MS = 100;
 
 function awaitRender(id, onReady, opts = {}) {
-  // A ▶ of a rendered patch with nothing on the bench starts here (the duel,
-  // a bank row, a style's exemplar, the warm start, Space with an empty
-  // bench; the bench's ▶ goes through `latestPlayWins`): the latest ▶ wins, so the
+  // The duel's ▶, a bank row's, a style's exemplar and the warm start start
+  // here, and Space does when nothing is on the bench (with a patch on it,
+  // Space and the header's ▶ go to `playBench` through `latestPlayWins`):
+  // the latest ▶ wins, so the
   // bench's ▶ waiting for an edit is taken back rather than starting over it,
   // and so is a preset's ▶ waiting for its render (`warmPreview`), which
   // otherwise played over the ▶ pressed after it once its render landed
