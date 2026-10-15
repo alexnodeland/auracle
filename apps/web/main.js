@@ -2680,6 +2680,8 @@ worker.onmessage = (e) => {
     // and autosave stays off until the player says "start fresh" or reloads
     // (with a newer build, the next boot reads the record where it is).
     case "restore_failed": {
+      // Nothing was restored: the engine fills a fresh pool instead.
+      if (!booted) $("boot-sub").textContent = bootSubLine(false);
       saveBlocked = "unparseable";
       clearTimeout(saveTimer);
       quarantineKey = `state-quarantine-${Date.now()}`;
@@ -24495,6 +24497,20 @@ renderTray();
 shell.start();
 bootLiveAudio();
 bootMidi();
+// The pool the init asks for, and the veil's line says. Hand the app over at
+// 8 vetted patches and let the other 32 land behind it. A duel needs a bank
+// wide enough to hold an interesting question, not a full one — and 8
+// arrives in seconds where 40 takes half a minute. Not below the engine's
+// `NAME_FLOOR` (worker.js `PLAYABLE_AT`).
+const BOOT_POOL = { size: 40, playableAt: 8 };
+// The veil's line under the tagline. A return restores the saved session
+// whole before the veil drops (worker.js's restore, then `playable`), so it
+// does not wait on a first few sounds.
+function bootSubLine(returning) {
+  return returning
+    ? "restoring your bank & taste…"
+    : `listening to ${BOOT_POOL.size} sounds: you start as soon as the first ${BOOT_POOL.playableAt} land`;
+}
 (async () => {
   // Spawn the render farm BEFORE the save read, so N wasm instantiations
   // overlap with IndexedDB and with the engine worker's own init instead of
@@ -24521,6 +24537,7 @@ bootMidi();
   // What this page is booting from, byte for byte. `persistState` keeps it as
   // `state-prev` before the first overwrite; `restore_failed` quarantines it.
   bootRecord = saved;
+  $("boot-sub").textContent = bootSubLine(!!(saved && saved.session));
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);
@@ -24562,12 +24579,8 @@ bootMidi();
       // (`addressSeed`): an ordinary session's deals never wait for more
       // sounds to arrive.
       seeded: addressSeed != null,
-      poolSize: 40,
-      // Hand the app over at 8 vetted patches and let the other 32 land behind
-      // it. A duel needs a bank wide enough to hold an interesting question, not
-      // a full one — and 8 arrives in seconds where 40 takes half a minute.
-      // Not below the engine's `NAME_FLOOR` (worker.js `PLAYABLE_AT`).
-      playableAt: 8,
+      poolSize: BOOT_POOL.size,
+      playableAt: BOOT_POOL.playableAt,
       saved: saved && saved.session ? saved.session : null,
       // One end of each farm channel. Transferring them *into* the engine
       // worker is what keeps this thread out of the data path: from here on,

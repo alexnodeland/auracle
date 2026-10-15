@@ -124,6 +124,10 @@ test("a returning visit with no farm says each sound on the veil as it comes bac
   const visit = await returningVisit(page, app);
 
   expect(visit.lifted, "the veil never lifted").toBe(true);
+  // The veil carried the line and said what a return does, not a first fill.
+  await expect(page.locator("#boot .boot-tag")).toHaveText("A synthesizer that grows toward you");
+  await expect(page.locator("#boot .boot-desc")).toHaveText("Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.");
+  await expect(page.locator("#boot-sub")).toHaveText("restoring your bank & taste…");
   expect(visit.restored).toBe(40);
   // Sound by sound on the veil, before it lifted, the bar moving with each.
   expect(visit.said, "the veil did not say each sound as it came back").toEqual(counting(visit.restored));
