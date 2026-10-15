@@ -2616,11 +2616,14 @@ worker.onmessage = (e) => {
     // Each closes itself once its writes to the render store have committed
     // (farm.js `bye`) and says so; terminated at once, a worker lost the row of
     // the render it had just posted (#360). One that never says so is
-    // terminated after `FARM_REAP_MS`.
+    // terminated after `FARM_REAP_MS`. A crew a stop left walking for nobody
+    // (`now`, worker.js `crewReap`) is terminated at once: a walk writes no
+    // rows, and the worker would read its `bye` only once the walk ended.
     case "farm_done": {
-      for (const f of farmWorkers) {
+      for (const f of [...farmWorkers]) {
         if (m.crew != null && f.crew !== m.crew) continue;
-        if (!f.reaping) f.reaping = setTimeout(() => farmReap(f), FARM_REAP_MS);
+        if (m.now) farmReap(f);
+        else if (!f.reaping) f.reaping = setTimeout(() => farmReap(f), FARM_REAP_MS);
       }
       break;
     }

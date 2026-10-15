@@ -15,9 +15,10 @@
 // linear memory is not kept resident behind a running instrument.
 //
 // It never talks to the main thread after boot but once, to say it has
-// closed (below, `bye`). Main spawns it, hands it one end of a MessageChannel
-// whose other end went into the engine worker, and steps out of the data path — so ~565 KB audition buffers never cross the
-// thread that is drawing the UI. (Spawning here rather than from inside the
+// closed (below, `bye`). Main spawns it, hands it one end of a
+// MessageChannel whose other end went into the engine worker, and steps out
+// of the data path — so ~565 KB audition buffers never cross the thread that
+// is drawing the UI. (Spawning here rather than from inside the
 // engine worker is deliberate: nested dedicated workers only landed in Safari
 // 16.4, and transferring a port is universal.)
 
@@ -150,7 +151,8 @@ async function onJob(m) {
   }
   if (m.type === "bye") {
     // Its writes committed first, then main is told, which terminates it
-    // (main.js `farm_done` reaps a worker that never says so, after a while).
+    // (main.js `farm_done` reaps a worker that never says so, after a while,
+    // and terminates a crew a stop left walking at once, unasked).
     await Promise.all([...writing]);
     try { self.postMessage({ type: "closed" }); } catch (_) { /* main is gone */ }
     self.close();

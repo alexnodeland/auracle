@@ -270,7 +270,8 @@ to a pinned `role="alert"` strip that stays until resolved.
   cores) from the module it keeps (`sharedModule`: compiled at boot where
   boot had a farm, otherwise by the first crew) and answers `farm_ports`; the
   crew is reaped (`farm_done` with its crew id) after 60 s with nothing to
-  walk, or at once when a stop leaves it walking for nobody. A walk job is
+  walk (each worker closing once its render-store writes commit), or
+  terminated at once (`now`) when a stop leaves it walking for nobody. A walk job is
   `walk_context` (once per worker per generation) then `walk` →
   `farm_walk(context, job)` → `walked`; `""` from `farm_walk` comes back as
   `cannot`, and the engine worker walks that job itself.
