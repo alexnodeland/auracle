@@ -12,12 +12,13 @@
 //   itself, the preset's insert (one render, about 0.4 s on a quiet machine)
 //   and the bench.
 // - A warm-start pick's controls are live the moment PERFORM names it, and
-//   within a second of "teach it": its insert is the first thing the worker
-//   does, and a memo hit when the pick's card was measured before "teach it"
-//   arrived (the engine measures the cards while they are chosen,
-//   `warm_cards`, the picks first). This spec presses it about half a second
-//   after the deal, and the card usually was; what is left then is the
-//   render in progress when "teach it" arrives (#221).
+//   within 100 ms of "teach it": the press hands the voices and PERFORM the
+//   pick's tree and makeup from the shipped file, in its own task, and its
+//   insert (the first thing the worker does) only gives it an id (#221,
+//   #306).
+// - Every sound you can see opens under the keys in its click's own task,
+//   within 100 ms on the reference profile: TEACH IT's first pick, a bank
+//   row, a duel card's body, a map dot and a preset never voiced (#306).
 // - A pick puts the next pair up in the click's own task, with no deal
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
 //   sounds fetched, ahead. Within 0.3 s and 0.15 s, in a seeded session and
@@ -154,7 +155,7 @@ test("a preset's controls are live within a second of its click", async ({ page,
   }
 });
 
-test("a warm-start pick's controls are live within a second of teach it", async ({ page, app }) => {
+test("a warm-start pick's controls are live within 100 ms of teach it", async ({ page, app }) => {
   await boot(app, { warmed: false });
   await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 30_000 });
   const cards = page.locator(".warm-cell .warm-item");
@@ -176,7 +177,7 @@ test("a warm-start pick's controls are live within a second of teach it", async 
     },
     [first, until(LIVE), WATCH_NAMING, STEPS],
   ), { ms: 60_000 });
-  console.log(`teach it → ${first} named ${named.toFixed(0)} ms (its insert ${insert.toFixed(0)} ms) → controls live ${ms.toFixed(0)} ms; live in the naming's task: ${liveAtName}; wired from ${how}`);
+  console.log(`teach it → ${first} named ${named.toFixed(0)} ms (its insert ${insert} ms, NaN when it had not answered yet) → controls live ${ms.toFixed(0)} ms; live in the naming's task: ${liveAtName}; wired from ${how}`);
   expect(liveAtName, "its controls are live in the task PERFORM names it").toBe(true);
   expect(how, "it is wired from the shipped file (the app's mark), not measured").toBe("shipped");
   // The engine was asked to measure the nine cards as they were dealt, then
@@ -192,7 +193,110 @@ test("a warm-start pick's controls are live within a second of teach it", async 
   const teachAt = warm.findIndex(([type]) => type === "warm_start");
   expect(warm[teachAt - 1], "the last order before teach it").toEqual(["warm_cards", [...picks, ...dealt.filter((i) => !picks.includes(i))]]);
   expect(warm.slice(teachAt + 1), "the order after it").toEqual([["warm_cards", []]]);
-  app.budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
+  // Its insert is no longer in the time: the pick plays from the shipped
+  // file, and is usually live before the insert has answered (#306).
+  app.budget("teach it → the first pick's controls live", ms, 100);
+});
+
+// In the page: press `click()` and say whether the voices took a sound
+// (`voiceEarly`'s mark, `auracle:voiced`) before the click's task ended, and
+// when: read before the first await, so a mark there was made in the click's
+// own task. With the click's task's whole length, and what was voiced.
+const VOICED_IN_TASK = `(click) => {
+  const t0 = performance.now();
+  click();
+  const end = performance.now();
+  const m = performance.getEntriesByName("auracle:voiced").filter((e) => e.startTime >= t0).pop();
+  return { inTask: !!m, ms: m ? m.startTime - t0 : Infinity, task: end - t0, name: m?.detail?.name ?? null, id: m?.detail?.id ?? null };
+}`;
+
+// Every sound you can see opens under the keys in the click's own task, on
+// the reference profile, whatever the engine is doing (#306): its tree and
+// makeup are main's already (a pool member's sent with the rows that first
+// listed it, every preset's shipped with the app), and the engine's open
+// follows to confirm it. TEACH IT's first pick, a bank row, a duel card's
+// body, a map dot and a preset this page has never voiced, each within
+// 100 ms of its click (`app.budget`), and each asserted to reach the voices
+// in that click's task.
+test("on the reference profile, every sound you can see opens under the keys in the click's own task", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ warmed: false, profile: "air" });
+  await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
+  const cards = page.locator(".warm-cell .warm-item");
+  for (const i of [0, 3, 6]) await cards.nth(i).click();
+  const first = (await cards.nth(0).locator(".wi-name").textContent()).trim();
+  const dealt = (await cards.locator(".wi-name").allTextContents()).map((t) => t.trim());
+  const opens = [];
+  const open = async (what, click) => {
+    const r = await page.evaluate(`(${VOICED_IN_TASK})(${click})`);
+    console.log(`${what}: ${r.name} voiced ${r.ms.toFixed(1)} ms after the click, in its task: ${r.inTask} (the task ${r.task.toFixed(0)} ms)`);
+    expect(r.inTask, `${what}: the voices took it in the click's own task`).toBe(true);
+    opens.push([what, r.ms]);
+    return r;
+  };
+  // The sound on the bench: the subject of the engine's last bench reply.
+  const SUBJECT = `(() => window.__tap.replies.filter((r) => r.type === "bench" && r.d.subject != null).pop()?.d.subject ?? null)()`;
+
+  // TEACH IT: its first pick, a preset not in the pool yet, from the
+  // shipped file.
+  const taught = await open("teach it's first pick", `() => document.getElementById("warm-go").click()`);
+  expect(taught.name, "the first pick").toBe(first);
+  await app.answered({ types: ["warm_start", "edit_begin"], lanes: ["bench"] });
+
+  // A bank row: a pool sound other than the one in hand.
+  await bankTab(page, "pool");
+  const row = await page.evaluate((subject) => {
+    const s = eval(subject);
+    const el = [...document.querySelectorAll("#bank-list .bank-item[data-id]")].find((e) => Number(e.dataset.id) !== s);
+    return el ? el.dataset.id : null;
+  }, SUBJECT);
+  expect(row, "a pool sound to open").not.toBeNull();
+  const fromRow = await open("a bank row", `() => document.querySelector('#bank-list .bank-item[data-id="${row}"]').click()`);
+  expect(fromRow.id, "the row's sound").toBe(Number(row));
+  await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
+
+  // A preset this page has never voiced (none of the warm start's cards).
+  await bankTab(page, "presets");
+  const fresh = await page.evaluate((dealt) =>
+    [...document.querySelectorAll("#bank-list .preset-item .bi-name")].map((e) => e.textContent).find((n) => !dealt.includes(n)), dealt);
+  const preset = await open("a preset never voiced", `() => [...document.querySelectorAll("#bank-list .preset-item")].find((e) => e.querySelector(".bi-name")?.textContent === ${JSON.stringify(fresh)}).click()`);
+  expect(preset.name, "the preset clicked").toBe(fresh);
+  await app.answered({ types: ["load_preset", "edit_begin"], lanes: ["bench"] });
+
+  // A duel card's body: the side that is not in hand.
+  await goLevel(page, "evolve");
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
+  const side = await page.evaluate((subject) => {
+    const s = window.__tap.sent.filter((x) => x.type === "duel_shown").pop();
+    return s && s.m.a === eval(subject) ? "b" : "a";
+  }, SUBJECT);
+  await open("a duel card's body", `() => document.getElementById("duel-${side}").click()`);
+  await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
+
+  // A map dot, by its keys: TASTE's map, the next sound from the one in
+  // hand, and Enter (the dot's click opens it the same way, `host.open`).
+  await goLevel(page, "taste");
+  await expect(page.locator("#taste-crt")).toBeVisible();
+  // The first arrow points at the sound in hand; the next, in a direction
+  // with a sound in it, at another, whose card names it.
+  const pointed = await page.evaluate((subject) => {
+    const cv = document.getElementById("taste-crt");
+    const key = (k) => cv.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+    const at = () => Number(document.getElementById("taste-plate").dataset.id);
+    const s = eval(subject);
+    key("ArrowRight");
+    for (const k of ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"]) {
+      key(k);
+      if (at() !== s) return at();
+      key(k === "ArrowRight" ? "ArrowLeft" : k === "ArrowLeft" ? "ArrowRight" : k === "ArrowDown" ? "ArrowUp" : "ArrowDown");
+    }
+    return null;
+  }, SUBJECT);
+  expect(pointed, "another sound on the map").not.toBeNull();
+  const dot = await open("a map dot", `() => document.getElementById("taste-crt").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))`);
+  expect(dot.id, "the sound pointed at").toBe(pointed);
+  await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
+
+  for (const [what, ms] of opens) app.budget(`${what} → its sound under the keys`, ms, 100);
 });
 
 // The session a player opens has no seed in the address, and its deals are

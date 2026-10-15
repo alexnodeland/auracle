@@ -34,7 +34,7 @@ taste.*).
 | **Mark size** | How unsure it is: bigger is less sure |
 | **Dashed ring** | No guess yet: before the first fit, and after you open a taste file until its fit lands, with **TASTE** on, every glow is a dashed ring |
 | **Green ring** | The sound you’re playing |
-| **Dotted ring** | A sound on its way to you, after a click |
+| **Dotted ring** | A sound on its way to you, after a click, when it can’t play yet |
 
 The legend at the top right says which you are looking at: *it likes more*
 beside two glows, or *still a guess* beside a dashed ring.
@@ -74,8 +74,9 @@ Point at a sound and its card opens beside it: the sound’s name, how much the
 model guesses you’d like it (*would like: 59% · leaning*), **▶ PLAY**, which
 plays its phrase, and **OPEN**, which opens it as the sound you’re playing.
 
-Clicking a sound opens it too. A dotted ring marks it while it opens, and the
-green ring moves to it when it’s yours.
+Clicking a sound opens it too. It plays at once, and the green ring moves to
+it with the click. A sound the app can’t play yet, as it starts, wears a
+dotted ring until it’s yours.
 
 The card’s percentage is the model’s rating after your last pick. The bank’s
 rows, under the model view, show the rating from the last refit, so between
