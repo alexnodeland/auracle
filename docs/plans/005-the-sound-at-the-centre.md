@@ -377,7 +377,9 @@ Tasks still open, each an issue (`docs/process.md`):
         with `face.rs`; with under four faces in the bank the raw spectrum
         stands in, and the copy says "its spectrum";
       - the keys play the sound in hand without the lesson's filter; the
-        lesson's sound is the filtered phrase, looped and swapped in place;
+        lesson's sound is the phrase, looped, through a browser lowpass set
+        in the move's own task, then the filtered render for the cutoff held
+        fading in over it (#314), its curve a dashed amber guess until then;
       - a palette control's preview as a recipe over the six (the
         specimen's `macroAnswer`) is not drawn: each of the eighteen is its
         own direction, measured once placed;

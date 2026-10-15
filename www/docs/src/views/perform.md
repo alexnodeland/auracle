@@ -344,16 +344,17 @@ sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
    (or use the arrow keys, and <kbd>Home</kbd> and <kbd>End</kbd> for its
    ends). **PLAY … THROUGH IT** plays the sound, looping, through a
    lowpass in your browser as soon as you move the cutoff, so you hear it
-   while you drag; its curve is drawn dashed amber, a guess at the
-   instrument's filter. Where you leave the cutoff, the sound is rendered
+   while you drag; its curve is drawn dashed amber and marked *not measured
+   yet*, a guess at the instrument's filter. Where you leave the cutoff, the sound is rendered
    with the instrument's own filter, and the render takes over: it fades in
    over the browser's filter, its measured curve lights the graph in place
    of the guess, and the shape's top narrows above the cutoff while the
    unfiltered shape stays dashed behind it. The render is played as loud as
    the sound itself (every phrase the instrument plays is set to one
    loudness), so you hear it darken, not fade; through the browser's filter
-   the level is an estimate from the sound's spectrum, so it can step a
-   little when the render comes in. The browser's filter goes after the
+   the level is an estimate from the sound's spectrum, about as loud (within
+   a decibel or so), so it can step a little when the render comes in. The
+   line across the shape marks the cutoff you hold, before its render too. The browser's filter goes after the
    whole sound, and the instrument's inside it, so the two can differ until
    the render lands. The cutoff is the knob's value in its own unit on the
    held note, as PATCH shows a filter's cutoff.
@@ -380,7 +381,9 @@ measures each: its spectrum, its first note's attack, its level, its held
 note's brightness and harmonics, and the same measurements the model is
 taught with. The lesson's filter is the instrument's own lowpass, inserted
 at the output below any reverb, chorus, phaser or flanger that ends the
-chain, and its curve is measured from the filter itself.
+chain, and its curve is measured from the filter itself. Until that
+measurement lands, the curve you see is your browser's lowpass, the one you
+hear while dragging: a guess, dashed.
 [Explaining a control](../../reference/search/explain.html) has the details.
 ```
 
