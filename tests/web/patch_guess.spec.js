@@ -10,7 +10,6 @@
 // rule, held in tests/worker/lanes.test.mjs.
 const { test, expect, bankTab, openCatalog } = require("./fixtures");
 const { openPreset, rankedGuess, guessAfter, drawnGuess } = require("./patch_page.js");
-const { SLOW_ENGINE } = require("./perform_budget.js");
 
 const SURE = "(a hunch|leaning|fairly sure)";
 const LINE = new RegExp(`· \\d+%( over your pool’s average)? · ${SURE}( · it may not help)?$`);
@@ -200,50 +199,72 @@ test("a new patch's skips are its own: the sound it was started from does not in
 // those went last (`idleOnly` in worker.js) a guess asked straight after the
 // warm start's fit started with the bank still arriving (pool 27 of 40 on a
 // CI runner) and ranked eight. It waits for boot's crew now, as a generation
-// does. Here boot's crew is made slow (its wasm calls 12 times as long as
-// this machine's, as perform_budget.js slows the engine), so the bank is
-// still arriving when the guess is asked; the walk crew raised afterwards is
-// not slowed. The slowdown is the boot's `farmPrefix`, which the fixture
-// serves after a profile's own (a route of the spec's own would lose to the
-// profile's).
-/** farm.js's prefix (`app.boot`'s `farmPrefix`, asked each time farm.js is
- *  served): boot's crew, the farm workers served within five seconds of the
- *  first as the page loads, slowed to 12 times this machine's own render; a
- *  walk crew, much later, not. On a reference profile (`app.profile`) the
- *  farm is already slowed by its rate, so the crew is slowed by what is left
- *  of the 12: on top of it, a 12 made a boot's 8 sounds take more than its
- *  150 s on a 16-core M3 Max (×4.5 there). Timed from the first worker, not
- *  from the boot's call, which on a profile may first spend seconds
- *  calibrating. */
-const BOOT_CREW_SLOWED = 12;
-function bootCrewSlowed(app) {
-  let first = null;
-  return () => {
-    const now = Date.now();
-    if (first === null) first = now;
-    const rate = Math.max(1, BOOT_CREW_SLOWED / (app.profile ? app.profile.farmRate : 1));
-    return now - first < 5_000 && rate > 1 ? SLOW_ENGINE(rate) : "";
+// does.
+//
+// The bank is still arriving when the guess is asked because the test holds
+// it so, not because the crew was slowed enough: boot's crew holds every
+// render past the floor's eight at a gate (farm.js, ahead of it: `app.boot`'s
+// `farmPrefix`, which the fixture serves after a profile's own), until the
+// page has seen the guess asked. A crew slowed 12 times instead made the rest
+// of the bank take about six times what the veil took, and on a runner at a
+// load of 20 to 37 that was past every bound the test could hold (#404).
+// Each worker lets its oldest held render through every 8 s meanwhile, so
+// none is held near the engine's 30 s watchdog (worker.js `JOB_TIMEOUT_MS`:
+// past it a render is handed out again, and after two the draw is retired),
+// which the test checks did not fire.
+const JOB_GATE = `(() => {
+  const ch = new BroadcastChannel("pw-jobs");
+  const held = [];
+  let all = false;
+  const go = (h) => h.fn.call(h.port, h.ev);
+  ch.onmessage = (e) => {
+    if (!e.data || !e.data.all) return;
+    all = true;
+    held.splice(0).forEach(go);
   };
+  setInterval(() => held.length && go(held.shift()), 8000);
+  const on = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage");
+  Object.defineProperty(MessagePort.prototype, "onmessage", {
+    configurable: true,
+    get() { return on.get.call(this); },
+    set(fn) {
+      const port = this;
+      on.set.call(this, fn && function (ev) {
+        const d = ev.data;
+        if (!all && d && d.type === "job" && d.i >= 8) {
+          held.push({ fn, port, ev });
+          return;
+        }
+        return fn.call(this, ev);
+      });
+    },
+  });
+})();`;
+/** farm.js's prefix (asked each time farm.js is served): the gate for
+ *  boot's crew, the first two workers (\`?farm=2\`); none for the walk crew
+ *  raised later, which renders the guess. */
+function bootCrewGated() {
+  let served = 0;
+  return () => (++served <= 2 ? JOB_GATE : "");
 }
 
 test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page, app }) => {
-  test.setTimeout(300_000); // about 168 s on CI, most of it the bank arriving on boot's slowed crew
-  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed(app), wait: false });
-  // The boot's wait is an ordinary boot's (ENGINE_MS) as many times over as
-  // its crew is slowed, within what the fixture grants a test's engine waits
-  // (ENGINE_CAP_MS): at the ordinary bound, a runner at a load of 20 to 37
-  // stopped at 7 of the 8 sounds that lift the veil (#404).
-  await app.engine((timeout) => expect(page.locator("#boot"), "the boot veil lifted").toHaveClass(/\bdone\b/, { timeout }), { ms: Math.min(app.ENGINE_MS * BOOT_CREW_SLOWED, app.ENGINE_CAP_MS) });
+  test.setTimeout(300_000);
+  await app.boot({ warmed: false, query: "?farm=2", farmPrefix: bootCrewGated(), wait: false });
+  await app.engine((timeout) => expect(page.locator("#boot"), "the boot veil lifted").toHaveClass(/\bdone\b/, { timeout }));
   await app.warmStart();
   await openPreset(app, "Sub & Sparkle");
   await app.engine((timeout) => expect.poll(() => app.sentCount("guess"), { timeout }).toBeGreaterThan(0), { ms: 60_000 });
   const [asked] = await app.sent("guess");
   const filledFirst = (await app.replies("filled")).filter((f) => f._at < asked._at);
   expect(filledFirst, "the bank had finished arriving before the guess was asked").toEqual([]);
+  // The rest of the bank, let through.
+  await page.evaluate(() => new BroadcastChannel("pw-jobs").postMessage({ all: true }));
   const r = await rankedGuess(app, { timeout: 300_000 });
   expect(r.data.planned, "ranked on the floor's eight, not on a crew").toBe(r.data.total);
   expect(r.data.total).toBeGreaterThan(8);
   expect(await app.count("filled")).toBeGreaterThan(0);
+  expect(await app.replies("log", { where: { kind: "draw_timeout" } }), "a render held at the gate outlived the engine's watchdog").toEqual([]);
 });
 
 test("a guess skipped after keep as new is still skipped when the kept sound is opened again", { tag: "@slow" }, async ({ page, app }) => {
