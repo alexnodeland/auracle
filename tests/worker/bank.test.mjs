@@ -41,3 +41,42 @@ test("a patch file opened twice lands once, and the second time is the sound it 
   assert.equal(again.duplicate, first.id, "the second open was called a refusal, not the sound it is");
   await w.close();
 });
+
+// Main opens a pool member in the click's own task from the tree and makeup
+// it already holds (#306): each member's are sent once, beside the first
+// rows that list it (`trees`, worker.js `newTrees`), and a member that joins
+// later (a preset loaded) comes with the rows it joins in, alone.
+test("each pool member's tree and makeup reach main once, beside the first rows that list it", { timeout: TIMEOUT }, async (t) => {
+  const w = await workerFor(t, { seed: SEED });
+  const held = new Map();
+  const take = (r) => {
+    const v = r.views || r;
+    for (const [id, x] of Object.entries(v.trees || {})) held.set(Number(id), x);
+    return v;
+  };
+  for (const r of w.replies) if (r.ranked || (r.views && r.views.ranked)) take(r);
+  const [first] = await w.send({ type: "taste_views" });
+  const views = take(first);
+  const ids = views.ranked.map((r) => r.id);
+  assert.ok(ids.length > 0, "the pool is listed");
+  for (const id of ids) {
+    const x = held.get(id);
+    assert.ok(x, `member ${id}'s tree reached main`);
+    const [tree] = await w.send({ type: "tree_json", id });
+    assert.equal(x.json, tree.json, `member ${id}'s tree is the engine's`);
+    assert.ok(Number.isFinite(x.makeup) && x.makeup > 0, `member ${id} has a makeup`);
+  }
+  const bytes = JSON.stringify(Object.fromEntries(held)).length;
+  console.log(`${ids.length} members' trees: ${(bytes / 1024).toFixed(1)} KB, ${(bytes / ids.length / 1024).toFixed(1)} KB each`);
+
+  // Sent once: the next rows carry none.
+  const [again] = await w.send({ type: "taste_views" });
+  assert.equal(again.views.trees, undefined, "a member main holds is not sent again");
+
+  // A member that joins comes with the rows it joins in, alone.
+  const loaded = await w.send({ type: "load_preset", index: 0 });
+  const r = loaded.find((x) => x.type === "preset_loaded");
+  assert.ok(r.id > 0, "the preset joined the pool");
+  assert.deepEqual(Object.keys(r.views.trees || {}).map(Number), [r.id], "only the new member's tree is sent");
+  await w.close();
+});
