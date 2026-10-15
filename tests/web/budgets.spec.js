@@ -7,10 +7,10 @@
 //   rehearsal's sidecar.
 // - A preset's controls are live the moment PERFORM names it (every preset
 //   ships measured): in the same task, wired from the shipped file, with no
-//   measurement asked of the engine. And within a second of its click: what
-//   stands between the click and PERFORM having the patch is the open
-//   itself, the preset's insert (one render, about 0.4 s on a quiet machine)
-//   and the bench.
+//   measurement asked of the engine. And within 100 ms of its click: the
+//   click hands the voices and PERFORM its tree and makeup from the shipped
+//   file in its own task, and its insert and the bench only confirm it
+//   (#306).
 // - A warm-start pick's controls are live the moment PERFORM names it, and
 //   within 100 ms of "teach it": the press hands the voices and PERFORM the
 //   pick's tree and makeup from the shipped file, in its own task, and its
@@ -25,8 +25,7 @@
 //   in one with no seed, whose deals never wait for more sounds (#211).
 //
 // The order is asserted; the seconds are budgets (ADR-022, `app.budget`):
-// each recorded as the test's annotation, with the insert's share in its
-// name, and judged only with AURACLE_PERF=1, by the nightly Speed budgets
+// each recorded as the test's annotation, and judged only with AURACLE_PERF=1, by the nightly Speed budgets
 // job. Times are taken in the page's own clock, from the gesture's
 // own task, so Playwright's polling is not in them.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
@@ -115,7 +114,7 @@ test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and 
   expect(marks.some((m) => m.name === "perform-wired" && m.detail?.how === "shipped"), "a preset wired from the shipped file").toBe(true);
 });
 
-test("a preset's controls are live within a second of its click", async ({ page, app }) => {
+test("a preset's controls are live within 100 ms of its click", async ({ page, app }) => {
   await boot(app);
   await goLevel(page, "perform");
   await bankTab(page, "presets");
@@ -145,10 +144,11 @@ test("a preset's controls are live within a second of its click", async ({ page,
       },
       [name, until(LIVE), WATCH_NAMING, STEPS],
     ), { ms: 60_000 });
-    console.log(`${name}: click → named in PERFORM ${named.toFixed(0)} ms → controls live ${ms.toFixed(0)} ms (${steps}); live in the naming's task: ${liveAtName}; wired from ${how}`);
+    console.log(`${name}: click → named in PERFORM ${named.toFixed(0)} ms → controls live ${ms.toFixed(0)} ms (${steps}); live in the naming's task: ${liveAtName}; wired from ${how}; its insert ${Math.round(insert)} ms, NaN when it had not answered yet`);
     expect(liveAtName, `${name}'s controls are live in the task PERFORM names it`).toBe(true);
     expect(how, `${name} is wired from the shipped file (the app's mark), not measured`).toBe("shipped");
-    app.budget(`${name}: the click → its controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
+    // Its insert is no longer in the time (#306): it is logged above.
+    app.budget(`${name}: the click → its controls live`, ms, 100);
     // The open settled before the next is clicked: its load and the bench's
     // edits answered.
     await app.answered({ types: ["load_preset", "edit_begin"], lanes: ["bench"] });
@@ -201,13 +201,15 @@ test("a warm-start pick's controls are live within 100 ms of teach it", async ({
 // In the page: press `click()` and say whether the voices took a sound
 // (`voiceEarly`'s mark, `auracle:voiced`) before the click's task ended, and
 // when: read before the first await, so a mark there was made in the click's
-// own task. With the click's task's whole length, and what was voiced.
-const VOICED_IN_TASK = `(click) => {
+// own task. With the click's task's whole length, what was voiced, and
+// `probe()` read in the same task (null without one).
+const VOICED_IN_TASK = `(click, probe) => {
   const t0 = performance.now();
   click();
+  const seen = probe ? probe() : null;
   const end = performance.now();
   const m = performance.getEntriesByName("auracle:voiced").filter((e) => e.startTime >= t0).pop();
-  return { inTask: !!m, ms: m ? m.startTime - t0 : Infinity, task: end - t0, name: m?.detail?.name ?? null, id: m?.detail?.id ?? null };
+  return { inTask: !!m, ms: m ? m.startTime - t0 : Infinity, task: end - t0, name: m?.detail?.name ?? null, id: m?.detail?.id ?? null, seen };
 }`;
 
 // Every sound you can see opens under the keys in the click's own task, on
@@ -219,6 +221,9 @@ const VOICED_IN_TASK = `(click) => {
 // 100 ms of its click (`app.budget`), and each asserted to reach the voices
 // in that click's task.
 test("on the reference profile, every sound you can see opens under the keys in the click's own task", { tag: "@slow" }, async ({ page, app }) => {
+  // A minute here: a boot on the reference profile, TEACH IT and five opens
+  // on a throttled page, besides the engine's waits.
+  test.setTimeout(180_000);
   await app.boot({ warmed: false, profile: "air" });
   await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
   const cards = page.locator(".warm-cell .warm-item");
@@ -226,8 +231,8 @@ test("on the reference profile, every sound you can see opens under the keys in 
   const first = (await cards.nth(0).locator(".wi-name").textContent()).trim();
   const dealt = (await cards.locator(".wi-name").allTextContents()).map((t) => t.trim());
   const opens = [];
-  const open = async (what, click) => {
-    const r = await page.evaluate(`(${VOICED_IN_TASK})(${click})`);
+  const open = async (what, click, probe = "null") => {
+    const r = await page.evaluate(`(${VOICED_IN_TASK})(${click}, ${probe})`);
     console.log(`${what}: ${r.name} voiced ${r.ms.toFixed(1)} ms after the click, in its task: ${r.inTask} (the task ${r.task.toFixed(0)} ms)`);
     expect(r.inTask, `${what}: the voices took it in the click's own task`).toBe(true);
     opens.push([what, r.ms]);
@@ -265,11 +270,12 @@ test("on the reference profile, every sound you can see opens under the keys in 
   // A duel card's body: the side that is not in hand.
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
-  const side = await page.evaluate((subject) => {
+  const [side, sideId] = await page.evaluate((subject) => {
     const s = window.__tap.sent.filter((x) => x.type === "duel_shown").pop();
-    return s && s.m.a === eval(subject) ? "b" : "a";
+    return s && s.m.a === eval(subject) ? ["b", s.m.b] : ["a", s.m.a];
   }, SUBJECT);
-  await open("a duel card's body", `() => document.getElementById("duel-${side}").click()`);
+  const card = await open("a duel card's body", `() => document.getElementById("duel-${side}").click()`);
+  expect(card.id, "the card's sound").toBe(sideId);
   await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
 
   // A map dot, by its keys: TASTE's map, the next sound from the one in
@@ -292,8 +298,15 @@ test("on the reference profile, every sound you can see opens under the keys in 
     return null;
   }, SUBJECT);
   expect(pointed, "another sound on the map").not.toBeNull();
-  const dot = await open("a map dot", `() => document.getElementById("taste-crt").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))`);
+  // In the same task TASTE says it is in hand: its card's OPEN, which is
+  // off for the sound in hand, is off.
+  const dot = await open(
+    "a map dot",
+    `() => document.getElementById("taste-crt").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))`,
+    `() => [...document.querySelectorAll("#taste-plate .ts-pl-acts button")].pop()?.disabled ?? null`,
+  );
   expect(dot.id, "the sound pointed at").toBe(pointed);
+  expect(dot.seen, "its card's OPEN is off, in the Enter's task: TASTE has it in hand").toBe(true);
   await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
 
   for (const [what, ms] of opens) app.budget(`${what} → its sound under the keys`, ms, 100);

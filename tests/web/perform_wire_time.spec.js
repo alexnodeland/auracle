@@ -3,7 +3,8 @@
 // holds it, PERFORM shown, until the app's own `perform-wired` mark for that
 // sound, which says how it was wired ("predicted" from the knob table,
 // "borrowed" from a measured relative, or "measured"). Every sound the engine
-// could predict (its `first` on `bench_opening`) is played on its guess. Then
+// could predict (its `first`, held since the ranked rows first listed it,
+// or on `bench_opening`) is played on its guess. Then
 // the measurement PERFORM asked for, until its reply lands: the time a guess
 // stands, by knob count.
 //

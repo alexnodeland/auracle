@@ -1508,7 +1508,9 @@ at once and re-measured. It used to be stamped with the observation count, so
 every pick made every kept wiring stale (#290).
 
 A sound nobody has measured plays at once too (#290). With a tree on its way
-to the voices (`bench_opening`, `tree_json`) the worker sends `first`, the
+to the voices (`bench_opening`, `tree_json`, and each pool member's entry in
+the ranked rows' `trees`, stamped with the controls it was predicted for) the
+worker sends `first`, the
 engine's `perform_first`: the tree's shape (`shape_of`, its trace without the
 continuous choices), its live knobs, and a wiring predicted from the knob
 table (`predict::KnobTable`, the `knobs` of `perform-wirings.json`, which the
@@ -1634,16 +1636,17 @@ generations that pushed them out of the memo, and they are measured again (a
 hit where they are still in it; `apps/web/tests/worker-lanes.test.mjs`). Its
 inserts are memo hits, the same φ (a hit is bit-identical to a miss), so the
 pool, the picks and the first fit are the ones *teach it* made without them
-(`tests/worker/warm_start.test.mjs`). What is left between *teach it* and the
-first pick's controls is the call in progress when it arrives: a card's
-render, or one of the measurement's. The first pick's sound is not in the
+(`tests/worker/warm_start.test.mjs`). Nothing is left between *teach it* and
+the first pick's controls: the press hands the voices and PERFORM the pick's
+tree and makeup from the shipped file in its own task (#306), and its insert
+(`warm_first`) only gives it an id. The first pick's sound is not in the
 memo, so the bench's open renders it, once, after its controls are live.
 
 `budgets.spec.js`'s warm start picks three cards and presses *teach it*
-about half a second after the card is dealt. On that Mac, the app before
-and after run back to back at a load average of 50 to 70 (`warm_first` −
-`warm_start`, the span the budget names "its insert"; the controls were live
-2 to 6 ms after it):
+about half a second after the card is dealt. Before #306 its budget was the
+insert's: on that Mac, the app before and after the memo run back to back at
+a load average of 50 to 70 (`warm_first` − `warm_start`; the controls were
+live 2 to 6 ms after it):
 
 | | Runs | Its insert, median | Range |
 | --- | --- | --- | --- |
