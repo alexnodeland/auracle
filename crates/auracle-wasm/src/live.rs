@@ -511,7 +511,7 @@ struct TouchSite {
 /// order is a property of the patch and not of `HashMap` iteration. Every
 /// voice is the same tree compiled, so voice 0's keys are everyone's keys;
 /// a voice missing one (which cannot happen) simply has no entry to write.
-/// There is always a voice 0: `new` builds `n_voices.max(1)`, and a swap
+/// There is always a voice 0: `new` builds one at least, and a swap
 /// never fewer. The open voice ([`LivePoly::set_open`]), when the patch has
 /// one, is in the table too, so a knob turned while it sounds reaches it as
 /// it reaches a key.
@@ -564,7 +564,15 @@ const EVENT_PATCH_ERROR: u32 = 2;
 #[wasm_bindgen]
 pub struct LivePoly {
     voices: Vec<Voice>,
+    /// The voices allocated, when the sound is taken in and on every swap.
     n_voices: usize,
+    /// The most of them a press lets sound at once
+    /// ([`LivePoly::set_voice_limit`]), held notes and ringing tails
+    /// together, 1 to `n_voices`. A press never wakes a voice past it, but a
+    /// lowering lets the notes it drops ring out their whole release, so
+    /// until those tails park more voices sound than the limit, and the
+    /// audio thread pays for them.
+    limit: usize,
     sample_rate: f64,
     counter: u64,
     /// Notes physically held right now, with velocity (survive patch swaps).
@@ -685,6 +693,12 @@ pub struct LivePoly {
     woke_ticks: usize,
     /// Quanta the wake under way has run (`WAKE_MAX_QUANTA` at most).
     wake_quanta: usize,
+}
+
+impl LivePoly {
+    /// The most voices a `LivePoly` allocates; [`LivePoly::set_voice_limit`]
+    /// plays fewer of them.
+    pub const MAX_VOICES: usize = 10;
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -1221,13 +1235,17 @@ fn tick_voice_frames(
 #[wasm_bindgen]
 impl LivePoly {
     /// Build an `n_voices`-voice instrument from a `PatchTree` JSON, or say
-    /// why not. The error is a `String`, which wasm-bindgen throws as a JS
-    /// string (the host reads it with `String(err)`), and which `render_take`
+    /// why not. `n_voices` is held to 1..=[`Self::MAX_VOICES`]; all of them
+    /// are built here, where the worklet takes a sound in (its port handler,
+    /// on the render thread, but never in a quantum's `process`), and all of
+    /// them play until [`Self::set_voice_limit`] says fewer. The error is a
+    /// `String`, which wasm-bindgen throws as a JS string (the host reads it
+    /// with `String(err)`), and which `render_take`
     /// and the native tests read as it is.
     #[wasm_bindgen(constructor)]
     pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
         let tree: PatchTree = serde_json::from_str(tree_json).map_err(|e| e.to_string())?;
-        let n = n_voices.max(1);
+        let n = n_voices.clamp(1, Self::MAX_VOICES);
         let input = Arc::new(AudioInputStream::new(
             LIVE_INPUT_CHANNELS,
             LIVE_INPUT_FRAMES,
@@ -1251,6 +1269,7 @@ impl LivePoly {
         Ok(LivePoly {
             voices,
             n_voices: n,
+            limit: n,
             sample_rate,
             counter: 0,
             held: Vec::with_capacity(ARP_CHORD_CAP),
@@ -1589,8 +1608,10 @@ impl LivePoly {
     }
 
     /// Press a MIDI note (60 = C4) with velocity 0..1. Retriggers if already
-    /// held; otherwise takes a parked voice, else steals the oldest. With
-    /// the arp on, the note joins the held set and the arp presses it.
+    /// held; otherwise takes a parked voice while fewer than the limit
+    /// sound, else the longest-released tail, else steals the oldest held
+    /// note. With the arp on, the note joins the held set and the arp
+    /// presses it.
     pub fn note_on(&mut self, note: u8, vel: f64) {
         let vel = (vel.clamp(0.0, 1.0) as f32).max(0.05);
         // Key sync: the first key down restarts the transport, in the same
@@ -1628,12 +1649,20 @@ impl LivePoly {
         let first_press = self.last_pitch.is_none();
         self.last_pitch = Some(target);
         if self.unison {
-            // All voices, symmetric detune on the supersaw curve and an
-            // equal-power pan spread. Held gates stay high = legato.
-            let n = self.voices.len().max(1);
+            // As many voices as the limit, symmetric detune on the supersaw
+            // curve and an equal-power pan spread. Held gates stay high =
+            // legato. A voice past the limit still holding a note (a chord
+            // held when unison came on, or a stack the limit has shrunk) is
+            // let go, so the stack is all that is held.
+            let n = self.limit;
             self.counter += 1;
             let stamp = self.counter;
             let asleep = self.asleep;
+            for v in self.voices.iter_mut().skip(n) {
+                if v.note.is_some() {
+                    Self::release(v, stamp);
+                }
+            }
             for i in 0..n {
                 let frac = if n > 1 {
                     (i as f64 / (n - 1) as f64) * 2.0 - 1.0
@@ -1681,32 +1710,45 @@ impl LivePoly {
         // Which voice takes the note, in this order: the voice already on this
         // note (a retrigger); a voice that has gone silent; a voice ringing out
         // a note that was let go, the one let go longest ago; and only when
-        // every voice is under a finger, the oldest held note.
+        // every voice is under a finger, the oldest held note. A silent voice
+        // is only taken while fewer than the limit are running, and with as
+        // many notes held as the limit allows the oldest held gives way, so
+        // a press never makes held notes and ringing tails outgrow it. (A
+        // lowering of the limit can: the notes it lets go ring out their
+        // release beside the ones kept.)
         //
         // Stealing by press age alone took the notes being *held*. Hold two
         // notes and trill two others: the trill's release tails keep every
         // voice running, so each new press found no silent voice and stole the
         // oldest there was — a held note — and the notes under the player's
         // hands dropped out while the trill played on.
+        let held = self.voices.iter().filter(|v| v.note.is_some()).count();
+        let running = self.voices.iter().filter(|v| v.running).count();
+        let room = held < self.limit;
         let i = self
             .voices
             .iter()
             .position(|v| v.note == Some(note))
-            .or_else(|| self.voices.iter().position(|v| !v.running))
+            .or_else(|| {
+                (room && running < self.limit)
+                    .then(|| self.voices.iter().position(|v| !v.running))
+                    .flatten()
+            })
             .or_else(|| {
                 self.voices
                     .iter()
                     .enumerate()
-                    .filter(|(_, v)| v.note.is_none())
+                    .filter(|(_, v)| room && v.running && v.note.is_none())
                     .min_by_key(|(_, v)| v.released)
                     .map(|(i, _)| i)
             })
             .unwrap_or_else(|| {
-                // An instrument has a voice at least (`new` builds
-                // `n_voices.max(1)`), so this is the oldest of them.
+                // An instrument has a voice at least (`new` builds one or
+                // more), so this is the oldest held note.
                 self.voices
                     .iter()
                     .enumerate()
+                    .filter(|(_, v)| v.note.is_some())
                     .min_by_key(|(_, v)| v.stamp)
                     .map_or(0, |(i, _)| i)
             });
@@ -1778,12 +1820,66 @@ impl LivePoly {
         let at = self.counter;
         for v in &mut self.voices {
             if v.note == Some(note) {
-                v.voice.gate.set(0.0);
-                v.note = None;
-                v.released = at;
-                v.regate_in = 0; // a pending retrigger must not resurrect it
+                Self::release(v, at);
             }
         }
+    }
+
+    /// Let one voice go: its gate falls and it rings out its release.
+    fn release(v: &mut Voice, at: u64) {
+        v.voice.gate.set(0.0);
+        v.note = None;
+        v.released = at;
+        v.regate_in = 0; // a pending retrigger must not resurrect it
+    }
+
+    /// Play at most `n` of the voices allocated (1 up to as many as there
+    /// are). Allocates nothing, so it may be called on the audio thread.
+    /// Lowering it with more notes held than it allows lets the oldest go
+    /// with their normal release, so nothing clicks, and until those tails
+    /// park they sound beside the notes kept. In unison, where every voice
+    /// holds one note, the stack is pressed again at its new size: the
+    /// voices past the limit go, and those kept are spread anew, so the
+    /// stack stays centred.
+    pub fn set_voice_limit(&mut self, n: usize) {
+        self.limit = n.clamp(1, self.voices.len());
+        if self.unison {
+            // The note the stack holds, if its key is still down (a key
+            // down whose note was let go stays silent).
+            let sounding = self.voices.iter().find_map(|v| v.note);
+            let key = self.held.iter().find(|(n, _)| Some(*n) == sounding);
+            if let Some(&(note, vel)) = key {
+                self.press(note, vel);
+            } else {
+                // The arp's note a step off its key: its next step presses
+                // the stack anew. Let the voices past the limit go.
+                self.counter += 1;
+                let at = self.counter;
+                for v in self.voices.iter_mut().skip(self.limit) {
+                    if v.note.is_some() {
+                        Self::release(v, at);
+                    }
+                }
+            }
+            return;
+        }
+        self.counter += 1;
+        let at = self.counter;
+        while self.voices.iter().filter(|v| v.note.is_some()).count() > self.limit {
+            if let Some(v) = self
+                .voices
+                .iter_mut()
+                .filter(|v| v.note.is_some())
+                .min_by_key(|v| v.stamp)
+            {
+                Self::release(v, at);
+            }
+        }
+    }
+
+    /// The most voices that sound at once ([`Self::set_voice_limit`]).
+    pub fn voice_limit(&self) -> usize {
+        self.limit
     }
 
     /// Release a MIDI note (the voice keeps ringing through its tail).
@@ -2516,7 +2612,14 @@ impl LivePoly {
                     // The scheduler re-presses on its next step.
                     self.arp_note = None;
                 } else {
-                    for i in 0..self.held.len() {
+                    // Only the keys the limit lets sound, the newest: a
+                    // key it let go, pressed again here, would steal from
+                    // the others, and a stolen voice re-gates, so its note
+                    // re-attacked from silence instead of carrying its
+                    // envelope across the swap. (In unison the newest key
+                    // is pressed last either way, and it is the stack.)
+                    let from = self.held.len().saturating_sub(self.limit);
+                    for i in from..self.held.len() {
                         let (n, v) = self.held[i];
                         self.press(n, v);
                     }

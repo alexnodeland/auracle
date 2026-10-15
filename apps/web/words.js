@@ -1097,6 +1097,9 @@ export const EXPLAIN_UI = {
   hear: "hear it",
   hearTitle: "Its sweep, by ear",
   measuring: "measuring…",
+  // The lesson's filter curve while it is the browser's guess (dashed amber),
+  // before the render for the cutoff held measures it.
+  notMeasured: "not measured yet",
   back: "Back",
   next: "Next",
   done: "Done",
@@ -1180,7 +1183,7 @@ export function lessonSteps(name, bright, face = false) {
     },
     {
       h: "A filter lets some through",
-      p: [`This lowpass filter, on ${name}, keeps what is below its cutoff and cuts what is above.`, "Each cutoff is played as loud as the sound itself, so you hear it darken, not fade."],
+      p: [`This lowpass filter, on ${name}, keeps what is below its cutoff and cuts what is above.`, "Each cutoff is played about as loud as the sound itself, so you hear it darken, not fade."],
       try: "Drag the cutoff down while it plays: the top of the shape narrows, and the sound darkens.",
     },
     {
