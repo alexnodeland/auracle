@@ -381,6 +381,20 @@ test("asking about a control moves no label", async ({ page, app }) => {
   expect(await labels()).toEqual(at);
 });
 
+/** Three seconds of drag on BRIGHT, up and down, a move every 50 ms. */
+async function dragBright(page) {
+  const b = await knob(page, 0).boundingBox();
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 3;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 0; i < 60; i++) {
+    await page.mouse.move(x, y - 40 * Math.sin((i / 60) * Math.PI * 2) - i * 0.3);
+    await page.waitForTimeout(DRAG_STEP_MS);
+  }
+  await page.mouse.up();
+}
+
 // How long a turn rests before its figure follows (explain.js `FOLLOW_MS`).
 const FOLLOW_MS = 300;
 
@@ -395,17 +409,7 @@ test("a turn with an answer open asks the engine once it rests, not on every mov
     const at = (window.__pwMoves = []);
     document.addEventListener("pointermove", () => at.push(performance.now()), true);
   });
-  // Three seconds of drag on BRIGHT, up and down, a move every 50 ms.
-  const b = await knob(page, 0).boundingBox();
-  const x = b.x + b.width / 2;
-  const y = b.y + b.height / 3;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  for (let i = 0; i < 60; i++) {
-    await page.mouse.move(x, y - 40 * Math.sin((i / 60) * Math.PI * 2) - i * 0.3);
-    await page.waitForTimeout(DRAG_STEP_MS);
-  }
-  await page.mouse.up();
+  await dragBright(page);
   await settled(page, app);
   // Nothing more is asked once it has answered.
   await app.quiet();
@@ -441,17 +445,7 @@ test("on a page that stalls mid-drag, a turn asks once a rest, not again on ever
       while (performance.now() - t < 400);
     }, 600);
   });
-  // Three seconds of drag on BRIGHT, up and down, a move every 50 ms.
-  const b = await knob(page, 0).boundingBox();
-  const x = b.x + b.width / 2;
-  const y = b.y + b.height / 3;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  for (let i = 0; i < 60; i++) {
-    await page.mouse.move(x, y - 40 * Math.sin((i / 60) * Math.PI * 2) - i * 0.3);
-    await page.waitForTimeout(DRAG_STEP_MS);
-  }
-  await page.mouse.up();
+  await dragBright(page);
   await page.evaluate(() => clearInterval(window.__pwStall));
   expect(await page.evaluate(() => window.__pwMoves.slice(1).some((t, i) => t - window.__pwMoves[i] >= 300)), "the stall made the drag rest").toBe(true);
   await settled(page, app);

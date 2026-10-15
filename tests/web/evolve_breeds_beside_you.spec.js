@@ -127,6 +127,17 @@ const GATE_PAGE = `(() => {
   window.__pwAll = () => ch.postMessage({ all: true });
 })();`;
 
+/** Let the gate's walks through one at a time, in the order they were
+ *  handed out (the order they are absorbed in), until one has bred a child. */
+async function letWalksUntilAChild(page, app, k = 0) {
+  expect(k, "no walk of ten bred a child").toBeLessThan(10);
+  await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
+  const id = await page.evaluate((n) => [...window.__pwHeld].sort((a, b) => a - b)[n], k);
+  await page.evaluate((i) => window.__pwLet(i), id);
+  const r = await app.reply("refine_child", { where: (d) => d.index === k, timeout: 300_000 });
+  return r.child > 0 || letWalksUntilAChild(page, app, k + 1);
+}
+
 /** Boot, seeded, and teach it: six picks in EVOLVE and their refit, a model
  *  to breed toward, with the lamp out. `gated`: the farm's walks wait at the
  *  gate (WALK_GATE). */
@@ -177,14 +188,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // The walks through the gate one at a time, in the order they were
   // handed out (the order they are absorbed in), until one has bred a child:
   // the rest wait there while the picks are made.
-  for (let k = 0; ; k++) {
-    await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
-    const id = await page.evaluate((n) => [...window.__pwHeld].sort((a, b) => a - b)[n], k);
-    await page.evaluate((i) => window.__pwLet(i), id);
-    const r = await app.reply("refine_child", { where: (d) => d.index === k, timeout: 300_000 });
-    if (r.child > 0) break;
-    expect(k, "no walk of ten bred a child").toBeLessThan(9);
-  }
+  await letWalksUntilAChild(page, app);
   await app.engine((timeout) => expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout }), { ms: 30_000 });
 
   // The first child lands at the top, under "new · generation N", and the ranked

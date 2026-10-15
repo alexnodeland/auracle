@@ -211,7 +211,7 @@ for (const [title, session, as] of [
   // none), so what is held is the address the page loaded (#359).
   const [init] = await app.sent({ type: "init" });
   const addressed = new URL(page.url()).searchParams.has("seed");
-  if (session.seed === null) expect(addressed, "a session with no seed has none in the address").toBe(false);
+  expect(addressed && session.seed === null, "a session with no seed has none in the address").toBe(false);
   expect(init.seeded, "seeded only with a seed in the address").toBe(addressed);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
