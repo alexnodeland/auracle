@@ -92,8 +92,8 @@ spectral frames, made a render about 39% cheaper in wasm (#393); quiver-dsp
 0.5.1's block walk made it about a third cheaper again, bit for bit (#406). A
 walk runs its model once a step (#389) and a refit step recomputes only what
 its site reaches (#391, #399). L1, the ladder's one fixed-point pass, was
-shipped in 0.5.0 and reverted in 0.5.1; whether to take it is #403's to
-decide. `simd128` (-2.2%, within the noise) and reusing the analysis's FFT
+carried by quiver-dsp 0.5.0, which Auracle never took, and 0.5.1 reverts it;
+whether to take it is #403's to decide. `simd128` (-2.2%, within the noise) and reusing the analysis's FFT
 buffers (under 1%) are declined: too little for what they cost. A lower-rate
 phrase stays a decision about φ, not built. The bullets below are the profile
 as of 2026-10-06, before any of that.
@@ -278,7 +278,8 @@ software. Natively it is the platform's. `norm_sqr().sqrt()` in its place
 ([diff](analysis-norm-sqr.diff)) takes 9.2% off the set in wasm and nothing
 natively, and moves φ by at most 1.1e-14 of a coordinate's spread
 ([phi-moves-norm-sqr.txt](phi-moves-norm-sqr.txt)): a rounding, but not the
-same bits, so it is the maintainer's to decide ([what is left](#what-is-left-ranked)).
+same bits, so it was the maintainer's to decide ([what is left](#what-is-left-ranked);
+since built, #393).
 
 A render allocates nothing per sample ([allocs.txt](allocs.txt)): about seven
 allocations in a whole render's ticks (its buffers), 900 to 5,600 to compile
@@ -503,7 +504,7 @@ Ranked as of 2026-10-06; the last column says where each stands on
 | 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% | Built: quiver-dsp 0.4.1 (#393) |
 | 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) | Built, with 1 (#393): the two together a wasm render -39% |
 | 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped | Blocks built: quiver-dsp 0.5.1's block walk (#406), a render about a third cheaper again, bit for bit |
-| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets | Shipped in 0.5.0, reverted in 0.5.1 after an 8-seed climb fell; #403 decides |
+| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets | quiver-dsp 0.5.0 carried it and Auracle never took it; 0.5.1 reverts it after an 8-seed climb fell; #403 decides |
 | 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor | Declined: within the noise, and it would make Safari 16.4 the floor |
 | 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% | Declined: under 1% |
 | 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear | Not built: a decision about φ, not about speed |
