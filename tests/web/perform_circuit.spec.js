@@ -22,3 +22,41 @@ test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page, app 
   await app.engine((timeout) => expect(page.locator("#rack-svg .knob-ghost")).not.toHaveCount(0, { timeout }), { ms: 30_000 });
   await expect(page.locator("#rack-svg g.performed[data-addr=\"node#cut\"] .knob-value")).toHaveText(/kHz|Hz/);
 });
+
+// Velocity plays a control (ARRANGE's "Velocity plays", Bright by default,
+// which reaches First Bass's cutoff): each note writes its own offset on the
+// knobs at note-on, and PATCH draws the last struck held note's. A soft note
+// and a hard one read two values on the cutoff, and letting go folds it back.
+// A MIDI device is stood in for by replacing navigator.requestMIDIAccess.
+const FAKE_MIDI = `(() => {
+  const input = { id: "pw", name: "Test keys", manufacturer: "", state: "connected", onmidimessage: null };
+  const access = { inputs: new Map([["pw", input]]), outputs: new Map(), onstatechange: null, sysexEnabled: false };
+  Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: () => Promise.resolve(access) });
+  window.__midi = (bytes) => input.onmidimessage && input.onmidimessage({ data: new Uint8Array(bytes), timeStamp: performance.now() });
+})();`;
+
+test("a knob velocity plays is drawn performed in PATCH at the note's velocity", async ({ page, app }) => {
+  await page.addInitScript(FAKE_MIDI);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("First Bass");
+  await app.level("patch");
+  const cut = page.locator('#rack-svg g[data-addr="node#cut"]');
+  await expect(cut.locator(".knob-hit")).toBeVisible();
+  await expect(cut).not.toHaveClass(/\bperformed\b/);
+  const played = async () => {
+    await expect(cut).toHaveClass(/\bperformed\b/, { timeout: 5_000 });
+    const t = await cut.locator(".knob-ghost > title").textContent();
+    expect(t).toContain("velocity");
+    return { pct: Number(/Playing at (\d+)%/.exec(t)[1]), text: await cut.locator(".knob-value").textContent() };
+  };
+  await page.evaluate(() => window.__midi([0x90, 48, 40]));
+  const soft = await played();
+  await page.evaluate(() => window.__midi([0x80, 48, 0]));
+  await expect(cut).not.toHaveClass(/\bperformed\b/, { timeout: 5_000 });
+  await page.evaluate(() => window.__midi([0x90, 48, 120]));
+  const hard = await played();
+  await page.evaluate(() => window.__midi([0x80, 48, 0]));
+  await expect(cut).not.toHaveClass(/\bperformed\b/, { timeout: 5_000 });
+  expect(hard.pct, "a hard note and a soft one play the cutoff apart").not.toBe(soft.pct);
+  expect(hard.text).not.toBe(soft.text);
+});

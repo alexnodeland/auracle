@@ -5449,6 +5449,9 @@ async function bootPerform() {
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
     heldCount: () => heldNotes.size,
+    // Whether a note is still held (or sustained): PERFORM draws the knobs
+    // velocity plays at the last struck note still sounding.
+    held: (n) => heldNotes.has(n),
     // The newest pool id the bank has shown: what a PERFORM answer was given
     // against (`perform_record`'s `asOf`).
     newestId: () => newestSeenId,
@@ -5688,7 +5691,11 @@ function paintPerformedKnobs() {
     ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
-    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}): Keep writes it in`;
+    // Keep writes in what the controls, glides and drift moved; velocity's
+    // part belongs to the note, and goes when it is let go.
+    const kept_ = moved.filter((w) => w !== "velocity");
+    const tail = !kept_.length ? ": it goes when you let the note go" : moved.length > kept_.length ? ": Keep writes it in, all but velocity" : ": Keep writes it in";
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")})${tail}`;
     kg.classList.add("performed");
   }
 }
@@ -5891,6 +5898,7 @@ function liveNoteOn(note_, vel = 1.0) {
   flashAmp();
   firstNotePlayed();
   if (!boothQuiet) perform?.notePlayed?.();
+  perform?.noteStruck?.(note_, vel);
   if (livePatchId != null) {
     playCounts.set(livePatchId, (playCounts.get(livePatchId) || 0) + 1);
     heard(livePatchId);

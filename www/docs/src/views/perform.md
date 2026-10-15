@@ -109,6 +109,11 @@ sound (*bright: soft dark, hard bright*), with **depth**, a slider for how far
 it reaches, and a note naming the knobs velocity moves. The control it plays
 carries a small *vel* in its corner.
 
+Each note sets those knobs at its own velocity when it starts, so a chord can
+hold a soft dark note beside a hard bright one. While notes are held, PATCH
+draws the knobs where the last note you struck plays them (see [opening the
+circuit](#opening-the-circuit)).
+
 ## The named controls
 
 The panel starts with six:
@@ -514,9 +519,11 @@ Everything PERFORM does lands on real knobs, and PATCH shows it while it
 happens. A knob PERFORM is playing away from its kept value carries a second,
 **amber** pointer at the value sounding, and its readout shows that value in
 amber. The green pointer is the kept value. Hover the amber pointer to see
-what is moving it.
+what is moving it: a control, a glide, Wander, or *velocity* for the knobs
+your last struck note plays, which fold back when you let go.
 
 **KEEP** writes the amber into the patch, and the two pointers become one.
+Velocity's part belongs to the note, so KEEP leaves it out.
 It works the other way too: a knob you turn in PATCH is the kept value from
 that moment, PERFORM plays from it, and BACK glides home to it.
 
