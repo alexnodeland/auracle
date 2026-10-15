@@ -31,6 +31,7 @@
 // Math.random), so the pool and the generation are the same run to run.
 // `?farm=N` sets the crew's width; the default is the app's own rule.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { SLOW_ENGINE } = require("./perform_budget.js");
 
 // Every change of the lamp or the job slot, with whether they agreed; and
 // the bank the moment main.js has handled the first child a generation bred
@@ -96,8 +97,10 @@ const WALK_GATE = `(() => {
     if (e.data && e.data.all) all = true;
     else if (e.data && e.data.let != null) let_.add(e.data.let);
     for (const h of held.splice(0)) {
-      if (free(h.ev.data.i)) h.fn.call(h.port, h.ev);
-      else held.push(h);
+      if (free(h.ev.data.i)) {
+        ch.postMessage({ started: h.ev.data.i });
+        h.fn.call(h.port, h.ev);
+      } else held.push(h);
     }
   };
   const on = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage");
@@ -122,13 +125,22 @@ const WALK_GATE = `(() => {
 const GATE_PAGE = `(() => {
   const ch = new BroadcastChannel("pw-walks");
   const held = (window.__pwHeld = []);
-  ch.onmessage = (e) => { if (e.data && e.data.held != null) held.push(e.data.held); };
+  const started = (window.__pwStarted = []);
+  ch.onmessage = (e) => {
+    if (e.data && e.data.held != null) held.push(e.data.held);
+    if (e.data && e.data.started != null) started.push(e.data.started);
+  };
   window.__pwLet = (i) => ch.postMessage({ let: i });
   window.__pwAll = () => ch.postMessage({ all: true });
 })();`;
 
 /** Let the gate's walks through one at a time, in the order they were
- *  handed out (the order they are absorbed in), until one has bred a child. */
+ *  handed out (the order they are absorbed in: ascending walk ids are job
+ *  order, `walkSubmit`), until one has bred a child. A held walk is still
+ *  under the engine's watchdog (worker.js `WALK_TIMEOUT_MS`, 300 s from when
+ *  it was handed out): past that the engine walks it itself and the gate no
+ *  longer holds the generation open, so this and the picks after it must
+ *  fit in those five minutes. */
 async function letWalksUntilAChild(page, app, k = 0) {
   expect(k, "no walk of ten bred a child").toBeLessThan(10);
   await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
@@ -140,11 +152,11 @@ async function letWalksUntilAChild(page, app, k = 0) {
 
 /** Boot, seeded, and teach it: six picks in EVOLVE and their refit, a model
  *  to breed toward, with the lamp out. `gated`: the farm's walks wait at the
- *  gate (WALK_GATE). */
-async function taught(page, app, query = "", { gated = false } = {}) {
+ *  gate (WALK_GATE). `farmPrefix`: the boot's own, in its place. */
+async function taught(page, app, query = "", { gated = false, farmPrefix } = {}) {
   await page.addInitScript(WATCH);
   if (gated) await page.addInitScript(GATE_PAGE);
-  await app.boot({ random: 20260928, query, farmPrefix: gated ? WALK_GATE : "" });
+  await app.boot({ random: 20260928, query, farmPrefix: farmPrefix ?? (gated ? WALK_GATE : "") });
   await app.teach(6);
   await expect(page.locator("#wm-lamp")).not.toHaveClass(/\bthinking\b/);
   await expect(page.locator("#job-slot")).toBeHidden();
@@ -353,6 +365,51 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   await app.quiet(5_000);
   // eslint-disable-next-line playwright/prefer-to-have-count -- app.count is the tap's count, not a locator's
   expect(await app.count("refine_child")).toBe(kids);
+});
+
+// STOP gives the farm's cores back at once. A crew walking for nobody is
+// terminated on the stop's `farm_done` (`now`), not left to finish the walk
+// in hand before it reads its `bye`: a walk writes no rows to wait for. The
+// walk crew (the farm workers served after boot's two) is slowed ten times,
+// and one walk is let through the gate just before STOP, so a worker is
+// inside a walk of many seconds when the stop lands. Terminated only once it
+// read its `bye`, it took 1 to 5 s after STOP even unslowed; slowed, no worker
+// was terminated within the three seconds this waits.
+const TERMINATED = `(() => {
+  const at = (window.__pwTerminated = []);
+  const terminate = Worker.prototype.terminate;
+  Worker.prototype.terminate = function () {
+    at.push(performance.now());
+    return terminate.call(this);
+  };
+})();`;
+/** The gate for every farm worker, and the walk crew's (all but the first
+ *  \`boot\` workers served) slowed ten times. */
+function gatedWalkCrewSlowed(boot) {
+  let served = 0;
+  return () => WALK_GATE + (++served > boot ? SLOW_ENGINE(10) : "");
+}
+/** Ms from \`t\` to each worker terminated after it. */
+const terminatedSince = (page, t) => page.evaluate((s) => window.__pwTerminated.filter((x) => x >= s).map((x) => Math.round(x - s)), t);
+
+test("STOP terminates the walk crew at once, not once its walk in hand ends", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(240_000);
+  await page.addInitScript(TERMINATED);
+  await taught(page, app, "?farm=2", { gated: true, farmPrefix: gatedWalkCrewSlowed(2) });
+  await page.locator("#evolve-btn").click();
+  await app.engine((timeout) => page.waitForFunction(() => window.__pwHeld.length > 0, null, { timeout }), { ms: 60_000 });
+  const id = await page.evaluate(() => Math.min(...window.__pwHeld));
+  await page.evaluate((i) => window.__pwLet(i), id);
+  await page.waitForFunction((i) => window.__pwStarted.includes(i), id);
+  const stopAt = await page.evaluate(() => performance.now());
+  await page.locator("#evolve-stop").click();
+  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 30_000 });
+  expect((await app.replies("farm_done")).at(-1).now, "the stop's farm_done did not ask for the crew at once").toBe(true);
+  await expect.poll(async () => (await terminatedSince(page, stopAt)).length, { message: "a worker of the crew was left walking after STOP", timeout: 3_000 }).toBe(2);
+  const after = await terminatedSince(page, stopAt);
+  console.log(`walk crew terminated after STOP (ms): ${JSON.stringify(after)}`);
+  after.forEach((ms, i) => app.budget(`walk crew worker ${i + 1} terminated after STOP`, ms, 1_000));
+  await page.evaluate(() => window.__pwAll());
 });
 
 test("during a generation PERFORM is answered: a new patch is measured and a pressed Offer starts while it breeds", { tag: "@slow" }, async ({ page, app }) => {
