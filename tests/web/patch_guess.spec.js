@@ -215,19 +215,25 @@ test("a new patch's skips are its own: the sound it was started from does not in
  *  150 s on a 16-core M3 Max (×4.5 there). Timed from the first worker, not
  *  from the boot's call, which on a profile may first spend seconds
  *  calibrating. */
+const BOOT_CREW_SLOWED = 12;
 function bootCrewSlowed(app) {
   let first = null;
   return () => {
     const now = Date.now();
     if (first === null) first = now;
-    const rate = Math.max(1, 12 / (app.profile ? app.profile.farmRate : 1));
+    const rate = Math.max(1, BOOT_CREW_SLOWED / (app.profile ? app.profile.farmRate : 1));
     return now - first < 5_000 && rate > 1 ? SLOW_ENGINE(rate) : "";
   };
 }
 
 test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(300_000); // about 168 s on CI, most of it the bank arriving on boot's slowed crew
-  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed(app) });
+  await app.boot({ warmed: false, farmPrefix: bootCrewSlowed(app), wait: false });
+  // The boot's wait is an ordinary boot's (ENGINE_MS) as many times over as
+  // its crew is slowed, within what the fixture grants a test's engine waits
+  // (ENGINE_CAP_MS): at the ordinary bound, a runner at a load of 20 to 37
+  // stopped at 7 of the 8 sounds that lift the veil (#404).
+  await app.engine((timeout) => expect(page.locator("#boot"), "the boot veil lifted").toHaveClass(/\bdone\b/, { timeout }), { ms: Math.min(app.ENGINE_MS * BOOT_CREW_SLOWED, app.ENGINE_CAP_MS) });
   await app.warmStart();
   await openPreset(app, "Sub & Sparkle");
   await app.engine((timeout) => expect.poll(() => app.sentCount("guess"), { timeout }).toBeGreaterThan(0), { ms: 60_000 });

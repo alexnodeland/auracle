@@ -46,6 +46,26 @@ const { STUB, SPY, loudest } = require("./audio_in_stub.js");
 
 const GRANTED = `try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`;
 
+// What the page posts to the audio thread to start and stop a take, each
+// with its context's clock as it was posted (`window.__pwTakeSent`).
+const TAKE_CLOCK = `(() => {
+  const sent = (window.__pwTakeSent = []);
+  const Node = window.AudioWorkletNode;
+  window.AudioWorkletNode = class extends Node {
+    constructor(ctx, ...rest) {
+      super(ctx, ...rest);
+      this.port.__pwCtx = ctx;
+    }
+  };
+  const post = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (m, ...rest) {
+    if (m && (m.type === "take_start" || m.type === "take_stop") && this.__pwCtx) {
+      sent.push({ type: m.type, audio: this.__pwCtx.currentTime, at: performance.now() });
+    }
+    return post.call(this, m, ...rest);
+  };
+})();`;
+
 /** Three keys held over the tracked voice before its level is read. */
 const KEYS_HELD_MS = 1200;
 /** RECORD lit while the input plays into it, before STOP. */
@@ -58,6 +78,7 @@ const RECORD_A_WHILE_MS = 1200;
  *  the stub and the spies, and go to PATCH. */
 async function boot(page, app, { granted = false } = {}) {
   if (granted) await page.addInitScript(GRANTED);
+  await page.addInitScript(TAKE_CLOCK);
   await page.addInitScript(STUB);
   await page.addInitScript(SPY);
   await app.boot();
@@ -222,10 +243,13 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
   // Its input is open (the sound listens), so RECORD records the tone.
   await live(app, page.locator("#rack-svg .ain-lane").first());
-  // When RECORD and STOP were pressed, by the page's clock: the take is as
-  // long as the time between them. Playwright's own steps between the two
-  // clicks took half a second on a loaded CI runner, so a fixed "1.x s" read
-  // the runner, not the take.
+  // When the page told the audio thread to start and to stop copying
+  // (`take_start`, `take_stop`), by the audio's own clock: the take is
+  // as long as the audio that ran between them. Playwright's own steps
+  // between the two clicks took half a second on a loaded CI runner, so a
+  // fixed "1.x s" read the runner, not the take; and the page's clock between
+  // the clicks read 2.45 s for a take of 1.8 s under a load of 20 to 37
+  // (#404), the audio thread having run behind it.
   await page.evaluate(() => {
     window.__recClicks = [];
     document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".take-rec")) window.__recClicks.push(performance.now()); }, true);
@@ -238,11 +262,14 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await lane.locator(".take-rec").click();
   await app.toast(/Recorded \d\.\d s into CAPTURE\./, { timeout: 20_000 });
   const [recAt, stopAt] = await page.evaluate(() => window.__recClicks);
-  const held = (stopAt - recAt) / 1000;
+  const sent = await page.evaluate(() => window.__pwTakeSent);
+  const startAt = sent.find((m) => m.type === "take_start");
+  const stoppedAt = sent.find((m) => m.type === "take_stop");
+  const held = stoppedAt.audio - startAt.audio;
   await says(app, lane.locator(".take-line"), /^take · \d\.\d s$/);
   const said = Number((await lane.locator(".take-line").textContent()).match(/(\d\.\d) s/)[1]);
-  console.log(`RECORD held ${held.toFixed(2)} s; the take says ${said} s`);
-  expect(Math.abs(said - held), `a take of ${said} s for RECORD held ${held.toFixed(2)} s`).toBeLessThanOrEqual(0.15);
+  console.log(`RECORD held ${held.toFixed(2)} s of audio (${((stopAt - recAt) / 1000).toFixed(2)} s between the clicks); the take says ${said} s`);
+  expect(Math.abs(said - held), `a take of ${said} s for ${held.toFixed(2)} s of audio recorded`).toBeLessThanOrEqual(0.15);
   await shotOf(page, "capture-plate", [plate(page, "capture"), plate(page, "audio_in")]);
   const len = await page.evaluate(() => {
     const t = window.__aur.wb.tree.root.Capture.take;
