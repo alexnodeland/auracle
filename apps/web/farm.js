@@ -14,9 +14,9 @@
 // demand for walks and reaped after a minute with nothing to do: N × ~15 MB of
 // linear memory is not kept resident behind a running instrument.
 //
-// It never talks to the main thread after boot. Main spawns it, hands it one
-// end of a MessageChannel whose other end went into the engine worker, and
-// steps out of the data path — so ~565 KB audition buffers never cross the
+// It never talks to the main thread after boot but once, to say it has
+// closed (below, `bye`). Main spawns it, hands it one end of a MessageChannel
+// whose other end went into the engine worker, and steps out of the data path — so ~565 KB audition buffers never cross the
 // thread that is drawing the UI. (Spawning here rather than from inside the
 // engine worker is deliberate: nested dedicated workers only landed in Safari
 // 16.4, and transferring a port is universal.)
@@ -92,11 +92,23 @@ async function cacheGet(key) {
 }
 
 // Fire-and-forget: a failed write is a slower boot next time, never a failed
-// render now, so nothing waits on it and nothing reports it.
+// render now, so no render waits on it and nothing reports it. Only the
+// worker's own close waits for them (`bye`): a transaction not yet committed
+// when a worker closes or is terminated is aborted, and the row is lost. The
+// last render of a fill is posted a moment before the engine says `bye`, so
+// its row was lost in about half of the boots a store-reading restore then
+// followed, rendered again there (#360).
+const writing = new Set();
 function cachePut(key, cached) {
   if (!cacheDb || !key) return;
   try {
-    cacheDb.transaction(store.RENDER_ROWS, "readwrite").objectStore(store.RENDER_ROWS).put(cached, key);
+    const tx = cacheDb.transaction(store.RENDER_ROWS, "readwrite");
+    tx.objectStore(store.RENDER_ROWS).put(cached, key);
+    const settled = new Promise((resolve) => {
+      tx.oncomplete = tx.onerror = tx.onabort = resolve;
+    });
+    writing.add(settled);
+    settled.then(() => writing.delete(settled));
   } catch (_) {}
 }
 
@@ -137,6 +149,10 @@ async function onJob(m) {
     return;
   }
   if (m.type === "bye") {
+    // Its writes committed first, then main is told, which terminates it
+    // (main.js `farm_done` reaps a worker that never says so, after a while).
+    await Promise.all([...writing]);
+    try { self.postMessage({ type: "closed" }); } catch (_) { /* main is gone */ }
     self.close();
     return;
   }

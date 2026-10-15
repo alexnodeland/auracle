@@ -1332,8 +1332,11 @@ with none, and the worker then walks the jobs itself. Width is `walkWidth()` in
 6, at most 2 on a small-memory device), but at least one worker where there
 are two cores, because one worker already takes the walk off the engine
 worker. `?farm=N` sets both widths; `?farm=0` is the serial path. The crew is
-reaped after 60 s with nothing to walk (`farm_done` with its crew id; main
-terminates those workers), so N × ~15 MB is not kept resident.
+reaped after 60 s with nothing to walk (`farm_done` with its crew id), so
+N × ~15 MB is not kept resident. A reaped worker (boot's crew too) closes once
+its writes to the render store have committed and tells main, which then
+terminates it, or after 5 s if it never says so: terminated at once, a worker
+lost the row of the render it had just posted (#360).
 
 ### The render cache's store
 

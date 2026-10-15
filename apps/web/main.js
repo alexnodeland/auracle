@@ -328,6 +328,15 @@ let engineBusy = false;
 // MessagePorts go into the engine worker; main holds the handles solely to
 // reap them on `farm_done`. `{w, crew}`.
 const farmWorkers = [];
+// How long a farm worker told to close may take to commit its last writes
+// before it is terminated anyway (`farm_done`). A put commits in milliseconds.
+const FARM_REAP_MS = 5000;
+function farmReap(f) {
+  clearTimeout(f.reaping);
+  try { f.w.terminate(); } catch (_) {}
+  const k = farmWorkers.indexOf(f);
+  if (k >= 0) farmWorkers.splice(k, 1);
+}
 let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
@@ -2604,12 +2613,14 @@ worker.onmessage = (e) => {
     // The engine has said goodbye to the farm. Reap the workers: they exist
     // only for boot, and N × ~15 MB of linear memory is not something to keep
     // resident behind a running instrument.
+    // Each closes itself once its writes to the render store have committed
+    // (farm.js `bye`) and says so; terminated at once, a worker lost the row of
+    // the render it had just posted (#360). One that never says so is
+    // terminated after `FARM_REAP_MS`.
     case "farm_done": {
-      for (let k = farmWorkers.length - 1; k >= 0; k--) {
-        const f = farmWorkers[k];
+      for (const f of farmWorkers) {
         if (m.crew != null && f.crew !== m.crew) continue;
-        try { f.w.terminate(); } catch (_) {}
-        farmWorkers.splice(k, 1);
+        if (!f.reaping) f.reaping = setTimeout(() => farmReap(f), FARM_REAP_MS);
       }
       break;
     }
@@ -24469,7 +24480,12 @@ function spawnCrew(n, mod, crew) {
         },
         [ch.port2]
       );
-      mine.push({ w, crew });
+      const f = { w, crew, reaping: 0 };
+      // Its one word to main after boot: closed (farm.js `bye`).
+      w.onmessage = (e) => {
+        if (e.data && e.data.type === "closed") farmReap(f);
+      };
+      mine.push(f);
       ports.push(ch.port1);
     }
   } catch (err) {
