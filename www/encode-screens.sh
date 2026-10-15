@@ -68,7 +68,10 @@ frame cmdk.png       cmdk.webp
 #
 # Not made here since the shell (Plan-008): spec-card.webp and node-bank.webp,
 # whose shot (the old node bank's spec strip) went with the strip. They stay
-# as they were until the catalog's card has a shot of its own.
+# as they were until the catalog's card has a shot of its own. Kept too, for
+# the TASTE film until it is re-made: taste-trust.webp (its forecast scene)
+# and taste-styles.webp and taste-directions.webp (its reading scene), shots
+# of TASTE's old tabs, which the shell retired, so nothing here makes them.
 
 # Rack detail: knobs at true positions in musical units, green audio cables,
 # amber modulation cables with named destinations. Clear of the minimap,

@@ -104,3 +104,9 @@ lazy-loads the rest, but the whole set still rides in the repo.
 A crop rectangle is a claim about the layout, and rack-detail's about the patch
 too: when either changes, check them against `rects.json`. A crop that changes
 size changes the `width`/`height` of every page that shows it.
+
+`taste-trust.webp`, `taste-styles.webp` and `taste-directions.webp` are not
+made by these scripts any more: they show TASTE's tabs from before the shell.
+The TASTE film still loads them (its forecast and reading scenes), so they stay
+as they are until the film is re-made. `spec-card.webp` and `node-bank.webp`
+stay too, until the catalog's card has a shot of its own.

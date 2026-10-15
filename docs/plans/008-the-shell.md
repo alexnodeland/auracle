@@ -556,7 +556,10 @@ into C2a and C2b; round 2's decisions govern PATCH):
   rack, the bank, a row, the warm start and LEARNING's panels from them; the
   landing page shows five levels and ⌘K, with LEARNING's panels in place of
   the old DIRECTIONS plot. The catalog's spec card (`spec-card.webp`,
-  `node-bank.webp`) has no shot yet and keeps its old image.
+  `node-bank.webp`) has no shot yet and keeps its old image. So do
+  `taste-trust.webp`, `taste-styles.webp` and `taste-directions.webp`:
+  TASTE's old tabs, which the TASTE film still loads, until it is re-made
+  with the Wave 3 re-records.
 - **The film selectors D leaves stale,** owed with the Wave 3 re-records as
   A's to C3's are: `#ovf-btn`, `#ovf-menu`, `.ovf-item`, `#export-btn`,
   `#patch-export-btn`, `#image-btn`, `#scope-btn`, `#engineer-btn`,
