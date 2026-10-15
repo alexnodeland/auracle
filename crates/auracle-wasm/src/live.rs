@@ -511,7 +511,7 @@ struct TouchSite {
 /// order is a property of the patch and not of `HashMap` iteration. Every
 /// voice is the same tree compiled, so voice 0's keys are everyone's keys;
 /// a voice missing one (which cannot happen) simply has no entry to write.
-/// There is always a voice 0: `new` builds `n_voices.max(1)`, and a swap
+/// There is always a voice 0: `new` builds one at least, and a swap
 /// never fewer. The open voice ([`LivePoly::set_open`]), when the patch has
 /// one, is in the table too, so a knob turned while it sounds reaches it as
 /// it reaches a key.
