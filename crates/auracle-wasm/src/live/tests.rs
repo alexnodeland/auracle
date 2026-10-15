@@ -338,6 +338,44 @@ fn a_note_past_the_voice_limit_takes_the_oldest_held() {
     assert_eq!(poly.voices.iter().filter(|v| v.running).count(), 3);
 }
 
+/// Fewer notes held than the limit, but the limit's worth of voices still
+/// ringing: a new note takes the tail let go longest ago, and the notes the
+/// limit let go count from when it let them go.
+#[test]
+fn at_the_voice_limit_a_note_takes_the_longest_released_tail() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    poly.set_voice_limit(3);
+    for n in [48, 52, 55] {
+        poly.note_on(n, 1.0);
+    }
+    poly.process(64);
+    poly.note_off(55);
+    poly.note_on(60, 1.0);
+    assert_eq!(held_notes(&poly), vec![48, 52, 60]);
+    assert_eq!(poly.voices.iter().filter(|v| v.running).count(), 3);
+
+    // 64 is let go, then lowering the limit lets 48 go after it: the next
+    // note takes 64's tail, the one let go first.
+    poly.set_voice_limit(4);
+    poly.note_on(64, 1.0);
+    poly.process(64);
+    let slot = |p: &LivePoly, n: u8| p.voices.iter().position(|v| v.note == Some(n)).unwrap();
+    let tail_64 = slot(&poly, 64);
+    let tail_48 = slot(&poly, 48);
+    assert!(
+        tail_48 < tail_64,
+        "48 sits before 64, so a tie would pick it"
+    );
+    poly.note_off(64);
+    poly.set_voice_limit(2);
+    assert_eq!(held_notes(&poly), vec![52, 60]);
+    poly.set_voice_limit(3);
+    poly.note_on(67, 1.0);
+    assert_eq!(poly.voices[tail_64].note, Some(67));
+    assert_eq!(poly.voices[tail_48].note, None);
+}
+
 /// The limit is held to one up to the voices allocated, and the voices
 /// allocated to one up to ten.
 #[test]
