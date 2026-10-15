@@ -46,10 +46,37 @@
       if (Math.min(window.innerWidth, window.innerHeight) >= 620) location.reload();
     });
   } else {
-    var s = document.createElement("script");
-    s.type = "module";
-    s.src = "main.js";
-    document.head.appendChild(s);
+    // The build stamp (pkg/build.json, which main.js reads only `build` of)
+    // is read here, before main.js starts, because of the import map below.
+    // Served with no stamp, or without a server, the clock stands in for it
+    // and nothing is cached: main.js's own fallback, kept.
+    var start = function (build) {
+      window.__aurBuild = build;
+      // faces.js and vessel.js are imported by vessel.js and live-face.js by
+      // their bare names, and a bare name carries no stamp: it would be a
+      // second copy of the module, fetched again, and the browser's cached one
+      // could be an older build's. The map sends it to the stamped URL main.js
+      // asks for, so there is one copy. A browser without import maps keeps
+      // the two copies, as before. It must come before the first module.
+      if (window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports("importmap")) {
+        var map = document.createElement("script");
+        map.type = "importmap";
+        map.textContent = JSON.stringify({ imports: {
+          "./faces.js": "./faces.js?v=" + build,
+          "./vessel.js": "./vessel.js?v=" + build,
+        } });
+        document.head.appendChild(map);
+      }
+      var s = document.createElement("script");
+      s.type = "module";
+      s.src = "main.js?v=" + build;
+      document.head.appendChild(s);
+    };
+    fetch("./pkg/build.json", { cache: "no-cache" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build) ? j.build : String(Date.now()); })
+      .catch(function () { return String(Date.now()); })
+      .then(start);
   }
 })();
 </script>
