@@ -355,6 +355,10 @@ export function createPerform(host) {
     // (ADR-012), and the measurement lands on it by a rebase.
     guess: null,
     lastTouch: 0,
+    // The last touch or release of a control, the XY pad, a MIDI pot or a
+    // control's arrow keys: the hand that holds a wiring back (`handsBusy`).
+    // Never the pads or their keys, and never touched at all until one is.
+    controlTouch: -Infinity,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
     visible: false,
@@ -643,7 +647,7 @@ export function createPerform(host) {
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
       k.drawn = null;
       k.value = clamp(Number(input.value), 0, 1);
-      touch();
+      touchControl();
       paintKnob(k);
       onKnob(k);
     });
@@ -651,7 +655,7 @@ export function createPerform(host) {
     const up = () => {
       k.held = false;
       // Letting go is a touch, as a dial's and the XY pad's are (`handsBusy`).
-      touch();
+      touchControl();
       queueMicrotask(panelLater);
       // As a dial's: a pointer's slide leaves no focus, so the pad keys and
       // ↵ KEEP work straight after it.
@@ -722,7 +726,8 @@ export function createPerform(host) {
       // out (a first one, a re-check, or the panel's new set).
       const waiting = pending && (state.measuring || state.revalidating || inFlight("perform_wire"));
       k.wrap.classList.toggle("waiting", waiting);
-      if (k.wait.textContent !== (waiting ? "listening…" : "")) k.wait.textContent = waiting ? "listening…" : "";
+      const waitWord = !waiting ? "" : waitsForHand() ? "after you let go" : "listening…";
+      if (k.wait.textContent !== waitWord) k.wait.textContent = waitWord;
       k.wrap.classList.toggle("search", search);
       // A guess until this patch's measurement lands (#290, ADR-012): it
       // turns, and says it is not measured yet.
@@ -787,8 +792,11 @@ export function createPerform(host) {
         }
       } else {
         where.style.display = "none";
-        k.sub.textContent = listening ? "listening…" : "";
-        k.wrap.title = listening
+        const handWait = listening && waitsForHand();
+        k.sub.textContent = handWait ? "after you let go" : listening ? "listening…" : "";
+        k.wrap.title = handWait
+          ? `${k.spec.name}: this sound is heard. It turns after you let go of the controls.`
+          : listening
           ? `${k.spec.name}: listening to how this sound moves. It turns once that is done.`
           : k.spec.name;
       }
@@ -1005,7 +1013,7 @@ export function createPerform(host) {
       if (k.spec.kind === "wander") {
         clearTimeout(k.keyTimer);
         wanderGrab();
-      } else touch();
+      } else touchControl();
       if (k.spec.kind === "named") {
         const touchHold = e.pointerType === "touch";
         hearTimer = setTimeout(() => {
@@ -1024,7 +1032,7 @@ export function createPerform(host) {
       if (Math.abs(dy) > 3) moved = true;
       const span = e.shiftKey ? 900 : 180;
       set(startV + (dy / span) * (1 - lo()), e.shiftKey);
-      if (k.spec.kind !== "wander") touch();
+      if (k.spec.kind !== "wander") touchControl();
     });
     const end = (e) => {
       clearTimeout(hearTimer);
@@ -1032,7 +1040,7 @@ export function createPerform(host) {
       // Letting go is a touch: a background result waits 1.5 s from here
       // (`handsBusy`), not from the last move, which a hand held still
       // left behind long ago.
-      if (k.spec.kind !== "wander") touch();
+      if (k.spec.kind !== "wander") touchControl();
       queueMicrotask(panelLater);
       const held = k.wrap.hasPointerCapture(e.pointerId);
       if (held) k.wrap.releasePointerCapture(e.pointerId);
@@ -1074,7 +1082,7 @@ export function createPerform(host) {
       e.preventDefault();
       e.stopPropagation();
       if (k.spec.kind === "wander") wanderGrab();
-      else touch();
+      else touchControl();
       // A run of arrow presses is one gesture: logged, and a search control
       // asked, once the keys go quiet.
       clearTimeout(k.keyTimer);
@@ -1092,13 +1100,22 @@ export function createPerform(host) {
     state.lastTouch = performance.now();
     renderWander();
   }
-  // A wiring landing (a first measurement, one read from the cache, a
-  // re-check, a guess's or a Take's measurement) waits while a hand is on
-  // the controls: a control or the XY pad held, however still, and for 1.5 s
-  // after the last touch or release (#304, the app's rule: `heldOrTouched`
-  // in hand.js). It waits in `state.deferredWire`, and lands from the
-  // quarter-second tick once the hand is off (`landDeferred`).
-  const handsBusy = () => heldOrTouched(knobs.some((k) => k.held) || xyHeld, state.lastTouch, performance.now());
+  function touchControl() {
+    state.controlTouch = performance.now();
+    touch();
+  }
+  // A measurement landing (a first one, a re-check, a guess's or a Take's)
+  // waits while a hand is on the controls: a control or the XY pad held,
+  // however still, and for 1.5 s after the last touch or release of one
+  // (#304, the app's rule: `heldOrTouched` in hand.js). A wiring read from
+  // the cache for a sound just opened answers the player, so it waits only
+  // while a control is held. What waits is in `state.deferredWire`, and
+  // lands from the quarter-second tick (`landDeferred`).
+  const handHeld = () => knobs.some((k) => k.held) || xyHeld;
+  const handsBusy = () => heldOrTouched(handHeld(), state.controlTouch, performance.now());
+  // The controls have nothing to turn yet, and what would wire them is in
+  // hand, waiting for the hand: nothing is being listened to.
+  const waitsForHand = () => !state.wire && !!state.deferredWire && !!(state.deferredWire.first || state.deferredWire.rewire);
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
   }
@@ -1939,12 +1956,14 @@ export function createPerform(host) {
       });
       return;
     }
-    if (hit && handsBusy()) {
+    if (hit && handHeld()) {
       // A wiring read from the cache re-centres every control
-      // (`applyWired`): under a hand it waits, listening, and is read again
-      // once the hand is off.
+      // (`applyWired`): under a held control it waits, and is read again
+      // once the hand lets go. It is the answer to the player's own open, not
+      // a background result (ADR-025), so it does not wait out the 1.5 s
+      // after a release that a measurement does.
       state.measuring = true;
-      state.deferredWire = { rewire: true };
+      state.deferredWire = { rewire: true, asked: true };
       renderStatus();
       knobs.forEach(paintKnob);
       return;
@@ -2087,7 +2106,9 @@ export function createPerform(host) {
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
     if (state.visible && incoming !== (state.incoming || null)) renderStatus();
-    if (state.deferredWire && !handsBusy()) landDeferred();
+    // What the player asked for (a cache hit) lands once no control is
+    // held; a measurement waits out the 1.5 s after the release too.
+    if (state.deferredWire && !(state.deferredWire.asked ? handHeld() : handsBusy())) landDeferred();
     // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
@@ -2613,6 +2634,9 @@ export function createPerform(host) {
 
   // A measurement arrived (or came out of the cache): wire the controls.
   function applyWired(data) {
+    // Whatever lands now is newer than what waited for the hand: the older
+    // one must not land over it on the next tick.
+    state.deferredWire = null;
     state.measuring = false;
     state.carried = false;
     state.guess = null;
@@ -2718,6 +2742,7 @@ export function createPerform(host) {
     return !!a && !!b && a.length === b.length && a.every((w, i) => (w && w.pending) || wiredKnobs(w) === wiredKnobs(b[i]));
   }
   function applyRechecked(data) {
+    state.deferredWire = null;
     const old = state.wire;
     const fresh = alignWiring(data.wiring);
     const addrs = state.cur ? [...state.cur.knobs.keys()].sort().join("|") : "";
@@ -2885,6 +2910,7 @@ export function createPerform(host) {
         // A first measurement under a hand waits, listening, until the hand
         // is off (`landDeferred`): it would re-centre the controls under it.
         state.deferredWire = { data: m.data, first: true, set: measuredSet };
+        renderStatus();
       } else landFirst(m.data, measuredSet);
       knobs.forEach(paintKnob);
       renderHood();
@@ -3525,6 +3551,7 @@ export function createPerform(host) {
     // keeps the dials working on the old one, so it reads as a re-check, as
     // after a Take. "listening to this patch…" is for a patch with no wiring
     // yet, whose dials really are waiting.
+    else if (waitsForHand()) parts.push("heard: the controls turn after you let go");
     else if (state.measuring && !state.wire) parts.push("listening to this sound…");
     else if (state.wire && state.guess) {
       // Playing on a wiring nobody measured on this sound (#290): a count of
@@ -4386,13 +4413,14 @@ export function createPerform(host) {
       ? "neither reaches this patch: pick two others"
       : dx ? `${kx.spec.name} doesn’t reach this patch`
         : dy ? `${ky.spec.name} doesn’t reach this patch`
-          : (px || py) && listening ? "listening to this sound…" : "";
+          : (px || py) && waitsForHand() ? "after you let go"
+            : (px || py) && listening ? "listening to this sound…" : "";
     xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
   }
   // Only a reachable axis moves: dragging along an amber one would be a
   // knob that does nothing, and the pad has no "let go to ask" gesture.
   function setXY(cx, cy) {
-    touch();
+    touchControl();
     for (const [i, v] of [[XY.x, cx], [XY.y, cy]]) {
       if (!xyReach(i)) continue;
       const k = knobs[i];
@@ -4420,7 +4448,7 @@ export function createPerform(host) {
   });
   const xyEnd = (e) => {
     xyHeld = false;
-    touch(); // letting go of the pad is a touch, as a knob's is
+    touchControl(); // letting go of the pad is a touch, as a knob's is
     queueMicrotask(panelLater);
     if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
     for (const i of [XY.x, XY.y]) logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
@@ -4564,9 +4592,11 @@ export function createPerform(host) {
     }
     const set = setOf(state.panel);
     const hit = knownWiring(wireKey(state.cur.json, set));
-    if (hit && handsBusy()) state.deferredWire = { data: structuredClone(hit.data) };
-    else if (hit) {
-      applyRechecked(structuredClone(hit.data));
+    if (hit) {
+      // A control placed under a held one (MIDI, say) waits for the hand
+      // to let go, as `wire`'s hit does; a fresh hit is measured either way.
+      if (handHeld()) state.deferredWire = { data: structuredClone(hit.data), asked: true };
+      else applyRechecked(structuredClone(hit.data));
       knobs.forEach(paintKnob);
       renderHood();
       renderStatus();
@@ -4951,7 +4981,7 @@ export function createPerform(host) {
       const k = knobs[i];
       if (!k) return;
       if (k.spec.kind === "wander") wanderGrab();
-      else touch();
+      else touchControl();
       ensureWired();
       // A pot takes the pointer from a glide home, as a hand does.
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
