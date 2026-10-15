@@ -11,4 +11,6 @@
   engine has drawn it. A preset you had never opened, or had not opened
   since the app was updated, was silent until the engine had loaded it; it
   plays at once too. TASTE's green ring moves to the sound when you click
-  it, not when it has finished opening (#306).
+  it, not when it has finished opening. Pressing ] twice quickly steps two
+  sounds on, where the second press used to ask for the first step's sound
+  again (#306).
