@@ -684,15 +684,16 @@ you opened has arrived, KEEP and TAKE change nothing and say why: *Take waits
 for Acid Line to finish opening. Try again in a moment.*
 
 ```admonish info collapsible=true title="How it works: opening a sound"
-While a sound you opened is on its way, the status line names it: *opening
-Acid Line…*. The name above stays the sound your keys still play, dimmed,
-until the new one lands. It lands as soon as the engine turns to it, before
-it has rendered it for PATCH’s rack.
+A sound you open plays the moment you click it, whether it is a row in the
+bank, a card in EVOLVE or TEACH, a sound on TASTE’s map, a preset or the first
+of your picks when you teach it: the app already holds what the keys need, and
+the engine catches up behind it, so PATCH’s rack shows it once the engine has
+rendered it. Its controls work at once if PERFORM has measured it, and every
+preset ships measured.
 
-A preset you have opened before in this browser doesn’t wait for the engine
-at all. It plays the moment you click it, after a reload too, and its controls
-work at once if PERFORM has measured it. The first open after an update of the
-app asks the engine again.
+Only a sound the app doesn’t hold yet, as it starts, waits for the engine.
+The status line names it, *opening Acid Line…*, and the name above stays the
+sound your keys still play, dimmed, until the new one lands.
 ```
 
 ## Stage mode

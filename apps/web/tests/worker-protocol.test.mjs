@@ -311,11 +311,15 @@ test("a first wiring is asked for the panel the last measurement named, and an e
     lifts: ["dispatch", "postLiveTree", "postBench", "performFirst"],
     engine,
     stubs: { holdFloor: async () => {}, measure: async () => {} },
-    prelude: ["let performControls;"],
+    prelude: ["let performControls;", "const treesSent = new Map([[4, \"(tree)\"]]);"],
+    returns: ["treesSent"],
   });
   await w.runMessage({ type: "perform_wire", req: 1, tree: "{}", controls: [16, 6], rid: 1 });
   await w.runMessage({ type: "edit_begin", id: 4, rid: 2 });
   assert.deepEqual(repliesTo(w.out, 2)[0].first, { shape: '{"tree":2}', controls: "[16,6]" });
+  // Each pool member's `first`, which main holds (#306), was for the last
+  // panel: the next rows send them all again.
+  assert.equal(w.treesSent.size, 0, "a new panel forgets what main was sent");
   // A pre-warm measures the six for the cache: it does not say what the
   // panel plays, so the set stays.
   await w.runMessage({ type: "perform_wire", req: 9, tree: "{}", bg: true, prewarm: true, rid: 7 });
@@ -342,7 +346,7 @@ test("a generation answers its refine from farm messages and its own queued walk
     lifts: ["genProgress", "genLanded", "genFinish", "genDrop"],
     engine: { ranked: () => "[]", lineage: () => "[]", refine_retired: () => "[3]" },
     stubs: {
-      genEta: () => 0, farmCrew: () => 2, refineRetiring: () => [], engineRatings: () => [], refineReason: () => null,
+      genEta: () => 0, farmCrew: () => 2, refineRetiring: () => [], engineRatings: () => [], refineReason: () => null, rankedRows: () => ({ ranked: [] }),
       logNote() {}, tasteViews: () => ({}), status: () => ({}), benchBelief: () => null,
       walkAbandon() {}, walkBusy: () => false, walkInflight: new Map(), crewReap() {}, crewIdle() {}, schedulePump() {},
     },

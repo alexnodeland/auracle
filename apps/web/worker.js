@@ -1287,13 +1287,46 @@ function refineReason() {
   }
 }
 
+// What main opens a pool member from in the click's own task (#306): its
+// tree, its loudness makeup and what PERFORM can play it on before it is
+// measured (`performFirst`), by id. Sent once per member, beside the ranked
+// rows the member first appears in (`trees`): a member's tree never changes
+// under its id (an edit committed is a new member), so main keeps them and
+// forgets the ids the rows no longer list. `treesSent` is what main holds,
+// id -> the row's `sexpr`: an id that leaves the rows leaves it, so one that
+// comes back (a readmitted sound) is sent again, and so is one whose sound
+// is not the one sent (a restore that reissued an id).
+const treesSent = new Map();
+function newTrees(ranked) {
+  let out;
+  const now = new Map();
+  for (const r of ranked) {
+    if (treesSent.get(r.id) === r.sexpr) {
+      now.set(r.id, r.sexpr);
+      continue;
+    }
+    const json = engine.tree_json_of(r.id);
+    if (!json || json === "null") continue;
+    (out ||= {})[r.id] = { json, makeup: engine.makeup_of(r.id), first: performFirst(json), controls: performControls ?? null };
+    now.set(r.id, r.sexpr);
+  }
+  treesSent.clear();
+  for (const [id, sexpr] of now) treesSent.set(id, sexpr);
+  return out;
+}
+// The ranked rows, and the trees of the members main does not hold yet.
+function rankedRows() {
+  const ranked = JSON.parse(engine.ranked());
+  return { ranked, trees: newTrees(ranked) };
+}
+
 // Everything the taste instruments need, in one bundle.
 function tasteViews() {
   return {
     map: JSON.parse(engine.taste_map()),
     styles: JSON.parse(engine.styles()),
     lineage: JSON.parse(engine.lineage()),
-    ranked: JSON.parse(engine.ranked()),
+    ...rankedRows(),
     // Rides with every views post so the header's `▣ n/m` cannot drift out of
     // step with the engine after a restore, an eviction or a bred generation.
     pinBudget: Array.from(engine.pin_budget()),
@@ -2597,7 +2630,7 @@ function genLanded(g, child) {
     seed: g.parents[g.next - 1],
     done: g.next,
     total: g.total,
-    ranked: JSON.parse(engine.ranked()),
+    ...rankedRows(),
     // The strip says what each child was bred from as it lands, not only at
     // the end.
     lineage: JSON.parse(engine.lineage()),
@@ -4236,7 +4269,13 @@ async function dispatch(m) {
     case "perform_wire": {
       // A pre-warm measures the six for the cache, whatever the panel holds:
       // it does not say which controls the panel plays.
-      if (!m.prewarm) performControls = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
+      if (!m.prewarm) {
+        const controls = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
+        // Another panel: the `first` main holds for each member predicted
+        // the last one's controls, and the next rows send them all again.
+        if (controls !== performControls) treesSent.clear();
+        performControls = controls;
+      }
       await holdFloor(m, () => measure(m));
       break;
     }
@@ -4467,7 +4506,7 @@ async function dispatch(m) {
     }
     case "set_name": {
       engine.set_name(m.id, m.name);
-      post({ type: "ranked", ranked: JSON.parse(engine.ranked()) });
+      post({ type: "ranked", ...rankedRows() });
       break;
     }
     case "presets": {
@@ -4487,7 +4526,7 @@ async function dispatch(m) {
         pinned: m.pinned,
         ok,
         budget,
-        ranked: JSON.parse(engine.ranked()),
+        ...rankedRows(),
         // A save changes what a generation may replace, and while one is
         // open, what its end will: a saved sound leaves `retiring` and the
         // next lowest one not kept takes its place (`openRetiring`).
