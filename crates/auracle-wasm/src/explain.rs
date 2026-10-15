@@ -54,6 +54,26 @@ impl ExplainRender {
     }
 }
 
+/// The lesson's cutoff knob (0–1) as its corner in Hz on the held note:
+/// the grammar's own map ([`auracle_grammar::cutoff_hz`]), with the knob
+/// read as [`WasmEngine::lesson_filter`] reads it (clamped to 0–1, a value
+/// that is not a number taken as the middle). The page sets its live
+/// preview filter from the same map (`hzOfKnob` in `explain.js`).
+#[wasm_bindgen]
+pub fn lesson_cutoff_hz(cutoff: f64) -> f64 {
+    cutoff_hz(lesson_knob(cutoff))
+}
+
+/// A cutoff knob as the lesson reads it: clamped to 0–1, and the middle for
+/// a value that is not a number.
+fn lesson_knob(c: f64) -> f64 {
+    if c.is_finite() {
+        c.clamp(0.0, 1.0)
+    } else {
+        0.5
+    }
+}
+
 /// The word a refused render is told by: `silent`, or `vet` for any other
 /// reason it was refused.
 fn reason(e: &FeaturizeError) -> &'static str {
@@ -130,13 +150,7 @@ impl WasmEngine {
         overrides_json: &str,
         cutoff: Option<f64>,
     ) -> ExplainRender {
-        let cutoff = cutoff.map(|c| {
-            if c.is_finite() {
-                c.clamp(0.0, 1.0)
-            } else {
-                0.5
-            }
-        });
+        let cutoff = cutoff.map(lesson_knob);
         let phrase = &self.engine.cfg.phrase;
         let sr = phrase.sample_rate;
         let response = cutoff.map(|c| {
@@ -145,7 +159,7 @@ impl WasmEngine {
         let head = |extra: serde_json::Value| {
             let mut j = serde_json::json!({
                 "cutoff": cutoff,
-                "cutoff_hz": cutoff.map(cutoff_hz),
+                "cutoff_hz": cutoff.map(lesson_cutoff_hz),
                 "response": response,
             });
             if let (Some(o), Some(e)) = (j.as_object_mut(), extra.as_object()) {

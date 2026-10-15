@@ -234,3 +234,23 @@ fn a_lesson_that_does_not_render_says_why() {
         assert_eq!(j["cutoff"].as_f64(), asked, "{j}");
     }
 }
+
+/// The lesson's corner is the grammar's map: 20 Hz at the knob's bottom,
+/// 20 kHz at its top, a thousandfold over the knob, so its middle is the
+/// geometric mean; past either end the knob holds there, and a knob that is
+/// not a number is the middle, as `lesson_filter` reads it.
+#[test]
+fn the_lessons_corner_is_the_grammars_map_of_its_knob() {
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-9 * b;
+    assert!(near(lesson_cutoff_hz(0.0), 20.0));
+    assert!(near(lesson_cutoff_hz(1.0), 20_000.0));
+    assert!(near(lesson_cutoff_hz(0.5), (20.0f64 * 20_000.0).sqrt()));
+    assert!(near(lesson_cutoff_hz(0.25), 20.0 * 1000f64.powf(0.25)));
+    assert!(near(lesson_cutoff_hz(-3.0), 20.0));
+    assert!(near(lesson_cutoff_hz(7.0), 20_000.0));
+    assert!(near(lesson_cutoff_hz(f64::NAN), lesson_cutoff_hz(0.5)));
+    assert!(near(lesson_cutoff_hz(f64::INFINITY), lesson_cutoff_hz(0.5)));
+    for c in [0.1, 0.42, 0.9] {
+        assert_eq!(lesson_cutoff_hz(c), cutoff_hz(c));
+    }
+}
