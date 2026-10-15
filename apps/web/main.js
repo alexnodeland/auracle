@@ -162,6 +162,11 @@ const BUILD = window.__aurBuild || await (async () => {
 //    marks in the bank; hand.js: a background result waits while the pointer is
 //    over what it would move (a refit's views land through it, #300);
 //    refit.js: what a refit landing does.
+// The modules boot builds a little later (`bootPerform`, `bootExplain`,
+// `bootBooth`, `bootLiveAudio`, `bootMidi`), asked for now, beside the rest
+// and the worker, so each is in the module map when its turn comes. A miss
+// here is not one: the import there asks again and says what went wrong.
+for (const m of ["perform", "explain", "booth", "live-audio", "midi"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
 const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
@@ -181,11 +186,6 @@ const [
   import(`./bank-find.js?v=${BUILD}`), import(`./marks.js?v=${BUILD}`),
   import(`./hand.js?v=${BUILD}`), import(`./refit.js?v=${BUILD}`),
 ]);
-// The modules boot builds a little later (`bootPerform`, `bootExplain`,
-// `bootBooth`, `bootLiveAudio`, `bootMidi`), fetched now beside the rest, so
-// each is in the module map when its turn comes. A miss here is not one:
-// the import there asks again and says what went wrong.
-for (const m of ["perform", "explain", "booth", "live-audio", "midi"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
 const { directionsScale, pullMark } = geom;
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,

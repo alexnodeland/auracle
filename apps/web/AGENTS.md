@@ -166,7 +166,7 @@ the long-form notes are this directory's `README.md`.
   last two), what it was built from (`source`, which `make pkg-reuse`
   compares) and which engine it was written for (`engine`, a hash of the
   wasm and its glue, which `make pkg-reuse` checks the engine still has):
-  `scripts/wasm_pkg.py`. `main.js` reads only `build`.
+  `scripts/wasm_pkg.py`. `index.html`'s boot script reads `build` first, and puts it on an import map that sends the bare `./faces.js` and `./vessel.js` that `vessel.js` and `live-face.js` import to the stamped URLs, so one copy of each loads (a browser without import maps loads two); `main.js` takes `build` from there, and reads the file itself when it was loaded any other way. It asks for its modules together, in one `Promise.all`: add a module to that list, not a `await import()` of its own.
 
 ## Debugging
 

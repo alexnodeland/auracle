@@ -11,8 +11,8 @@
 ### Fixed: two copies of the face code after an update
 
 - **After an update, the faces can no longer be drawn by an older copy of
-  their code.** Two of the files that draw a sound's face asked for a third
-  by a name that carried no version, so your browser could keep the old one
-  for minutes after the rest had updated, and held a second copy beside the
+  their code.** Two of the files that draw a sound's face asked for the
+  others by a name that carried no version, so your browser could keep the old
+  one for minutes after the rest had updated, and held a second copy beside the
   new one. They now ask for the version the page asked for, in browsers that
   support it (the current Chrome, Edge, Firefox and Safari).

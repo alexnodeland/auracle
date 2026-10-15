@@ -48,6 +48,8 @@
   } else {
     // The build stamp (pkg/build.json, which main.js reads only `build` of)
     // is read here, before main.js starts, because of the import map below.
+    // main.js itself is named plainly: the site's copy is stamped with its
+    // own hash (www/stamppage.py), and the dev server sends no-store.
     // Served with no stamp, or without a server, the clock stands in for it
     // and nothing is cached: main.js's own fallback, kept.
     var start = function (build) {
@@ -69,7 +71,7 @@
       }
       var s = document.createElement("script");
       s.type = "module";
-      s.src = "main.js?v=" + build;
+      s.src = "main.js";
       document.head.appendChild(s);
     };
     fetch("./pkg/build.json", { cache: "no-cache" })

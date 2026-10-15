@@ -40,8 +40,10 @@ test("boot asks for its modules together, and each once under the build's stamp"
 
   expect(together, "words.js was asked for while taste-geom.js was still on its way").toBe(true);
 
-  // Every script of the app is asked for under the build's stamp…
-  const unstamped = asked.filter((u) => !/\?v=[0-9a-f]{8,64}$/.test(u));
+  // Every script of the app but the first is asked for under the build's
+  // stamp (main.js is named plainly in the page; the site's copy carries its
+  // own hash, www/stamppage.py)…
+  const unstamped = asked.filter((u) => u !== "/main.js" && !/\?v=[0-9a-f]{8,64}$/.test(u));
   expect(unstamped, "scripts asked for without the build's stamp").toEqual([]);
   // …and once: the faces were drawn by a second copy of faces.js and vessel.js.
   for (const name of ["faces", "vessel"]) {
