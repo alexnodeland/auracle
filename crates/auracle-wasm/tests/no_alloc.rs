@@ -303,3 +303,38 @@ fn a_quantum_allocates_nothing() {
     assert!(out >= 2, "the swap did not fade out ({out} quanta)");
     assert_eq!(heard, 0, "{heard} allocations in the swap's audible quanta");
 }
+
+/// At every limit from one to [`LivePoly::MAX_VOICES`], on ten voices allocated: a
+/// chord past the limit, the limit lowered to one under it and raised again,
+/// and every quantum between, allocate nothing.
+#[test]
+fn every_voice_limit_allocates_nothing() {
+    quiver::rng::seed(7);
+    let tree = json(saw());
+    let mut t = 0;
+    for k in 1..=LivePoly::MAX_VOICES {
+        let mut poly = LivePoly::new(&tree, SR, LivePoly::MAX_VOICES).expect("compiles");
+        // Warm: every voice sounded once, the output buffer grown.
+        for n in 0..LivePoly::MAX_VOICES as u8 {
+            poly.note_on(48 + n, 0.8);
+        }
+        for _ in 0..4 {
+            let _ = quantum(&mut poly, &mut t);
+        }
+        poly.all_off();
+        let n = allocations(|| {
+            poly.set_voice_limit(k);
+            for n in 0..k as u8 + 2 {
+                poly.note_on(60 + n, 0.8);
+                let _ = quantum(&mut poly, &mut t);
+            }
+            poly.set_voice_limit(1);
+            let _ = quantum(&mut poly, &mut t);
+            poly.set_voice_limit(LivePoly::MAX_VOICES);
+            poly.note_on(40, 0.8);
+            let _ = quantum(&mut poly, &mut t);
+        });
+        assert_eq!(n, 0, "{n} allocations at a limit of {k}");
+        assert_eq!(poly.voice_limit(), LivePoly::MAX_VOICES);
+    }
+}

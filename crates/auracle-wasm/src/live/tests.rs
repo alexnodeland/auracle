@@ -263,6 +263,118 @@ fn a_note_past_the_polyphony_takes_the_oldest_held() {
     );
 }
 
+fn held_notes(poly: &LivePoly) -> Vec<u8> {
+    let mut held: Vec<u8> = poly.voices.iter().filter_map(|v| v.note).collect();
+    held.sort_unstable();
+    held
+}
+
+/// Lowering the voice limit with notes held lets the oldest go, ringing out
+/// its release (gate down, still running), and keeps the newest.
+#[test]
+fn lowering_the_voice_limit_releases_the_oldest_held() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    assert_eq!(poly.voices.len(), 10);
+    assert_eq!(poly.voice_limit(), 10);
+    // Pressed in an order that is not their pitch order or their slots'.
+    for n in [59, 48, 55, 52] {
+        poly.note_on(n, 1.0);
+        poly.process(64);
+    }
+    poly.set_voice_limit(2);
+    assert_eq!(poly.voice_limit(), 2);
+    assert_eq!(held_notes(&poly), vec![52, 55], "the newest two stay held");
+    let let_go: Vec<&Voice> = poly
+        .voices
+        .iter()
+        .filter(|v| v.note.is_none() && v.running)
+        .collect();
+    assert_eq!(let_go.len(), 2, "the oldest two ring out their release");
+    assert!(let_go
+        .iter()
+        .all(|v| v.voice.gate.get() == 0.0 && v.regate_in == 0));
+    // A note past the limit steals the oldest held, waking no silent voice.
+    poly.process(64);
+    poly.note_on(62, 1.0);
+    assert_eq!(held_notes(&poly), vec![52, 62]);
+    assert_eq!(poly.voices.iter().filter(|v| v.running).count(), 4);
+    // With room for one more held, the next takes the longest-released tail
+    // (the tails already fill the limit), not a silent voice.
+    poly.set_voice_limit(3);
+    let oldest_tail = poly
+        .voices
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v.running && v.note.is_none())
+        .min_by_key(|(_, v)| v.released)
+        .map(|(i, _)| i)
+        .unwrap();
+    poly.note_on(64, 1.0);
+    assert_eq!(poly.voices[oldest_tail].note, Some(64));
+    assert_eq!(held_notes(&poly), vec![52, 62, 64]);
+    assert_eq!(poly.voices.iter().filter(|v| v.running).count(), 4);
+    // Raising it again lets a chord sound whole, with no rebuild.
+    poly.set_voice_limit(6);
+    for n in [65, 67, 69] {
+        poly.note_on(n, 1.0);
+    }
+    assert_eq!(held_notes(&poly), vec![52, 62, 64, 65, 67, 69]);
+}
+
+/// At the limit with only held voices running, a new note steals the oldest
+/// held one rather than waking a silent voice past the limit.
+#[test]
+fn a_note_past_the_voice_limit_takes_the_oldest_held() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    poly.set_voice_limit(3);
+    for n in [48, 52, 55] {
+        poly.note_on(n, 1.0);
+        poly.process(64);
+    }
+    poly.note_on(60, 1.0);
+    assert_eq!(held_notes(&poly), vec![52, 55, 60]);
+    assert_eq!(poly.voices.iter().filter(|v| v.running).count(), 3);
+}
+
+/// The limit is held to one up to the voices allocated, and the voices
+/// allocated to one up to ten.
+#[test]
+fn the_voice_limit_is_held_to_the_voices_allocated() {
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
+    assert_eq!(poly.voice_limit(), 4);
+    poly.set_voice_limit(0);
+    assert_eq!(poly.voice_limit(), 1);
+    poly.set_voice_limit(9);
+    assert_eq!(poly.voice_limit(), 4);
+    let big = LivePoly::new(&long_tail_json(), 44_100.0, 64).unwrap();
+    assert_eq!(big.voices.len(), LivePoly::MAX_VOICES);
+    assert_eq!(big.voice_limit(), LivePoly::MAX_VOICES);
+    let none = LivePoly::new(&long_tail_json(), 44_100.0, 0).unwrap();
+    assert_eq!(none.voices.len(), 1);
+}
+
+/// In unison every voice up to the limit plays the note; lowering the limit
+/// lets the voices past it go, and the stack keeps sounding.
+#[test]
+fn unison_plays_as_many_voices_as_the_limit() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    poly.set_voice_limit(6);
+    poly.set_unison(true, 0.5, 0.5);
+    poly.note_on(57, 1.0);
+    let held = |p: &LivePoly| p.voices.iter().filter(|v| v.note.is_some()).count();
+    assert_eq!(held(&poly), 6);
+    assert!(poly.voices[6..].iter().all(|v| !v.running));
+    poly.set_voice_limit(3);
+    assert_eq!(held(&poly), 3);
+    assert!(poly.voices[..3].iter().all(|v| v.note == Some(57)));
+    assert!(poly.voices[3..6]
+        .iter()
+        .all(|v| v.running && v.note.is_none()));
+}
+
 /// A pad: slow attack (≈100 ms), full sustain, so the envelope's position
 /// is legible in the output level and a restart is unmissable.
 fn pad_json() -> String {

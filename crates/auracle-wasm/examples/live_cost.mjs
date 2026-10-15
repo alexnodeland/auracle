@@ -63,7 +63,8 @@
 //   `liveNoteOff` turns it off 400 ms after the last key. `--` rows say which.
 // - **events**: the port handler's own work, which is render-thread time too:
 //   `note_on`, `set_meter(true)` + `meter_keys`, constructing `LivePoly(tree,
-//   rate, 4)` (the first patch, and a B slot loading), and a swap's rebuild,
+//   rate, 4)` (the first patch, and a B slot loading; 10, the most it
+//   allocates, beside it), and a swap's rebuild,
 //   one voice's compile per quantum.
 import { readFileSync } from "node:fs";
 import os from "node:os";
@@ -306,6 +307,7 @@ function events(tree) {
   new LivePoly(tree, RATE, 4).free(); // warm
   out.construct4 = timeIt(() => new LivePoly(tree, RATE, 4).free(), 12);
   out.construct1 = timeIt(() => new LivePoly(tree, RATE, 1).free(), 12);
+  out.construct10 = timeIt(() => new LivePoly(tree, RATE, 10).free(), 12);
   const a = new LivePoly(tree, RATE, 4);
   a.note_on(60, 0.8);
   out.noteOn = timeIt(() => a.note_on(64, 0.8), 200);
@@ -409,7 +411,7 @@ for (const [name, tree] of picked) {
   const ev = events(tree);
   const s = (x) => `${f(x.min)}/${f(x.p50)}`;
   console.log(
-    `${name.padEnd(26)} new LivePoly(.., 4) ${s(ev.construct4)}  (1 voice ${s(ev.construct1)})  note_on ${s(ev.noteOn)}  set_meter(true)+meter_keys+parse ${s(ev.meterOn)} (${ev.taps} taps)  set_patch parse ${s(ev.setPatchParse)}`,
+    `${name.padEnd(26)} new LivePoly(.., 4) ${s(ev.construct4)}  (1 voice ${s(ev.construct1)}, 10 ${s(ev.construct10)})  note_on ${s(ev.noteOn)}  set_meter(true)+meter_keys+parse ${s(ev.meterOn)} (${ev.taps} taps)  set_patch parse ${s(ev.setPatchParse)}`,
   );
 }
 console.log(`\nbudget ${f(BUDGET_MS)} ms/quantum at ${RATE} Hz; load at the end ${load()}`);
