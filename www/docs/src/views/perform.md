@@ -352,11 +352,11 @@ sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
    unfiltered shape stays dashed behind it. The render is played as loud as
    the sound itself (every phrase the instrument plays is set to one
    loudness), so you hear it darken, not fade; through the browser's filter
-   the level is an estimate from the sound's spectrum, about as loud (within
-   a decibel or so), so it can step a little when the render comes in. The
-   line across the shape marks the cutoff you hold, before its render too. The browser's filter goes after the
-   whole sound, and the instrument's inside it, so the two can differ until
-   the render lands. The cutoff is the knob's value in its own unit on the
+   the level is an estimate from the sound's spectrum, about as loud, so
+   it can step a little when the render comes in. The line across the
+   shape marks the cutoff you hold, before its render too. The browser's
+   filter goes after the whole sound, and the instrument's inside it, so the
+   two can differ until the render lands. The cutoff is the knob's value in its own unit on the
    held note, as PATCH shows a filter's cutoff.
 
    A sound with no room for one more module (about one pool sound in ten;

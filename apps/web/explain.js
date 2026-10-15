@@ -1464,8 +1464,11 @@ export function createExplain(host) {
     }
     ctx.restore();
     if (guess) {
+      // On the side away from the handle, as its readout is placed.
+      const gx = fxOf(clamp(hzOfKnob(L.cutoff), CUT_LO_HZ, CUT_HI_HZ));
+      const right = gx < FW / 2;
       ctx.globalAlpha = 1 - k;
-      text(ctx, UI.notMeasured, FW - 22, gy + 16, "right", INK.amber);
+      text(ctx, UI.notMeasured, right ? FW - 22 : 24, gy + 16, right ? "right" : "left", INK.amber);
       ctx.globalAlpha = 1;
     }
     if (k > 0 && k < 1 && !L.curveRaf) {
