@@ -5289,8 +5289,12 @@ const RENDER_POLL_MS = 100;
 function awaitRender(id, onReady, opts = {}) {
   // Every ▶ of a rendered patch starts here (Space outside PATCH, the duel,
   // a bank row, a style's exemplar, the warm start): the latest ▶ wins, so the
-  // bench's ▶ waiting for an edit is taken back rather than starting over it.
+  // bench's ▶ waiting for an edit is taken back rather than starting over it,
+  // and so is a preset's ▶ waiting for its render (`warmPreview`), which
+  // otherwise played over the ▶ pressed after it once its render landed
+  // (#421). A preset's own wait (`preview`) is the one it keeps.
   playWaitCancel();
+  if (!opts.preview) warmPreviewCancel();
   if (renders.has(id)) {
     if (opts.settled) opts.settled();
     return onReady();
@@ -23994,7 +23998,7 @@ function warmPreviewPlay(req, id) {
     if (warmPreview !== req) return;
     warmPreviewCancel();
     play(id, req.btn);
-  }, { abandoned: () => warmPreview !== req });
+  }, { abandoned: () => warmPreview !== req, preview: true });
 }
 
 function previewPreset(row, btn) {
