@@ -36,6 +36,64 @@
 // this module draws, and asks main (`host`) to open, play or rename. Pure
 // geometry is in taste-geom.js, sentences in words.js, both unit-tested.
 
+// The hold rule (hand.js): a views post moves the halos at once, and the
+// places, and LEARNING's order of weights, wait while the hand is on them.
+const { createHand } = await import(`./hand.js${new URL(import.meta.url).search}`);
+
+/** How long after a touch on a region a result still waits: a finger has no
+ *  hover, so the hold outlasts it (the app's hold rule, #297). */
+const TOUCH_HOLD_MS = 1500;
+
+/** One region a result waits on: `el`'s pointer (over it, or a touch in the
+ *  last `TOUCH_HOLD_MS`) and any `extra()` holds (a sound active on the map)
+ *  make one hold, told to `hand` only as it starts and ends. `refresh()`
+ *  says an extra hold changed; `release()` lets go when the region is
+ *  hidden, where no pointerleave will come. */
+function holdRegion(el, hand, extra = () => false) {
+  let over = false, touched = false, touchT = 0, held = false;
+  function refresh() {
+    const now = over || touched || extra();
+    if (now === held) return;
+    held = now;
+    if (held) hand.enter();
+    else hand.leave();
+  }
+  el.addEventListener("pointerenter", (e) => {
+    if (e.pointerType === "mouse") over = true;
+    refresh();
+  });
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    clearTimeout(touchT);
+    touched = true;
+    refresh();
+    hand.move();
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse") over = true;
+    if (held) hand.move();
+    else refresh();
+  });
+  el.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse") over = false;
+    else {
+      clearTimeout(touchT);
+      touchT = setTimeout(() => { touched = false; refresh(); }, TOUCH_HOLD_MS);
+    }
+    refresh();
+  });
+  return {
+    refresh,
+    release() {
+      clearTimeout(touchT);
+      over = false;
+      touched = false;
+      refresh();
+    },
+  };
+}
+const newHand = () => createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
+
 export function createTaste(host) {
   const { geom, words, INK, inkAlpha, canvasFont, motionMs, tok } = host;
   const $ = (id) => document.getElementById(id);
@@ -191,14 +249,21 @@ export function createTaste(host) {
   // where the player left it when it goes.
   let modelView = false;
   const tasteOn = () => tasteMode || modelView;
+  // The map's hold: while a sound is active (its card up) or the pointer is
+  // over the map, a views post moves the halos and the places wait, to
+  // settle on pointer-leave or after a rest (hand.js).
+  const mapHand = newHand();
+  const mapHold = holdRegion(well, mapHand, () => active != null);
   let scrub = null; // the track's moment shown, an index into the history, or null for now
   const halosOn = () => fitted() || tasteOn() || scrub != null;
 
-  // The track shows once there are two moments to move between.
+  // The track shows once there are two moments to move between. Its room
+  // along the map's foot is kept from the start, so its first appearance
+  // moves no sound.
   const trackOn = () => history.entries.length >= 2;
   function relayout() {
     const pts = poolPoints();
-    const frame = geom.mapFrame(W, H, pts.length, { track: trackOn() });
+    const frame = geom.mapFrame(W, H, pts.length, { track: true });
     S0 = frame.s0;
     target = geom.mapLayout(pts, frame.box, frame.minD);
   }
@@ -275,7 +340,10 @@ export function createTaste(host) {
 
   function drawMap(now = performance.now()) {
     if (visible !== "taste" || !W) return;
+    // While the places settle, the card goes with its sound.
+    const gliding = !!(tween && tween.move);
     step(now);
+    if (gliding && active != null) placePlate();
     const ctx = sizeCanvas(cv, W, H);
     ctx.clearRect(0, 0, W, H);
     // A quiet field: a dot every 44 px, and the plane's two axes through it.
@@ -418,10 +486,35 @@ export function createTaste(host) {
     if (id === active && kbd === activeKbd) return;
     active = id;
     activeKbd = kbd;
+    mapHold.refresh();
     cv.classList.toggle("hit", id != null && !kbd);
     renderPlate();
     drawMap();
   }
+  // The card is built once and its words and state are set in place: a
+  // rebuild on a sync would replace the ▶ under a press, and the press
+  // would be lost. Its buttons act on the sound it shows now (`plateId`).
+  let plateId = null;
+  const plateEls = (() => {
+    const nm = document.createElement("div");
+    nm.className = "ts-pl-name";
+    const gs = document.createElement("div");
+    gs.className = "ts-pl-like";
+    const acts = document.createElement("div");
+    acts.className = "ts-pl-acts";
+    const playBtn = document.createElement("button");
+    playBtn.className = "util-btn";
+    playBtn.textContent = words.TASTE_LABELS.play;
+    playBtn.onclick = () => { if (plateId != null) host.play(plateId, playBtn); };
+    const openBtn = document.createElement("button");
+    openBtn.className = "util-btn";
+    openBtn.textContent = words.TASTE_LABELS.open;
+    openBtn.title = words.TASTE_LABELS.openTitle;
+    openBtn.onclick = () => { if (plateId != null) host.open(plateId); };
+    acts.append(playBtn, openBtn);
+    plate.replaceChildren(nm, gs, acts);
+    return { nm, gs, playBtn, openBtn };
+  })();
   function renderPlate() {
     if (active == null || !shownPos.get(active)) {
       plate.classList.remove("on");
@@ -431,40 +524,23 @@ export function createTaste(host) {
     const id = active;
     const like = likeTarget.get(id);
     const name = host.nameOf(id) || "";
-    // Focus inside the card: its words follow, its buttons stay put.
-    if (plate.dataset.id === String(id) && plate.contains(document.activeElement)) {
-      const gs = plate.querySelector(".ts-pl-like");
-      if (gs) gs.textContent = fitted() && like != null ? words.plateGuess(like) : words.TASTE_LABELS.noGuess;
-      return;
-    }
+    const moved = plateId !== id || !plate.classList.contains("on");
+    // Another sound's card: the ▶ lit for the last one goes dark, as a new
+    // card's would be.
+    if (plateId !== id) plateEls.playBtn.classList.remove("playing");
+    plateId = id;
     plate.dataset.id = String(id);
-    plate.replaceChildren();
-    const nm = document.createElement("div");
-    nm.className = "ts-pl-name";
+    const { nm, gs, playBtn, openBtn } = plateEls;
     nm.textContent = name;
-    const gs = document.createElement("div");
-    gs.className = "ts-pl-like";
     // The bank's number for it, as the ratings after the last pick have it.
     gs.textContent = fitted() && like != null ? words.plateGuess(like) : words.TASTE_LABELS.noGuess;
     gs.classList.toggle("guess", !fitted());
-    const acts = document.createElement("div");
-    acts.className = "ts-pl-acts";
-    const playBtn = document.createElement("button");
-    playBtn.className = "util-btn";
-    playBtn.textContent = words.TASTE_LABELS.play;
     playBtn.title = words.playTitle(name);
-    playBtn.onclick = () => host.play(id, playBtn);
-    const openBtn = document.createElement("button");
-    openBtn.className = "util-btn";
-    openBtn.textContent = words.TASTE_LABELS.open;
-    openBtn.title = words.TASTE_LABELS.openTitle;
     openBtn.disabled = id === host.subjectId();
-    openBtn.onclick = () => host.open(id);
-    acts.append(playBtn, openBtn);
-    plate.append(nm, gs, acts);
     plate.classList.add("on");
     plate.setAttribute("aria-hidden", "false");
-    placePlate();
+    // A sync leaves the card where it is; a new sound places it beside that one.
+    if (moved) placePlate();
   }
   function placePlate() {
     const q = shownPos.get(active);
@@ -696,13 +772,7 @@ export function createTaste(host) {
 
   function drawTime() {
     const on = trackOn();
-    const was = time.classList.contains("on");
     time.classList.toggle("on", on);
-    if (on !== was && visible === "taste" && W) {
-      resizeMap();
-      drawMap();
-      placePlate();
-    }
     if (!on || visible !== "taste") return;
     const w = Math.max(40, track.clientWidth);
     const h = Math.max(20, track.clientHeight);
@@ -804,78 +874,104 @@ export function createTaste(host) {
     return pick || ss.slice().sort((a, b) => b.share - a.share)[0];
   }
 
+  // The chips are kept per style (its index, which a refit keeps) and their
+  // words and state are set in place, as the weights' rows are: a rebuild
+  // on a styles reply or a sync would replace a chip's ▶ under a press, and
+  // the press would be lost. Each chip's controls act on its style as last
+  // posted (`el.s`).
+  const chipEls = new Map(); // k → its chip's elements
+  function chipFor(k) {
+    let el = chipEls.get(k);
+    if (el) return el;
+    const chip = document.createElement("div");
+    chip.className = "md-chip";
+    chip.dataset.k = String(k);
+    const pick = document.createElement("button");
+    pick.className = "md-chip-pick";
+    pick.setAttribute("role", "radio");
+    pick.title = words.TASTE_LABELS.chipTitle;
+    // The chosen style's mark sits in a slot every chip keeps, left of the
+    // swatch, so the name never moves.
+    const mark = document.createElement("span");
+    mark.className = "md-mark";
+    mark.setAttribute("aria-hidden", "true");
+    const sw = document.createElement("i");
+    sw.style.background = host.styleColor(k);
+    const share = document.createElement("span");
+    share.className = "md-chip-share";
+    pick.append(mark, sw, share);
+    pick.onclick = () => {
+      stopBarReplay();
+      styleK = k;
+      renderLearning();
+    };
+    const input = document.createElement("input");
+    input.className = "md-chip-name";
+    input.maxLength = 24;
+    input.title = words.TASTE_LABELS.nameTitle;
+    const fit = () => { input.size = Math.max(6, (input.value || input.placeholder).length + 1); };
+    input.addEventListener("input", fit);
+    input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
+    input.addEventListener("keyup", (e) => e.stopPropagation());
+    // A rename updates this chip and the weights' label in place: a
+    // rebuild here would replace the chip's ▶ under a pointer that blurred
+    // the name by pressing it, and the press would be lost.
+    input.onblur = () => {
+      const s = el.s;
+      const name = input.value.trim();
+      if ((s.name || "") === name) return;
+      s.name = name;
+      host.setStyleName(s.k, name);
+      input.placeholder = host.styleName({ ...s, name: "" }, s.k);
+      pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
+      renderBars();
+    };
+    const play = document.createElement("button");
+    play.className = "md-chip-play";
+    play.textContent = "▶";
+    play.onclick = () => {
+      const ex = el.s.exemplars && el.s.exemplars[0];
+      if (ex != null) host.play(ex, play);
+    };
+    chip.append(pick, input, play);
+    el = { chip, pick, share, input, play, fit, s: null };
+    chipEls.set(k, el);
+    return el;
+  }
   function renderChips() {
     const box = $("md-chips");
-    if (document.activeElement && box.contains(document.activeElement) && document.activeElement.matches("input")) return;
     const ss = activeStyles();
-    box.replaceChildren();
     box.classList.toggle("hidden", !ss.length);
     const chosen = chosenStyle();
+    const keep = new Set();
     for (const s of ss) {
-      const color = host.styleColor(s.k);
-      const chip = document.createElement("div");
-      chip.className = "md-chip";
-      chip.dataset.k = String(s.k);
-      const pick = document.createElement("button");
-      pick.className = "md-chip-pick";
-      pick.setAttribute("role", "radio");
-      pick.setAttribute("aria-checked", String(chosen && chosen.k === s.k));
-      pick.title = words.TASTE_LABELS.chipTitle;
-      // The chosen style's mark sits in a slot every chip keeps, left of the
-      // swatch, so the name never moves.
-      const mark = document.createElement("span");
-      mark.className = "md-mark";
-      mark.setAttribute("aria-hidden", "true");
-      const sw = document.createElement("i");
-      sw.style.background = color;
-      const share = document.createElement("span");
-      share.className = "md-chip-share";
-      share.textContent = `${Math.round(s.share * 100)}%`;
-      pick.append(mark, sw, share);
-      pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
-      pick.onclick = () => {
-        stopBarReplay();
-        styleK = s.k;
-        renderLearning();
-      };
-      const input = document.createElement("input");
-      input.className = "md-chip-name";
-      input.maxLength = 24;
-      input.value = s.name || "";
-      input.placeholder = host.styleName(s, s.k);
-      input.title = words.TASTE_LABELS.nameTitle;
-      const fit = () => { input.size = Math.max(6, (input.value || input.placeholder).length + 1); };
-      fit();
-      input.addEventListener("input", fit);
-      input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
-      input.addEventListener("keyup", (e) => e.stopPropagation());
-      // A rename updates this chip and the weights' label in place: a
-      // rebuild here would replace the chip's ▶ under a pointer that blurred
-      // the name by pressing it, and the press would be lost.
-      input.onblur = () => {
-        const name = input.value.trim();
-        if ((s.name || "") === name) return;
-        s.name = name;
-        host.setStyleName(s.k, name);
-        input.placeholder = host.styleName({ ...s, name: "" }, s.k);
-        pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
-        renderBars();
-      };
-      const play = document.createElement("button");
-      play.className = "md-chip-play";
-      play.textContent = "▶";
-      const ex = s.exemplars && s.exemplars[0];
-      if (ex == null) {
-        play.disabled = true;
-        play.title = words.TASTE_LABELS.noExemplarTitle;
-      } else {
-        play.title = words.TASTE_LABELS.exemplarTitle;
-        play.onclick = () => host.play(ex, play);
+      const el = chipFor(s.k);
+      keep.add(s.k);
+      el.s = s;
+      el.share.textContent = `${Math.round(s.share * 100)}%`;
+      el.pick.setAttribute("aria-checked", String(!!(chosen && chosen.k === s.k)));
+      el.pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
+      // A name being typed is the player's: only an idle field follows the post.
+      if (document.activeElement !== el.input) {
+        el.input.value = s.name || "";
+        el.input.placeholder = host.styleName(s, s.k);
+        el.fit();
       }
-      play.setAttribute("aria-label", play.title);
-      chip.append(pick, input, play);
-      box.append(chip);
+      const ex = s.exemplars && s.exemplars[0];
+      el.play.disabled = ex == null;
+      el.play.title = ex == null ? words.TASTE_LABELS.noExemplarTitle : words.TASTE_LABELS.exemplarTitle;
+      el.play.setAttribute("aria-label", el.play.title);
     }
+    for (const [k, el] of chipEls) {
+      if (keep.has(k)) continue;
+      el.chip.remove();
+      chipEls.delete(k);
+    }
+    // Moved only when the order is not already the one shown: moving a node
+    // takes the focus from it.
+    const want = ss.map((s) => chipEls.get(s.k).chip);
+    const have = [...box.children];
+    if (want.length !== have.length || want.some((c, i) => c !== have[i])) box.replaceChildren(...want);
   }
 
   // The rows are kept per feature and updated in place, so a bar moves to a
@@ -884,6 +980,9 @@ export function createTaste(host) {
   let shownK = null;        // the style the rows draw
   let barReplay = null;     // {list, i, timer} while REPLAY runs
   let barHover = null;      // the feature pointed at, shading the small map
+  // LEARNING's bars hold their order while the hand is on them (hand.js).
+  const barsHand = newHand();
+  const barsHold = holdRegion($("md-bars"), barsHand);
 
   function rowFor(name) {
     let el = rowEls.get(name);
@@ -948,6 +1047,7 @@ export function createTaste(host) {
       box.replaceChildren();
       rowEls.clear();
       shownK = null;
+      barHover = null;
       more.classList.add("hidden");
       return;
     }
@@ -956,8 +1056,18 @@ export function createTaste(host) {
       box.replaceChildren();
       rowEls.clear();
       shownK = s.k;
+      barHover = null;
     }
-    const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean));
+    let rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean));
+    // While the hand is on the bars, the same style's rows keep the order
+    // shown and only their lengths move; they take their new order when it
+    // lets go (`reorderBars`). REPLAY's steps, asked for, are not held.
+    if (!view && barsHand.held() && rowEls.size) {
+      const at = new Map([...box.children].map((row, i) => [row, i]));
+      const place = (r) => at.get(rowEls.get(r.name)?.row) ?? Infinity;
+      rows = rows.slice().sort((a, b) => place(a) - place(b));
+      barsHand.after("order", reorderBars);
+    }
     // One scale for every row, fitted as the module rail's are (taste-geom
     // `directionsScale`), in percent of the track's half-width.
     const scale = geom.directionsScale(view && view.prev ? [...rows, ...view.prev] : rows, 50);
@@ -985,13 +1095,17 @@ export function createTaste(host) {
         el.ghostEl.classList.add("on");
       } else el.ghostEl.classList.remove("on");
       el.val.textContent = `${r.mean >= 0 ? "+" : "−"}${Math.abs(r.mean).toFixed(2)}`;
-      box.append(el.row);
     });
     for (const [name, el] of rowEls) {
       if (keep.has(name)) continue;
       el.row.remove();
       rowEls.delete(name);
     }
+    // Moved only when the order is not the one shown: a moved node leaves
+    // the pointer's row and takes the focus from it.
+    const want = rows.map((r) => rowEls.get(r.name).row);
+    const have = [...box.children];
+    if (want.length !== have.length || want.some((row, i) => row !== have[i])) box.replaceChildren(...want);
     box.classList.toggle("collapsed", !moreOpen);
     more.classList.remove("hidden");
     more.setAttribute("aria-expanded", String(moreOpen));
@@ -999,6 +1113,26 @@ export function createTaste(host) {
     const { settled, guesses } = geom.countPulls(rows.map((r) => geom.pullMark(r, scale, 50)));
     box.setAttribute("aria-label", words.weightsSaid(host.styleName(s, s.k), settled, guesses));
     syncReplayButton();
+  }
+
+  // The order the hand held, taken up once it lets go: each row slides from
+  // where it was to its new place (a FLIP over `--d-move`), or, under reduced
+  // motion, is there at once.
+  function reorderBars() {
+    if (visible !== "learning" || barReplay) return;
+    const before = new Map();
+    for (const [name, el] of rowEls) before.set(name, el.row.getBoundingClientRect());
+    renderBars();
+    const dur = motionMs("--d-move");
+    if (!dur) return;
+    for (const [name, el] of rowEls) {
+      const was = before.get(name);
+      const now = el.row.getBoundingClientRect();
+      if (!was || !was.height || !now.height) continue;
+      const dy = was.top - now.top;
+      if (Math.abs(dy) < 0.5) continue;
+      el.row.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: dur, easing: tok("--e-settle") || "ease" });
+    }
   }
 
   // ---------- REPLAY: the weights through the picks ----------
@@ -1411,6 +1545,19 @@ export function createTaste(host) {
     drawStrip();
   }).observe($("view-learning"));
 
+  // Whether the places' settle, when it comes, is a refit's, said aloud.
+  let settleSays = false;
+  function settlePlaces() {
+    const say = settleSays;
+    settleSays = false;
+    // Looking back, or away: the map takes up the views now when it is next
+    // shown at now (`setScrub`, `setView`).
+    if (visible !== "taste" || scrub != null) return;
+    adopt({ move: true });
+    if (say) live.textContent = words.refitSaid();
+    kick();
+  }
+
   /** The views or the ratings changed (a refit, a generation, an import, a
    *  child landing, a pick): keep a new map as a moment, and adopt what is
    *  new. */
@@ -1440,13 +1587,17 @@ export function createTaste(host) {
     const fit = fitted();
     if (visible === "taste") {
       if (map !== seenMap || fit !== seenFitted) {
-        // A views post: a refit, a generation, an import. Every halo and
-        // every place settles together (`taste_map`, `belief`).
-        const settle = seenMap != null && map != null && map !== seenMap && fit && seenFitted;
+        // A views post: a refit, a generation, an import. Every halo
+        // settles to it now (`belief`); the places (`taste_map`) settle with
+        // them, or, while the hand is on the map, once it lets go: nothing
+        // moves under it. A later post while they wait takes its place, and
+        // a refit's settling is said when the places move.
+        const refit = seenMap != null && map != null && map !== seenMap && fit && seenFitted;
         seenMap = map;
         seenFitted = fit;
-        adopt({ move: true });
-        if (settle) live.textContent = words.refitSaid();
+        settleSays = mapHand.held() ? settleSays || refit : refit;
+        if (mapHand.held()) adopt({ move: false });
+        mapHand.after("places", settlePlaces);
       } else if (ratings !== seenRatings) {
         adopt({ move: false });
       }
@@ -1524,6 +1675,7 @@ export function createTaste(host) {
       visible = name === "taste" || name === "learning" ? name : null;
       if (visible !== "taste") {
         setActive(null);
+        mapHold.release();
         if (was === "taste") {
           // Leaving TASTE leaves the track at now.
           stopReplay();
@@ -1531,7 +1683,10 @@ export function createTaste(host) {
           scrubView = null;
         }
       }
-      if (visible !== "learning") stopBarReplay();
+      if (visible !== "learning") {
+        stopBarReplay();
+        barsHold.release();
+      }
       if (visible === "taste" && was !== "taste") {
         measureMap();
         seenMap = mapOf();
