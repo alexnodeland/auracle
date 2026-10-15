@@ -59,6 +59,74 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   await at(page, "perform");
 });
 
+// The latest ▶ wins (#421): a preset's ▶ waits for its sound to be loaded and
+// rendered, and a pool row's ▶ tapped meanwhile takes that wait back, so the
+// preset's phrase, landing later, does not start over the row's. Every phrase
+// that starts is counted on the page as it starts (a ▶'s phrase is a buffer
+// played from its start), so what is heard is read on the app's own timeline,
+// however late the preset's render is.
+test("a pool row's ▶ tapped while a preset's ▶ waits for its sound is the one heard", async ({ page, app }) => {
+  await page.addInitScript(() => {
+    window.__phrases = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...a) {
+      window.__phrases++;
+      return start.apply(this, a);
+    };
+  });
+  const phrases = () => page.evaluate(() => window.__phrases);
+  await boot(page, app);
+  // The preset's load waits in the tap until the row's ▶ has been tapped.
+  await app.holdRequests("load_preset");
+  await bankTab(page, "presets");
+  const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
+  await preset.locator(".bi-hear").tap();
+  await expect.poll(() => app.sentCount("load_preset")).toBeGreaterThan(0);
+  await bankTab(page, "pool");
+  const id = await page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2).getAttribute("data-id");
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  await toRow(row);
+  const before = await phrases();
+  await row.locator(".bi-hear").tap();
+  await app.engine((timeout) => expect.poll(phrases, { timeout, message: "the row's phrase starts" }).toBe(before + 1), { ms: 30_000 });
+  // Now the preset loads, and anything it would render is answered.
+  await app.releaseRequests();
+  await app.replyTo((await app.sent({ type: "load_preset", preview: true }))[0]);
+  await app.answered({ types: ["render"] });
+  await app.quiet();
+  expect(await phrases(), "a phrase started after the row's: the preset's, over it").toBe(before + 1);
+});
+
+// The same, through the ▶ that plays everywhere (ADR-016): the header's ▶
+// (Space's press) with a patch on the bench goes to the bench's ▶, not
+// through a render's wait, and it too takes the preset's wait back.
+test("the header's ▶ pressed while a preset's ▶ waits for its sound is the one heard", async ({ page, app }) => {
+  await page.addInitScript(() => {
+    window.__phrases = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...a) {
+      window.__phrases++;
+      return start.apply(this, a);
+    };
+  });
+  const phrases = () => page.evaluate(() => window.__phrases);
+  await boot(page, app);
+  await app.holdRequests("load_preset");
+  await bankTab(page, "presets");
+  const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
+  await preset.locator(".bi-hear").tap();
+  await expect.poll(() => app.sentCount("load_preset")).toBeGreaterThan(0);
+  await bankTab(page, "pool");
+  const before = await phrases();
+  await page.locator("#inhand-play").tap();
+  await app.engine((timeout) => expect.poll(phrases, { timeout, message: "the sound in hand's phrase starts" }).toBe(before + 1), { ms: 30_000 });
+  await app.releaseRequests();
+  await app.replyTo((await app.sent({ type: "load_preset", preview: true }))[0]);
+  await app.answered({ types: ["render"] });
+  await app.quiet();
+  expect(await phrases(), "a phrase started after the header's: the preset's, over it").toBe(before + 1);
+});
+
 test("on a touch screen tapping ★ and then the fifth star rates five, and cuts nothing", async ({ page, app }) => {
   await boot(page, app);
   const id = await page.locator("#bank-list .bank-item[data-id]:not(.live):not(.saved)").nth(1).getAttribute("data-id");
