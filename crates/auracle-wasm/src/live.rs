@@ -2617,12 +2617,9 @@ impl LivePoly {
                     // key it let go, pressed again here, would steal from
                     // the others, and a stolen voice re-gates, so its note
                     // re-attacked from silence instead of carrying its
-                    // envelope across the swap.
-                    let from = if self.unison {
-                        0
-                    } else {
-                        self.held.len().saturating_sub(self.limit)
-                    };
+                    // envelope across the swap. (In unison the newest key
+                    // is pressed last either way, and it is the stack.)
+                    let from = self.held.len().saturating_sub(self.limit);
                     for i in from..self.held.len() {
                         let (n, v) = self.held[i];
                         self.press(n, v);

@@ -492,6 +492,51 @@ fn a_unison_stack_stays_centred_when_the_limit_moves() {
     );
 }
 
+/// In unison under the arp, a lowered limit lets the stack's voices past it
+/// go at once, and the arp's next step presses the stack at its new size.
+#[test]
+fn a_lowered_limit_trims_the_arps_unison_stack() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    poly.set_unison(true, 1.0, 1.0);
+    poly.set_arp(true, 0, 4.0, 120.0, 1.0, 1, 0.0);
+    poly.note_on(57, 1.0);
+    poly.process(128);
+    let held = |p: &LivePoly| p.voices.iter().filter(|v| v.note.is_some()).count();
+    assert_eq!(held(&poly), 10, "the arp pressed the whole stack");
+    poly.set_voice_limit(4);
+    assert_eq!(held(&poly), 4);
+    assert!(poly.voices[4..]
+        .iter()
+        .all(|v| v.note.is_none() && v.running));
+}
+
+/// A unison stack held through a swap comes back as wide as the limit, on
+/// the note held, and centred.
+#[test]
+fn a_unison_stack_comes_back_whole_from_a_swap() {
+    quiver::rng::seed(7);
+    let json = long_tail_json();
+    let mut poly = LivePoly::new(&json, 44_100.0, 10).unwrap();
+    poly.set_voice_limit(3);
+    poly.set_unison(true, 1.0, 1.0);
+    poly.note_on(52, 1.0);
+    poly.note_on(57, 1.0);
+    assert!(poly.set_patch(&json));
+    let mut patched = false;
+    for _ in 0..100 {
+        poly.process(128);
+        patched |= poly.poll_event() == EVENT_PATCHED;
+    }
+    assert!(patched, "swap never completed");
+    assert_eq!(held_notes(&poly), vec![57, 57, 57]);
+    let (pan, det, _) = stack_centre(&poly, 57);
+    assert!(
+        pan.abs() < 1e-6 && det.abs() < 1e-9,
+        "off centre: {pan} {det}"
+    );
+}
+
 /// A pad held through a swap with more keys down than the limit lets sound:
 /// the notes that sound carry their envelope, as one note on its own does,
 /// rather than re-attacking because the keys the limit let go were pressed
