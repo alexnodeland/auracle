@@ -108,7 +108,10 @@ function mark(name, detail, { once = false } = {}) {
 }
 mark("boot-start");
 
-const BUILD = await (async () => {
+// index.html read the stamp before it started this module (`window.__aurBuild`:
+// it needs it for the import map that keeps one copy of faces.js and vessel.js
+// under the stamp's URL). Opened any other way, the stamp is read here.
+const BUILD = window.__aurBuild || await (async () => {
   try {
     const r = await fetch("./pkg/build.json", { cache: "no-cache" });
     if (r.ok) {
@@ -118,14 +121,72 @@ const BUILD = await (async () => {
   } catch (_) { /* no build, or no server: fall through to the clock */ }
   return String(Date.now());
 })();
-// The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
-// unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
-// worker exists, so no reply can arrive while it loads.
-const geom = await import(`./taste-geom.js?v=${BUILD}`);
+// Every module the page needs at boot, asked for at once: one after another,
+// each waited on its predecessor's reply, and the engine's worker (below) did
+// not start until the last had come. Each is pure or a factory, so the order
+// they arrive in is no order at all, and the browser fetches them side by side.
+//  - taste-geom.js: the TASTE view's lengths (dot sizes, bars, whiskers), pure
+//    and unit-tested (tests/taste-geom.test.mjs). Awaited before the worker
+//    exists, so no reply can arrive while it loads.
+//  - words.js: sentences built from engine facts (a generation's outcome, a
+//    prediction's word), pure and unit-tested (tests/words.test.mjs). PATCH's
+//    words (`PATCH_WORDS`) are the same module.
+//  - patch.js: PATCH's guess, cable levels, new patch and module sheet, built
+//    on the rack below through the host it is handed (`patchView`).
+//  - taste.js: TASTE's map and LEARNING's room; it draws from what this side
+//    holds, and is created with the TASTE and LEARNING bridge below.
+//  - faces.js, vessel.js: a sound's face against the bank
+//    (tests/faces.test.mjs), and the one renderer that draws it at every size
+//    (tests/vessel.test.mjs); shipped-faces.js: which of the presets' shipped
+//    faces a session draws (tests/shipped-faces.test.mjs).
+//  - live-face.js: every face of a sound being played draws what sounds over
+//    it, as stage mode does (tests/live-face.test.mjs): `liveFaces`, below.
+//  - support.js: how many sounds in the pool carry each module and each
+//    coordinate, read off the ranked rows' s-expressions.
+//  - audio-in.js: AUDIO IN's permission, inputs, monitoring and clip (Plan-007
+//    task 4); takes.js: CAPTURE's RECORD and the sounds kept safe for a
+//    recording (Plan-007 task 6). Both are created once the audio exists.
+//  - shell.js: the levels and the ways between them (Plan-008). The shell does
+//    the DOM of a move; what a move does to the rest of the instrument is
+//    `levelChanged`, below.
+//  - guide.js: the first-visit steps, one at a time, bottom left of the stage.
+//  - toasts.js: the toast lane's queue, created with the DOM it draws on,
+//    where `note()` is, below.
+//  - deal.js: EVOLVE's dealing rules (which answer to a deal goes up, waits as
+//    the next pair or is dealt again), created with what it reads of the table
+//    where the next pair is dealt ahead, below.
+//  - params.js: what the address asks of a boot, `?farm=N` and `?seed=N`.
+//  - warm.js: the warm start's nine cards, one per family.
+//  - strain.js: is the audio struggling? The rule over main's samples.
+//  - bank-find.js: Find a sound's rule; marks.js: what pointing at EVOLVE POOL
+//    marks in the bank; hand.js: a background result waits while the pointer is
+//    over what it would move (a refit's views land through it, #300);
+//    refit.js: what a refit landing does.
+// The modules boot builds a little later (`bootPerform`, `bootExplain`,
+// `bootBooth`, `bootLiveAudio`, `bootMidi`), asked for now, beside the rest
+// and the worker, so each is in the module map when its turn comes. A miss
+// here is not one: the import there asks again and says what went wrong.
+for (const m of ["perform", "explain", "booth", "live-audio", "midi"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
+const [
+  geom, words, { createPatch }, { createTaste },
+  { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
+  { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
+  { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer },
+  bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
+  { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand }, { landRefit },
+] = await Promise.all([
+  import(`./taste-geom.js?v=${BUILD}`), import(`./words.js?v=${BUILD}`),
+  import(`./patch.js?v=${BUILD}`), import(`./taste.js?v=${BUILD}`),
+  import(`./faces.js?v=${BUILD}`), import(`./shipped-faces.js?v=${BUILD}`), import(`./vessel.js?v=${BUILD}`),
+  import(`./live-face.js?v=${BUILD}`), import(`./support.js?v=${BUILD}`),
+  import(`./audio-in.js?v=${BUILD}`), import(`./takes.js?v=${BUILD}`),
+  import(`./shell.js?v=${BUILD}`), import(`./guide.js?v=${BUILD}`),
+  import(`./toasts.js?v=${BUILD}`), import(`./deal.js?v=${BUILD}`),
+  import(`./params.js?v=${BUILD}`), import(`./warm.js?v=${BUILD}`), import(`./strain.js?v=${BUILD}`),
+  import(`./bank-find.js?v=${BUILD}`), import(`./marks.js?v=${BUILD}`),
+  import(`./hand.js?v=${BUILD}`), import(`./refit.js?v=${BUILD}`),
+]);
 const { directionsScale, pullMark } = geom;
-// Sentences built from engine facts (a generation's outcome, a prediction's
-// word), pure and unit-tested (words.js, tests/words.test.mjs).
-const words = await import(`./words.js?v=${BUILD}`);
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys, pairGuess,
@@ -133,36 +194,7 @@ const {
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
   dealRule, jobEta,
 } = words;
-// PATCH's guess, cable levels, new patch and module sheet (patch.js), built
-// on the rack below through the host it is handed (`patchView`).
 const PATCH_WORDS = words;
-const { createPatch } = await import(`./patch.js?v=${BUILD}`);
-// TASTE's map and LEARNING's room (taste.js): it draws from what this side
-// holds, and is created with the TASTE and LEARNING bridge below.
-const { createTaste } = await import(`./taste.js?v=${BUILD}`);
-// A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
-// one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
-const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
-// Which of the presets' shipped faces a session draws (shipped-faces.js,
-// tests/shipped-faces.test.mjs).
-const { readPresetFaces, presetFace } = await import(`./shipped-faces.js?v=${BUILD}`);
-const { drawVessel, vesselBox, shownBox } = await import(`./vessel.js?v=${BUILD}`);
-// Every face of a sound being played draws what sounds over it, as stage mode
-// does (live-face.js, tests/live-face.test.mjs): `liveFaces`, below.
-const { createLiveFaces } = await import(`./live-face.js?v=${BUILD}`);
-// How many sounds in the pool carry each module and each coordinate, read off
-// the ranked rows' s-expressions (support.js, tests/support.test.mjs).
-const { poolSupport } = await import(`./support.js?v=${BUILD}`);
-// AUDIO IN: the permission, the inputs, monitoring and the clip
-// (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
-const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
-// CAPTURE's RECORD and the sounds kept safe for a recording (takes.js,
-// Plan-007 task 6).
-const { createTakes, TAKE_LANE_H } = await import(`./takes.js?v=${BUILD}`);
-// The levels and the ways between them (shell.js, levels.js; Plan-008). The
-// shell does the DOM of a move; what a move does to the rest of the
-// instrument is `levelChanged`, below.
-const { createShell } = await import(`./shell.js?v=${BUILD}`);
 const shell = createShell({
   levelChanged: (prev, next, how) => levelChanged(prev, next, how),
   // The model view (hold ⌥, or MODEL): what it shows is `modelViewChanged`'s,
@@ -199,35 +231,6 @@ function modalUp() {
     (el) => el.isConnected && !el.classList.contains("hidden") && el.getClientRects().length > 0,
   );
 }
-// The guide pill (guide.js): the first-visit steps, one at a time, bottom
-// left of the stage. PERFORM adds its three when it is built.
-const { createGuide } = await import(`./guide.js?v=${BUILD}`);
-// The toast lane's queue (toasts.js, tests/toasts.test.mjs): created with the
-// DOM it draws on, where `note()` is, below.
-const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}`);
-// EVOLVE's dealing rules (deal.js, tests/deal.test.mjs): which answer to a
-// deal goes up, waits as the next pair or is dealt again. Created with what
-// it reads of the table where the next pair is dealt ahead, below.
-const { createDealer } = await import(`./deal.js?v=${BUILD}`);
-// What the address asks of a boot, `?farm=N` and `?seed=N` (params.js,
-// tests/params.test.mjs).
-const bootParams = await import(`./params.js?v=${BUILD}`);
-// The warm start's nine cards, one per family (warm.js, tests/warm.test.mjs).
-const { warmSample } = await import(`./warm.js?v=${BUILD}`);
-// Is the audio struggling? The rule over the audio's samples
-// (strain.js, tests/strain.test.mjs).
-const strainRule = await import(`./strain.js?v=${BUILD}`);
-// Find a sound's rule: what a sound must hold to stay in the bank while words
-// are typed (bank-find.js, tests/bank-find.test.mjs).
-const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
-// What pointing at EVOLVE POOL marks in the bank: the seeds, and what may or
-// will be replaced (marks.js, tests/marks.test.mjs).
-const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./marks.js?v=${BUILD}`);
-// A background result waits while the pointer is over what it would move
-// (hand.js, tests/hand.test.mjs): a refit's views land through it (#300).
-const { createHand } = await import(`./hand.js?v=${BUILD}`);
-// What a refit landing does (refit.js, tests/refit.test.mjs).
-const { landRefit } = await import(`./refit.js?v=${BUILD}`);
 const hand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
 // The regions a refit re-settles: the bank's rows, TASTE's map and EVOLVE's
 // small one, LEARNING's bars.
@@ -238,6 +241,8 @@ for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
   el.addEventListener("pointermove", () => hand.move());
   el.addEventListener("pointerleave", () => hand.leave());
 }
+// The guide pill: the first-visit steps, one at a time, bottom left of the
+// stage. PERFORM adds its three when it is built.
 const guide = createGuide({
   el: $("guide"),
   ends: {
