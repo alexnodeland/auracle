@@ -109,18 +109,26 @@ function installSoundAt(page) {
       return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
     };
     // The map's first arrow step, and a refit posting `v` in the same task.
-    window.__stepAndRefit = (v) => {
+    // With `glide`, the card is read again a glide's length later, in the
+    // page: timers fire in due order, so that read comes before the rest's
+    // however late the runner is.
+    window.__stepAndRefit = async (v, glide = false) => {
       const cv = document.getElementById("taste-crt");
       const at = performance.now();
       cv.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       window.__tap.inject({ type: "fitted", views: v, status: window.__tap.facts.status });
-      return {
+      const out = {
         at,
         id: Number(document.getElementById("taste-plate").dataset.id),
         plate: window.__plateAt(),
         like: document.querySelector("#taste-plate .ts-pl-like").textContent,
         said: document.getElementById("taste-live").textContent,
       };
+      if (glide) {
+        await new Promise((r) => setTimeout(r, window.__dMove() + 200));
+        out.later = window.__plateAt();
+      }
+      return out;
     };
   });
 }
@@ -221,18 +229,15 @@ test("with a sound's card up a refit moves the halos and no place, and the place
   expect(far(pos2[id], pos[id]), "the refit moves the card's sound well clear of its place").toBeGreaterThan(s0 * 2);
 
   // The card comes up, and the refit lands, in one task, so the rest is
-  // counted from the refit's landing.
-  const now = await page.evaluate((v) => window.__stepAndRefit(v), swapped);
+  // counted from the refit's landing; the card is read again a glide's
+  // length later in the same evaluate.
+  const now = await page.evaluate((v) => window.__stepAndRefit(v, true), swapped);
   expect(now.id, "the card is up on the same sound").toBe(id);
   expect(now.like, "the halos moved to the refit at once").toMatch(new RegExp(`^would like: ${pct(-1)}% · `));
   expect(now.said, "nothing said while the places wait").toBe("");
   // The card goes with its sound while the places glide: a glide's length
   // later it has not moved, so neither has its sound.
-  const still = await page.evaluate(async () => {
-    await new Promise((r) => setTimeout(r, window.__dMove() + 200));
-    return { plate: window.__plateAt() };
-  });
-  expect(still.plate, "the card's sound kept its place through a glide's length").toEqual(now.plate);
+  expect(now.later, "the card's sound kept its place through a glide's length").toEqual(now.plate);
   await expect(page.locator("#taste-live")).toHaveText(REFIT_SAID, { timeout: 5_000 });
   const said = await page.evaluate(() => window.__said);
   console.log(`rest: the refit said ${Math.round(said - now.at)} ms after the card came up and it landed`);
