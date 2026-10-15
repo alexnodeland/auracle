@@ -1,6 +1,7 @@
 // An open reaches the voices (and PERFORM) before the engine has rendered it
-// for the rack: from the engine's first word about it, or, for a preset
-// opened before in this browser, from the page's memory at the click. Until
+// for the rack: at the click, a preset from the shipped file and a pool sound
+// from the tree main holds since its rows (#306), else from the engine's
+// first word about it. Until
 // the rack lands the patch is PERFORM's but not the bench's, and these are
 // the ways that can go wrong:
 //

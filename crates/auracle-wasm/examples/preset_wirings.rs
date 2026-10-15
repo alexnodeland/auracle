@@ -19,7 +19,9 @@
 //! then re-standardized as the worker does after its fill), the preset
 //! inserted with `load_preset`,
 //! its tree read back with `tree_json_of` — the text the app keys its cache
-//! by — and measured by `perform_wire` with no knob overrides, which is what
+//! by — with its loudness makeup (`makeup_of`) and rack description
+//! (`describe_of`), which the page opens it from in the click's own task
+//! (#306), and measured by `perform_wire` with no knob overrides, which is what
 //! the worker's planned measurement finishes as (pinned by
 //! `a_planned_measurement_is_the_measurement`).
 //!
@@ -154,10 +156,19 @@ fn main() {
                         reach,
                         t0.elapsed().as_secs_f64()
                     );
+                    // What the voices and the rack need to open it without
+                    // the engine (#306): its loudness makeup, read the way
+                    // the worker reads a pool member's (`makeup_of`), and
+                    // its rack description (`describe_of`).
+                    let makeup = e.makeup_of(id);
+                    let rack: serde_json::Value =
+                        serde_json::from_str(&e.describe_of(id)).expect("a rack description");
                     let row = serde_json::json!({
                         "name": p.name,
                         "source": preset_source(p.name, &p.tree),
                         "tree": tree,
+                        "makeup": makeup,
+                        "rack": rack,
                         "shape": shape,
                         "data": data,
                     });
@@ -230,7 +241,7 @@ fn main() {
     );
     // One preset per line, so a regeneration diffs by preset.
     let head = serde_json::json!({
-        "about": "PERFORM's wiring of every preset, measured natively by `make perform-wirings` (crates/auracle-wasm/examples/preset_wirings.rs). Generated: do not edit. The app plays a preset from this at once and re-measures it in the background.",
+        "about": "Every preset's tree, makeup, rack description and PERFORM wiring, measured natively by `make perform-wirings` (crates/auracle-wasm/examples/preset_wirings.rs). Generated: do not edit. The app opens and plays a preset from this at once and re-measures its wiring in the background.",
         "rev": 0,
         "fingerprint": measurement_fingerprint(&PhraseSpec::default()),
         "standardizer": standardizer.map(|(mean, std)| serde_json::json!({ "mean": mean, "std": std })),

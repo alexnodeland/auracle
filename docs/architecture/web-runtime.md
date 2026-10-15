@@ -1459,13 +1459,27 @@ through one ordered lane in `main.js`:
   redo with neither (`restore`) waits for its render; any other rewrite
   still goes early at the previous tree's makeup, which the reply corrects.
 
-An open reaches the voices before the bench. Opening is a render (the bench's
-buffer) on the engine's one thread, behind whatever render is running there,
-but the voices need only the tree and its makeup: the worker posts them first
-(`bench_opening`, from a clicked preset's insert and from `edit_begin`), and
-`main.js` remembers each preset's (`auracle-voiced-presets` in localStorage,
-keyed by the build), so a preset opened before goes into the voices, and
-PERFORM, from the click, without the engine (`voiceEarly`). Until the bench
+An open reaches the voices in the click's own task (#306). Opening is a
+render (the bench's buffer) on the engine's one thread, behind whatever is
+running there (seconds behind a measurement or a refit on the reference
+machine), but the voices need only the tree and its makeup, and `main.js`
+holds both before the click: a pool member's arrive beside the ranked rows
+that first list it (`trees` on the views, `refine_child`, `ranked` and
+`pinned`: the worker's `newTrees`, with the member's `first` for PERFORM;
+main's `poolTrees`, which forgets an id the rows no longer list), and every
+preset's ship with the app (`perform-wirings.json` carries each one's tree,
+`makeup` and `rack` description beside its wiring, under the file's one
+fingerprint). So `openOnBench` (a bank row, a duel card, a map dot, a step)
+and a preset's row (`voicePresetEarly`) and TEACH IT's first pick hand the
+patch to the voices, and PERFORM, which wires it from its cache or the
+shipped file in the same task (`voiceEarly`, marked `auracle:voiced`). The
+worker still posts the tree first (`bench_opening`, from a clicked preset's
+insert and from `edit_begin`): it voices an open main held nothing for (a
+sound restored before the first rows), and otherwise confirms one. A preset
+opened before is also remembered (`auracle-voiced-presets` in localStorage,
+keyed by the build), for a page whose shipped file did not load. TASTE rings
+the sound in hand green from the click (its host's `subjectId` is the sound
+the voices took). Until the bench
 reply lands, `earlyOpen` holds that state: the old rack's knobs do not write
 into the voices (`voicesAheadOfRack`), edits still landing on the old rack do
 not take the voices back, a subject reply for an earlier open leaves them
@@ -1494,7 +1508,9 @@ at once and re-measured. It used to be stamped with the observation count, so
 every pick made every kept wiring stale (#290).
 
 A sound nobody has measured plays at once too (#290). With a tree on its way
-to the voices (`bench_opening`, `tree_json`) the worker sends `first`, the
+to the voices (`bench_opening`, `tree_json`, and each pool member's entry in
+the ranked rows' `trees`, stamped with the controls it was predicted for) the
+worker sends `first`, the
 engine's `perform_first`: the tree's shape (`shape_of`, its trace without the
 continuous choices), its live knobs, and a wiring predicted from the knob
 table (`predict::KnobTable`, the `knobs` of `perform-wirings.json`, which the
@@ -1620,16 +1636,17 @@ generations that pushed them out of the memo, and they are measured again (a
 hit where they are still in it; `apps/web/tests/worker-lanes.test.mjs`). Its
 inserts are memo hits, the same φ (a hit is bit-identical to a miss), so the
 pool, the picks and the first fit are the ones *teach it* made without them
-(`tests/worker/warm_start.test.mjs`). What is left between *teach it* and the
-first pick's controls is the call in progress when it arrives: a card's
-render, or one of the measurement's. The first pick's sound is not in the
+(`tests/worker/warm_start.test.mjs`). Nothing is left between *teach it* and
+the first pick's controls: the press hands the voices and PERFORM the pick's
+tree and makeup from the shipped file in its own task (#306), and its insert
+(`warm_first`) only gives it an id. The first pick's sound is not in the
 memo, so the bench's open renders it, once, after its controls are live.
 
 `budgets.spec.js`'s warm start picks three cards and presses *teach it*
-about half a second after the card is dealt. On that Mac, the app before
-and after run back to back at a load average of 50 to 70 (`warm_first` −
-`warm_start`, the span the budget names "its insert"; the controls were live
-2 to 6 ms after it):
+about half a second after the card is dealt. Before #306 its budget was the
+insert's: on that Mac, the app before and after the memo run back to back at
+a load average of 50 to 70 (`warm_first` − `warm_start`; the controls were
+live 2 to 6 ms after it):
 
 | | Runs | Its insert, median | Range |
 | --- | --- | --- | --- |
