@@ -31,9 +31,13 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page, app }
       if (document.readyState !== "interactive") return;
       const boot = document.getElementById("boot");
       const sub = document.getElementById("boot-sub");
-      new MutationObserver(() => {
-        if (!boot.classList.contains("done") && sub.textContent !== said[said.length - 1]) said.push(sub.textContent);
-      }).observe(sub, { childList: true, characterData: true, subtree: true });
+      // index.html's head may have said it before this watch began.
+      const look = () => {
+        const t = sub.textContent.trim();
+        if (t && !boot.classList.contains("done") && t !== said[said.length - 1]) said.push(t);
+      };
+      look();
+      new MutationObserver(look).observe(sub, { childList: true, characterData: true, subtree: true });
     });
   });
   await firstVisit(app);

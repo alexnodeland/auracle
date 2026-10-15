@@ -40,6 +40,8 @@ async function firstVisit(page, app, query = "") {
       const fill = document.getElementById("boot-fill");
       const sub = document.getElementById("boot-sub");
       if (!boot || !status || !fill || !sub) return;
+      // index.html's head may have said the sub-line before this watch began.
+      if (sub.textContent.trim()) seen.push({ sub: sub.textContent, at: performance.now() });
       new MutationObserver((records) => {
         const at = performance.now();
         for (const r of records) {
@@ -105,7 +107,9 @@ async function returningVisit(page, app) {
   return {
     restored: playable.restored,
     lifted: shown.some((e) => e.down),
-    // Each line the veil's sub-line carried while it was up.
+    // Each line the veil's sub-line carried while it was up: index.html's
+    // head says it, and main.js writes it again only if BOOT_POOL differs, so
+    // a second entry is the markup and the init drifting apart.
     sub: shown.filter((e) => e.sub != null).map((e) => e.sub),
     // Each count the line said while the veil was up, in order.
     said: shown.filter((e) => RECALLING.test(e.said || "")).map((e) => Number(RECALLING.exec(e.said)[1])),

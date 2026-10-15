@@ -24520,9 +24520,10 @@ function bootSubLine(returning) {
 (async () => {
   // The save read starts first and the render farm beside it, so N wasm
   // instantiations overlap with IndexedDB and with the engine worker's own
-  // init instead of queueing behind them. The veil's line is written the
-  // moment the read answers (first visit or return), not after the farm's
-  // compile: before then neither line would be known to be true.
+  // init instead of queueing behind them. The veil's line is index.html's to
+  // say first (its head reads the save before this module has run); this
+  // read confirms it from BOOT_POOL, and covers a save adopted from an older
+  // name.
   const savedRead = (async () => {
     let s = await idbGet("state");
     if (!s) {
@@ -24535,7 +24536,10 @@ function bootSubLine(returning) {
         if (s) { idbPut("state", s); break; }
       }
     }
-    $("boot-sub").textContent = bootSubLine(!!(s && s.session));
+    // index.html's head may have said it already, from the same read.
+    const line = bootSubLine(!!(s && s.session));
+    $("boot-sub").dataset.said = "1";
+    if ($("boot-sub").textContent !== line) $("boot-sub").textContent = line;
     return s;
   })();
   // Belt to `spawnFarm`'s braces: `send({type:"init"})` below must be reached
