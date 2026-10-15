@@ -7,7 +7,7 @@ edit as a new sound, and locking what you like before you breed from it.</p>
 <!-- film:sounddesign --><!-- /film:sounddesign -->
 
 <figure>
-<img src="./img/rack-detail.webp" alt="Rack detail: wavefolder, mix, chorus, and wavetable modules with labeled knobs, among them RATE 8.23 Hz, BAL +4.0 dB, and MORPH 85%, joined by green audio cables and amber modulation cables ending in named destinations PITCH, THRESHOLD, DEPTH, and MORPH." loading="eager" width="560" height="300">
+<img src="./img/rack-detail.webp" alt="Rack detail: filter, mix, compressor, and wavefolder modules with labeled knobs, among them cutoff 1.09 kHz, bal +6.4 dB, and ratio 11.6:1, joined by green audio cables and amber modulation cables ending in named destinations CUTOFF and THRESHOLD, with the mod envelope, hold and euclid modules that drive them below." loading="eager" width="560" height="300">
 <figcaption><strong>Two cable colors, two meanings.</strong> Green carries
 sound; amber carries modulation, and each amber cable says what it lands
 on.</figcaption>

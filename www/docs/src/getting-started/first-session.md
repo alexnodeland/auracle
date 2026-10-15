@@ -39,7 +39,7 @@ about thirty seconds, which is the difference between a model that has a
 guess by the end of this session and one that doesn’t.
 
 <figure>
-<img src="../img/warm-start.webp" alt="The warm-start card: nine named presets in a three-by-three grid, each with a one-line description and a play button, and two buttons below." loading="lazy" width="760" height="464">
+<img src="../img/warm-start.webp" alt="The warm-start card: nine named presets in a three-by-three grid, each with a one-line description and a play button, and two buttons below." loading="lazy" width="760" height="473">
 <figcaption><strong>The warm start.</strong> Nine presets, one per family
 first. The screenshot predates the current wording: the card now reads PICK
 THE THREE YOU’D REACH FOR.</figcaption>

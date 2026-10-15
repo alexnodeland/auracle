@@ -196,7 +196,7 @@
 <!-- ─── showcase ───────────────────────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">The instrument</p>
-  <h2 class="h2">One instrument, four views.</h2>
+  <h2 class="h2">One instrument, five levels.</h2>
   <!-- films:tour --><!-- /films:tour -->
 
   <div class="shots">
@@ -209,11 +209,15 @@
               aria-selected="false" tabindex="-1" data-tab="evolve">evolve</button>
       <button class="shot-tab" role="tab" id="tab-taste" aria-controls="pane-taste"
               aria-selected="false" tabindex="-1" data-tab="taste">taste</button>
+      <button class="shot-tab" role="tab" id="tab-learning" aria-controls="pane-learning"
+              aria-selected="false" tabindex="-1" data-tab="learning">learning</button>
+      <button class="shot-tab" role="tab" id="tab-cmdk" aria-controls="pane-cmdk"
+              aria-selected="false" tabindex="-1" data-tab="cmdk">⌘K</button>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-perform" aria-labelledby="tab-perform" tabindex="0">
       <!-- films:pane-perform --><!-- /films:pane-perform -->
-      <img src="assets/screens/perform.webp" alt="The PERFORM view: on the left the sound's family and name, large, and a well holding its face, with the offer in B standing beside it in amber and a Blend slider under the two; on the right six round controls named Bright, Snap, Motion, Body, Grit, and Space, a list of the sound's own knobs they move, and the pads Wander, Next, Peek, Take, and Pass." width="1440" height="900" loading="eager" decoding="async">
+      <img src="assets/screens/perform.webp" alt="PERFORM: on the left the sound's family and name, large, and a well holding its face, with the offer in B standing beside it in amber and a slider from HOME to B under the two; on the right six round controls named Bright, Snap, Motion, Body, Grit, and Space, a list of the sound's own knobs they move, and Wander's dial and the pads Next, Peek, Take, and Pass." width="1440" height="900" loading="eager" decoding="async">
       <p class="shot-cap"><strong>PERFORM.</strong> Play the sound with controls named
       for what you hear, from BRIGHT to SPACE. Each one turns the few knobs that move
       this sound most in its direction. Press OFFER, and it grows a variant into B for
@@ -222,7 +226,7 @@
 
     <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0" hidden>
       <!-- films:pane-play --><!-- /films:pane-play -->
-      <img src="assets/screens/play.webp" alt="The PATCH view: the bank on the left with match percentages; on the rack, Fat Bell's chain of phaser, distortion, chorus, compressor, and a second distortion, with envelope followers, a step sequencer, and mod envelopes driving it through amber modulation cables; the model's guess and its reasons above; the catalog of modules on the right; a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
+      <img src="assets/screens/play.webp" alt="PATCH: the bank on the left; in the well, Round Pad's chain of oscillator, pluck, filter, mixers, compressor, wavefolder, and ladder filter, with a mod envelope, a hold, and a euclidean rhythm driving it through amber modulation cables; the model's guess across the top of the well; EVOLVE FROM THIS above it; a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>PATCH.</strong> Open a sound to see its patch: every
       module, cable, and knob, each knob in its own units. Change any of it while you
       play. Lock what you love, and ⚡&nbsp;EVOLVE FROM THIS grows new sounds around
@@ -231,7 +235,7 @@
 
     <div class="shot-pane" role="tabpanel" id="pane-evolve" aria-labelledby="tab-evolve" tabindex="0" hidden>
       <!-- films:pane-evolve --><!-- /films:pane-evolve -->
-      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: the question Pick the one you'd reach for, with a teaching meter under it and a small taste map beside it, and two sounds side by side, each with its face large in a well." width="1440" height="900" loading="lazy" decoding="async">
+      <img src="assets/screens/evolve.webp" alt="EVOLVE: the question Pick the one you'd reach for, with a teaching meter under it and a small taste map beside it, and two sounds side by side, each with its face large in a well." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>EVOLVE.</strong> Pick between two sounds, and a meter
       counts the picks until it next redraws your taste. Press EVOLVE POOL, and what
       each generation did says what it changed, knob by knob and module by module.</p>
@@ -239,10 +243,25 @@
 
     <div class="shot-pane" role="tabpanel" id="pane-taste" aria-labelledby="tab-taste" tabindex="0" hidden>
       <!-- films:pane-taste --><!-- /films:pane-taste -->
-      <img src="assets/screens/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and brightness, three named style chips above it, and a legend reading less / would like and sure / unsure." width="1440" height="900" loading="lazy" decoding="async">
-      <p class="shot-cap"><strong>TASTE.</strong> Your sounds on one map, placed by how
-      they sound and how they&rsquo;re built. A brighter dot is one it rates higher for
-      you; a bigger dot is one it&rsquo;s less sure about.</p>
+      <img src="assets/screens/taste-map.webp" alt="TASTE: every sound in the pool as its own small face on a dark field, each over an amber halo of its own size and brightness, a SOUND / TASTE switch set to TASTE, a legend reading it likes more, and a line of picks along the bottom running to now." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>TASTE.</strong> Every sound on one map, close to the
+      ones it sounds like. The bigger and brighter the halo, the more it thinks
+      you&rsquo;ll like it. Scrub the line along the bottom to watch your taste take
+      shape, pick by pick.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-learning" aria-labelledby="tab-learning" tabindex="0" hidden>
+      <img src="assets/screens/learning.webp" alt="LEARNING: what it weighs, a list of qualities of sound with an amber bar for each reaching toward likes less or likes more, under four style chips; where liking rises, the pool on a map with an amber arrow; and its forecasts, how many of its guesses before a pick came true." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>LEARNING.</strong> What it weighs when it guesses what
+      you&rsquo;ll like, which way liking rises on the map, and how often its guesses
+      came true. Nothing hidden: copy it all as JSON, or open the math.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-cmdk" aria-labelledby="tab-cmdk" tabindex="0" hidden>
+      <img src="assets/screens/cmdk.webp" alt="Find or do anything, open over PERFORM with wa typed: under SOUNDS, Warm Pad, Warm Lead, Warm Wash and more, each with its face; under ANYWHERE, Watch the films, Re-run the three-pick warm start, Record what you play, and PATCH." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>⌘K.</strong> One list of every sound it holds and
+      everything it can do. Type a few letters of a sound, a level, or what you
+      want done, and press Enter.</p>
     </div>
   </div>
 
@@ -269,14 +288,14 @@
     </div>
 
     <figure class="learn-fig">
-      <!-- The DIRECTIONS panel, not the frame around it. This figure gets about
+      <!-- LEARNING's panels, not the frame around them. This figure gets about
            700px beside the copy, and a whole 1440px app frame at that width is
-           a 0.46× reduction: the plot becomes a smear and the bank and the
+           a 0.46× reduction: the bars become a smear and the bank and the
            keyboard take up half of it for nothing. -->
-      <img src="assets/screens/directions-detail.webp" alt="TASTE's directions: qualities of sound down the left and, for each, one amber bar per style reaching left or right of a center line, each with a thin line showing how far it could be off." width="1160" height="621" loading="lazy" decoding="async">
-      <figcaption>Which way each style leans, one quality of sound to a row. The thin
-      line is how far it could be off: where it crosses the center, the lean is still
-      a guess.</figcaption>
+      <img src="assets/screens/learning-detail.webp" alt="LEARNING's panels: what it weighs, one quality of sound to a row, each with an amber bar reaching toward likes less or likes more and a thin line showing how far it could be off, a ? on the rows still a guess; where liking rises, the pool on a map with an amber arrow; and its forecasts, scored against the picks that followed them." width="1016" height="607" loading="lazy" decoding="async">
+      <figcaption>What one style weighs, one quality of sound to a row. The thin line is
+      how far it could be off: where it crosses the center, the lean is still a
+      guess, and the row says so with a ?.</figcaption>
     </figure>
   </div>
 

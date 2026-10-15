@@ -550,6 +550,13 @@ into C2a and C2b; round 2's decisions govern PATCH):
   tabs), so the re-capture is a new shot list for the five levels, new
   crops in `encode-screens.sh` and new landing captions: #343, split off
   #132 so D could close.
+- **The re-capture (#343), as built:** `capture-screens.mjs` walks the rail
+  (`.rail-stop`), the bank's tabs and ⌘K, and shoots PERFORM, PATCH, EVOLVE,
+  TASTE, LEARNING, ⌘K open and the warm start; `encode-screens.sh` crops the
+  rack, the bank, a row, the warm start and LEARNING's panels from them; the
+  landing page shows five levels and ⌘K, with LEARNING's panels in place of
+  the old DIRECTIONS plot. The catalog's spec card (`spec-card.webp`,
+  `node-bank.webp`) has no shot yet and keeps its old image.
 - **The film selectors D leaves stale,** owed with the Wave 3 re-records as
   A's to C3's are: `#ovf-btn`, `#ovf-menu`, `.ovf-item`, `#export-btn`,
   `#patch-export-btn`, `#image-btn`, `#scope-btn`, `#engineer-btn`,
