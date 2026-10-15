@@ -4883,6 +4883,12 @@ html:not(.engineer) .dn-sig { display: none; }
   box-shadow: var(--cast);
   animation: toast-in var(--d-state) cubic-bezier(0.2, 0.9, 0.3, 1.05);
 }
+/* On TASTE a toast stands over the map, whose sounds reach to its corners,
+   and the lane has nowhere clear of it to go: there the toast lets the
+   pointer through to the sound under it, and only its buttons and links
+   take a click (#412). */
+body[data-level="taste"] .toasts .toast { pointer-events: none; }
+body[data-level="taste"] .toasts .toast :is(button, a) { pointer-events: auto; }
 .toast.out { opacity: 0; transform: translateY(-6px); transition: opacity var(--d-move) ease, transform var(--d-move) ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
 .toast-msg { flex: 1; min-width: 0; }

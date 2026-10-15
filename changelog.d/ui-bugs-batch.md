@@ -19,3 +19,10 @@
   descriptor. When you come back to a saved session it reads *restoring
   your bank & taste…*, not the first visit's *you start as soon as the
   first 8 land*: a return opens once your whole session is back.
+
+### Fixed: A toast no longer hides TASTE's sounds from the pointer
+
+- On a narrow window a toast sits over the corner of TASTE's map, and
+  pointing at a sound under it opened nothing. On TASTE the pointer now goes
+  through a toast to the sound under it, and only the toast's buttons take a
+  click.
