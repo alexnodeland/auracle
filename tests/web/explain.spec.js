@@ -43,6 +43,17 @@ const INIT = `(() => {
 })();`;
 const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
 const sounds = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeGreaterThan(-50);
+// How many of a canvas's pixels are drawn in a token's colour, near enough
+// to be its ink and not its blend with the background.
+const inked = (page, sel, token) =>
+  page.locator(sel).evaluate((c, t) => {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue(t).trim();
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && Math.abs(d[i] - r) < 24 && Math.abs(d[i + 1] - g) < 24 && Math.abs(d[i + 2] - b) < 24) n++;
+    return n;
+  }, token);
 const silent = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeLessThan(-80);
 
 // What the page asks the engine for a figure or the lesson (and to cancel
@@ -380,7 +391,7 @@ const LIVE_TAP = `(() => {
   // A move with the button held: a drag.
   const inLesson = (e) => e.buttons & 1 && e.target && e.target.closest && e.target.closest(".xl-filter");
   window.addEventListener("pointermove", (e) => {
-    if (inLesson(e)) window.__xlLive.moves.push({ at: performance.now(), from: window.__xlLive.sets.length });
+    if (inLesson(e)) window.__xlLive.moves.push({ at: performance.now(), stamp: e.timeStamp, from: window.__xlLive.sets.length });
   }, { capture: true });
   window.addEventListener("pointermove", (e) => {
     if (!inLesson(e)) return;
@@ -390,7 +401,7 @@ const LIVE_TAP = `(() => {
   });
 })();`;
 
-test("the lesson's cutoff is heard as it moves: the live filter is set in the move's own task, then the render takes over", async ({ page, app }) => {
+test("the lesson's cutoff is heard as it moves: the live filter is set in the move's own task, drawn as a guess, then the render takes over", async ({ page, app }) => {
   await page.addInitScript(INIT);
   await page.addInitScript(LIVE_TAP);
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, profile: "air" });
@@ -398,13 +409,20 @@ test("the lesson's cutoff is heard as it moves: the live filter is set in the mo
   await askAbout(page, app, 0);
   await page.locator(".xp.on .xp-learn").click();
   await lessonReply(app, { cutoff: false }, 60_000);
+  // Every filtered render is held from the page until the drag is done.
+  await app.hold({ type: "explain_lesson", cutoff: true });
   await page.locator(".xl.on .xl-next").click();
   await expect(page.locator(".xl.on .xl-h")).toHaveText("A filter lets some through");
   // It plays at once, through the live filter, before any filtered render
   // has landed.
-  const asked = await app.now();
   await page.keyboard.press(" ");
   await sounds(page, "the sound through the live filter plays");
+  expect(await app.replies("explain_lesson", { where: { cutoff: true } })).toEqual([]);
+  // Its curve is the guess: dashed amber, and said to be (not measured
+  // yet), with no measured curve.
+  const filter = ".xl.on .xl-filter";
+  expect(await inked(page, filter, "--phos-b")).toBeGreaterThan(20);
+  expect(await inked(page, filter, "--phos-a")).toBe(0);
   // The live filter is the lesson's Butterworth: 3 dB down at its cutoff.
   const atCut = await page.evaluate(() => {
     const n = window.__xlLive.node;
@@ -435,8 +453,15 @@ test("the lesson's cutoff is heard as it moves: the live filter is set in the mo
   // starts): the browser's own wait to dispatch a pointermove is not the
   // app's.
   app.budget("a lesson cutoff move on the page → the live filter set", worst, 16);
+  // From the event's own time, the browser's wait to hand the move to the
+  // page included: recorded beside the budget, not judged, while which clock
+  // the budget reads is open (#314).
+  const fromEvent = Math.max(...moves.map((m) => sets[m.to - 1].t - m.stamp));
+  test.info().annotations.push({ type: "measured", description: `a lesson cutoff move, from its event's time → the live filter set: ${Math.round(fromEvent)} ms` });
+  expect(await inked(page, filter, "--phos-b")).toBeGreaterThan(20);
   // The render for where the hand left it lands and is asked once the hand
   // is still: its cutoff is the one the live filter holds.
+  await app.release();
   const held = await page.evaluate(() => window.__xlLive.node.frequency.value);
   const f = await app.engine(
     async (ms) => {
@@ -452,11 +477,13 @@ test("the lesson's cutoff is heard as it moves: the live filter is set in the mo
     { ms: 90_000 },
   );
   expect(f.data.portrait).toBeTruthy();
-  // And takes over: the measured render faded in, the live path out.
+  // And takes over: the measured render faded in, the live path out, and
+  // the measured curve in the guess's place.
   await expect
     .poll(() => page.evaluate(() => window.__xlLive.level), { message: "the measured render in, the live filter out" })
     .toEqual({ live: 0, measured: 1 });
-  expect((await app.sent({ type: "explain_lesson" }, { after: asked })).length).toBeGreaterThan(0);
+  await expect.poll(() => inked(page, filter, "--phos-b"), { message: "the guess gone" }).toBe(0);
+  expect(await inked(page, filter, "--phos-a")).toBeGreaterThan(20);
   await sounds(page, "the measured render plays in the live filter's place");
 });
 
@@ -636,6 +663,8 @@ test("the lesson says why a render failed, draws nothing for it, and never plays
     { ms: 60_000 },
   );
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
+  // No curve, not even the guess, at the cutoff refused.
+  expect(await inked(page, ".xl.on .xl-filter", "--phos-b")).toBe(0);
   await page.keyboard.press(" ");
   // Nothing plays.
   await app.quiet();
@@ -668,6 +697,39 @@ test("the lesson says why a render failed, draws nothing for it, and never plays
   await app.quiet();
   expect(await app.sent({ type: "explain_lesson" }, { after: asked })).toEqual([]);
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
+  // Nor a guess at a filter nothing will play through.
+  expect(await inked(page, ".xl.on .xl-filter", "--phos-b")).toBe(0);
+});
+
+test("the lesson's shape is drawn at once on a step, playing or not, and marks the hand's cutoff before its render lands", async ({ page, app }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
+  await page.locator(".xp.on .xp-learn").click();
+  await lessonReply(app, { cutoff: false }, 60_000);
+  await app.hold({ type: "explain_lesson", cutoff: true });
+  await page.keyboard.press(" ");
+  await sounds(page, "the lesson plays");
+  // Under reduced motion the live line is drawn twice a second; a step is
+  // drawn in the click's own task all the same.
+  const drawn = await page.evaluate(() => {
+    document.querySelector(".xl.on .xl-next").click();
+    const c = document.querySelector(".xl.on .xl-shape");
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+    return n;
+  });
+  expect(drawn).toBeGreaterThan(1000);
+  // Stopped, so the only silk on the shape is the cutoff's mark: there
+  // before the render for it lands, and after a move.
+  await page.keyboard.press(" ");
+  await silent(page, "stopped");
+  await page.locator(".xl.on .xl-filter").focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => inked(page, ".xl.on .xl-shape", "--silk")).toBeGreaterThan(20);
+  expect(await app.replies("explain_lesson", { where: { cutoff: true } })).toEqual([]);
 });
 
 test("? opens ⌘K's list once the pointer has left a control a mouse turned, and never over an open answer", async ({ page, app }) => {

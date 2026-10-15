@@ -74,6 +74,35 @@ const LIVE_Q_DB = 20 * Math.log10(Math.SQRT1_2);
 // The most the live filter's level estimate lifts the sound through it
 // (12 dB): a low cutoff on a bright sound leaves little to lift.
 const LIVE_LIFT_MAX = 4;
+// BS.1770's K-weighting, as crates/auracle-features/src/loudness.rs has it
+// (`k_shelf`, `k_highpass`, the same coefficients): the loudness every
+// render is set to is read through it. Its power gain at `hz`, at the
+// sample rate `fs`.
+function kPower(hz, fs) {
+  const biquad = (b0, b1, b2, a1, a2) => {
+    const w = (2 * Math.PI * hz) / fs;
+    const c1 = Math.cos(w);
+    const s1 = Math.sin(w);
+    const c2 = Math.cos(2 * w);
+    const s2 = Math.sin(2 * w);
+    const nr = b0 + b1 * c1 + b2 * c2;
+    const ni = -(b1 * s1 + b2 * s2);
+    const dr = 1 + a1 * c1 + a2 * c2;
+    const di = -(a1 * s1 + a2 * s2);
+    return (nr * nr + ni * ni) / (dr * dr + di * di);
+  };
+  let q = 0.7071752369554196;
+  let k = Math.tan((Math.PI * 1681.974450955533) / fs);
+  const vh = Math.pow(10, 3.999843853973347 / 20);
+  const vb = Math.pow(vh, 0.499666774155);
+  let a0 = 1 + k / q + k * k;
+  const shelf = biquad((vh + (vb * k) / q + k * k) / a0, (2 * (k * k - vh)) / a0, (vh - (vb * k) / q + k * k) / a0, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0);
+  q = 0.5003270373238773;
+  k = Math.tan((Math.PI * 38.13547087602444) / fs);
+  a0 = 1 + k / q + k * k;
+  const hp = biquad(1 / a0, -2 / a0, 1 / a0, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0);
+  return shelf * hp;
+}
 
 export function createExplain(host) {
   const { words, tok, canvasFont, motionMs, INK, inkAlpha } = host;
@@ -1155,16 +1184,22 @@ export function createExplain(host) {
   // How far to lift the plain render through the live filter so it plays
   // about as loud as the measured render will (every render is set to one
   // loudness, −18 LUFS, and the filtered one too): the sound's power over
-  // what the filter leaves of it, band by band from its portrait. A guess,
-  // until the measured render for the cutoff held takes over.
+  // what the filter leaves of it, band by band from its portrait. A band's
+  // figure is a power density and the bands are spaced by octave, so each
+  // counts by its width (in proportion to its centre); and loudness is
+  // K-weighted (BS.1770, as `loudness.rs` measures it: a shelf of +4 dB
+  // above about 1.7 kHz, a highpass at 38 Hz), so each counts by that too.
+  // A guess, until the measured render for the cutoff held takes over.
   function liveLift() {
     const bands = L.plain && !L.plain.error ? L.plain.data.portrait?.bands : null;
     if (!bands || !bands.length) return 1;
-    const mag = liveResponse(Float32Array.from(bands, (_, i) => hzOfBand(i)));
+    const hz = Float32Array.from(bands, (_, i) => hzOfBand(i));
+    const mag = liveResponse(hz);
+    const fs = host.audio.ctx.sampleRate;
     let all = 0;
     let left = 0;
     bands.forEach((db, i) => {
-      const p = Math.pow(10, db / 10);
+      const p = Math.pow(10, db / 10) * hz[i] * kPower(hz[i], fs);
       all += p;
       left += p * mag[i] * mag[i];
     });
@@ -1310,8 +1345,8 @@ export function createExplain(host) {
     const b = { x: (VW - w) / 2, y: 12, w, h };
     const plain = L.plain && !L.plain.error && L.plain.data.portrait;
     // The filtered render's shape only while it is for the cutoff held, so
-    // the shape and the mark on it agree; between, the plain shape under
-    // the hand's mark.
+    // the shape and the mark on it agree; between, the plain shape. The
+    // mark is the hand's, on either.
     const m = L.step === 1 ? held() : null;
     const filt = m && !m.error && m.data.portrait;
     if (!plain) {
@@ -1337,9 +1372,9 @@ export function createExplain(host) {
       ctx.fill();
       litLine(ctx, 1.8);
     }
-    if (filt) {
+    if (L.step === 1 && !refused() && !L.dead) {
       // The cutoff on the shape, where the hand holds it: above it is what
-      // the filter takes away.
+      // the filter takes away. None where nothing plays through it.
       const hz = hzOfKnob(L.cutoff);
       const y = bandY(b, bandOfHz(hz));
       ctx.fillStyle = inkAlpha(tok("--bezel"), 0.55);
@@ -1395,10 +1430,12 @@ export function createExplain(host) {
     ctx.rect(17, gy, FW - 34, gh);
     ctx.clip();
     // Until the render for the cutoff held lands, a guess: the live filter's
-    // own response (Web Audio's lowpass, what is heard), dashed amber
-    // (ADR-012), fading out as the measured one fades in.
-    // A cutoff that was refused draws no curve.
-    if (k < 1 && !refused()) {
+    // own response (Web Audio's lowpass, what is heard), dashed amber and
+    // said to be one (ADR-012), fading out as the measured one fades in.
+    // A cutoff that was refused, or a sound that never rendered, draws no
+    // curve: nothing plays through it.
+    const guess = k < 1 && !refused() && !L.dead;
+    if (guess) {
       const mag = liveResponse(Float32Array.from({ length: NB }, (_, i) => hzOfBand(i)));
       polyline(ctx, curve(Array.from(mag, (g) => 20 * Math.log10(Math.max(g, 1e-6)))));
       ctx.globalAlpha = 1 - k;
@@ -1426,6 +1463,11 @@ export function createExplain(host) {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+    if (guess) {
+      ctx.globalAlpha = 1 - k;
+      text(ctx, UI.notMeasured, FW - 22, gy + 16, "right", INK.amber);
+      ctx.globalAlpha = 1;
+    }
     if (k > 0 && k < 1 && !L.curveRaf) {
       L.curveRaf = requestAnimationFrame(() => {
         L.curveRaf = 0;
@@ -1451,11 +1493,14 @@ export function createExplain(host) {
     filterCv.setAttribute("aria-valuetext", cutoffWord(hz));
   }
   // What the lesson says when a render failed, or the filter went after the
-  // sound; and its ▶, which plays only what rendered.
-  // While the lesson plays, its shape is drawn every frame (`liveLoop`), so a
-  // move leaves it to that frame rather than drawing it twice.
-  function paintLesson() {
-    if (!(L.playing && (L.raf || L.timer))) paintShape();
+  // sound; and its ▶, which plays once the sound's own render exists, and
+  // never at a cutoff that was refused.
+  // A move (`setCut`) while the lesson plays with motion leaves the shape to
+  // the next frame (`liveLoop` draws it every frame) rather than drawing it
+  // twice; under reduced motion that loop runs twice a second, so the shape
+  // is drawn here.
+  function paintLesson(move = false) {
+    if (!(move && L.playing && L.raf)) paintShape();
     paintFilter();
     const why = lesson.querySelector(".xl-trouble");
     if (why) {
@@ -1478,7 +1523,7 @@ export function createExplain(host) {
   function setCut(hz) {
     L.cutoff = knobOfHz(clamp(hz, CUT_LO_HZ, CUT_HI_HZ));
     setLive();
-    paintLesson();
+    paintLesson(true);
     askLesson(L.cutoff);
   }
   function renderLesson() {
@@ -1577,7 +1622,9 @@ export function createExplain(host) {
   }
   function go(step) {
     L.step = clamp(step, 0, 2);
-    // The step's sound: the filtered one on the filter's step, else the plain.
+    // The step's sound: on the filter's step the plain render through the
+    // live filter (and the measured render once it is for the cutoff held),
+    // else the plain render.
     if (L.playing) startLesson();
     renderLesson();
   }
