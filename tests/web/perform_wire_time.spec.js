@@ -515,3 +515,72 @@ test("a pool sound opened after a panel change plays the guess for that panel, n
   console.log(`${pick.name}: bench_opening ${(opening._at - t0).toFixed(0)} ms, its guess ${(guessAt - t0).toFixed(0)} ms after the click; marks ${JSON.stringify(marks)}`);
   expect(guessAt, "its guess is the one its open brought for this panel, not the one held").toBeGreaterThanOrEqual(opening._at);
 });
+
+// A sound's first measurement never re-centres a control under the hand
+// (#304). A pool sound the engine could not predict (its `first` taken off
+// the opening) listens on every control; one is turned and held still, or
+// the XY pad is, while the measurement lands. It keeps listening, drawn where
+// the hand holds it, and writes nothing to the voices; let go, the control
+// springs back, and the measurement wires the controls 1.5 s after the
+// release.
+const FIRST_HANDS = {
+  control: {
+    open: async () => {},
+    at: (page) => page.locator('.pf-knob[data-i="0"]'),
+    shown: (page) => page.locator('.pf-knob[data-i="0"]').getAttribute("aria-valuenow"),
+    listening: (page) => page.locator(".pf-knob.unwired"),
+  },
+  "XY pad": {
+    open: (page) => page.locator(".pf-xy-btn").click(),
+    at: (page) => page.locator(".pf-xy-field"),
+    shown: (page) => page.locator(".pf-xy-field").getAttribute("aria-valuetext"),
+    listening: (page) => page.locator(".pf-xy-field.pending-x"),
+  },
+};
+for (const [name, hand] of Object.entries(FIRST_HANDS)) {
+  test(`${name === "control" ? "a" : "an"} ${name} held through its sound's first measurement is not moved, and the measurement waits for its release`, { tag: "@slow" }, async ({ page, app }) => {
+    test.setTimeout(240_000);
+    await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+    await app.level("perform");
+    await app.fullPool();
+    await app.reached();
+    await bankTab(page, "pool");
+    const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+    const rowName = (await row.locator(".bi-name").textContent()).trim();
+    // Nothing to guess from: the sound is measured in front of the player.
+    await app.amend({ type: "bench_opening" }, { first: null });
+    await app.level("patch");
+    await row.click();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(rowName, { timeout }));
+    await app.hold("perform_wired");
+    const since = await app.now();
+    await app.level("perform");
+    await expect(page.locator(".pf-status")).toContainText("listening to this sound");
+    await expect(page.locator(".pf-knob.guess"), "nothing played on a guess").toHaveCount(0);
+    const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+    expect(asked, "the measurement was asked for").toBeTruthy();
+    await app.engine((timeout) => expect.poll(async () => (await app.held()).length, { timeout, message: "the measurement landed" }).toBeGreaterThan(0), { ms: LIMIT_MS });
+    await hand.open(page);
+    const b = await hand.at(page).boundingBox();
+    const [x, y] = [b.x + b.width / 2 + 20, b.y + b.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 40, { steps: 6 });
+    const shown = await hand.shown(page);
+    await app.countLiveWrites();
+    expect(await app.release(), "the measurement was held for the hand").toBeGreaterThan(0);
+    await app.quiet(2_500);
+    await expect(hand.listening(page).first(), "still listening under the hand").toBeAttached();
+    expect(await hand.shown(page), "nothing moved under the hand").toBe(shown);
+    expect(await app.liveWrites(), "and nothing was written to the voices").toEqual([]);
+    expect((await app.marks("perform-wired", { after: since })).map((m) => m.detail?.how), "not wired yet").toEqual([]);
+    const released = await app.now();
+    await page.mouse.up();
+    await page.mouse.move(10, 10);
+    await expect(hand.listening(page), "the measurement wires the controls once the hand is off").toHaveCount(0);
+    const wired = (await app.marks("perform-wired", { after: since })).map((m) => m.detail?.how);
+    expect(wired, "wired by its measurement").toEqual(["measured"]);
+    const at = (await app.marks("perform-wired", { after: since }))[0];
+    expect(at.t, "1.5 s after the release").toBeGreaterThanOrEqual(released + 1_500);
+  });
+}
