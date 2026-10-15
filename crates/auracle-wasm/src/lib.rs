@@ -504,7 +504,10 @@ struct ClipReply<'a> {
 /// that listen through.
 fn clip_note(status: &ClipStatus) -> &'static str {
     match (status.source, status.unreadable.is_some()) {
-        (ClipSource::Captured, _) => {
+        (ClipSource::Captured, true) => {
+            "This input's saved clip didn't load, so the model hears it through the clip captured for every input. Capture this input again to replace it."
+        }
+        (ClipSource::Captured, false) => {
             "The model hears sounds with an input through the clip captured from it."
         }
         (ClipSource::Reference, false) => {
@@ -3856,7 +3859,8 @@ impl WasmEngine {
 
     /// Measure the sounds that listen with a clip captured from the player's
     /// input, on every input slot (a slot's own clip, from
-    /// [`Self::set_input_clip`], goes): `samples` interleaved, `channels` per frame (1 or 2), at
+    /// [`Self::set_input_clip`], goes): `samples` interleaved, `channels`
+    /// per frame (1 or 2), at
     /// `sample_rate` (the AudioContext's; the engine resamples it to the
     /// phrase's, quantizes it to 16 bits and cuts it to the phrase's length).
     /// The pool's members that listen are measured again with it, and it is

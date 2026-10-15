@@ -343,9 +343,12 @@ fn the_session_clip_crosses_the_boundary() {
 /// **Each input slot's clip crosses the boundary.** A capture for slot 1
 /// is that slot's alone: the reply names its clip and the `u32` id of the
 /// one sound that reads slot 1, the other slots still hear the reference,
-/// and the farm's phrase carries it, so the farm renders a sound hearing
-/// slots 0 and 1, each with its own clip, under the key the engine stores
-/// it by. Saved and restored, each slot's clip comes back. A slot past the
+/// and the farm's phrase and key carry each slot's clip: the farm renders
+/// the sound that reads slots 0 and 1 under the key the engine stores it
+/// by (that each slot hears its own clip in the render is
+/// `two_inputs_hear_their_own_clips`'s, in features). Saved and restored,
+/// each slot's clip comes back, and a slot's saved clip that doesn't load
+/// is reported on that slot, with a note that says so. A slot past the
 /// last is refused and changes nothing, and `set_audition_clip` still sets
 /// every slot's.
 #[test]
@@ -433,6 +436,27 @@ fn each_input_slots_clip_crosses_the_boundary() {
     assert_eq!(cleared["remeasured"], serde_json::json!([id]));
     let every = reply(engine.set_audition_clip(tone(330.0), 1, 48_000.0));
     assert_eq!(reply(engine.input_clip(0))["id"], every["clip"]["id"]);
+
+    // A slot's own saved clip that doesn't load: the slot hears the
+    // session's captured clip, and its note says the slot's didn't load.
+    let own = reply(engine.set_input_clip(1, tone(220.0), 1, 48_000.0));
+    assert_eq!(own["ok"], true);
+    let mut saved: serde_json::Value = serde_json::from_str(&engine.export_session()).unwrap();
+    saved["audition_clips"]["1"]["channels"] = 7.into();
+    let mut broken = WasmEngine::new(7, 4);
+    assert!(broken.import_session(&saved.to_string()) > 0);
+    let slot = reply(broken.input_clip(1));
+    assert_eq!(slot["source"], "captured");
+    assert_eq!(slot["id"], every["clip"]["id"]);
+    assert!(slot["unreadable"].is_string(), "{slot}");
+    assert_eq!(
+        slot["note"],
+        clip_note(&broken.engine.slot_clip_status(1).unwrap())
+    );
+    assert!(slot["note"].as_str().unwrap().contains("didn't load"));
+    let fine = reply(broken.input_clip(0));
+    assert!(fine["unreadable"].is_null());
+    assert!(!fine["note"].as_str().unwrap().contains("didn't load"));
 }
 
 /// The menu bar's TAUGHT tooltip splits the count by kind from
