@@ -522,7 +522,13 @@ async function shotLearning(page) {
   await measure(page, "learning", { weighs: ".md-weighs", map: ".md-mapp", forecasts: ".md-fcp" });
   // A style name the chip cuts off reads as a typo in a figure.
   const clipped = await page.evaluate(() =>
-    [...document.querySelectorAll(".md-chip-name")].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.value || n.placeholder));
+    // An input's scrollWidth does not grow with its value, so the name is
+    // measured in the input's own font.
+    [...document.querySelectorAll(".md-chip-name")].filter((n) => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      ctx.font = getComputedStyle(n).font;
+      return ctx.measureText(n.value || n.placeholder).width > n.clientWidth + 1;
+    }).map((n) => n.value || n.placeholder));
   for (const name of clipped) log(`  !! the style name "${name}" runs past its chip on LEARNING`);
   await shoot(page, "learning");
 }
