@@ -5454,6 +5454,9 @@ async function bootPerform() {
     // Whether a note is still held (or sustained): PERFORM draws the knobs
     // velocity plays at the last struck note still sounding.
     held: (n) => heldNotes.has(n),
+    // Each arp step re-presses the voice, which plays the note's velocity
+    // offset again on the knob's new value (live.rs `press`).
+    arpOn: () => !!perf.arp,
     // The newest pool id the bank has shown: what a PERFORM answer was given
     // against (`perform_record`'s `asOf`).
     newestId: () => newestSeenId,
@@ -5649,10 +5652,12 @@ paintEngineer();
 // knob PERFORM is playing away from its kept value now carries a second,
 // amber pointer at the value actually sounding: open the circuit mid-phrase
 // and you watch the controls and the taste walk turn real knobs. Keep writes
-// them in and the ghosts fold into the pointers.
+// them in and those ghosts fold into the pointers; a velocity ghost is the
+// note's, so Keep leaves it, and it goes when the note ends.
 //
 // Only where PERFORM has actually moved the knob (`perform.movedOn`: a control
-// or expression offset on it, a glide, or a drift not yet kept). It used to be
+// or expression offset on it, a glide, a drift not yet kept, or the velocity
+// of the last struck note still sounding). It used to be
 // wherever PERFORM's copy of the knob disagreed with the rack, and PERFORM's
 // copy only followed structural edits — so a knob turned here was redrawn a
 // tenth of a second later at its *old* value, in amber, with a ghost claiming
@@ -5694,9 +5699,10 @@ function paintPerformedKnobs() {
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
     // Keep writes in what the controls, glides and drift moved; velocity's
-    // part belongs to the note, and goes when it is let go.
+    // part belongs to the note, and goes when the note ends (a pedal or
+    // HOLD keeps it).
     const kept_ = moved.filter((w) => w !== "velocity");
-    const tail = !kept_.length ? ": it goes when you let the note go" : moved.length > kept_.length ? ": Keep writes it in, all but velocity" : ": Keep writes it in";
+    const tail = !kept_.length ? ": it goes when the note ends" : moved.length > kept_.length ? ": Keep writes it in, all but velocity" : ": Keep writes it in";
     ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")})${tail}`;
     kg.classList.add("performed");
   }
@@ -24512,9 +24518,26 @@ function bootSubLine(returning) {
     : `listening to ${BOOT_POOL.size} sounds: you start as soon as the first ${BOOT_POOL.playableAt} land`;
 }
 (async () => {
-  // Spawn the render farm BEFORE the save read, so N wasm instantiations
-  // overlap with IndexedDB and with the engine worker's own init instead of
-  // queueing behind them.
+  // The save read starts first and the render farm beside it, so N wasm
+  // instantiations overlap with IndexedDB and with the engine worker's own
+  // init instead of queueing behind them. The veil's line is written the
+  // moment the read answers (first visit or return), not after the farm's
+  // compile: before then neither line would be known to be true.
+  const savedRead = (async () => {
+    let s = await idbGet("state");
+    if (!s) {
+      // One-time migration: this app has been called EVOSYNTH and RICERCAR
+      // before it was called AURACLE — adopt any save left behind under an
+      // older name so nobody loses their bank. Newest legacy name first: a
+      // player who has both should be handed the one they used last.
+      for (const legacy of LEGACY_DB_NAMES) {
+        s = await legacyIdbState(legacy);
+        if (s) { idbPut("state", s); break; }
+      }
+    }
+    $("boot-sub").textContent = bootSubLine(!!(s && s.session));
+    return s;
+  })();
   // Belt to `spawnFarm`'s braces: `send({type:"init"})` below must be reached
   // on every path, or the app sits on the boot veil forever with no engine.
   let farm = { ports: [], module: null };
@@ -24523,21 +24546,10 @@ function bootSubLine(returning) {
   } catch (err) {
     console.warn("[auracle] farm unavailable; filling serially:", err);
   }
-  let saved = await idbGet("state");
-  if (!saved) {
-    // One-time migration: this app has been called EVOSYNTH and RICERCAR before
-    // it was called AURACLE — adopt any save left behind under an older name so
-    // nobody loses their bank. Newest legacy name first: a player who has both
-    // should be handed the one they used last.
-    for (const legacy of LEGACY_DB_NAMES) {
-      saved = await legacyIdbState(legacy);
-      if (saved) { idbPut("state", saved); break; }
-    }
-  }
+  const saved = await savedRead;
   // What this page is booting from, byte for byte. `persistState` keeps it as
   // `state-prev` before the first overwrite; `restore_failed` quarantines it.
   bootRecord = saved;
-  $("boot-sub").textContent = bootSubLine(!!(saved && saved.session));
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);

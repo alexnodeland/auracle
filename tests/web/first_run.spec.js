@@ -24,11 +24,23 @@ const KEY_HELD_MS = 300;
 const firstVisit = (app) => app.boot({ warmed: false, seen: false });
 
 test("warm start: a slow chooser keeps all 18 preferences", async ({ page, app }) => {
+  // What the veil's sub-line said while the veil was up.
+  await page.addInitScript(() => {
+    const said = (window.__veilSub = []);
+    document.addEventListener("readystatechange", () => {
+      if (document.readyState !== "interactive") return;
+      const boot = document.getElementById("boot");
+      const sub = document.getElementById("boot-sub");
+      new MutationObserver(() => {
+        if (!boot.classList.contains("done") && sub.textContent !== said[said.length - 1]) said.push(sub.textContent);
+      }).observe(sub, { childList: true, characterData: true, subtree: true });
+    });
+  });
   await firstVisit(app);
   // The veil carried the line, and its sub-line the init's own pool.
   await expect(page.locator("#boot .boot-tag")).toHaveText("A synthesizer that grows toward you");
   await expect(page.locator("#boot .boot-desc")).toHaveText("Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.");
-  await expect(page.locator("#boot-sub")).toHaveText("listening to 40 sounds: you start as soon as the first 8 land");
+  expect(await page.evaluate(() => window.__veilSub), "the veil's sub-line, while it was up").toEqual(["listening to 40 sounds: you start as soon as the first 8 land"]);
   await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 30_000 });
 
   // The ▶ is on top of its card.

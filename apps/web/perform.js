@@ -1329,7 +1329,10 @@ export function createPerform(host) {
     if (offs.size) state.struck.set(note, offs);
   }
   // A write to `addr` reached every voice: held notes' offsets on it are gone.
+  // Not under the arp: each step re-presses the voice (live.rs `press` →
+  // `restore_knobs` + `apply_touch`), so the offset plays again on the next.
   function touchWritten(addr) {
+    if (host.arpOn && host.arpOn()) return;
     for (const offs of state.struck.values()) offs.delete(addr);
   }
 

@@ -29,8 +29,8 @@ const RECALLING = /^recalling (\d+) of (\d+) sounds…/;
  *  disk before the next visit begins. From here on every visit keeps what its
  *  boot veil showed until it lifted (`window.__veil`), in the order the page
  *  changed it: one observer over #boot, set before main.js runs, so its
- *  records come in the order of the changes (the line, the bar, the veil's
- *  `done`). */
+ *  records come in the order of the changes (the sub-line, the line, the
+ *  bar, the veil's `done`). */
 async function firstVisit(page, app, query = "") {
   await page.addInitScript(() => {
     const seen = (window.__veil = []);
@@ -38,7 +38,8 @@ async function firstVisit(page, app, query = "") {
       const boot = document.getElementById("boot");
       const status = document.getElementById("boot-status");
       const fill = document.getElementById("boot-fill");
-      if (!boot || !status || !fill) return;
+      const sub = document.getElementById("boot-sub");
+      if (!boot || !status || !fill || !sub) return;
       new MutationObserver((records) => {
         const at = performance.now();
         for (const r of records) {
@@ -47,6 +48,8 @@ async function firstVisit(page, app, query = "") {
             if (r.attributeName === "class" && boot.classList.contains("done")) seen.push({ down: true, at });
           } else if (r.target === fill) {
             seen.push({ bar: parseFloat(fill.style.width) || 0, at });
+          } else if (r.target === sub || sub.contains(r.target)) {
+            seen.push({ sub: sub.textContent, at });
           } else if (r.target === status || status.contains(r.target)) {
             seen.push({ said: status.textContent, at });
           }
@@ -102,6 +105,8 @@ async function returningVisit(page, app) {
   return {
     restored: playable.restored,
     lifted: shown.some((e) => e.down),
+    // Each line the veil's sub-line carried while it was up.
+    sub: shown.filter((e) => e.sub != null).map((e) => e.sub),
     // Each count the line said while the veil was up, in order.
     said: shown.filter((e) => RECALLING.test(e.said || "")).map((e) => Number(RECALLING.exec(e.said)[1])),
     // The bar's width as each of those lines was said: main moves the bar,
@@ -127,7 +132,7 @@ test("a returning visit with no farm says each sound on the veil as it comes bac
   // The veil carried the line and said what a return does, not a first fill.
   await expect(page.locator("#boot .boot-tag")).toHaveText("A synthesizer that grows toward you");
   await expect(page.locator("#boot .boot-desc")).toHaveText("Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.");
-  await expect(page.locator("#boot-sub")).toHaveText("restoring your bank & taste…");
+  expect(visit.sub, "the veil's line, while it was up").toEqual(["restoring your bank & taste…"]);
   expect(visit.restored).toBe(40);
   // Sound by sound on the veil, before it lifted, the bar moving with each.
   expect(visit.said, "the veil did not say each sound as it came back").toEqual(counting(visit.restored));
