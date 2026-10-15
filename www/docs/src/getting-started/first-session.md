@@ -15,10 +15,12 @@ browser as you play, and it’s there when you come back.
 1. Open the instrument.
 2. Wait for the boot card to fill.
 
-The card reads *listening to 40 sounds: you start as soon as the first 8 land*.
+The card carries Auracle's line, *A synthesizer that grows toward you*, and
+reads *listening to 40 sounds: you start as soon as the first 8 land*.
 Each of the 40 is drawn from the grammar, rendered on one five-second phrase,
 checked, and measured. Once eight have landed the instrument opens, and the
-rest arrive while you play.
+rest arrive while you play. When you come back, it reads *restoring your
+bank & taste…* instead, and opens once your whole session is back.
 
 ```admonish info collapsible=true title="How it works: nothing plays unchecked"
 Every sound is rendered and checked before it can reach your speakers. Its

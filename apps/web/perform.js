@@ -360,6 +360,11 @@ export function createPerform(host) {
     // Velocity -> timbre: which named control a note's velocity plays, per
     // voice, and how far. -1 is off.
     touch: { i: 0, depth: 0.5, sites: [] },
+    // The notes struck while velocity played knobs, newest last: note ->
+    // Map(addr -> the offset the engine wrote on that note's voice). An
+    // offset goes when a write to its knob reaches every voice (the engine's
+    // stated limit, live.rs `set_touch`); a note goes when it is let go.
+    struck: new Map(),
     // The model view's lean on each control (`perform_lean`, `Engine::lean`):
     // which way your taste leans along it at the sound in hand. `{gen,
     // marks}` (palette index -> its mark and words) for the sound it was
@@ -1202,6 +1207,7 @@ export function createPerform(host) {
       if (prev == null || Math.abs(prev - v) > 1e-5) {
         live.param(a, v);
         state.sent.set(a, v);
+        touchWritten(a);
         const ti = state.touch.sites.findIndex(([ta]) => ta === a);
         if (ti >= 0) {
           state.touch.sites[ti][2] = v;
@@ -1224,6 +1230,7 @@ export function createPerform(host) {
     if (!state.cur || !Number.isFinite(v)) return;
     v = clamp(v, 0, KNOB_MAX);
     state.hand.set(addr, v);
+    touchWritten(addr);
     // The player's hands are on the patch: a drift grown from before this
     // turn is dropped, and a glide in progress stops where it is.
     touch();
@@ -1273,7 +1280,9 @@ export function createPerform(host) {
   // from home (a finished drift, or controls folded into the centre by a
   // re-measurement) and has not kept. A base that merely disagrees with the
   // bench is none of these, and is not a performance.
-  function movedOn(addr) {
+  // `velocity`: name velocity's part too, for PATCH's drawing. The moved bar
+  // asks without it: a held note is not the sound leaving home.
+  function movedOn(addr, velocity = false) {
     if (!state.cur) return null;
     const base = state.cur.knobs.get(addr);
     if (base == null) return null;
@@ -1285,6 +1294,7 @@ export function createPerform(host) {
       if (!(state.c[i] + p)) return;
       if (w.knobs.some(([a, g]) => a === addr && g)) why.push(w.name);
     });
+    if (velocity && velocityOffset(addr)) why.push("velocity");
     const g = state.glide;
     if (g && g.from.has(addr) && Math.abs((g.to.has(addr) ? g.to.get(addr) : g.from.get(addr)) - g.from.get(addr)) > 1e-4) {
       why.push(g.why || "a glide");
@@ -1293,6 +1303,37 @@ export function createPerform(host) {
       if (h != null && Math.abs(base - h) > 0.004) why.push("moved since the last Keep");
     }
     return why.length ? why : null;
+  }
+
+  // Velocity's offset on `addr` in the last struck note still held, as the
+  // engine wrote it at note-on (live.rs `apply_touch`): (vel − mezzo) · 2 ·
+  // depth · gain. A chord can hold a different one per voice; PATCH shows the
+  // newest. 0 when no held note carries one.
+  const TOUCH_MEZZO = 0.6;
+  function velocityOffset(addr) {
+    let last = null;
+    for (const [n, offs] of state.struck) {
+      if (host.held && !host.held(n)) state.struck.delete(n);
+      else last = offs;
+    }
+    return (last && last.get(addr)) || 0;
+  }
+  function noteStruck(note, vel) {
+    state.struck.delete(note);
+    const depth = state.touch.depth;
+    if (!state.touch.sites.length || !(depth > 0)) return;
+    const v = Math.max(0.05, Math.min(1, Number(vel) || 0));
+    const off = (v - TOUCH_MEZZO) * 2 * depth;
+    const offs = new Map();
+    for (const [a, g] of state.touch.sites) if (off * g) offs.set(a, off * g);
+    if (offs.size) state.struck.set(note, offs);
+  }
+  // A write to `addr` reached every voice: held notes' offsets on it are gone.
+  // Not under the arp: each step re-presses the voice (live.rs `press` →
+  // `restore_knobs` + `apply_touch`), so the offset plays again on the next.
+  function touchWritten(addr) {
+    if (host.arpOn && host.arpOn()) return;
+    for (const offs of state.struck.values()) offs.delete(addr);
   }
 
   // Send the touch wiring: the chosen control's knobs, their gains and where
@@ -2044,7 +2085,12 @@ export function createPerform(host) {
   }
   function answerOffer(took) {
     const pt = holdAnswer(took);
-    if (!pt) return;
+    if (!pt) {
+      // Unheard: B is your sound now, but nothing is recorded, and the take
+      // says so as an unheard pass does.
+      if (!state.quiet && state.offer) host.note("Took B. Not counted, because you hadn’t heard it.", { replace: "pf-offer" });
+      return;
+    }
     pt.toast = host.note("Took B. That counts as a pick over what you had.", {
       undo: () => {
         if (pt.sent) {
@@ -4725,13 +4771,16 @@ export function createPerform(host) {
       const out = new Map();
       for (const a of state.cur.knobs.keys()) {
         const v = liveValue(a);
-        if (v != null) out.set(a, v);
+        if (v != null) out.set(a, clamp(v + velocityOffset(a), 0, KNOB_MAX));
       }
       return out;
     },
+    // A note went down at `vel` (main's note path, attract's included).
+    noteStruck,
     // Why PERFORM is playing a knob away from the patch (the controls on it,
-    // "Wander", "Back"…), or null: what PATCH draws a ghost for, and says.
-    movedOn,
+    // "Wander", "Back", "velocity"…), or null: what PATCH draws a ghost for,
+    // and says.
+    movedOn: (addr) => movedOn(addr, true),
     // Where PERFORM draws the sound you're playing: its face in the well
     // (main.js `faceBoxOf`, the box and the face's render key), for the face
     // carried between the levels (shell.js). Null while PERFORM is hidden.

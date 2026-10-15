@@ -472,6 +472,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **↓ patch** | An EVOLVE card's corner: open its sound in PATCH without picking | open in patch, promote |
 | **⇄ face** | An EVOLVE card's corner, flipped to its circuit: back to its face | wave |
 | **Velocity plays**, **vel** | ARRANGE's row for which control a note's velocity drives, and the tick on that control | TOUCH, velo |
+| *Took B. Not counted, because you hadn’t heard it.* | PERFORM's toast for a TAKE on an offer not yet heard: B is your sound, and nothing is recorded; the twin of *Skipped B. …* | counted as a pick, ignored, discarded |
+| *restoring your bank & taste…* (a return) / *listening to 40 sounds: you start as soon as the first 8 land* (a first visit) | The boot veil's line under the tagline: what the wait is, first visit or return | loading, please wait, welcome back |
+| **velocity** (a performed knob's reason) | PATCH's amber pointer for a knob the last struck held note's velocity plays; it goes when the note ends, and KEEP leaves it out | touch, vel offset |
 | **share** | PERFORM's button by the name: the sound's card as a picture | export, send |
 | **what each generation did** | EVOLVE's disclosure under EVOLVE POOL, opening the lineage's spark and log | history, log (as a label) |
 | **frozen** | Wander's state while a tap (or Enter) holds it still: its ring lit, this word under it and as its value | paused (that is hands on), held, stopped |

@@ -79,6 +79,37 @@
       .then(function (j) { return j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build) ? j.build : String(Date.now()); })
       .catch(function () { return String(Date.now()); })
       .then(start);
+    // The veil's line, first visit or return, as soon as the save says
+    // which: main.js reaches its own save read only once its whole module
+    // has run (about 0.2 s here, 1.4 s on the reference machine). Opened
+    // with no version and no upgrade path, as main.js's legacyIdbState does,
+    // so a first visit never brings the database into being. main.js writes
+    // the line again from BOOT_POOL, and only if this one differs.
+    var said = function (returning) {
+      var put = function () {
+        var el = document.getElementById("boot-sub");
+        if (el && !el.dataset.said) {
+          el.textContent = returning ? el.dataset.return : el.dataset.first;
+          el.dataset.said = "1";
+        }
+      };
+      if (document.getElementById("boot-sub")) put();
+      else document.addEventListener("DOMContentLoaded", put);
+    };
+    try {
+      var req = indexedDB.open("auracle");
+      req.onupgradeneeded = function () {
+        try { req.transaction.abort(); } catch (e) {}
+        said(false);
+      };
+      req.onsuccess = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains("kv")) { db.close(); return said(false); }
+        var get = db.transaction("kv", "readonly").objectStore("kv").get("state");
+        get.onsuccess = function () { var v = get.result; db.close(); said(!!(v && v.session)); };
+        get.onerror = function () { db.close(); };
+      };
+    } catch (e) {}
   }
 })();
 </script>
@@ -1063,6 +1094,7 @@
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="boot-word">AURACL<b>E</b></div>
     <p class="hg-lede">A synthesizer that grows toward you.</p>
+    <p class="hg-desc">Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.</p>
     <!-- The teaser is the loop in three words, not a feature list. -->
     <ol class="hg-loop mono" aria-label="What it does">
       <li><span class="hg-n">1</span> listen to two</li>
@@ -1102,7 +1134,12 @@ document.getElementById("hg-anyway").addEventListener("click", function () {
   <div class="boot-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="boot-word">AURACL<b>E</b></div>
-    <div class="boot-sub">listening to 40 sounds: you start as soon as the first 8 land</div>
+    <p class="boot-tag">A synthesizer that grows toward you</p>
+    <p class="boot-desc">Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.</p>
+    <!-- Written once the save says whether this is a first visit or a
+         return: by the head's script from these two, then by main.js from
+         the init's own pool size (BOOT_POOL) if they differ. -->
+    <div class="boot-sub" id="boot-sub" data-first="listening to 40 sounds: you start as soon as the first 8 land" data-return="restoring your bank &amp; taste…">&nbsp;</div>
     <canvas class="boot-field" id="boot-field"></canvas>
     <div class="boot-meter"><div id="boot-fill" class="boot-fill"></div></div>
     <div id="boot-status" class="boot-status mono">warming up the engine…</div>

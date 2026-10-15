@@ -1650,7 +1650,11 @@ a new tree, so PERFORM hears it separately: `sendEdit` calls
 edit's reply calls `perform.followTree` (its tree text follows, so a first
 measurement, Keep and offers start from the edited patch). PATCH draws an
 amber "performed" pointer only where `perform.movedOn` names a reason: a
-control or expression offset, a Wander or Back glide, or a drift not yet kept.
+control or expression offset, a Wander or Back glide, a drift not yet kept,
+or velocity: the offset the last struck held note's velocity wrote on a knob
+at note-on (`noteStruck`, `velocityOffset`), dropped when the note is let go
+or a write to that knob reaches every voice. Velocity is not a move from
+home: the moved bar asks `movedOn` without it.
 
 ## Timing marks
 
@@ -2131,6 +2135,12 @@ remark nearest the front of the queue is cut (a queue position, not an age:
 `replace` and `urgent` reorder it); with none, the undo nearest the front,
 and a refusal last of all. An undo and a refusal are never dropped for their
 age.
+
+The lane steps over the strips it must not cover and beside the tall panels
+(`LANE_STRIPS`, `LANE_COLUMNS` in main.js). TASTE's map fills its level and
+has sounds in every corner, so there is nowhere clear of it to go: on TASTE a
+toast lets the pointer through to the sound under it, and only its buttons
+and links take a click (#412).
 
 A toast that reports a change to the player's sounds (`bank: true`: a sound
 joined or left the pool, or was saved or released) has its turn whatever
