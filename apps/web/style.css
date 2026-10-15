@@ -4889,6 +4889,8 @@ html:not(.engineer) .dn-sig { display: none; }
    take a click (#412). */
 body[data-level="taste"] .toasts .toast { pointer-events: none; }
 body[data-level="taste"] .toasts .toast :is(button, a) { pointer-events: auto; }
+/* …and the +N counter, whose hover says how many more are waiting. */
+body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
 .toast.out { opacity: 0; transform: translateY(-6px); transition: opacity var(--d-move) ease, transform var(--d-move) ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
 .toast-msg { flex: 1; min-width: 0; }

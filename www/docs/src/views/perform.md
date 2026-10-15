@@ -520,7 +520,7 @@ happens. A knob PERFORM is playing away from its kept value carries a second,
 **amber** pointer at the value sounding, and its readout shows that value in
 amber. The green pointer is the kept value. Hover the amber pointer to see
 what is moving it: a control, a glide, Wander, or *velocity* for the knobs
-your last struck note plays, which fold back when you let go.
+your last struck note plays, which fold back when the note ends (the sustain pedal or HOLD keeps it).
 
 **KEEP** writes the amber into the patch, and the two pointers become one.
 Velocity's part belongs to the note, so KEEP leaves it out.
