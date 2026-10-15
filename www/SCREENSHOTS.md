@@ -32,7 +32,7 @@ From a fresh profile a run takes about 13 minutes on a busy four-core machine,
 most of it breeding, and logs every step with its time. `--profile DIR` keeps
 the browser profile, so a second run finds the session already taught and only
 re-shoots (one to six minutes, depending on what the engine is still doing);
-`--only evolve,trust` re-shoots some.
+`--only evolve,learning` re-shoots some.
 
 ### The session it teaches
 
@@ -40,16 +40,17 @@ A fresh session has no fitted model, so TASTE is empty and the bank has no
 predictions — which shows the product at its least interesting. So the script
 **teaches** one the way a person would: the three-pick warm start, then duels in
 EVOLVE with EVOLVE POOL every ten picks, to at least 44 picks and three
-generations (`--picks`, `--gens`), where styles have separated — the committed
-shots have three lenses each claiming about a third of the bank. Every vote
+generations (`--picks`, `--gens`), where styles have separated. The committed
+shots come from a session of 61 picks and three generations, where LEARNING
+shows four styles, each holding between a fifth and a third of the pool. Every vote
 comes from one consistent synthetic listener (dark and tonal over bright and
 noisy, slow and sustained over short, read off the names the app gives patches
 from their measured features): a coin-flip voter would teach the model nothing,
 and TASTE would show noise where it should show a listener.
 
 It then reloads, so the frames show the saved session as someone coming back to
-it sees it, waits for the engine's refit of that session and for PERFORM's
-background measurements to finish (the engine is one thread, and a bank click
+it sees it (a restored session keeps its fit, so there is no refit to wait
+for), waits for PERFORM's background measurements to finish (the engine is one thread, and a bank click
 queues behind them), and does two pieces of grooming — both removing test
 debris rather than dressing up the product:
 
@@ -60,8 +61,9 @@ debris rather than dressing up the product:
   a 1-module patch shows nothing. 6–10 modules is the range where plates,
   knobs, values and both cable colours are all legible. The script takes the
   highest-ranked evolution patch in that range with a modulation chain that the
-  listener likes, rates it five stars, scrolls the rail so its row sits second
-  (the bank-row crop's slot), turns the minimap on and zooms `⌘=` two steps
+  listener likes, rates it five stars with the row's ★, scrolls its row into view (the
+  bank-row crop is measured from `rects.json`'s `play.row` when the frame is
+  taken, and the run warns when the row is cut off by the list's edge), turns the minimap on and zooms `⌘=` two steps
   above the fitted zoom — more while knob labels are under the rack's 8px
   silkscreen floor — then pans the few pixels that keep the frame's edges
   between rows of plates rather than through their titles.
@@ -70,20 +72,21 @@ debris rather than dressing up the product:
 
 | Raw file | View | State |
 |---|---|---|
+| `perform.png` | PERFORM | `Ceiling`, measured, a chord latched on HOLD (through ⌘K's *Hold: latch held notes*), an offer waiting in B (OFFER's key, N) |
 | `play.png` | PATCH | that patch, tray empty, zoomed in, minimap on |
-| `nodebank.png` | PATCH | same, the node bank scrolled to SOURCES and `formant` hovered, the spec strip dragged open to fit its card (its 92px default at this size clips the "heard as" line) |
-| `evolve.png` | EVOLVE | a duel dealt and heard, the meter on a refit boundary and saying how the pair was dealt, lineage log populated |
-| `taste.png` | TASTE › MAP | styles separated, the PATCH patch's dot ringed |
-| `styles.png` | TASTE › STYLES | — |
-| `directions.png` | TASTE › DIRECTIONS | — |
-| `trust.png` | TASTE › TRUST | — |
-| `warmstart.png` | — | the three-pick card, nothing picked: ⌘K's *Re-run the three-pick warm start*, re-dealt until every row is two lines (the size the crop is cut to), dismissed with **SKIP**, which records nothing |
-| `perform.png` | PERFORM | `Ceiling`, measured, a chord latched on HOLD, the first steps done, an offer waiting in B |
+| `evolve.png` | EVOLVE | a duel dealt and heard, the meter on a refit boundary and saying how the pair was dealt |
+| `taste.png` | TASTE | the map on TASTE (the halos showing what it thinks you'd like), the PATCH patch's sound ringed |
+| `learning.png` | LEARNING | what it weighs, where liking rises and its forecasts, for the taught session |
+| `cmdk.png` | PERFORM, ⌘K open | `wa` typed, so the list shows sounds and commands together |
+| `warmstart.png` | — | the three-pick card, nothing picked: ⌘K's *Re-run the three-pick warm start*, re-dealt until every row is two lines (the size the crop expects) |
+
+Before each shot the guide pill's first steps are closed with its own ×
+(*Stop showing these*), as a player who has done them closes them.
 
 A shot of a broken app is worse than no shot, and the app logs its own failures
 loudly, so any page error or `console.error` stops the run before the next
 frame. Toasts are waited out rather than removed, the pointer is parked in the
-menu bar, a style name too long for its chip is reported, and `rects.json`
+menu bar, a style name too long for its chip on LEARNING is reported, and `rects.json`
 beside the frames records where each crop's subject landed.
 
 ## Encode
@@ -103,3 +106,9 @@ lazy-loads the rest, but the whole set still rides in the repo.
 A crop rectangle is a claim about the layout, and rack-detail's about the patch
 too: when either changes, check them against `rects.json`. A crop that changes
 size changes the `width`/`height` of every page that shows it.
+
+`taste-trust.webp`, `taste-styles.webp` and `taste-directions.webp` are not
+made by these scripts any more: they show TASTE's tabs from before the shell.
+The TASTE film still loads them (its forecast and reading scenes), so they stay
+as they are until the film is re-made. `spec-card.webp` and `node-bank.webp`
+stay too, until the catalog's card has a shot of its own.

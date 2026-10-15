@@ -33,9 +33,9 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
 | C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
-| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | built on `claude/preset-faces` with #153's C2b follow-ups, in review |
+| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | merged (#257) |
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | merged (#331) |
-| D: ⌘K, and the guide for the levels | #132 | built on `claude/shell-d`, in review; the screenshots' re-capture is #343 |
+| D: ⌘K, and the guide for the levels | #132 | merged (#344); the screenshots' re-capture is #343 |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
 | PATCH's specs on the shared fixture | #136 | merged (#168) |
 | After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | not started |
@@ -550,6 +550,16 @@ into C2a and C2b; round 2's decisions govern PATCH):
   tabs), so the re-capture is a new shot list for the five levels, new
   crops in `encode-screens.sh` and new landing captions: #343, split off
   #132 so D could close.
+- **The re-capture (#343), as built:** `capture-screens.mjs` walks the rail
+  (`.rail-stop`), the bank's tabs and ⌘K, and shoots PERFORM, PATCH, EVOLVE,
+  TASTE, LEARNING, ⌘K open and the warm start; `encode-screens.sh` crops the
+  rack, the bank, a row, the warm start and LEARNING's panels from them; the
+  landing page shows five levels and ⌘K, with LEARNING's panels in place of
+  the old DIRECTIONS plot. The catalog's spec card (`spec-card.webp`,
+  `node-bank.webp`) has no shot yet and keeps its old image. So do
+  `taste-trust.webp`, `taste-styles.webp` and `taste-directions.webp`:
+  TASTE's old tabs, which the TASTE film still loads, until it is re-made
+  with the Wave 3 re-records.
 - **The film selectors D leaves stale,** owed with the Wave 3 re-records as
   A's to C3's are: `#ovf-btn`, `#ovf-menu`, `.ovf-item`, `#export-btn`,
   `#patch-export-btn`, `#image-btn`, `#scope-btn`, `#engineer-btn`,

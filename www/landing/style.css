@@ -902,8 +902,9 @@ kbd {
 }
 .shot-tab:hover { color: var(--silk); }
 .shot-tab[aria-selected="true"] { color: var(--phos-b); border-color: var(--phos-b-deep); }
-/* Four tabs at full padding ran 5 px past a 390 px phone and scrolled the page
-   sideways; tighter tabs fit, and the row wraps below that. */
+/* The tabs at full padding scrolled a 390 px phone's page sideways (four
+   of them ran 5 px past it); on a phone they are tighter, and the six wrap
+   onto as many rows as they need. */
 @media (max-width: 480px) {
   .shot-tab { padding: var(--s2) var(--s3); letter-spacing: 0.1em; }
 }
@@ -991,7 +992,7 @@ kbd {
 .hero-film-screen:hover .hero-film-play,
 .hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px var(--phos-a-30); }
 .hero-film-screen:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
-/* The tour, above the four views' tabs: the map before the deep dives. */
+/* The tour, above the levels' tabs: the map before the deep dives. */
 .tour-cta { display: flex; justify-content: center; margin: calc(-1 * var(--s3)) 0 var(--s5); }
 /* A view's film, in its tab: the same screen as the hero's, its silent loop
    in place of the screenshot, which stays in the page for anyone who has no
