@@ -574,13 +574,19 @@ for (const [name, hand] of Object.entries(FIRST_HANDS)) {
     expect(await hand.shown(page), "nothing moved under the hand").toBe(shown);
     expect(await app.liveWrites(), "and nothing was written to the voices").toEqual([]);
     expect((await app.marks("perform-wired", { after: since })).map((m) => m.detail?.how), "not wired yet").toEqual([]);
-    const released = await app.now();
+    await expect(page.locator(".pf-status"), "it says the controls wait for the hand, not that it listens").toContainText("the controls turn after you let go");
+    await page.evaluate(() => {
+      window.__released = null;
+      window.addEventListener("pointerup", () => (window.__released = performance.now()), { capture: true, once: true });
+    });
     await page.mouse.up();
     await page.mouse.move(10, 10);
     await expect(hand.listening(page), "the measurement wires the controls once the hand is off").toHaveCount(0);
     const wired = (await app.marks("perform-wired", { after: since })).map((m) => m.detail?.how);
     expect(wired, "wired by its measurement").toEqual(["measured"]);
     const at = (await app.marks("perform-wired", { after: since }))[0];
+    const released = await page.evaluate(() => window.__released);
+    expect(released, "the release was seen").not.toBeNull();
     expect(at.t, "1.5 s after the release").toBeGreaterThanOrEqual(released + 1_500);
   });
 }
