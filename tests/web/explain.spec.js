@@ -348,8 +348,26 @@ const LIVE_TAP = `(() => {
     const n = make.apply(this, a);
     n.frequency.__xl = n;
     window.__xlLive.node = n;
+    window.__xlLive.next = ["live", "measured"];
     return n;
   };
+  // The two gains made after it: the live path's level, then the measured
+  // render's; each one's last level set.
+  window.__xlLive.level = {};
+  const gain = BaseAudioContext.prototype.createGain;
+  BaseAudioContext.prototype.createGain = function (...a) {
+    const g = gain.apply(this, a);
+    const which = window.__xlLive.next && window.__xlLive.next.shift();
+    if (which) g.gain.__xlPath = which;
+    return g;
+  };
+  for (const f of ["setTargetAtTime", "setValueAtTime"]) {
+    const was = AudioParam.prototype[f];
+    AudioParam.prototype[f] = function (v, ...rest) {
+      if (this.__xlPath) window.__xlLive.level[this.__xlPath] = v;
+      return was.call(this, v, ...rest);
+    };
+  }
   const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, "value");
   Object.defineProperty(AudioParam.prototype, "value", {
     get() { return d.get.call(this); },
@@ -434,6 +452,10 @@ test("the lesson's cutoff is heard as it moves: the live filter is set in the mo
     { ms: 90_000 },
   );
   expect(f.data.portrait).toBeTruthy();
+  // And takes over: the measured render faded in, the live path out.
+  await expect
+    .poll(() => page.evaluate(() => window.__xlLive.level), { message: "the measured render in, the live filter out" })
+    .toEqual({ live: 0, measured: 1 });
   expect((await app.sent({ type: "explain_lesson" }, { after: asked })).length).toBeGreaterThan(0);
   await sounds(page, "the measured render plays in the live filter's place");
 });
