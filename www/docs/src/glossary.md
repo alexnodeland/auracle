@@ -254,7 +254,7 @@ instrument, not a demo: play the sound from the keybed to judge it.
 
 ### Pick
 
-Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass, the
+Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass of an offer you heard, the
 warm start, or keep as new. **TAUGHT** counts picks, stars, and cuts.
 
 ### Pickup

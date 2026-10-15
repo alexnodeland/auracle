@@ -2833,6 +2833,10 @@ input, textarea, .bi-rename {
 .screws i:nth-child(4) { bottom: 6px; right: 6px; }
 .boot-card { width: min(520px, 92vw); text-align: center; padding: var(--s6) var(--s6) var(--s5); }
 .boot-title { font-size: var(--t-body); font-weight: 700; letter-spacing: 0.3em; }
+/* The tagline and the descriptor travel together on the first screen
+   (www/brand/voice.md, "The line"). */
+.boot-tag { margin: var(--s2) 0 0; font-size: var(--t-body); color: var(--silk); }
+.boot-desc, .hg-desc { margin: var(--s1) auto 0; max-width: 40ch; font-size: var(--t-body); color: var(--silk-dim); line-height: 1.4; }
 .boot-sub { margin-top: var(--s2); font-size: var(--t-body); color: var(--silk-dim); letter-spacing: 0.06em; }
 .boot-meter {
   margin: var(--s5) auto var(--s2);
@@ -4879,6 +4883,14 @@ html:not(.engineer) .dn-sig { display: none; }
   box-shadow: var(--cast);
   animation: toast-in var(--d-state) cubic-bezier(0.2, 0.9, 0.3, 1.05);
 }
+/* On TASTE a toast stands over the map, whose sounds reach to its corners,
+   and the lane has nowhere clear of it to go: there the toast lets the
+   pointer through to the sound under it, and only its buttons and links
+   take a click (#412). */
+body[data-level="taste"] .toasts .toast { pointer-events: none; }
+body[data-level="taste"] .toasts .toast :is(button, a) { pointer-events: auto; }
+/* …and the +N counter, whose hover says how many more are waiting. */
+body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
 .toast.out { opacity: 0; transform: translateY(-6px); transition: opacity var(--d-move) ease, transform var(--d-move) ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
 .toast-msg { flex: 1; min-width: 0; }

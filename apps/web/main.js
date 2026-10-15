@@ -246,7 +246,7 @@ for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
 const guide = createGuide({
   el: $("guide"),
   ends: {
-    perform: "That is the loop. Every offer you take or pass teaches it what you like.",
+    perform: "That is the loop. Every offer you hear, then take or pass, teaches it what you like.",
     patch: "That is the patch: turn it, lock what you love, and ⚡ breeds around what you kept.",
   },
 });
@@ -2680,6 +2680,8 @@ worker.onmessage = (e) => {
     // and autosave stays off until the player says "start fresh" or reloads
     // (with a newer build, the next boot reads the record where it is).
     case "restore_failed": {
+      // Nothing was restored: the engine fills a fresh pool instead.
+      if (!booted) $("boot-sub").textContent = bootSubLine(false);
       saveBlocked = "unparseable";
       clearTimeout(saveTimer);
       quarantineKey = `state-quarantine-${Date.now()}`;
@@ -5449,6 +5451,12 @@ async function bootPerform() {
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
     heldCount: () => heldNotes.size,
+    // Whether a note is still held (or sustained): PERFORM draws the knobs
+    // velocity plays at the last struck note still sounding.
+    held: (n) => heldNotes.has(n),
+    // Each arp step re-presses the voice, which plays the note's velocity
+    // offset again on the knob's new value (live.rs `press`).
+    arpOn: () => !!perf.arp,
     // The newest pool id the bank has shown: what a PERFORM answer was given
     // against (`perform_record`'s `asOf`).
     newestId: () => newestSeenId,
@@ -5644,10 +5652,12 @@ paintEngineer();
 // knob PERFORM is playing away from its kept value now carries a second,
 // amber pointer at the value actually sounding: open the circuit mid-phrase
 // and you watch the controls and the taste walk turn real knobs. Keep writes
-// them in and the ghosts fold into the pointers.
+// them in and those ghosts fold into the pointers; a velocity ghost is the
+// note's, so Keep leaves it, and it goes when the note ends.
 //
 // Only where PERFORM has actually moved the knob (`perform.movedOn`: a control
-// or expression offset on it, a glide, or a drift not yet kept). It used to be
+// or expression offset on it, a glide, a drift not yet kept, or the velocity
+// of the last struck note still sounding). It used to be
 // wherever PERFORM's copy of the knob disagreed with the rack, and PERFORM's
 // copy only followed structural edits — so a knob turned here was redrawn a
 // tenth of a second later at its *old* value, in amber, with a ghost claiming
@@ -5688,7 +5698,12 @@ function paintPerformedKnobs() {
     ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
-    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}): Keep writes it in`;
+    // Keep writes in what the controls, glides and drift moved; velocity's
+    // part belongs to the note, and goes when the note ends (a pedal or
+    // HOLD keeps it).
+    const kept_ = moved.filter((w) => w !== "velocity");
+    const tail = !kept_.length ? ": it goes when the note ends" : moved.length > kept_.length ? ": Keep writes it in, all but velocity" : ": Keep writes it in";
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")})${tail}`;
     kg.classList.add("performed");
   }
 }
@@ -5891,6 +5906,7 @@ function liveNoteOn(note_, vel = 1.0) {
   flashAmp();
   firstNotePlayed();
   if (!boothQuiet) perform?.notePlayed?.();
+  perform?.noteStruck?.(note_, vel);
   if (livePatchId != null) {
     playCounts.set(livePatchId, (playCounts.get(livePatchId) || 0) + 1);
     heard(livePatchId);
@@ -24487,10 +24503,45 @@ renderTray();
 shell.start();
 bootLiveAudio();
 bootMidi();
+// The pool the init asks for, and the veil's line says. Hand the app over at
+// 8 vetted patches and let the other 32 land behind it. A duel needs a bank
+// wide enough to hold an interesting question, not a full one — and 8
+// arrives in seconds where 40 takes half a minute. Not below the engine's
+// `NAME_FLOOR` (worker.js `PLAYABLE_AT`).
+const BOOT_POOL = { size: 40, playableAt: 8 };
+// The veil's line under the tagline. A return restores the saved session
+// whole before the veil drops (worker.js's restore, then `playable`), so it
+// does not wait on a first few sounds.
+function bootSubLine(returning) {
+  return returning
+    ? "restoring your bank & taste…"
+    : `listening to ${BOOT_POOL.size} sounds: you start as soon as the first ${BOOT_POOL.playableAt} land`;
+}
 (async () => {
-  // Spawn the render farm BEFORE the save read, so N wasm instantiations
-  // overlap with IndexedDB and with the engine worker's own init instead of
-  // queueing behind them.
+  // The save read starts first and the render farm beside it, so N wasm
+  // instantiations overlap with IndexedDB and with the engine worker's own
+  // init instead of queueing behind them. The veil's line is index.html's to
+  // say first (its head reads the save before this module has run); this
+  // read confirms it from BOOT_POOL, and covers a save adopted from an older
+  // name.
+  const savedRead = (async () => {
+    let s = await idbGet("state");
+    if (!s) {
+      // One-time migration: this app has been called EVOSYNTH and RICERCAR
+      // before it was called AURACLE — adopt any save left behind under an
+      // older name so nobody loses their bank. Newest legacy name first: a
+      // player who has both should be handed the one they used last.
+      for (const legacy of LEGACY_DB_NAMES) {
+        s = await legacyIdbState(legacy);
+        if (s) { idbPut("state", s); break; }
+      }
+    }
+    // index.html's head may have said it already, from the same read.
+    const line = bootSubLine(!!(s && s.session));
+    $("boot-sub").dataset.said = "1";
+    if ($("boot-sub").textContent !== line) $("boot-sub").textContent = line;
+    return s;
+  })();
   // Belt to `spawnFarm`'s braces: `send({type:"init"})` below must be reached
   // on every path, or the app sits on the boot veil forever with no engine.
   let farm = { ports: [], module: null };
@@ -24499,17 +24550,7 @@ bootMidi();
   } catch (err) {
     console.warn("[auracle] farm unavailable; filling serially:", err);
   }
-  let saved = await idbGet("state");
-  if (!saved) {
-    // One-time migration: this app has been called EVOSYNTH and RICERCAR before
-    // it was called AURACLE — adopt any save left behind under an older name so
-    // nobody loses their bank. Newest legacy name first: a player who has both
-    // should be handed the one they used last.
-    for (const legacy of LEGACY_DB_NAMES) {
-      saved = await legacyIdbState(legacy);
-      if (saved) { idbPut("state", saved); break; }
-    }
-  }
+  const saved = await savedRead;
   // What this page is booting from, byte for byte. `persistState` keeps it as
   // `state-prev` before the first overwrite; `restore_failed` quarantines it.
   bootRecord = saved;
@@ -24554,12 +24595,8 @@ bootMidi();
       // (`addressSeed`): an ordinary session's deals never wait for more
       // sounds to arrive.
       seeded: addressSeed != null,
-      poolSize: 40,
-      // Hand the app over at 8 vetted patches and let the other 32 land behind
-      // it. A duel needs a bank wide enough to hold an interesting question, not
-      // a full one — and 8 arrives in seconds where 40 takes half a minute.
-      // Not below the engine's `NAME_FLOOR` (worker.js `PLAYABLE_AT`).
-      playableAt: 8,
+      poolSize: BOOT_POOL.size,
+      playableAt: BOOT_POOL.playableAt,
       saved: saved && saved.session ? saved.session : null,
       // One end of each farm channel. Transferring them *into* the engine
       // worker is what keeps this thread out of the data path: from here on,
