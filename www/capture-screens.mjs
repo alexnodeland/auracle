@@ -8,7 +8,7 @@
 // 1440×900, teach it, groom away the test debris, and save one raw PNG per shot
 // into <out-dir>. `encode-screens.sh <out-dir>` crops and encodes them.
 //
-//   play  nodebank  evolve  taste  styles  directions  trust  warmstart  perform
+//   play  evolve  taste  learning  warmstart  perform  cmdk
 //
 // The session is *taught*, not staged. The three-pick warm start, then duels in
 // EVOLVE, each answered with one consistent synthetic taste (see TASTE below),
@@ -126,14 +126,11 @@ const modelIdle = (page, ms = 600_000) =>
 const poolFull = (page) =>
   until(page, () => !/arriving/.test(document.getElementById("bank-count")?.textContent || ""), null, "the pool to fill", 600_000);
 
-/** Boot, and on a restored session the engine's refit of it. That fit lands
- *  seconds after the veil lifts, without the model's lamp, and re-ranks and
- *  renames the bank — so nothing is picked out of the bank before it. */
+/** Boot. A restored session comes back with its saved fit, so it needs no
+ *  refit before the bank is ranked (PR #409); the model only has to be idle. */
 async function booted(page) {
   await until(page, () => document.getElementById("boot")?.classList.contains("done"), null, "the engine to boot", 300_000);
-  if ((await num(page, "duel-count")) > 0) {
-    await until(page, () => (window.__captureSeen?.fitted || 0) > 0, null, "the restored session's refit", 600_000);
-  }
+  await modelIdle(page);
   // A fresh profile gets the warm start a moment after the veil lifts.
   await page.waitForTimeout(2000);
 }
@@ -152,6 +149,12 @@ async function engineQuiet(page, quiet = 3000) {
  *  first-run coach, the alarm strip down. Toasts are waited out, never
  *  removed — each one is a real message and the lane empties on its own. */
 async function settle(page, { ms = 120_000 } = {}) {
+  // The guide pill's first-visit steps, closed with its own ×, as a player
+  // who has done them closes them.
+  if (await visible(page, "#guide:not(.hidden)")) {
+    await page.getByRole("button", { name: "Stop showing these" }).click();
+    await until(page, () => document.getElementById("guide").classList.contains("hidden"), null, "the guide pill to go", 10_000);
+  }
   await page.mouse.move(PARK.x, PARK.y);
   // No focus ring left behind by the last gesture (a dragged knob keeps focus).
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -164,9 +167,20 @@ async function settle(page, { ms = 120_000 } = {}) {
   await page.waitForTimeout(400); // one more frame of every animation that was finishing
 }
 
+/** A level, by its stop on the rail, and the move to it landed: one view on,
+ *  the rail's puck home and no face in flight (tests/web/shell.js `goLevel`). */
 async function view(page, v) {
-  await page.click(`.viewtab[data-view="${v}"]`);
-  await until(page, (v) => !document.getElementById(`view-${v}`).classList.contains("hidden"), v, `the ${v} view`, 30_000);
+  await page.click(`.rail-stop[data-level="${v}"]`);
+  await until(page, (v) => document.querySelector(`.rail-stop[data-level="${v}"]`)?.getAttribute("aria-current") === "location" &&
+    document.querySelectorAll("section.view.on").length === 1 && document.getElementById(`view-${v}`).classList.contains("on") &&
+    !document.getElementById("rail").classList.contains("traveling") && !document.querySelector(".zoom-face.on"),
+  v, `the ${v} level`, 30_000);
+}
+
+/** One of the bank's three tabs: pool, saved or presets. */
+async function bankTab(page, bank) {
+  await page.click(`.bank-tabs [role=tab][data-bank="${bank}"]`);
+  await until(page, (b) => document.querySelector(`.bank-tabs [data-bank="${b}"]`)?.getAttribute("aria-selected") === "true", bank, `the ${bank} tab`, 10_000);
 }
 
 /** A bench open can show the one-time bench walkthrough; it is dismissed the
@@ -372,8 +386,8 @@ async function openRow(page, rowId, name) {
  *  model believes in — from the second row down, so there is a ranked row to
  *  sit above it in the rail (see `groom`). */
 async function pickPatch(page) {
-  await view(page, "play");
-  await page.click('.bf[data-f="pool"]');
+  await view(page, "patch");
+  await bankTab(page, "pool");
   await page.waitForTimeout(300);
   const rows = await page.$$eval("#bank-list .bank-item", (els) => els.map((e) => ({
     id: e.id,
@@ -408,12 +422,12 @@ async function groom(page) {
   // A restored session comes back in the view it was left in, and PERFORM
   // measures the patch on the bench and grows offers while it is shown. Out
   // of it, and past what it had started.
-  await view(page, "play");
+  await view(page, "patch");
   await engineQuiet(page);
   await emptyTray(page);
   // The rows carry the model's predictions once a fitted posterior is up. A
   // restored session refits on load, and until then the rail is unranked.
-  await page.click('.bf[data-f="pool"]');
+  await bankTab(page, "pool");
   await until(page, () => /%/.test(document.querySelector("#bank-list .bank-item .bi-pct")?.textContent || ""),
     null, "the bank's predictions", 600_000);
   await modelIdle(page);
@@ -421,7 +435,12 @@ async function groom(page) {
   log(`  PATCH shows ${row.name}`);
   // Rated by the listener, who likes it (see pickPatch): five stars. A rating
   // is an observation, so it is a pick like any other.
-  if (!(await page.locator(".bank-item.live .star.lit[data-s='5']").count())) await page.click(".bank-item.live .star[data-s='5']");
+  // The row's ★ opens its five stars in place of its actions.
+  if (!(await page.locator(".bank-item.live .star.lit[data-s='5']").count())) {
+    await page.hover(".bank-item.live");
+    await page.click(".bank-item.live .bi-star");
+    await page.click(".bank-item.live .star[data-s='5']");
+  }
   await modelIdle(page);
   // The rail scrolled by whole rows so the row on the bench sits in its second
   // slot, under the row the model ranks next above it. The same slot in every
@@ -437,7 +456,7 @@ async function groom(page) {
     return { i, slot: Math.round((rows[i].offsetTop - rows[0].offsetTop - list.scrollTop) / pitch) };
   });
   log(`    bench row: bank row ${at.i + 1}, rail slot ${at.slot + 1}`);
-  if (at.slot !== 1) log("    !! the bench row is not in the rail's second slot; check bank-row's crop against rects.json");
+  log("    bank-row's crop is the row's rectangle in rects.json (play.row)");
   // The minimap on, so the zoomed-in frame still shows the whole patch.
   if ((await page.getAttribute("#rack-map-btn", "aria-pressed")) !== "true") await page.click("#rack-map-btn");
   // The camera auto-fits on open; then ⌘= steps: two, and more while the
@@ -478,81 +497,45 @@ async function groom(page) {
   return row;
 }
 
-/** Open the spec strip tall enough for the description it is showing. Its
- *  short-screen default (92px at 1440×900) clips the end of a long one — the
- *  formant card loses most of its "heard as" line — and the divider above it
- *  is the app's own control for exactly this; it remembers the height. */
-async function fitSpecDock(page, chip) {
-  const short = await page.$eval("#spec-dock", (d) => d.scrollHeight - d.clientHeight);
-  if (short <= 0) return;
-  await page.mouse.move(PARK.x, PARK.y);
-  await until(page, () => document.getElementById("spec-dock").classList.contains("rest"), null, "the spec strip to rest", 10_000);
-  const grip = await page.locator("#dock-resize").boundingBox();
-  const x = grip.x + grip.width / 2;
-  const y = grip.y + grip.height / 2;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x, y - short / 2);
-  await page.mouse.move(x, y - short - 2);
-  await page.mouse.up();
-  await page.mouse.move(PARK.x, PARK.y);
-  await page.hover(chip);
-  log(`    spec strip opened ${short + 2}px taller`);
-}
-
 // ---------------------------------------------------------------- the shots
 async function shotPlay(page) {
-  await view(page, "play");
+  await view(page, "patch");
   await settle(page);
   await until(page, () => !document.querySelector(".bl-stale"), null, "the model's guess to be current", 120_000);
   await measure(page, "play", { bank: ".bank", row: ".bank-item.live", frame: "#rack-frame", minimap: "#rack-map" });
   await shoot(page, "play");
 }
 
-async function shotNodebank(page) {
-  const chip = ".nb-item[data-kind='formant']";
-  const card = () => page.waitForFunction(() => /formant/i.test(document.querySelector("#spec-dock .sd-name")?.textContent || ""),
-    null, { timeout: 30_000, polling: 250 });
-  await view(page, "play");
+async function shotTaste(page) {
+  await view(page, "taste");
+  // TASTE on its toggle: the sounds lit by what the model thinks you'd like.
+  if ((await page.getAttribute("#taste-tog", "aria-pressed")) !== "true") await page.click("#taste-tog");
   await settle(page);
-  // The rail scrolled to formant's group, as a person scrolls to find it: the
-  // group's heading directly under the rail's own, so the catalogue reads
-  // from there down rather than from a sticky "in this patch" with its chips
-  // scrolled away beneath it.
-  await page.evaluate((sel) => {
-    const body = document.getElementById("nb-body");
-    const group = document.querySelector(sel).closest(".nb-group");
-    const head = body.querySelector(".nb-head");
-    if (group && head) body.scrollTop += group.getBoundingClientRect().top - head.getBoundingClientRect().bottom;
-  }, chip);
-  await page.waitForTimeout(300);
-  await page.hover(chip);
-  await card();
-  await fitSpecDock(page, chip);
-  await card();
-  await page.waitForTimeout(500);
-  await measure(page, "nodebank", { dock: "#spec-dock", chip: ".nb-item[data-kind='formant']" });
-  await shoot(page, "nodebank");
-  await page.mouse.move(PARK.x, PARK.y);
+  await measure(page, "taste", { well: "#taste-well", legend: "#taste-legend", time: "#taste-time" });
+  await shoot(page, "taste");
 }
 
-async function shotTaste(page, tab, name) {
-  await view(page, "taste");
-  await page.click(`.tab[data-tab="${tab}"]`);
+async function shotLearning(page) {
+  await view(page, "learning");
+  await until(page, () => document.querySelectorAll("#md-bars > *").length > 0, null, "what it weighs", 60_000);
   await settle(page);
-  const empty = await visible(page, "#crt-empty:not(.hidden)");
-  if (empty) log(`    !! TASTE › ${tab} is showing its empty state: ${await page.textContent("#crt-empty")}`);
-  // Style names are the fit's own, and a long one runs past the chip's 30ch
-  // cap and is cut mid-word. Not the capture's to fix; worth a re-take (the
-  // names change on every refit).
-  const clipped = await page.$$eval("#style-chips .sc-name", (els) => els.filter((e) => {
-    const ctx = document.createElement("canvas").getContext("2d");
-    ctx.font = getComputedStyle(e).font;
-    return ctx.measureText(e.value || e.placeholder).width > e.clientWidth + 1;
-  }).map((e) => e.value || e.placeholder));
-  if (clipped.length) log(`    !! style chip names cut off by the chip's width: ${clipped.join("; ")}`);
-  await measure(page, name, { panel: "#taste-crt", chips: "#style-chips" });
-  await shoot(page, name);
+  await measure(page, "learning", { weighs: ".md-weighs", map: ".md-mapp", forecasts: ".md-fcp" });
+  await shoot(page, "learning");
+}
+
+/** ⌘K open over PERFORM with two letters typed, so the list shows sounds and
+ *  what to do side by side. */
+async function shotCmdk(page, typed = "wa") {
+  await view(page, "perform");
+  await settle(page);
+  await page.click("#cmdk-btn");
+  await until(page, () => !document.getElementById("cmdk").classList.contains("hidden"), null, "⌘K's list", 10_000);
+  await page.keyboard.type(typed, { delay: 80 });
+  await page.waitForTimeout(600);
+  await page.mouse.move(PARK.x, PARK.y);
+  await measure(page, "cmdk", { list: "#cmdk" });
+  await shoot(page, "cmdk");
+  await page.keyboard.press("Escape");
 }
 
 async function shotEvolve(page) {
@@ -607,15 +590,21 @@ async function shotWarmstart(page) {
 }
 
 async function shotPerform(page, preset = "Ceiling") {
-  await view(page, "play");
-  await page.click('.bf[data-f="preset"]');
+  await view(page, "patch");
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: preset }).first().click();
   await closeBenchTour(page);
   await view(page, "perform");
   await until(page, (n) => (document.querySelector(".pf-name")?.textContent || "").includes(n), preset, `PERFORM to name ${preset}`, 120_000);
   await until(page, () => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, `${preset} to be measured`, 300_000);
   // A chord held on the latch: C4, G4, C5.
-  if ((await page.getAttribute("#hold-btn", "aria-pressed")) !== "true") await page.click("#hold-btn");
+  // HOLD lives in KEYS ⋯ and in ⌘K; ⌘K's row is the one a keyboard reaches.
+  if ((await page.getAttribute("#hold-btn", "aria-pressed")) !== "true") {
+    await page.keyboard.press("Control+k");
+    await page.fill("#cmdk-input", "Hold: latch held notes");
+    await page.keyboard.press("Enter");
+    await until(page, () => document.getElementById("hold-btn").getAttribute("aria-pressed") === "true", null, "HOLD to latch", 10_000);
+  }
   for (const k of ["a", "g", "k"]) {
     await page.keyboard.down(k);
     await page.waitForTimeout(120);
@@ -631,11 +620,13 @@ async function shotPerform(page, preset = "Ceiling") {
     for (let i = 1; i <= 4; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 6);
     await page.mouse.up();
   }
-  if (!/Take it/.test((await page.locator(".pf-offer-body").textContent().catch(() => "")) || "")) {
-    await page.locator(".pf-pads").getByRole("button", { name: "Offer", exact: true }).click();
+  // OFFER's own key, N: B fills with a variant, and PEEK, TAKE and PASS
+  // stop saying they need one (their data-wait).
+  if (await page.locator('.pf-pads [data-wait="needs an offer"]').count()) {
+    await page.mouse.move(PARK.x, PARK.y);
+    await page.keyboard.press("n");
   }
-  await until(page, () => /Take it/.test(document.querySelector(".pf-offer-body")?.textContent || ""), null, "an offer to be waiting in B", 600_000);
-  await until(page, () => document.querySelector(".pf-steps")?.classList.contains("hidden") ?? true, null, "the first steps to retire", 60_000);
+  await until(page, () => !document.querySelector('.pf-pads [data-wait="needs an offer"]'), null, "an offer to be waiting in B", 600_000);
   await settle(page);
   await until(page, () => !/measuring/.test(document.getElementById("view-perform").textContent), null, "PERFORM to stop measuring", 120_000);
   await shoot(page, "perform");
@@ -643,14 +634,12 @@ async function shotPerform(page, preset = "Ceiling") {
 
 const SHOTS = [
   ["play", shotPlay],
-  ["nodebank", shotNodebank],
-  ["taste", (p) => shotTaste(p, "map", "taste")],
-  ["styles", (p) => shotTaste(p, "styles", "styles")],
-  ["directions", (p) => shotTaste(p, "dir", "directions")],
-  ["trust", (p) => shotTaste(p, "trust", "trust")],
   ["evolve", shotEvolve],
+  ["taste", shotTaste],
+  ["learning", shotLearning],
   ["warmstart", shotWarmstart],
   ["perform", shotPerform],
+  ["cmdk", shotCmdk],
 ];
 
 // ---------------------------------------------------------------- main
