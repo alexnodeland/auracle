@@ -3778,7 +3778,7 @@ fn an_unreadable_slot_clip_costs_that_slot_alone() {
     let mut state = engine.export_state();
     let slots = state.audition_clips.as_mut().unwrap();
     slots["1"]["channels"] = 7.into();
-    slots["9"] = slots["0"].clone();
+    slots["8"] = slots["0"].clone();
     slots["x"] = slots["0"].clone();
     let text = serde_json::to_string(&state).unwrap();
     let mut cfg = engine.cfg.clone();
