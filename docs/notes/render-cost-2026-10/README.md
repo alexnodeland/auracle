@@ -85,6 +85,22 @@ performance core's.
 
 ## In short
 
+**Where it stands (2026-10-15).** The first two of
+[what was left](#what-is-left-ranked), and the third's block walk, are built
+([Built](#built)): quiver-dsp
+0.4.1's ladder (L2 and L0) and shorter walk, with `norm_sqr().sqrt()` in φ's
+spectral frames, made a render about 39% cheaper in wasm (#393); quiver-dsp
+0.5.1's block walk made it about a third cheaper again, bit for bit (#406). A
+walk runs its model once a step (#389), and a refit deals its draws without
+rebuilding the program (#391) and recomputes only what its site reaches
+(#399). The third's other candidates, ports as slices and enum dispatch, are
+not built. L1, the ladder's one fixed-point pass, was carried by quiver-dsp
+0.5.0, which Auracle never took, and 0.5.1 reverts it; whether to take it is
+#403's to decide. `simd128` (-2.2%, within the noise) and reusing the
+analysis's FFT buffers (under 1%) are declined: neither is worth its cost
+(#298). A lower-rate phrase stays a decision about φ, not built. The bullets below are the profile
+as of 2026-10-06, before any of that.
+
 - **A render is its DSP.** Natively 94% of the farm's job is ticking the patch
   through the phrase; φ's analysis is 3%, loudness 1%, the face 0.8%, vetting
   0.2%, compiling the tree 0.03%, and the farm's JSON 0.003%
@@ -265,7 +281,8 @@ software. Natively it is the platform's. `norm_sqr().sqrt()` in its place
 ([diff](analysis-norm-sqr.diff)) takes 9.2% off the set in wasm and nothing
 natively, and moves φ by at most 1.1e-14 of a coordinate's spread
 ([phi-moves-norm-sqr.txt](phi-moves-norm-sqr.txt)): a rounding, but not the
-same bits, so it is the maintainer's to decide ([what is left](#what-is-left-ranked)).
+same bits, so it was the maintainer's to decide ([what is left](#what-is-left-ranked);
+since built, #393).
 
 A render allocates nothing per sample ([allocs.txt](allocs.txt)): about seven
 allocations in a whole render's ticks (its buffers), 900 to 5,600 to compile
@@ -471,7 +488,8 @@ What else is quiver's to change, measured the same way:
   a saw voice in `LivePoly` 9% slower. Not a win, and so the walk's cost is
   not in finding a slot: it is the walk's shape (a `PortValues` per node, an
   `Option<f64>` per port, a `dyn` call per node).
-- **The walk's shape** (not prototyped; the largest that is left): the walk is
+- **The walk's shape** (not prototyped; the largest that is left; its block
+  walk since built, #406, and ports as slices and enum dispatch not): the walk is
   41 to 55% of a render, and a voice's 13 to 90 nodes each pay it every
   sample. Ports as plain `&[f64]` slices a module reads by index (an API
   change for every module), a node's whole block at a time where the graph
@@ -482,15 +500,18 @@ What else is quiver's to change, measured the same way:
 
 ## What is left, ranked
 
-| | Change | Where | φ | Gain, measured or estimated |
-| --- | --- | --- | --- | --- |
-| 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% |
-| 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) |
-| 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped |
-| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets |
-| 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor |
-| 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% |
-| 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear |
+Ranked as of 2026-10-06; the last column says where each stands on
+2026-10-15.
+
+| | Change | Where | φ | Gain, measured or estimated | Now |
+| --- | --- | --- | --- | --- | --- |
+| 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% | Built: quiver-dsp 0.4.1 (#393) |
+| 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) | Built, with 1 and 0.4.1's shorter walk (#393): together a wasm render -39% |
+| 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped | 0.4.1 already trimmed the walk (#393). Blocks built: quiver-dsp 0.5.1's block walk (#406), a render about a third cheaper again, bit for bit; slices and enum dispatch not built |
+| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets | quiver-dsp 0.5.0 carried it and Auracle never took it; 0.5.1 reverts it after an 8-seed climb fell; #403 decides |
+| 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor | Declined (#298) |
+| 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% | Declined (#298) |
+| 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear | Not built: a decision about φ, not about speed |
 
 Not measured: wasm threads (the app has no COOP and COEP headers, and the farm
 already renders on several workers), and `f32` in the DSP (quiver's modules

@@ -67,6 +67,42 @@ const CACHE_MAX = 24;
 // a reply that lands later is still kept. Renders take a fraction of a
 // second each; a pressed offer ahead of them in `soon` can take tens.
 const REQUEST_MS = 30_000;
+// The live filter's Q, in the Web Audio unit for a lowpass (dB): −3.01 dB is
+// a Q of 1/√2, the Butterworth the lesson's filter is (`LESSON_RESONANCE`
+// in crates/auracle-wasm/src/explain.rs), 3 dB down at its cutoff.
+const LIVE_Q_DB = 20 * Math.log10(Math.SQRT1_2);
+// The most the live filter's level estimate lifts the sound through it
+// (12 dB): a low cutoff on a bright sound leaves little to lift.
+const LIVE_LIFT_MAX = 4;
+// BS.1770's K-weighting, as crates/auracle-features/src/loudness.rs has it
+// (`k_shelf`, `k_highpass`, the same coefficients): the loudness every
+// render is set to is read through it. Its power gain at `hz`, at the
+// sample rate `fs`.
+function kPower(hz, fs) {
+  const biquad = (b0, b1, b2, a1, a2) => {
+    const w = (2 * Math.PI * hz) / fs;
+    const c1 = Math.cos(w);
+    const s1 = Math.sin(w);
+    const c2 = Math.cos(2 * w);
+    const s2 = Math.sin(2 * w);
+    const nr = b0 + b1 * c1 + b2 * c2;
+    const ni = -(b1 * s1 + b2 * s2);
+    const dr = 1 + a1 * c1 + a2 * c2;
+    const di = -(a1 * s1 + a2 * s2);
+    return (nr * nr + ni * ni) / (dr * dr + di * di);
+  };
+  let q = 0.7071752369554196;
+  let k = Math.tan((Math.PI * 1681.974450955533) / fs);
+  const vh = Math.pow(10, 3.999843853973347 / 20);
+  const vb = Math.pow(vh, 0.499666774155);
+  let a0 = 1 + k / q + k * k;
+  const shelf = biquad((vh + (vb * k) / q + k * k) / a0, (2 * (k * k - vh)) / a0, (vh - (vb * k) / q + k * k) / a0, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0);
+  q = 0.5003270373238773;
+  k = Math.tan((Math.PI * 38.13547087602444) / fs);
+  a0 = 1 + k / q + k * k;
+  const hp = biquad(1 / a0, -2 / a0, 1 / a0, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0);
+  return shelf * hp;
+}
 
 export function createExplain(host) {
   const { words, tok, canvasFont, motionMs, INK, inkAlpha } = host;
@@ -983,8 +1019,11 @@ export function createExplain(host) {
     want: null, // a cutoff waiting for that request to land
     token: 0,
     returnTo: null,
-    src: null,
+    src: null, // the step's sound: the plain render (through the live filter on the filter's step)
     srcStart: 0,
+    meas: null, // the filtered render for the cutoff held, beside it on the filter's step
+    live: null, // {filter, gain, measGain}: the live filter and the two levels crossfaded
+    curveAt: 0, // when the measured curve for the cutoff held replaced the guess
     playing: false,
     raf: 0,
     timer: 0,
@@ -1028,7 +1067,15 @@ export function createExplain(host) {
     L.want = null;
     clearTimeout(L.askT);
     stopLesson();
+    if (L.live) {
+      L.live.filter.disconnect();
+      L.live.gain.disconnect();
+      L.live.measGain.disconnect();
+      L.live = null;
+    }
     cancelAnimationFrame(L.raf);
+    cancelAnimationFrame(L.curveRaf);
+    L.curveRaf = 0;
     clearTimeout(L.timer);
     L.raf = 0;
     L.timer = 0;
@@ -1066,15 +1113,21 @@ export function createExplain(host) {
     const buffer = m.buffer && m.buffer.length ? host.audio.ctx.createBuffer(1, m.buffer.length, m.sampleRate) : null;
     if (buffer) buffer.copyToChannel(m.buffer, 0);
     const data = m.data || { error: m.error || "vet" };
-    const reply = { data, buffer: data.error ? null : buffer, error: data.error || null };
+    const reply = { data, buffer: data.error ? null : buffer, error: data.error || null, cutoff: m.cutoff ?? null };
     if (m.cutoff == null) L.plain = reply;
-    else L.filtered = reply;
+    else {
+      L.filtered = reply;
+      if (held()) L.curveAt = performance.now();
+    }
     // The sound in hand didn't render, or a tree couldn't be read: no cutoff
     // will change that, so nothing more is asked. A filtered render that
     // failed at one cutoff (silent, or refused by the check) may pass at
     // another, so a drag still asks.
     if ((m.cutoff == null && reply.error) || reply.error === "no_tree") L.dead = true;
-    if (L.playing) startLesson();
+    if (L.playing) {
+      if (m.cutoff == null || !L.src || refused()) startLesson();
+      else startMeasured();
+    }
     if (L.want != null) {
       const w = L.want;
       L.want = null;
@@ -1094,39 +1147,152 @@ export function createExplain(host) {
     });
     shapeCv?.setAttribute("aria-label", UI.shape(L.name, face));
   }
-  // The lesson's sound: the step's render, looped, from where the last one
-  // was, so a new cutoff is heard in place. Through the app's master, and
-  // the app's own phrase stops first.
-  // The filter's step plays only the filtered render: never the sound
-  // without it under "through it".
+  // The filtered render, when it is for the cutoff the hand holds now.
+  function held() {
+    const f = L.filtered;
+    return f && f.cutoff != null && Math.abs(f.cutoff - L.cutoff) < 1e-9 ? f : null;
+  }
+  // The cutoff held was refused (silent, or by the vet): nothing plays
+  // through it.
+  const refused = () => !!held()?.error;
+  // The live filter (a Web Audio lowpass, Butterworth as the lesson's is)
+  // and the two levels the filter's step crossfades: the plain render
+  // through it, and the measured render for the cutoff held.
+  function liveNodes() {
+    if (L.live) return L.live;
+    const ctx = host.audio.ctx;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = LIVE_Q_DB;
+    filter.frequency.value = hzOfKnob(L.cutoff);
+    const gain = ctx.createGain();
+    const measGain = ctx.createGain();
+    gain.gain.value = 0;
+    measGain.gain.value = 0;
+    filter.connect(gain);
+    gain.connect(host.audio.out);
+    measGain.connect(host.audio.out);
+    L.live = { filter, gain, measGain };
+    return L.live;
+  }
+  // The live filter's gain at each frequency in `hz` (a Float32Array).
+  function liveResponse(hz) {
+    const mag = new Float32Array(hz.length);
+    liveNodes().filter.getFrequencyResponse(hz, mag, new Float32Array(hz.length));
+    return mag;
+  }
+  // How far to lift the plain render through the live filter so it plays
+  // about as loud as the measured render will (every render is set to one
+  // loudness, −18 LUFS, and the filtered one too): the sound's power over
+  // what the filter leaves of it, band by band from its portrait. A band's
+  // figure is a power density and the bands are spaced by octave, so each
+  // counts by its width (in proportion to its centre); and loudness is
+  // K-weighted (BS.1770, as `loudness.rs` measures it: a shelf of +4 dB
+  // above about 1.7 kHz, a highpass at 38 Hz), so each counts by that too.
+  // A guess, until the measured render for the cutoff held takes over.
+  function liveLift() {
+    const bands = L.plain && !L.plain.error ? L.plain.data.portrait?.bands : null;
+    if (!bands || !bands.length) return 1;
+    const hz = Float32Array.from(bands, (_, i) => hzOfBand(i));
+    const mag = liveResponse(hz);
+    const fs = host.audio.ctx.sampleRate;
+    let all = 0;
+    let left = 0;
+    bands.forEach((db, i) => {
+      const p = Math.pow(10, db / 10) * hz[i] * kPower(hz[i], fs);
+      all += p;
+      left += p * mag[i] * mag[i];
+    });
+    return left > 0 ? clamp(Math.sqrt(all / left), 1, LIVE_LIFT_MAX) : LIVE_LIFT_MAX;
+  }
+  // The levels for what is held: the measured render once it is for the
+  // cutoff held, else the plain render through the live filter; faded over
+  // the motion token, at once under reduced motion.
+  function mix(now = false) {
+    if (!L.live) return;
+    const t = host.audio.ctx.currentTime;
+    const fade = now || reduced() ? 0 : motionMs("--d-move") / 1000 / 3;
+    const on = L.step === 1 && L.playing;
+    const m = held();
+    const measured = on && !!(m && m.buffer && L.meas);
+    const set = (param, v) => {
+      param.cancelScheduledValues(t);
+      if (fade) param.setTargetAtTime(v, t, fade);
+      else param.setValueAtTime(v, t);
+    };
+    set(L.live.gain.gain, on && !measured ? liveLift() : 0);
+    set(L.live.measGain.gain, measured ? 1 : 0);
+  }
+  // The hand's cutoff, heard: set on the live filter in the event's own
+  // task, so it sounds at the next audio quantum.
+  function setLive() {
+    if (!L.live) return;
+    L.live.filter.frequency.value = hzOfKnob(L.cutoff);
+    mix();
+  }
+  function stopSrc(n) {
+    if (!n) return;
+    try { n.stop(); } catch { /* already stopped */ }
+    n.disconnect();
+  }
+  // The measured render for the cutoff held, looped beside the plain one
+  // from the same place in the phrase.
+  function startMeasured() {
+    stopSrc(L.meas);
+    L.meas = null;
+    const m = held();
+    if (L.step === 1 && L.src && m && m.buffer) {
+      const ctx = host.audio.ctx;
+      const src = ctx.createBufferSource();
+      src.buffer = m.buffer;
+      src.loop = true;
+      src.connect(liveNodes().measGain);
+      src.start(0, (ctx.currentTime - L.srcStart) % m.buffer.duration);
+      L.meas = src;
+    }
+    mix();
+  }
+  // The lesson's sound: the plain render, looped, from where the last one
+  // was. On the filter's step it plays through the live filter, so a new
+  // cutoff is heard at once, until the measured render for the cutoff held
+  // fades in over it. Through the app's master, and the app's own phrase
+  // stops first. The filter's step never plays the sound without a filter
+  // under "through it", nor anything at a cutoff that was refused.
   function startLesson() {
-    const r = L.step === 1 ? L.filtered : L.plain;
-    if (!r || !r.buffer) {
+    const r = L.plain;
+    if (!r || !r.buffer || (L.step === 1 && refused())) {
       stopLesson();
       return;
     }
     const ctx = host.audio.ctx;
     const at = L.src ? (ctx.currentTime - L.srcStart) % r.buffer.duration : 0;
-    if (L.src) {
-      try { L.src.stop(); } catch { /* already stopped */ }
-    }
+    stopSrc(L.src);
+    stopSrc(L.meas);
+    L.meas = null;
     host.stopAudition();
     const src = ctx.createBufferSource();
     src.buffer = r.buffer;
     src.loop = true;
-    src.connect(host.audio.out);
+    if (L.step === 1) {
+      const n = liveNodes();
+      n.filter.frequency.value = hzOfKnob(L.cutoff);
+      src.connect(n.filter);
+    } else src.connect(host.audio.out);
     src.start(0, at);
     L.src = src;
     L.srcStart = ctx.currentTime - at;
     L.playing = true;
+    if (L.step === 1) startMeasured();
+    mix(true);
     if (!L.raf && !L.timer) liveLoop();
   }
   function stopLesson() {
-    if (L.src) {
-      try { L.src.stop(); } catch { /* already stopped */ }
-    }
+    stopSrc(L.src);
+    stopSrc(L.meas);
     L.src = null;
+    L.meas = null;
     L.playing = false;
+    mix(true);
   }
   function togglePlay() {
     if (L.playing) stopLesson();
@@ -1178,7 +1344,11 @@ export function createExplain(host) {
     const w = h * 0.6;
     const b = { x: (VW - w) / 2, y: 12, w, h };
     const plain = L.plain && !L.plain.error && L.plain.data.portrait;
-    const filt = L.step === 1 && L.filtered && !L.filtered.error && L.filtered.data.portrait;
+    // The filtered render's shape only while it is for the cutoff held, so
+    // the shape and the mark on it agree; between, the plain shape. The
+    // mark is the hand's, on either.
+    const m = L.step === 1 ? held() : null;
+    const filt = m && !m.error && m.data.portrait;
     if (!plain) {
       // Still measuring, or it failed: the body says why.
       if (!L.plain) text(ctx, UI.measuring, VW / 2, VH / 2, "center", INK.amber);
@@ -1202,9 +1372,10 @@ export function createExplain(host) {
       ctx.fill();
       litLine(ctx, 1.8);
     }
-    if (filt) {
-      // The cutoff on the shape: above it is what the filter takes away.
-      const hz = L.filtered.data.cutoff_hz;
+    if (L.step === 1 && !refused() && !L.dead) {
+      // The cutoff on the shape, where the hand holds it: above it is what
+      // the filter takes away. None where nothing plays through it.
+      const hz = hzOfKnob(L.cutoff);
       const y = bandY(b, bandOfHz(hz));
       ctx.fillStyle = inkAlpha(tok("--bezel"), 0.55);
       ctx.fillRect(0, 0, VW, y);
@@ -1238,21 +1409,49 @@ export function createExplain(host) {
     const gy = 14;
     const gh = FH - 44;
     box(ctx, { x: 16, y: gy, w: FW - 32, h: gh });
-    const d = L.filtered && !L.filtered.error ? L.filtered.data : null;
-    // The filter's response, measured from its impulse (`lesson_filter`'s
-    // `response`, quiver's filter as the compiler wires it): the cutoff the
-    // reply was for, which the handle leads while a new one renders.
-    if (d && d.response) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(17, gy, FW - 34, gh);
-      ctx.clip();
+    const m = held();
+    const d = m && !m.error ? m.data : null;
+    // The curve as a path over the graph from the filter's gain (dB) in
+    // each band.
+    const curve = (gains) => {
       const pts = [];
-      d.response.forEach((db, i) => {
+      gains.forEach((db, i) => {
         const hz = hzOfBand(i);
         if (hz < CUT_LO_HZ * 0.9 || hz > CUT_HI_HZ * 1.1) return;
         pts.push([fxOf(hz), gy + (clamp(-db, 0, 36) / 36) * gh]);
       });
+      return pts;
+    };
+    // How far the measured curve has faded in over the guess.
+    const fade = motionMs("--d-move");
+    const k = d && d.response ? (reduced() || !fade ? 1 : clamp((performance.now() - L.curveAt) / fade, 0, 1)) : 0;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(17, gy, FW - 34, gh);
+    ctx.clip();
+    // Until the render for the cutoff held lands, a guess: the live filter's
+    // own response (Web Audio's lowpass, what is heard), dashed amber and
+    // said to be one (ADR-012), fading out as the measured one fades in.
+    // A cutoff that was refused, or a sound that never rendered, draws no
+    // curve: nothing plays through it.
+    const guess = k < 1 && !refused() && !L.dead;
+    if (guess) {
+      const mag = liveResponse(Float32Array.from({ length: NB }, (_, i) => hzOfBand(i)));
+      polyline(ctx, curve(Array.from(mag, (g) => 20 * Math.log10(Math.max(g, 1e-6)))));
+      ctx.globalAlpha = 1 - k;
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = INK.amber;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+    // The filter's response, measured from its impulse (`lesson_filter`'s
+    // `response`, quiver's filter as the compiler wires it), for the cutoff
+    // the hand holds.
+    if (k > 0) {
+      const pts = curve(d.response);
+      ctx.globalAlpha = k;
       polyline(ctx, pts);
       ctx.lineTo(pts[pts.length - 1][0], gy + gh);
       ctx.lineTo(pts[0][0], gy + gh);
@@ -1261,13 +1460,28 @@ export function createExplain(host) {
       ctx.fill();
       polyline(ctx, pts);
       litLine(ctx);
-      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    if (guess) {
+      // On the side away from the handle, as its readout is placed.
+      const gx = fxOf(clamp(hzOfKnob(L.cutoff), CUT_LO_HZ, CUT_HI_HZ));
+      const right = gx < FW / 2;
+      ctx.globalAlpha = 1 - k;
+      text(ctx, UI.notMeasured, right ? FW - 22 : 24, gy + 16, right ? "right" : "left", INK.amber);
+      ctx.globalAlpha = 1;
+    }
+    if (k > 0 && k < 1 && !L.curveRaf) {
+      L.curveRaf = requestAnimationFrame(() => {
+        L.curveRaf = 0;
+        paintFilter();
+      });
     }
     const hz = hzOfKnob(L.cutoff);
     const cx = fxOf(clamp(hz, CUT_LO_HZ, CUT_HI_HZ));
     // Where the player has the knob; dim, and with no readout, while what
     // it would do did not render.
-    const failed = !!(L.filtered && L.filtered.error) || L.dead;
+    const failed = refused() || L.dead;
     ctx.fillStyle = failed ? INK.silkDim : INK.silk;
     ctx.fillRect(cx - 1, gy - 4, 2, gh + 8);
     ctx.beginPath();
@@ -1282,15 +1496,21 @@ export function createExplain(host) {
     filterCv.setAttribute("aria-valuetext", cutoffWord(hz));
   }
   // What the lesson says when a render failed, or the filter went after the
-  // sound; and its ▶, which plays only what rendered.
-  function paintLesson() {
-    paintShape();
+  // sound; and its ▶, which plays once the sound's own render exists, and
+  // never at a cutoff that was refused.
+  // A move (`setCut`) while the lesson plays with motion leaves the shape to
+  // the next frame (`liveLoop` draws it every frame) rather than drawing it
+  // twice; under reduced motion that loop runs twice a second, so the shape
+  // is drawn here.
+  function paintLesson(move = false) {
+    if (!(move && L.playing && L.raf)) paintShape();
     paintFilter();
     const why = lesson.querySelector(".xl-trouble");
     if (why) {
       let t = "";
       if (L.plain && L.plain.error) t = lessonTrouble(L.name, L.plain.error, false);
-      else if (L.step === 1 && L.filtered && L.filtered.error) t = lessonTrouble(L.name, L.filtered.error, true);
+      // A refusal is said for the cutoff it was, while the hand holds it.
+      else if (L.step === 1 && refused()) t = lessonTrouble(L.name, held().error, true);
       else if (L.step === 1 && L.filtered && L.filtered.data.placement === "after") t = lessonTrouble(L.name, "after", true);
       if (why.textContent !== t) why.textContent = t;
       // Red for a render that failed (ADR-009: red is failure); the filter
@@ -1299,14 +1519,14 @@ export function createExplain(host) {
     }
     const pl = lesson.querySelector(".xl-play");
     if (pl) {
-      const r = L.step === 1 ? L.filtered : L.plain;
-      pl.disabled = !(r && r.buffer) && !L.playing;
+      pl.disabled = !(L.plain && L.plain.buffer && !(L.step === 1 && refused())) && !L.playing;
       pl.textContent = lessonPlay(L.name, L.step === 1, L.playing);
     }
   }
   function setCut(hz) {
     L.cutoff = knobOfHz(clamp(hz, CUT_LO_HZ, CUT_HI_HZ));
-    paintLesson();
+    setLive();
+    paintLesson(true);
     askLesson(L.cutoff);
   }
   function renderLesson() {
@@ -1405,7 +1625,9 @@ export function createExplain(host) {
   }
   function go(step) {
     L.step = clamp(step, 0, 2);
-    // The step's sound: the filtered one on the filter's step, else the plain.
+    // The step's sound: on the filter's step the plain render through the
+    // live filter (and the measured render once it is for the cutoff held),
+    // else the plain render.
     if (L.playing) startLesson();
     renderLesson();
   }

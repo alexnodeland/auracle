@@ -3,7 +3,9 @@
 <p class="lede">A control's figure is the sound in hand rendered twice, the
 control at its center and turned, and each render measured the way φ measures
 it. The lesson on filters is the same sound rendered through a lowpass from
-the grammar, with that filter's response taken from its own impulse.</p>
+the grammar, with that filter's response taken from its own impulse; while
+the cutoff moves, the page plays and draws a browser lowpass as a guess until
+that render lands.</p>
 
 PERFORM's controls are [directions in φ](./perform.md#a-named-control-is-a-direction),
 wired onto each patch's knobs by a measured Jacobian, so no control is a fixed
@@ -172,10 +174,29 @@ latest cutoff waiting for it.
   `lowpass_response_is_the_compiled_filter` holds it to a compiled filter's
   gain on a sine at C4 within 0.25 dB, for four cutoffs and resonances.
 - **Its sound** is the filtered render's audition at the level every audition
-  plays at (`audition_pcm`), looped by the page and swapped in place when a
-  new cutoff lands. Every render is normalized to −18 LUFS (`TARGET_LUFS`)
-  as the pool's are, so a lower cutoff is heard darker, not quieter, and its
-  spectrum is drawn against its own loudest band.
+  plays at (`audition_pcm`). Every render is normalized to −18 LUFS
+  (`TARGET_LUFS`) as the pool's are, so a lower cutoff is heard darker, not
+  quieter, and its spectrum is drawn against its own loudest band.
+- **Before it lands, a guess.** A render takes 0.2 to 0.5 s here and up to
+  2.4 s on the reference Air, one at a time, so on the filter's step the page
+  loops the plain render through a Web Audio `BiquadFilterNode` (lowpass, Q
+  −3.01 dB, which is Web Audio's unit for a Q of 1/√2, the Butterworth
+  `LESSON_RESONANCE` sets), its frequency set in the move's own task from
+  `hzOfKnob`, the page's copy of the grammar's map (the reply's `cutoff_hz`
+  is the engine's, and the spec holds the two equal). Its level is lifted by
+  an estimate, capped at 12 dB: the plain portrait's band power, each band
+  counted by its width and by BS.1770's K-weighting as `loudness.rs` applies
+  it, over what the browser's filter leaves of it. Measured at the output
+  against the render on Reese and Glass Pad at six cutoffs from 100 Hz to
+  5.9 kHz, the two are within 0.8 dB. Its curve is the browser filter's own
+  response (`getFrequencyResponse`), drawn dashed amber and marked *not
+  measured yet* (ADR-012). When the render for the cutoff held lands, it
+  fades in over the live path on a second looped source at the same place in
+  the phrase, and its measured curve fades in over the guess (at once under
+  reduced motion); the next move fades back. The browser's filter goes after
+  the whole sound, with no keytracking, and the instrument's sits inside it,
+  so the two can differ until the render lands. No guess is drawn at a
+  cutoff that was refused, nor for a sound that never rendered.
 
 ## What it costs
 
@@ -217,7 +238,8 @@ prototype. The app's controls are not effects, so the engine was followed:
 - **The shape is the face from four faces up.** With fewer in the bank
   there is nothing to whiten against, and the spectrum stands in.
 - **The keys play the sound without the lesson's filter**: the lesson's sound
-  is the filtered phrase, looped; the live voices are not given the filter.
+  is the phrase, looped, through the browser's lowpass and then the filtered
+  render; the live voices are not given the filter.
 - **A palette control's preview** (the specimen's `macroAnswer`, a recipe over
   the six) is not drawn: each of the eighteen is its own direction, measured
   when placed.

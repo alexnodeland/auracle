@@ -15,8 +15,9 @@
 //! its voice's knobs back and, with velocity playing a knob, offsetting
 //! it), knobs, the knob under velocity and the bend moved between quanta
 //! (the port handler's messages during play), a patch swap's audible
-//! quanta, its fade out and its fade in, and an instrument resting (PERFORM's
-//! B slot at a mix of 0) and woken by a render under a held key. Every path
+//! quanta, its fade out and its fade in, an instrument resting (PERFORM's
+//! B slot at a mix of 0) and woken by a render under a held key, and the
+//! voice limit lowered and raised under a chord and a unison stack. Every path
 //! is played once first, so what is counted is the steady state, not a first
 //! use. What allocates by design is left out: a swap's silent rebuild (it
 //! compiles the new voices), the meter while it is on, RECORD, the settings a
@@ -302,4 +303,42 @@ fn a_quantum_allocates_nothing() {
     assert!(patched && silent > 0, "no swap was heard");
     assert!(out >= 2, "the swap did not fade out ({out} quanta)");
     assert_eq!(heard, 0, "{heard} allocations in the swap's audible quanta");
+
+    voice_limits(&mut t);
+}
+
+/// At every limit from one to [`LivePoly::MAX_VOICES`], on ten voices
+/// allocated, played and in unison: a chord past the limit, the limit
+/// lowered to one under it and raised again, and every quantum between,
+/// allocate nothing. Part of [`a_quantum_allocates_nothing`], not a test of
+/// its own: the count is one for the whole process, so a second test
+/// counting beside it would read the other's allocations.
+fn voice_limits(t: &mut usize) {
+    let tree = json(saw());
+    for (k, unison) in (1..=LivePoly::MAX_VOICES).flat_map(|k| [(k, false), (k, true)]) {
+        let mut poly = LivePoly::new(&tree, SR, LivePoly::MAX_VOICES).expect("compiles");
+        poly.set_unison(unison, 0.8, 0.6);
+        // Warm: every voice sounded once, the output buffer grown.
+        for n in 0..LivePoly::MAX_VOICES as u8 {
+            poly.note_on(48 + n, 0.8);
+        }
+        for _ in 0..4 {
+            let _ = quantum(&mut poly, t);
+        }
+        poly.all_off();
+        let n = allocations(|| {
+            poly.set_voice_limit(k);
+            for n in 0..k as u8 + 2 {
+                poly.note_on(60 + n, 0.8);
+                let _ = quantum(&mut poly, t);
+            }
+            poly.set_voice_limit(1);
+            let _ = quantum(&mut poly, t);
+            poly.set_voice_limit(LivePoly::MAX_VOICES);
+            poly.note_on(40, 0.8);
+            let _ = quantum(&mut poly, t);
+        });
+        assert_eq!(n, 0, "{n} allocations at a limit of {k} (unison {unison})");
+        assert_eq!(poly.voice_limit(), LivePoly::MAX_VOICES);
+    }
 }
