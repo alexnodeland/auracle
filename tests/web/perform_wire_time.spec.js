@@ -444,3 +444,74 @@ test("a sound opened while a graft waits plays its guess, and the graft is not j
   expect(["predicted", "borrowed"], `${name} plays its guess, wired ${how}`).toContain(how);
   expect(await app.sent({ type: "perform_offer", bg: false }, { after: before }), "no offer grows").toEqual([]);
 });
+
+// From here on, every reply main reads has its pool members' trees taken
+// out (`window.__stripTrees`): main keeps the ones it was sent before, each
+// with a `first` predicted for the panel then. A wrapper outside the fixture's
+// tap, run after the tap's listener and before main.js's own.
+const STRIP_TREES = `(() => {
+  const Orig = window.Worker;
+  window.__stripTrees = false;
+  window.__firsts = new Map();
+  function Wrapped(url, opts) {
+    const w = new Orig(url, opts);
+    if (/worker\\.js/.test(String(url))) {
+      w.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        // Every member's latest first main was handed, by id.
+        for (const [id, t] of Object.entries(d.trees || d.views?.trees || {})) if (!window.__stripTrees) window.__firsts.set(Number(id), t.first);
+        if (!window.__stripTrees) return;
+        delete d.trees;
+        if (d.views) delete d.views.trees;
+      });
+    }
+    return w;
+  }
+  Wrapped.prototype = Orig.prototype;
+  window.Worker = Wrapped;
+})();`;
+
+// After a change of PERFORM's panel, a pool sound main holds a `first` for,
+// predicted for the panel before, is not played on that one (#306): the one
+// its open brings (`bench_opening`), asked for this panel, is its guess, laid
+// as it lands, and the measurement already asked for re-checks it.
+test("a pool sound opened after a panel change plays the guess for that panel, not the one held from before", { tag: "@slow" }, async ({ page, app }) => {
+  await page.addInitScript(STRIP_TREES);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("perform");
+  await app.fullPool();
+  await app.reached();
+  // A pool sound the engine could predict, other than the one in hand, and
+  // not measured: the latest `first` main was sent for it.
+  const pick = await page.evaluate(() => {
+    const subject = window.__tap.replies.filter((r) => r.type === "bench" && r.d.subject != null).pop()?.d.subject;
+    const firsts = window.__firsts;
+    const ids = [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((e) => Number(e.dataset.id));
+    const id = ids.find((i) => i !== subject && firsts.get(i)?.predicted);
+    return id == null ? null : { id, name: document.querySelector(`#bank-list .bank-item[data-id="${id}"] .bi-name`)?.textContent };
+  });
+  expect(pick, "a pool sound the engine could predict").not.toBeNull();
+  // Main is sent no tree from now on, so the one it holds stays the old
+  // panel's; then the panel changes: Bite placed.
+  await page.evaluate(() => { window.__stripTrees = true; });
+  await page.locator(".pf-arrange").click();
+  await page.locator(".pp-row:not(.on)", { has: page.locator(".pp-name", { hasText: /^Bite$/ }) }).locator(".pp-place").click();
+  await expect(page.locator(".pp-sub")).toHaveText("7 of 8 on the panel");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await app.sent({ type: "perform_wire" })).some((m) => Array.isArray(m.controls) && m.controls.includes(16)), {
+    message: "the new panel's set named to the engine",
+  }).toBe(true);
+  await bankTab(page, "pool");
+  const t0 = await app.now();
+  await page.locator(`#bank-list .bank-item[data-id="${pick.id}"]`).click();
+  const opening = await app.reply("bench_opening", { where: { id: pick.id }, after: t0, timeout: 60_000 });
+  await app.engine((timeout) => expect.poll(() => page.evaluate(([name, t]) =>
+    performance.getEntriesByName("auracle:perform-wired").filter((e) => e.startTime >= t && e.detail?.name === name).map((e) => [e.detail.how, e.startTime]), [pick.name, t0]), { timeout })
+    .toContainEqual([expect.stringMatching(/^(predicted|borrowed)$/), expect.any(Number)]), { ms: 60_000 });
+  const marks = await page.evaluate(([name, t]) =>
+    performance.getEntriesByName("auracle:perform-wired").filter((e) => e.startTime >= t && e.detail?.name === name).map((e) => [e.detail.how, e.startTime]), [pick.name, t0]);
+  const guessAt = marks.find(([how]) => how === "predicted" || how === "borrowed")[1];
+  console.log(`${pick.name}: bench_opening ${(opening._at - t0).toFixed(0)} ms, its guess ${(guessAt - t0).toFixed(0)} ms after the click; marks ${JSON.stringify(marks)}`);
+  expect(guessAt, "its guess is the one its open brought for this panel, not the one held").toBeGreaterThanOrEqual(opening._at);
+});

@@ -1853,6 +1853,34 @@ export function createPerform(host) {
     firsts.delete(json);
     firsts.set(json, first);
     while (firsts.size > 8) firsts.delete(firsts.keys().next().value);
+    lateGuess(json);
+  }
+  // A `first` that lands after `wire` found none for the tree in hand (a pool
+  // sound opened at the click whose `first` main held was for another panel,
+  // #306): its guess plays now, as `wire` would have played it, and the
+  // measurement already asked for becomes its re-check.
+  function lateGuess(json) {
+    if (!state.cur || !state.visible || state.cur.json !== json || state.wire || state.cur.knobs.size !== 0 || grafting()) return;
+    const hit = relativeWiring(json, setOf(state.panel)) || predictedWiring(json);
+    if (!hit) return;
+    let out = false;
+    for (const p of state.pending.values()) {
+      if (p.kind === "perform_wire" && p.gen === state.gen && p.cacheAs && p.cacheAs.json === json && !p.cacheAs.quiet) {
+        p.cacheAs.quiet = true;
+        out = true;
+      }
+    }
+    state.measuring = false;
+    applyWired(structuredClone(hit.data));
+    state.guess = hit.guess;
+    markWired(hit.guess);
+    knobs.forEach(paintKnob);
+    renderHood();
+    if (out) {
+      state.revalidating = true;
+      renderStatus();
+    } else if (!heldForOpen("revalidate")) revalidate(true);
+    knobs.forEach(paintKnob);
   }
   // A wiring for a patch nobody has measured, from a measured relative of
   // the same shape (`relativeOf`), the player's cache over the shipped file:
