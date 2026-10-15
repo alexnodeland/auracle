@@ -323,9 +323,17 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
 
 test("stop ends with what's bred, and replaced patches leave only then", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
-  await taught(page, app);
+  await taught(page, app, "", { gated: true });
   const mark = await app.toastMark();
   await page.locator("#evolve-btn").click();
+  // Two walks through the gate, in the order they are absorbed in, and the
+  // rest held: on a fast farm all ten were bred before the test could press
+  // stop, and the job slot was gone (#367).
+  for (let k = 0; k < 2; k++) {
+    await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
+    const id = await page.evaluate((n) => [...window.__pwHeld].sort((a, b) => a - b)[n], k);
+    await page.evaluate((i) => window.__pwLet(i), id);
+  }
   // Two jobs absorbed, then stop from the job slot.
   await app.engine((timeout) => expect.poll(() => app.count("refine_child"), { timeout }).toBeGreaterThanOrEqual(2), { ms: 400_000 });
   const landed = await app.replies("refine_child");
