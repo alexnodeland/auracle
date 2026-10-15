@@ -251,7 +251,7 @@ test("a ▶ pressed on a sound's card, or on a style's chip, while a sync lands 
   await app.engine((timeout) => expect(chip.locator(".md-chip-play"), "the chip's ▶, pressed through a styles reply, plays").toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
 });
 
-test("with the pointer over the weights only their lengths move, and they re-sort, sliding, when it leaves", async ({ page, app }) => {
+test("with the pointer over the weights only their lengths move, and they re-sort, sliding, when it leaves or rests", async ({ page, app }) => {
   await bootFitted(app);
   await openView(page, "learning");
   const rows = page.locator("#md-bars .md-row");
@@ -266,16 +266,16 @@ test("with the pointer over the weights only their lengths move, and they re-sor
   await expect(legend).toHaveText(`dots: ${word}`);
 
   // A styles reply that turns the chosen style's weights round: the
-  // smallest the largest.
+  // largest the smallest, each 0.02 apart.
   const after = await page.evaluate(([x, y]) => {
     const T = window.__tap;
     const styles = JSON.parse(JSON.stringify(T.facts.views.styles));
     const k = Number(document.querySelector('.md-chip-pick[aria-checked="true"]').closest(".md-chip").dataset.k);
     const th = styles[k].theta;
-    const mags = th.map((t) => Math.abs(t.mean)).sort((a, b) => a - b);
     const rank = th.slice().sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean));
-    rank.forEach((t, i) => { t.mean = Math.sign(t.mean || 1) * (mags[i] + 0.01 * (rank.length - i)); });
+    rank.forEach((t, i) => { t.mean = Math.sign(t.mean || 1) * (0.05 + 0.02 * i); });
     T.inject({ type: "styles", styles, observations: (T.facts.status && T.facts.status.observations) || 0 });
+    window.__styles = { styles, k };
     window.__flips = 0;
     const animate = Element.prototype.animate;
     Element.prototype.animate = function (...a) {
@@ -301,4 +301,36 @@ test("with the pointer over the weights only their lengths move, and they re-sor
   await page.mouse.move(1, 1);
   await expect.poll(order).toEqual(after.want);
   expect(await page.evaluate(() => window.__flips), "the rows slid to their new places").toBeGreaterThan(0);
+
+  // Resting on a row: another reply that turns them round again takes its
+  // order a second after the pointer last moved, the pointer still there.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && a.effect?.target?.classList?.contains("md-row")).length), { message: "the rows have slid" }).toBe(0);
+  await rows.nth(1).hover();
+  await expect(legend).toHaveText(`dots: ${await rows.nth(1).locator(".md-word").textContent()}`);
+  const rest = await page.evaluate(() => {
+    const T = window.__tap;
+    const { styles, k } = window.__styles;
+    const th = styles[k].theta;
+    const rank = th.slice().sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean));
+    rank.forEach((t, i) => { t.mean = Math.sign(t.mean || 1) * (0.05 + 0.02 * i); });
+    const box = document.getElementById("md-bars");
+    window.__resorted = 0;
+    new MutationObserver(() => { if (!window.__resorted) window.__resorted = performance.now(); }).observe(box, { childList: true });
+    const at = performance.now();
+    const row = document.querySelectorAll("#md-bars .md-row")[1];
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+    T.inject({ type: "styles", styles, observations: (T.facts.status && T.facts.status.observations) || 0 });
+    return {
+      at,
+      held: [...document.querySelectorAll("#md-bars .md-row .md-tech")].map((e) => e.textContent),
+      want: th.slice().sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).map((t) => String(t.name).split(":")[0]),
+    };
+  });
+  expect(rest.want, "the second reply sorts the weights otherwise").not.toEqual(after.want);
+  expect(rest.held, "held while the pointer is there").toEqual(after.want);
+  await expect.poll(order, { message: "re-sorted after a rest, the pointer still over the rows" }).toEqual(rest.want);
+  const resorted = await page.evaluate(() => window.__resorted);
+  console.log(`rest: the weights re-sorted ${Math.round(resorted - rest.at)} ms after the pointer last moved`);
+  expect(resorted - rest.at, "the order waited out a second of rest").toBeGreaterThanOrEqual(999);
 });

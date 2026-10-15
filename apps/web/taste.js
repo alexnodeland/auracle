@@ -964,6 +964,10 @@ export function createTaste(host) {
       el.play.title = ex == null ? words.TASTE_LABELS.noExemplarTitle : words.TASTE_LABELS.exemplarTitle;
       el.play.setAttribute("aria-label", el.play.title);
     }
+    // While a chip's name is being typed, no chip goes or moves: either
+    // would blur the name and commit it half typed. They do on the next post.
+    const typing = document.activeElement;
+    if (typing && typing.matches("input") && box.contains(typing)) return;
     for (const [k, el] of chipEls) {
       if (keep.has(k)) continue;
       el.chip.remove();
@@ -985,6 +989,9 @@ export function createTaste(host) {
   // LEARNING's bars hold their order while the hand is on them (hand.js).
   const barsHand = newHand();
   const barsHold = holdRegion($("md-bars"), barsHand);
+  // Set while the hand's release (a leave, or a rest with the pointer still
+  // over the bars) takes up the new order: that render is not held again.
+  let releasingBars = false;
 
   function rowFor(name) {
     let el = rowEls.get(name);
@@ -1064,7 +1071,7 @@ export function createTaste(host) {
     // While the hand is on the bars, the same style's rows keep the order
     // shown and only their lengths move; they take their new order when it
     // lets go (`reorderBars`). REPLAY's steps, asked for, are not held.
-    if (!view && barsHand.held() && rowEls.size) {
+    if (!view && !releasingBars && barsHand.held() && rowEls.size) {
       const at = new Map([...box.children].map((row, i) => [row, i]));
       const place = (r) => at.get(rowEls.get(r.name)?.row) ?? Infinity;
       rows = rows.slice().sort((a, b) => place(a) - place(b));
@@ -1124,7 +1131,12 @@ export function createTaste(host) {
     if (visible !== "learning" || barReplay) return;
     const before = new Map();
     for (const [name, el] of rowEls) before.set(name, el.row.getBoundingClientRect());
-    renderBars();
+    releasingBars = true;
+    try {
+      renderBars();
+    } finally {
+      releasingBars = false;
+    }
     const dur = motionMs("--d-move");
     if (!dur) return;
     for (const [name, el] of rowEls) {
