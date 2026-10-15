@@ -1410,8 +1410,7 @@ through one ordered lane in `main.js`:
   still opening (`benchSettled`). The bench's phrase buffer is replaced only
   by an edit's reply, so until then it is the sound from before the edit. A
   waiting ▶ is lit `.pending` at once, and is taken back by a second press,
-  any stop or other ▶ (`stopAudition`, `awaitRender`, `cdPlay`, the node
-  bank's preview), an open or a failed one, and leaving the view it was
+  any stop or other ▶ (`stopAudition`, `awaitRender`, `latestPlayWins`), an open or a failed one, and leaving the view it was
   pressed in. In every view, Space is the bench's ▶ whenever a patch is on
   the bench (`toggleAudition`): PERFORM and EVOLVE play the edited patch and
   wait for an edit in flight as PATCH does, and with ▶ disabled Space says
@@ -1423,6 +1422,13 @@ through one ordered lane in `main.js`:
   region in the name's place, outside its ellipsis) within the same frame as
   the press. A bench phrase is played under the key `"inhand"`, so both ▶s
   light while it sounds (`data-hear`).
+- A preset's ▶ (`previewPreset`) is the other claim on the next phrase: it
+  waits for its sound to be loaded and rendered (`warmPreview`) and plays
+  only if nothing was pressed since. The latest ▶ wins: every press of
+  another ▶ or Space takes it back (`latestPlayWins` on the bench's presses
+  and `toggleAudition`, `awaitRender` on a rendered patch's), as do the same
+  ▶ pressed again and closing the card; a background job (`settlePlay`, a
+  failed edit) never does.
 - Space is the transport even with a drawn control focused (a rack knob, a
   PERFORM control, the XY pad): only a native button, or a control whose own
   handler used the key (`defaultPrevented`), keeps it. A rack setting's chip
