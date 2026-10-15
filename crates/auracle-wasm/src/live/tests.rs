@@ -413,6 +413,131 @@ fn unison_plays_as_many_voices_as_the_limit() {
         .all(|v| v.running && v.note.is_none()));
 }
 
+/// A chord held, the limit lowered under it, then unison turned on: the
+/// stack is all that is held, as many voices as the limit, and the notes
+/// left in slots past it are let go rather than sounding beside it.
+#[test]
+fn unison_over_a_lowered_chord_holds_only_the_stack() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    for n in [48, 52, 55, 59, 62, 65] {
+        poly.note_on(n, 1.0);
+    }
+    poly.set_voice_limit(3);
+    assert_eq!(held_notes(&poly), vec![59, 62, 65]);
+    poly.set_unison(true, 0.0, 0.0);
+    assert_eq!(held_notes(&poly), vec![65, 65, 65]);
+    poly.note_off(65);
+    assert!(held_notes(&poly).is_empty(), "59 and 62 sound on alone");
+}
+
+/// The stack's centre: its mean pan (-1 left … 1 right, from the
+/// equal-power gains) and its mean detune from the note, in volts.
+fn stack_centre(poly: &LivePoly, note: u8) -> (f64, f64, usize) {
+    let stack: Vec<&Voice> = poly
+        .voices
+        .iter()
+        .filter(|v| v.note == Some(note))
+        .collect();
+    let n = stack.len() as f64;
+    let target = (note as f64 - 60.0) / 12.0;
+    let pan = stack
+        .iter()
+        .map(|v| (v.pan_r as f64).atan2(v.pan_l as f64) / (0.25 * std::f64::consts::PI) - 1.0)
+        .sum::<f64>()
+        / n;
+    let det = stack.iter().map(|v| v.pitch_tgt - target).sum::<f64>() / n;
+    (pan, det, stack.len())
+}
+
+/// In unison, a limit lowered or raised under a held note spreads the stack
+/// anew at its new size: it stays centred in pan and in pitch, and a raised
+/// limit widens it at once.
+#[test]
+fn a_unison_stack_stays_centred_when_the_limit_moves() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 10).unwrap();
+    poly.set_voice_limit(6);
+    poly.set_unison(true, 1.0, 1.0);
+    poly.note_on(57, 1.0);
+    for limit in [3, 6, 2, 10] {
+        poly.set_voice_limit(limit);
+        let (pan, det, n) = stack_centre(&poly, 57);
+        assert_eq!(n, limit, "the stack is as wide as the limit");
+        assert!(
+            pan.abs() < 1e-6,
+            "the stack leans {pan} at a limit of {limit}"
+        );
+        assert!(
+            det.abs() < 1e-9,
+            "the stack is {det} V off at a limit of {limit}"
+        );
+        let spread = poly.voices[..limit]
+            .iter()
+            .map(|v| v.pan_r - v.pan_l)
+            .fold(0.0f32, |a, d| a.max(d.abs()));
+        assert!(
+            spread > 0.5,
+            "the stack is not spread at a limit of {limit}"
+        );
+    }
+    // A key down whose note was let go is not woken by a new limit.
+    poly.note_on(60, 1.0);
+    poly.note_off(60);
+    poly.set_voice_limit(4);
+    assert!(
+        held_notes(&poly).is_empty(),
+        "57 came back: {:?}",
+        held_notes(&poly)
+    );
+}
+
+/// A pad held through a swap with more keys down than the limit lets sound:
+/// the notes that sound carry their envelope, as one note on its own does,
+/// rather than re-attacking because the keys the limit let go were pressed
+/// again and stole from them. (5 keys on 4 voices built is the same case.)
+#[test]
+fn a_pad_held_past_the_voice_limit_keeps_its_envelope_across_a_swap() {
+    for (built, limit, keys) in [(10, 1, 2), (10, 2, 4), (4, 4, 5)] {
+        quiver::rng::seed(7);
+        let json = pad_json();
+        let mut poly = LivePoly::new(&json, 44_100.0, built).unwrap();
+        poly.set_leveler(false);
+        poly.set_voice_limit(limit);
+        for k in 0..keys {
+            poly.note_on(48 + 4 * k as u8, 1.0);
+        }
+        let mean = |w: &[f64]| w.iter().sum::<f64>() / w.len() as f64;
+        let warm: Vec<f64> = (0..400).map(|_| energy(&poly.process(128))).collect();
+        let before = mean(&warm[384..]);
+        assert!(before > 1.0e-4, "the pad never spoke: {before}");
+        assert!(poly.set_patch(&json));
+        let mut after: Vec<f64> = Vec::new();
+        let mut patched_at = None;
+        for i in 0..200 {
+            after.push(energy(&poly.process(128)));
+            if poly.poll_event() == EVENT_PATCHED && patched_at.is_none() {
+                patched_at = Some(i);
+            }
+        }
+        let at = patched_at.expect("swap never completed");
+        let resumed = mean(&after[at + 4..at + 20]);
+        let late = mean(&after[at + 120..at + 136]);
+        for (what, e) in [("just after", resumed), ("1.5 s after", late)] {
+            assert!(
+                e > before * 0.85 && e < before * 1.15,
+                "{keys} keys at a limit of {limit} on {built}: {what} the swap \
+                 {:.1}% of the level before it",
+                100.0 * e / before
+            );
+        }
+        assert_eq!(
+            poly.voices.iter().filter(|v| v.note.is_some()).count(),
+            limit
+        );
+    }
+}
+
 /// A pad: slow attack (≈100 ms), full sustain, so the envelope's position
 /// is legible in the output level and a restart is unmissable.
 fn pad_json() -> String {
