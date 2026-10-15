@@ -1544,8 +1544,19 @@ refusing the commit (`commitTree` returning false, `edit_rejected` through
 measurement lands through `applyRechecked`'s rebase whatever knobs each
 control turns, so nothing you hear moves and a turned control keeps its
 place (unless the measurement closed the half it is on, where it stops at
-the centre), and never while a control or the XY pad is held, nor within
-1.5 s of the last touch or release (`handsBusy`).
+the centre).
+
+No wiring lands under the hand (#304). A first measurement, a wiring read
+from the cache (`wire`'s hit, `measurePanel`'s), a background re-check, a
+guess's measurement and a Take's all wait while a control or the XY pad is
+held, however still, and for 1.5 s after the last touch or release
+(`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule beside
+`createHand`). What waits is kept in `state.deferredWire`, dropped by a patch
+change, and lands from the quarter-second tick once the hand is off
+(`landDeferred`): a first measurement wires the controls (`landFirst`), a
+cache hit is read again (`wire`), and the rest is taken in place
+(`applyRechecked`). Until then a control still being listened to keeps
+listening, and one already playing keeps its wiring and its place.
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
