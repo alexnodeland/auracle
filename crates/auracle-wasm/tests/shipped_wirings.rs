@@ -11,14 +11,15 @@
 //!   and of the measurement's named inputs (phrase, render namespace, feature
 //!   names, controls, PERFORM's constants), each preset's shape (what a knob
 //!   edit of it must share to borrow its wiring), and that the knob table a
-//!   first wiring is predicted from (#290) is over today's audio φ. It
-//!   renders nothing.
+//!   first wiring is predicted from (#290) is over today's audio φ, and each
+//!   preset's rack description (#306) against today's `describe`. It renders
+//!   nothing.
 //! - `shipped_preset_wirings_measure_the_same_today` catches what no
 //!   fingerprint sees (feature maths, loudness normalization, vetting,
 //!   compiler, DSP, the pool the standardizer is fitted to, PERFORM's solver)
 //!   by re-measuring a fixed sample of the file natively
-//!   (`auracle_wasm::shipped`): the standardizer, the standardized φ of every
-//!   eighth preset, and two presets' whole wiring. A few seconds on four
+//!   (`auracle_wasm::shipped`): the standardizer, the standardized φ and the
+//!   loudness makeup of every eighth preset, and two presets' whole wiring. A few seconds on four
 //!   cores. A change that moves none of the sample can still pass.
 
 use auracle_features::PhraseSpec;
@@ -80,6 +81,22 @@ fn shipped_preset_wirings_are_current() {
             row["shape"].as_str(),
             Some(auracle_session::predict::shape_of(&tree).as_str()),
             "{}'s shape is not today's — {REGENERATE}",
+            p.name
+        );
+        // What the page opens it from in the click's task (#306): its makeup
+        // (re-measured in the test below) and its rack, today's description
+        // of the tree beside it.
+        assert!(
+            row["makeup"]
+                .as_f64()
+                .is_some_and(|g| g.is_finite() && g > 0.0),
+            "{} has no makeup in the file — {REGENERATE}",
+            p.name
+        );
+        assert_eq!(
+            row["rack"],
+            serde_json::to_value(auracle_grammar::describe(&tree)).expect("a rack description"),
+            "{}'s rack description is not today's — {REGENERATE}",
             p.name
         );
     }
@@ -187,22 +204,30 @@ fn shipped_preset_wirings_measure_the_same_today() {
         .collect();
     let trees: Vec<_> = probes.iter().map(|&i| bank[i].tree.clone()).collect();
     shipped::warm(&e, &trees, threads);
-    let loaded: Vec<(usize, String)> = probes
+    let loaded: Vec<(usize, String, f64)> = probes
         .iter()
         .map(|&i| {
             let id = e.load_preset(i);
             assert!(id > 0, "{} did not load", bank[i].name);
-            (i, e.tree_json_of(id))
+            (i, e.tree_json_of(id), e.makeup_of(id))
         })
         .collect();
 
-    for (i, tree) in &loaded {
+    for (i, tree, makeup) in &loaded {
         let name = bank[*i].name;
         let z = shipped::preset_z(&e, tree).unwrap_or_else(|| panic!("{name} does not vet"));
         if let Some(diff) = first_difference(&rows[*i]["data"]["z"], &serde_json::json!(z), "z") {
             panic!(
                 "{name} sounds different to φ than when its wiring was measured ({diff}): \
                  the feature maths, loudness normalization, compiler or DSP changed — {REGENERATE}"
+            );
+        }
+        if let Some(diff) =
+            first_difference(&rows[*i]["makeup"], &serde_json::json!(makeup), "makeup")
+        {
+            panic!(
+                "{name} is louder or quieter than when it was shipped ({diff}): \
+                 the loudness measurement, compiler or DSP changed — {REGENERATE}"
             );
         }
     }
@@ -213,8 +238,8 @@ fn shipped_preset_wirings_measure_the_same_today() {
     let wired: Vec<(usize, String)> = std::thread::scope(|s| {
         let jobs: Vec<_> = loaded
             .iter()
-            .filter(|(i, _)| WIRE_PROBES.contains(i))
-            .map(|(i, tree)| s.spawn(move || (*i, e.perform_wire(tree, "[]", None))))
+            .filter(|(i, _, _)| WIRE_PROBES.contains(i))
+            .map(|(i, tree, _)| s.spawn(move || (*i, e.perform_wire(tree, "[]", None))))
             .collect();
         jobs.into_iter()
             .map(|j| j.join().expect("measured"))
