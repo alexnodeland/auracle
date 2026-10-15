@@ -60,3 +60,34 @@ test("a knob velocity plays is drawn performed in PATCH at the note's velocity",
   expect(hard.pct, "a hard note and a soft one play the cutoff apart").not.toBe(soft.pct);
   expect(hard.text).not.toBe(soft.text);
 });
+
+// Under the arp each step re-presses the voice, which plays the note's
+// velocity offset again on the knob's new value (live.rs `press`): a turn of
+// the knob does not take velocity's pointer away while the note is held.
+test("under the arp a knob turned under a held note keeps velocity's pointer", async ({ page, app }) => {
+  await page.addInitScript(FAKE_MIDI);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("First Bass");
+  await page.evaluate(() => document.getElementById("arp-btn").click());
+  await expect(page.locator("#arp-btn")).toHaveAttribute("aria-pressed", "true");
+  await app.level("patch");
+  const cut = page.locator('#rack-svg g[data-addr="node#cut"]');
+  await expect(cut.locator(".knob-hit")).toBeVisible();
+  await page.evaluate(() => window.__midi([0x90, 48, 120]));
+  // The velocity pointer's value, or null when none is drawn.
+  const ghostPct = () => page.evaluate(() => {
+    const g = document.querySelector('#rack-svg g[data-addr="node#cut"]');
+    const t = g && g.classList.contains("performed") && g.querySelector(".knob-ghost > title");
+    const m = t && /Playing at (\d+)% in PERFORM \(velocity\)/.exec(t.textContent);
+    return m ? Number(m[1]) : null;
+  });
+  await expect.poll(ghostPct, { timeout: 5_000 }).not.toBeNull();
+  const before = await ghostPct();
+  await cut.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowDown");
+  // The pointer follows the knob down, still velocity's: the note plays its
+  // offset on the new value. Without the arp's exception it went away.
+  await expect.poll(ghostPct, { timeout: 5_000 }).toBeLessThan(before);
+  await page.evaluate(() => window.__midi([0x80, 48, 0]));
+  await expect(cut).not.toHaveClass(/\bperformed\b/, { timeout: 5_000 });
+});
