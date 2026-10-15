@@ -325,3 +325,36 @@ test("a sound opened just after a pad press plays its kept wiring at once", { ta
   expect(["shipped", "cached"], "played on its kept wiring").toContain((await wired()).detail.how);
   expect((await page.evaluate(() => window.__said)).filter((t) => /listening|let go/.test(t)), "it never waited for a hand").toEqual([]);
 });
+
+// Nor is the page's first moment a hand (#304's review): before any control
+// is touched, nothing holds a wiring back. Glass Pad opened on PERFORM, the
+// page loaded again until the sound it reopens is measured, and once more:
+// that sound is wired from its kept wiring,
+// and the status line never says it waits, from the first script the page
+// runs until the app's own `perform-wired` mark. Built on a touch time that
+// started at 0, it waited out the page's first 1.5 s.
+test("a sound in hand after a reload plays its kept wiring at once", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad");
+  // The page reopens the sound in hand, which is measured once, and kept.
+  await app.visit("/", { seed: PERFORM_SEED });
+  await app.reached();
+  await app.engine((timeout) => expect(page.locator(".pf-knob.guess")).toHaveCount(0, { timeout }), { ms: await app.offerBudget({ waits: 2 }) });
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: await app.offerBudget({ waits: 2 }) });
+  await page.addInitScript(() => {
+    window.__said = [];
+    new MutationObserver(() => {
+      const s = document.querySelector(".pf-status");
+      if (s) window.__said.push(s.textContent);
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  await app.visit("/", { seed: PERFORM_SEED });
+  // The page's first wiring, of the sound it reopens (named as the session
+  // keeps it).
+  const wired = () => app.marks("perform-wired").then((ms) => ms[0]);
+  await app.engine((timeout) => expect.poll(wired, { timeout, message: "the sound in hand is wired" }).toBeTruthy());
+  const at = await wired();
+  console.log(`${at.detail.name} wired ${at.detail.how} at ${Math.round(at.t)} ms of page time`);
+  expect(["shipped", "cached"], "played on its kept wiring").toContain(at.detail.how);
+  expect((await page.evaluate(() => window.__said)).filter((t) => /let go|listening to this sound/.test(t)), "it never waited for a hand").toEqual([]);
+});
