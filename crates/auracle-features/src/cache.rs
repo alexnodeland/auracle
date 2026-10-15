@@ -47,6 +47,7 @@ use std::sync::{Arc, Mutex};
 use auracle_grammar::PatchTree;
 use serde::{Deserialize, Serialize};
 
+use crate::clip::AuditionClip;
 use crate::face::Face;
 use crate::phrase::PhraseSpec;
 use crate::pipeline::{featurize, Features, FeaturizeError};
@@ -154,26 +155,44 @@ pub fn cache_namespace(spec: &PhraseSpec) -> String {
 /// separator (not a valid byte anywhere in either JSON) keeps the
 /// concatenation unambiguous.
 ///
-/// # The audition clip
+/// # The audition clips
 ///
 /// A patch that listens ([`PatchTree::listens`]) is measured with the
-/// stimulus's audition clip, so its address names the clip: after the spec, a
-/// `0xfe` separator and the clip's content id
+/// stimulus's audition clip on each input slot it reads
+/// ([`PhraseSpec::slot_clip`]), so its address names those clips and no
+/// others. When every slot it reads hears the same clip, that is, after the
+/// spec, a `0xfe` separator and the clip's content id
 /// ([`AuditionClip::id`](crate::clip::AuditionClip::id), the reference's own
-/// when the spec has none). Two clips therefore never share a row. The clip's
-/// samples are never hashed here (its id already is a hash of them), and a
-/// patch that does not listen keys exactly as it did before clips existed,
-/// whatever clip the session holds, because its render does not depend on
-/// one.
+/// when the spec has none): the key it had before a slot could have a clip
+/// of its own. When they differ, it is each slot it reads, ascending, as a
+/// `0xfd` separator, the slot and that slot's clip id. Two clips therefore
+/// never share a row. The clips' samples are never hashed here (an id
+/// already is a hash of them), and a patch that does not listen keys
+/// exactly as it did before clips existed, whatever clips the session
+/// holds, because its render does not depend on one.
 pub fn render_key(tree: &PatchTree, spec: &PhraseSpec) -> String {
     let tree_json = canonical_tree_json(tree);
     let spec_json = spec_key_json(spec);
     let mut h = fnv1a128(FNV_OFFSET_128, tree_json.as_bytes());
     h = fnv1a128(h, &[0xff]);
     h = fnv1a128(h, spec_json.as_bytes());
-    if tree.listens() {
-        h = fnv1a128(h, &[0xfe]);
-        h = fnv1a128(h, spec.audition_clip().id().as_bytes());
+    let heard: Vec<(usize, AuditionClip)> = tree
+        .input_slots()
+        .into_iter()
+        .map(|slot| (slot, spec.slot_clip(slot)))
+        .collect();
+    match heard.split_first() {
+        None => {}
+        Some(((_, one), rest)) if rest.iter().all(|(_, c)| c == one) => {
+            h = fnv1a128(h, &[0xfe]);
+            h = fnv1a128(h, one.id().as_bytes());
+        }
+        Some(_) => {
+            for (slot, clip) in &heard {
+                h = fnv1a128(h, &[0xfd, *slot as u8]);
+                h = fnv1a128(h, clip.id().as_bytes());
+            }
+        }
     }
     format!("{h:032x}")
 }

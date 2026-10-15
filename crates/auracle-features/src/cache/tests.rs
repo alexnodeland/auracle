@@ -282,6 +282,96 @@ fn the_clip_is_in_a_listening_key_and_nowhere_else() {
     assert_eq!(spec_key_json(&spec), json);
 }
 
+/// **A listening key names the clips of the slots it reads, and no
+/// others.** Every slot it reads on one clip keys exactly as the one clip
+/// for every slot always did (the `0xfe` form, rebuilt here by hand); two
+/// clips on two slots key apart from either, and apart from the same two
+/// swapped; a clip on a slot it does not read moves nothing.
+#[test]
+fn a_listening_key_names_the_clips_of_its_slots() {
+    use crate::clip::AuditionClip;
+    use auracle_grammar::term::InputChannel;
+    let spec = PhraseSpec::default();
+    let clip = |hz: f64| {
+        let x: Vec<f32> = (0..4410)
+            .map(|i| (0.3 * (i as f64 * hz / 44_100.0 * std::f64::consts::TAU).sin()) as f32)
+            .collect();
+        AuditionClip::from_interleaved(&x, 1, 44_100.0, &spec).unwrap()
+    };
+    let (x, y) = (clip(220.0), clip(330.0));
+    let input = |slot: u8| {
+        Box::new(AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: slot,
+            gain: 0.5,
+            channel: InputChannel::Both,
+        })
+    };
+    let mut both = tree(0.5);
+    both.root = AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: input(0),
+        b: input(1),
+    };
+    let mut zero = tree(0.5);
+    zero.root = *input(0);
+    let with = |every: Option<&AuditionClip>, own: &[(usize, &AuditionClip)]| PhraseSpec {
+        clip: every.cloned(),
+        clips: own.iter().map(|(s, c)| (*s, (*c).clone())).collect(),
+        ..spec.clone()
+    };
+    let one = |t: &PatchTree, c: &AuditionClip| {
+        let mut h = fnv1a128(FNV_OFFSET_128, canonical_tree_json(t).as_bytes());
+        h = fnv1a128(h, &[0xff]);
+        h = fnv1a128(h, spec_key_json(&spec).as_bytes());
+        h = fnv1a128(h, &[0xfe]);
+        h = fnv1a128(h, c.id().as_bytes());
+        format!("{h:032x}")
+    };
+    assert_eq!(render_key(&both, &with(Some(&x), &[])), one(&both, &x));
+    assert_eq!(
+        render_key(&both, &with(None, &[(0, &x), (1, &x)])),
+        one(&both, &x)
+    );
+    let reference = crate::clip::reference(&spec);
+    assert_eq!(render_key(&both, &spec), one(&both, &reference));
+    let xy = render_key(&both, &with(None, &[(0, &x), (1, &y)]));
+    let yx = render_key(&both, &with(None, &[(0, &y), (1, &x)]));
+    assert!(xy != one(&both, &x) && xy != one(&both, &y) && xy != yx);
+    assert_eq!(render_key(&both, &with(Some(&y), &[(0, &x)])), xy);
+    // The bytes of the two-clip form, rebuilt by hand.
+    let mut h = fnv1a128(FNV_OFFSET_128, canonical_tree_json(&both).as_bytes());
+    h = fnv1a128(h, &[0xff]);
+    h = fnv1a128(h, spec_key_json(&spec).as_bytes());
+    for (slot, c) in [(0u8, &x), (1, &y)] {
+        h = fnv1a128(h, &[0xfd, slot]);
+        h = fnv1a128(h, c.id().as_bytes());
+    }
+    assert_eq!(xy, format!("{h:032x}"));
+    assert_eq!(
+        render_key(&zero, &with(Some(&x), &[(1, &y)])),
+        one(&zero, &x),
+        "a clip on a slot the patch does not read moved its key"
+    );
+    let plain = tree(0.5);
+    assert_eq!(
+        render_key(&plain, &spec),
+        render_key(&plain, &with(Some(&x), &[(0, &y)]))
+    );
+    assert_eq!(
+        cache_namespace(&spec),
+        cache_namespace(&with(None, &[(3, &y)]))
+    );
+    // A spec with no clips serializes as it always did, and one with a
+    // slot's clip carries it to a farm worker and back.
+    assert!(!serde_json::to_string(&spec).unwrap().contains("clips"));
+    let sent = with(None, &[(3, &y)]);
+    let back: PhraseSpec = serde_json::from_str(&serde_json::to_string(&sent).unwrap()).unwrap();
+    assert_eq!(back, sent);
+    assert_eq!(back.slot_clip(3), y);
+}
+
 /// The version folded into the namespace is the version actually built.
 #[test]
 fn quiver_version_matches_the_lock() {

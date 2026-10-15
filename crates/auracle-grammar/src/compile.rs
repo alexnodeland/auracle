@@ -49,8 +49,8 @@ use crate::term::CaptureMode;
 /// (`<key>#~sync`). Never a trace site; the live engine finds it by suffix.
 pub const STEPS_SYNC_SITE: &str = "~sync";
 use crate::term::{
-    rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp,
-    PatchTree,
+    input_slot, rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor,
+    PairOp, PatchTree, INPUT_SLOTS,
 };
 
 /// quiver reads `Adsr.shape`, `Vca.response` and `Limiter.soft` as *gates* at
@@ -1559,9 +1559,9 @@ struct Compiler {
     /// between one and half a dozen quiver nodes, and which of them carries
     /// the audio out is a fact about the arm that built it.
     taps: Vec<(String, PortRef)>,
-    /// The stream every AUDIO IN reads, or `None` for an unbound (silent) one.
-    /// See [`compile_with_input`].
-    input: Option<Arc<AudioInputStream>>,
+    /// The stream each AUDIO IN reads, by its slot; an unbound slot is
+    /// silent. See [`compile_with_input`].
+    input: InputStreams,
     /// Every TRACK's gate output: summed into the amp envelope's gate with the
     /// keys', so a tracked note opens the voice as a key does.
     track_gates: Vec<PortRef>,
@@ -1594,13 +1594,14 @@ impl Compiler {
     /// A compiler with nothing built yet: an empty patch, wired in
     /// [`ValidationMode::Warn`] (the crate docs say why), whose key pitch and
     /// gate are read from `pitch` and `gate` through the `io:pitch` and
-    /// `io:gate` inputs, and whose AUDIO INs read `input`. `follow` builds a
+    /// `io:gate` inputs, and whose AUDIO INs read `input`, each its own
+    /// slot's stream. `follow` builds a
     /// follower ([`compile_follower`]).
     fn new(
         sample_rate: f64,
         pitch: &Arc<AtomicF64>,
         gate: &Arc<AtomicF64>,
-        input: Option<Arc<AudioInputStream>>,
+        input: InputStreams,
         follow: bool,
     ) -> Self {
         let mut patch = Patch::new(sample_rate);
@@ -2483,14 +2484,19 @@ impl Compiler {
             // the chosen channel at quiver's audio level (a full-scale input is
             // ±5 V, as a full-scale oscillator is), so everything downstream
             // meets it as it would meet a source. `input` is not compiled in:
-            // which stream a node reads is the caller's binding, one stream for
-            // every slot today (see `compile_with_input`).
+            // which stream a slot carries is the caller's binding (see
+            // `compile_with_input`), and an unbound slot is silent.
             //
             // The gain is a live knob into the module's own `gain` port
             // (unipolar CV into unipolar CV, so no new warning class), and the
             // channel is baked like a VCO's waveform: changing it recompiles.
-            AudioNode::AudioIn { gain, channel, .. } => {
-                let module = match &self.input {
+            AudioNode::AudioIn {
+                input,
+                gain,
+                channel,
+                ..
+            } => {
+                let module = match self.input.slot(input_slot(*input)) {
                     Some(stream) => AudioInput::new(Arc::clone(stream)),
                     None => AudioInput::unbound(),
                 }
@@ -3790,6 +3796,67 @@ fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn Grap
     Box::new(make())
 }
 
+/// Which stream each input slot's AUDIO INs read: what a caller of
+/// [`compile_with_input`] and its siblings binds. A slot with none is
+/// silent.
+///
+/// Built per slot ([`Self::with`]) for a render that gives each input its
+/// own signal, or with one stream on every slot ([`Self::every`]) for a
+/// caller that has one input to give.
+#[derive(Clone, Debug, Default)]
+pub struct InputStreams {
+    slots: [Option<Arc<AudioInputStream>>; INPUT_SLOTS],
+}
+
+impl InputStreams {
+    /// No slot bound: every AUDIO IN is silent.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// `stream` on every slot: every AUDIO IN reads it, whatever its slot.
+    pub fn every(stream: &Arc<AudioInputStream>) -> Self {
+        InputStreams {
+            slots: std::array::from_fn(|_| Some(Arc::clone(stream))),
+        }
+    }
+
+    /// These bindings, with `slot`'s AUDIO INs reading `stream`. A slot past
+    /// the last ([`INPUT_SLOTS`]) binds nothing.
+    pub fn with(mut self, slot: usize, stream: &Arc<AudioInputStream>) -> Self {
+        if let Some(s) = self.slots.get_mut(slot) {
+            *s = Some(Arc::clone(stream));
+        }
+        self
+    }
+
+    /// The stream `slot` reads, if one is bound.
+    pub fn slot(&self, slot: usize) -> Option<&Arc<AudioInputStream>> {
+        self.slots.get(slot).and_then(Option::as_ref)
+    }
+
+    /// Is no slot bound?
+    pub fn is_none(&self) -> bool {
+        self.slots.iter().all(Option::is_none)
+    }
+
+    /// Move every bound stream on to its next frame, each once however many
+    /// slots it is bound to: what a host-clock render does after every voice
+    /// has read a frame.
+    pub fn advance(&self) {
+        for (i, s) in self.slots.iter().enumerate() {
+            let Some(s) = s else { continue };
+            let seen = self.slots[..i]
+                .iter()
+                .flatten()
+                .any(|earlier| Arc::ptr_eq(earlier, s));
+            if !seen {
+                s.advance();
+            }
+        }
+    }
+}
+
 /// Compile a patch term into a playable voice at the given sample rate, with
 /// every AUDIO IN unbound (silent).
 ///
@@ -3803,22 +3870,24 @@ fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn Grap
 /// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
 /// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
-    compile_with_input(tree, sample_rate, None)
+    compile_with_input(tree, sample_rate, &InputStreams::none())
 }
 
-/// [`compile`], with every [`AudioNode::AudioIn`] reading `input`.
+/// [`compile`], with each [`AudioNode::AudioIn`] reading the stream `input`
+/// binds to its `input` slot.
 ///
-/// One stream for every AUDIO IN in the patch, whatever its `input` slot: the
-/// session's audition clip in a measurement render
-/// (`auracle_features::render_phrase`, on a host-clock stream), and the live
-/// voice's one input in the instrument (`auracle_wasm`'s `LivePoly`, on a
-/// cursor stream). Every compiled copy of a patch may share the one `Arc`:
-/// quiver's `AudioInput` fans one stream out to any number of readers.
-/// `None` builds each AUDIO IN on a stream nothing writes, so it is silent.
+/// A measurement render binds each slot the patch reads to that slot's
+/// audition clip (`auracle_features::render_phrase`, on host-clock streams),
+/// and the live voice binds its one input to every slot
+/// ([`InputStreams::every`], `auracle_wasm`'s `LivePoly`, on a cursor
+/// stream). Every compiled copy of a patch may share the same `Arc`s:
+/// quiver's `AudioInput` fans one stream out to any number of readers. A
+/// slot with no stream builds its AUDIO INs on a stream nothing writes, so
+/// they are silent.
 pub fn compile_with_input(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
 ) -> Result<CompiledVoice, PatchError> {
     compile_voice(tree, sample_rate, input, false)
 }
@@ -3836,7 +3905,7 @@ pub fn compile_with_input(
 pub fn compile_follower(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
 ) -> Result<CompiledVoice, PatchError> {
     compile_voice(tree, sample_rate, input, true)
 }
@@ -3851,7 +3920,7 @@ pub fn compile_follower(
 pub fn compile_for_render(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
 ) -> Result<CompiledVoice, PatchError> {
     compile_pinned(tree, sample_rate, input, false)
 }
@@ -3861,7 +3930,7 @@ pub fn compile_for_render(
 pub fn compile_follower_for_render(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
 ) -> Result<CompiledVoice, PatchError> {
     compile_pinned(tree, sample_rate, input, true)
 }
@@ -3872,7 +3941,7 @@ pub fn compile_follower_for_render(
 fn compile_pinned(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
     follow: bool,
 ) -> Result<CompiledVoice, PatchError> {
     let mut voice = compile_voice(tree, sample_rate, input, follow)?;
@@ -3890,7 +3959,7 @@ thread_local! {
 fn compile_voice(
     tree: &PatchTree,
     sample_rate: f64,
-    input: Option<&Arc<AudioInputStream>>,
+    input: &InputStreams,
     follow: bool,
 ) -> Result<CompiledVoice, PatchError> {
     #[cfg(test)]
@@ -3903,7 +3972,7 @@ fn compile_voice(
     }
     let pitch = Arc::new(AtomicF64::new(0.0));
     let gate = Arc::new(AtomicF64::new(0.0));
-    let mut c = Compiler::new(sample_rate, &pitch, &gate, input.cloned(), follow);
+    let mut c = Compiler::new(sample_rate, &pitch, &gate, input.clone(), follow);
 
     // The evolved tree.
     let audio_out = c.build(&tree.root, "node")?;

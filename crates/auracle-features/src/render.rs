@@ -22,9 +22,12 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile_follower_for_render, compile_for_render, CompiledVoice, PatchTree};
+use auracle_grammar::{
+    compile_follower_for_render, compile_for_render, CompiledVoice, InputStreams, PatchTree,
+};
 use quiver::{AudioInputStream, PatchError};
 
+use crate::clip::AuditionClip;
 use crate::phrase::PhraseSpec;
 
 /// Where one phrase note sits in the rendered buffer, and what it was — the
@@ -142,7 +145,7 @@ impl Build {
         self,
         tree: &PatchTree,
         sample_rate: f64,
-        input: Option<&Arc<AudioInputStream>>,
+        input: &InputStreams,
         follow: bool,
     ) -> Result<CompiledVoice, PatchError> {
         match (self, follow) {
@@ -181,10 +184,10 @@ pub(crate) fn render_built<O: VoiceObserver>(
     // should not depend on which constructors quiver adds a draw to next.
     quiver::rng::seed(spec.seed);
 
-    // The clip, for a patch that listens: one stream every voice reads, on
-    // this render's clock (see the module doc).
-    let input = tree.listens().then(|| audition_stream(spec));
-    let mut voice = build.voice(tree, spec.sample_rate, input.as_ref(), false)?;
+    // The clips, for a patch that listens: a stream for each slot it reads,
+    // which every voice reads, on this render's clock (see the module doc).
+    let input = audition_streams(tree, spec);
+    let mut voice = build.voice(tree, spec.sample_rate, &input, false)?;
     // Chord voices for the note being (or last) played. Compiled lazily at
     // the first chord note; a mono spec pays nothing.
     let mut chord_voices: Vec<ChordVoice> = Vec::new();
@@ -195,7 +198,7 @@ pub(crate) fn render_built<O: VoiceObserver>(
     obs.start(&voice);
 
     let walk = Walk::of(&voice, O::BLIND && input.is_none());
-    let input = input.as_ref();
+    let input = &input;
 
     for note in &spec.notes {
         // Retire the previous note's chord voices only once parked; a voice
@@ -330,7 +333,7 @@ impl Walk {
         count: usize,
         voice: &mut CompiledVoice,
         chord: &mut [ChordVoice],
-        input: Option<&Arc<AudioInputStream>>,
+        input: &InputStreams,
         samples: &mut Vec<f64>,
         obs: &mut O,
     ) {
@@ -368,12 +371,8 @@ impl Walk {
 }
 
 /// One frame of every voice: the main voice, then each chord voice still
-/// ringing, in order, summed; then the clip's stream moves to the next frame.
-fn tick_frame(
-    voice: &mut CompiledVoice,
-    chord: &mut [ChordVoice],
-    input: Option<&Arc<AudioInputStream>>,
-) -> f64 {
+/// ringing, in order, summed; then the clips' streams move to the next frame.
+fn tick_frame(voice: &mut CompiledVoice, chord: &mut [ChordVoice], input: &InputStreams) -> f64 {
     let (l, r) = voice.patch.tick();
     let mut s = (l + r) * 0.5 / 5.0;
     for cv in chord.iter_mut().filter(|cv| !cv.parked) {
@@ -386,9 +385,7 @@ fn tick_frame(
         cv.heard(c);
     }
     // Every voice has read this frame; the next tick reads the next.
-    if let Some(stream) = input {
-        stream.advance();
-    }
+    input.advance();
     s
 }
 
@@ -411,12 +408,33 @@ impl ChordVoice {
     }
 }
 
-/// The stream a listening patch reads during a render of `spec`: the
-/// stimulus's clip (or the reference) written once, whole, as one block on a
-/// host-clock stream, so frame `n` of the render reads frame `n` of the clip
-/// and a clip shorter than the phrase falls silent at its end.
-fn audition_stream(spec: &PhraseSpec) -> Arc<AudioInputStream> {
-    let clip = spec.audition_clip();
+/// The streams `tree` reads during a render of `spec`, by input slot: each
+/// slot it reads ([`PatchTree::input_slots`]) bound to its clip
+/// ([`PhraseSpec::slot_clip`]), and no other. Slots that hear the same clip
+/// share one stream, so a patch whose every slot hears one clip renders
+/// exactly as it did when there was one clip for every slot.
+fn audition_streams(tree: &PatchTree, spec: &PhraseSpec) -> InputStreams {
+    let mut made: Vec<(AuditionClip, Arc<AudioInputStream>)> = Vec::new();
+    let mut streams = InputStreams::none();
+    for slot in tree.input_slots() {
+        let clip = spec.slot_clip(slot);
+        let stream = match made.iter().find(|(c, _)| *c == clip) {
+            Some((_, s)) => Arc::clone(s),
+            None => {
+                let s = audition_stream(&clip);
+                made.push((clip, Arc::clone(&s)));
+                s
+            }
+        };
+        streams = streams.with(slot, &stream);
+    }
+    streams
+}
+
+/// `clip` written once, whole, as one block on a host-clock stream, so frame
+/// `n` of the render reads frame `n` of the clip and a clip shorter than the
+/// phrase falls silent at its end.
+fn audition_stream(clip: &AuditionClip) -> Arc<AudioInputStream> {
     let stream = Arc::new(AudioInputStream::with_host_clock(
         clip.channel_count(),
         clip.frames(),

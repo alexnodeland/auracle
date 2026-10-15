@@ -59,7 +59,7 @@ use auracle_features::{
 };
 use auracle_grammar::{
     compile_follower, compile_follower_for_render, compile_for_render, compile_with_input,
-    PatchGrammarPrior, PatchTree,
+    InputStreams, PatchGrammarPrior, PatchTree,
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -114,8 +114,11 @@ fn allocs(set: &[Entry], spec: &PhraseSpec) {
         "tree", "compile", "compile KB", "ticks/sample", "analysis", "analysis KB"
     );
     for e in set {
-        let (ca, cb, _) = counted(|| compile_for_render(&e.tree, spec.sample_rate, None));
-        let (fa, fb, _) = counted(|| compile_follower_for_render(&e.tree, spec.sample_rate, None));
+        let (ca, cb, _) =
+            counted(|| compile_for_render(&e.tree, spec.sample_rate, &InputStreams::none()));
+        let (fa, fb, _) = counted(|| {
+            compile_follower_for_render(&e.tree, spec.sample_rate, &InputStreams::none())
+        });
         let (ra, _, r) = counted(|| render_phrase(&e.tree, spec).expect("renders"));
         let compiles = ca + fa * chords;
         let ticks = ra.saturating_sub(compiles);
@@ -285,8 +288,12 @@ fn stages(tree: &PatchTree, spec: &PhraseSpec, reps: usize) -> [f64; 13] {
     let sr = spec.sample_rate;
     let chord_voices: usize = spec.notes.iter().map(|n| n.chord.len()).sum();
     let domain = least(reps, || tree.domain_violations());
-    let compile = least(reps, || compile_with_input(tree, sr, None).is_ok());
-    let follower = least(reps, || compile_follower(tree, sr, None).is_ok()) * chord_voices as f64;
+    let compile = least(reps, || {
+        compile_with_input(tree, sr, &InputStreams::none()).is_ok()
+    });
+    let follower = least(reps, || {
+        compile_follower(tree, sr, &InputStreams::none()).is_ok()
+    }) * chord_voices as f64;
     let render = least(reps, || render_phrase(tree, spec).is_ok());
     let rendered = render_phrase(tree, spec).expect("a tree of the set compiles");
     let cfg = VetConfig::for_spec(spec);
@@ -516,7 +523,8 @@ fn nodes(set: &[Entry], spec: &PhraseSpec) {
     let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
     let (mut all, mut knobs, mut pinnable) = (0, 0, 0);
     for e in set {
-        let voice = compile_with_input(&e.tree, spec.sample_rate, None).expect("compiles");
+        let voice =
+            compile_with_input(&e.tree, spec.sample_rate, &InputStreams::none()).expect("compiles");
         let patch = &voice.patch;
         let mut fan_in: HashMap<_, usize> = HashMap::new();
         for c in patch.cables() {
@@ -539,7 +547,7 @@ fn nodes(set: &[Entry], spec: &PhraseSpec) {
             }
         }
         // What a measurement render walks: the voice with its knobs folded.
-        let rendered = compile_for_render(&e.tree, spec.sample_rate, None)
+        let rendered = compile_for_render(&e.tree, spec.sample_rate, &InputStreams::none())
             .expect("compiles")
             .patch
             .node_count();
@@ -657,9 +665,9 @@ fn kinds(reps: usize, path: Option<String>) {
         least(reps, || {
             quiver::rng::seed(1);
             let mut v = if render {
-                compile_for_render(tree, sr, None)
+                compile_for_render(tree, sr, &InputStreams::none())
             } else {
-                compile_with_input(tree, sr, None)
+                compile_with_input(tree, sr, &InputStreams::none())
             }
             .expect("compiles");
             v.gate.set(5.0);
@@ -688,7 +696,7 @@ fn kinds(reps: usize, path: Option<String>) {
     );
     let (mut base_live, mut base_render) = (0.0, 0.0);
     for (i, (name, tree)) in trees.iter().enumerate() {
-        let nodes = compile_with_input(tree, sr, None)
+        let nodes = compile_with_input(tree, sr, &InputStreams::none())
             .expect("compiles")
             .patch
             .node_count();
@@ -725,10 +733,11 @@ fn census(n: usize, spec: &PhraseSpec) {
     };
     for i in 0..n {
         let tree = prior.sample_with_rng(&mut rng);
-        let Ok(voice) = compile_with_input(&tree, spec.sample_rate, None) else {
+        let Ok(voice) = compile_with_input(&tree, spec.sample_rate, &InputStreams::none()) else {
             continue;
         };
-        let render = compile_for_render(&tree, spec.sample_rate, None).expect("compiles");
+        let render =
+            compile_for_render(&tree, spec.sample_rate, &InputStreams::none()).expect("compiles");
         let (a, b) = (voice.patch.node_count(), render.patch.node_count());
         full += a;
         walked += b;

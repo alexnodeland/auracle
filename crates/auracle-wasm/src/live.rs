@@ -5,9 +5,9 @@
 //! is the "brain"). It shares the exact compilation path evolution uses —
 //! `auracle_grammar::compile_with_input` with the mandatory ADSR → VCA →
 //! Limiter chain — so what you play is byte-for-byte the patch that was
-//! evolved, limiter included. Where evolution binds an AUDIO IN to the
-//! audition clip, the instrument binds it to the live input
-//! ([`LivePoly::write_input`]), one stream for every voice.
+//! evolved, limiter included. Where evolution binds an AUDIO IN to its
+//! slot's audition clip, the instrument binds it to the live input
+//! ([`LivePoly::write_input`]), one stream for every voice and every slot.
 //!
 //! ## Audio-thread discipline (no clicks, no zipper, no GC)
 //!
@@ -95,7 +95,7 @@
 use std::sync::Arc;
 
 use auracle_grammar::{
-    compile_follower, compile_with_input, AudioNode, ParamMap, PatchTree, TrackFeed,
+    compile_follower, compile_with_input, AudioNode, InputStreams, ParamMap, PatchTree, TrackFeed,
 };
 use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
 use quiver::{AtomicF64, AudioInputStream};
@@ -869,10 +869,13 @@ fn build_voice(
     input: &Arc<AudioInputStream>,
     follow: bool,
 ) -> Result<Voice, String> {
+    // The live input on every slot, until the host gives each its own
+    // (#147's web half).
+    let input = InputStreams::every(input);
     let voice = if follow {
-        compile_follower(tree, sample_rate, Some(input))
+        compile_follower(tree, sample_rate, &input)
     } else {
-        compile_with_input(tree, sample_rate, Some(input))
+        compile_with_input(tree, sample_rate, &input)
     }
     .map_err(|e| e.to_string())?;
     voice.gate.set(0.0);
