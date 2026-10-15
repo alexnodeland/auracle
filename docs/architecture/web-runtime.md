@@ -1197,8 +1197,8 @@ figure is what the engine measured on the sound in hand, never a recipe
   its place. The page keys replies by the control, the tree, both override
   sets and the wiring's words, keeps one request out at a time (a key
   asked for meanwhile is not queued; the answer asks for its control's
-  current key when the reply lands), and leaves a turn in progress to its
-  300 ms follow timer, so a drag never stacks renders in `soon`: walks
+  current key when the reply lands, unless the control is still turning),
+  and leaves a turn in progress to its 300 ms follow timer, so a drag never stacks renders in `soon`: walks
   yield to `soon`, and a pile of figures there would hold a generation up.
 - **`explain_lesson`** (`soon`; `{token, tree, overrides, cutoff}`): one
   `lesson_filter` render, the performed state with the grammar's lowpass at
@@ -1259,8 +1259,8 @@ first.
 - **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
   generation ends with the children absorbed so far, the lowest members
   not kept (saved, or kept as new and not yet in a pick) are retired (a child bred early can be among them), and
-  walks still running are dropped (the crew is reaped at once if nothing else
-  is walking, which gives the cores back).
+  walks still running are dropped (the crew is terminated at once if nothing
+  else is walking, which gives the cores back: `farm_done` with `now`).
 - **Fallback.** With no crew (width 0, a spawn that failed, every worker
   lost) or for a walk a worker could not run (`farm_walk` answered `""`, or a
   five-minute watchdog), the job is walked in the engine worker with
@@ -1332,8 +1332,17 @@ with none, and the worker then walks the jobs itself. Width is `walkWidth()` in
 6, at most 2 on a small-memory device), but at least one worker where there
 are two cores, because one worker already takes the walk off the engine
 worker. `?farm=N` sets both widths; `?farm=0` is the serial path. The crew is
-reaped after 60 s with nothing to walk (`farm_done` with its crew id; main
-terminates those workers), so N × ~15 MB is not kept resident.
+reaped after 60 s with nothing to walk (`farm_done` with its crew id), so
+N × ~15 MB is not kept resident. A reaped worker (boot's crew too) closes once
+its writes to the render store have committed and tells main, which then
+terminates it, or after 5 s if it never says so: terminated at once, a worker
+lost the row of the render it had just posted (#360). It reads `bye` only
+once the job it is running ends, so boot's crew finishes the render it has
+in hand (one past the fill's stop point, about 2 s on the reference
+machine) and stores it before it closes. A crew a stop leaves walking for
+nobody is the exception: a walk writes no rows, so the engine worker marks
+that `farm_done` `now` and main terminates the crew at once, which gives the
+cores back without waiting for the walks.
 
 ### The render cache's store
 

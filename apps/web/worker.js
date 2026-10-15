@@ -436,15 +436,18 @@ function farmSay(msg) {
 
 // Idempotent: boot's `finally` calls it on every exit, abnormal ones included,
 // and the happy path has already called it by then. Also how a walk crew is
-// reaped (`crewReap`); `crew` tells main which workers to terminate.
+// reaped (`crewReap`); `crew` tells main which workers to terminate. `now`
+// asks main to terminate them at once rather than let each finish what it is
+// running and commit its render-store writes first (`bye` in farm.js): only
+// for a crew walking for nobody, since a walk writes no rows.
 let farmClosed = false;
-function farmShutdown() {
+function farmShutdown(now = false) {
   if (farmClosed) return;
   farmClosed = true;
   farmSay({ type: "bye" });
   for (const f of farm) f.alive = false;
   farmSink = null;
-  news({ type: "farm_done", crew: farmCrew_ });
+  news({ type: "farm_done", crew: farmCrew_, now });
 }
 
 // ---------- the farm on demand ----------
@@ -548,13 +551,18 @@ function crewIdle() {
   }, CREW_IDLE_MS);
 }
 
-/** Reap the crew now. Its walks in flight are for nobody (a stop), and
- *  terminating the workers is what gives their cores back. */
+/** Reap the crew now. Walks in flight are for nobody (a stop): a farm
+ *  worker inside `farm_walk` cannot read its `bye` until the walk ends, so
+ *  main is asked to terminate the crew at once, which is what gives the cores
+ *  back, unless a guess's renders are out on it too. A crew reaped idle has
+ *  nothing running, and closes itself after its last writes. */
 function crewReap() {
   crewKeep();
+  // A guess's renders on the same crew store rows, so they keep the slow way.
+  const now = walkInflight.size > 0 && guessInflight.size === 0;
   for (const s of walkInflight.values()) clearTimeout(s.timer);
   walkInflight.clear();
-  farmShutdown();
+  farmShutdown(now);
 }
 
 // ---------- walks on the crew ----------

@@ -241,6 +241,13 @@ test("a generation asked for while a refit is out waits for it, then walks on th
   w.post({ type: "refine_stop" });
   const replies = await w.answers(breed);
   assert.equal(replies.at(-1).type, "refined");
+  // The stop left its walks running for nobody: main is asked to terminate
+  // the crew at once, not wait for a walk to end before the worker reads
+  // its `bye` (a walk writes no rows to keep).
+  const crewId = w.repliesOf("farm_want").at(-1).crew;
+  const reaped = () => w.repliesOf("farm_done", { where: { crew: crewId } });
+  await heard(() => reaped().length > 0);
+  assert.deepEqual(reaped().map((m) => m.now), [true], "a stop's crew was not reaped at once");
   await w.close();
 });
 

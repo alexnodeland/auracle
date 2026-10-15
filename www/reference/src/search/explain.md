@@ -48,11 +48,14 @@ knobs it turns), so switching back to a control costs nothing; the page does
 not read `along`, so the model's revision is not in the key. One request is
 out at a time: a key asked for while one is out is not queued, and when the
 reply lands the answer is built again and asks for whatever its control is
-then, as the lesson does. An open figure follows its control: a turn, once it
-has rested for 300 ms (`FOLLOW_MS`; the page's 400 ms check leaves a turn in
-progress to it), a new measurement or a drift changes what `explainOf`
-returns, and the figure asks again. Measured in the browser, a three-second
-drag with an answer open sends at most two requests
+then, unless that control is still turning. An open figure follows its
+control: a turn, once it has rested for 300 ms (`FOLLOW_MS`; a reply that
+lands mid-turn and the page's 400 ms check both leave a turn in progress to
+it, and a different control switched to asks at once), a new measurement or
+a drift changes what `explainOf` returns, and the figure asks again. Measured
+in the browser, a three-second drag with an answer open sends at most two
+requests, plus one for each time the page itself stalled for longer than the
+rest, since a loaded page sees those gaps as rests
 (`explain.spec.js`). While they render, the last figure stays, dimmed, under
 *measuring…*.
 

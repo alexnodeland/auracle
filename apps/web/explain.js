@@ -732,8 +732,9 @@ export function createExplain(host) {
   // The replies, by what they were asked about (the control, the patch and
   // both sets of knobs), and the requests out: one at a time. A key asked for
   // while one is out is not queued; when the reply lands the answer is built
-  // again, and asks for whatever its control is then (as the lesson does), so
-  // a drag never stacks renders in the engine's `soon` lane.
+  // again, and asks for whatever its control is then, unless that control is
+  // still turning: then the follow timer asks once the turn has rested
+  // (`FOLLOW_MS`). So a drag never stacks renders in the engine's `soon` lane.
   const cache = new Map();
   const out = new Map(); // token -> key
   let token = 0;
@@ -742,8 +743,23 @@ export function createExplain(host) {
   const keyOf = (st) => JSON.stringify([st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
   let busy = 0; // the token of the one request out, or 0
   let busyT = 0;
+  // Which control was last turned, and when (`controlTurned`).
+  let lastTurn = 0;
+  let turnedI = -1;
+  const turning = (i) => i === turnedI && performance.now() - lastTurn < FOLLOW_MS;
   function request(st, key) {
     if (busy) return;
+    // A turn in progress is the follow timer's to ask for, once it rests: a
+    // reply that lands mid-turn draws what it measured and asks for nothing,
+    // or a drag on a loaded machine asked again on every reply (#336).
+    // The timer is armed here, for what is left of the rest, so the answer
+    // asks even when nothing else set it (opened again just after a turn).
+    // Only the control turned waits: another one, switched to, asks at once.
+    if (turning(st.i)) {
+      clearTimeout(followT);
+      followT = setTimeout(() => shown && render(), FOLLOW_MS - (performance.now() - lastTurn));
+      return;
+    }
     token += 1;
     out.set(token, key);
     busy = token;
@@ -934,15 +950,16 @@ export function createExplain(host) {
       if (again && again.getBoundingClientRect().width) shown.el = again;
       else return close();
     }
-    // A turn in progress is the follow timer's to answer, once it rests.
-    if (performance.now() - lastTurn < FOLLOW_MS) return;
+    // A turn in progress is the follow timer's to answer, once it rests
+    // (`request` arms it).
+    if (turning(shown.i)) return;
     const st = perf()?.explainOf(shown.i);
     if (st && keyOf(st) !== shown.key) render();
   }
-  let lastTurn = 0;
   function controlTurned(i) {
     if (!shown || shown.i !== i || !pop.classList.contains("on")) return;
     lastTurn = performance.now();
+    turnedI = i;
     clearTimeout(followT);
     followT = setTimeout(() => shown && render(), FOLLOW_MS);
   }
