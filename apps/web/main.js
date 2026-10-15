@@ -5209,6 +5209,9 @@ function stopAudition() {
 }
 
 function toggleAudition() {
+  // A press: a preset's ▶ still waiting for its sound is taken back, whether
+  // this press stops what sounds or plays the bench (#421).
+  warmPreviewCancel();
   if (stopAudition()) return;
   // In every view, Space is the bench's ▶: the patch as it stands, waiting
   // for an edit still on its way, or why it cannot play. The bank's render,
@@ -5287,8 +5290,9 @@ const RENDER_WAIT_MS = 12_000;
 const RENDER_POLL_MS = 100;
 
 function awaitRender(id, onReady, opts = {}) {
-  // Every ▶ of a rendered patch starts here (Space outside PATCH, the duel,
-  // a bank row, a style's exemplar, the warm start): the latest ▶ wins, so the
+  // A ▶ of a rendered patch with nothing on the bench starts here (the duel,
+  // a bank row, a style's exemplar, the warm start, Space with an empty
+  // bench; the bench's ▶ goes through `latestPlayWins`): the latest ▶ wins, so the
   // bench's ▶ waiting for an edit is taken back rather than starting over it,
   // and so is a preset's ▶ waiting for its render (`warmPreview`), which
   // otherwise played over the ▶ pressed after it once its render landed
@@ -9999,6 +10003,15 @@ function playBench() {
   const said = { urgent: true, replace: "bench-play" };
   if (!wb.vetOk && wb.vetSilent) note("Nothing to play. No source reaches the output: plug one into the empty socket.", said);
   else if (!wb.vetOk) note("⚠ Muted: this patch didn’t pass the safety vet.", said);
+}
+
+/** A ▶ pressed: the latest ▶ wins, so both waiting claims on the next phrase
+ *  are taken back, the bench's (`playOnSettle`) and a preset's
+ *  (`warmPreview`). True if the bench's was waiting. Called on presses only,
+ *  never from `settlePlay` or a failed edit: those are not the player's. */
+function latestPlayWins() {
+  warmPreviewCancel();
+  return playWaitCancel();
 }
 
 /** A ▶ still waiting for the lane is taken back. True if one was waiting. */
@@ -17151,7 +17164,7 @@ function closeCommitDuel() {
 
 function cdPlay(side) {
   if (!commitDuel) return;
-  playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
+  latestPlayWins();
   const buf = side === commitDuel.origSide ? commitDuel.orig : commitDuel.edit;
   playBuffer(buf, $(`cd-play-${side}`));
 }
@@ -17214,13 +17227,13 @@ window.addEventListener("keydown", (e) => {
 // Pressed while it waits for an edit, it takes the wait back, as the warm
 // start's ▶ does; otherwise it plays (or restarts) the bench's phrase.
 $("rack-play").onclick = () => {
-  if (playWaitCancel()) return;
+  if (latestPlayWins()) return;
   playBench();
 };
 // The header's ▶ is Space (ADR-016): the sound in hand as it stands, from
 // any level; pressed while it waits for an edit, it takes the wait back.
 $("inhand-play").onclick = () => {
-  if (playWaitCancel()) return;
+  if (latestPlayWins()) return;
   toggleAudition();
 };
 $("rack-commit").onclick = () => commitBench();
@@ -19868,7 +19881,7 @@ function paintPreviewScope(target) {
 // pointer to the ▶.
 $("pick-chip")?.addEventListener("click", (ev) => {
   if (!ev.target.closest(".pv-play")) return;
-  playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
+  latestPlayWins();
   requestPreview(previewTarget(), true);
 });
 
@@ -23980,7 +23993,8 @@ const presetIds = new Map(); // preset index -> bank id
 // the card: a preview still loading when "teach it" closed the screen played
 // seconds later, in PERFORM, over whatever the player was doing by then. Now
 // the latest ▶ wins, pressing the waiting ▶ again takes it back, and closing
-// the card takes it back too; an answer that arrives for anything else still
+// the card takes it back too, and so does any other ▶ or Space
+// (`latestPlayWins`, `awaitRender`); an answer that arrives for anything else still
 // lands in the bank (it was inserted), and is simply not played.
 let warmPreview = null;
 
