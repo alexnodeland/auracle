@@ -1,5 +1,4 @@
 use super::*;
-use crate::clip::AuditionClip;
 use crate::phrase::Note;
 use crate::pipeline::featurize;
 use crate::tests::vco;
@@ -766,7 +765,7 @@ fn a_block_walk_is_the_frame_walk() {
 fn the_walk_couples_only_voices_that_share_state() {
     let walk_of = |tree: &PatchTree, blocks: bool| {
         let voice = Build::Folded
-            .voice(tree, 44_100.0, None, false)
+            .voice(tree, 44_100.0, &InputStreams::none(), false)
             .expect("compiles");
         Walk::of(&voice, blocks)
     };
@@ -789,7 +788,7 @@ fn the_walk_couples_only_voices_that_share_state() {
 fn a_released_voice_parks_after_a_quiet_run() {
     let tree = vco(Waveform::Saw);
     let voice = Build::Folded
-        .voice(&tree, 44_100.0, None, false)
+        .voice(&tree, 44_100.0, &InputStreams::none(), false)
         .expect("compiles");
     let mut cv = ChordVoice {
         voice,
@@ -815,4 +814,80 @@ fn a_released_voice_parks_after_a_quiet_run() {
     }
     assert!(cv.heard(0.0), "the run's last quiet sample parks it");
     assert!(cv.parked);
+}
+
+/// A clip of a `hz` sine, the phrase's length, at `spec`'s rate.
+fn sine_clip(spec: &PhraseSpec, hz: f64) -> AuditionClip {
+    let x: Vec<f32> = (0..spec.total_samples())
+        .map(|i| (0.3 * (i as f64 * hz / spec.sample_rate * std::f64::consts::TAU).sin()) as f32)
+        .collect();
+    AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
+}
+
+/// [`only_input`]'s AUDIO IN on `slots[0]` and another on `slots[1]`, mixed
+/// a quarter of the way from the first to the second, so the two are told
+/// apart.
+fn two_inputs(slots: [u8; 2]) -> PatchTree {
+    let input = |slot: u8| {
+        Box::new(AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: slot,
+            gain: INPUT_GAIN_UNITY,
+            channel: InputChannel::Both,
+        })
+    };
+    PatchTree {
+        root: AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.25,
+            a: input(slots[0]),
+            b: input(slots[1]),
+        },
+        ..only_input()
+    }
+}
+
+/// **Each AUDIO IN hears its own slot's clip.** Two on slots 0 and 1, each
+/// slot with a clip of its own, render as the same patch with the slots
+/// swapped and the clips swapped with them, bit for bit, and unlike either
+/// clip on both. A slot with a clip of its own takes it over the spec's
+/// `clip`, and both slots on one clip render exactly as one clip for every
+/// slot does: the two share one stream.
+#[test]
+fn two_inputs_hear_their_own_clips() {
+    quiver::rng::seed(1);
+    let spec = PhraseSpec::default();
+    let (a, b) = (sine_clip(&spec, 220.0), sine_clip(&spec, 1760.0));
+    let slots = |zero: &AuditionClip, one: &AuditionClip| PhraseSpec {
+        clips: [(0, zero.clone()), (1, one.clone())].into(),
+        ..spec.clone()
+    };
+    let every = |c: &AuditionClip| PhraseSpec {
+        clip: Some(c.clone()),
+        ..spec.clone()
+    };
+    let render = |t: &PatchTree, s: &PhraseSpec| render_phrase(t, s).unwrap().samples;
+    let ab = render(&two_inputs([0, 1]), &slots(&a, &b));
+    assert_eq!(ab, render(&two_inputs([1, 0]), &slots(&b, &a)));
+    assert_ne!(ab, render(&two_inputs([0, 1]), &every(&a)));
+    assert_ne!(ab, render(&two_inputs([0, 1]), &every(&b)));
+    let own = PhraseSpec {
+        clip: Some(b.clone()),
+        ..slots(&a, &b)
+    };
+    assert_eq!(ab, render(&two_inputs([0, 1]), &own));
+    assert_eq!(
+        render(&two_inputs([0, 1]), &slots(&a, &a)),
+        render(&two_inputs([0, 1]), &every(&a)),
+    );
+    // A slot without a clip of its own hears the reference.
+    let none = PhraseSpec {
+        clips: [(1, b.clone())].into(),
+        ..spec.clone()
+    };
+    let reference = crate::clip::reference(&spec);
+    assert_eq!(
+        render(&two_inputs([0, 1]), &none),
+        render(&two_inputs([0, 1]), &slots(&reference, &b)),
+    );
 }

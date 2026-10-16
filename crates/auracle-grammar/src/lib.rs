@@ -53,8 +53,8 @@ pub mod term;
 
 pub use compile::{
     compile, compile_follower, compile_follower_for_render, compile_for_render, compile_with_input,
-    cutoff_hz, lowpass_apply, lowpass_response, CompiledVoice, ParamHandle, ParamMap, TrackFeed,
-    COMPILE_MAX_NESTING, INPUT_GAIN_UNITY, TRACK_SENSITIVITY_DEFAULT,
+    cutoff_hz, lowpass_apply, lowpass_response, CompiledVoice, InputStreams, ParamHandle, ParamMap,
+    TrackFeed, COMPILE_MAX_NESTING, INPUT_GAIN_UNITY, TRACK_SENSITIVITY_DEFAULT,
 };
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
@@ -68,7 +68,8 @@ pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
 pub use take::{SavedTake, Take, TakeError, MAX_TAKE_RATE, TAKE_FORMAT, TAKE_SECONDS};
 pub use term::{
-    AudioNode, CaptureMode, InputChannel, ModNode, PatchTree, PitchBand, Uid, INPUT_SLOTS,
+    input_slot, AudioNode, CaptureMode, InputChannel, ModNode, PatchTree, PitchBand, Uid,
+    INPUT_SLOTS,
 };
 
 #[cfg(test)]

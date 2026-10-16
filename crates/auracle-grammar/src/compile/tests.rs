@@ -5,8 +5,16 @@ use crate::term;
 use crate::tests::{captured, frequency, listening, patch, sine_vco, stream_of, tone, tracked};
 use crate::PatchGrammarPrior;
 use crate::PARAM_MAX;
+use quiver::prelude::AudioInputStream as Stream;
+
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+
+/// `stream` on every slot, or no slot bound: the one-stream binding most of
+/// these tests play an input through.
+fn bind(stream: Option<&Arc<Stream>>) -> InputStreams {
+    stream.map_or_else(InputStreams::none, InputStreams::every)
+}
 
 const SR: f64 = 44_100.0;
 
@@ -129,7 +137,7 @@ impl quiver::introspection::ModuleIntrospection for Refuses {
 #[test]
 fn a_build_step_that_fails_records_its_fault_and_the_build_returns_it() {
     let level = || Arc::new(AtomicF64::new(0.0));
-    let mut c = Compiler::new(SR, &level(), &level(), None, false);
+    let mut c = Compiler::new(SR, &level(), &level(), InputStreams::none(), false);
     let adsr = c.patch.add("t:adsr", Adsr::new(SR));
     let nowhere = |port| PortRef {
         node: adsr.id(),
@@ -193,7 +201,7 @@ fn a_build_step_that_fails_records_its_fault_and_the_build_returns_it() {
 #[test]
 fn a_pin_that_cannot_take_says_why() {
     let level = || Arc::new(AtomicF64::new(0.0));
-    let mut c = Compiler::new(SR, &level(), &level(), None, false);
+    let mut c = Compiler::new(SR, &level(), &level(), InputStreams::none(), false);
     let adsr = c.patch.add("t:adsr", Adsr::new(SR));
     c.constant(0.5, adsr.id(), "sustain")
         .expect("an unpatched control input takes a pin");
@@ -2131,7 +2139,7 @@ fn audio_in_compiles_to_a_bound_input() {
     use quiver::prelude::AudioInputStream;
     use std::sync::Arc;
     let level = |tree: &PatchTree, stream: Option<&Arc<AudioInputStream>>, gain: Option<f64>| {
-        let mut v = compile_with_input(tree, SR, stream).expect("compiles");
+        let mut v = compile_with_input(tree, SR, &bind(stream)).expect("compiles");
         if let Some(g) = gain {
             v.params["node/0#gain"].set_normalized(g);
         }
@@ -2171,6 +2179,59 @@ fn audio_in_compiles_to_a_bound_input() {
     );
 }
 
+/// **An AUDIO IN reads the stream bound to its own slot.** One on slot 3 is
+/// heard when slot 3 is bound, or every slot is, and silent when only
+/// another slot is; one whose slot is past the last reads the last.
+#[test]
+fn an_audio_in_reads_its_own_slot() {
+    quiver::rng::seed(SEED);
+    let tone_stream = || stream_of(&tone(2048, 220.0));
+    let peak = |tree: &PatchTree, streams: &InputStreams| {
+        let mut v = compile_with_input(tree, SR, streams).expect("compiles");
+        v.gate.set(5.0);
+        let mut peak = 0.0f64;
+        for _ in 0..2048 {
+            peak = peak.max(v.patch.tick().0.abs());
+            streams.advance();
+        }
+        peak
+    };
+    let three = listening(3, term::InputChannel::Both);
+    assert!(peak(&three, &InputStreams::none().with(3, &tone_stream())) > 0.1);
+    assert!(peak(&three, &InputStreams::every(&tone_stream())) > 0.1);
+    assert_eq!(
+        peak(&three, &InputStreams::none().with(2, &tone_stream())),
+        0.0,
+        "another slot's stream is not this one's"
+    );
+    let past = listening(200, term::InputChannel::Both);
+    assert_eq!(past.input_slots(), [INPUT_SLOTS - 1]);
+    let last = InputStreams::none().with(INPUT_SLOTS - 1, &tone_stream());
+    assert!(
+        peak(&past, &last) > 0.1,
+        "a slot past the last reads the last"
+    );
+}
+
+/// **Bindings move each stream once a frame**, however many slots share it,
+/// and a slot past the last binds nothing.
+#[test]
+fn input_streams_advance_each_stream_once() {
+    let a = stream_of(&[0.0; 16]);
+    let b = stream_of(&[0.0; 16]);
+    assert!(InputStreams::none().is_none());
+    assert!(InputStreams::none().with(INPUT_SLOTS, &a).is_none());
+    assert!(!InputStreams::none().with(3, &a).is_none());
+    let every = InputStreams::every(&a).with(5, &b);
+    assert!(!every.is_none());
+    assert!(Arc::ptr_eq(every.slot(0).unwrap(), &a));
+    assert!(Arc::ptr_eq(every.slot(5).unwrap(), &b));
+    assert!(every.slot(INPUT_SLOTS).is_none());
+    every.advance();
+    every.advance();
+    assert_eq!((a.frame(), b.frame()), (2, 2));
+}
+
 /// **TRACK plays its branch from the input.** A sine VCO under a TRACK,
 /// fed a 220 Hz tone with no key held: the VCO sings the tone, within 5
 /// cents, so the tracker read it, and the tracked gate opens the voice the
@@ -2184,7 +2245,7 @@ fn track_plays_its_branch_from_the_input() {
     let n = (SR * 0.8) as usize;
     let run_voice = |tree: &PatchTree, input: &[f32], key: Option<f64>| {
         let stream: Arc<AudioInputStream> = stream_of(input);
-        let mut v = compile_with_input(tree, SR, Some(&stream)).expect("compiles");
+        let mut v = compile_with_input(tree, SR, &InputStreams::every(&stream)).expect("compiles");
         if let Some(pitch) = key {
             v.pitch.set(pitch);
             v.gate.set(5.0);
@@ -2251,7 +2312,8 @@ fn track_dynamics_follow_the_input_level() {
             .collect();
         let stream = stream_of(&quiet);
         let tree = patch(tracked(term::PitchBand::Mid, dynamics));
-        let mut v = compile_with_input(&tree, SR, Some(&Arc::clone(&stream))).unwrap();
+        let mut v =
+            compile_with_input(&tree, SR, &InputStreams::every(&Arc::clone(&stream))).unwrap();
         let mut peak = 0.0f64;
         for i in 0..n {
             let (l, _) = v.patch.tick();
@@ -2283,7 +2345,7 @@ fn capture_records_and_plays_back_bit_exactly() {
     let x = tone(n, 330.0);
     let stream = stream_of(&x);
     let empty = patch(captured(term::CaptureMode::Once, Take::empty()));
-    let mut v = compile_with_input(&empty, SR, Some(&stream)).unwrap();
+    let mut v = compile_with_input(&empty, SR, &InputStreams::every(&stream)).unwrap();
     let (name, port) = v.taps["node/0"].clone();
     let input = v.patch.get_node_id_by_name(&name).unwrap();
     let record = v.records["node"].clone();
@@ -2341,7 +2403,7 @@ fn a_long_recording_into_an_enlarged_buffer_stops_at_the_bound() {
         .collect();
     let stream = stream_of(&x);
     let tree = patch(captured(term::CaptureMode::Once, long));
-    let mut v = compile_with_input(&tree, sr, Some(&stream)).unwrap();
+    let mut v = compile_with_input(&tree, sr, &InputStreams::every(&stream)).unwrap();
     v.records["node"].set(5.0);
     for _ in 0..n {
         v.patch.tick();
@@ -2496,8 +2558,8 @@ fn a_follower_plays_what_its_lead_tracked() {
     let sung = tone(2 * n, 220.0);
     let stream = stream_of(&sung);
     let tree = patch(tracked(term::PitchBand::Mid, 0.0));
-    let mut lead = compile_with_input(&tree, SR, Some(&stream)).expect("compiles");
-    let mut follower = compile_follower(&tree, SR, None).expect("compiles");
+    let mut lead = compile_with_input(&tree, SR, &InputStreams::every(&stream)).expect("compiles");
+    let mut follower = compile_follower(&tree, SR, &InputStreams::none()).expect("compiles");
     assert_eq!(lead.tracker_keys(), ["node"]);
     assert!(follower.tracker_keys().is_empty() && follower.track_feeds.contains_key("node"));
     follower.pitch.set(2.0); // the key's own pitch, which the TRACK replaces
@@ -2539,11 +2601,12 @@ fn read_tracks_copies_each_tracks_three_signals_in_key_order() {
         a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
         b: Box::new(tracked(term::PitchBand::Mid, 0.5)),
     });
-    let voice = |s: &Arc<AudioInputStream>| compile_with_input(&two, SR, Some(s)).unwrap();
+    let voice =
+        |s: &Arc<AudioInputStream>| compile_with_input(&two, SR, &InputStreams::every(s)).unwrap();
     let (sa, sb) = (stream_of(&sung), stream_of(&sung));
     let (mut a, mut b) = (voice(&sa), voice(&sb));
     assert_eq!(a.tracker_keys(), ["node/0", "node/1"]);
-    let follower = compile_follower(&two, SR, None).unwrap();
+    let follower = compile_follower(&two, SR, &InputStreams::none()).unwrap();
     for _ in 0..n - 1 {
         a.patch.tick();
         sa.advance();
@@ -2572,7 +2635,7 @@ fn read_tracks_copies_each_tracks_three_signals_in_key_order() {
             b: Box::new(sine_vco()),
         }),
         SR,
-        None,
+        &InputStreams::none(),
     )
     .unwrap();
     a.lead(&one);
@@ -2608,7 +2671,12 @@ fn each_band_tracks_a_note_in_its_range() {
     ] {
         let sung = tone(n, hz);
         let stream = stream_of(&sung);
-        let mut v = compile_with_input(&patch(tracked(band, 0.0)), SR, Some(&stream)).unwrap();
+        let mut v = compile_with_input(
+            &patch(tracked(band, 0.0)),
+            SR,
+            &InputStreams::every(&stream),
+        )
+        .unwrap();
         let out: Vec<f64> = (0..n)
             .map(|_| {
                 let (l, _) = v.patch.tick();
@@ -2800,10 +2868,10 @@ fn both_ways(tree: &PatchTree, follow: bool) -> [(CompiledVoice, Vec<(u64, u64)>
         let input = tree.listens().then(heard).flatten();
         let input = input.as_ref();
         let mut v = match (render, follow) {
-            (false, false) => compile_with_input(tree, SR, input),
-            (false, true) => compile_follower(tree, SR, input),
-            (true, false) => compile_for_render(tree, SR, input),
-            (true, true) => compile_follower_for_render(tree, SR, input),
+            (false, false) => compile_with_input(tree, SR, &bind(input)),
+            (false, true) => compile_follower(tree, SR, &bind(input)),
+            (true, false) => compile_for_render(tree, SR, &bind(input)),
+            (true, true) => compile_follower_for_render(tree, SR, &bind(input)),
         }
         .expect("compiles");
         let bits = played_bits(&mut v, input, HELD, LET_GO);
@@ -2956,7 +3024,8 @@ fn a_render_compile_plays_the_full_voice_bit_for_bit() {
                 listed, left,
                 "{name} (follower: {follow}): the knobs it lists"
             );
-            let mut again = compile_voice(tree, SR, None, follow).expect("compiles");
+            let mut again =
+                compile_voice(tree, SR, &InputStreams::none(), follow).expect("compiles");
             if render.patch.node_count() == full.patch.node_count() && !again.pin_knobs() {
                 whole.push(name.clone());
                 continue;
@@ -3005,10 +3074,10 @@ fn a_render_compiles_each_voice_once() {
                 quiver::rng::seed(SEED);
                 let at = compiled();
                 let built = match (render, follow) {
-                    (false, false) => compile_with_input(tree, SR, None),
-                    (false, true) => compile_follower(tree, SR, None),
-                    (true, false) => compile_for_render(tree, SR, None),
-                    (true, true) => compile_follower_for_render(tree, SR, None),
+                    (false, false) => compile_with_input(tree, SR, &InputStreams::none()),
+                    (false, true) => compile_follower(tree, SR, &InputStreams::none()),
+                    (true, false) => compile_for_render(tree, SR, &InputStreams::none()),
+                    (true, true) => compile_follower_for_render(tree, SR, &InputStreams::none()),
                 };
                 assert!(built.is_ok(), "{name} compiles");
                 (compiled() - at, quiver::rng::random().to_bits())
@@ -3036,8 +3105,8 @@ fn a_folded_voice_reads_its_tracks_by_slot() {
         a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
         b: Box::new(tracked(term::PitchBand::Low, 0.5)),
     });
-    let full = compile_with_input(&tree, SR, None).expect("compiles");
-    let v = compile_for_render(&tree, SR, None).expect("compiles");
+    let full = compile_with_input(&tree, SR, &InputStreams::none()).expect("compiles");
+    let v = compile_for_render(&tree, SR, &InputStreams::none()).expect("compiles");
     assert!(v.patch.node_count() < full.patch.node_count(), "folded");
     assert_eq!(v.tracker_keys(), ["node/0", "node/1"]);
     for t in &v.trackers {
@@ -3057,7 +3126,7 @@ fn a_folded_voice_reads_its_tracks_by_slot() {
 #[test]
 fn a_fold_that_would_move_the_schedule_keeps_the_full_voice() {
     let tree = two_strings();
-    let mut voice = compile_with_input(&tree, SR, None).expect("compiles");
+    let mut voice = compile_with_input(&tree, SR, &InputStreams::none()).expect("compiles");
     let before = Schedule::of(&voice.patch, |n| n);
     assert_eq!(before.drawers.len(), 2, "two strings draw from the stream");
     let mut stand = Stand::of(&voice.patch).expect("stands in");
@@ -3250,7 +3319,7 @@ fn the_stream_drawers_are_the_kinds_that_draw() {
     let (mut drew, mut still) = (0, 0);
     for (name, tree) in one_of_each_kind() {
         let input = tree.listens().then(heard).flatten();
-        let mut v = compile_with_input(&tree, SR, input.as_ref()).expect("compiles");
+        let mut v = compile_with_input(&tree, SR, &bind(input.as_ref())).expect("compiles");
         quiver::rng::seed(SEED);
         played_bits(&mut v, input.as_ref(), HELD, LET_GO);
         let next = quiver::rng::random();

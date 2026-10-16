@@ -59,7 +59,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // ratings each pick's reply carries (Plan-005); its seeds are the next jobs'
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The three `audition_clip` methods are the
-// session's clip (Plan-007 task 3), and the live voice's input surface is what
+// session's clip (Plan-007 task 3), on every input slot, and the three
+// `input_clip` methods each slot's own (#147), and the live voice's input
+// surface is what
 // the worklet writes the player's input through, with the open voice that
 // holds a patch that listens open while it is monitored (task 4), and `rest`
 // and `resting` are PERFORM's B at a mix of 0, which the worklet rests rather
@@ -93,6 +95,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "refine_from_job", "refine_from_absorb", "refine_from_walk", "refine_from_cancel",
       "refine_seed", "last_refine_reason", "belief", "edit_known_makeup",
       "audition_clip", "set_audition_clip", "clear_audition_clip",
+      "input_clip", "set_input_clip", "clear_input_clip",
       "guess_plan", "guess_rank", "guess_skip", "guess_take", "guess_patch_as", "edit_cable_levels",
       "held_sounds", "readmit_held",
       "own_sound_set", "own_sound", "own_sound_clear", "own_presets_set", "refine_toward_jobs",

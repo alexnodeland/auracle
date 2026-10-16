@@ -373,6 +373,13 @@ impl DriveMode {
 /// grow and never shrink.
 pub const INPUT_SLOTS: usize = 8;
 
+/// The slot an AUDIO IN whose `input` is `input` reads: `input` itself, or
+/// the last slot for one past it, as the genome reads such a value
+/// (`genome.rs`), so a hand-edited file plays rather than falls silent.
+pub fn input_slot(input: u8) -> usize {
+    (input as usize).min(INPUT_SLOTS - 1)
+}
+
 /// Which channel of an input an [`AudioNode::AudioIn`] reads. Index order
 /// matches the `#channel` categorical and quiver's `InputChannel::index`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -989,8 +996,9 @@ pub enum AudioNode {
     /// filter or a delay it is processed, into a follower it modulates. It
     /// compiles to quiver's `AudioInput`, bound to whatever stream the caller
     /// hands [`crate::compile_with_input`] (or [`crate::compile_for_render`],
-    /// the voice a measurement render plays): the session's **audition clip** in
-    /// a measurement render (so a patch that listens is measured, rated and
+    /// the voice a measurement render plays) for its `input` slot
+    /// ([`crate::InputStreams`]): that slot's **audition clip** in a
+    /// measurement render (so a patch that listens is measured, rated and
     /// bred like any other; see `auracle_features::clip`), and the live input
     /// in the instrument.
     ///
@@ -2626,6 +2634,28 @@ impl PatchTree {
     /// every cached row of it) is the same whatever clip the session holds.
     pub fn listens(&self) -> bool {
         self.root.listens()
+    }
+
+    /// The input slots this patch's AUDIO INs read, ascending, each once
+    /// (empty for a patch that does not [`listen`](Self::listens)).
+    ///
+    /// A slot past the last ([`INPUT_SLOTS`], which only a hand-edited file
+    /// can hold) counts as the last, which is the slot it reads
+    /// ([`input_slot`]).
+    pub fn input_slots(&self) -> Vec<usize> {
+        fn walk(n: &AudioNode, out: &mut Vec<usize>) {
+            if let AudioNode::AudioIn { input, .. } = n {
+                out.push(input_slot(*input));
+            }
+            for c in n.children() {
+                walk(c, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.root, &mut out);
+        out.sort_unstable();
+        out.dedup();
+        out
     }
 
     /// The `#input` trace address of every AUDIO IN in this patch

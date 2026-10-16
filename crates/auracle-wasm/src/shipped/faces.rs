@@ -59,7 +59,8 @@ pub struct PresetFaces {
     /// The render namespace they were rendered in ([`cache_namespace`] of
     /// the standard phrase): what the worker tells the page as `ns`.
     pub ns: String,
-    /// The id of the clip a preset that listens heard: the reference clip.
+    /// The id of the clip a preset that listens heard: the reference clip,
+    /// on every slot (the standard phrase gives no slot a clip of its own).
     pub clip: String,
     /// The presets' faces.
     pub presets: Vec<PresetFace>,
@@ -90,13 +91,21 @@ impl PresetFaces {
 }
 
 /// What a face is measured with, other than the preset: the render namespace
-/// (the stimulus, `RENDER_EPOCH`, the quiver version), the clip a preset that
-/// listens hears, and the face's own encoding (its bands, slices, range,
-/// floor and step). A change to any of them makes every shipped face stale,
+/// (the stimulus, `RENDER_EPOCH`, the quiver version), the clips a preset
+/// that listens hears (every slot's, and each slot's own), and the face's
+/// own encoding (its bands, slices, range, floor and step). A change to any of them makes every shipped face stale,
 /// and the currency test says which by name, rendering nothing.
 pub fn faces_fingerprint(phrase: &PhraseSpec) -> String {
+    // A slot's own clip is named after the one every slot hears, and only
+    // when there is one, so the standard phrase's text is what it was before
+    // a slot could have a clip.
+    let slots: String = phrase
+        .clips
+        .iter()
+        .map(|(slot, c)| format!("\n{slot}:{}", c.at_rate(phrase.sample_rate).id()))
+        .collect();
     let text = format!(
-        "{}\n{}\n{:?}",
+        "{}\n{}{slots}\n{:?}",
         cache_namespace(phrase),
         phrase.audition_clip().id(),
         (

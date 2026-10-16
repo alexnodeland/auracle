@@ -515,3 +515,95 @@ test("a pool sound opened after a panel change plays the guess for that panel, n
   console.log(`${pick.name}: bench_opening ${(opening._at - t0).toFixed(0)} ms, its guess ${(guessAt - t0).toFixed(0)} ms after the click; marks ${JSON.stringify(marks)}`);
   expect(guessAt, "its guess is the one its open brought for this panel, not the one held").toBeGreaterThanOrEqual(opening._at);
 });
+
+// A sound's first measurement never re-centres a control under the hand
+// (#304). A pool sound the engine could not predict (its `first` taken off
+// the opening) plays the shipped or cached wiring's guess on the controls it
+// covers and listens on the rest; one that listens is turned and held still,
+// or the XY pad is, while the measurement lands. It keeps listening, drawn where
+// the hand holds it, and writes nothing to the voices; let go, the control
+// springs back, and the measurement wires the controls 1.5 s after the
+// release.
+const FIRST_HANDS = {
+  control: {
+    open: async () => {},
+    // A control the opening's guess could not cover: it still listens.
+    at: (page, i) => page.locator(`.pf-knob.unwired[data-i="${i}"]`),
+    shown: (page, i) => page.locator(`.pf-knob[data-i="${i}"]`).getAttribute("aria-valuenow"),
+    listening: (page, i) => page.locator(`.pf-knob.unwired[data-i="${i}"]`),
+  },
+  "XY pad": {
+    open: (page) => page.locator(".pf-xy-btn").click(),
+    at: (page) => page.locator(".pf-xy-field"),
+    shown: (page) => page.locator(".pf-xy-field").getAttribute("aria-valuetext"),
+    // Its axes play on the opening's guess; the controls it could not cover
+    // still listen while the pad is held.
+    listening: (page) => page.locator(".pf-knob.unwired"),
+  },
+};
+for (const [name, hand] of Object.entries(FIRST_HANDS)) {
+  test(`${name === "control" ? "a" : "an"} ${name} held through its sound's first measurement is not moved, and the measurement waits for its release`, { tag: "@slow" }, async ({ page, app }) => {
+    test.setTimeout(240_000);
+    await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+    await app.level("perform");
+    await app.fullPool();
+    await app.reached();
+    await bankTab(page, "pool");
+    const row = page.locator("#bank-list .bank-item[data-id]").nth(5);
+    const rowName = (await row.locator(".bi-name").textContent()).trim();
+    // The engine's prediction taken off the opening: the page still guesses
+    // from the shipped or cached wiring, and the controls it cannot cover
+    // listen until the sound is measured in front of the player.
+    await app.amend({ type: "bench_opening" }, { first: null });
+    await app.level("patch");
+    await row.click();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(rowName, { timeout }));
+    await app.hold("perform_wired");
+    const since = await app.now();
+    await app.level("perform");
+    await expect(page.locator(".pf-status")).toContainText("listening to");
+    expect(await page.locator(".pf-knob.unwired").count(), "a control the guess could not cover").toBeGreaterThan(0);
+    const i = await page.locator(".pf-knob.unwired").first().getAttribute("data-i");
+    const asked = (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+    expect(asked, "the measurement was asked for").toBeTruthy();
+    await app.engine((timeout) => expect.poll(async () => (await app.held()).length, { timeout, message: "the measurement landed" }).toBeGreaterThan(0), { ms: LIMIT_MS });
+    await hand.open(page);
+    const b = await hand.at(page, i).boundingBox();
+    const [x, y] = [b.x + b.width / 2 + 20, b.y + b.height / 2];
+    await page.mouse.move(x, y);
+    const held = await app.now();
+    await page.mouse.down();
+    await page.mouse.move(x, y - 40, { steps: 6 });
+    const shown = await hand.shown(page, i);
+    await app.countLiveWrites();
+    expect(await app.release(), "the measurement was held for the hand").toBeGreaterThan(0);
+    await app.quiet(2_500);
+    await expect(hand.listening(page, i).first(), "still listening under the hand").toBeAttached();
+    expect(await hand.shown(page, i), "nothing moved under the hand").toBe(shown);
+    expect(await app.liveWrites(), "and nothing was written to the voices").toEqual([]);
+    expect((await app.marks("perform-wired", { after: held })).map((m) => m.detail?.how), "not wired yet").toEqual([]);
+    await expect(page.locator(".pf-status"), "it says the controls wait for the hand, not that it listens").toContainText("the controls turn after you let go");
+    // The guess is rebased onto its measurement (`applyRechecked`), which
+    // marks nothing: when the measurement wired the controls is when the
+    // last one stopped listening.
+    await page.evaluate(() => {
+      window.__released = null;
+      window.__wiredAt = null;
+      window.addEventListener("pointerup", () => (window.__released = performance.now()), { capture: true, once: true });
+      const seen = new MutationObserver(() => {
+        if (window.__wiredAt == null && !document.querySelector(".pf-knob.unwired")) {
+          window.__wiredAt = performance.now();
+          seen.disconnect();
+        }
+      });
+      seen.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    });
+    await page.mouse.up();
+    await page.mouse.move(10, 10);
+    await expect(hand.listening(page, i), "the measurement wires the controls once the hand is off").toHaveCount(0);
+    await expect(page.locator(".pf-knob.unwired"), "every control it covers").toHaveCount(0);
+    const [released, wiredAt] = await page.evaluate(() => [window.__released, window.__wiredAt]);
+    expect(released, "the release was seen").not.toBeNull();
+    expect(wiredAt, "1.5 s after the release").toBeGreaterThanOrEqual(released + 1_500);
+  });
+}

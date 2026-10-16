@@ -39,9 +39,11 @@ Two loops share one pool of patches.
    modulation's cable. A sample then walks about half the nodes and the
    samples are the same, bit for bit (`CompiledVoice::pin_knobs`; [what a render
    costs](../notes/render-cost-2026-10/README.md)).
-   A patch with an AUDIO IN (`PatchTree::listens`) is built on the audition
-   stream and reads the phrase's audition clip on the render's own clock
-   (`clip.rs`, `render.rs`); its render key carries the clip.
+   A patch with an AUDIO IN (`PatchTree::listens`) is built on one audition
+   stream per input slot it reads, each on that slot's clip
+   (`PhraseSpec::slot_clip`: its own, else the session's) and the render's
+   own clock (`clip.rs`, `render.rs`); slots on one clip share a stream, and
+   its render key carries the clip, or each slot's when they differ.
 4. **Measure.** φ is φ_audio (perceptual descriptors of the render) plus
    φ_struct (render-free descriptors of the tree), `pipeline.rs`. φ is all the
    model sees.
@@ -91,7 +93,7 @@ Two loops share one pool of patches.
 | --- | --- | --- |
 | `PatchTree` | grammar | The genome: a typed term. Audio and Mod sorts are separate types. |
 | Trace address | grammar | `node/0#cut`: the one name every knob, lock, edit and proposal uses |
-| `PhraseSpec` | features | The audition phrase: notes, timing, seed, and the audition clip an AUDIO IN reads |
+| `PhraseSpec` | features | The audition phrase: notes, timing, seed, and the audition clips an AUDIO IN reads (the session's, and each input slot's own) |
 | φ | features | The feature vector, `phi_names()` in order |
 | `Observation` | taste | One piece of feedback, with raw φ |
 | `TastePosterior` | taste | Weighted MCMC draws of θ per lens |

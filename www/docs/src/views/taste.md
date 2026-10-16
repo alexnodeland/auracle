@@ -90,7 +90,8 @@ every level.
 ## Taste over time
 
 Once there are two moments to move between, a track runs along the map’s
-foot. Each tick is one moment: amber for a pick (thin and dim before the
+foot. Its room is kept from the start, so no sound moves when it appears.
+Each tick is one moment: amber for a pick (thin and dim before the
 first fit), a short silk tick below the line for a star or a cut, a faint line
 where the map was redrawn, a green diamond for a generation, with how many
 sounds joined (*+3*), and a bright full-height line where you opened a taste
@@ -140,9 +141,12 @@ brightness rather than easing there.
 Every sixth pick the model fits your taste again from everything it has
 learned. Then the map is drawn again, and every glow and every place settles
 to the new one together. The map turns rather than flips: a place you
-recognize stays near where you left it. If your pointer is on the map when
-the refit lands, it waits until you move off it, or rest a second, so
-nothing moves under your hand.
+recognize stays near where you left it. Nothing moves under your hand: if
+your pointer is on the map when the refit lands, the refit waits until you
+move off it, or rest a second. A generation's new map, or a taste file's,
+that lands under your pointer, or a refit that lands while a sound's card is
+up, settles the glows at once, and the places wait the same way; a
+generation's new sounds appear on the map when the places settle.
 
 ```admonish info collapsible=true title="How it works: the map"
 Each sound’s place starts from the two directions in which your sounds differ

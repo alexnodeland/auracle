@@ -1187,6 +1187,25 @@ class App {
     return this.page.waitForTimeout(ms);
   }
 
+  /** Count what the live voices are told to play from here on: each value
+   *  written to a knob (`param`), with the page's clock at the write, read
+   *  back by `liveWrites`. A spec's way to say nothing was heard to move. */
+  countLiveWrites() {
+    return this.page.evaluate(() => {
+      const lv = window.__aur.getLive();
+      window.__liveWrites = [];
+      if (lv.__counted) return;
+      const param = lv.param.bind(lv);
+      lv.param = (...a) => (window.__liveWrites.push(performance.now()), param(...a));
+      lv.__counted = true;
+    });
+  }
+
+  /** The times of the writes counted since `countLiveWrites`. */
+  liveWrites() {
+    return this.page.evaluate(() => window.__liveWrites || []);
+  }
+
   /** Go to a level by its stop on the rail (shell.js `goLevel`). */
   level(name) {
     return shell.goLevel(this.page, name);

@@ -28,8 +28,8 @@ test("a sound under a toast on TASTE's map opens its card", async ({ page, app }
     const W = Math.max(200, well.clientWidth);
     const H = Math.max(160, well.clientHeight);
     const pts = points.filter((p) => p.id != null);
-    const track = document.getElementById("taste-time").classList.contains("on");
-    const f = geom.mapFrame(W, H, pts.length, { track });
+    // The track's room along the map's foot is kept from the start.
+    const f = geom.mapFrame(W, H, pts.length, { track: true });
     return Object.fromEntries([...geom.mapLayout(pts, f.box, f.minD)].map(([id, q]) => [id, q]));
   }, facts.views.map.points);
   const box = await page.locator("#taste-crt").boundingBox();

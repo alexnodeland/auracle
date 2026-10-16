@@ -267,6 +267,17 @@ quarter of a second, and a faint tick marks where it was. A MIDI knob on a
 re-centered control keeps working from where it is (see [soft
 takeover](../keyboard.md#soft-takeover)).
 
+A measurement never moves a control you are holding. While your hand is on a
+control or the XY pad, and for a second and a half after you let go, a
+measurement that lands waits: the control stays where you put it, and
+nothing you hear jumps. Then the measurement takes over. A control that was
+still listening keeps saying so until the measurement is in; then it says
+*after you let go*, and the status line *heard: the controls turn after you
+let go*, also on a sound that opened on a guess, whose guessed controls play
+on meanwhile. It springs back when you let go, and starts turning a second
+and a half later. Pressing a pad is not a hand on the controls: a sound you open
+right after plays at once.
+
 ### Long-press to hear it
 
 A long-press with a mouse plays the control to you. Over about two and a half
