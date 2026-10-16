@@ -1114,8 +1114,12 @@ export function createPerform(host) {
   const handHeld = () => knobs.some((k) => k.held) || xyHeld;
   const handsBusy = () => heldOrTouched(handHeld(), state.controlTouch, performance.now());
   // The controls have nothing to turn yet, and what would wire them is in
-  // hand, waiting for the hand: nothing is being listened to.
-  const waitsForHand = () => !state.wire && !!state.deferredWire && !!(state.deferredWire.first || state.deferredWire.rewire);
+  // hand, waiting for the hand: nothing is being listened to. A sound opened
+  // on a guess (#306) plays it on the controls it covers while its first
+  // measurement waits too: whatever measurement waits, it is this sound's
+  // first, heard, and the controls the guess left listening turn after you
+  // let go.
+  const waitsForHand = () => !!state.deferredWire && (state.wire ? !!state.guess : !!(state.deferredWire.first || state.deferredWire.rewire));
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
   }
