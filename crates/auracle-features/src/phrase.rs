@@ -42,6 +42,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::clip::AuditionClip;
+use std::collections::BTreeMap;
 
 /// One note of the phrase.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -73,8 +74,9 @@ pub struct PhraseSpec {
     pub seed: u64,
     /// The phrase notes, played in order.
     pub notes: Vec<Note>,
-    /// The audition clip every AUDIO IN reads in a render of this stimulus
-    /// ([`crate::clip`]): the session's capture, or `None` for the built-in
+    /// The audition clip an AUDIO IN reads in a render of this stimulus
+    /// ([`crate::clip`]) when its input slot has none of its own in
+    /// [`Self::clips`]: the session's capture, or `None` for the built-in
     /// [`reference`](crate::clip::reference).
     ///
     /// Part of the stimulus, because it is: a patch that listens measures
@@ -84,6 +86,13 @@ pub struct PhraseSpec {
     /// [`crate::cache::render_key`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clip: Option<AuditionClip>,
+    /// The clips of the input slots that have one of their own, by slot
+    /// (`0..INPUT_SLOTS`): an AUDIO IN on such a slot reads it in place of
+    /// [`Self::clip`] ([`Self::slot_clip`]). Left out of the serialized spec
+    /// when empty, as `clip` is when `None`; a slot past the last is never
+    /// read.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clips: BTreeMap<usize, AuditionClip>,
 }
 
 impl Default for PhraseSpec {
@@ -124,6 +133,7 @@ impl Default for PhraseSpec {
                 },
             ],
             clip: None,
+            clips: BTreeMap::new(),
         }
     }
 }
@@ -150,8 +160,9 @@ impl PhraseSpec {
         1 + self.notes.iter().map(|n| n.chord.len()).max().unwrap_or(0)
     }
 
-    /// The clip an AUDIO IN reads under this stimulus: its own, at the
-    /// phrase's sample rate, or the built-in reference when it has none.
+    /// The clip an AUDIO IN on a slot without its own reads under this
+    /// stimulus: [`Self::clip`], at the phrase's sample rate, or the built-in
+    /// reference when it has none.
     pub fn audition_clip(&self) -> AuditionClip {
         match &self.clip {
             Some(clip) => clip.at_rate(self.sample_rate),
@@ -159,11 +170,22 @@ impl PhraseSpec {
         }
     }
 
-    /// This stimulus without its clip: what the cache namespace, and the key
-    /// of every patch that does not listen, are computed over.
+    /// The clip an AUDIO IN on input slot `slot` reads under this stimulus:
+    /// the slot's own ([`Self::clips`]), at the phrase's sample rate, or
+    /// else [`Self::audition_clip`].
+    pub fn slot_clip(&self, slot: usize) -> AuditionClip {
+        match self.clips.get(&slot) {
+            Some(clip) => clip.at_rate(self.sample_rate),
+            None => self.audition_clip(),
+        }
+    }
+
+    /// This stimulus without its clips: what the cache namespace, and the
+    /// key of every patch that does not listen, are computed over.
     pub fn without_clip(&self) -> PhraseSpec {
         PhraseSpec {
             clip: None,
+            clips: BTreeMap::new(),
             ..self.clone()
         }
     }

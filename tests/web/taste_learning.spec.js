@@ -57,9 +57,8 @@ function mapPositions(page, points = null) {
     const W = Math.max(200, well.clientWidth);
     const H = Math.max(160, well.clientHeight);
     const pts = (given || window.__tap.facts.views.map.points).filter((p) => p.id != null);
-    // The track along the map's foot, once it shows, moves the sounds up.
-    const track = document.getElementById("taste-time").classList.contains("on");
-    const f = geom.mapFrame(W, H, pts.length, { track });
+    // The track's room along the map's foot is kept from the start.
+    const f = geom.mapFrame(W, H, pts.length, { track: true });
     const pos = geom.mapLayout(pts, f.box, f.minD);
     return { s0: f.s0, pos: Object.fromEntries([...pos].map(([id, q]) => [id, q])) };
   }, points);
@@ -531,8 +530,7 @@ function dimming(page, ids) {
     const f = window.__tap.facts;
     const well = document.getElementById("taste-well");
     const pts = f.views.map.points.filter((p) => p.id != null);
-    const track = document.getElementById("taste-time").classList.contains("on");
-    const frame = geom.mapFrame(Math.max(200, well.clientWidth), Math.max(160, well.clientHeight), pts.length, { track });
+    const frame = geom.mapFrame(Math.max(200, well.clientWidth), Math.max(160, well.clientHeight), pts.length, { track: true });
     const pos = geom.mapLayout(pts, frame.box, frame.minD);
     const mean = new Map(f.ratings.ranked.map((r) => [r.id, r.mean]));
     const ctx = document.getElementById("taste-crt").getContext("2d");

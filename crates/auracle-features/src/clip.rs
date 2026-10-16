@@ -96,6 +96,10 @@ pub enum ClipError {
         /// The clip's RMS over every channel.
         rms: f64,
     },
+    /// The clip was for an input slot past the last
+    /// (`auracle_grammar::INPUT_SLOTS`).
+    #[error("there is no input slot {0}")]
+    Slot(usize),
 }
 
 /// Where a clip came from: what the session says when it reports which clip

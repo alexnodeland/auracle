@@ -71,6 +71,10 @@ test("a re-centred control glides home with a fading ghost, and a background re-
       window.__angles.push([performance.now(), m ? Number(m[1]) : NaN]);
     }).observe(turn, { attributes: true, attributeFilter: ["transform"] });
   });
+  // The Keep's re-check is held from main until the control is turned
+  // again: a Keep is a pad, not a hand on the controls, so nothing else
+  // keeps the re-check from landing before the turn.
+  await app.hold("perform_wired");
   await page.locator(".pf-moved .pf-keep").click();
   await app.engine((timeout) => expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout }), { ms: 15_000 });
   await expect(bright).toHaveAttribute("aria-valuenow", "0.00");
@@ -101,6 +105,8 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   await drag(page, bright, -90);
   const set = await bright.getAttribute("aria-valuenow");
   expect(Number(set)).toBeGreaterThan(0.3);
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).length, { timeout, message: "the Keep's re-check landed" }).toBeGreaterThan(0), { ms: RECHECK_MS });
+  await app.release();
   await expect(status).not.toContainText("re-checking", { timeout: RECHECK_MS });
   // Watched past the pause a re-check waits for.
   await app.quiet(2_500);
@@ -143,4 +149,212 @@ test("a pot on Blend is let go when Blend comes home, and takes it again from ho
   await page.evaluate(() => window.__cc(20, 2));
   await page.evaluate(() => window.__cc(20, 40));
   expect(await at()).toBeCloseTo(40 / 127, 2);
+});
+
+// A wiring that lands never moves a control under the hand (#304): a control
+// or the XY pad held still, however long, through a background re-check or a
+// Take's own measurement keeps where it is drawn and writes nothing to the
+// voices, and the wiring lands, and is seen to land on what the hand held,
+// only 1.5 s after the hand lets go, on the page's clock.
+// The reply is held from main until the hand is on the control, then let
+// through.
+
+/** Where the hand holds, on the control or the pad: where it presses and
+ *  where it turns to (`aim`), what it shows, and whether that is home. A
+ *  control is the first that turns a knob now, turned the way it turns; the
+ *  pad's axes are the first two such, and it is moved the way both turn. */
+const KNOB = ".pf-knob[data-i]:not(.search):not(.unwired):not(.guess)";
+const middle = (b) => [b.x + b.width / 2, b.y + b.height / 2];
+const HANDS = {
+  control: {
+    async aim(page) {
+      const k = page.locator(KNOB).first();
+      const i = await k.getAttribute("data-i");
+      const down = await k.evaluate((e) => e.classList.contains("half-hi"));
+      const [x, y] = middle(await k.boundingBox());
+      return { i, from: [x, y], to: [x, y + (down ? 90 : -90)] };
+    },
+    shown: (page, i) =>
+      page.evaluate((i) => {
+        const k = document.querySelector(`.pf-knob[data-i="${i}"]`);
+        return [k.getAttribute("aria-valuenow"), k.querySelector(".pf-k-ptr")?.getAttribute("transform") || ""].join(" ");
+      }, i),
+    home: (page, i) => page.evaluate((i) => document.querySelector(`.pf-knob[data-i="${i}"]`).getAttribute("aria-valuenow") === "0.00", i),
+    root: (i) => `.pf-knob[data-i="${i}"]`,
+  },
+  "XY pad": {
+    async aim(page) {
+      const turning = await page.locator(KNOB).evaluateAll((ks) => ks.map((k) => [k.dataset.i, k.classList.contains("half-hi")]));
+      if (turning.length < 2) throw new Error(`two controls turn for the pad's axes, not ${turning.length}`);
+      await page.locator(".pf-xy-btn").click();
+      await page.getByLabel("XY pad x axis").selectOption(turning[0][0]);
+      await page.getByLabel("XY pad y axis").selectOption(turning[1][0]);
+      const b = await page.locator(".pf-xy-field").boundingBox();
+      const [x, y] = middle(b);
+      const right = turning[0][1] ? -1 : 1;
+      const up = turning[1][1] ? -1 : 1;
+      return { i: null, from: [x, y], to: [x + right * 0.3 * b.width, y - up * 0.3 * b.height] };
+    },
+    shown: (page) =>
+      page.evaluate(() => {
+        const dot = document.querySelector(".pf-xy-dot");
+        return [document.querySelector(".pf-xy-field").getAttribute("aria-valuetext"), dot.style.left, dot.style.top].join(" ");
+      }),
+    home: (page) =>
+      page.evaluate(() => {
+        const dot = document.querySelector(".pf-xy-dot");
+        return parseFloat(dot.style.left) === 50 && parseFloat(dot.style.top) === 50;
+      }),
+    root: () => ".pf-xy-field",
+  },
+};
+
+/** The hand on the control or the pad, turned off home and held there,
+ *  still; the control's index. */
+async function grab(page, hand) {
+  const { i, from, to } = await hand.aim(page);
+  await page.mouse.move(...from);
+  await page.mouse.down();
+  await page.mouse.move(...to, { steps: 8 });
+  await expect.poll(() => hand.home(page, i), { message: "the hand turned it off home" }).toBe(false);
+  return i;
+}
+
+/** The held reply let through under the still hand: nothing it holds is
+ *  drawn anywhere else, nor writes a value, for longer than the 1.5 s a
+ *  let-go control waits. Then the hand lets go, and the wiring lands: on the
+ *  page's clock, the pointer's release and the first time what the hand
+ *  held shows anything else after it, at least 1.5 s apart. What it showed,
+ *  and the release. */
+async function holdThrough(page, app, hand, i) {
+  const shown = await hand.shown(page, i);
+  await app.countLiveWrites();
+  expect(await app.release(), "the measurement was held for the hand").toBeGreaterThan(0);
+  await app.quiet(2_500);
+  expect(await hand.shown(page, i), "nothing moved under the hand").toBe(shown);
+  expect(await app.liveWrites(), "and nothing was written to the voices").toEqual([]);
+  await page.evaluate((sel) => {
+    const root = document.querySelector(sel);
+    const look = () => [root, ...root.querySelectorAll("*")].map((e) => ["aria-valuenow", "aria-valuetext", "transform", "style"].map((a) => e.getAttribute(a)).join()).join("|");
+    const was = look();
+    window.__hold = { released: null, changed: null };
+    window.addEventListener("pointerup", () => (window.__hold.released = performance.now()), { capture: true, once: true });
+    new MutationObserver(() => {
+      if (window.__hold.released != null && window.__hold.changed == null && look() !== was) window.__hold.changed = performance.now();
+    }).observe(root, { attributes: true, subtree: true });
+  }, hand.root(i));
+  await page.mouse.up();
+  await page.mouse.move(10, 10);
+  await expect.poll(() => page.evaluate(() => window.__hold.changed), { timeout: 15_000, message: "the wiring landed after the release" }).not.toBeNull();
+  const at = await page.evaluate(() => window.__hold);
+  expect(at.changed - at.released, "nothing moved within 1.5 s of the release").toBeGreaterThanOrEqual(1_500);
+  return { shown, released: at.released };
+}
+
+/** Hold the engine's reply to the newest `perform_wire` asked for since
+ *  `since` from main, once it is asked for, and wait until it has landed. */
+async function holdReply(app, since, ms) {
+  const asked = await app.engine(async (timeout) => {
+    await expect.poll(async () => (await app.sent({ type: "perform_wire" }, { after: since })).length, { timeout, message: "the measurement was asked for" }).toBeGreaterThan(0);
+    return (await app.sent({ type: "perform_wire" }, { after: since })).pop();
+  });
+  await app.hold({ type: "perform_wired", req: asked.req });
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).length, { timeout, message: "the measurement landed" }).toBeGreaterThan(0), { ms });
+}
+
+for (const [name, hand] of Object.entries(HANDS)) {
+  test(`${name === "control" ? "a" : "an"} ${name} held still through a background re-check is not moved, and the re-check waits for its release`, { tag: "@slow" }, async ({ page, app }) => {
+    await boot(page, app);
+    const since = await app.now();
+    // The shipped wiring plays, and its re-check is held from main.
+    await app.openOnPerform("Glass Pad");
+    await holdReply(app, since, await app.offerBudget({ waits: 1 }));
+    const i = await grab(page, hand);
+    const { released } = await holdThrough(page, app, hand, i);
+    // Let go, the re-check lands 1.5 s later: nothing is written before.
+    const writes = await app.liveWrites();
+    expect(writes.filter((t) => t > released && t < released + 1_500), "nothing written within 1.5 s of the release").toEqual([]);
+  });
+
+  test(`${name === "control" ? "a" : "an"} ${name} held still through a Take's measurement is not moved, and re-centres only after its release`, { tag: "@slow" }, async ({ page, app }) => {
+    test.setTimeout(150_000);
+    await boot(page, app);
+    await app.openOnPerform("Glass Pad");
+    const OFFER_MS = await app.offerBudget({ waits: 2 });
+    await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: OFFER_MS });
+    await page.locator(".pf-pad", { hasText: "Offer" }).click();
+    await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
+    // The taken sound's measurement is held from main; it plays meanwhile
+    // on the wiring carried over.
+    const takenAt = await app.now();
+    await page.locator(".pf-pad", { hasText: "Take" }).click();
+    await holdReply(app, takenAt, OFFER_MS);
+    const i = await grab(page, hand);
+    await holdThrough(page, app, hand, i);
+    // Let go, the measurement takes the carried wiring's place, and the
+    // controls come home on it (the sound does not move): 1.5 s after the
+    // release, not before (`holdThrough`, on the page's clock).
+    await expect.poll(() => hand.home(page, i), { timeout: 10_000, message: "home on the measured wiring" }).toBe(true);
+  });
+}
+
+// Only a control's hand holds a wiring back (#304's review): a pad pressed a
+// moment before a sound is opened is not a hand on its controls, so the
+// sound's kept wiring plays at once. Built on the pads' own touch, Glass
+// Pad's shipped wiring, opened 1.5 s after a pad press or less, listened
+// until 1.5 s had passed. Read on the page: from the press until the app's
+// own `perform-wired` mark, the status line never says it waits.
+test("a sound opened just after a pad press plays its kept wiring at once", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("First Bass");
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().waitFor();
+  const pressed = await page.evaluate(() => {
+    const status = document.querySelector(".pf-status");
+    window.__said = [];
+    new MutationObserver(() => window.__said.push(status.textContent)).observe(status, { childList: true, subtree: true, characterData: true });
+    const b = [...document.querySelectorAll(".pf-pad")].find((p) => /Peek/.test(p.textContent));
+    b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    b.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    const t = performance.now();
+    [...document.querySelectorAll(".bank-item")].find((r) => /Glass Pad/.test(r.textContent)).click();
+    return t;
+  });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
+  const wired = () => app.marks("perform-wired", { after: pressed }).then((ms) => ms.find((m) => m.detail?.name === "Glass Pad"));
+  await app.engine((timeout) => expect.poll(wired, { timeout, message: "Glass Pad is wired" }).toBeTruthy());
+  expect(["shipped", "cached"], "played on its kept wiring").toContain((await wired()).detail.how);
+  expect((await page.evaluate(() => window.__said)).filter((t) => /listening|let go/.test(t)), "it never waited for a hand").toEqual([]);
+});
+
+// Nor is the page's first moment a hand (#304's review): before any control
+// is touched, nothing holds a wiring back. Glass Pad opened on PERFORM, the
+// page loaded again until the sound it reopens is measured, and once more:
+// that sound is wired from its kept wiring,
+// and the status line never says it waits, from the first script the page
+// runs until the app's own `perform-wired` mark. Built on a touch time that
+// started at 0, it waited out the page's first 1.5 s.
+test("a sound in hand after a reload plays its kept wiring at once", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad");
+  // The page reopens the sound in hand, which is measured once, and kept.
+  await app.visit("/", { seed: PERFORM_SEED });
+  await app.reached();
+  await app.engine((timeout) => expect(page.locator(".pf-knob.guess")).toHaveCount(0, { timeout }), { ms: await app.offerBudget({ waits: 2 }) });
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: await app.offerBudget({ waits: 2 }) });
+  await page.addInitScript(() => {
+    window.__said = [];
+    new MutationObserver(() => {
+      const s = document.querySelector(".pf-status");
+      if (s) window.__said.push(s.textContent);
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  await app.visit("/", { seed: PERFORM_SEED });
+  // The page's first wiring, of the sound it reopens (named as the session
+  // keeps it).
+  const wired = () => app.marks("perform-wired").then((ms) => ms[0]);
+  await app.engine((timeout) => expect.poll(wired, { timeout, message: "the sound in hand is wired" }).toBeTruthy());
+  const at = await wired();
+  console.log(`${at.detail.name} wired ${at.detail.how} at ${Math.round(at.t)} ms of page time`);
+  expect(["shipped", "cached"], "played on its kept wiring").toContain(at.detail.how);
+  expect((await page.evaluate(() => window.__said)).filter((t) => /let go|listening to this sound/.test(t)), "it never waited for a hand").toEqual([]);
 });

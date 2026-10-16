@@ -727,7 +727,10 @@ in `tests/marks.test.mjs`), and TASTE
 draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
 arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
 every halo on the map moves to the ratings it carries, in one tween; a views
-post settles every halo and every place at once. LEARNING's arrow (which way
+post settles every halo at once, and every place with them unless the hand
+is on the map (the pointer over it, a touch until a rest after the lift, or
+a sound's card up), where the places wait for it to leave or rest
+(taste.js's own `createHand`, `holdRegion` in `hand.js`). LEARNING's arrow (which way
 liking rises on the map) turns with the same ratings. `views.ranked` and
 `views.map` still change only when views are posted, so the bank's numbers
 (shown under the model view) follow the last refit. A pick in EVOLVE reaches the worker when its undo
@@ -1544,8 +1547,28 @@ refusing the commit (`commitTree` returning false, `edit_rejected` through
 measurement lands through `applyRechecked`'s rebase whatever knobs each
 control turns, so nothing you hear moves and a turned control keeps its
 place (unless the measurement closed the half it is on, where it stops at
-the centre), and never while a control or the XY pad is held, nor within
-1.5 s of the last touch or release (`handsBusy`).
+the centre).
+
+No wiring lands under the hand (#304). A first measurement, a background
+re-check, a guess's measurement and a Take's all wait while a control or the
+XY pad is held, however still, and for 1.5 s after the last touch or release
+of one (`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule
+beside `createHand`, over `state.controlTouch`). Only a control's hand
+counts: a control, the XY pad, a MIDI pot or a control's arrow keys
+(`touchControl`); a pad or a pad's key is not a hand on the controls, and
+neither is the page's first moment. A wiring read from the cache for the
+sound just opened or a control just placed (`wire`'s hit, `measurePanel`'s)
+answers the player (ADR-025), so it waits only while a control is held
+(`handHeld`), not for the 1.5 s after. What waits is kept in
+`state.deferredWire`, dropped by a patch change or by a wiring applied
+directly (`applyWired`, `applyRechecked`), and lands from the
+quarter-second tick (`landDeferred`): a first measurement wires the controls
+(`landFirst`), a cache hit is read again (`wire`), and the rest goes through
+`applyRechecked`, which takes a re-check in place when it turns the same
+knobs and re-centres through `applyWired` when it does not, or when it
+replaces a wiring a Take carried over. Until then a control already playing
+keeps its wiring and its place, and one with nothing to turn says it turns
+after you let go.
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every

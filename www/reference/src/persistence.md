@@ -7,7 +7,7 @@ saying so is what makes migration tractable.</p>
 
 | Object | Contains |
 |---|---|
-| `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts, and the [audition clip](./audition/clips.md#stored-with-the-session) |
+| `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts, and the [audition clips](./audition/clips.md#stored-with-the-session) (the session's, and each input slot's own) |
 | `BankEntry` | A patch’s **tree** (with any [CAPTURE take](./genome/grammar.md#capture-a-recorded-take-as-a-source) in it), id, origin, name, pinned flag, and `unjudged` when it was kept as new and has not been in a pick yet (left out when false). Renders and features are **re-derived** on import. A sound kept aside because its only take couldn’t be read is a bank entry too, written back JSON-equal to what was loaded |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
@@ -213,7 +213,7 @@ coordinate for the featurizer. `QUIVER_DSP_VERSION` (0.4.0, beside it) is the
 same coordinate for the DSP library every render calls into: a quiver release
 can change a sample with no line of Auracle changing, as 0.4.0 did for Pluck and
 Delay. `cache_namespace` combines the three: the epoch, the quiver version, and a
-hash of the phrase spec without its audition clip. The clip is in the
+hash of the phrase spec without its audition clips. A clip is in the
 `render_key` of a patch that listens instead ([audition
 clips](./audition/clips.md#cache-keys)), so a new clip never clears the store.
 A namespace mismatch orphans **every** stored row at once, which is the only
