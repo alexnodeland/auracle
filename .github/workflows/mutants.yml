@@ -140,13 +140,13 @@ jobs:
       # Its own cache: the RUSTFLAGS above differ from ci.yml's, so ci.yml's
       # caches would not match. Saved from main by the weekly run
       # (mutants-weekly.yml, the same key).
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.rust.outputs.changed == 'true'
         with:
           shared-key: mutants
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The version the Makefile's MUTANTS_VERSION names.
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         if: steps.rust.outputs.changed == 'true'
         with:
           tool: cargo-mutants@27.1.0,nextest
@@ -194,7 +194,7 @@ jobs:
           esac
           python3 scripts/mutants_report.py mutants.out --markdown "$GITHUB_STEP_SUMMARY" --link "$LINK"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.mutants.outcome != 'skipped' }}
         with:
           name: mutants-changed
