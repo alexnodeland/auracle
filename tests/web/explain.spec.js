@@ -305,7 +305,11 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
     await page.locator(".xp.on .xp-learn").click();
     await expect(page.locator(".xl.on")).toBeVisible();
     await expect(page.locator(".xl.on .xl-h")).toHaveText("A sound has a shape");
-    await expect(page.locator(".xl.on .xl-body p").first()).toContainText(`This is ${name},`);
+    // The lesson names the sound in hand. Its wording follows the bank: "its
+    // spectrum" until the sound's render lands with four faces in the bank,
+    // then "its face" (the face test below pins which); that can happen
+    // before or after this reads.
+    await expect(page.locator(".xl.on .xl-body p").first()).toHaveText(new RegExp(`^This is ${name}(,|’s face:) its spectrum stood up`));
     const r = await lessonReply(app, { cutoff: false }, 60_000);
     const [q] = await app.sent({ type: "explain_lesson", token: r.token });
     const plain = { bands: r.data.portrait.bands, facts: r.data.portrait.facts, tree: q.tree, buffer: r.buffer && r.buffer.bytes };
