@@ -24864,7 +24864,12 @@ function warmPreviewPlay(req, id) {
 }
 
 function previewPreset(row, btn) {
-  if (stopAudition()) return; // pressing ▶ again stops it
+  // Pressing a ▶ that is playing stops it. Pressing another card's while one
+  // plays stops that one and plays this: it used to only stop, so a second
+  // ▶ pressed just after the first had begun to sound played nothing
+  // (responsive.spec.js, #449).
+  const mine = btn.classList.contains("playing");
+  if (stopAudition() && mine) return;
   // …and pressing a ▶ that is still waiting takes it back.
   if (warmPreview && warmPreview.btn === btn) return warmPreviewCancel();
   warmPreviewCancel();
