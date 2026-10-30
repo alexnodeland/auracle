@@ -5,16 +5,17 @@
 //   render landed. Each now wears the bank's dotted ring (`.pending`) from
 //   the press until it plays, which is in the `render` reply's own task.
 // - Download your taste said nothing until the file arrived, and opening a
-//   taste file said nothing while it was read. Each now says so at once
-//   ("Downloading your taste…", "Opening ‹the file›…"), until the engine's
-//   answer takes its place.
+//   taste file said nothing while it was read. Each now says so in the menu
+//   bar's job slot, with the lamp ("Downloading your taste…", "Opening ‹the
+//   file›…"), from the press until the engine answers, whatever the toast
+//   lane is showing; the answer's toast says what became of it.
 //
 // A press and what it shows are read in one `page.evaluate` (ADR-022), the
 // render replies held at the tap and let through in the task that reads the
 // ▶; the files' signs are read while the engine's answer is still held, so
 // they came first.
 const fs = require("node:fs");
-const { test, expect, goLevel, runCommand } = require("./fixtures");
+const { test, expect, goLevel, commandRow } = require("./fixtures");
 
 async function boot(app) {
   await app.boot({ warmed: false, random: 20261030 });
@@ -95,24 +96,58 @@ test("a ▶ on a sound's card or a style's chip says so at the press, and plays 
   expect(await releaseAndRead(page, sel), "it plays in the render reply's own task").toEqual({ playing: true, pending: false });
 });
 
-test("Download your taste and opening a taste file say so until the engine answers", async ({ page, app }) => {
+/** A Save refused at the cap, injected: a refusal that holds the toast lane
+ *  while a file's sign is read. */
+const refuseASave = (page, id) =>
+  page.evaluate((id) => window.__tap.inject({ type: "pinned", id, pinned: true, ok: false, budget: [8, 8] }), id);
+const slotSays = (page) =>
+  page.evaluate(() => {
+    const job = document.getElementById("job-slot");
+    return !job.classList.contains("hidden") && job.getBoundingClientRect().width > 0 ? document.getElementById("job-text").textContent : null;
+  });
+
+test("Download your taste and opening a taste file say so on screen until the engine answers, whatever the toasts say", async ({ page, app }) => {
   await app.boot();
-  const lane = page.locator("#toasts .toast-msg");
-  // Download: said before the file is here (the `exported` reply held).
+  const id = Number(await page.locator("#bank-list .bank-item[data-id]").first().getAttribute("data-id"));
+  // Download, pressed from ⌘K's list in the task that reads the menu bar,
+  // with a refusal on screen: said at once, and still while the file is on
+  // its way (the `exported` reply held).
   await app.hold(["exported"]);
-  await runCommand(page, "Download your taste");
-  await expect.poll(() => app.toasts()).toContain("Downloading your taste…");
-  expect((await app.held()).map((h) => h.type), "the file was still on its way").toEqual(["exported"]);
+  await page.locator("#cmdk-btn").click();
+  await page.locator("#cmdk-input").fill("Download your taste");
+  await expect(commandRow(page, "Download your taste")).toHaveCount(1);
+  await refuseASave(page, id);
+  const press = await page.evaluate(() => {
+    const row = [...document.querySelectorAll("#cmdk-list .cmdk-it")].find((r) => r.querySelector(".cmdk-lab")?.textContent === "Download your taste");
+    const t0 = performance.now();
+    row.click();
+    const job = document.getElementById("job-slot");
+    return {
+      said: !job.classList.contains("hidden") && job.getBoundingClientRect().width > 0 ? document.getElementById("job-text").textContent : null,
+      toast: document.querySelector("#toasts .toast-msg")?.textContent,
+      ms: performance.now() - t0,
+    };
+  });
+  expect(press.toast, "a refusal holds the lane").toMatch(/would pass your limit/);
+  expect(press.said, "Download: the menu bar says so in the press's own task").toBe("Downloading your taste…");
+  app.budget("Download your taste: the press → its sign", press.ms, 100);
+  await app.engine(() => expect.poll(() => app.held().then((h) => h.map((x) => x.type)), { timeout: 30_000 }).toEqual(["exported"]));
+  expect(await slotSays(page), "still said while the file is on its way").toBe("Downloading your taste…");
   const [file] = await Promise.all([page.waitForEvent("download"), app.release()]);
-  await expect(lane.last()).toContainText(/^Downloaded your taste \(auracle-profile\.json\)/);
+  await expect(page.locator("#toasts .toast-msg", { hasText: /^Downloaded your taste \(auracle-profile\.json\)/ })).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => slotSays(page)).not.toBe("Downloading your taste…");
   const json = fs.readFileSync(await file.path(), "utf8");
 
-  // Opened again (nothing taught, so no question first): said while the
-  // engine reads it (the `imported` reply held), in the file's name.
+  // Opened again (nothing taught, so no question first), with a refusal on
+  // screen: said while the engine reads it (the `imported` reply held), by
+  // the file's name.
   await app.hold(["imported"]);
+  await refuseASave(page, id);
   await page.locator("#import-input").setInputFiles({ name: "my-taste.json", mimeType: "application/json", buffer: Buffer.from(json) });
-  await expect.poll(() => app.toasts()).toContain("Opening my-taste.json…");
+  await expect.poll(() => slotSays(page)).toBe("Opening my-taste.json…");
   await app.engine(() => expect.poll(() => app.held().then((h) => h.map((x) => x.type)), { timeout: 30_000 }).toEqual(["imported"]));
+  expect(await slotSays(page), "still said while the engine reads it").toBe("Opening my-taste.json…");
   await app.release();
-  await expect(lane.last()).toContainText(/^Opened that taste file/);
+  await expect(page.locator("#toasts .toast-msg", { hasText: /^Opened that taste file/ })).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => slotSays(page)).not.toBe("Opening my-taste.json…");
 });

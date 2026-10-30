@@ -7,17 +7,16 @@
 - **A ▶ you waited on starts the moment its sound arrives.** It used to
   check every tenth of a second, so the phrase could start up to 100 ms
   late, on every ▶ in the app and on Space.
-- **Save answers the press.** The bank's save icon (and M) shows the row
+- **Save answers the press.** The bank's save icon (and m) shows the row
   saved at once. If every save is used, the row goes back and the toast
   says so.
 - **KEEP AS NEW and ⚡ behind an edit say so.** Pressed while your last turn
   of a knob was still on its way, they showed nothing until it landed. The
-  menu bar now says *keeping your edit first…* (or, for KEEP AS NEW alone,
-  *keeping your edit as new…*) with the lamp lit.
-- **Files say what they are doing.** Download your taste says *Downloading
-  your taste…* at once, opening a taste file says *Opening ‹the file›…*,
-  and a patch file you drop on the window says *Opening ‹its name›…* until
-  its sound is in the pool.
+  menu bar now says *keeping your edit first…* with the lamp lit.
+- **Files say what they are doing.** From the press until the engine
+  answers, the menu bar says *Downloading your taste…*, *Opening ‹the
+  file›…* for a taste file, or *Opening ‹its name›…* for a patch file you
+  open or drop on the window, with the lamp lit.
 - **Holding ⌥ lights MODEL halfway at once,** and fully when the model view
   comes up. ⌥ with an arrow still never shows the view.
 - **A pick's receipt is never late.** *Picked … over ….* waited behind

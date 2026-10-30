@@ -4077,6 +4077,7 @@ worker.onmessage = (e) => {
       // downloads bar, and the app itself was silent. Counted from the file,
       // so the number is what it holds.
       if (!m.reason) {
+        fileWaitEnd("download");
         let k = null;
         try { k = kindsInLog(JSON.parse(m.json).log.observations); } catch (_) { /* counted below */ }
         note(`Downloaded your taste (${a.download}): ${taughtSentence(k || taughtKinds())}.`, { replace: "profile" });
@@ -4084,6 +4085,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "imported": {
+      fileWaitEnd("taste");
       if (m.ok) {
         applyStatus(m.status);
         // The next map TASTE keeps is this file's: a boundary on its track.
@@ -4146,8 +4148,10 @@ function releaseRequest(request, id, req, message, fatal = false) {
   }
   switch (request) {
     case "export":
+      fileWaitEnd("download");
+      break;
     case "import":
-      profileAnswered();
+      fileWaitEnd("taste");
       break;
     case "set_pinned":
       // A Save the engine could not run: the row goes back as it has it.
@@ -4510,6 +4514,20 @@ function showTasteMap() {
 }
 
 // ---------- the job slot, and the wordmark's lamp ----------
+// A file on its way (#305): Download your taste, a taste file or a patch
+// file being opened, said from the press until the engine answers, in the
+// slot with the lamp, whatever the toasts are saying. kind -> its words.
+const fileWaits = new Map();
+function fileWait(kind, text) {
+  if (!fileWaits.has(kind)) lampOn("file");
+  fileWaits.delete(kind); // the newest is the one the slot says
+  fileWaits.set(kind, text);
+  renderJobSlot();
+}
+function fileWaitEnd(kind) {
+  if (!fileWaits.delete(kind)) return;
+  lampOff("file");
+}
 // Long work has one home: the slot in the menu bar, left of the sound in hand. It
 // shows only while something long runs — "⚡ breeding 3/10 · about 40 s",
 // "⚡ evolving Glass Pad", "refitting your taste map…" — with **stop** where
@@ -4539,12 +4557,16 @@ function breedLeft() {
 
 /** The job the slot shows, most important first, or null. */
 function slotJob() {
-  // The player's own press first: KEEP AS NEW or ⚡ waiting for an edit.
+  // The player's own presses first: a file on its way, and KEEP AS NEW or
+  // ⚡ waiting for an edit.
+  if (lampJobs.has("file") && fileWaits.size) {
+    return { kind: "file", text: [...fileWaits.values()].pop() };
+  }
   if (lampJobs.has("keep")) {
     const evolving = !!(commitOnSettle && commitOnSettle.evolving);
     return {
       kind: "keep",
-      text: evolving ? "keeping your edit first…" : "keeping your edit as new…",
+      text: "keeping your edit first…",
       title: evolving
         ? "Your last edit is still on its way. It is kept as new when it lands, and ⚡ evolves from it."
         : "Your last edit is still on its way. It is kept as new when it lands.",
@@ -23009,22 +23031,18 @@ function lineageChanges(diff) {
 
 // ---------- profile ----------
 // A taste file on its way, either way, says so from the press until the
-// engine has answered (#305): it used to say nothing until the file had
-// landed or been read. The answer's own toast takes its place (`profile`),
-// and an engine that could not run it takes it down (`releaseRequest`).
-let profileWait = null;
+// engine has answered (#305), in the job slot with the lamp (`fileWait`): it
+// used to say nothing until the file had landed or been read. The answer
+// says what became of it in a toast; an engine that could not run it ends
+// the wait (`releaseRequest`).
 /** Download your taste: said at once, answered by `exported`. */
 function downloadTaste() {
-  profileWait = note("Downloading your taste…", { replace: "profile" });
+  fileWait("download", "Downloading your taste…");
   send({ type: "export" });
 }
 /** A taste file being opened, by its file's name, until `imported`. */
 function sayProfileOpening(name) {
-  profileWait = note(`Opening ${name}…`, { replace: "profile" });
-}
-function profileAnswered() {
-  if (profileWait) dropToast(profileWait);
-  profileWait = null;
+  fileWait("taste", `Opening ${name}…`);
 }
 // Importing a profile *replaces* the taste log — every pick, star and cut —
 // and the autosave 2.5 s later made that permanent. It used to happen on the
@@ -23265,19 +23283,18 @@ function downloadPatch() {
 // its file carries and then the one its sidecar does, until the engine's
 // `patch_imported` says what became of it (#305). It used to say nothing
 // until the import and its render had landed.
-let patchWait = null;
 function sayPatchOpening(file) {
   const stem = file.name.replace(/\.(auracle\.json|json|png|svg)$/i, "");
-  patchWait = note(`Opening ${stem}…`, { replace: "patch-file" });
+  fileWait("patch", `Opening ${stem}…`);
 }
 /** The sidecar is read: its own name, where it has one. */
 function namePatchOpening(data) {
-  const msg = patchWait && patchWait.querySelector(".toast-msg");
-  if (msg && data && typeof data.name === "string" && data.name.trim()) msg.textContent = `Opening ${data.name.trim()}…`;
+  if (fileWaits.has("patch") && data && typeof data.name === "string" && data.name.trim()) {
+    fileWait("patch", `Opening ${data.name.trim()}…`);
+  }
 }
 function patchAnswered() {
-  if (patchWait) dropToast(patchWait);
-  patchWait = null;
+  fileWaitEnd("patch");
 }
 
 /** Open a parsed sidecar (or a bare tree) on the bench.

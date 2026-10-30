@@ -68,8 +68,9 @@ something relative to the scaling that produced it, so a log without its
 standardizer has lost its units. The log is the source; the model can be
 fitted again from it.
 
-It says *Downloading your taste…* at once, and when the file is ready the
-toast counts what it holds: *Downloaded your taste
+The job slot in the menu bar says *Downloading your taste…*, with the lamp
+lit, from the moment you choose it until the file is ready. Then a toast
+counts what it holds: *Downloaded your taste
 (auracle-profile.json): 52 picks, 4 stars, and 2 cuts.*
 
 To bring it back, or to move a taught model to another machine:
@@ -80,8 +81,8 @@ To bring it back, or to move a taught model to another machine:
    by the file’s. Your taste now downloads first, so nothing is lost.* Press
    **REPLACE IT**.
 
-While the file is read the toast says *Opening auracle-profile.json…*.
-Once it’s open, the model fits from the file: *Opened that taste file: 52
+While the file is read the job slot says *Opening auracle-profile.json…*,
+with the lamp lit. Once it’s open, the model fits from the file: *Opened that taste file: 52
 picks, 4 stars, and 2 cuts. Redrawing your taste map…* Until that fit lands
 there is no guess yet, and [TASTE](./views/taste.md) draws every glow as a
 dashed ring.
@@ -90,10 +91,10 @@ dashed ring.
 
 **Download this patch** writes the sound you’re playing as a patch file.
 **Open a patch file…** opens one, and accepts `.json`, `.png`, and `.svg`.
-You can also drop a file on the window. Until the sound is in the pool the
-toast says *Opening Glass Pad…*, by the name the file carries. The sound it
-opens joins the pool the
-way a sound you keep as new does, and is just as safe until it has been in a
+You can also drop a file on the window. From the drop until the sound is in
+the pool the job slot says *Opening Glass Pad…*, with the lamp lit, by the
+name the file carries. The sound it opens joins the pool the way a sound you
+keep as new does, and is just as safe until it has been in a
 pick ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
 ### A patch as a picture

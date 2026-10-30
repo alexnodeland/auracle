@@ -449,9 +449,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
-| *Downloading your taste…* | The toast at the press of Download your taste, until the file is ready and *Downloaded your taste (…)* takes its place | Exporting, Saving your profile, Please wait |
-| *Opening ‹name›…* | The toast while a file is opened: a taste file by its file's name until the engine has read it, a dropped or picked patch file by the name it carries until its sound is in the pool | Loading, Importing, Uploading |
-| *keeping your edit first…* | The job slot, with the lamp, while ⚡ evolve from this waits for an edit still on its way, from the press until it lands | committing, saving, syncing, waiting for the engine |
+| *Downloading your taste…* | The job slot, with the lamp, from the press of Download your taste until the file is ready and the toast *Downloaded your taste (…)* says what it holds | Exporting, Saving your profile, Please wait |
+| *Opening ‹name›…* | The job slot, with the lamp, while a file is opened: a taste file by its file's name until the engine has read it, a dropped or picked patch file by the name it carries until its sound is in the pool | Loading, Importing, Uploading |
+| *keeping your edit first…* | The job slot, with the lamp, while KEEP AS NEW or ⚡ evolve from this waits for an edit still on its way, from the press until it lands | committing, saving, syncing, waiting for the engine |
 | **keep** | PERFORM's Keep, in the moved bar (↵), only | every other keep |
 | **moved · KEEP · BACK** | PERFORM's head, shown exactly when the sound has left home (a control turned, a drift not kept, a glide) | changed, dirty, edited |
 | **keep as new** | PATCH: the edit joins the pool as a new sound, and the original stays | commit |

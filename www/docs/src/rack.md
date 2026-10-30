@@ -169,8 +169,9 @@ after this one ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-b
 
 Pressed while your last turn of a knob is still on its way to the engine,
 KEEP AS NEW waits for it, so what is kept is what you hear: the job slot in
-the menu bar says *keeping your edit as new…*, with the lamp lit, until it
-lands and the card opens. ⚡ EVOLVE FROM THIS says *keeping your edit first…*.
+the menu bar says *keeping your edit first…*, with the lamp lit, until the
+edit lands, and then KEEP AS NEW goes on as if you had pressed it then. ⚡
+EVOLVE FROM THIS on an edited sound waits the same way, and says the same.
 
 - **CANCEL**, or <kbd>Esc</kbd>, closes the card and keeps nothing. Your edit
   stays open.
