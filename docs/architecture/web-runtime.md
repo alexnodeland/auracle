@@ -1736,18 +1736,29 @@ views (`fitted`, which also waits on main's hand, under `views`) and ⚡'s
 child (`evolved_from`). `bankHold`, a `holdRegion` over `#bank-list` told to
 both hands (`handsOf`), holds while the mouse is over the list, from a touch
 until `HAND_REST_MS` after the finger lifts, and while the keyboard's focus
-is in it (`:focus-visible`; a click's focus is no hand), each key in it
-starting the rest again. A held draw runs when the hold ends or after
-`HAND_REST_MS` of rest, through `flipBank`, so the rows that moved glide.
+is in it (`:focus-visible`, asked again at each step, since a focus that came
+by a pointer becomes the keyboard's at its first arrow; a click's focus is no
+hand), each of the list's own steps (`BANK_STEP_KEYS`, not a note key played
+with the focus there) starting the rest again. A held draw runs when the
+hold ends or after `HAND_REST_MS` of rest, through `flipBank`, so the rows
+that moved glide; the tabs' counts and POOL's "+N" move no row and are drawn
+at once.
 Every draw, the player's own included (a star, a cut, an arrow step), keeps
 the row under the pointer, or the keyboard's cursor row, where it was on
 screen by scrolling the list (`bankKeep`, `keepUnder`; `overflow-anchor:
 none` keeps the browser from doing it twice), and the focus on the row or
 button that had it; a draw of its own drops what waits (`bankHand.drop`).
 None runs between a press on the list and its release (`bankPressed`): it
-runs after the click. A bench reply draws no row: `markBenchRows` sets the
-bench's `.live` and `.opening` in place and scrolls to a row an open asked
-for. A preset row's ▶ carries `data-hear`, so its playing and waiting marks
+runs after the click, a held draw whose rest ran out meanwhile as itself,
+gliding (`bankAfterPress`). A press also ends on the list's `contextmenu`, the
+window's `blur`, or a pointermove over the list with no button down (a
+context menu can take the release). A bench reply draws no row:
+`markBenchRows` sets the bench's `.live` and `.opening` and the keyboard's
+cursor (`.kbd` from `kbdRowId` and `kbdKeptId`, then `syncBankCursor`) in
+place, and scrolls to a row an open asked for; an open the app makes itself
+(`auto`, ⚡'s child) asks for no scroll while the bank is held. A preset
+opened from its row is drawn again once its id is known, so it says IN
+POOL. A preset row's ▶ carries `data-hear`, so its playing and waiting marks
 are drawn again on the rebuilt row.
 
 ⚡'s child opens itself on the bench only when nothing is in the player's

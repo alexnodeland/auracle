@@ -265,20 +265,36 @@ const bankHold = (() => {
 // never comes, so it waits for the release (`renderBank`).
 let bankPointer = null;
 let bankPressed = false;
+// A held draw (`bankLater`) whose rest ran out during a press: drawn as it
+// would have been, gliding and budding, once the press ends.
+let bankAfterPress = null;
 {
   const list = $("bank-list");
-  list.addEventListener("pointermove", (e) => { bankPointer = { x: e.clientX, y: e.clientY }; });
-  list.addEventListener("pointerenter", (e) => { bankPointer = { x: e.clientX, y: e.clientY }; });
-  list.addEventListener("pointerleave", () => { bankPointer = null; });
-  list.addEventListener("pointerdown", () => { bankPressed = true; }, true);
   const up = () => {
     if (!bankPressed) return;
     bankPressed = false;
     // After the click the release makes, which may draw the bank itself.
-    setTimeout(() => { if (bankRenderPending && !bankPressed) renderBank(); });
+    setTimeout(() => {
+      if (bankPressed) return;
+      const land = bankAfterPress;
+      bankAfterPress = null;
+      if (land) land();
+      else if (bankRenderPending) renderBank();
+    });
   };
+  list.addEventListener("pointermove", (e) => {
+    bankPointer = { x: e.clientX, y: e.clientY };
+    // No button down: a release this never heard (a context menu takes the
+    // mouseup on macOS) ends the press.
+    if (e.buttons === 0) up();
+  });
+  list.addEventListener("pointerenter", (e) => { bankPointer = { x: e.clientX, y: e.clientY }; });
+  list.addEventListener("pointerleave", () => { bankPointer = null; });
+  list.addEventListener("pointerdown", () => { bankPressed = true; }, true);
+  list.addEventListener("contextmenu", up);
   window.addEventListener("pointerup", up, true);
   window.addEventListener("pointercancel", up, true);
+  window.addEventListener("blur", up);
 }
 // The guide pill: the first-visit steps, one at a time, bottom left of the
 // stage. PERFORM adds its three when it is built.
@@ -4003,6 +4019,8 @@ worker.onmessage = (e) => {
         // Only the warm-start preview path used to record this, so a plain
         // click re-loaded the same preset forever and never marked it.
         if (m.index !== undefined) presetIds.set(m.index, m.id);
+        // Its row says IN POOL from here (the draw above came before the id).
+        if (bankFilter === "presets") renderBank();
         const early = earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index ? earlyOpen : null;
         if (clickedAt !== undefined && clickedAt !== benchSeq) {
           // The player opened something else while this was loading: it is in
@@ -8643,8 +8661,17 @@ const bankBuds = []; // children landed while the bank waited: { seed, child }
  *  drawn. */
 function bankLater(bud = null) {
   if (bud) bankBuds.push(bud);
+  // What moves no row is said at once: the tabs' counts, POOL's "+N".
+  renderFillHint();
+  renderBankCounts();
+  renderPinBudget();
   let waited = false;
   const land = () => {
+    // A press on the list: it lands when the press ends (`bankAfterPress`).
+    if (bankPressed) {
+      bankAfterPress = land;
+      return;
+    }
     const buds = bankBuds.splice(0);
     // The bud leaves before the bank is drawn, so the row it flies to is
     // drawn waiting for it.
@@ -8699,7 +8726,8 @@ function bankKeep(list) {
   };
 }
 /** A bench reply's mark on the bank, in place: which row is on the bench
- *  (`.live`) and which is on its way (`.opening`), the names that follow the
+ *  (`.live`) and which is on its way (`.opening`), the keyboard's cursor (an
+ *  open by ] or a click moves it, `kbdRowId`), the names that follow the
  *  sound in hand, and the row asked to come into view. Nothing is rebuilt:
  *  a knob's reply moved no row and took no focus or click. */
 function markBenchRows() {
@@ -8709,7 +8737,10 @@ function markBenchRows() {
     const id = Number(el.dataset.id);
     el.classList.toggle("live", id === wb.subjectId);
     el.classList.toggle("opening", id === benchPending && id !== wb.subjectId);
+    el.classList.toggle("kbd", id === kbdRowId);
   }
+  for (const el of list.querySelectorAll(".kept-row")) el.classList.toggle("kbd", el.id === `kept-row-${kbdKeptId}`);
+  syncBankCursor();
   bankScrollAsked(list);
 }
 /** Scrolled to the row asked for, by id, and not to whichever row is live
@@ -8756,6 +8787,7 @@ function renderBank() {
   // This draws everything a result waiting for the hand would have drawn.
   bankHand.drop("bank");
   bankBuds.length = 0;
+  bankAfterPress = null;
   refreshNames();
   const list = $("bank-list");
   renderFillHint(); // POOL's "+N": sounds still arriving
@@ -9551,10 +9583,18 @@ function voteDropped(v) {
 // refused child's bar is the sound it would replace (the lowest-rated one not kept,
 // `admit_refined`), never its seed.
 
+const BANK_STEP_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown"]);
 $("bank-list").addEventListener("keydown", (e) => {
-  // A key in the list is the hand in it: what waits to move the rows waits
-  // a rest longer (`bankHold`).
-  bankHold.moved();
+  // A step through the list is the hand in it: what waits to move the rows
+  // waits a rest longer (`bankHold`). Only the list's own steps: a note key
+  // held (and repeating) with the focus here plays, and holds nothing.
+  // A step makes the focus a keyboard's (`:focus-visible`), which a focus
+  // that came by a pointer was not: the hold is asked again first.
+  if (BANK_STEP_KEYS.has(e.key)) {
+    bankHold.refresh();
+    bankHold.moved();
+    queueMicrotask(() => bankHold.refresh());
+  }
   if (bankFilter === "presets") return presetKeydown(e);
   if (bankRows.length === 0 && !(bankFilter === "pool" && takes.keptIds().length)) return;
   if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null && kbdKeptId == null ? 0 : 1); }
@@ -10094,7 +10134,9 @@ function openOnBench(id, { auto = false } = {}) {
   // opens, or one opened from elsewhere, can be anywhere in the list. A
   // caller that asked for its own scroll to this row (a step, the map) keeps
   // its glide; otherwise the list jumps.
-  if (bankScrollTo !== id) {
+  // Not for an open the app made while the bank waits for the hand (⚡'s
+  // child): its scroll would move the row under the pointer when it lands.
+  if (bankScrollTo !== id && !(auto && bankHand.held())) {
     bankScrollTo = id;
     bankScrollAt = performance.now();
     bankScrollJump = true;

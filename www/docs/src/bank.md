@@ -128,9 +128,10 @@ generation's end, the pool filling, a refit's new order under the model
 view, ⚡'s child. It lands when the pointer leaves, or after a second of
 rest, the rows that moved gliding to their places, and the list scrolls so the
 row under the pointer stays where it was, as far as it can scroll. What you do
-yourself, a star or a cut, shows at once, and keeps that row in place the same
-way. Turning a knob
-redraws no row, so a click on the bank is never lost to one.
+yourself shows at once: a star leaves the row under the pointer where it is,
+and a cut takes its row out and the rows below close up. The tabs' counts
+change at once: they move no row. Turning a knob redraws no row, so a click
+on the bank is never lost to one.
 
 ## What the model thinks of each: hold ⌥
 

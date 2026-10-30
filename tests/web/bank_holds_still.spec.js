@@ -8,7 +8,8 @@
 //   moved it). With the keyboard's cursor in the list, the same.
 // - A bench reply (a knob's) rebuilds no row of the preset list, and a click
 //   pressed before it lands and released after still opens the preset it
-//   was pressed on.
+//   was pressed on. An open by ] or a click moves the keyboard's cursor to
+//   the row opened, and a preset opened from its row says IN POOL.
 // - A redraw keeps the focus on the ▶ that had it, and a preset's ▶ playing
 //   keeps its mark.
 //
@@ -82,7 +83,9 @@ test("the row under the pointer keeps its place while a child lands, a generatio
     // eslint-disable-next-line playwright/no-wait-for-timeout -- the hand stirring over the bank, under a rest
     await page.waitForTimeout(STIR_MS);
     await pointAt(page, under, i % 2 ? 1 : -1);
-    expect(await topOf(page, under), "the row under the moving pointer").toBe(landed.before);
+    // Held, or (on a slow runner, past a rest) landed with the list scrolled
+    // to keep it: either way where it was.
+    expect(await topOf(page, under), "the row under the moving pointer").toBeCloseTo(landed.before, 0);
   }
   // At rest a second over the bank, the child lands, and the row under the
   // pointer is where it was: the list scrolled by what moved it.
@@ -123,6 +126,7 @@ test("the row under the pointer keeps its place while a child lands, a generatio
   const before = await topOf(page, target);
   const refit = await landNow(page, target, { type: "fitted", views: { ...s.views, styles, ranked: order }, status: s.status });
   expect(refit.after, "the row under the pointer, as the refit landed").toBe(before);
+  expect(refit.rows, "the order, as the refit landed under the hand").toEqual(ranked);
   // At rest, the order lands, and the row under the pointer stays.
   await expect.poll(() => rowIds(page).then((r) => r.indexOf(last.id))).toBeLessThan(ranked.indexOf(last.id));
   await expect.poll(() => topOf(page, target), { message: "the row under the resting pointer" }).toBeCloseTo(before, 0);
@@ -137,13 +141,62 @@ test("with the keyboard's cursor in the bank, a child landing moves no row until
   for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowDown");
   const cursor = page.locator("#bank-list .bank-item.kbd");
   await expect(cursor).toHaveAttribute("data-id", String(rows[3]));
-  const landed = await landNow(page, rows[3], childReply(s, rows[rows.length - 1], (s.status.generation || 0) + 1));
+  const child = rows[rows.length - 1];
+  const landed = await landNow(page, rows[3], childReply(s, child, (s.status.generation || 0) + 1));
   expect(landed.after, "the cursor's row, as the child landed").toBe(landed.before);
-  // A second after the last key the child lands; the cursor's row stays put
-  // and keeps the cursor.
-  await expect(page.locator("#bank-list .bank-group.new")).toBeVisible();
+  expect(landed.rows[0], "the child drawn at once under the cursor").not.toBe(child);
+  // A second after the last step the child lands, though note keys go on
+  // being played with the focus in the list (they are no step through it);
+  // the cursor's row stays put and keeps the cursor.
+  const fresh = page.locator("#bank-list .bank-group.new");
+  // A note at each look, a player's pace apart.
+  await expect.poll(async () => {
+    await page.keyboard.press("a");
+    return fresh.count();
+  }, { intervals: [STIR_MS], message: "the child landed while notes were played" }).toBe(1);
+  await expect.poll(() => rowIds(page).then((r) => r[0])).toBe(child);
   await expect.poll(() => topOf(page, rows[3])).toBeCloseTo(landed.before, 0);
   await expect(cursor).toHaveAttribute("data-id", String(rows[3]));
+});
+
+test("an open by ] or a row's click moves the keyboard's cursor to it, and 1–5 rates the row it highlights", async ({ page, app }) => {
+  await pooled(page, app);
+  await goLevel(page, "patch");
+  await page.mouse.move(5, 5);
+  const cursor = page.locator("#bank-list .bank-item.kbd");
+  const list = page.locator("#bank-list");
+  // ] steps to the next sound and opens it: the cursor is on its row.
+  const t0 = await app.now();
+  await page.keyboard.press("]");
+  await expect.poll(async () => (await app.sent({ type: "edit_begin" }, { after: t0 })).length).toBe(1);
+  const [{ id: stepped }] = await app.sent({ type: "edit_begin" }, { after: t0 });
+  await expect(cursor).toHaveAttribute("data-id", String(stepped));
+  await expect(list).toHaveAttribute("aria-activedescendant", `bank-row-${stepped}`);
+  await page.keyboard.press("3");
+  await expect.poll(async () => (await app.sent({ type: "record_stars", rating: 3 }, { after: t0 })).map((m) => m.id)).toEqual([stepped]);
+  // A click on another row: the cursor follows it, and 1–5 rates that row.
+  const rows = await rowIds(page);
+  const other = rows.find((id) => id !== stepped && id !== rows[0]);
+  await page.locator(`#bank-list .bank-item[data-id="${other}"] .bi-name`).click();
+  await page.mouse.move(5, 5);
+  await expect(cursor).toHaveAttribute("data-id", String(other));
+  await expect(list).toHaveAttribute("aria-activedescendant", `bank-row-${other}`);
+  await page.keyboard.press("4");
+  await expect.poll(async () => (await app.sent({ type: "record_stars", rating: 4 }, { after: t0 })).map((m) => m.id)).toEqual([other]);
+});
+
+test("a preset opened from its row says IN POOL once it lands", async ({ page, app }) => {
+  await app.boot({ random: 20260928, reuseRenders: true });
+  await app.engine((timeout) => expect.poll(async () => ((await app.facts()).ranked || []).length, { timeout }).toBeGreaterThanOrEqual(40), { ms: 60_000 });
+  // Nothing but the preset's own replies draws the bank from here.
+  await app.hold(["taste_views", "refine_child", "refined", "fitted", "ranked"]);
+  await bankTab(page, "presets");
+  const row = page.locator("#bank-list .preset-item:not(.in-bank)").nth(4);
+  const index = await row.getAttribute("data-index");
+  const at = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+  await row.locator(".bi-name").click();
+  await app.engine((timeout) => expect(at).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
+  await expect(at.locator(".pb-in")).toHaveText("in pool");
 });
 
 test("a knob's reply rebuilds no preset row, and a click held across it opens the preset pressed", async ({ page, app }) => {
@@ -155,20 +208,32 @@ test("a knob's reply rebuilds no preset row, and a click held across it opens th
     window.__rebuilt = 0;
     new MutationObserver((m) => { window.__rebuilt += m.length; }).observe(document.getElementById("bank-list"), { childList: true });
   });
-  // A knob turned on the rack; its reply waits (`app.hold`) while a preset
-  // row is pressed, lands, and then the press is released.
+  // A knob turned on the rack, its reply held (`app.hold`) and then handed
+  // to main with nothing pressed: no row is rebuilt. Then again, with a
+  // preset row pressed while it lands and released after: the click opens it.
   const knob = await page.evaluate(() => {
     const hit = [...document.querySelectorAll("#rack-svg g[data-addr] > .knob-hit")].map((h) => h.getBoundingClientRect()).find((r) => r.width > 0 && r.top > 0 && r.bottom < innerHeight);
     return hit && { x: hit.x + hit.width / 2, y: hit.y + hit.height / 2 };
   });
   expect(knob, "a knob on screen").toBeTruthy();
-  await app.hold(["bench"]);
-  const t0 = await app.now();
-  await page.mouse.move(knob.x, knob.y);
-  await page.mouse.down();
-  await page.mouse.move(knob.x, knob.y - 20, { steps: 4 });
-  await page.mouse.up();
-  await expect.poll(async () => (await app.held()).filter((h) => h.type === "bench").length).toBeGreaterThan(0);
+  const turn = async (dy) => {
+    await app.hold(["bench"]);
+    await page.mouse.move(knob.x, knob.y);
+    await page.mouse.down();
+    await page.mouse.move(knob.x, knob.y - dy, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await app.held()).filter((h) => h.type === "bench").length).toBeGreaterThan(0);
+  };
+  let t0 = await app.now();
+  await turn(20);
+  await page.mouse.move(5, 5);
+  await app.release();
+  await expect.poll(async () => (await app.replies("bench", { after: t0 })).length).toBeGreaterThan(0);
+  await patchPage.settled(app);
+  expect(await page.evaluate(() => window.__rebuilt), "the preset list rebuilt by the knob's reply").toBe(0);
+
+  t0 = await app.now();
+  await turn(-20);
   const row = page.locator("#bank-list .preset-item:not(.in-bank)").nth(3);
   const index = Number(await row.getAttribute("data-index"));
   await row.scrollIntoViewIfNeeded();
@@ -176,9 +241,7 @@ test("a knob's reply rebuilds no preset row, and a click held across it opens th
   await page.mouse.move(box.x + 4, box.y + box.height / 2);
   await page.mouse.down();
   await app.release();
-  await expect.poll(() => app.count("bench")).toBeGreaterThan(0);
   await expect.poll(async () => (await app.replies("bench", { after: t0 })).length).toBeGreaterThan(0);
-  expect(await page.evaluate(() => window.__rebuilt), "the preset list rebuilt by the knob's reply").toBe(0);
   const before = (await app.sent({ type: "load_preset", index })).length;
   await page.mouse.up();
   await expect.poll(async () => (await app.sent({ type: "load_preset", index })).length, { message: "the click opened the preset pressed" }).toBe(before + 1);
