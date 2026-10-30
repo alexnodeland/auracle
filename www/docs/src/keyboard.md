@@ -430,7 +430,7 @@ What a key does, a finger does like this:
 | <kbd>A</kbd>–<kbd>L</kbd> and the row above | The keybed (on a phone, **KEYS** first) |
 | <kbd>⌘K</kbd> | The magnifying glass at the menu bar's right end |
 | Hold <kbd>⌥</kbd> | Press and hold **MODEL**; a tap keeps it up |
-| <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Spread two fingers on the stage / pinch them |
+| <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Pinch two fingers on the stage / spread them |
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | A tap on a stop in the levels |
 | <kbd>Esc</kbd> | **×** on what is open, or a tap beside a sheet |
-| <kbd>?</kbd> on a control | Hold a finger on it until its ring fills |
+| <kbd>?</kbd> on PERFORM's controls | Hold a finger on one until its ring fills |

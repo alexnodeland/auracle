@@ -4,7 +4,7 @@
 //   no card runs past the viewport, and no
 //   card's words run past the card. Its third column was pushed off the
 //   right edge once its words were 11 and 14 px.
-// - At 1000 px, the narrowest window the app allows, every PERFORM control
+// - At 1000 px, the narrowest window with the bank in its column, every PERFORM control
 //   caption is whole in every state it can say: wrapped, never cut with an
 //   ellipsis or a clamp. The knob row keeps one height whatever the captions
 //   say, so it does not jump when one changes (Wander's does, every few

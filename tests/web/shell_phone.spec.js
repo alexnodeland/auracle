@@ -12,10 +12,15 @@
 //   At every level nothing scrolls the page sideways, the level itself
 //   scrolls no wider than the screen, the menu bar cuts nothing, and each of
 //   LEARNING's panels holds what it draws (its map ran over the two under it).
-// - The bank is a sheet there: BANK opens it, and the scrim, Esc and a sound
-//   chosen in it put it away, the sound chosen being the one in hand.
+// - The bank is a sheet there: BANK opens it (from the keyboard, the focus
+//   goes into its list), and the scrim, Esc and a sound chosen in it put it
+//   away, the sound chosen being the one in hand. Esc takes the sheet before
+//   what is behind it (PERFORM's XY pad stays up). ⌘K's "What are the three
+//   banks?" opens the sheet under its walkthrough.
 // - The keys are a drawer over the bar: KEYS opens it, one octave across
-//   the screen with each white key a finger wide, and KEYS closes it.
+//   the screen with each white key a finger wide, and KEYS closes it. ⌘K's
+//   keybed settings open it under KEYS ⋯.
+// - BANK and KEYS show what they open by the next frame (budgets, 100 ms).
 // - A tapped module in PATCH opens its sheet, and the tap presses nothing in
 //   the sheet it opened (its own click landed on the sheet once, and pressed
 //   whatever was under the finger: REMOVE MODULE, a MODE).
@@ -24,10 +29,19 @@
 //   left behind BANK.
 // - A phone on its side (844 × 390): KEYS sits under the cross and opens the
 //   keys' drawer, and EVOLVE's PICK is in reach by scrolling the level.
-const { test, expect, goLevel, landed } = require("./fixtures");
+const { test, expect, goLevel, landed, runCommand } = require("./fixtures");
 
 const PHONE = { hasTouch: true, isMobile: true };
 const LEVELS = ["learning", "taste", "perform", "patch", "evolve"];
+
+/** Press a button the way the keyboard does (a click with no pointer) in the
+ *  page's own task, and time it to the next frame: what it opens is drawn by
+ *  then. */
+const pressToFrame = (page, id) => page.evaluate((id) => new Promise((done) => {
+  const t0 = performance.now();
+  document.getElementById(id).click();
+  requestAnimationFrame(() => done(performance.now() - t0));
+}), id);
 
 /** What runs past the screen at the level shown: the page sideways, the
  *  level wider than itself, the menu bar's row (it clips what does not fit),
@@ -89,15 +103,30 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     const bank = page.locator("#bank");
     const btn = page.locator("#bank-btn");
     await expect(bank).toBeHidden();
-    await btn.click();
+    // From the keyboard: the sheet is up by the next frame, the focus in it.
+    app.budget("BANK: the press → the bank's sheet drawn", await pressToFrame(page, "bank-btn"), 100);
     await expect(btn).toHaveAttribute("aria-expanded", "true");
     await expect(bank).toBeVisible();
+    await expect(page.locator("#bank-list")).toBeFocused();
     await expect(bank).toBeInViewport({ ratio: 1 });
     await page.locator("#sheet-scrim").click({ position: { x: 20, y: 20 } });
     await expect(bank).toBeHidden();
     await expect(btn).toHaveAttribute("aria-expanded", "false");
+    // Esc takes the sheet, not what is behind it: PERFORM's XY pad stays.
+    const well = page.locator(".pf-well");
+    await page.locator(".pf-xy-btn").click();
+    await expect(well).toHaveAttribute("data-mode", "xy");
     await btn.click();
     await expect(bank).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(bank).toBeHidden();
+    await expect(well).toHaveAttribute("data-mode", "xy");
+    // The bank's walkthrough, asked for from ⌘K, opens the sheet under it.
+    await runCommand(page, "What are the three banks?");
+    await expect(bank).toBeVisible();
+    await expect(page.locator("#bank-tour")).toBeVisible();
+    await page.locator("#tour-skip").click();
+    await expect(page.locator("#bank-tour")).toBeHidden();
     await page.keyboard.press("Escape");
     await expect(bank).toBeHidden();
     // A sound chosen: a row that is not the one in hand, by its name.
@@ -115,7 +144,7 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     const keys = page.locator("#keybar");
     const toggle = page.locator("#keys-toggle");
     await expect(keys).toBeHidden();
-    await toggle.click();
+    app.budget("KEYS: the press → the keys' drawer drawn", await pressToFrame(page, "keys-toggle"), 100);
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(keys).toBeVisible();
     // The drawer stands over the bar, never under it.
@@ -129,6 +158,11 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     await toggle.click();
     await expect(keys).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // A keybed setting asked for from ⌘K opens the drawer under KEYS ⋯.
+    await runCommand(page, "How much of the keybed to show: fewer octaves, wider keys");
+    await expect(keys).toBeVisible();
+    await expect(page.locator("#keys-pop")).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
   test("a tapped module opens its sheet, and the tap presses nothing in it", async ({ page, app }) => {

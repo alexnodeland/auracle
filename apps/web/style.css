@@ -7856,8 +7856,13 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     transform: translateX(-100%);
     visibility: hidden;
     transition: transform var(--d-move) var(--e-settle), visibility var(--d-move);
+    /* Clear of a notch on a phone on its side. */
+    padding-left: env(safe-area-inset-left, 0px);
   }
-  body.bank-open .bank { transform: none; visibility: visible; }
+  /* Opening, it is visible at once (only the slide is a transition), so the
+     focus BANK sends into it from the keyboard lands; closing, it stays
+     visible until it has slid away. */
+  body.bank-open .bank { transform: none; visibility: visible; transition: transform var(--d-move) var(--e-settle); }
   body.bank-open .sheet-scrim { display: block; }
   /* A word about your sounds, said while the sheet is up, stands over it. */
   body.bank-open .toasts { z-index: 43; }

@@ -43,6 +43,10 @@ const TAG_SAYS_MS = 3200;
 // A move that has not landed this long after it should have (a page out of
 // sight runs no frames) lands at once: when, not how long a move takes.
 const MOVE_GRACE_MS = 500;
+// A sound chosen by its name in the bank's sheet: how long the sheet waits
+// for a double-click's second click (a rename) before it goes. When, not how
+// long anything moves.
+const RENAME_WAIT_MS = 320;
 
 /** A text field, where ⌥ and an arrow move by word and must stay its own. */
 function typing(target) {
@@ -656,10 +660,14 @@ export function createShell(host = {}) {
   // On a window too narrow to keep the bank beside the stage (999 px and
   // under), the bank is a sheet: BANK at the start of the menu bar opens it,
   // and a sound chosen in it, the scrim, its handle (tapped, or pulled down
-  // on a phone), Esc or BANK again put it away. Where the keys have no row
-  // of their own (a phone, a short screen), KEYS opens and closes their
-  // drawer. Which of these is a sheet at all is the stylesheet's; here are
-  // only `body.bank-open` and `body.keys-open`, and the buttons that say so.
+  // on a phone), Esc (main.js's chain, `escFloats`: after what is open in
+  // the sheet, before what is behind it) or BANK again put it away. Where
+  // the keys have no row of their own (a phone, a short screen), KEYS opens
+  // and closes their drawer. Which of these is a sheet at all is the
+  // stylesheet's; here are only `body.bank-open` and `body.keys-open`, and
+  // the buttons that say so. What lives in either and is reached from
+  // elsewhere (the bank's walkthrough, a generation's new group, ⌘K's keys
+  // settings) opens it first (`showBank`, `showKeys`).
   const sheets = (() => {
     const bankEl = document.getElementById("bank");
     const bankBtn = document.getElementById("bank-btn");
@@ -671,6 +679,8 @@ export function createShell(host = {}) {
     // Is the bank a sheet now, rather than a column? Read from the layout,
     // so the stylesheet alone decides.
     const bankIsSheet = () => !!bankEl && getComputedStyle(bankEl).position === "fixed";
+    // Are the keys a drawer now? KEYS shows only where they are.
+    const keysInDrawer = () => !!keysBtn && getComputedStyle(keysBtn).display !== "none";
     /** The stage changed size under a level that draws to it (PATCH's rack,
      *  TASTE's map): each redraws on the window's resize. */
     const resized = () => requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
@@ -684,7 +694,7 @@ export function createShell(host = {}) {
       if (had && bankBtn) bankBtn.focus({ preventScroll: true });
     }
     function setKeys(open) {
-      open = !!open;
+      open = !!open && (keysInDrawer() || !open);
       if (open === body.classList.contains("keys-open")) return;
       body.classList.toggle("keys-open", open);
       if (keysBtn) keysBtn.setAttribute("aria-expanded", String(open));
@@ -695,36 +705,46 @@ export function createShell(host = {}) {
     if (scrim) scrim.addEventListener("click", () => setBank(false));
     // A sound chosen from the sheet: it opens where you are (main.js, the
     // row's own click, which has run by now), and the sheet makes way for
-    // it. A row's own buttons (▶, ★, save, cut) leave it up.
+    // it. A row's own buttons (▶, ★, save, cut) leave it up. A click on a
+    // name waits out a double-click's second click first, which renames the
+    // sound (main.js, `wireRename`), and the sheet stays up for the rename.
+    let leaving = 0;
     if (list) {
       list.addEventListener("click", (e) => {
+        clearTimeout(leaving);
         if (!body.classList.contains("bank-open") || e.detail > 1) return;
         if (!e.target.closest?.(".bank-item, .preset-item") || e.target.closest("button, input, a")) return;
-        setBank(false);
+        if (!e.target.closest(".bi-name")) return setBank(false);
+        leaving = setTimeout(() => { if (!bankEl.querySelector("input.bi-rename")) setBank(false); }, RENAME_WAIT_MS);
       });
+      // Enter or Space on a row opens it (main.js), and the sheet goes.
       list.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter" || !body.classList.contains("bank-open") || e.target.closest?.("button, input")) return;
+        if ((e.key !== "Enter" && e.key !== " ") || !body.classList.contains("bank-open") || e.target.closest?.("button, input")) return;
         queueMicrotask(() => setBank(false));
       });
     }
-    // The handle: a tap puts the sheet away, and so does a pull of a
-    // finger's width or more; a shorter pull lets it settle back.
+    // The handle: a tap puts the sheet away, and so does a pull down of a
+    // finger's width or more; a shorter pull, or one up, lets it settle back.
     if (grab && bankEl) {
       let drag = null;
       grab.addEventListener("pointerdown", (e) => {
-        drag = { y: e.clientY, id: e.pointerId, moved: 0 };
+        drag = { y: e.clientY, id: e.pointerId, down: 0, travel: 0 };
         grab.setPointerCapture?.(e.pointerId);
         bankEl.style.transition = "none";
       });
       grab.addEventListener("pointermove", (e) => {
         if (!drag || e.pointerId !== drag.id) return;
-        drag.moved = Math.max(0, e.clientY - drag.y);
-        bankEl.style.transform = `translateY(${drag.moved}px)`;
+        const dy = e.clientY - drag.y;
+        drag.travel = Math.max(drag.travel, Math.abs(dy));
+        drag.down = Math.max(0, dy);
+        bankEl.style.transform = `translateY(${drag.down}px)`;
       });
+      // Let go however it ends: lifted, cancelled, or the handle taken away
+      // under the finger (the phone turned, and the sheet is a column).
       const letGo = (e) => {
         if (!drag || e.pointerId !== drag.id) return;
-        const far = drag.moved > 64;
-        const tap = drag.moved < 4 && e.type === "pointerup";
+        const far = drag.down > 64;
+        const tap = drag.travel < 4 && e.type === "pointerup";
         drag = null;
         bankEl.style.transition = "";
         bankEl.style.transform = "";
@@ -732,24 +752,27 @@ export function createShell(host = {}) {
       };
       grab.addEventListener("pointerup", letGo);
       grab.addEventListener("pointercancel", letGo);
+      grab.addEventListener("lostpointercapture", letGo);
       // From the keyboard, the handle is a button like any other.
       grab.addEventListener("click", (e) => { if (e.detail === 0) setBank(false); });
     }
     // Wider again (a tablet turned, a window widened): the bank is a column
     // again, and no sheet is left open behind it.
-    window.addEventListener("resize", () => { if (!bankIsSheet()) setBank(false); });
-    return { setBank, setKeys, bankOpen: () => body.classList.contains("bank-open"), keysOpen: () => body.classList.contains("keys-open") };
+    window.addEventListener("resize", () => {
+      if (!bankIsSheet()) setBank(false);
+      if (!keysInDrawer()) setKeys(false);
+    });
+    return {
+      setBank,
+      setKeys,
+      bankOpen: () => body.classList.contains("bank-open"),
+      keysOpen: () => body.classList.contains("keys-open"),
+      // Open where it is a sheet (or a drawer), and nothing where it has a
+      // place of its own.
+      showBank: () => setBank(true),
+      showKeys: () => setKeys(true),
+    };
   })();
-  // Esc puts the bank's sheet away before anything behind it hears it: the
-  // model view stays (`defaultPrevented`, below). In Find a sound, Esc is the
-  // field's while it holds words (main.js clears them), then the sheet's.
-  window.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || e.defaultPrevented || !sheets.bankOpen()) return;
-    if (e.target.matches?.("#bank-find") && e.target.value) return;
-    e.preventDefault();
-    sheets.setBank(false);
-  });
-
   // Esc ends the model view only when nothing nearer took it: on the window,
   // in the bubble phase, after every handler on the page has had it, and not
   // when one of them closed something with it (`defaultPrevented`: a menu,
@@ -1235,5 +1258,7 @@ export function createShell(host = {}) {
     setKeys: (open) => sheets.setKeys(open),
     bankOpen: () => sheets.bankOpen(),
     keysOpen: () => sheets.keysOpen(),
+    showBank: () => sheets.showBank(),
+    showKeys: () => sheets.showKeys(),
   };
 }

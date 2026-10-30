@@ -30,11 +30,11 @@ reads **+12** beside its count, the sounds still on their way.
 The **?** at the end of the find row walks you through the three tabs and
 what a generation is, starting at the tab you’re on.
 
-On a window under 1000 px wide the bank is not on the left: **BANK**, at the
-start of the menu bar, opens it as a sheet over the level (from the left, or
+On a window under 1000 px wide the bank is not on the left: the button of
+three lines, at the start of the menu bar, opens it as a sheet over the level (from the left, or
 on a phone held upright from the bottom). A sound chosen in it opens and the
 sheet goes; a row's **▶**, **★**, save and cut leave it up. A tap beside it,
-<kbd>Esc</kbd>, **BANK** again, or on a phone its handle pulled down, puts it
+<kbd>Esc</kbd>, that button again, or on a phone its handle pulled down, puts it
 away.
 
 ## Find a sound

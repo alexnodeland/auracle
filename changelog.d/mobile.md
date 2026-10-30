@@ -10,15 +10,15 @@
   beside them), and a tap goes there. **KEYS** at the bar's end brings the
   keys up over it, one octave across the screen with each key a finger wide,
   and puts them away again.
-- **Under 1000 px the bank is a sheet behind BANK.** **BANK**, at the start
-  of the menu bar, opens it over the level, from the left, or on a phone from
+- **Under 1000 px the bank is a sheet.** The button of three lines, at the
+  start of the menu bar, opens it over the level, from the left, or on a phone from
   the bottom with a handle to pull it down. A sound chosen in it opens and
   the sheet goes; a tap beside it or <kbd>Esc</kbd> puts it away too.
 - **Each level is one column on a phone, and scrolls.** PERFORM's sound and
   well come first, then its controls, hood and pads; EVOLVE's cards keep
   **PLAY** and **PICK** under each name; PATCH's head stacks over the well;
   nothing scrolls sideways. On a phone on its side the levels stay at the
-  right edge, with **KEYS** under them.
+  right edge, with the keys' button under them.
 - **A touch screen prints no keys.** The keys beside buttons and the letters
   on the keybed are left off, and PERFORM's first step says to tap the
   keybed, or on a phone to tap **KEYS** first.

@@ -119,10 +119,11 @@ keybed on screen; see [playing it](../playing.md).
 
 ### Phones and tablets
 
-Every size starts the instrument. On a phone the levels are the bar along the
-bottom, the bank rises from the bottom when you press **BANK**, and **KEYS**
-brings the keys up; a window under 1000 px wide keeps the bank behind
-**BANK** too. Boot costs about 40 renders, which a phone pays for on a
+Every size starts the instrument. On a phone held upright the levels are the
+bar along the bottom, **KEYS** at its end brings the keys up, and the bank
+rises from the bottom when you press the button of three lines at the start
+of the menu bar; any window under 1000 px wide keeps the bank behind that
+button. Boot costs about 40 renders, which a phone pays for on a
 slower processor, so its first sound is ready later than a desktop’s. The
 [accessibility page](../accessibility.md#on-a-phone-a-tablet-and-a-narrow-window)
 says what goes where.

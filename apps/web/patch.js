@@ -1212,15 +1212,24 @@ export function createPatch(host) {
       // The tap's own click follows the lift, onto whatever the sheet now
       // puts under the finger: on a phone the sheet rises from the bottom,
       // and that click pressed its MODE, a slider or REMOVE MODULE (#134).
-      // It is the tap's, already answered: taken here, once.
-      const swallow = (c) => {
+      // It is the tap's, already answered: taken here, once, and only if
+      // the sheet opened. A tap with no click of its own (a long press) must
+      // not leave this waiting for the player's next one: the next finger
+      // down, or a moment, lets it go.
+      if (!sheet.el || !sheet.el.classList.contains("on")) return;
+      const done = () => {
         document.removeEventListener("click", swallow, true);
+        document.removeEventListener("pointerdown", done, true);
+      };
+      const swallow = (c) => {
+        done();
         if (c.timeStamp - e.timeStamp > 600) return;
         c.preventDefault();
         c.stopPropagation();
       };
       document.addEventListener("click", swallow, true);
-      setTimeout(() => document.removeEventListener("click", swallow, true), 700);
+      document.addEventListener("pointerdown", done, true);
+      setTimeout(done, 700);
     }, true);
   }
 

@@ -313,7 +313,10 @@ const guide = createGuide({
 // anything else, as PERFORM's first step asks.
 guide.add({
   id: "patch-play", levels: ["patch"],
-  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Play it: tap the keybed, or the face at OUT" : "Play it: press A, or the face at OUT"),
+  // On a phone the keybed is under KEYS (#134): the face at OUT comes first.
+  text: () => (window.matchMedia("(pointer: coarse)").matches
+    ? (getComputedStyle($("keys-toggle")).display !== "none" ? "Play it: tap the face at OUT, or KEYS and the keybed" : "Play it: tap the keybed, or the face at OUT")
+    : "Play it: press A, or the face at OUT"),
 });
 guide.add({
   id: "patch-knob", levels: ["patch"],
@@ -4704,6 +4707,8 @@ function renderNextStep() {
 
 /** The bank's "new · generation N" group, in view and flashed once. */
 function showNewGroup() {
+  // On a narrow window the bank is a sheet, away until asked for (#134).
+  shell.showBank();
   if (bankFilter !== "pool") selectBank("pool");
   const head = document.querySelector("#bank-list .bank-group");
   if (!head) return;
@@ -6382,11 +6387,19 @@ const physicalKey = (e) => e.code || e.key.toLowerCase();
  *  they close in: where two hand the focus back, the later one keeps it. */
 function escFloats() {
   const shown = (id) => !$(id).classList.contains("hidden");
+  const rating = () => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating");
   return [
+    // The bank's sheet on a narrow window (#134), before anything behind it
+    // (PATCH's new patch, its selection, PERFORM's XY): after what is open
+    // in it or over it (a row's ★, Compare, its walkthrough), which close
+    // first, one a press; and after Find a sound's words, which Esc clears
+    // first.
+    [() => shell.bankOpen() && !rating() && compareId == null && !shown("bank-tour") &&
+      !(document.activeElement === $("bank-find") && $("bank-find").value), () => shell.setBank(false)],
     // A waiting handoff, or a cable half made.
     [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
     // A bank row's ★, folded out where it is drawn.
-    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [rating, foldStars],
     [() => compareId != null, closeCompare],
     [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
     // The scope and picture panels, never by listeners of their own: those
@@ -9938,6 +9951,8 @@ function tourText(s) {
 }
 
 function startBankTour(from = 0) {
+  // It points at the bank, which on a narrow window is a sheet (#134).
+  shell.showBank();
   tourAt = Math.max(0, from);
   showTourStep();
 }
@@ -25301,6 +25316,8 @@ const press = (id) => () => $(id)?.click();
 const pressedHint = (id) => () => ($(id)?.getAttribute("aria-pressed") === "true" ? "on" : "");
 /** Open KEYS ⋯ with the focus on one of its settings. */
 function keysSetting(id) {
+  // On a phone the keys bar is a drawer under KEYS (#134).
+  shell.showKeys();
   setKeysPop(true);
   $(id)?.focus({ preventScroll: true });
 }
@@ -25366,8 +25383,8 @@ shell.cmds(() => takes.kept().map((h) => ({ id: `kept-${h.id}`, label: `Record a
 // The keys bar: the octave, VOL, MIDI, ● REC, and every setting in KEYS ⋯.
 shell.cmd({ id: "oct-down", label: "Octave down", key: "Z", run: () => octave(-1) });
 shell.cmd({ id: "oct-up", label: "Octave up", key: "X", run: () => octave(1) });
-shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => $("vol")?.focus({ preventScroll: true }) });
-shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: press("midi-ind") });
+shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => { shell.showKeys(); $("vol")?.focus({ preventScroll: true }); } });
+shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: () => { shell.showKeys(); press("midi-ind")(); } });
 shell.cmd({ id: "rec", label: "Record what you play; stop to download a WAV", icon: "●", run: press("rec-btn") });
 shell.cmd({ id: "keys-hold", label: "Hold: latch held notes", hint: pressedHint("hold-btn"), run: press("hold-btn") });
 shell.cmd({ id: "keys-uni", label: "Unison: all 4 voices on one note, detuned wide", hint: pressedHint("uni-btn"), run: press("uni-btn") });

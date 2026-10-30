@@ -153,9 +153,10 @@ octave.
 ### On a phone, a tablet and a narrow window
 
 Every size starts the instrument. On a window under 1000 px wide (a tablet
-held upright, a narrow desktop window) the bank leaves its column: **BANK**
-at the start of the menu bar opens it as a sheet over the stage, and a sound
-chosen in it, a tap beside it, <kbd>Esc</kbd> or **BANK** again puts it away.
+held upright, a narrow desktop window) the bank leaves its column: the button
+of three lines at the start of the menu bar opens it as a sheet over the
+stage, and a sound chosen in it, a tap beside it, <kbd>Esc</kbd> or that
+button again puts it away.
 
 On a phone held upright:
 
@@ -169,8 +170,8 @@ On a phone held upright:
 - Each level is one column, read from the top, and scrolls where it runs past
   the screen. Nothing scrolls sideways.
 
-On a phone on its side, the levels stay at the right edge with **KEYS** under
-them, and the keys come up from the bottom.
+On a phone on its side, the levels stay at the right edge with the keys'
+button (a small keybed) under them, and the keys come up from the bottom.
 
 ## Hit targets
 

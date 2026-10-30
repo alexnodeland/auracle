@@ -22,10 +22,11 @@ Check in this order:
 
 ## On a phone, the bank and the keys are missing
 
-They are a press away. **BANK**, at the start of the menu bar, opens the bank;
-**KEYS**, at the end of the bar along the bottom, brings the keys up (on a
-phone on its side, it sits under the levels at the right edge). See [phones
-and tablets](./getting-started/running-locally.md#phones-and-tablets).
+They are a press away. The button of three lines, at the start of the menu
+bar, opens the bank; **KEYS**, at the end of the bar along the bottom, brings
+the keys up (on a phone on its side, a small keybed under the levels at the
+right edge does). See [phones and
+tablets](./getting-started/running-locally.md#phones-and-tablets).
 
 ## Boot is slow, or stalls
 
