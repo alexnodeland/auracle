@@ -44,6 +44,10 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
+On a phone held upright the small map runs the screen's width under the head,
+and each card keeps its **PLAY** and **PICK** under its name; the level
+scrolls. On a phone on its side, scroll down to the picks.
+
 **The head.** *Pick the one you’d reach for.*, with the six pips and the
 teaching line under it (below), and at its right a small [TASTE](./taste.md)
 map: every sound in the pool where the map puts it, with A and B ringed where

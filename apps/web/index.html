@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Auracle | Play</title>
 <!-- The tab icon, inline, and still inline for the original reason: it was an
      SVG data URI carrying raw `<`, `>`, `'` and spaces — legal enough that
@@ -22,112 +22,79 @@
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
-<!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
-     on a coarse pointer whose shorter side is under 620px (a phone) there is
-     no honest way to show it, so we say so instead of shipping a broken one.
-     This runs before anything else because the point is to NOT boot the
-     engine on a phone: main.js is injected below only when the gate lets us
-     through. Anything else under 1000px wide — a desktop window, or a tablet
-     in portrait — gets the narrow gate below instead, which is CSS only. -->
+<!-- Boot. There was a gate here that refused to start the engine on a
+     phone, and a notice for a window under 1000 px; a phone and a narrow
+     window have layouts of their own now (#134), and every size boots. -->
 <script>
 (function () {
-  var forced = false;
-  try { forced = sessionStorage.getItem("auracle-anyway") === "1"; } catch (e) {}
-  var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-  var handheld = !forced && coarse && Math.min(window.innerWidth, window.innerHeight) < 620;
-  // "Look around anyway" is a choice to see it at any size: the narrow gate
-  // must not stand in for the handheld one it just dismissed.
-  if (forced) document.documentElement.className += " anyway";
-  if (handheld) {
-    document.documentElement.className += " handheld";
-    // Rotating a phone to landscape doesn't earn you the instrument, but an
-    // Android tablet that crosses the threshold has: re-run the check once.
-    window.addEventListener("resize", function () {
-      if (Math.min(window.innerWidth, window.innerHeight) >= 620) location.reload();
-    });
-  } else {
-    // The build stamp (pkg/build.json, which main.js reads only `build` of)
-    // is read here, before main.js starts, because of the import map below.
-    // main.js itself is named plainly: the site's copy is stamped with its
-    // own hash (www/stamppage.py), and the dev server sends no-store.
-    // Served with no stamp, or without a server, the clock stands in for it
-    // and nothing is cached: main.js's own fallback, kept.
-    var start = function (build) {
-      window.__aurBuild = build;
-      // faces.js and vessel.js are imported by vessel.js and live-face.js by
-      // their bare names, and a bare name carries no stamp: it would be a
-      // second copy of the module, fetched again, and the browser's cached one
-      // could be an older build's. The map sends it to the stamped URL main.js
-      // asks for, so there is one copy. A browser without import maps keeps
-      // the two copies, as before. It must come before the first module.
-      if (window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports("importmap")) {
-        var map = document.createElement("script");
-        map.type = "importmap";
-        map.textContent = JSON.stringify({ imports: {
-          "./faces.js": "./faces.js?v=" + build,
-          "./vessel.js": "./vessel.js?v=" + build,
-        } });
-        document.head.appendChild(map);
+  // The build stamp (pkg/build.json, which main.js reads only `build` of)
+  // is read here, before main.js starts, because of the import map below.
+  // main.js itself is named plainly: the site's copy is stamped with its
+  // own hash (www/stamppage.py), and the dev server sends no-store.
+  // Served with no stamp, or without a server, the clock stands in for it
+  // and nothing is cached: main.js's own fallback, kept.
+  var start = function (build) {
+    window.__aurBuild = build;
+    // faces.js and vessel.js are imported by vessel.js and live-face.js by
+    // their bare names, and a bare name carries no stamp: it would be a
+    // second copy of the module, fetched again, and the browser's cached one
+    // could be an older build's. The map sends it to the stamped URL main.js
+    // asks for, so there is one copy. A browser without import maps keeps
+    // the two copies, as before. It must come before the first module.
+    if (window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports("importmap")) {
+      var map = document.createElement("script");
+      map.type = "importmap";
+      map.textContent = JSON.stringify({ imports: {
+        "./faces.js": "./faces.js?v=" + build,
+        "./vessel.js": "./vessel.js?v=" + build,
+      } });
+      document.head.appendChild(map);
+    }
+    var s = document.createElement("script");
+    s.type = "module";
+    s.src = "main.js";
+    document.head.appendChild(s);
+  };
+  fetch("./pkg/build.json", { cache: "no-cache" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { return j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build) ? j.build : String(Date.now()); })
+    .catch(function () { return String(Date.now()); })
+    .then(start);
+  // The veil's line, first visit or return, as soon as the save says
+  // which: main.js reaches its own save read only once its whole module
+  // has run (about 0.2 s here, 1.4 s on the reference machine). Opened
+  // with no version and no upgrade path, as main.js's legacyIdbState does,
+  // so a first visit never brings the database into being. main.js writes
+  // the line again from BOOT_POOL, and only if this one differs.
+  var said = function (returning) {
+    var put = function () {
+      var el = document.getElementById("boot-sub");
+      if (el && !el.dataset.said) {
+        el.textContent = returning ? el.dataset.return : el.dataset.first;
+        el.dataset.said = "1";
       }
-      var s = document.createElement("script");
-      s.type = "module";
-      s.src = "main.js";
-      document.head.appendChild(s);
     };
-    fetch("./pkg/build.json", { cache: "no-cache" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { return j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build) ? j.build : String(Date.now()); })
-      .catch(function () { return String(Date.now()); })
-      .then(start);
-    // The veil's line, first visit or return, as soon as the save says
-    // which: main.js reaches its own save read only once its whole module
-    // has run (about 0.2 s here, 1.4 s on the reference machine). Opened
-    // with no version and no upgrade path, as main.js's legacyIdbState does,
-    // so a first visit never brings the database into being. main.js writes
-    // the line again from BOOT_POOL, and only if this one differs.
-    var said = function (returning) {
-      var put = function () {
-        var el = document.getElementById("boot-sub");
-        if (el && !el.dataset.said) {
-          el.textContent = returning ? el.dataset.return : el.dataset.first;
-          el.dataset.said = "1";
-        }
-      };
-      if (document.getElementById("boot-sub")) put();
-      else document.addEventListener("DOMContentLoaded", put);
+    if (document.getElementById("boot-sub")) put();
+    else document.addEventListener("DOMContentLoaded", put);
+  };
+  try {
+    var req = indexedDB.open("auracle");
+    req.onupgradeneeded = function () {
+      try { req.transaction.abort(); } catch (e) {}
+      said(false);
     };
-    try {
-      var req = indexedDB.open("auracle");
-      req.onupgradeneeded = function () {
-        try { req.transaction.abort(); } catch (e) {}
-        said(false);
-      };
-      req.onsuccess = function () {
-        var db = req.result;
-        if (!db.objectStoreNames.contains("kv")) { db.close(); return said(false); }
-        var get = db.transaction("kv", "readonly").objectStore("kv").get("state");
-        get.onsuccess = function () { var v = get.result; db.close(); said(!!(v && v.session)); };
-        get.onerror = function () { db.close(); };
-      };
-    } catch (e) {}
-  }
+    req.onsuccess = function () {
+      var db = req.result;
+      if (!db.objectStoreNames.contains("kv")) { db.close(); return said(false); }
+      var get = db.transaction("kv", "readonly").objectStore("kv").get("state");
+      get.onsuccess = function () { var v = get.result; db.close(); said(!!(v && v.session)); };
+      get.onerror = function () { db.close(); };
+    };
+  } catch (e) {}
 })();
 </script>
 </head>
 <body>
-<!-- A window narrower than the instrument's layout, whatever the pointer: a
-     desktop window, or a tablet in portrait (768 × 1024 slipped between the
-     two gates: too big for the handheld one, and the narrow one asked for a
-     fine pointer). The handheld gate never loads the app; this one is CSS-only
-     and disappears the moment the window is wide enough, so nothing is lost by
-     narrowing it — or turning the tablet — for a moment. -->
-<div id="narrow-gate" class="narrow-gate" role="status" aria-live="polite">
-  <div class="ng-card">
-    <div class="ng-title">A little wider</div>
-    <p>Auracle’s rack, controls, and keybed need about 1000 px side by side.
-      Turn your tablet sideways, or widen the window: everything is where you left it.</p>
-  </div>
-</div>
 <div class="app">
 
   <!-- ===================== menu bar ===================== -->
@@ -136,6 +103,11 @@
          works (a generation, ⚡, a refit): main.js, `renderJobSlot`, which
          also gives it the job's words as its title. The word goes to
          PERFORM, the level at rest. -->
+    <!-- The bank, on a window too narrow to keep it beside the stage (999 px
+         and under: a tablet, a phone, a narrow window): it opens as a sheet
+         over the stage and goes away as you choose a sound (shell.js,
+         `sheets`). Hidden wherever the bank has its own column. -->
+    <button class="bank-btn" id="bank-btn" type="button" aria-controls="bank" aria-expanded="false" aria-label="The bank: your sounds" title="The bank"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></button>
     <a class="brand" href="./#perform" aria-label="Auracle"><span class="word">AURACLE</span><span class="lamp" id="wm-lamp"></span></a>
     <!-- Where you are: the level's name and what it is (shell.js). A polite
          live region, so a level key says where it went. -->
@@ -198,7 +170,10 @@
   <!-- ===================== deck: bank + stage ===================== -->
   <div class="deck">
 
-    <aside class="bank" aria-label="Bank">
+    <aside class="bank" id="bank" aria-label="Bank">
+      <!-- On a phone the bank is a sheet from the bottom: its handle, pulled
+           down or tapped, puts it away. Hidden where the bank is a column. -->
+      <button class="sheet-grab" id="bank-grab" type="button" aria-label="Put the bank away"></button>
       <!-- The bank's head, to the mock: three tabs and Find a sound. What the
            head used to hold lives in titles: each bank's line in its tab's,
            the save budget in SAVED's (its count amber at the cap), and the
@@ -758,18 +733,23 @@
            to the one you reach. -->
       <nav class="rail" id="rail" aria-label="Where you are">
         <span class="rail-hint" aria-hidden="true">out</span>
-        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg></button>
+        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg><span class="rl">Learning</span></button>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg></button>
+        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg><span class="rl">Taste</span></button>
         <span class="rail-line" aria-hidden="true"></span>
         <div class="rail-mid">
-          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg></button>
+          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg><span class="rl">Evolve</span></button>
           <span class="rail-branch" aria-hidden="true"></span>
-          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg></button>
+          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg><span class="rl">Perform</span></button>
         </div>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg></button>
+        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg><span class="rl">Patch</span></button>
         <span class="rail-hint" aria-hidden="true">in</span>
+        <!-- On a phone the cross is the bar along the bottom, the levels in
+             their order in to out, EVOLVE beside them, and then the keys,
+             whose drawer opens over the bar (shell.js, `sheets`). Hidden
+             wherever the keys have their own row. -->
+        <button class="rail-keys" id="keys-toggle" type="button" aria-controls="keybar" aria-expanded="false" aria-label="The keys" title="The keys"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M8 5.5v8M12 5.5v8M16 5.5v8"/></svg><span class="rl">Keys</span></button>
       </nav>
 
       <!-- The guide pill (guide.js): the first-visit steps, one at a time,
@@ -779,7 +759,7 @@
   </div>
 
   <!-- ===================== keyboard dock ===================== -->
-  <footer class="keybar">
+  <footer class="keybar" id="keybar">
     <!-- The side column: what the computer keys play, and Z and X to move
          the octave (they are buttons too). -->
     <div class="keys-side">
@@ -854,6 +834,10 @@
     </div>
   </footer>
 </div>
+
+<!-- Under the bank's sheet on a narrow window: a tap on it puts the sheet
+     away (shell.js, `sheets`). -->
+<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"></div>
 
 <!-- wire-drag overlay (fixed, pointer-events none) -->
 <svg id="wire-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -1087,35 +1071,6 @@
   <button class="ix-go" id="ix-go">download</button>
   <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
 </div>
-
-<!-- handheld gate — the only thing rendered when html.handheld is set -->
-<section id="handheld" class="handheld-gate">
-  <div class="hg-card panel">
-    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="boot-word">AURACL<b>E</b></div>
-    <p class="hg-lede">A synthesizer that grows toward you.</p>
-    <p class="hg-desc">Pick the sound you'd reach for. It learns your ear, and every generation grows a little closer.</p>
-    <!-- The teaser is the loop in three words, not a feature list. -->
-    <ol class="hg-loop mono" aria-label="What it does">
-      <li><span class="hg-n">1</span> listen to two</li>
-      <li><span class="hg-n">2</span> pick one</li>
-      <li><span class="hg-n">3</span> it breeds the next</li>
-    </ol>
-    <div class="hg-rule" aria-hidden="true"></div>
-    <p class="hg-ask"><b>Open this on a desktop browser.</b> The instrument needs a
-      bank, a live rack, and a keybed side by side, and a phone can’t hold them.</p>
-    <p class="hg-soon mono">no handheld version yet</p>
-    <button class="hg-anyway mono" id="hg-anyway">look around anyway →</button>
-  </div>
-</section>
-<script>
-// The escape hatch, for the one person who wants to see it break. Session-
-// scoped: closing the tab puts the gate back.
-document.getElementById("hg-anyway").addEventListener("click", function () {
-  try { sessionStorage.setItem("auracle-anyway", "1"); } catch (e) {}
-  location.reload();
-});
-</script>
 
 <!-- drop target — the other half of the share loop. A patch arrives as a file
      from a chat window or a forum post, and the gesture that puts it there is

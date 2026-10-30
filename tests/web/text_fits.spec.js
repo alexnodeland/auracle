@@ -1,10 +1,10 @@
 // Text the type scale made larger still fits where it is set.
 //
-// - The warm start's nine cards fit a phone's screen, at 390 and 360 px wide
-//   (behind "look around anyway"): no card runs past the viewport, and no
+// - The warm start's nine cards fit a phone's screen, at 390 and 360 px wide:
+//   no card runs past the viewport, and no
 //   card's words run past the card. Its third column was pushed off the
 //   right edge once its words were 11 and 14 px.
-// - At 1000 px, the narrowest window the app allows, every PERFORM control
+// - At 1000 px, the narrowest window with the bank in its column, every PERFORM control
 //   caption is whole in every state it can say: wrapped, never cut with an
 //   ellipsis or a clamp. The knob row keeps one height whatever the captions
 //   say, so it does not jump when one changes (Wander's does, every few
@@ -18,11 +18,8 @@ for (const width of [390, 360]) {
     test.use({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true });
 
     test(`the warm start's cards fit the screen at ${width} px`, async ({ page, app }) => {
-      // The warm start not yet seen; behind "look around anyway".
-      await app.boot({ warmed: false, wait: false });
-      await page.locator("#hg-anyway").click();
-      await page.waitForLoadState("load");
-      await app.booted();
+      // The warm start not yet seen.
+      await app.boot({ warmed: false });
       await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
       await app.engine((timeout) => expect(page.locator(".warm-cell .warm-item")).toHaveCount(9, { timeout }), { ms: 60_000 });
       const out = await page.evaluate(() => {
@@ -50,7 +47,7 @@ for (const width of [390, 360]) {
 // two names while they fit 24 characters, else one and how many more.
 const WORDS = ["dark", "bright", "bloom", "snap", "still", "restless", "thin", "full", "smooth", "rough", "close", "far"];
 const CAPTIONS = [
-  "turn to ask for it", "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
+  "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
   ...WORDS.map((w) => `let go to ask for ${w}`),
   ...WORDS.map((w) => `turns toward ${w} only`),
   "listening…", "no offer yet", "100% offer",

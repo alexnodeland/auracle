@@ -17,10 +17,7 @@ test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: tru
 const HEARD_MS = 1_800;
 
 async function boot(page, app) {
-  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, wait: false });
-  const anyway = page.locator("#hg-anyway");
-  if (await anyway.isVisible().catch(() => false)) await anyway.click();
-  await app.booted();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.level("perform");
   await app.reached();
 }

@@ -313,7 +313,10 @@ const guide = createGuide({
 // anything else, as PERFORM's first step asks.
 guide.add({
   id: "patch-play", levels: ["patch"],
-  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Play it: tap the keybed, or the face at OUT" : "Play it: press A, or the face at OUT"),
+  // On a phone the keybed is under KEYS (#134): the face at OUT comes first.
+  text: () => (window.matchMedia("(pointer: coarse)").matches
+    ? (getComputedStyle($("keys-toggle")).display !== "none" ? "Play it: tap the face at OUT, or KEYS and the keybed" : "Play it: tap the keybed, or the face at OUT")
+    : "Play it: press A, or the face at OUT"),
 });
 guide.add({
   id: "patch-knob", levels: ["patch"],
@@ -4704,6 +4707,8 @@ function renderNextStep() {
 
 /** The bank's "new · generation N" group, in view and flashed once. */
 function showNewGroup() {
+  // On a narrow window the bank is a sheet, away until asked for (#134).
+  shell.showBank();
   if (bankFilter !== "pool") selectBank("pool");
   const head = document.querySelector("#bank-list .bank-group");
   if (!head) return;
@@ -4834,9 +4839,13 @@ function positionToastLane() {
   // PATCH and the header copy in TASTE.
   const bar = document.querySelector(".keybar");
   const br = bar ? bar.getBoundingClientRect() : null;
+  // On a phone the levels are the bar along the bottom, and the keys a
+  // drawer over it (#134): the lane stands above whichever is higher.
+  const nav = $("rail") ? $("rail").getBoundingClientRect() : null;
+  const navTop = nav && nav.height > 0 && nav.width > window.innerWidth / 2 && nav.bottom >= window.innerHeight - 1 ? nav.top - 10 : window.innerHeight - 16;
   // Anchored by its bottom, so it grows upward as toasts stack and does not
   // jump when one leaves.
-  const floor = br && br.height > 0 ? br.top - 10 : window.innerHeight - 16;
+  const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
   holder.style.top = "auto";
   holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
   holder.style.right = "16px";
@@ -6220,6 +6229,9 @@ const PIANO_HI = 84; // C6
 const KEY_SPANS = [12, 24, 36, 48];
 const SPAN_DEFAULT_FINE = 36; // three octaves, as it has always been
 const SPAN_DEFAULT_COARSE = 24; // a finger needs the width more than the range
+const SPAN_DEFAULT_PHONE = 12; // and on a phone's width, one octave is a finger's keys (#134)
+// A phone: a screen whose shorter side is under a tablet's (#134).
+const PHONE = Math.min(window.innerWidth, window.innerHeight) < 620;
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const KEYMAP = {
   a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
@@ -6375,11 +6387,19 @@ const physicalKey = (e) => e.code || e.key.toLowerCase();
  *  they close in: where two hand the focus back, the later one keeps it. */
 function escFloats() {
   const shown = (id) => !$(id).classList.contains("hidden");
+  const rating = () => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating");
   return [
+    // The bank's sheet on a narrow window (#134), before anything behind it
+    // (PATCH's new patch, its selection, PERFORM's XY): after what is open
+    // in it or over it (a row's ★, Compare, its walkthrough), which close
+    // first, one a press; and after Find a sound's words, which Esc clears
+    // first.
+    [() => shell.bankOpen() && !rating() && compareId == null && !shown("bank-tour") &&
+      !(document.activeElement === $("bank-find") && $("bank-find").value), () => shell.setBank(false)],
     // A waiting handoff, or a cable half made.
     [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
     // A bank row's ★, folded out where it is drawn.
-    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [rating, foldStars],
     [() => compareId != null, closeCompare],
     [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
     // The scope and picture panels, never by listeners of their own: those
@@ -6691,7 +6711,7 @@ const perf = {
   // The tall dock stays an explicit choice — it costs the rack real height,
   // and taking that without being asked is not a default's business. The
   // width, which costs nothing but range, is chosen for you.
-  bigKeys: false, keySpan: COARSE ? SPAN_DEFAULT_COARSE : SPAN_DEFAULT_FINE,
+  bigKeys: false, keySpan: COARSE ? (PHONE ? SPAN_DEFAULT_PHONE : SPAN_DEFAULT_COARSE) : SPAN_DEFAULT_FINE,
 };
 
 function sendArp() {
@@ -9931,6 +9951,8 @@ function tourText(s) {
 }
 
 function startBankTour(from = 0) {
+  // It points at the bank, which on a narrow window is a sheet (#134).
+  shell.showBank();
   tourAt = Math.max(0, from);
   showTourStep();
 }
@@ -19402,6 +19424,10 @@ function catalogReserve() {
   if (!nb || nb.hidden) return 0;
   const r = nb.getBoundingClientRect();
   const fr = $("rack-frame").getBoundingClientRect();
+  // On a phone the catalog is the well's width, over the patch rather than
+  // beside it (#134): it keeps no column clear, or the patch would be fitted
+  // into nothing, and folds away while a module is in hand.
+  if (r.width > fr.width / 2) return 0;
   return r.width ? r.right - fr.left + 8 : 0;
 }
 
@@ -25290,6 +25316,8 @@ const press = (id) => () => $(id)?.click();
 const pressedHint = (id) => () => ($(id)?.getAttribute("aria-pressed") === "true" ? "on" : "");
 /** Open KEYS ⋯ with the focus on one of its settings. */
 function keysSetting(id) {
+  // On a phone the keys bar is a drawer under KEYS (#134).
+  shell.showKeys();
   setKeysPop(true);
   $(id)?.focus({ preventScroll: true });
 }
@@ -25355,8 +25383,8 @@ shell.cmds(() => takes.kept().map((h) => ({ id: `kept-${h.id}`, label: `Record a
 // The keys bar: the octave, VOL, MIDI, ● REC, and every setting in KEYS ⋯.
 shell.cmd({ id: "oct-down", label: "Octave down", key: "Z", run: () => octave(-1) });
 shell.cmd({ id: "oct-up", label: "Octave up", key: "X", run: () => octave(1) });
-shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => $("vol")?.focus({ preventScroll: true }) });
-shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: press("midi-ind") });
+shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => { shell.showKeys(); $("vol")?.focus({ preventScroll: true }); } });
+shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: () => { shell.showKeys(); press("midi-ind")(); } });
 shell.cmd({ id: "rec", label: "Record what you play; stop to download a WAV", icon: "●", run: press("rec-btn") });
 shell.cmd({ id: "keys-hold", label: "Hold: latch held notes", hint: pressedHint("hold-btn"), run: press("hold-btn") });
 shell.cmd({ id: "keys-uni", label: "Unison: all 4 voices on one note, detuned wide", hint: pressedHint("uni-btn"), run: press("uni-btn") });

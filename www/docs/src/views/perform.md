@@ -40,6 +40,10 @@ down*), never one it can’t reach. Its **×** stops it showing.
 
 ## What you see
 
+On a phone held upright PERFORM is one column: the sound and its well on top,
+then the controls, the hood and the pads under them, and the level scrolls.
+The keys come up with **KEYS** at the end of the bar along the bottom.
+
 <img src="../img/perform.webp" alt="PERFORM: on the left the sound's family and name, large, and a well holding its face, with B's amber face beside it; on the right CONTROLS with six round controls in two rows, the knobs they turn, and the pads Wander, Next, Peek, Take and Pass." loading="eager" width="1440" height="900">
 
 On the left, the sound:
@@ -142,7 +146,7 @@ A named control is in one of five states, each with its own look:
 |---|---|---|
 | A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*), or one and how many more when two names would run long | It turns both ways on this sound |
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
-| Amber, a dashed ring | *turn to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
+| Amber, a dashed ring | nothing; the line over the controls says once, for all of them, *turn an amber one to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |
 | A thin, dim travel, the pointer lit | the knobs it turns; its tooltip says *not measured yet* | It turns, before this sound is measured (see [a sound you haven't played](#a-sound-you-havent-played)) |
 
@@ -424,7 +428,9 @@ A control drawn in amber with a dashed ring is a **search control**: this
 patch’s knobs can’t make that change. A patch with no drive can’t get rougher
 by turning a filter, and one with no delay or reverb can’t get much farther
 away. Over the preset library, GRIT and SPACE are search controls on most
-sounds for that reason.
+sounds for that reason. A search control has no line under it at rest: the
+line over the controls says *turn an amber one to ask for it*, once, while
+one is on the panel.
 
 1. Turn it past the amber notch, three tenths of the way to either end. The
    line under it reads *turn further to ask* short of the notch, then *let go
@@ -679,8 +685,8 @@ focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 | **TAKE** | <kbd>⇧↵</kbd> | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
 | **PASS** | | Passes on B without growing another: B empties and BLEND glides home. A pass as NEXT’s is, with the same UNDO |
 
-PEEK, TAKE and PASS wait, dashed, with *needs an offer* under them, until B
-holds one.
+PEEK, TAKE and PASS wait, dashed, until B holds one, and OFFER says so once,
+*then peek, take or pass* under its name.
 
 **Moved · KEEP · BACK.** When the sound has left home (a control turned, a
 drift not kept, a glide under way), *moved · KEEP · BACK* shows at the end of
