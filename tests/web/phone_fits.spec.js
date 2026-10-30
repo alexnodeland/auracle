@@ -19,9 +19,12 @@
 //   the sound in hand plays from the menu bar's ▶.
 // - No label with two or more words is set one word to a line.
 //
+// - The same of PERFORM's controls' column scrolled to its end (the hood,
+//   WANDER and the pads).
+//
 // What it does not claim: that a toast or the guide pill never covers a
 // control for the seconds it is up (a covered control is skipped, as a
-// finger could not press it either), or anything at a tablet's size
+// finger could not press it either; so is one off the screen), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
 
@@ -94,6 +97,10 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
         await landed(page);
         await expect.poll(() => page.evaluate(MISFITS, { primary: PRIMARY[level] }), `what does not fit at ${level}`).toEqual([]);
       }
+      await goLevel(page, "perform");
+      await landed(page);
+      await page.locator(".pf-right").evaluate((col) => { col.scrollTop = col.scrollHeight; });
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [".pf-pads"] }), "what does not fit at the controls' end").toEqual([]);
     });
 
     test(`the bank's sheet and the keys' drawer are a finger's size at ${width} × ${height}`, async ({ page, app }) => {

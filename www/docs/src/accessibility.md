@@ -196,8 +196,10 @@ On a phone held upright:
   without a scroll, and where there is more than fits it scrolls inside its
   own panel (PERFORM's controls, LEARNING's room), never the page. Nothing
   scrolls sideways.
-- Everything you press is at least 44 px each way, a finger's size, and the
-  octave's two keys are arrows (a phone has no Z and X to print).
+- Every button, tab and field is at least 44 px each way, a finger's size
+  (what is drawn on the rack at its zoom is the exception: a tapped module
+  opens its settings in a sheet), and the octave's two keys are arrows (a
+  phone has no Z and X to print).
 
 On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.

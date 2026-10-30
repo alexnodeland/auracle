@@ -8217,9 +8217,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-blurb:empty { display: none; }
   .pf-knob svg { max-width: 60px; }
   .pf-cap-row { min-height: 0; }
-  .pf-cap-row:not(:has(.pf-moved.on)) { display: none; }
+  /* The row keeps its height (the moved bar's, shown or not), so the
+     controls under it never move under a finger when the sound leaves
+     home; its word goes. */
+  .pf-cap { display: none; }
   .pf-name { font-size: var(--t-title); }
-  .pf-well { height: clamp(150px, 30dvh, 300px); min-height: 0; }
+  .pf-well { height: clamp(140px, 25dvh, 300px); min-height: 0; }
   .pf-right { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(var(--s7) + var(--s5)); gap: var(--s3); }
   .pf-k-ends, .pf-k-sub { white-space: nowrap; letter-spacing: 0; }
 
@@ -8263,7 +8266,10 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-grid { flex: 1 1 0; min-height: 0; }
   .pf-left { grid-template-rows: auto minmax(0, 1fr); }
   .pf-cap-row { min-height: 0; }
-  .pf-cap-row:not(:has(.pf-moved.on)) { display: none; }
+  /* The row keeps its height (the moved bar's, shown or not), so the
+     controls under it never move under a finger when the sound leaves
+     home; its word goes. */
+  .pf-cap { display: none; }
   .pf-name { font-size: var(--t-title); }
   .pf-well { min-height: 0; }
   .pf-right { overflow-y: auto; overscroll-behavior: contain; justify-content: flex-start; padding-bottom: calc(var(--s7) + var(--s5)); }
@@ -8278,6 +8284,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* The cross's stops are a finger's size (below): the level leaves them a
      desktop's room, EVOLVE's beside the line clear of the controls. */
   .stage { --rail-w: 96px; }
+  .pf-hood-row { min-height: 44px; }
   /* The catalog the screen's height, not the short well's. */
   .nodebank { position: fixed; top: calc(var(--menubar-h) + var(--s2)); bottom: var(--s2); left: calc(var(--s2) + env(safe-area-inset-left, 0px)); width: 300px; z-index: 36; }
 
