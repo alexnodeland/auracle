@@ -1154,7 +1154,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item.kbd .bi-acts,
 .bank-item.rating .bi-acts { visibility: visible; opacity: 1; }
 /* The actions give the row's end to the word only when they are away. */
-.bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: hidden; }
+.bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: hidden; }
 .bank-item .bi-acts button {
   flex: none;
   width: 24px;
@@ -1185,6 +1185,11 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item:has(.bi-hear.pending) .bi-acts,
 .bank-item:has(.bi-hear.loading) .bi-acts,
 .bank-item.refocus .bi-acts { visibility: visible; opacity: 1; }
+/* A row drawn again under a resting pointer whose actions were showing
+   (`.under`, `bankKeep`) shows them at once: the approach's delay is for a
+   pointer arriving, and a redraw is no arrival (ADR-025, #458). Until the
+   pointer leaves the row; then they hide as they do on leaving. */
+.bank-item.under .bi-acts { visibility: visible; opacity: 1; transition: none; }
 .bank-item .bi-acts .bi-star.on { color: var(--phos-b); }
 .bank-item .bi-acts .bi-star.on svg { fill: currentColor; }
 /* Save is the user's own channel: silk, not a phosphor. */
@@ -1265,7 +1270,7 @@ body.model-view .bank-item.seed .bi-pct,
 body.model-view .bank-item.may-go .bi-pct { visibility: hidden; opacity: 0; }
 /* Under the model view the end of a row is the guess's; its actions come
    back under the pointer. */
-body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidden; opacity: 0; }
+body.model-view .bank-item:not(:hover, .under):not(.rating) .bi-acts { visibility: hidden; opacity: 0; }
 
 /* A child that has just landed glows once. */
 .bank-item.landed { animation: bank-landed 900ms ease-out; } /* token-exempt: a one-shot glow, held long enough to be seen; a move is 320 ms */
@@ -1300,13 +1305,13 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
    row's actions. The selectors are the ones that show the actions
    (`.bank-item .bi-acts`, above), less `.pending`, which a preset's ▶ never
    carries (a preset row waits as `.loading`). */
-.preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in {
+.preset-item:is(:hover, .under, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in {
   right: calc(var(--s1) + 24px + var(--s4)); /* the ▶ (24 px) and its strip's fade */
   background: linear-gradient(to right, transparent, var(--row-ground) var(--s4));
 }
 /* Under the model view the actions show only under the pointer, so IN POOL
    keeps the row's end until then. */
-body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: none; }
+body.model-view .preset-item:not(:hover, .under) .pb-in { right: var(--s1); background: none; }
 .preset-item.in-bank { border-left-color: var(--phos-a-dim); }
 .preset-item.kbd { box-shadow: inset 0 0 0 1px var(--phos-a); }
 
@@ -4244,9 +4249,9 @@ kbd { font-family: var(--font-mono); }
   .bank-item .bi-flag,
   .bank-item .bi-pct,
   .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
-  .bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
+  .bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
   /* The ▶ is on its own line here, so IN POOL keeps the row's end. */
-  .preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
+  .preset-item:is(:hover, .under, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
 
   /* Law 2 — gesture ownership.
      The rack frame no longer scrolls: it is a camera, and the drag and the

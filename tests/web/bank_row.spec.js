@@ -9,8 +9,14 @@ const { test, expect, bankTab } = require("./fixtures");
 
 test("a bank row's cut appears on hover and can be pressed", async ({ page, app }) => {
   await app.boot();
-  const row = page.locator("#bank-list .bank-item:not(.saved):not(.live)").first();
-  await app.engine((timeout) => expect(row).toBeVisible({ timeout }));
+  // The first views open the pool's first sound (its row `.live` once on the
+  // bench), so the row is picked after that, by its id: picked by its state
+  // before, the locator moved to the next row when the first went live,
+  // away from the pointer.
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item.live")).toHaveCount(1, { timeout }));
+  const id = await page.locator("#bank-list .bank-item:not(.saved):not(.live)").first().getAttribute("data-id");
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  await expect(row).toBeVisible();
   const acts = row.locator(".bi-acts");
   const cut = row.locator(".bi-kill");
   // At rest: not drawn, and not live under the pointer either.
