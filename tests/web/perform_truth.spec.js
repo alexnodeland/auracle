@@ -243,7 +243,10 @@ test("a search control springs back when let go, and says what letting go will d
   expect(during).toBe("turn further to ask");
   expect(notchShown).not.toBe("none");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
-  await expect(sub).toHaveText("turn to ask for it");
+  // At rest it says nothing under itself: the line over the controls says
+  // what turning one does, once for the deck.
+  await expect(sub).toHaveText("");
+  await expect(page.locator(".pf-status")).toContainText("turn an amber one to ask for it");
   expect(await page.locator("#toasts").textContent()).not.toMatch(/growing an offer/);
 
   // Past it: the caption says what letting go asks for, and letting go asks.

@@ -304,9 +304,6 @@
     "auracle/no-aur-in-spec": {
       "count": 1
     },
-    "playwright/no-conditional-in-test": {
-      "count": 1
-    },
     "playwright/prefer-locator": {
       "count": 1
     }

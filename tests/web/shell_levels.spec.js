@@ -194,9 +194,11 @@ test("pointing at the levels puts no names over the stage, and each stop keeps i
     await expect.poll(() => stop.evaluate((el) => el.matches(":hover")), `${level}'s stop is pointed at`).toBe(true);
     // Pointed at, the cross draws nothing it did not at rest, the stop holds
     // its icon alone, and the levels hold no words but their ends' (out, in).
+    // As shown: on a phone the bar along the bottom prints each stop's name
+    // under its icon (shell_phone.spec.js), and here those names are hidden.
     await expect.poll(() => page.evaluate(DRAWN), `the cross pointed at ${level}'s stop, against at rest`).toEqual(rest);
-    await expect(stop).toHaveText("");
-    await expect(page.locator("#rail")).toHaveText(/^\s*out\s*in\s*$/);
+    await expect(stop).toHaveText("", { useInnerText: true });
+    await expect(page.locator("#rail")).toHaveText(/^\s*out\s*in\s*$/, { useInnerText: true });
     // Its tooltip names it and its key: "Taste · ⌥4" on a Mac, "Taste · Alt 4"
     // elsewhere (keys_for_the_platform.spec.js holds which, on each).
     await expect(stop).toHaveAttribute("title", new RegExp(`^${name} · (⌥|Alt )${n}$`));

@@ -99,8 +99,8 @@ module.exports = defineConfig({
   reporter: process.env.CI ? [["list"], ["github"], ["blob"]] : [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
-    // Wider than the handheld gate (min dimension ≥ 620 and a fine pointer),
-    // or index.html never injects main.js at all.
+    // A desktop window, with the bank in its column and the keys bar under
+    // the stage; a spec about a phone or a tablet sets its own.
     viewport: { width: 1440, height: 900 },
     browserName: BROWSER,
     // A WebAudio context must not wait for a gesture nobody will make.

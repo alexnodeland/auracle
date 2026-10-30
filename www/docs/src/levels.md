@@ -34,6 +34,8 @@ the level you were at last time, and a link that ends in a level’s name
 4. Or hold <kbd>⌥</kbd> and turn the wheel, one level a turn; a trackpad’s
    pinch does the same, except over PATCH’s patch, which it zooms instead.
 5. On a touch screen, spread two fingers to zoom in and pinch to zoom out.
+6. On a phone held upright the levels are the bar along the bottom: tap a
+   stop to go there.
 
 As you move, the face of the sound you’re playing flies from where one level
 draws it to where the next does: PERFORM’s well, the face at **OUT** in

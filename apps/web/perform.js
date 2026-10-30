@@ -767,10 +767,15 @@ export function createPerform(host) {
         // the same as the sound being at that end, and the dot often said
         // otherwise. Short enough for the cell at 1280 px: a caption cut off
         // with an ellipsis reads as broken, whatever it was going to say.
+        // A search control says nothing at rest: its amber, dashed ring marks
+        // it, and the status line says once what turning one does ("turn an
+        // amber one to ask for it", `renderStatus`), where the same words
+        // under each of them crowded the deck (#134). Turned, it says what
+        // letting go will ask for.
         k.sub.textContent = search
           ? k.asking
             ? askWords(w, v)
-            : "turn to ask for it"
+            : ""
           : halfLo
             ? `turns toward ${w.high} only`
             : halfHi
@@ -3576,6 +3581,10 @@ export function createPerform(host) {
       // The last measurement asked of it failed (the engine's own words are
       // its toast), and none is out now.
       else if (state.wireError) parts.push(state.wireError);
+      // What a turn of a search control does, said once for the deck rather
+      // than under each one (#134), and steadily while one is on it: last,
+      // so a re-check's word comes and goes without moving it.
+      if (state.wire.some((w) => w && w.search)) parts.push("turn an amber one to ask for it");
     } else if (state.wireError && !state.revalidating && !state.measuring) parts.push(state.wireError);
     // Written only when the words change.
     const text = parts.join(" · ");
@@ -3624,21 +3633,22 @@ export function createPerform(host) {
     knobs.forEach((k) => k.spec.kind === "blend" && paintKnob(k));
   }
   // Take and Peek act on an offer; until there is one they look it.
-  // Waiting, not broken: a disabled pad says what it is waiting for. An
-  // offer not heard yet can still be taken (the heard rule decides only
-  // whether the answer counts, `holdAnswer`).
+  // Waiting, not broken: a disabled pad is dashed, and what they wait for is
+  // said once, under OFFER (below), where the same words under each of the
+  // three crowded the row (#134). An offer not heard yet can still be taken
+  // (the heard rule decides only whether the answer counts, `holdAnswer`).
   function paintPads() {
     for (const k of ["take", "peek", "pass"]) {
       if (!padEls[k]) continue;
       padEls[k].disabled = !state.offer;
-      padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
     }
     // While B holds an offer, pressing Offer passes on it: the pad says so
-    // before it is pressed, not in a toast after.
+    // before it is pressed, not in a toast after. Until then it says what
+    // the dashed pads beside it wait for.
     const op = padEls.offer;
     if (op) {
       op.textContent = state.offer ? "Next" : "Offer";
-      op.dataset.sub = state.offer ? "passes on B" : "";
+      op.dataset.sub = state.offer ? "passes on B" : "then peek, take or pass";
       op.title = state.offer ? "Pass on the offer in B and hear the next one" : "Grow a variant from here into B";
     }
   }
@@ -4292,8 +4302,14 @@ export function createPerform(host) {
   // `host.guide`) retires once all three have. Per visitor: the booth's "new
   // visitor" brings it back.
   const coarse = () => !!window.matchMedia?.("(pointer: coarse)").matches;
+  const keysInDrawer = () => {
+    const t = document.getElementById("keys-toggle");
+    return !!t && getComputedStyle(t).display !== "none" && t.getAttribute("aria-expanded") !== "true";
+  };
   const STEPS = [
-    { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
+    // On a phone the keys are a drawer, under KEYS in the bar along the
+    // bottom (#134): the step says where they are.
+    { id: "play", text: () => (keysInDrawer() ? "Tap KEYS, then play the keybed" : coarse() ? "Play it: tap the keybed" : "Play a key: A to L, or tap the keybed") },
     { id: "turn", text: turnStep },
     { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];

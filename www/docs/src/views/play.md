@@ -386,6 +386,10 @@ the other way round).
 
 ## On a touch screen
 
+On a phone held upright the head is stacked over the well (the name, what the
+patch is made of, then the acts), and the readout takes its own line over the
+camera at the well's foot. Two fingers on the patch zoom it.
+
 Tap a module to open its settings in a sheet: every knob as a wide slider with
 **−** and **+** steps, every named setting as its choices, AUDIO IN's input
 line, **MONITOR**, **NEW CLIP** and **ALLOW INPUT**, and CAPTURE's **RECORD**,
