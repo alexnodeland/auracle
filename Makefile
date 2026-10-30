@@ -336,7 +336,7 @@ sound:
 ## target/js-cov/web.lcov
 web-check: js-check spec-lint
 	$(JS_COV_MKDIR)
-	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs tests/web/burnin.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 # COVERAGE=1: Node's own coverage of the lines of apps/web that web-check's
 # unit tests and worker-test run (apps/web/tests and the generated pkg/ left

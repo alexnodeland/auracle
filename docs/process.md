@@ -310,9 +310,13 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `tests/worker/` changed; and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them before it
   follows the views), on up to
-  four runners. About five minutes for docs; up to about ten when Rust
-  changed (Coverage sets the length) or an app module's specs run (`patch.js`
-  reaches about 23 test-minutes, on four runners).
+  four runners; and Burn-in, the spec files it adds or edits three times
+  each, on up to three runners of its own sized by `main`'s times (#456),
+  and no longer once beside the rest. About five minutes for docs; up to
+  about ten when Rust changed (Coverage sets the length), an app module's
+  specs run (`patch.js` reaches about 23 test-minutes, on four runners) or
+  specs are burned in (planned at about six minutes a runner, seven at
+  most; edits too heavy for that get no burn-in and run once).
   - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
     `style.css`, a crate) runs the smoke and no other spec. So does a helper
     that more than twenty spec files require, or a change to more than

@@ -157,7 +157,7 @@ class CheckParts(unittest.TestCase):
         self.assertEqual(C.beyond(C.classify(["tests/worker/harness.mjs"])), ["Worker protocol (make worker-test, after make wasm)"])
         self.assertEqual(
             C.beyond(C.classify(["tests/web/a.spec.js"])),
-            ["Site (make site && make site-check)", "the specs it reaches (make browser-changed)"],
+            ["Site (make site && make site-check)", "the specs it reaches, and Burn-in for the ones it adds or edits (make browser-changed REPEAT=3)"],
         )
         self.assertEqual(C.beyond(C.classify(["docs/process.md"])), ["Site (make site && make site-check)"])
         self.assertEqual(C.beyond(C.classify(["changelog.d/x.md"])), [])

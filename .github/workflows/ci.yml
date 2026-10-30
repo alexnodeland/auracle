@@ -16,13 +16,15 @@ name: CI
 #   app, the engine or tests/worker did; and the browser specs the change
 #   reaches (tests/web/changed.mjs), on up to four runners, the spec files it
 #   adds or edits three times each (Burn-in, on up to three runners of its
-#   own, #456: no other run repeats a spec before the queue). A change whose
+#   own, sized by main's times, #456: no other run repeats a spec before the
+#   queue). A change whose
 #   specs can't be told (main.js, worker.js, a crate) runs the smoke only,
 #   with Worker protocol beside it, and a change to CI itself runs the full
 #   gate. About five minutes
 #   for docs; up to about ten when Rust changed (Coverage sets the length,
-#   about nine, an estimate) or an app module's specs run (patch.js reaches
-#   about 23 test-minutes, on four runners). A green fast lane, with the PR's
+#   about nine, an estimate), an app module's specs run (patch.js reaches
+#   about 23 test-minutes, on four runners) or specs are burned in (planned
+#   at about six minutes a runner, seven at most). A green fast lane, with the PR's
 #   `PR checks` (pr-checks.yml) and `Mutants in the changed code`
 #   (mutants.yml), puts the PR in the merge queue (.mergify.yml's queue
 #   conditions). It is not the whole gate.
@@ -141,6 +143,18 @@ jobs:
         with:
           # The merge base has to be reachable to diff against it.
           fetch-depth: 0
+
+      # Main's browser times, which size a PR's burn-in (tests/web/burnin.mjs):
+      # the cache the Browser job deals from (.github/actions/browser-timings).
+      # None (evicted, the first run) weighs every test the same.
+      - name: Main's browser times, for the burn-in
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/web/timings-fast.json
+          key: browser-timings-fast-${{ github.run_id }}
+          restore-keys: browser-timings-fast-
 
       - id: filter
         name: Pick the lane and classify the changed paths
@@ -268,9 +282,11 @@ jobs:
           # --touched) are its burn-in, #456: they run three times each in
           # the Burn-in job, so a new spec that is flaky is caught here, not
           # in the queue, where a red batch costs every PR in it. They leave
-          # the once-run selection, which never runs a file twice. More than
-          # twenty (a burn-down that edits most of the suite) is no burn-in:
-          # they run once with the rest, and the queue runs them all.
+          # the once-run selection, which never runs a file twice. Its
+          # runners are sized by main's times, not by count (burnin.mjs):
+          # about six minutes each, up to three. Files too heavy for that,
+          # or more than twenty of them (a burn-down that edits most of the
+          # suite), get no burn-in and stay in the once-run selection.
           browser=false
           specs=""
           n=1
@@ -282,15 +298,17 @@ jobs:
             touched="$(cd tests/web && node changed.mjs --touched "origin/$BASE_REF")" || { echo "changed.mjs could not say what the change edits: no burn-in"; touched=""; }
             tcount="$(echo "$touched" | grep -c . || true)"
             if [ "$tcount" -gt 20 ]; then
-              echo "the change edits $tcount spec files: no burn-in, they run once with the rest"
+              echo "the change edits $tcount spec files: no burn-in"
             elif [ "$tcount" -gt 0 ]; then
-              burnin=true
-              burnin_specs="$(echo "$touched" | sed 's#^#/#' | paste -sd' ' -)"
-              # Three runners at most: the account runs 20 jobs at once, and
-              # the queue's run holds 18 (testing.md § CI tiers, Runners).
-              bn="$tcount"
-              [ "$bn" -gt 3 ] && bn=3
-              sel="$(echo "$sel" | grep -vxF -f <(echo "$touched") || true)"
+              bn="$(cd tests/web && node burnin.mjs --timings timings-fast.json --files "$(echo "$touched" | paste -sd' ' -)")" || bn=0
+              if [ "${bn:-0}" -gt 0 ]; then
+                burnin=true
+                burnin_specs="$(echo "$touched" | sed 's#^#/#' | paste -sd' ' -)"
+                sel="$(echo "$sel" | grep -vxF -f <(echo "$touched") || true)"
+              else
+                echo "the files it edits are too heavy for a burn-in: they run once with the rest"
+                bn=1
+              fi
             fi
             count="$(echo "$sel" | grep -c . || true)"
             if [ "$count" -gt 20 ]; then
@@ -1089,8 +1107,9 @@ jobs:
   # each, in the fast lane only (the changes job). A new spec that passes
   # once and fails one run in three is the queue's most expensive flake: it
   # turns a batch red, and the PRs beside it in the batch wait on it. Here it
-  # keeps only its own PR out of the queue. One runner per file, up to three
-  # (the changes job says why), dealt by time as the tier is; in the `CI` check, like the Browser shards,
+  # keeps only its own PR out of the queue. Its runners are sized by main's
+  # times (the changes job, tests/web/burnin.mjs: about six minutes each, up
+  # to three), and dealt by time as the tier is; in the `CI` check, like the Browser shards,
   # and a failure is fixed, never retried (testing.md § Flakes).
   burnin:
     name: Burn-in (${{ matrix.shard }})
@@ -1100,7 +1119,9 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
       options: --ipc=host --init
-    # The Browser job's limits, and why (above).
+    # The Browser job's limits, and why (above): burnin.mjs plans each runner
+    # no more than seven minutes of tests, repeats included, as the Browser
+    # job plans about six.
     timeout-minutes: 20
     env:
       AURACLE_GLOBAL_TIMEOUT_MIN: 15

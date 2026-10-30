@@ -307,13 +307,13 @@ def wall(run) -> float | None:
 
 def needed(run, job) -> bool:
     """A job the run's answer waits for: one `CI` needs, or on a queue run
-    one `Full gate` needs (`CI` itself and the Browser report with them)."""
+    one `Full gate` needs (`CI` itself and the two reports with them)."""
     name = job.get("name")
     if name in NOT_NEEDED:
         return False
     if is_queue(run):
         return name != "Full gate"
-    return name not in ("CI", "Full gate", "Browser report")
+    return name not in ("CI", "Full gate", "Browser report", "Burn-in report")
 
 
 def waits(run, required: bool = True) -> list:

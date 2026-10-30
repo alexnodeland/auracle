@@ -268,7 +268,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
-| Spec files only | Web, the engine, Site, and those specs three times each (*Burn-in*, one runner per file, up to three); more than twenty, once each beside Browser smoke instead |
+| Spec files only | Web, the engine, Site, and those specs three times each (*Burn-in*, up to three runners sized by `main`'s times); too heavy for that, once each (one runner per file, up to four); more than twenty, Browser smoke instead |
 | The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
 | `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; Worker protocol; no other spec |
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
@@ -292,13 +292,18 @@ scripts/ops/rows_resolve.py keeps both. -->
   puts the PR in the queue. It is not the gate: a `main.js` change has run
   two specs in CI when it enters the queue, and its own.
 - **The burn-in** (*Burn-in*, #456): the spec files the PR adds or edits
-  (`changed.mjs --touched`) run three times each, on up to three runners of
-  their own, beside the rest of the fast lane, and not also once in its
-  *Browser* job. It is in the required `CI`, so a new spec that fails one
+  (`changed.mjs --touched`) run three times each, beside the rest of the
+  fast lane, and not also once in its *Browser* job. Its runners are sized
+  by `main`'s times, not by count (`tests/web/burnin.mjs`, from the cache
+  the *Browser* job deals by; a new spec weighs its tests at the median):
+  about six minutes each, up to three. Edits too heavy for that (more than
+  seven minutes a runner, repeats included) get no burn-in and run once in
+  the *Browser* job; more than twenty edited files get none, and the
+  selection's own rule applies (more than twenty reached files run Browser
+  smoke instead). It is in the required `CI`, so a new spec that fails one
   run in three keeps its own PR out of the queue, where it would turn a
-  batch red and hold up the PRs beside it. A PR that edits more than twenty
-  spec files (a burn-down) gets none: they run once, and the queue runs them
-  all. The queue's run and `main`'s have no burn-in.
+  batch red and hold up the PRs beside it. The queue's run and `main`'s have
+  no burn-in.
 - **On the builder's machine, when a change's reach is worth seeing before
   the queue** (a `main.js` change across views), `make browser-changed` runs
   the same selection and follows the views too (`changed.mjs --views`):
@@ -329,9 +334,10 @@ in speed by about two times, and each shard's log and the run's summary name
 its CPU). Coverage takes about nine, estimated (a build, three runners and a
 report: [Coverage](#coverage)); the Doctests two or three (a compile); Web
 and Site two to three. So a PR's fast lane is about five minutes for docs,
-and up to about ten when Rust changed (Coverage sets the length) or an app
+and up to about ten when Rust changed (Coverage sets the length), an app
 module's specs run (`patch.js` reaches about 23 test-minutes, on four
-runners).
+runners) or specs are burned in (*Burn-in*'s runners are planned at about
+six minutes each, seven at most, by `tests/web/burnin.mjs`).
 
 **Where the time goes.** `tests/web/split.mjs`, a reporter, splits each
 test's time into its setup, its boots (a navigation to the veil lifting),
