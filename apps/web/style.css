@@ -2600,7 +2600,13 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   .md-tech, .md-scale span:nth-child(2) { display: none; }
 }
 @media (max-width: 860px) {
+  /* One column that scrolls (`.md`), each panel at its own height: a panel
+     let shrink to the screen's height left the map (200 px, below) drawn
+     over the two panels under it on a short phone (#134). The map's panel
+     is the body's through `.md-right`'s contents, so both are named. */
+  .md { grid-template-rows: auto auto; align-content: start; }
   .md-body { display: flex; flex-direction: column; }
+  .md-body > *, .md-right > * { flex: none; }
   .md-right { display: contents; }
   .md-mapp { order: 1; }
   .md-weighs { order: 2; }
@@ -8091,10 +8097,6 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .nodebank:has(.nb-item.armed) { top: auto; }
   .nodebank:has(.nb-item.armed) :is(.nb-search, .nb-aside, .nb-inpatch, #nb-groups, .nb-legend, .nb-empty, .nb-none) { display: none; }
 
-  /* LEARNING's room runs down the screen and scrolls, each panel at its
-     own height. */
-  .md { grid-template-rows: auto auto; }
-  .md-body > * { flex: none; }
 
   /* TASTE and LEARNING: the headline at a title's size, so the map and the
      room start on the first screen. */

@@ -1327,7 +1327,18 @@ export function createTaste(host) {
       ctx.stroke();
       ctx.shadowBlur = 0;
       ctx.fillStyle = inkAlpha(INK.silk, 0.9);
-      text(ctx, host.nameOf(sid) || "", sq.x, Math.min(MH - 4, sq.y + 24), "center");
+      // Under the ring, and whole: a sound near the map's edge has its name
+      // moved in rather than cut (a phone's narrow map cut "Bright Bell" to
+      // "ight Bell", #134).
+      const name = host.nameOf(sid) || "";
+      const dpr = window.devicePixelRatio || 1;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = canvasFont(dpr);
+      const half = ctx.measureText(name).width / dpr / 2;
+      ctx.restore();
+      const nx = Math.max(half + 4, Math.min(MW - half - 4, sq.x));
+      text(ctx, name, nx, Math.min(MH - 4, sq.y + 24), "center");
     }
     const legend = zOf ? words.dotsLegend(host.niceName(barHover)) : words.directionLegend(gNow);
     $("md-maplegend").textContent = legend;

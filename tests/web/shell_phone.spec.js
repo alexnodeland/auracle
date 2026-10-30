@@ -9,7 +9,8 @@
 //   no gate and no notice. The levels are the bar along the bottom, each
 //   stop's name printed whole under its icon, and a tap on one goes there.
 //   At every level nothing scrolls the page sideways, the level itself
-//   scrolls no wider than the screen, and the menu bar cuts nothing.
+//   scrolls no wider than the screen, the menu bar cuts nothing, and each of
+//   LEARNING's panels holds what it draws (its map ran over the two under it).
 // - The bank is a sheet there: BANK opens it, and the scrim, Esc and a sound
 //   chosen in it put it away, the sound chosen being the one in hand.
 // - The keys are a drawer over the bar: KEYS opens it, one octave across
@@ -38,6 +39,11 @@ const PAST_THE_EDGE = () => {
   if (view.scrollWidth > view.clientWidth + 1) out.push(`${view.id} is ${view.scrollWidth} wide in ${view.clientWidth}`);
   const bar = document.querySelector(".menubar");
   if (bar.scrollWidth > bar.clientWidth + 1) out.push(`the menu bar holds ${bar.scrollWidth} in ${bar.clientWidth}`);
+  // A panel holds what it draws: LEARNING's map once ran over the two
+  // panels under it, its own squeezed to the screen's height.
+  for (const panel of view.querySelectorAll(".md-panel")) {
+    if (panel.offsetParent && panel.scrollHeight > panel.clientHeight + 1) out.push(`${panel.className} draws ${panel.scrollHeight} in ${panel.clientHeight}`);
+  }
   for (const rl of document.querySelectorAll("#rail .rl")) {
     if (rl.offsetParent && rl.scrollWidth > rl.clientWidth + 1) out.push(`"${rl.textContent}" is cut: ${rl.scrollWidth} in ${rl.clientWidth}`);
   }
