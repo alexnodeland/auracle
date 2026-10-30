@@ -2243,7 +2243,8 @@ EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 One lane, bottom right, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
 jumps the queue (and honours `replace` too), and the toast it interrupts
-comes back behind it with a fresh window unless it was already fading; an
+comes back behind it with a fresh window (its wait for the stale drop
+counted from there) unless it was already fading; an
 undo keeps its full window, and when the window closes its button is
 removed. A plain remark that has waited more than 9 s (`TOAST_STALE_MS`) is
 dropped when its turn comes, and with more than three waiting the plain
@@ -2274,10 +2275,10 @@ true (an undone cut).
 
 A receipt that carries a live take-back (`takeBack: true`: a pick's, a
 cut's), whose undo window runs from the gesture rather than from when the
-toast is shown, goes ahead of every plain remark waiting and interrupts one
-on screen, which comes back behind it with a fresh window (#305). It waits
-behind a refusal, an undo and a toast about the player's sounds, and a
-pick's receipt whose window closes while it waits is dropped, never said
+toast is shown, goes ahead of every plain remark waiting and, with only
+plain remarks waiting, interrupts one on screen, which comes back behind it
+with a fresh window (#305). It waits behind every refusal, undo and toast
+about the player's sounds in the queue, and a pick's receipt whose window closes while it waits is dropped, never said
 after the pick can no longer be taken back (a cut's, `bank: true`, is still
 said, its button retired). On screen it stays until its window closes, and
 at least as long as a remark. ⌘Z does not go through the toast, so it takes
