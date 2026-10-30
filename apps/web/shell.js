@@ -37,11 +37,11 @@ const MODEL_HOLD_MS = 220;
 // MODEL pressed this long is a hold (the view goes when it is let go), not a
 // tap (which keeps it), as the prototype has it.
 const PRESS_HOLD_MS = 280;
-// A finger held still this long on a card, a row or TASTE's map is
+// A long press this long on a card, a row or TASTE's map is
 // ⌥ held (#134): longer than MODEL's own press, since there a tap means
 // something else. The ring under it shows after a moment, so a tap never
 // flashes it; a move this far first is a touch, a scroll or a swipe
-// (main.js's flick to pick locks its axis at the same distance).
+// (main.js's swipe up to pick locks its axis before it).
 const TOUCH_HOLD_MS = 480;
 const TOUCH_RING_DELAY_MS = 140;
 const TOUCH_HOLD_SLOP_PX = 8;
@@ -174,7 +174,7 @@ export function createShell(host = {}) {
     // A long press on a touch screen is the hold, not the page's menu.
     modelBtn.addEventListener("contextmenu", (e) => e.preventDefault());
   }
-  // A long press on a touch screen is ⌥ held (#134): a finger held still on
+  // A long press on a touch screen is ⌥ held (#134): on
   // an EVOLVE card, a bank row or TASTE's map shows the model view (a module
   // on the rack keeps its own long press, its menu: main.js) for as long as it stays down, as holding MODEL does. A ring
   // fills under the finger meanwhile (explain.js's `.xp-ring`, PERFORM's
@@ -199,7 +199,7 @@ export function createShell(host = {}) {
         document.removeEventListener("pointerdown", done, true);
       };
       const swallow = (c) => {
-        // A click the app makes (a card flicked up presses its PICK on the
+        // A click the app makes (a card swiped up presses its PICK on the
         // touchend that follows this pointerup) is not the hold's.
         if (!c.isTrusted) return;
         done();

@@ -150,27 +150,29 @@ desktop is unchanged. A phone prints no keys: the key beside a button and the
 letters on the keybed are left off, and the keybed keeps each C's octave. A
 tablet keeps them, since it may have a keyboard.
 
-### Two gestures: flick up to pick, hold to see what the model believes
+### Two gestures: swipe up to pick, long press to see what the model believes
 
-- **Flick a card up to pick it.** In EVOLVE, put a finger on a card's face
-  and push it up: the card follows. Let go past a third of its height, or
-  flick it, and it is picked exactly as its **PICK** would pick it, with the
-  same moment to take it back. Let go short of that and it settles back,
-  picking nothing. A drag down or sideways is not the card's, so whatever
-  scrolls under it still scrolls. Under reduced motion the card still
-  follows the finger, and settles back without a slide.
-- **Hold to see what the model believes.** A finger held still for about
-  half a second on an EVOLVE card, a bank row or TASTE's map shows the model view for as long as it stays down, as holding
+- **Swipe a card up to pick it.** In EVOLVE, put a finger on a card's face
+  and swipe up: the card follows. Let go past a third of its height, or
+  swipe up fast, and it is picked exactly as its **PICK** would pick it,
+  with the same moment to take it back. Let go short of that and it settles
+  back, picking nothing. A drag down or sideways is not the card's, so
+  whatever scrolls under it still scrolls. Under reduced motion the card
+  still follows the finger, and settles back without a slide.
+- **Long press to see what the model believes.** A long press (about half a
+  second, without moving) on an EVOLVE card, a bank row or TASTE's map shows
+  the model view for as long as the finger stays down, as holding
   <kbd>⌥</kbd> does on a keyboard. A ring fills under the finger while you
-  hold; moving the finger first makes it an ordinary touch. Lift it and the
-  view goes, and the hold opens nothing. With the model view already up (a
-  tap on **MODEL** keeps it), a hold changes nothing. A bank row's actions
-  stay on the row at rest; a hold does not replace them. On PATCH's rack a
-  module held keeps its own meaning: it opens the module's menu.
-- **On PERFORM a hold on a control opens its figure** (see
+  press; moving the finger first makes it an ordinary touch. Lift it and the
+  view goes, and the long press opens nothing. With the model view already
+  up (a tap on **MODEL** keeps it), a long press changes nothing. A bank
+  row's actions stay on the row at rest; a long press does not replace
+  them. On PATCH's rack a long press on a module keeps its own meaning: it
+  opens the module's menu.
+- **On PERFORM a long press on a control opens its figure** (see
   [Explain a control](./views/perform.md)).
 
-Nothing is selected and no callout opens under these holds.
+Nothing is selected and no callout opens under a long press.
 
 ### On a phone, a tablet and a narrow window
 

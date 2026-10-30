@@ -165,9 +165,9 @@ until you tap it again or press <kbd>Esc</kbd>. The row’s actions still come
 when you point at it. A screen reader hears the guess in every row’s name, at
 rest too.
 
-On a touch screen, hold a finger still on a row until the ring under it
-fills: the model view is up while you hold, and the hold opens nothing. A
-row's actions stay on it at rest, under its name, as before.
+On a touch screen, a long press on a row shows the model view while your
+finger stays down, and opens nothing. A row's actions stay on it at rest,
+under its name, as before.
 
 ## Compare a sound beside its seed
 

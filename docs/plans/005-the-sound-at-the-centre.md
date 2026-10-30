@@ -57,7 +57,7 @@ Tasks still open, each an issue (`docs/process.md`):
 
 | Task | Issue | Status |
 | --- | --- | --- |
-| 8. Touch | #134 | done: the phone's shell (the bottom bar, the bank as a sheet, the keys over the bar), each level laid out for a phone, the gates retired (#462); a card flicked up picks it, and a finger held still on a card, a bank row or TASTE's map is ⌥ held (`claude/touch-gestures`); PATCH keeps its canvas, the catalog the well's width |
+| 8. Touch | #134 | done: the phone's shell (the bottom bar, the bank as a sheet, the keys over the bar), each level laid out for a phone, the gates retired (#462); a card swiped up picks it, and a long press on a card, a bank row or TASTE's map is ⌥ held (`claude/touch-gestures`); PATCH keeps its canvas, the catalog the well's width |
 | 11. A sound of your own: the card | #133 | the engine and the worker are built; the card is not started |
 
 1. **Tokens from the specimen.**

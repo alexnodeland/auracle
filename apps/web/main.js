@@ -8205,21 +8205,21 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
-// On a touch screen, a card flicked up is picked (#134): the card follows
-// the finger up, and let go past a third of its height (or flicked fast) it
+// On a touch screen, a card swiped up is picked (#134): the card follows
+// the finger up, and let go past a third of its height (or swiped fast) it
 // presses its own PICK, so the pick takes PICK's whole path (its undo
 // window, its toast, the dealer's judgement). Let go short of that, it
 // springs back. The axis is the first 6 px of travel's: sideways or down,
 // or two fingers, the gesture is not the card's and whatever scrolls under
 // it scrolls (only an upward vertical move is taken from the page). A
-// finger held still is shell.js's long press, which locks first.
+// long press is shell.js's, which locks first.
 {
   // Under shell.js's hold slop (8 px), so a move is the card's before the
   // hold could be cancelled by it, and early, before the browser's own pan.
   const LOCK_PX = 6;
-  // A finger that rests this long before it lifts was not flicked.
-  const FLICK_STALE_MS = 100;
-  const FLICK_PX_PER_MS = 0.6;
+  // A finger that rests this long before it lifts did not swipe fast.
+  const SWIPE_STALE_MS = 100;
+  const SWIPE_PX_PER_MS = 0.6;
   for (const side of ["a", "b"]) {
     const card = $(`duel-${side}`);
     const pick = $(`choose-${side}`);
@@ -8227,7 +8227,7 @@ $("choose-b").onclick = () => choose("b");
     let g = null;
     const settle = (picked) => {
       const ms = motionMs("--d-move");
-      card.classList.remove("flicking");
+      card.classList.remove("swiping");
       card.style.transition = ms ? `transform ${ms}ms var(--e-settle), opacity ${ms}ms var(--e-settle)` : "none";
       card.style.transform = "";
       card.style.opacity = "";
@@ -8254,7 +8254,7 @@ $("choose-b").onclick = () => choose("b");
         // Sideways, or down: not ours, and never taken from a scroll.
         if (Math.abs(dx) >= Math.abs(dy) || dy > 0 || pick.disabled || !currentDuel) { g = null; return; }
         g.axis = "y";
-        card.classList.add("flicking");
+        card.classList.add("swiping");
         card.style.transition = "none";
       }
       e.preventDefault();
@@ -8272,8 +8272,8 @@ $("choose-b").onclick = () => choose("b");
       g = null;
       if (was.axis !== "y") return;
       const far = -was.dy > (card.offsetHeight || 0) / 3;
-      const fresh = e.timeStamp - was.lastT < FLICK_STALE_MS;
-      const fast = fresh && was.v > FLICK_PX_PER_MS && -was.dy > LOCK_PX * 4;
+      const fresh = e.timeStamp - was.lastT < SWIPE_STALE_MS;
+      const fast = fresh && was.v > SWIPE_PX_PER_MS && -was.dy > LOCK_PX * 4;
       settle(e.type === "touchend" && (far || fast));
     };
     card.addEventListener("touchend", end);

@@ -2,20 +2,20 @@
 //
 // What this claims:
 //
-// - EVOLVE: a card flicked up is picked. The card follows the finger up, and
+// - EVOLVE: a card swiped up is picked. The card follows the finger up, and
 //   let go past a third of its height it presses its own PICK, once (so the
 //   pick takes PICK's path: its undo window, its toast, the deal). Let go
 //   short of that it springs back, and nothing is picked. A drag down or
 //   sideways is not the card's: it does not move, picks nothing, and its
 //   touchmove is left to the page (not cancelled), so whatever scrolls there
 //   scrolls.
-// - A long press (a finger held still about half a second) on an EVOLVE
+// - A long press (about half a second, without moving) on an EVOLVE
 //   card, a bank row or TASTE's map shows the model view while the finger
 //   stays down, as holding ⌥ does; the finger lifted, it goes, and the
 //   hold's click opens nothing (on the map, a sound a tap on its dot opens). A finger
 //   that moves first is an ordinary touch: no model view. A module on
 //   PATCH's rack keeps its own long press (its menu) and is not held here.
-// - The flick picks on a phone and on a small one (360 × 640), where the
+// - The swipe up picks on a phone and on a small one (360 × 640), where the
 //   level's column scrolls.
 //
 // Touches are the browser's own (CDP's `Input.dispatchTouchEvent`), so
@@ -67,7 +67,7 @@ async function toEvolve(page, app) {
   await watchPicks(page);
 }
 
-async function flickPicks(page, app) {
+async function swipePicks(page, app) {
   await toEvolve(page, app);
   const cdp = await cdpOf(page);
   const at = await middle(page.locator("#duel-a .duel-well"));
@@ -77,22 +77,22 @@ async function flickPicks(page, app) {
   expect((await picks(page)).cancelled, "the upward move was the card's").toBeGreaterThan(0);
 }
 
-test("a card flicked up past a third of its height is picked through its PICK", async ({ page, app }) => {
-  await flickPicks(page, app);
-  await expect(page.locator("#duel-a")).not.toHaveClass(/\bflicking\b/);
+test("a card swiped up past a third of its height is picked through its PICK", async ({ page, app }) => {
+  await swipePicks(page, app);
+  await expect(page.locator("#duel-a")).not.toHaveClass(/\bswiping\b/);
 });
 
 test.describe("a small phone, 360 × 640", () => {
   test.use({ viewport: { width: 360, height: 640 } });
 
-  test("a card flicked up is picked and the level's column does not scroll; a drag down scrolls it", async ({ page, app }) => {
+  test("a card swiped up is picked and the level's column does not scroll; a drag down scrolls it", async ({ page, app }) => {
     await toEvolve(page, app);
     const cdp = await cdpOf(page);
     const col = page.locator("#view-evolve");
     // The column runs past the screen here, and starts part way down.
     await expect.poll(() => col.evaluate((c) => c.scrollHeight - c.clientHeight)).toBeGreaterThan(40);
     const half = (c) => { c.scrollTop = Math.round((c.scrollHeight - c.clientHeight) / 2); return c.scrollTop; };
-    // A flick up is the card's: picked, and the column stays put.
+    // A swipe up is the card's: picked, and the column stays put.
     const at = await middle(page.locator("#duel-a .duel-well"));
     const before = await col.evaluate(half);
     const box = await page.locator("#duel-a .duel-well").boundingBox();
@@ -101,7 +101,7 @@ test.describe("a small phone, 360 × 640", () => {
     // Read with the finger still down: once picked, the next pair may move
     // the column on its own.
     await drag(page, cdp, from, 0, -Math.round(card.height * 0.6), { lift: false });
-    expect(await col.evaluate((c) => c.scrollTop), "the column did not scroll under the flick").toBe(before);
+    expect(await col.evaluate((c) => c.scrollTop), "the column did not scroll under the swipe").toBe(before);
     await touch(cdp, "touchEnd", []);
     await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
     // A drag down is the column's: it scrolls, and picks nothing more.
@@ -178,7 +178,7 @@ async function dotAt(page, n) {
   return { id: q.id, x: Math.round(box.x + q.x), y: Math.round(box.y + q.y) };
 }
 
-/** Hold a finger still on `loc`: the model view is up while it is down, and
+/** A long press on `loc`: the model view is up while it is down, and
  *  goes when it lifts. */
 async function holdShowsModel(page, cdp, loc) {
   const at = await middle(loc);
