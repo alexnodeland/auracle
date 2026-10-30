@@ -3633,21 +3633,22 @@ export function createPerform(host) {
     knobs.forEach((k) => k.spec.kind === "blend" && paintKnob(k));
   }
   // Take and Peek act on an offer; until there is one they look it.
-  // Waiting, not broken: a disabled pad says what it is waiting for. An
-  // offer not heard yet can still be taken (the heard rule decides only
-  // whether the answer counts, `holdAnswer`).
+  // Waiting, not broken: a disabled pad is dashed, and what they wait for is
+  // said once, under OFFER (below), where the same words under each of the
+  // three crowded the row (#134). An offer not heard yet can still be taken
+  // (the heard rule decides only whether the answer counts, `holdAnswer`).
   function paintPads() {
     for (const k of ["take", "peek", "pass"]) {
       if (!padEls[k]) continue;
       padEls[k].disabled = !state.offer;
-      padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
     }
     // While B holds an offer, pressing Offer passes on it: the pad says so
-    // before it is pressed, not in a toast after.
+    // before it is pressed, not in a toast after. Until then it says what
+    // the dashed pads beside it wait for.
     const op = padEls.offer;
     if (op) {
       op.textContent = state.offer ? "Next" : "Offer";
-      op.dataset.sub = state.offer ? "passes on B" : "";
+      op.dataset.sub = state.offer ? "passes on B" : "then peek, take or pass";
       op.title = state.offer ? "Pass on the offer in B and hear the next one" : "Grow a variant from here into B";
     }
   }

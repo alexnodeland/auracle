@@ -19,11 +19,12 @@
   **PLAY** and **PICK** under each name; PATCH's head stacks over the well;
   nothing scrolls sideways. On a phone on its side the levels stay at the
   right edge, with the keys' button under them.
-- **A touch screen prints no keys.** The keys beside buttons and the letters
-  on the keybed are left off, and PERFORM's first step says to tap the
-  keybed, or on a phone to tap **KEYS** first.
+- **A phone prints no keys.** The keys beside buttons and the letters on the
+  keybed are left off (a tablet keeps them, since it may have a keyboard).
+  On a touch screen PERFORM's first step says to tap the keybed, or on a
+  phone to tap **KEYS** first.
 
-### Changed: PERFORM says once what an amber control does
+### Changed: PERFORM says once what its amber controls and its waiting pads need
 
 - **The amber controls no longer each say *turn to ask for it*.** A search
   control (amber, a dashed ring: this patch’s knobs can’t make that change)
@@ -32,6 +33,9 @@
   says *turn an amber one to ask for it* once, while one is on the panel.
   Turned, it still says what letting go will ask for (*let go to ask for
   rough*) (`perform_truth.spec.js`).
+- **PEEK, TAKE and PASS no longer each say *needs an offer*.** They wait,
+  dashed, and **OFFER** says once under its name what comes after it:
+  *then peek, take or pass*.
 
 ### Fixed: a tapped module's sheet presses nothing under the finger
 

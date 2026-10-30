@@ -685,8 +685,8 @@ focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 | **TAKE** | <kbd>⇧↵</kbd> | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
 | **PASS** | | Passes on B without growing another: B empties and BLEND glides home. A pass as NEXT’s is, with the same UNDO |
 
-PEEK, TAKE and PASS wait, dashed, with *needs an offer* under them, until B
-holds one.
+PEEK, TAKE and PASS wait, dashed, until B holds one, and OFFER says so once,
+*then peek, take or pass* under its name.
 
 **Moved · KEEP · BACK.** When the sound has left home (a control turned, a
 drift not kept, a glide under way), *moved · KEEP · BACK* shows at the end of

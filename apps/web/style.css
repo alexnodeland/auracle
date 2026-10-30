@@ -5967,8 +5967,9 @@ input[type="range"]::-moz-range-thumb {
   .pf-pad.primary:hover:not(:disabled) { background: linear-gradient(180deg, var(--evolve-hi), var(--evolve-hi)); }
 }
 .pf-pad.pf-pass { background: none; border-color: transparent; box-shadow: none; color: var(--silk-dim); }
-/* A pad with nothing to act on is *waiting*, and says for what — at 0.38 it
-   read as broken. Dashed, flat and legible, with the reason underneath. */
+/* A pad with nothing to act on is *waiting* — at 0.38 it read as broken.
+   Dashed, flat and legible; what PEEK, TAKE and PASS wait for is said once,
+   under OFFER (perform.js `paintPads`). */
 .pf-pad:disabled {
   cursor: default;
   transform: none;
@@ -5977,11 +5978,10 @@ input[type="range"]::-moz-range-thumb {
   background: transparent;
   color: var(--silk-dim);
 }
-/* …and a pad whose press does more than its name says (Offer, while B holds
-   an offer, passes on it: NEXT · passes on B) says so the same way. */
+/* A pad whose press does more than its name says (Offer, while B holds an
+   offer, passes on it: NEXT · passes on B), or that speaks for the pads
+   waiting on it (OFFER · then peek, take or pass), says so underneath. */
 .pf-pad[data-sub]:not([data-sub=""])::after { content: attr(data-sub); }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after,
 .pf-pad[data-sub]:not([data-sub=""])::after {
   order: 2;
   flex-basis: 100%;
@@ -8134,9 +8134,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .rail .rl { letter-spacing: 0; }
 }
 
-/* A touch screen has no keys to print: the hints go, and the keybed keeps
-   only its C's octave. */
-@media (hover: none) and (pointer: coarse) {
+/* A phone has no keys to print: the hints go, and the keybed keeps only its
+   C's octave. A touch tablet keeps them, since it may have a keyboard. */
+@media (hover: none) and (pointer: coarse) and (max-width: 700px), (hover: none) and (pointer: coarse) and (max-height: 500px) {
   kbd { display: none !important; }
   /* …but for a key named in a sentence (the walkthroughs': "esc to put it
      down"), which would read with a hole in it. */

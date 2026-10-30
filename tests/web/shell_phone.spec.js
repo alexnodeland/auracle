@@ -26,13 +26,18 @@
 //   whatever was under the finger: REMOVE MODULE, a MODE).
 // - A tablet held upright (900 × 1180) gets the whole instrument with its
 //   keys bar and the cross at the stage's edge, and the bank a sheet from the
-//   left behind BANK.
+//   left behind BANK. It keeps the keybed's letters, which a phone leaves off.
 // - A phone on its side (844 × 390): KEYS sits under the cross and opens the
 //   keys' drawer, and EVOLVE's PICK is in reach by scrolling the level.
 const { test, expect, goLevel, landed, runCommand } = require("./fixtures");
 
 const PHONE = { hasTouch: true, isMobile: true };
 const LEVELS = ["learning", "taste", "perform", "patch", "evolve"];
+
+/** The colour a keybed key's letter is drawn in (`a` plays C4 at rest):
+ *  transparent where none is printed. Each C keeps its octave either way. */
+const letterInk = (page) => page.locator("#piano .pkey.mapped .hint").first().evaluate((h) => getComputedStyle(h).color);
+const CLEAR = "rgba(0, 0, 0, 0)";
 
 /** Press a button the way the keyboard does (a click with no pointer) in the
  *  page's own task, and time it to the next frame: what it opens is drawn by
@@ -155,6 +160,8 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     await expect(whites).toHaveCount(8);
     const widths = await whites.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
     expect(Math.min(...widths), "each white key is a finger wide").toBeGreaterThanOrEqual(40);
+    // A phone prints no computer keys on the keybed.
+    expect(await letterInk(page), "a key's letter on a phone").toBe(CLEAR);
     await toggle.click();
     await expect(keys).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -218,6 +225,8 @@ test.describe("a tablet held upright, 900 × 1180", () => {
   test("a tablet gets the whole instrument: the keys bar, the cross at the stage's edge, and the bank a sheet from the left", async ({ page, app }) => {
     await app.boot();
     await expect(page.locator("#keybar")).toBeVisible();
+    // A tablet keeps the keybed's letters: it may have a keyboard.
+    expect(await letterInk(page), "a key's letter on a tablet").not.toBe(CLEAR);
     await expect(page.locator("#keys-toggle")).toBeHidden();
     await expect(page.locator(".rail-stop .rl").first()).toBeHidden();
     const bank = page.locator("#bank");

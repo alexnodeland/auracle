@@ -146,9 +146,9 @@ not zoom the page there, by a pinch or by a double tap. A pinch still
 zooms the page over the bank, the menu bar and the keys, and your system’s
 own zoom works everywhere.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
-desktop is unchanged. A touch screen prints no keys: the key beside a button
-and the letters on the keybed are left off, and the keybed keeps each C's
-octave.
+desktop is unchanged. A phone prints no keys: the key beside a button and the
+letters on the keybed are left off, and the keybed keeps each C's octave. A
+tablet keeps them, since it may have a keyboard.
 
 ### On a phone, a tablet and a narrow window
 
