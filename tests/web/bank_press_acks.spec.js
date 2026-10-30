@@ -38,19 +38,51 @@ test("Save shows the row saved at the press, and a refusal puts it back and says
   await expect(page.locator("#toasts .toast-msg").last()).toContainText(/^Saved /);
   await expect(row(page, id)).toHaveClass(/\bsaved\b/);
 
-  // By the keyboard (m saves the sound in hand when no row has the cursor),
-  // refused at the cap: shown at the press, back as it was with the reason.
+  // By the keyboard: the cursor stepped onto the next row (the list
+  // focused, ↓), and m saves it, refused at the cap: saved at the press,
+  // back as it was with the reason.
   await page.mouse.move(5, 5);
-  const live = page.locator("#bank-list .bank-item.live[data-id]");
-  await expect(live).toHaveCount(1);
-  const id2 = Number(await live.getAttribute("data-id"));
-  const was = /\bsaved\b/.test(await live.getAttribute("class"));
-  await app.answer({ type: "set_pinned", id: id2 }, { type: "pinned", id: id2, pinned: !was, ok: false, budget: [8, 8] });
+  await page.locator("#bank-list").focus();
+  await page.keyboard.press("ArrowDown");
+  const cursor = page.locator("#bank-list .bank-item.kbd[data-id]");
+  await expect(cursor).toHaveCount(1);
+  await expect(cursor).not.toHaveClass(/\bsaved\b/);
+  const id2 = Number(await cursor.getAttribute("data-id"));
+  expect(id2).not.toBe(id);
+  await app.answer({ type: "set_pinned", id: id2 }, { type: "pinned", id: id2, pinned: true, ok: false, budget: [8, 8] });
   const keyed = await page.evaluate((id) => {
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "m", code: "KeyM", bubbles: true }));
-    return document.querySelector(`#bank-list .bank-item[data-id="${id}"]`).classList.contains("saved");
+    document.getElementById("bank-list").dispatchEvent(new KeyboardEvent("keydown", { key: "m", code: "KeyM", bubbles: true }));
+    const ask = window.__tap.sent.filter((q) => q.type === "set_pinned").pop();
+    return { asked: ask && ask.m, saved: document.querySelector(`#bank-list .bank-item[data-id="${id}"]`).classList.contains("saved") };
   }, id2);
-  expect(keyed, "m: the row shows what was asked for in the key's own task").toBe(!was);
-  await expect(page.locator("#toasts .toast-msg").last()).toContainText("That would pass your limit of 8 saved sounds. Release one first.");
-  await expect.poll(() => row(page, id2).evaluate((e) => e.classList.contains("saved")), { message: "the refusal put the row back" }).toBe(was);
+  expect(keyed.asked, "m asked to save the cursor's row").toMatchObject({ id: id2, pinned: true });
+  expect(keyed.saved, "m: the row saved in the key's own task").toBe(true);
+  await expect(page.locator("#toasts .toast-msg", { hasText: "That would pass your limit of 8 saved sounds. Release one first." })).toBeVisible();
+  await expect(row(page, id2), "the refusal put the row back").not.toHaveClass(/\bsaved\b/);
+});
+
+test("a sound saved and cut before the engine answers leaves no save behind", async ({ page, app }) => {
+  await app.boot();
+  const first = page.locator("#bank-list .bank-item[data-id]:not(.saved):not(.live)").first();
+  await app.engine((timeout) => expect(first).toBeVisible({ timeout }));
+  const id = Number(await first.getAttribute("data-id"));
+  const used = () => app.last("pinned").then((m) => (m && m.budget ? m.budget[0] : 0));
+  const before = await used();
+  await app.hold(["pinned"]);
+  await first.hover();
+  // Saved, then cut, before the Save's answer: the cut releases the save the
+  // row shows, not the one the engine has.
+  await page.evaluate((id) => {
+    const sel = `#bank-list .bank-item[data-id="${id}"]`;
+    document.querySelector(`${sel} .bi-save`).click();
+    document.querySelector(`${sel} .bi-kill`).click();
+  }, id);
+  const asks = (await app.sent("set_pinned")).filter((q) => q.id === id).map((q) => q.pinned);
+  expect(asks, "the cut asked for the save to go").toEqual([true, false]);
+  await app.release();
+  // Both answered: the engine holds no save for it, and its count is as it was.
+  await app.engine(() => expect.poll(async () => (await app.replies("pinned")).filter((r) => r.id === id).length, { timeout: 30_000 }).toBe(2));
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
+  expect(await app.last("pinned"), "the last word: released").toMatchObject({ id, pinned: false, ok: true });
+  expect(await used()).toBe(before);
 });

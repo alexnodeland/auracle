@@ -4280,6 +4280,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
 //   (`releaseRequest`, by its `req`), or what it held stayed for good: a
 //   measurement's "listening…" or "re-checking", an offer growing (#138).
 function notReady(m) {
+  if (m.request === "set_pinned") pinsLetGo();
   if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
   if (m.request === "faces") facesUnanswered();
   if (typeof m.request === "string" && m.request.startsWith("perform_") && m.req != null) {
@@ -4289,6 +4290,7 @@ function notReady(m) {
 
 // Everything at once: the engine is not coming back.
 function releaseEverything(message) {
+  pinsLetGo();
   // PERFORM's questions still out will get no reply from a dead engine.
   try { if (perform) perform.failAll(message); } catch (_) {}
   for (const r of [
@@ -8738,7 +8740,7 @@ function renderBankCounts() {
 // there too: its count turns amber at the cap. The head's "3/10 saved" line
 // and the note under the tabs were the same facts, at the cost of two rows.
 function renderPinBudget() {
-  const [used, cap] = pinBudget;
+  const [used, cap] = pinsShown();
   const n = $("pin-budget");
   // Amber at the cap (Plan-008): full is the one state of the budget worth
   // seeing without hovering (`.cap`).
@@ -9235,7 +9237,9 @@ function cutRow(r) {
   // engine went on holding its save slot, so the budget was permanently short
   // and the only control that could release it was unreachable. The cut is
   // what the user just said, so the save yields to it.
-  if (r.pinned) send({ type: "set_pinned", id: r.id, pinned: false });
+  // As the row shows it: a Save still on its way is released too, or its
+  // slot would stay taken by a sound the player threw out.
+  if (pinShown(r)) askPin(r.id, false);
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
@@ -9467,6 +9471,24 @@ let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
 function pinShown(r) {
   const a = pinsAsked.get(r.id);
   return a ? a.want : !!r.pinned;
+}
+/** The budget as the bank shows it, [used, cap]: the engine's count, with
+ *  each Save still on its way counted as asked, so SAVED's count, its title
+ *  and its amber agree with the rows. */
+function pinsShown() {
+  let [used, cap] = pinBudget;
+  for (const [id, a] of pinsAsked) {
+    const r = rowOf(id);
+    if (r && a.want !== !!r.pinned) used += a.want ? 1 : -1;
+  }
+  return [Math.max(0, used), cap];
+}
+/** Every Save on its way let go (the engine was not ready, or is gone): the
+ *  rows go back as it has them. */
+function pinsLetGo() {
+  if (!pinsAsked.size) return;
+  pinsAsked.clear();
+  renderBank();
 }
 /** Save (or release) a sound: the row says so now, the engine decides. */
 function askPin(id, want) {
@@ -9797,7 +9819,7 @@ const BANK_NOTES = {
 };
 
 function renderBankNote() {
-  const [used, cap] = pinBudget;
+  const [used, cap] = pinsShown();
   for (const b of document.querySelectorAll(".bank-tabs .btab")) {
     const k = b.dataset.bank;
     // SAVED carries the budget from the moment the cap is known, including
