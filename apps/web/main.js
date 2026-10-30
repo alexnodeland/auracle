@@ -173,7 +173,7 @@ const [
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
   { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
-  { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand }, { landRefit },
+  { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
 ] = await Promise.all([
   import(`./taste-geom.js?v=${BUILD}`), import(`./words.js?v=${BUILD}`),
   import(`./patch.js?v=${BUILD}`), import(`./taste.js?v=${BUILD}`),
@@ -232,14 +232,69 @@ function modalUp() {
   );
 }
 const hand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
+// The bank's own: what moves its rows (a child landing, a generation's end,
+// the pool filling, a refit's order) waits on the bank alone (`bankLater`).
+const bankHand = createHand({ now: () => performance.now(), setTimer: setTimeout, clearTimer: clearTimeout });
 // The regions a refit re-settles: the bank's rows, TASTE's map and EVOLVE's
 // small one, LEARNING's bars.
-for (const id of ["bank-list", "taste-well", "ev-map", "md-bars"]) {
+for (const id of ["taste-well", "ev-map", "md-bars"]) {
   const el = $(id);
   if (!el) continue;
   el.addEventListener("pointerenter", () => hand.enter());
   el.addEventListener("pointermove", () => hand.move());
   el.addEventListener("pointerleave", () => hand.leave());
+}
+// The bank holds both hands: the mouse over it, a finger on it until a rest
+// after it lifts, and the keyboard's focus in it (a row's cursor moved with
+// the arrows, not a click's focus, which is no hand on it), its steps
+// starting the rest again (`bankHold.moved`, in the list's keydown).
+const bankHold = (() => {
+  const list = $("bank-list");
+  const keyed = () => !!list.querySelector(":focus-visible") || list.matches(":focus-visible");
+  const region = holdRegion(list, handsOf(hand, bankHand), { extra: keyed });
+  // After the task: a redraw takes the focus off a row for a moment and
+  // gives it back (`bankKeep`), which is no change of hold.
+  const later = () => queueMicrotask(() => region.refresh());
+  list.addEventListener("focusin", later);
+  list.addEventListener("focusout", later);
+  return region;
+})();
+// Where the pointer is over the bank, so a redraw keeps the row under it
+// where it was (`bankKeep`), and whether it is pressed there: a redraw
+// between a press and its release replaces the row pressed, and the click
+// never comes, so it waits for the release (`renderBank`).
+let bankPointer = null;
+let bankPressed = false;
+// A held draw (`bankLater`) whose rest ran out during a press: drawn as it
+// would have been, gliding and budding, once the press ends.
+let bankAfterPress = null;
+{
+  const list = $("bank-list");
+  const up = () => {
+    if (!bankPressed) return;
+    bankPressed = false;
+    // After the click the release makes, which may draw the bank itself.
+    setTimeout(() => {
+      if (bankPressed) return;
+      const land = bankAfterPress;
+      bankAfterPress = null;
+      if (land) land();
+      else if (bankRenderPending) renderBank();
+    });
+  };
+  list.addEventListener("pointermove", (e) => {
+    bankPointer = { x: e.clientX, y: e.clientY };
+    // No button down: a release this never heard (a context menu takes the
+    // mouseup on macOS) ends the press.
+    if (e.buttons === 0) up();
+  });
+  list.addEventListener("pointerenter", (e) => { bankPointer = { x: e.clientX, y: e.clientY }; });
+  list.addEventListener("pointerleave", () => { bankPointer = null; });
+  list.addEventListener("pointerdown", () => { bankPressed = true; }, true);
+  list.addEventListener("contextmenu", up);
+  window.addEventListener("pointerup", up, true);
+  window.addEventListener("pointercancel", up, true);
+  window.addEventListener("blur", up);
 }
 // The guide pill: the first-visit steps, one at a time, bottom left of the
 // stage. PERFORM adds its three when it is built.
@@ -1362,14 +1417,18 @@ function markPlace(p, level, host, frame) {
   p.key = key;
   return true;
 }
+/** Is anything sounding under the player's hands? A key down, latched by
+ *  HOLD or the arp, or sustained; a ▶ phrase; a monitored input. */
+function playedNow() {
+  return heldNotes.size > 0 || sustainedNotes.size > 0 || !!playingSrc || audioIn.monitor;
+}
 function bootLiveFaces() {
   if (liveFaces) return;
   liveFaces = createLiveFaces({
     signals: [() => (live ? live.shareA : null), () => (live ? live.shareB : null), phraseAnalyser],
     // The shares and the phrase bus are tapped before the master fader.
     gainDb: () => 20 * Math.log10(Math.max(1e-6, master.gain.value)),
-    // Played now: a key down or sustained, a phrase, a monitored input.
-    held: () => heldNotes.size > 0 || sustainedNotes.size > 0 || !!playingSrc || audioIn.monitor,
+    held: playedNow,
     still: prefersStill,
     // Stage mode covers every level (it draws its own).
     off: () => !!(perform && perform.stage && perform.stage()),
@@ -3001,7 +3060,7 @@ worker.onmessage = (e) => {
         // The views, and the bank, the maps and LEARNING drawn from them.
         views: (v) => {
           applyViews(v);
-          refreshInstruments();
+          refreshInstruments({ later: true });
         },
         posteriorChanged: (r) => {
           // The bench's guess under the model just fitted ("was" is the old one).
@@ -3059,10 +3118,9 @@ worker.onmessage = (e) => {
         ratings: m.ratings || null,
         ...(m.lineage ? { lineage: m.lineage } : {}),
       });
-      // The bud leaves before the bank is drawn, so the row it flies to is
-      // drawn waiting for it.
-      const bud = m.child > 0 ? budStart(m.child) : false;
-      renderBank();
+      // A child buds from its seed (its `LineageEvent`'s parent) when its
+      // row is drawn, which waits for the hand (`bankLater`).
+      bankLater(m.child > 0 ? { seed, child: m.child } : null);
       renderPlayDuel();
       drawLineage();
       renderEvolveBtn();
@@ -3070,11 +3128,10 @@ worker.onmessage = (e) => {
       renderGenCount(); // the generation counts from its first child
       renderNextStep();
       if (mayGoShown) markMayGo(true);
-      // A child buds from its seed (its `LineageEvent`'s parent), and a child
-      // the pool would not take fades beside its seed (`not_admitted`: it
-      // rated below the weakest member it would displace, `admit_refined`).
-      if (bud) budFrom(lineageOf(m.child)?.parent_id ?? seed, m.child);
-      else if (m.reason === "not_admitted") fadeBeside(seed, walkSaid(0, m.reason));
+      // A child the pool would not take fades beside its seed
+      // (`not_admitted`: it rated below the weakest member it would
+      // displace, `admit_refined`).
+      if (m.reason === "not_admitted") fadeBeside(seed, walkSaid(0, m.reason));
       scheduleSave();
       break;
     }
@@ -3088,7 +3145,7 @@ worker.onmessage = (e) => {
       // That generation's end: what it replaced, by name.
       if (trimmed.length) replacedLast = { gen: m.status.generation, names: trimmed.map((id) => knownNames.get(id) || "a sound") };
       applyStatus(m.status);
-      refreshInstruments();
+      refreshInstruments({ later: true });
       scheduleSave();
       if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`, { bank: true });
       break;
@@ -3134,7 +3191,7 @@ worker.onmessage = (e) => {
       if (mayGoShown) markMayGo(true);
       applyStatus(m.status);
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
-      refreshInstruments();
+      refreshInstruments({ later: true });
       redrawDuelScopes();
       scheduleSave();
       // Say what actually happened. "Pool evolved" after a minute of work
@@ -3493,7 +3550,9 @@ worker.onmessage = (e) => {
         alarm(null);
       }
       if (!knobDragging) renderRack();
-      renderBank();
+      // The bank's mark of the bench, in place: a knob's reply moves no row,
+      // and rebuilds no list under a press (#312).
+      markBenchRows();
       // Both readouts are derived from this reply and nothing else, so they
       // cannot drift from the tree the rack below them is drawing.
       applyBelief(m);
@@ -3772,6 +3831,7 @@ worker.onmessage = (e) => {
     }
     case "evolved_from": {
       lampOff("refine_from");
+      const pressed = evolvingFrom;
       evolvingFrom = null;
       renderEvolveFrom();
       renderEvolveBtn(); // EVOLVE POOL's turn
@@ -3796,13 +3856,13 @@ worker.onmessage = (e) => {
         // nothing (the pool was filling) leaves the last generation's.
         if (evolveEvicted.length) replacedLast = { gen: m.status.generation, names: evolveEvicted.map((id) => knownNames.get(id) || "a sound") };
       }
-      const zapBud = m.childId > 0 ? budStart(m.childId) : false;
       applyStatus(m.status);
-      refreshInstruments();
       // The child buds from the sound ⚡ walked from (`refine_from_job`'s
-      // seed, its `LineageEvent`'s parent), or, refused, fades beside it.
-      if (zapBud) budFrom(m.seedId, m.childId);
-      else if (m.reason === "not_admitted") fadeBeside(m.seedId, walkSaid(0, m.reason));
+      // seed, its `LineageEvent`'s parent) when its row is drawn, which waits
+      // for the hand (`bankLater`), or, refused, fades beside it.
+      if (m.childId > 0) bankLater({ seed: m.seedId, child: m.childId });
+      refreshInstruments({ later: true });
+      if (m.reason === "not_admitted") fadeBeside(m.seedId, walkSaid(0, m.reason));
       if (m.reason === "stopped") {
         note("⚡ stopped. Nothing was added to the pool.", { replace: "evolve-from" });
       } else if (m.childId > 0) {
@@ -3813,12 +3873,25 @@ worker.onmessage = (e) => {
         // regardless — gone without a word, and every write still in the
         // lane then landed on the child at addresses read off the patch it
         // replaced. The bench is the player's: the child waits in the bank,
-        // one click away.
-        const editedSince = wb.dirty || editPending || !laneFree();
+        // one click away. So it does when another sound was opened since the
+        // press (the bench no longer holds the seed, or an open is on its
+        // way), and while anything sounds (notes held or latched, the arp, a
+        // phrase): opening it would swap the sound under the hands (#312).
+        const kept = keptInHand({
+          edited: wb.dirty || editPending || !laneFree(),
+          opened: wb.subjectId !== m.seedId || benchPending != null || !!earlyOpen ||
+            (pressed != null && pressed.opens !== benchSeq) || presetClicks.size > 0,
+          sounding: playedNow(),
+        });
         const from = seedName ? ` from ${seedName}` : "";
-        if (editedSince) {
+        if (kept) {
+          const why = {
+            edited: "your edits are still open",
+            opened: `${openedName() || "the sound you opened"} is still the sound in hand`,
+            sounding: "what you’re playing goes on",
+          }[kept];
           note(
-            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
+            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and ${why}.${madeRoom(evolveEvicted)}`,
             { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from", bank: true },
           );
         } else {
@@ -3841,7 +3914,7 @@ worker.onmessage = (e) => {
     }
     case "taste_views": {
       applyViews(m.views);
-      refreshInstruments();
+      refreshInstruments({ later: true });
       // First arrival: put a patch under the player's fingers immediately —
       // unless a preset they (or booth attract) asked for is already on its
       // way: benching a pool patch first would start PERFORM measuring the
@@ -3946,6 +4019,8 @@ worker.onmessage = (e) => {
         // Only the warm-start preview path used to record this, so a plain
         // click re-loaded the same preset forever and never marked it.
         if (m.index !== undefined) presetIds.set(m.index, m.id);
+        // Its row says IN POOL from here (the draw above came before the id).
+        if (bankFilter === "presets") renderBank();
         const early = earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index ? earlyOpen : null;
         if (clickedAt !== undefined && clickedAt !== benchSeq) {
           // The player opened something else while this was loading: it is in
@@ -4101,7 +4176,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
       benchPending = null;
       playWaitCancel(); // a ▶ pressed since was for the patch that failed
       renderSubject();
-      renderBank();
+      markBenchRows();
       pumpLane();
       break;
     case "load_preset":
@@ -4905,14 +4980,12 @@ function applyViews(next) {
     }
   }
   // A pair that just lost a side to the pool is a question about a patch that
-  // no longer exists: TEACH could only print "…" for its name, and a vote on
-  // it is refused ("that patch is gone"). The next pair goes up the way a
-  // pick puts it up (`dealAnother`): the pair dealt ahead at once when one
-  // may still be dealt, or else a deal, with the old pair left standing and
-  // its controls inert until the new one lands, so the strip does not blink
-  // out and take the rack's height with it.
+  // no longer exists, and a vote on it is refused ("that patch is gone"). It
+  // is not swapped here: the pair stays where the hand may be reaching for it
+  // (#312, ADR-025), the side that left says so and goes quiet, and the next
+  // pick or ANOTHER PAIR puts up the next pair (`choose`, `anotherPair`).
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
-    dealAnother();
+    markTableGone();
   }
   dealer.check();
   // A table with nothing to deal asks again: the pool may hold two now.
@@ -5063,11 +5136,15 @@ function setLiveLabel(text) {
   // so PERFORM read the label while it still named the previous patch: a
   // sweep of twelve presets was off by one every time.
   if (perform) perform.relabel();
-  renderBank();
+  markBenchRows();
 }
 
-function refreshInstruments() {
-  renderBank();
+/** Everything drawn from the views. `later`: they are a background result's
+ *  (a generation, a refit, the pool filling, ⚡), and the bank's rows wait
+ *  for the hand (`bankLater`). */
+function refreshInstruments({ later = false } = {}) {
+  if (later) bankLater();
+  else renderBank();
   drawTaste();
   drawLineage();
   renderPlayDuel(); // names backfill once ranked rows exist
@@ -6937,9 +7014,8 @@ function renderPlayDuel() {
   strip.classList.toggle("hidden", !teachOpen);
   // Said to be on its way, quietly, while the bank row hasn't landed. A bare
   // #20 collides with the bank's own numbering and names nothing, and "▶ A · …"
-  // read as a patch called "…". It is only ever a wait: a pair that loses a
-  // side to the pool is re-dealt (`applyViews`), so no name here is gone for
-  // good.
+  // read as a patch called "…". A side that left the pool while its pair
+  // stood (`markTableGone`) is named as it was, and said to be replaced.
   const side = (el, letter, id) => {
     const face = document.createElement("span");
     el.replaceChildren(`▶ ${letter} · `, face);
@@ -6950,7 +7026,8 @@ function renderPlayDuel() {
     }
     const wait = document.createElement("span");
     wait.className = "pd-wait";
-    wait.textContent = "loading…";
+    const gone = goneIds.has(id);
+    wait.textContent = gone ? `${knownNames.get(id) || "a sound"}, replaced` : "loading…";
     el.append(wait);
   };
   side($("pd-a"), "A", currentDuel[0]);
@@ -7001,6 +7078,8 @@ function requestPairRenders() {
 }
 
 function loadSide(side, id) {
+  $(`duel-${side}`).classList.remove("gone"); // a new side is in the pool
+  $(`pd-${side}`).disabled = false;
   $(`readout-${side}`).textContent = "…";
   $(`style-${side}`).innerHTML = "";
   clearScope($(`scope-${side}`));
@@ -7471,6 +7550,7 @@ let benchBeforeAudition = null;
 function selectDuelSide(side) {
   if (!currentDuel) return;
   const id = side === "a" ? currentDuel[0] : currentDuel[1];
+  if (goneIds.has(id)) return; // replaced: nothing left to open (`markTableGone`)
   if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
   voicePoolEarly(id); // heard before the cards are redrawn
   setDuelSelection(side);
@@ -7799,6 +7879,30 @@ function retractVote() {
   return true;
 }
 
+/** The sides of the pair on the table that have left the pool. */
+function tableGone() {
+  return currentDuel ? currentDuel.filter((id) => goneIds.has(id)) : [];
+}
+/** A side of the pair on the table left the pool (a generation ended, or a
+ *  preset load or an import made room): its card says so, and its ▶, ⇄ and
+ *  ↓ PATCH go quiet (there is no sound left to play, show or open). Its
+ *  pick stays live: it puts up the next pair (`choose`). */
+function markTableGone() {
+  if (!currentDuel) return;
+  ["a", "b"].forEach((side, i) => {
+    if (!goneIds.has(currentDuel[i])) return;
+    $(`duel-${side}`).classList.add("gone");
+    // …and the TEACH strip's ▶ for it, which would open it.
+    for (const c of ["play", "flip", "promote", "pd"]) $(`${c}-${side}`).disabled = true;
+    const fam = $(`fam-${side}`);
+    if (fam) {
+      fam.textContent = "Replaced in the pool.";
+      fam.title = "";
+    }
+  });
+  renderPlayDuel();
+}
+
 function choose(side) {
   if (dealing) {
     // Deliberately dropped, not queued. A queued click would vote on a pair
@@ -7809,6 +7913,18 @@ function choose(side) {
     return;
   }
   if (!currentDuel) return;
+  // A pair that lost a side to the pool asks nothing the engine can take
+  // (it refuses a vote on a sound it no longer holds): the pick teaches
+  // nothing, says so, and puts up the next pair, as ANOTHER PAIR would.
+  const gone = tableGone();
+  if (gone.length) {
+    // A pick still in its window goes into the log as any pick commits it,
+    // and this refusal jumps the queue (a generation's toast is ahead of it).
+    commitPendingVote();
+    note(`${nameOrKnown(gone[0]) || "That sound"} was replaced, so that pick taught nothing. Here is the next pair.`, { urgent: true, replace: "table-gone" });
+    dealAnother();
+    return;
+  }
   // A second vote inside the first one's window commits it — one pending
   // vote at a time keeps the log ordered. If that was the sixth, its refit
   // goes out once this pick's pair is dealt (the `duel` reply's `settleFit`).
@@ -8532,6 +8648,127 @@ function renderPinBudget() {
   renderBankNote();
 }
 
+// ---------- the bank holds still under the hand ----------
+// ADR-025: a background result never moves what is under the hand. What
+// moves the bank's rows on its own (a child landing, a generation's end, the
+// pool filling, a refit's order, ⚡'s child) is drawn through `bankLater`: at
+// once with no hand on the bank, else when the pointer leaves it or after a
+// rest of `HAND_REST_MS` over it (`bankHand`, `bankHold`), the rows that
+// moved gliding from where they were (`flipBank`). Any redraw, the player's
+// own included, keeps the row under the pointer (or the keyboard's cursor
+// row) where it was on screen and the focus where it was (`bankKeep`); none
+// runs between a press on the list and its release (`bankPressed`); and a
+// bench reply redraws no row, it marks the bench's own in place
+// (`markBenchRows`).
+const bankBuds = []; // children landed while the bank waited: { seed, child }
+/** Draw the bank for a background result, when the hand lets it. `bud` is a
+ *  child that landed (`seed` its walk's seed): its bud flies when its row is
+ *  drawn. */
+function bankLater(bud = null) {
+  if (bud) bankBuds.push(bud);
+  // What moves no row is said at once: the tabs' counts, POOL's "+N".
+  renderFillHint();
+  renderBankCounts();
+  renderPinBudget();
+  let waited = false;
+  const land = () => {
+    // A press on the list: it lands when the press ends (`bankAfterPress`).
+    if (bankPressed) {
+      bankAfterPress = land;
+      return;
+    }
+    const buds = bankBuds.splice(0);
+    // The bud leaves before the bank is drawn, so the row it flies to is
+    // drawn waiting for it.
+    const flying = buds.filter((b) => budStart(b.child));
+    if (waited) flipBank(() => renderBank());
+    else renderBank();
+    for (const b of flying) budFrom(lineageOf(b.child)?.parent_id ?? b.seed, b.child);
+  };
+  if (!bankHand.after("bank", land)) waited = true;
+}
+/** What a redraw of the bank keeps: the row under the pointer, or the
+ *  keyboard's cursor row while the list has the focus, where it was on
+ *  screen (the list scrolls by what moved it, `keepUnder`), and the focus on
+ *  the row or the button that had it. Read before the rows are replaced;
+ *  what it returns puts them back after. */
+function bankKeep(list) {
+  const keyOf = (el) => {
+    if (!el) return null;
+    if (el.dataset.id != null) return `.bank-item[data-id="${el.dataset.id}"]`;
+    if (el.dataset.index != null) return `.bank-item[data-index="${el.dataset.index}"]`;
+    return null;
+  };
+  const active = document.activeElement;
+  const inside = !!active && active !== list && list.contains(active);
+  let anchor = null;
+  if (bankPointer) {
+    const at = document.elementFromPoint(bankPointer.x, bankPointer.y);
+    if (at && list.contains(at)) anchor = at.closest(".bank-item");
+  }
+  if (!anchor && (inside || active === list)) anchor = list.querySelector(".bank-item.kbd") || (inside ? active.closest(".bank-item") : null);
+  const anchorAt = keyOf(anchor);
+  const was = anchor ? anchor.getBoundingClientRect().top : 0;
+  const focusRow = inside ? active.closest(".bank-item") : null;
+  const focusAt = keyOf(focusRow);
+  // The button within the row, by its kind (and a star by its number).
+  const button = inside && active !== focusRow && active.classList[0]
+    ? `.${active.classList[0]}${active.dataset.s ? `[data-s="${active.dataset.s}"]` : ""}`
+    : null;
+  return () => {
+    const row = anchorAt && list.querySelector(anchorAt);
+    if (row) list.scrollTop = keepUnder(was, row.getBoundingClientRect().top, list.scrollTop, list.scrollHeight - list.clientHeight);
+    if (!focusAt || list.contains(document.activeElement)) return;
+    const back = list.querySelector(focusAt);
+    const to = back && button ? back.querySelector(button) || back : back;
+    if (!to) return;
+    // A row's actions show on approach or with the focus in it, and a hidden
+    // button takes no focus: shown for the moment the focus goes back
+    // (`.refocus`), they then stay for the focus (`:focus-within`).
+    back.classList.add("refocus");
+    to.focus({ preventScroll: true });
+    back.classList.remove("refocus");
+  };
+}
+/** A bench reply's mark on the bank, in place: which row is on the bench
+ *  (`.live`) and which is on its way (`.opening`), the keyboard's cursor (an
+ *  open by ] or a click moves it, `kbdRowId`), the names that follow the
+ *  sound in hand, and the row asked to come into view. Nothing is rebuilt:
+ *  a knob's reply moved no row and took no focus or click. */
+function markBenchRows() {
+  refreshNames();
+  const list = $("bank-list");
+  for (const el of list.querySelectorAll(".bank-item[data-id]")) {
+    const id = Number(el.dataset.id);
+    el.classList.toggle("live", id === wb.subjectId);
+    el.classList.toggle("opening", id === benchPending && id !== wb.subjectId);
+    el.classList.toggle("kbd", id === kbdRowId);
+  }
+  for (const el of list.querySelectorAll(".kept-row")) el.classList.toggle("kbd", el.id === `kept-row-${kbdKeptId}`);
+  syncBankCursor();
+  bankScrollAsked(list);
+}
+/** Scrolled to the row asked for, by id, and not to whichever row is live
+ *  now: opening from the TASTE map asks before the bench has moved, so the
+ *  render that saw the request used to scroll to the patch being left and
+ *  spend it. The request waits for its row (a few seconds at most, so a
+ *  stale one can never move the list later). */
+function bankScrollAsked(list) {
+  if (bankScrollTo == null) return;
+  const target = list.querySelector(`.bank-item[data-id="${bankScrollTo}"]`);
+  if (target) {
+    // An open's own scroll (`openOnBench`) jumps: a list gliding for a
+    // third of a second moves every row under the pointer, the hand that
+    // may be reaching for one. A step or a pick from the map still glides.
+    target.scrollIntoView({ block: "nearest", behavior: bankScrollJump ? "instant" : "smooth" });
+    bankScrollTo = null;
+    bankScrollJump = false;
+  } else if (performance.now() - bankScrollAt > 5000) {
+    bankScrollTo = null;
+    bankScrollJump = false;
+  }
+}
+
 function renderBank() {
   // Never rebuild the list out from under a rename.
   //
@@ -8545,12 +8782,23 @@ function renderBank() {
     bankRenderPending = true;
     return;
   }
+  // Nor between a press on it and its release: the row pressed would be
+  // replaced, and its click never come. It is drawn after the click.
+  if (bankPressed) {
+    bankRenderPending = true;
+    return;
+  }
   bankRenderPending = false;
+  // This draws everything a result waiting for the hand would have drawn.
+  bankHand.drop("bank");
+  bankBuds.length = 0;
+  bankAfterPress = null;
   refreshNames();
   const list = $("bank-list");
   renderFillHint(); // POOL's "+N": sounds still arriving
   renderBankCounts();
   renderPinBudget(); // and each tab's title
+  const keep = bankKeep(list);
 
   if (bankFilter === "presets") {
     // Presets are not pool members, so they carry no id and nothing may rate
@@ -8560,6 +8808,7 @@ function renderBank() {
     // `presetCursor` gives them their own navigation.
     bankRows = [];
     renderPresetBank(list);
+    keep();
     syncBankCursor();
     return;
   }
@@ -8618,28 +8867,11 @@ function renderBank() {
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
+  keep();
   facesChanged(); // the bank's set may have changed: its mean and spread with it
   syncBankCursor();
   if (compareId != null) renderCompare(); // its seed may have been replaced
-  // Scrolled to the row asked for, by id, and not to whichever row is live
-  // now: opening from the TASTE map asks before the bench has moved, so the
-  // render that saw the request used to scroll to the patch being left and
-  // spend it. The request waits for its row (a few seconds at most, so a
-  // stale one can never move the list later).
-  if (bankScrollTo != null) {
-    const target = list.querySelector(`.bank-item[data-id="${bankScrollTo}"]`);
-    if (target) {
-      // An open's own scroll (`openOnBench`) jumps: a list gliding for a
-      // third of a second moves every row under the pointer, the hand that
-      // may be reaching for one. A step or a pick from the map still glides.
-      target.scrollIntoView({ block: "nearest", behavior: bankScrollJump ? "instant" : "smooth" });
-      bankScrollTo = null;
-      bankScrollJump = false;
-    } else if (performance.now() - bankScrollAt > 5000) {
-      bankScrollTo = null;
-      bankScrollJump = false;
-    }
-  }
+  bankScrollAsked(list);
 }
 
 function bankGroup(text, title, { count = null, cls = "" } = {}) {
@@ -9052,11 +9284,18 @@ function renderPresetBank(list) {
       </div>
       ${inBank ? `<span class="pb-in" title="Already in your pool">in pool</span>` : ""}
       <div class="bi-acts">
-        <button class="bi-hear" type="button" aria-label="Hear ${esc(p.name)}"
+        <button class="bi-hear${hearingNow(`preset:${p.index}`) ? " playing" : ""}" type="button" data-hear="preset:${p.index}" aria-label="Hear ${esc(p.name)}"
           title="Hear it. A preset you hear joins the pool, because the engine can only render what it holds.">${ROW_ICON.hear}</button>
       </div>`;
     const hear = el.querySelector(".bi-hear");
     hear.onclick = () => previewPreset(p, hear);
+    // A ▶ still waiting on its sound says so on the row drawn again, and is
+    // the one its sound lands on (and a second press takes it back).
+    if (warmPreview && warmPreview.key === `preset:${p.index}`) {
+      warmPreview.btn = hear;
+      hear.classList.add("loading");
+      hear.setAttribute("aria-busy", "true");
+    }
     if (presetClicks.has(p.index)) {
       el.classList.add("loading");
       el.setAttribute("aria-busy", "true");
@@ -9349,7 +9588,18 @@ function voteDropped(v) {
 // refused child's bar is the sound it would replace (the lowest-rated one not kept,
 // `admit_refined`), never its seed.
 
+const BANK_STEP_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown"]);
 $("bank-list").addEventListener("keydown", (e) => {
+  // A step through the list is the hand in it: what waits to move the rows
+  // waits a rest longer (`bankHold`). Only the list's own steps: a note key
+  // held (and repeating) with the focus here plays, and holds nothing.
+  // A step makes the focus a keyboard's (`:focus-visible`), which a focus
+  // that came by a pointer was not: the hold is asked again first.
+  if (BANK_STEP_KEYS.has(e.key)) {
+    bankHold.refresh();
+    bankHold.moved();
+    queueMicrotask(() => bankHold.refresh());
+  }
   if (bankFilter === "presets") return presetKeydown(e);
   if (bankRows.length === 0 && !(bankFilter === "pool" && takes.keptIds().length)) return;
   if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null && kbdKeptId == null ? 0 : 1); }
@@ -9759,6 +10009,15 @@ function voicePresetEarly(p, id = null) {
   const v = presetVoiced(p.name);
   if (v) voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
 }
+/** The name of the sound the player opened last: a preset on its way (its
+ *  name, from the click), a pool sound on its way, or the bench's; null when
+ *  a preset clicked is still loading with nothing voiced for it. */
+function openedName() {
+  if (earlyOpen && earlyOpen.id == null) return earlyOpen.label || null;
+  if (presetClicks.size > 0) return null;
+  if (benchPending != null) return nameOrKnown(benchPending);
+  return nameOrKnown(wb.subjectId);
+}
 /** The pool sound in the player's hands: the one the voices took early, or
  *  else the bench's. */
 function inHandId() {
@@ -9889,7 +10148,9 @@ function openOnBench(id, { auto = false } = {}) {
   // opens, or one opened from elsewhere, can be anywhere in the list. A
   // caller that asked for its own scroll to this row (a step, the map) keeps
   // its glide; otherwise the list jumps.
-  if (bankScrollTo !== id) {
+  // Not for an open the app made while the bank waits for the hand (⚡'s
+  // child): its scroll would move the row under the pointer when it lands.
+  if (bankScrollTo !== id && !(auto && bankHand.held())) {
     bankScrollTo = id;
     bankScrollAt = performance.now();
     bankScrollJump = true;
@@ -9914,7 +10175,7 @@ function openOnBench(id, { auto = false } = {}) {
   // a bench open is a render, and a click that shows nothing gets clicked
   // again or given up on.
   if (id !== wb.subjectId) {
-    renderBank();
+    markBenchRows();
     renderSubject();
   }
 }
@@ -17133,7 +17394,9 @@ function startEvolveFrom(id) {
   }
   // Said in the job slot (and on the button), not a toast: a toast carries
   // the result of a gesture, and this one's result comes when the walk lands.
-  evolvingFrom = { id, name: nameOf(id), stoppable: false };
+  // `opens`: the opens made so far (`benchSeq`), so its child can tell
+  // whether another sound was opened since the press (`evolved_from`).
+  evolvingFrom = { id, name: nameOf(id), stoppable: false, opens: benchSeq };
   if (mayGoShown) markMayGo(true); // its seed, and what its child would replace
   lampOn("refine_from");
   renderEvolveFrom();
@@ -24151,7 +24414,7 @@ function warmPreviewPlay(req, id) {
   awaitRender(id, () => {
     if (warmPreview !== req) return;
     warmPreviewCancel();
-    play(id, req.btn);
+    play(id, req.btn, req.key);
   }, { abandoned: () => warmPreview !== req, preview: true });
 }
 
@@ -24160,7 +24423,9 @@ function previewPreset(row, btn) {
   // …and pressing a ▶ that is still waiting takes it back.
   if (warmPreview && warmPreview.btn === btn) return warmPreviewCancel();
   warmPreviewCancel();
-  const req = { index: row.index, btn };
+  // Its key, where its ▶ has one (a bank row's), marks it while it plays
+  // across a redraw of the bank (`paintHearing`).
+  const req = { index: row.index, btn, key: btn.dataset.hear || null };
   warmPreview = req;
   warmHeard.add(row.index);
   warmPrewarmPump();

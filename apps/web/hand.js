@@ -4,12 +4,16 @@
 // pointer leaves or after `HAND_REST_MS` of rest (no movement over it).
 //
 // `createHand` is the rule, with the clock and the timers handed in, so it is
-// unit-tested (tests/hand.test.mjs). main.js keeps one: it tells it where
+// unit-tested (tests/hand.test.mjs). main.js keeps two: one it tells where
 // the pointer is (`enter`, `move`, `leave` from each region's pointer events)
-// and hands it what would move one (`after`): a refit's views land through it
-// (#300). taste.js keeps two of its own, told by `holdRegion` below: TASTE's
-// map (the halos settle at once, the places wait) and LEARNING's bars (the
-// lengths move at once, the order waits).
+// and hands what would move one (`after`): a refit's views land through it
+// (#300); and the bank's own, which holds the bank's rows (#312), told with
+// main's by one `holdRegion` over the list (`handsOf`), a draw keeping the
+// row under the pointer where it was (`keepUnder`). taste.js keeps two of its
+// own, told by `holdRegion` below: TASTE's map (the halos settle at once, the
+// places wait) and LEARNING's bars (the lengths move at once, the order
+// waits). `keptInHand` is the same rule for the sound in hand: ⚡'s child
+// opens itself only with nothing in it.
 //
 // The other half is the rule for a control rather than a region
 // (`heldOrTouched`, `HAND_HOLD_MS`): a control held, however still, or
@@ -93,6 +97,40 @@ export function createHand({ now, setTimer, clearTimer }) {
       waiting.delete(key);
     },
   };
+}
+
+/** Several hands told as one (`holdRegion` tells one): the bank's region
+ *  holds a refit's views on main's hand and the bank's own rows on its
+ *  own, so a pointer over TASTE's map does not hold the bank. */
+export function handsOf(...hands) {
+  return {
+    enter: () => { for (const h of hands) h.enter(); },
+    move: () => { for (const h of hands) h.move(); },
+    leave: () => { for (const h of hands) h.leave(); },
+  };
+}
+
+/** Where a list must scroll for a row to stay where it was on screen when
+ *  the list was drawn again: the row's top before (`was`) and after (`now`)
+ *  the redraw, the list's `scrollTop` after it and its room
+ *  (`scrollHeight - clientHeight`). Within the room the row stays put; past
+ *  either end it moves the least it can. */
+export function keepUnder(was, now, scrollTop, room) {
+  return Math.max(0, Math.min(Math.max(0, room), scrollTop + (now - was)));
+}
+
+/** Why a result that would take the sound out of the player's hands (⚡'s
+ *  child opening itself on the bench) must not, or null when nothing stands
+ *  in its way: the sound on the bench edited (`edited`), another sound
+ *  opened since the press (`opened`: the bench no longer holds the seed, or
+ *  an open went out), or something sounding (`sounding`: notes held or
+ *  latched, the arp, a phrase). Edits are named first: they are what would
+ *  be lost. */
+export function keptInHand({ edited = false, opened = false, sounding = false } = {}) {
+  if (edited) return "edited";
+  if (opened) return "opened";
+  if (sounding) return "sounding";
+  return null;
 }
 
 /** One region a result waits on, told to `hand`: the mouse over `el`, a touch
