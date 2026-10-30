@@ -122,6 +122,43 @@ jobs:
           index: ${{ strategy.job-index }}
           args: ${{ env.HUNT_TESTS }} --repeat-each=3
 
+  # The touch specs in WebKit, on an iPhone's profile (AURACLE_BROWSER=webkit,
+  # tests/web/playwright.config.js): as near iOS Safari as Playwright comes.
+  # Playwright's image holds WebKit and its libraries, so nothing is
+  # installed. WebKit has no CDP, so touch_gestures' finger is made in the
+  # page there (its `cdpOf` says what that proves and what it does not).
+  # Seeded as on the gate, each test three times; a failure is this job red.
+  touch-webkit:
+    name: Touch in WebKit
+    needs: engine
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
+    timeout-minutes: 20
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - uses: ./.github/actions/browser-shard
+        env:
+          AURACLE_BROWSER: webkit
+        with:
+          tier: fast
+          name: webkit
+          shard: "1/1"
+          index: "0"
+          files: /touch_gestures.spec.js /shell_phone.spec.js
+          args: --grep-invert "@quarantine" --repeat-each=3
+
   # The speed budgets, judged (AURACLE_PERF=1): every spec file that records
   # one (`budget(` in it), each test once, its @slow ones too, seeded as on
   # the gate. On the reference profile (AURACLE_PROFILE=air, ADR-025,

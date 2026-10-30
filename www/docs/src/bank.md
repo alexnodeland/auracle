@@ -165,6 +165,10 @@ until you tap it again or press <kbd>Esc</kbd>. The row’s actions still come
 when you point at it. A screen reader hears the guess in every row’s name, at
 rest too.
 
+On a touch screen, a long press on a row shows the model view while your
+finger stays down, and opens nothing. A row's actions stay on it at rest,
+under its name, as before.
+
 ## Compare a sound beside its seed
 
 Click the line under a bred sound’s name, its EVOLVE mark among the row’s
