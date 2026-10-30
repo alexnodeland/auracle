@@ -576,3 +576,29 @@ test("takeBack: a later pick's receipt takes the earlier one's place, on screen"
   assert.deepEqual(l.waiting(), ["remark"]);
   assert.deepEqual(l.removed, ["Picked A over B."]);
 });
+
+test("takeBack: a remark it interrupts after more than 2 s comes back, not dropped as stale", (t) => {
+  const l = setup(t);
+  l.say("remark");
+  l.wait(2500);
+  l.say("Picked A over B.", { ...TAKE_BACK, replace: "vote" });
+  assert.equal(l.onScreen(), "Picked A over B.");
+  // The pick's whole window and its fade: the remark was said 10 s ago, but
+  // put back 7.5 s ago, with a fresh window.
+  l.wait(UNDO);
+  assert.equal(l.onScreen(), "remark");
+  l.wait(TOAST_MS - 1);
+  assert.equal(l.onScreen(), "remark");
+  assert.deepEqual(l.shown, ["remark", "Picked A over B.", "remark"]);
+});
+
+test("takeBack: behind a plain remark on screen it waits behind every refusal, undo and remark about the player's sounds queued, and ahead of the plain remarks", (t) => {
+  const l = setup(t);
+  l.say("plain 1");
+  l.say("Saved Glass Pad.", { bank: true });
+  l.say("an edit's undo", { undo: () => {} });
+  l.say("plain 2");
+  l.say("Picked A over B.", { ...TAKE_BACK, replace: "vote" });
+  assert.equal(l.onScreen(), "plain 1");
+  assert.deepEqual(l.waiting(), ["Saved Glass Pad.", "an edit's undo", "Picked A over B.", "plain 2"]);
+});

@@ -79,10 +79,12 @@
 // plain remark it waited 4.2 to 7 s, and reached the screen with its window
 // closed, a receipt for a pick that could no longer be taken back. A toast
 // given `takeBack: true` (its undo's window started when it was said) goes
-// ahead of every plain remark waiting, and interrupts one on screen, which
-// comes back behind it with a fresh window as it does behind a refusal. It
-// waits behind a refusal, an undo and a toast about the player's sounds
-// (rule 6), and if its window closes while it waits it is dropped, never
+// ahead of every plain remark waiting, and, with nothing but plain remarks
+// waiting, interrupts one on screen, which comes back behind it with a fresh
+// window (and a fresh age, so it is not dropped as stale for having been
+// interrupted) as it does behind a refusal. It waits behind every refusal,
+// undo and toast about the player's sounds (rule 6) in the queue, and never
+// interrupts one; if its window closes while it waits it is dropped, never
 // said late; one about the player's sounds is still said (rule 6), its
 // button retired by its caller. On screen it stays until its window closes,
 // and at least as long as a remark.
@@ -120,7 +122,12 @@ export function createToastLane({
   /** Put a toast in the lane; `opts` as `note()`'s (`undo`, `urgent`,
    *  `replace`, `bank`, `takeBack`). Returns its entry, for `dismiss`. */
   function add(el, opts = {}) {
-    const entry = { el, opts, born: now(), timer: null, out: false };
+    // `born`: when it was said, which a take-back's window runs from (rule
+    // 7); `queued`: when it last joined the queue, which its staleness is
+    // judged from, so a toast put back behind an interruption has its fresh
+    // window there too.
+    const t0 = now();
+    const entry = { el, opts, born: t0, queued: t0, timer: null, out: false };
     if (opts.urgent) {
       // Rule 5 holds for refusals too: the same refusal said again (⌘Z pressed
       // twice where there is nothing to undo) takes the earlier one's place
@@ -140,12 +147,14 @@ export function createToastLane({
   const plain = (t) => !t.opts.undo && !t.opts.urgent && !t.opts.bank;
 
   /** Rule 7: a receipt with a live take-back goes ahead of every plain
-   *  remark, interrupting one on screen. */
+   *  remark, and behind every refusal, undo and toast about the player's
+   *  sounds waiting; with none of those waiting it interrupts a plain remark
+   *  on screen. */
   function ahead(entry) {
-    if (live && plain(live)) return preempt(entry);
-    const at = queue.findIndex(plain);
-    if (at < 0) queue.push(entry);
-    else queue.splice(at, 0, entry);
+    let last = -1;
+    queue.forEach((t, i) => { if (!plain(t)) last = i; });
+    if (last < 0 && live && plain(live)) return preempt(entry);
+    queue.splice(last + 1, 0, entry);
   }
 
   /** Rule 7: how long a receipt with a live take-back has left of its
@@ -237,6 +246,7 @@ export function createToastLane({
     // A toast already fading out had its whole window: it is spent, not
     // interrupted, so it is not brought back.
     if (held.out) return;
+    held.queued = now();
     queue.splice(1, 0, held);
   }
 
@@ -268,7 +278,7 @@ export function createToastLane({
     // A plain remark gone stale, and a receipt whose take-back closed while
     // it waited (rule 7), are dropped, not said late.
     const late = (t) =>
-      (plain(t) && now() - t.born > TOAST_STALE_MS) ||
+      (plain(t) && now() - t.queued > TOAST_STALE_MS) ||
       (t.opts.takeBack && !t.opts.bank && !t.opts.urgent && windowLeft(t) <= 0);
     while (queue.length && late(queue[0])) view.remove(queue.shift().el);
     const t = queue.shift();
