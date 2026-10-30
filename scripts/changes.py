@@ -100,7 +100,7 @@ BEYOND = (
     ("site", "Site", "make site && make site-check"),
     ("worker", "Worker protocol", "make worker-test, after make wasm"),
     ("smoke", "Browser smoke", "make smoke"),
-    ("reach", "the specs it reaches", "make browser-changed"),
+    ("reach", "the specs it reaches, and Burn-in for the ones it adds or edits", "make browser-changed REPEAT=3"),
 )
 
 
