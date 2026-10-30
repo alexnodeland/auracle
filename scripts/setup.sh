@@ -100,7 +100,9 @@ cargo nextest --version >/dev/null 2>&1 || cargo install cargo-nextest --locked
 # included, and the run took about thirteen times as long.
 rustup component add llvm-tools
 llvm_cov="$(sed -n 's/^LLVM_COV_VERSION := //p' Makefile)"
-have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }')"
+# `|| true`: with none installed cargo exits 101, and under pipefail a bare
+# assignment takes the pipeline's status, which errexit would stop on (#377).
+have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }' || true)"
 if [ -z "$have" ] || [ "$(printf '%s\n%s\n' "$llvm_cov" "$have" | sort -V | head -1)" != "$llvm_cov" ]; then
   cargo install cargo-llvm-cov --version "$llvm_cov" --locked
 fi
