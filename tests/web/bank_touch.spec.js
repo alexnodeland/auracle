@@ -4,8 +4,9 @@
 // answer a tap without opening the row; a mouse keeps the mock's actions on
 // approach. A touch pointer "leaves" as it lifts, before its tap's click: the
 // stars ★ folds out stay out for that click, so tapping the fifth star rates
-// five and cannot press cut, which sits under it.
-const { test, expect, bankTab } = require("./fixtures");
+// five and cannot press cut, which sits under it. Under the model view, which
+// a mouse sees the actions of only on approach, a finger still has them.
+const { test, expect, bankTab, modelView } = require("./fixtures");
 
 // A tablet: a coarse pointer and touch, wide enough to have no gate.
 test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
@@ -54,6 +55,14 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   await expect(row).toHaveClass(/\brating\b/);
   await expect(row.locator('.star[data-s="3"]')).toBeVisible();
   await at(page, "perform");
+});
+
+test("under the model view a touch screen's rows still show their actions at rest", async ({ page, app }) => {
+  await boot(page, app);
+  await modelView(page, true);
+  const row = page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2);
+  await toRow(row);
+  for (const a of [".bi-hear", ".bi-star", ".bi-save", ".bi-kill"]) await expect(row.locator(a), a).toBeVisible();
 });
 
 // The latest ▶ wins (#421): a preset's ▶ waits for its sound to be loaded and
