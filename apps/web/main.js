@@ -7896,7 +7896,7 @@ function markTableGone() {
     for (const c of ["play", "flip", "promote", "pd"]) $(`${c}-${side}`).disabled = true;
     const fam = $(`fam-${side}`);
     if (fam) {
-      fam.textContent = "Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.";
+      fam.textContent = "Replaced in the pool.";
       fam.title = "";
     }
   });

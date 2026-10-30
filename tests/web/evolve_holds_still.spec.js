@@ -103,7 +103,7 @@ test("a generation's end that replaces a side of the pair on the table leaves th
   }, s);
   expect(was.now, "the pair on the table, as the generation ended").toEqual(was.pair);
   expect(was.gone).toBe(true);
-  await expect(page.locator("#fam-a")).toHaveText("Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.");
+  await expect(page.locator("#fam-a")).toHaveText("Replaced in the pool.");
   for (const id of ["#play-a", "#promote-a", "#flip-a", "#pd-a"]) await expect(page.locator(id), `${id} on the replaced side`).toBeDisabled();
   await expect(page.locator("#play-b")).toBeEnabled();
   await expect(page.locator("#choose-a")).toBeEnabled();
