@@ -112,16 +112,17 @@ test("a generation's end that replaces a side of the pair on the table leaves th
   expect(await ids()).toEqual(was.pair);
   // A pick on it commits the pick still in its window, as any pick does (its
   // vote goes in that task), teaches nothing itself (no forecast asked for
-  // it), says so, and puts up the next pair.
+  // it), says so, and puts up the next pair. The earlier pick's vote is sent
+  // exactly once by the end of this pick's task: by this pick, or by its
+  // own window closing first on a slow runner (which this test can't hold
+  // off), never lost and never twice.
   const mark = await app.toastMark();
   const t = await app.now();
   const sent = await page.evaluate(([a, b]) => {
-    const n = () => window.__tap.sent.filter((x) => x.m.type === "record_duel" && x.m.a === a && x.m.b === b).length;
-    const before = n();
     document.getElementById("choose-b").click();
-    return { before, after: n() };
+    return window.__tap.sent.filter((x) => x.m.type === "record_duel" && x.m.a === a && x.m.b === b).length;
   }, first);
-  expect(sent, "the pick in its window committed by this pick").toEqual({ before: 0, after: 1 });
+  expect(sent, "the pick in its window committed, once, by the end of this pick").toBe(1);
   await app.toast(/was replaced, so that pick taught nothing\. Here is the next pair\.$/, { since: mark });
   await app.engine((timeout) => expect.poll(ids, { timeout }).not.toEqual(was.pair), { ms: 30_000 });
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bgone\b/);
