@@ -58,8 +58,9 @@ test("⚡'s child opens itself only with nothing in the hand, and else says why 
   t = await app.now();
   await page.keyboard.down("a");
   await zapLands(app, pool[0], pool[1]);
-  const held = await app.toast(/^⚡ bred /, { since: mark });
-  expect(held).toMatch(/what you’re playing goes on\./);
+  // The clean case's "ready to play" can still be on its way into the
+  // lane: this one is told by its own words.
+  await app.toast(/^⚡ bred .*, and what you’re playing goes on\./, { since: mark });
   await page.keyboard.up("a");
   await app.quiet();
   expect(await opened(app, pool[1], t), "the child opened over a held note").toBe(0);
@@ -72,8 +73,7 @@ test("⚡'s child opens itself only with nothing in the hand, and else says why 
   t = await app.now();
   await zapLands(app, pool[0], pool[3]);
   const name = (await app.facts()).names[pool[2]];
-  const said = await app.toast(/^⚡ bred /, { since: mark });
-  expect(said).toContain(`${name} is still the sound in hand.`);
+  await app.toast(`, and ${name} is still the sound in hand.`, { since: mark });
   expect(await opened(app, pool[3], t), "the child opened over the sound opened since").toBe(0);
   await page.locator("#toasts .toast button", { hasText: /open it/i }).last().click();
   await expect.poll(() => opened(app, pool[3], t), { message: "OPEN IT opened the child" }).toBe(1);
