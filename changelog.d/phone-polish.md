@@ -34,3 +34,7 @@
   the bottom is whole (LEARNING was cut), and the sound in hand keeps its
   picture beside its ▶. Short captions that take two lines take two of a
   length, never a word or two left alone.
+- **Fixed:** on the first screen, pressing a second sound's ▶ while the
+  first was just starting stopped the first and played nothing. It now
+  plays the sound you pressed. A ▶ pressed while its own sound plays still
+  stops it.
