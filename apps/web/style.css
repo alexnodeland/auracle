@@ -7822,6 +7822,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .app {
     grid-template-areas: "bar" "stage" "keys";
     grid-template-columns: minmax(0, 1fr);
+    /* The height a phone's browser shows, not the one under its toolbar
+       (100vh there runs past the screen, and the bar along the bottom with
+       it); and clear of a notch on its side. */
+    height: 100dvh;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
   .bank-btn { display: grid; }
   /* The bank, a sheet from the left over the stage: above a level's lifted
@@ -7876,6 +7882,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     transform: translateY(100%);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  .rail { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   .sheet-grab {
     display: block;
     position: relative;
