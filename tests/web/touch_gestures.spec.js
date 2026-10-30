@@ -85,9 +85,30 @@ test("a card flicked up past a third of its height is picked through its PICK", 
 test.describe("a small phone, 360 × 640", () => {
   test.use({ viewport: { width: 360, height: 640 } });
 
-  test("a card flicked up is picked where the level's column scrolls", async ({ page, app }) => {
-    await flickPicks(page, app);
-    await expect(page.locator("#duel-a")).not.toHaveClass(/\bflicking\b/);
+  test("a card flicked up is picked and the level's column does not scroll; a drag down scrolls it", async ({ page, app }) => {
+    await toEvolve(page, app);
+    const cdp = await cdpOf(page);
+    const col = page.locator("#view-evolve");
+    // The column runs past the screen here, and starts part way down.
+    await expect.poll(() => col.evaluate((c) => c.scrollHeight - c.clientHeight)).toBeGreaterThan(40);
+    const half = (c) => { c.scrollTop = Math.round((c.scrollHeight - c.clientHeight) / 2); return c.scrollTop; };
+    // A flick up is the card's: picked, and the column stays put.
+    const at = await middle(page.locator("#duel-a .duel-well"));
+    const before = await col.evaluate(half);
+    const box = await page.locator("#duel-a .duel-well").boundingBox();
+    const from = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+    const card = await page.locator("#duel-a").boundingBox();
+    // Read with the finger still down: once picked, the next pair may move
+    // the column on its own.
+    await drag(page, cdp, from, 0, -Math.round(card.height * 0.6), { lift: false });
+    expect(await col.evaluate((c) => c.scrollTop), "the column did not scroll under the flick").toBe(before);
+    await touch(cdp, "touchEnd", []);
+    await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
+    // A drag down is the column's: it scrolls, and picks nothing more.
+    const mid = await col.evaluate(half);
+    await drag(page, cdp, { x: at.x, y: from.y }, 0, 80);
+    await expect.poll(() => col.evaluate((c) => c.scrollTop)).toBeLessThan(mid);
+    expect(await picks(page)).toMatchObject({ a: 1, b: 0 });
   });
 });
 

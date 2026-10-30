@@ -8164,6 +8164,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .bank-item input { -webkit-user-select: text; user-select: text; }
   .duel-card.flicking { z-index: 2; will-change: transform; }
   /* A finger moving up on a card is the card's from the start, so the flick
-     wins even where the column scrolls; down and sideways stay the page's. */
-  #view-evolve section[aria-label^="Sound "] { touch-action: pan-x pan-down; }
+     wins even where the column scrolls; down and sideways stay the page's.
+     `pan-up` names the scroll a finger moving down makes (content scrolls
+     up): measured in Chromium at 360 x 640, `pan-down` let an upward finger
+     scroll the column and stopped a downward one. */
+  #view-evolve section[aria-label^="Sound "] { touch-action: pan-x pan-up; }
 }
