@@ -373,6 +373,7 @@ const renders = new Map(); // id -> {buffer: AudioBuffer, sexpr}
 // term that no longer vets is never going to produce audio no matter how long
 // anyone waits.
 const renderFailures = new Map(); // id -> reason|null
+const pinsAsked = new Map(); // id -> {want, out}: a Save on its way (`askPin`)
 // True while the worker is inside a synchronous engine call (fit, refine,
 // refine_from) and therefore servicing no messages at all. It is not a
 // spinner: the render deadline below stops while it is set, because during a
@@ -3947,6 +3948,10 @@ worker.onmessage = (e) => {
       break;
     }
     case "pinned": {
+      // The press's own ask answered: the row shows the engine's word once
+      // every ask has one (`askPin`).
+      const asked = pinsAsked.get(m.id);
+      if (asked && --asked.out <= 0) pinsAsked.delete(m.id);
       if (m.ranked && views) views.ranked = m.ranked;
       if (m.ratings && views) views.ratings = m.ratings; // a save changes what may be replaced
       takeRetiring(m); // and what a running generation will replace
@@ -3956,11 +3961,13 @@ worker.onmessage = (e) => {
       // reasons and they need different sentences: the budget is full (the
       // user can fix that by unkeeping something) or the patch is already gone
       // (they cannot).
+      // The row went back as the engine has it (`renderBank`, below), and
+      // the refusal jumps the queue: the row changed at the press.
       if (!m.ok) {
         if (rowOf(m.id)) {
-          note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`);
+          note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`, { urgent: true, replace: "pin" });
         } else {
-          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
+          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true, urgent: true, replace: "pin" });
         }
       } else if (m.pinned) {
         note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
@@ -4137,6 +4144,10 @@ function releaseRequest(request, id, req, message, fatal = false) {
     return;
   }
   switch (request) {
+    case "set_pinned":
+      // A Save the engine could not run: the row goes back as it has it.
+      if (id != null && pinsAsked.delete(id)) renderBank();
+      break;
     case "render_take":
       // The recording it carried is lost: say so, rather than wait forever.
       takes.rendered({ id, take: null, code: "failed" });
@@ -8664,7 +8675,7 @@ function poolMatches(r) {
 function bankSource() {
   const ranked = (views && views.ranked) || [];
   const live = ranked.filter((r) => !cutIds.has(r.id) && poolMatches(r));
-  if (bankFilter === "saved") return live.filter((r) => r.pinned);
+  if (bankFilter === "saved") return live.filter(pinShown);
   if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(bankQuery, p.name, p.category, p.blurb));
   return live;
 }
@@ -8676,7 +8687,7 @@ function renderBankCounts() {
   const live = ranked.filter((r) => !cutIds.has(r.id));
   const n = {
     pool: live.length,
-    saved: live.filter((r) => r.pinned).length,
+    saved: live.filter(pinShown).length,
     presets: (presetRows || []).length,
   };
   for (const el of document.querySelectorAll(".btab .bt-n")) {
@@ -9031,7 +9042,7 @@ function bankRow(r, fitted) {
     // used it, and the next digit fell through to the index-0 fallback and
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
-    + (r.pinned ? " saved" : "")
+    + (pinShown(r) ? " saved" : "")
     + (isNew ? " fresh" : "")
     + (landedNow.has(r.id) && !budding.has(r.id) ? " landed" : "")
     + (budding.has(r.id) ? " budding" : "")
@@ -9064,7 +9075,7 @@ function bankRow(r, fitted) {
     unheard.has(r.id) ? "not heard yet" : "",
     lin ? `bred from ${seedName}` : "",
     sig && engineerMode ? sig : "",
-    r.pinned ? "saved" : "",
+    pinShown(r) ? "saved" : "",
     stars ? `${stars} of 5 stars` : "unrated",
     fitted ? `its guess ${guessLabel(frac).replace("% · ", " percent, ")}` : "",
   ].filter(Boolean);
@@ -9099,9 +9110,9 @@ function bankRow(r, fitted) {
       lin
         ? `<button class="bi-cmp" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${ROW_ICON.compare}</button>`
         : ""
-    }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${r.pinned ? " on" : ""}" type="button" aria-pressed="${!!r.pinned}"
-        title="${r.pinned ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
-        aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button><button class="bi-kill" type="button" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">${ROW_ICON.cut}</button>
+    }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${pinShown(r) ? " on" : ""}" type="button" aria-pressed="${pinShown(r)}"
+        title="${pinShown(r) ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
+        aria-label="${pinShown(r) ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button><button class="bi-kill" type="button" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">${ROW_ICON.cut}</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star${stars >= s ? " lit" : ""}" type="button" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">${ROW_ICON.star}</button>`)
         .join("")}</span>
@@ -9164,9 +9175,7 @@ function bankRow(r, fitted) {
   el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && ratingId === r.id) foldStars(); });
   el.querySelector(".bi-save").onclick = () => {
     kbdRowId = r.id;
-    // Optimism here would be a lie half the time: the engine refuses at the
-    // budget, and it owns the count. Ask, then render what it says.
-    send({ type: "set_pinned", id: r.id, pinned: !r.pinned });
+    askPin(r.id, !pinShown(r));
   };
   el.querySelector(".bi-kill").onclick = () => cutRow(r);
   for (const b of el.querySelectorAll(".bi-from, .bi-cmp")) b.onclick = () => openCompare(r.id);
@@ -9405,6 +9414,30 @@ function openPreset(p, el) {
 let bankFilter = "pool";
 let bankRows = []; // the rows the rail currently shows
 let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
+
+// Save answers the press (#305): the row shows what was asked for at once,
+// and the engine, which owns the pins and the count, confirms it or refuses
+// it in its `pinned` reply, where a refusal puts the row back as the engine
+// has it and says why. It used to change nothing until the reply. The
+// engine refuses for exactly two reasons, both said there: the budget is
+// full, or the sound has left the pool. id -> {want, out}: what the last
+// press asked for, and how many of its asks have no reply yet (`pinsAsked`,
+// declared with the state above).
+/** Is this row saved, as the bank shows it: what a press asked for, until
+ *  the engine has answered every ask. */
+function pinShown(r) {
+  const a = pinsAsked.get(r.id);
+  return a ? a.want : !!r.pinned;
+}
+/** Save (or release) a sound: the row says so now, the engine decides. */
+function askPin(id, want) {
+  const a = pinsAsked.get(id) || { want, out: 0 };
+  a.want = want;
+  a.out += 1;
+  pinsAsked.set(id, a);
+  send({ type: "set_pinned", id, pinned: want });
+  renderBank();
+}
 let renamingId = null; // a rename in flight; see `syncBankCursor`
 let presetCursor = -1;  // the preset bank's own row cursor (presets have no id)
 let bankRenderPending = false; // a render deferred while a rename is open
@@ -9560,7 +9593,8 @@ function saveCursorRow() {
     note("Nothing selected to save. Click a bank row, or step to one with [ and ].");
     return false;
   }
-  send({ type: "set_pinned", id, pinned: !(rowOf(id) || {}).pinned });
+  const r = rowOf(id);
+  askPin(id, !(r ? pinShown(r) : false));
   return true;
 }
 

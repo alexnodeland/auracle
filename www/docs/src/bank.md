@@ -111,7 +111,9 @@ the row’s end while you point at it.</figcaption>
   - **★** opens the five stars; a rated sound’s ★ is filled. Rating teaches
     the model.
   - **The save icon** keeps it, and teaches nothing: *Saved Glass Pad. No
-    generation will replace it (3 of 10 saved).*
+    generation will replace it (3 of 10 saved).* The row shows it saved as
+    you press. If every save is used, the row goes back and the toast says
+    so: *That would pass your limit of 10 saved sounds. Release one first.*
   - **×** cuts it, which teaches the model “not this one”. The sound is never
     dealt to you in a pair again; if it was on the cards, a new pair is dealt.
     The toast, *Cut Soft Wash. It won’t be dealt again.*, carries **UNDO** for
