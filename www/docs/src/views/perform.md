@@ -40,8 +40,10 @@ down*), never one it can’t reach. Its **×** stops it showing.
 
 ## What you see
 
-On a phone held upright PERFORM is one column: the sound and its well on top,
-then the controls, the hood and the pads under them, and the level scrolls.
+On a phone held upright PERFORM is one screen: the sound's name and its well
+on top, then the controls, with the hood and the pads under them in the same
+column, which scrolls on its own when they run past the screen. On a phone on
+its side the well is on the left and that column on the right.
 The keys come up with **KEYS** at the end of the bar along the bottom.
 
 <img src="../img/perform.webp" alt="PERFORM: on the left the sound's family and name, large, and a well holding its face, with B's amber face beside it; on the right CONTROLS with six round controls in two rows, the knobs they turn, and the pads Wander, Next, Peek, Take and Pass." loading="eager" width="1440" height="900">

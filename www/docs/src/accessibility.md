@@ -191,17 +191,43 @@ On a phone held upright:
   **KEYS** again puts them away.
 - The bank rises from the bottom. Pull its handle down, or tap it, to put it
   away.
-- Each level is one column, read from the top. Where it runs past the
-  screen, it scrolls. Nothing scrolls sideways.
+- Each level is one screen, as an app's view is: what it is for (PERFORM's
+  controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight
+  without a scroll, and where there is more than fits it scrolls inside its
+  own panel (PERFORM's controls, LEARNING's room). On a smaller phone, or
+  with larger text, a level that cannot fit scrolls rather than cutting
+  anything off. Nothing scrolls sideways.
+- In the levels, the bank and the keys, every button, tab and field is at
+  least 44 px each way, a finger's size
+  (what is drawn on the rack at its zoom is the exception: a tapped module
+  opens its settings in a sheet), and the octave's two keys are arrows (a
+  phone has no Z and X to print).
 
 On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.
+Each level is one screen there too, LEARNING's map beside what it weighs and
+its forecasts. On any touch screen the levels' stops are a finger's size.
+
+On a phone, upright or on its side, a toast appears at the top of the
+screen under the menu bar, clear of each level's controls.
 
 ## Hit targets
 
 Hit areas are measured, not eyeballed. A knob’s whole face is grabbable,
 including under its ticks, track, and value arc, and a jack answers across its
 whole ring rather than only where its outline is drawn.
+
+On a touch screen, where the rack is drawn small, the ▶ on the face at OUT
+answers a finger 44 px across (not while sockets are lit, so it never stands
+over the one beside it). While sockets are lit (a module in hand, a cable
+being placed), a tap on bare panel goes to a lit socket when the finger
+plainly means it: within 22 px of its middle, with no other lit socket
+within one and a half times that distance. A cable let go on bare panel
+goes in the same way from within 12 px; let go on a control, between two
+sockets, or away from them, it does what it did before. A socket that is
+not lit keeps its drawn size: a wider reach would cover the modules, and a
+tap on a module opens its settings. UNDER THE HOOD's rows are 44 px too,
+the hood showing three and scrolling on its own to the rest.
 
 ## Color and contrast
 

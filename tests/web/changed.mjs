@@ -79,6 +79,8 @@ export const MODULES = {
   "apps/web/hand.js": ["evolve_refit", "taste_marks", "taste_hold", "bank_row", "perform_recentre", "perform_wire_time"],
   // What a refit landing does: the meter, the lamp, the views it holds.
   "apps/web/refit.js": ["evolve_refit", "evolve_truth", "evolve_feedback"],
+  // A finger's reach for a lit socket on the rack.
+  "apps/web/reach.js": ["phone_fits", "patch_touch", "patch_catalog"],
 };
 export const EVERYWHERE = /^(apps\/web\/(main\.js|worker\.js|index\.html|style\.css)|crates\/|Cargo\.(toml|lock)$)/;
 
@@ -94,7 +96,7 @@ export const VIEWS = {
   shell: {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "cmdk", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
-      "shell_phone", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
+      "shell_phone", "phone_fits", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
       "live_faces", "boot_modules", "farm_close", "touch_gestures",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
