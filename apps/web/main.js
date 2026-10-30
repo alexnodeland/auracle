@@ -2852,6 +2852,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "patch_imported": {
+      patchAnswered(); // "Opening …" gives way to what became of it
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -4113,7 +4114,7 @@ worker.onmessage = (e) => {
           : "Opened that taste file. Nothing has been taught in it yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true });
+        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true, replace: "profile" });
       }
       break;
     }
@@ -4144,6 +4145,10 @@ function releaseRequest(request, id, req, message, fatal = false) {
     return;
   }
   switch (request) {
+    case "export":
+    case "import":
+      profileAnswered();
+      break;
     case "set_pinned":
       // A Save the engine could not run: the row goes back as it has it.
       if (id != null && pinsAsked.delete(id)) renderBank();
@@ -4253,6 +4258,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
       break;
     case "import_patch":
       pendingLayout = null;
+      patchAnswered();
       break;
     default:
       break;
@@ -23002,6 +23008,24 @@ function lineageChanges(diff) {
 }
 
 // ---------- profile ----------
+// A taste file on its way, either way, says so from the press until the
+// engine has answered (#305): it used to say nothing until the file had
+// landed or been read. The answer's own toast takes its place (`profile`),
+// and an engine that could not run it takes it down (`releaseRequest`).
+let profileWait = null;
+/** Download your taste: said at once, answered by `exported`. */
+function downloadTaste() {
+  profileWait = note("Downloading your taste…", { replace: "profile" });
+  send({ type: "export" });
+}
+/** A taste file being opened, by its file's name, until `imported`. */
+function sayProfileOpening(name) {
+  profileWait = note(`Opening ${name}…`, { replace: "profile" });
+}
+function profileAnswered() {
+  if (profileWait) dropToast(profileWait);
+  profileWait = null;
+}
 // Importing a profile *replaces* the taste log — every pick, star and cut —
 // and the autosave 2.5 s later made that permanent. It used to happen on the
 // file pick, with no question asked and no copy kept. Now it asks, and the
@@ -23014,8 +23038,10 @@ $("import-input").onchange = async (e) => {
   // Reset so that picking the same file again after "keep mine" fires again.
   e.target.value = "";
   if (!file) return;
-  const json = await file.text();
   const n = picksTaught();
+  // Nothing to replace: it opens at once, and says so until it has (#305).
+  if (n === 0) sayProfileOpening(file.name);
+  const json = await file.text();
   if (n === 0) {
     send({ type: "import", json });
     return;
@@ -23028,6 +23054,7 @@ $("import-input").onchange = async (e) => {
       run: () => {
         alarm(null);
         commitPendingVote(); // counted in the question, so kept in the copy
+        sayProfileOpening(file.name);
         send({ type: "export", reason: "before-import" });
         send({ type: "import", json });
       },
@@ -23234,6 +23261,25 @@ function downloadPatch() {
   );
 }
 
+// A patch file on its way says so from the drop or the pick, by the name
+// its file carries and then the one its sidecar does, until the engine's
+// `patch_imported` says what became of it (#305). It used to say nothing
+// until the import and its render had landed.
+let patchWait = null;
+function sayPatchOpening(file) {
+  const stem = file.name.replace(/\.(auracle\.json|json|png|svg)$/i, "");
+  patchWait = note(`Opening ${stem}…`, { replace: "patch-file" });
+}
+/** The sidecar is read: its own name, where it has one. */
+function namePatchOpening(data) {
+  const msg = patchWait && patchWait.querySelector(".toast-msg");
+  if (msg && data && typeof data.name === "string" && data.name.trim()) msg.textContent = `Opening ${data.name.trim()}…`;
+}
+function patchAnswered() {
+  if (patchWait) dropToast(patchWait);
+  patchWait = null;
+}
+
 /** Open a parsed sidecar (or a bare tree) on the bench.
  *
  *  The single funnel every arrival goes through — file picker, drag-and-drop,
@@ -23257,6 +23303,7 @@ function loadPatchData(data) {
     tree.root && typeof tree.root === "object" && Object.keys(tree.root).length === 1;
   if (!looksLikeATerm) {
     pendingLayout = null;
+    patchAnswered();
     return note("That file is JSON, but it isn’t a patch this build understands.");
   }
   // Held until the engine says which id the patch landed as — that id is the
@@ -23311,9 +23358,15 @@ $("patch-import-input").onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
+  sayPatchOpening(file);
   const data = await readPatchFile(file);
-  if (data) loadPatchData(data);
-  else pendingLayout = null;
+  if (data) {
+    namePatchOpening(data);
+    loadPatchData(data);
+  } else {
+    pendingLayout = null;
+    patchAnswered();
+  }
 };
 
 // ===========================================================================
@@ -24265,9 +24318,15 @@ function dropInit() {
     show(false);
     const file = ev.dataTransfer.files[0];
     if (!file) return;
+    sayPatchOpening(file);
     const data = await readPatchFile(file);
-    if (data) loadPatchData(data);
-    else pendingLayout = null;
+    if (data) {
+      namePatchOpening(data);
+      loadPatchData(data);
+    } else {
+      pendingLayout = null;
+      patchAnswered();
+    }
   });
 }
 
@@ -25236,7 +25295,7 @@ shell.cmd({ id: "keys-span", label: "How much of the keybed to show: fewer octav
 shell.cmd({ id: "keys-silence", label: "Silence all voices", icon: "◼", run: press("panic-btn") });
 // What the ⋯ menu held: files, your taste, the scope, the warm start,
 // measurements, booth mode, and the guide and the films.
-shell.cmd({ id: "taste-download", label: "Download your taste", run: () => send({ type: "export" }) });
+shell.cmd({ id: "taste-download", label: "Download your taste", run: () => downloadTaste() });
 shell.cmd({ id: "taste-open", label: "Open a taste file…", run: () => $("import-input").click() });
 shell.cmd({ id: "patch-download", label: "Download this patch", run: () => downloadPatch() });
 shell.cmd({ id: "patch-picture", label: "Download as a picture…", run: () => { if (!panelOpen("image-panel")) toggleImagePanel(); } });
