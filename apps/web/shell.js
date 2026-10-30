@@ -196,6 +196,9 @@ export function createShell(host = {}) {
         document.removeEventListener("pointerdown", done, true);
       };
       const swallow = (c) => {
+        // A click the app makes (a card flicked up presses its PICK on the
+        // touchend that follows this pointerup) is not the hold's.
+        if (!c.isTrusted) return;
         done();
         c.preventDefault();
         c.stopPropagation();

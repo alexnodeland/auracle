@@ -8161,5 +8161,6 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     -webkit-user-select: none;
     user-select: none;
   }
+  .bank-item input { -webkit-user-select: text; user-select: text; }
   .duel-card.flicking { z-index: 2; will-change: transform; }
 }

@@ -102,6 +102,24 @@ test("a drag down or sideways on a card is not the card's: no pick, no move, the
   expect(await picks(page)).toEqual({ a: 0, b: 0, cancelled: 0 });
 });
 
+test("a card held until the model view shows, then pushed up in the same touch, is still picked", async ({ page, app }) => {
+  await toEvolve(page, app);
+  const cdp = await cdpOf(page);
+  const at = await middle(page.locator("#duel-a .duel-well"));
+  const card = await page.locator("#duel-a").boundingBox();
+  // One finger: held still until the view is up, then pushed up and lifted.
+  await touch(cdp, "touchStart", [at]);
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/, { timeout: 3_000 });
+  const dy = -Math.round(card.height * 0.6);
+  for (let i = 1; i <= 8; i++) {
+    await touch(cdp, "touchMove", [{ x: at.x, y: at.y + (dy * i) / 8 }]);
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- a finger's pace between a drag's steps
+    await page.waitForTimeout(STEP_MS);
+  }
+  await touch(cdp, "touchEnd", []);
+  await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
+});
+
 /** Hold a finger still on `loc`: the model view is up while it is down, and
  *  goes when it lifts. */
 async function holdShowsModel(page, cdp, loc) {
@@ -131,6 +149,9 @@ test("a long press on a card, a bank row, a module and TASTE's map shows the mod
   await goLevel(page, "taste");
   await landed(page);
   await holdShowsModel(page, cdp, page.locator("#taste-crt"));
+  // The hold's click selects no sound: no card comes up.
+  await app.quiet();
+  await expect(page.locator("#taste-plate")).not.toHaveClass(/\bon\b/);
   // A module on PATCH's rack: no sheet opens for the hold.
   await goLevel(page, "patch");
   await landed(page);
@@ -143,7 +164,8 @@ test("a long press on a card, a bank row, a module and TASTE's map shows the mod
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/, { timeout: 3_000 });
   await touch(cdp, "touchEnd", []);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
-  await expect(page.locator(".msheet.on, .mod-sheet.on")).toHaveCount(0);
+  await app.quiet();
+  await expect(page.locator("#module-sheet.on")).toHaveCount(0);
 });
 
 test("a finger that moves before the hold closes is an ordinary touch: no model view", async ({ page, app }) => {

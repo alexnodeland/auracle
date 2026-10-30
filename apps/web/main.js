@@ -8209,12 +8209,16 @@ $("choose-b").onclick = () => choose("b");
 // the finger up, and let go past a third of its height (or flicked fast) it
 // presses its own PICK, so the pick takes PICK's whole path (its undo
 // window, its toast, the dealer's judgement). Let go short of that, it
-// springs back. The axis is the first 8 px of travel's: sideways or down,
+// springs back. The axis is the first 6 px of travel's: sideways or down,
 // or two fingers, the gesture is not the card's and whatever scrolls under
 // it scrolls (only an upward vertical move is taken from the page). A
 // finger held still is shell.js's long press, which locks first.
 {
-  const LOCK_PX = 8;
+  // Under shell.js's hold slop (8 px), so a move is the card's before the
+  // hold could be cancelled by it, and early, before the browser's own pan.
+  const LOCK_PX = 6;
+  // A finger that rests this long before it lifts was not flicked.
+  const FLICK_STALE_MS = 100;
   const FLICK_PX_PER_MS = 0.6;
   for (const side of ["a", "b"]) {
     const card = $(`duel-${side}`);
@@ -8240,6 +8244,8 @@ $("choose-b").onclick = () => choose("b");
     card.addEventListener("touchmove", (e) => {
       if (!g) return;
       if (e.touches.length > 1) { if (g.axis === "y") settle(false); g = null; return; }
+      // The browser has begun a scroll of its own: it is the page's.
+      if (!e.cancelable) { if (g.axis === "y") settle(false); g = null; return; }
       const t = e.touches[0];
       const dx = t.clientX - g.x;
       const dy = t.clientY - g.y;
@@ -8266,7 +8272,8 @@ $("choose-b").onclick = () => choose("b");
       g = null;
       if (was.axis !== "y") return;
       const far = -was.dy > (card.offsetHeight || 0) / 3;
-      const fast = was.v > FLICK_PX_PER_MS && -was.dy > LOCK_PX * 3;
+      const fresh = e.timeStamp - was.lastT < FLICK_STALE_MS;
+      const fast = fresh && was.v > FLICK_PX_PER_MS && -was.dy > LOCK_PX * 4;
       settle(e.type === "touchend" && (far || fast));
     };
     card.addEventListener("touchend", end);
