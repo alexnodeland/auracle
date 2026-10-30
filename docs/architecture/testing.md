@@ -268,7 +268,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
-| Spec files only | Web, the engine, Site, and those specs three times each (*Burn-in*, up to three runners sized by `main`'s times); too heavy for that, once each (one runner per file, up to four); more than twenty, Browser smoke instead |
+| Spec files only | Web, the engine, Site, and those specs three times each (*Burn-in*, up to three runners sized by `main`'s times, as many as fit); the rest once each (one runner per file, up to four); more than twenty, Browser smoke instead |
 | The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
 | `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; Worker protocol; no other spec |
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
@@ -296,11 +296,13 @@ scripts/ops/rows_resolve.py keeps both. -->
   fast lane, and not also once in its *Browser* job. Its runners are sized
   by `main`'s times, not by count (`tests/web/burnin.mjs`, from the cache
   the *Browser* job deals by; a new spec weighs its tests at the median):
-  about six minutes each, up to three. Edits too heavy for that (more than
-  seven minutes a runner, repeats included) get no burn-in and run once in
-  the *Browser* job; more than twenty edited files get none, and the
-  selection's own rule applies (more than twenty reached files run Browser
-  smoke instead). It is in the required `CI`, so a new spec that fails one
+  about six minutes each, up to three, with as many of the files as fit
+  seven minutes a runner, repeats included: a new spec first, then the
+  lightest. The rest run once in the *Browser* job, and the run's summary
+  lists them *Not burned in*, owed `make browser-changed REPEAT=3` on a
+  workstation; more than twenty edited files get none, and the selection's
+  own rule applies (more than twenty reached files run Browser smoke
+  instead). It is in the required `CI`, so a new spec that fails one
   run in three keeps its own PR out of the queue, where it would turn a
   batch red and hold up the PRs beside it. The queue's run and `main`'s have
   no burn-in.

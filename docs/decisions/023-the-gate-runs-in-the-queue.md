@@ -42,8 +42,10 @@ view-to-spec map the consequences ask for is local: `make browser-changed`
 runs the specs of the views a `main.js` change draws; in CI such a change
 still gets only the smoke before the queue. Since #456, the fast lane also
 burns in the spec files a PR adds or edits: three times each, on up to
-three runners of their own (*Burn-in*), inside the required `CI`, and no
-longer once beside the rest. So a new spec that fails one run in three
+three runners of their own sized by `main`'s times (*Burn-in*), inside the
+required `CI`, and no longer once beside the rest; files too heavy to fit
+run once, and the run's summary names them as owed a burn-in on a
+workstation. So a new spec that fails one run in three
 keeps its own PR out of the queue rather than turning a batch red, and the
 burn-in a builder ran locally before the push (`make browser-changed
 REPEAT=3`) is no longer owed: before the push only the inner loop is (the

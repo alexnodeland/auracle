@@ -145,8 +145,10 @@ in a plan's prose, a session's notes or a conversation.
   reaches), through the browser queue on its own port. Not the full suite:
   the merge queue's run of CI runs it twelve wide. No browser run is owed
   before the push: the PR's own CI burns in the spec files it adds or
-  edits, three times each (*Burn-in*, #456), and the queue's run has the
-  rest.
+  edits, three times each (*Burn-in*, #456), as many as fit its runners,
+  and the queue's run has the rest. Files its summary lists *Not burned in*
+  (an edit too heavy for its runners) are burned in on a workstation
+  (`make browser-changed REPEAT=3`).
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
@@ -316,7 +318,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   about ten when Rust changed (Coverage sets the length), an app module's
   specs run (`patch.js` reaches about 23 test-minutes, on four runners) or
   specs are burned in (planned at about six minutes a runner, seven at
-  most; edits too heavy for that get no burn-in and run once).
+  most; files too heavy to fit run once, and the summary names them).
   - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
     `style.css`, a crate) runs the smoke and no other spec. So does a helper
     that more than twenty spec files require, or a change to more than

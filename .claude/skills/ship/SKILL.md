@@ -154,9 +154,13 @@ have the builder commit the approved rows.
 No browser run is owed before the push (#456). The builder ran its new
 specs and saw each fail without its fix; the PR's own CI burns in the spec
 files the branch adds or edits, three times each (*Burn-in*, in the
-required `CI`), and the queue's run has every spec the change reaches. A
+required `CI`), as many as fit three runners of about six minutes by
+`main`'s times, and the queue's run has every spec the change reaches. A
 red *Burn-in* goes back to the builder as a blocking finding (step 4),
-never to a re-run.
+never to a re-run. When the fast lane's summary lists files *Not burned
+in* (an edit too heavy for its runners, or more than twenty files), burn
+those in here (`make browser-changed REPEAT=3`), and pull the PR from the
+queue if one fails.
 
 `make browser-changed` (`REPEAT=3` to repeat the branch's own specs) is
 still there for a change whose reach is worth seeing before the queue: a

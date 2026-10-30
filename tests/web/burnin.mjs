@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// A PR's burn-in (ci.yml's Burn-in job, #456): how many runners the spec
-// files it adds or edits need to run three times each, by main's timings
-// (the cache the Browser job deals from), or none when they are too heavy
-// for the job's limits, and then they run once with the rest.
+// A PR's burn-in (ci.yml's Burn-in job, #456): which of the spec files it
+// adds or edits run three times each, and on how many runners, by main's
+// timings (the cache the Browser job deals from).
 //
 //   node burnin.mjs --timings timings-fast.json --files "a.spec.js b.spec.js"
-//       prints the runners (1 to MAX_RUNNERS), or 0 for no burn-in, and on
-//       stderr each file's planned load
+//       prints one line: the runners (0 for none), then the files burned
+//       in; on stderr each file's planned load, and the files left out
 //
 // Sized by time, never by count: one heavy spec repeated three times is a
 // quarter of an hour on one runner, and the Browser job's limits (a run
-// interrupted at fourteen minutes, shard.mjs) are the Burn-in's too. A
-// file's time is the sum of its tests' times on main (their keys are
-// `file › …`, shard.mjs's keyOf); a file main has never timed (a new spec)
-// weighs each of its tests at the median test's time.
+// interrupted at fourteen minutes, shard.mjs) are the Burn-in's too. As
+// many files as fit MAX_RUNNERS runners of LIMIT_S each are burned in: a
+// new spec first (main has never run it), then the lightest. The rest run
+// once in the Browser job, and the run's summary names them. A file's time
+// is the sum of its tests' times on main (their keys are `file › …`,
+// shard.mjs's keyOf); a file main has never timed weighs each of its tests
+// at the median test's time.
 import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -52,15 +54,27 @@ export function fileSeconds(file, timings, source, med = median(timings)) {
   return s > 0 ? s : Math.max(1, testsDeclared(source)) * med;
 }
 
-/** The burn-in's plan: { runners (0 for none), load (seconds, repeats
- *  included), perFile }. `sources[file]` is each file's text. */
+/** The burn-in's plan: { runners (0 for none), files (burned in), left
+ *  (too heavy to fit beside them, run once), load (seconds, repeats
+ *  included, of `files`), perFile }. `sources[file]` is each file's text. */
 export function plan({ files, timings, sources, repeat = REPEAT, target = TARGET_S, limit = LIMIT_S, max = MAX_RUNNERS }) {
   const med = median(timings);
-  const perFile = files.map((f) => ({ file: f, seconds: repeat * fileSeconds(f, timings, sources[f] || "", med) }));
-  const load = perFile.reduce((n, f) => n + f.seconds, 0);
-  if (!files.length) return { runners: 0, load, perFile };
+  const timed = (f) => Object.keys(timings).some((k) => k.startsWith(`${f} › `));
+  const perFile = files.map((f) => ({ file: f, seconds: repeat * fileSeconds(f, timings, sources[f] || "", med), fresh: !timed(f) }));
+  // A new spec first, then the lightest, while the whole fits.
+  const order = [...perFile].sort((a, b) => b.fresh - a.fresh || a.seconds - b.seconds || (a.file < b.file ? -1 : 1));
+  const chosen = [];
+  const left = [];
+  let load = 0;
+  for (const f of order) {
+    if (load + f.seconds <= max * limit) {
+      chosen.push(f.file);
+      load += f.seconds;
+    } else left.push(f.file);
+  }
+  if (!chosen.length) return { runners: 0, files: [], left, load: 0, perFile };
   const runners = Math.min(max, Math.max(1, Math.ceil(load / target)));
-  return { runners: load / runners > limit ? 0 : runners, load, perFile };
+  return { runners, files: files.filter((f) => chosen.includes(f)), left: files.filter((f) => left.includes(f)), load, perFile };
 }
 
 function main(argv) {
@@ -79,8 +93,8 @@ function main(argv) {
   const sources = Object.fromEntries(files.map((f) => [f, existsSync(join(HERE, f)) ? readFileSync(join(HERE, f), "utf8") : ""]));
   const p = plan({ files, timings, sources });
   for (const f of p.perFile) console.error(`burnin: ${f.file} ×${REPEAT} ~${(f.seconds / 60).toFixed(1)} min`);
-  console.error(`burnin: ${(p.load / 60).toFixed(1)} min in all, ${p.runners ? `${p.runners} runner(s)` : "too heavy for a burn-in: they run once"}`);
-  console.log(p.runners);
+  console.error(`burnin: ${(p.load / 60).toFixed(1)} min on ${p.runners} runner(s)${p.left.length ? `; too heavy to burn in beside them, run once: ${p.left.join(" ")}` : ""}`);
+  console.log([p.runners, ...p.files].join(" "));
 }
 
 // Run as a script, not imported (burnin.test.mjs), through a link too.

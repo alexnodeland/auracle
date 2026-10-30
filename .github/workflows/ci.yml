@@ -284,9 +284,11 @@ jobs:
           # in the queue, where a red batch costs every PR in it. They leave
           # the once-run selection, which never runs a file twice. Its
           # runners are sized by main's times, not by count (burnin.mjs):
-          # about six minutes each, up to three. Files too heavy for that,
-          # or more than twenty of them (a burn-down that edits most of the
-          # suite), get no burn-in and stay in the once-run selection.
+          # about six minutes each, up to three, with as many of the files as
+          # fit, a new spec first and then the lightest. The rest, and all of
+          # them past twenty files (a burn-down that edits most of the
+          # suite), stay in the once-run selection, and the run's summary
+          # names them as owed a burn-in on a workstation.
           browser=false
           specs=""
           n=1
@@ -297,18 +299,31 @@ jobs:
             sel="$(cd tests/web && node changed.mjs "origin/$BASE_REF")" || { echo "changed.mjs could not say: smoke only"; sel=""; }
             touched="$(cd tests/web && node changed.mjs --touched "origin/$BASE_REF")" || { echo "changed.mjs could not say what the change edits: no burn-in"; touched=""; }
             tcount="$(echo "$touched" | grep -c . || true)"
+            chosen=""
             if [ "$tcount" -gt 20 ]; then
               echo "the change edits $tcount spec files: no burn-in"
             elif [ "$tcount" -gt 0 ]; then
-              bn="$(cd tests/web && node burnin.mjs --timings timings-fast.json --files "$(echo "$touched" | paste -sd' ' -)")" || bn=0
-              if [ "${bn:-0}" -gt 0 ]; then
+              planned="$(cd tests/web && node burnin.mjs --timings timings-fast.json --files "$(echo "$touched" | paste -sd' ' -)")" || planned=0
+              read -r bn chosen <<<"$planned" || true
+              if [ "${bn:-0}" -gt 0 ] && [ -n "$chosen" ]; then
                 burnin=true
-                burnin_specs="$(echo "$touched" | sed 's#^#/#' | paste -sd' ' -)"
-                sel="$(echo "$sel" | grep -vxF -f <(echo "$touched") || true)"
+                burnin_specs="$(printf '%s\n' $chosen | sed 's#^#/#' | paste -sd' ' -)"
+                sel="$(echo "$sel" | grep -vxF -f <(printf '%s\n' $chosen) || true)"
               else
-                echo "the files it edits are too heavy for a burn-in: they run once with the rest"
                 bn=1
+                chosen=""
               fi
+            fi
+            left="$(echo "$touched" | grep -vxF -f <(printf '%s\n' $chosen x) | grep . || true)"
+            if [ -n "$left" ]; then
+              echo "not burned in (too heavy beside the rest): $(echo "$left" | paste -sd' ' -)"
+              {
+                echo "### Not burned in"
+                echo
+                echo "These spec files this PR adds or edits are too heavy to run three times here (tests/web/burnin.mjs), so they run once here. Burn them in on a workstation (\`make browser-changed REPEAT=3\`); a failure there is this PR's to fix."
+                echo
+                echo "$left" | sed 's/^/- /'
+              } >> "$GITHUB_STEP_SUMMARY"
             fi
             count="$(echo "$sel" | grep -c . || true)"
             if [ "$count" -gt 20 ]; then
