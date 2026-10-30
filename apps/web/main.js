@@ -4282,6 +4282,11 @@ function releaseRequest(request, id, req, message, fatal = false) {
 //   measurement's "listening…" or "re-checking", an offer growing (#138).
 function notReady(m) {
   if (m.request === "set_pinned") pinsLetGo();
+  // A file asked for before the engine started: its wait in the job slot
+  // ends here, or the slot says so, lamp lit, for the rest of the session.
+  if (m.request === "export") fileWaitEnd("download");
+  if (m.request === "import") fileWaitEnd("taste");
+  if (m.request === "import_patch") fileWaitEnd("patch");
   if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
   if (m.request === "faces") facesUnanswered();
   if (typeof m.request === "string" && m.request.startsWith("perform_") && m.req != null) {

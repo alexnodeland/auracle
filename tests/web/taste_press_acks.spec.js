@@ -15,7 +15,7 @@
 // ▶; the files' signs are read while the engine's answer is still held, so
 // they came first.
 const fs = require("node:fs");
-const { test, expect, goLevel, commandRow } = require("./fixtures");
+const { test, expect, goLevel, commandRow, runCommand } = require("./fixtures");
 
 async function boot(app) {
   await app.boot({ warmed: false, random: 20261030 });
@@ -150,4 +150,14 @@ test("Download your taste and opening a taste file say so on screen until the en
   await app.release();
   await expect(page.locator("#toasts .toast-msg", { hasText: /^Opened that taste file/ })).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => slotSays(page)).not.toBe("Opening my-taste.json…");
+});
+
+test("Download your taste asked before the engine has started leaves nothing waiting in the menu bar", async ({ page, app }) => {
+  await app.boot();
+  // The engine's answer to a request it got before it started (worker.js's
+  // `not_ready`): the file is not coming, so its sign goes.
+  await app.answer({ type: "export" }, { type: "not_ready", request: "export" });
+  await runCommand(page, "Download your taste");
+  await app.reply("not_ready", { where: { request: "export" }, injected: true });
+  await expect.poll(() => slotSays(page)).not.toBe("Downloading your taste…");
 });
