@@ -4841,6 +4841,14 @@ function dropToast(el) {
 // the lane's edge.
 const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#pt-foot", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
+// On a phone (#134) the guide pill is a strip too, the two sharing the
+// bottom of the screen, the toast over the step it teaches; and on one on
+// its side the cross's stops, which reach down to the lane, are columns.
+// The stylesheet's own queries for those screens.
+const NARROW = window.matchMedia("(max-width: 999px)");
+const SHORT_SCREEN = window.matchMedia("(max-height: 500px) and (max-width: 999px)");
+const PHONE_STRIPS = ["#guide"];
+const RAIL_COLUMNS = ["#rail .rail-stop", "#rail .rail-keys"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
  *  Rule 2 (toasts.js): the reserved rects are measured, not assumed. */
@@ -4873,8 +4881,8 @@ function positionToastLane() {
   // again then, so it is placed for the level reached alone.
   const shown = (el) => !el.classList.contains("hidden") && el.offsetParent !== null && !el.closest(".view.leaving");
   const reserved = [
-    ...LANE_STRIPS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: false })),
-    ...LANE_COLUMNS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: true })),
+    ...[...LANE_STRIPS, ...(NARROW.matches ? PHONE_STRIPS : [])].flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: false })),
+    ...[...LANE_COLUMNS, ...(SHORT_SCREEN.matches ? RAIL_COLUMNS : [])].flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: true })),
   ];
   for (let pass = 0; pass < 6; pass++) {
     const lane = holder.getBoundingClientRect();
@@ -4900,7 +4908,7 @@ window.addEventListener("resize", positionToastLane);
 // toast arrives.
 {
   const watch = new MutationObserver(() => positionToastLane());
-  for (const s of [...LANE_STRIPS, ...LANE_COLUMNS]) {
+  for (const s of [...LANE_STRIPS, ...LANE_COLUMNS, ...PHONE_STRIPS]) {
     for (const el of document.querySelectorAll(s)) watch.observe(el, { attributes: true, attributeFilter: ["class"] });
   }
 }

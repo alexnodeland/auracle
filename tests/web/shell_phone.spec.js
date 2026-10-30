@@ -28,7 +28,8 @@
 //   keys bar and the cross at the stage's edge, and the bank a sheet from the
 //   left behind BANK. It keeps the keybed's letters, which a phone leaves off.
 // - A phone on its side (844 × 390): KEYS sits under the cross and opens the
-//   keys' drawer, and EVOLVE's PICK is in reach by scrolling the level.
+//   keys' drawer, and EVOLVE's PICK is on the screen with no scroll (each
+//   level is one screen: phone_fits.spec.js).
 const { test, expect, goLevel, landed, runCommand } = require("./fixtures");
 
 const PHONE = { hasTouch: true, isMobile: true };
@@ -244,7 +245,7 @@ test.describe("a tablet held upright, 900 × 1180", () => {
 test.describe("a phone on its side, 844 × 390", () => {
   test.use({ ...PHONE, viewport: { width: 844, height: 390 } });
 
-  test("on its side, KEYS under the cross opens the keys, and EVOLVE's PICK is in reach", async ({ page, app }) => {
+  test("on its side, KEYS under the cross opens the keys, and EVOLVE's PICK is on the screen", async ({ page, app }) => {
     await app.boot();
     const keys = page.locator("#keybar");
     await expect(keys).toBeHidden();
@@ -254,9 +255,8 @@ test.describe("a phone on its side, 844 × 390", () => {
     await expect(keys).toBeHidden();
     await goLevel(page, "evolve");
     await landed(page);
-    const pick = page.locator("#choose-a");
-    await pick.scrollIntoViewIfNeeded();
-    await expect(pick).toBeInViewport({ ratio: 1 });
+    await expect(page.locator("#choose-a")).toBeInViewport({ ratio: 1 });
+    await expect(page.locator("#choose-b")).toBeInViewport({ ratio: 1 });
     await expect.poll(() => page.evaluate(PAST_THE_EDGE)).toEqual([]);
   });
 });

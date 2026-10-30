@@ -191,11 +191,18 @@ On a phone held upright:
   **KEYS** again puts them away.
 - The bank rises from the bottom. Pull its handle down, or tap it, to put it
   away.
-- Each level is one column, read from the top. Where it runs past the
-  screen, it scrolls. Nothing scrolls sideways.
+- Each level is one screen, as an app's view is: what it is for (PERFORM's
+  controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight
+  without a scroll, and where there is more than fits it scrolls inside its
+  own panel (PERFORM's controls, LEARNING's room), never the page. Nothing
+  scrolls sideways.
+- Everything you press is at least 44 px each way, a finger's size, and the
+  octave's two keys are arrows (a phone has no Z and X to print).
 
 On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.
+Each level is one screen there too, LEARNING's map beside what it weighs and
+its forecasts. On any touch screen the levels' stops are a finger's size.
 
 ## Hit targets
 

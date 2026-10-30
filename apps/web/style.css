@@ -7908,7 +7908,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     position: relative;
     flex: none;
     width: 100%;
-    height: 28px;
+    height: 44px;
     padding: 0;
     border: 0;
     background: none;
@@ -7919,7 +7919,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     content: "";
     position: absolute;
     left: 50%;
-    top: 12px;
+    top: 14px;
     width: 40px;
     height: 4px;
     transform: translateX(-50%);
@@ -8143,6 +8143,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
    C's octave. A touch tablet keeps them, since it may have a keyboard. */
 @media (hover: none) and (pointer: coarse) and (max-width: 700px), (hover: none) and (pointer: coarse) and (max-height: 500px) {
   kbd { display: none !important; }
+  /* The octave's keys, named Z and X for a keyboard there is none of: an
+     arrow each instead, their names their aria-labels. */
+  .kcap#oct-down, .kcap#oct-up { font-size: 0; }
+  .kcap#oct-down::before { content: "‹"; font-size: var(--t-body); }
+  .kcap#oct-up::before { content: "›"; font-size: var(--t-body); }
+
   /* …but for a key named in a sentence (the walkthroughs': "esc to put it
      down"), which would read with a hole in it. */
   .tour-body kbd { display: inline !important; }
@@ -8169,4 +8175,122 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
      up): measured in Chromium at 360 x 640, `pan-down` let an upward finger
      scroll the column and stopped a downward one. */
   #view-evolve section[aria-label^="Sound "] { touch-action: pan-x pan-up; }
+/* ---- a phone and a tablet, polished (#134) ----
+   Each level is one screen, as an app's view is: what it is for (the
+   knobs, the pair and PICK, the rack, the map) fits without the page
+   scrolling, and where there is more than fits it scrolls inside its own
+   panel, never the level. And on a touch screen each thing pressed is a
+   finger's size, 44 px, and a label stays on one line. */
+@media (pointer: coarse) {
+  .inhand-play, .model-btn, .util-btn, .hw-btn, .inspect-btn, .pf-disclose, .md-disclose,
+  .ev-lineage-btn, .ts-tog, .ts-tplay, .btab, .bank-tour-btn, .midi-ind,
+  .pt-act, .pt-cam, .pt-evolve-more, .pt-evolve #rack-evolve, .guide .x,
+  .nb-collapse, .nb-q, .nb-chip, .nb-fold, .nb-item, .perf-sel, .pf-how-tab, .wi-play, .brand {
+    min-height: 44px;
+  }
+  .inhand-play, .model-btn, .util-btn, .ts-tplay, .bank-tour-btn, .pt-act, .pt-cam, .pt-evolve-more, .guide .x,
+  .nb-collapse, .nb-chip, .pf-how-tab, .wi-play, .brand { min-width: 44px; }
+  .nb-chip, .pf-how-tab { display: inline-flex; align-items: center; justify-content: center; }
+  .nb-head .panel-label { white-space: nowrap; }
+  .inspect-btn, .hw-btn, .pt-cam, .pf-disclose { white-space: nowrap; }
+  .bank-find input, #cmdk-input { min-height: 44px; }
+  #vol { min-height: 44px; }
+  /* The octave's two keys: a finger wide, and with no keyboard to name, an
+     arrow each (their names are their aria-labels). */
+  .kcap#oct-down, .kcap#oct-up { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; }
+  /* A sound's row in the bank: its four acts a finger's size. */
+  .bi-hear, .bi-star, .bi-save, .bi-kill { min-width: 44px; min-height: 44px; }
+}
+
+/* One screen a level, a phone held upright. */
+@media (max-width: 700px) and (min-height: 501px) {
+  /* PERFORM: the name, the well a third of the screen, then the controls,
+     which scroll in their own column when there are more than fit. */
+  .view.perform { overflow: hidden; padding: var(--s2) var(--s3) 0; }
+  .pf-grid { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: var(--s3); }
+  .pf-left { flex: none; display: flex; flex-direction: column; gap: var(--s2); }
+  .pf-right { flex: 1 1 0; }
+  /* The guide pill stands over the controls' column here, which keeps
+     room for it at its foot; the well needs none. */
+  body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: 0; }
+  .pf-head { gap: 0; }
+  .pf-blurb:empty { display: none; }
+  .pf-knob svg { max-width: 60px; }
+  .pf-cap-row { min-height: 0; }
+  .pf-cap-row:not(:has(.pf-moved.on)) { display: none; }
+  .pf-name { font-size: var(--t-title); }
+  .pf-well { height: clamp(150px, 30dvh, 300px); min-height: 0; }
+  .pf-right { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(var(--s7) + var(--s5)); gap: var(--s3); }
+  .pf-k-ends, .pf-k-sub { white-space: nowrap; letter-spacing: 0; }
+
+  /* EVOLVE: the pair fills what the words and the map leave, PLAY and PICK
+     always on the screen. */
+  #view-evolve { overflow: hidden; padding: var(--s2) var(--s3) var(--s2); gap: var(--s2); }
+  .ev-head { gap: var(--s2); }
+  .duel-row { flex: 1 1 0; min-height: 0; }
+  .duel-card { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+  .duel-well { height: auto; min-height: 96px; }
+  .duel-corner .inspect-btn { padding-left: var(--s1); padding-right: var(--s1); }
+  .ev-map { height: clamp(56px, 9dvh, 96px); }
+  /* The foot on one line: another pair and its rule, then EVOLVE POOL and
+     what each generation did. */
+  .ev-foot { flex: none; flex-wrap: nowrap; gap: var(--s2); }
+  .ev-foot .duel-deal { flex: 1 1 0; }
+  .ev-evolve { flex: none; }
+
+  /* PATCH: the acts on one line, the words of what it is made of read
+     whole (on two lines, if it takes two). */
+  .pt-headacts { flex-wrap: nowrap; gap: var(--s1); }
+  .pt-evolve { min-width: 0; flex: 0 1 auto; }
+  .pt-evolve #rack-evolve { padding-left: var(--s2); padding-right: var(--s2); letter-spacing: 0.06em; }
+  .pt-sub { flex-wrap: wrap; row-gap: 0; }
+  #view-patch .pt-sub .subject-meta { white-space: normal; overflow: visible; text-overflow: clip; }
+  /* With the keys' drawer up the well is short: the words go, and so does
+     its foot (the camera and TEACH), which stood over the rack; two
+     fingers still zoom it, and the foot is back when the drawer closes. */
+  body.keys-open .pt-sub, body.keys-open #view-patch .pt-foot { display: none; }
+
+  /* UNDER THE HOOD's rows, in the controls' own scroll here. */
+  .pf-hood-row { min-height: 44px; }
+
+  /* LEARNING: the map shorter, so what it weighs starts on the screen. */
+  .md-map { height: clamp(120px, 22dvh, 200px); }
+}
+
+/* One screen a level, a phone on its side. */
+@media (max-height: 500px) and (max-width: 999px) {
+  .view.perform { overflow: hidden; padding-bottom: 0; }
+  .pf-grid { flex: 1 1 0; min-height: 0; }
+  .pf-left { grid-template-rows: auto minmax(0, 1fr); }
+  .pf-cap-row { min-height: 0; }
+  .pf-cap-row:not(:has(.pf-moved.on)) { display: none; }
+  .pf-name { font-size: var(--t-title); }
+  .pf-well { min-height: 0; }
+  .pf-right { overflow-y: auto; overscroll-behavior: contain; justify-content: flex-start; padding-bottom: calc(var(--s7) + var(--s5)); }
+
+  #view-evolve { overflow: hidden; padding-bottom: var(--s2); gap: var(--s2); }
+  .ev-map { height: 56px; }
+  .duel-row { flex: 1 1 0; min-height: 0; }
+  .duel-card { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+  .duel-well { height: auto; min-height: 80px; }
+  .duel-foot { flex-direction: row; align-items: center; }
+
+  /* The cross's stops are a finger's size (below): the level leaves them a
+     desktop's room, EVOLVE's beside the line clear of the controls. */
+  .stage { --rail-w: 96px; }
+  /* The catalog the screen's height, not the short well's. */
+  .nodebank { position: fixed; top: calc(var(--menubar-h) + var(--s2)); bottom: var(--s2); left: calc(var(--s2) + env(safe-area-inset-left, 0px)); width: 300px; z-index: 36; }
+
+  /* LEARNING: the map beside what it weighs and its forecasts. */
+  .md-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: auto; align-items: start; }
+  .md-mapp { grid-column: 1; grid-row: 1 / span 3; }
+  .md-weighs, .md-fcp, .md-foot { grid-column: 2; min-height: auto; }
+  .md-map { height: clamp(120px, 40dvh, 240px); }
+}
+
+/* A touch tablet, and a phone on its side: the cross's stops a finger's
+   size, and the levels give it the room a desktop's has. */
+@media (pointer: coarse) and (min-width: 701px) and (max-width: 1080px) {
+  .rail-stop, .rail-stop.aside, .rail-keys { width: 44px; height: 44px; }
+  .rail-line { height: 12px; }
 }
