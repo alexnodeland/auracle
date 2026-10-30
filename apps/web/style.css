@@ -617,6 +617,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .model-btn[aria-pressed="true"], body.model-view .model-btn { color: var(--phos-b); border-color: var(--phos-b-deep); }
 .model-btn[aria-pressed="true"] .led, body.model-view .model-btn .led { background: var(--phos-b); box-shadow: 0 0 10px var(--phos-b-60); }
+/* ⌥ (or MODEL) held, not yet for long enough to raise the view: the LED
+   half-lit, from the keydown (shell.js `arming`). */
+.model-btn.arming .led { background: var(--phos-b-60); }
 /* The model view's tag: what it believes, in the model's voice, under the
    bar while the view is up. A tapped view says it once and the tag settles
    away (`model-quiet`); the amber stays. */

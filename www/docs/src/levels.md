@@ -52,7 +52,9 @@ Every key and gesture is in [the keyboard map](./keyboard.md#the-levels).
 ## The model view
 
 Hold <kbd>⌥</kbd> for a moment, at any level, and what the model believes
-comes up over it: each bank row’s guess and the pool in the model’s order,
+comes up over it (**MODEL**’s light in the menu bar comes on halfway as you
+press, and fully when the view comes up; <kbd>⌥</kbd> with an arrow or a
+digit moves a level, and the view never shows): each bank row’s guess and the pool in the model’s order,
 TASTE’s halos, EVOLVE’s guess before you pick, PATCH’s belief line and which
 way your taste leans on each module, and which way your taste leans along
 each of PERFORM’s controls, from the sound in your hands (*it leans

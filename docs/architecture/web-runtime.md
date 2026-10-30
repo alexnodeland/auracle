@@ -161,7 +161,9 @@ MODEL's `aria-pressed` (true only for a tapped view), and the tag
 from the counts TASTE's line uses). A hold never ends a tapped view. The
 timer starts in the same capture listener as the level keys, under the same
 rules (a text field and a modal dialog keep ⌥), and any other keydown while it
-counts cancels it, so ⌥↑ never flashes the view; a level key while ⌥ holds the
+counts cancels it, so ⌥↑ never flashes the view; while it counts (and while
+MODEL is pressed, not yet held) MODEL's LED is half-lit (`.arming`), from the
+keydown, so the press shows it was taken (#305); a level key while ⌥ holds the
 view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
 (Esc any view, held or tapped, once nothing nearer took the press: the shell
 hears Esc last, on the window in the bubble phase, and leaves a press a
