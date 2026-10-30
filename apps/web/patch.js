@@ -1209,6 +1209,18 @@ export function createPatch(host) {
       if (!g) return;
       const knob = t.closest("[data-addr]");
       openSheet(g.getAttribute("data-key"), knob ? knob.getAttribute("data-addr") : null);
+      // The tap's own click follows the lift, onto whatever the sheet now
+      // puts under the finger: on a phone the sheet rises from the bottom,
+      // and that click pressed its MODE, a slider or REMOVE MODULE (#134).
+      // It is the tap's, already answered: taken here, once.
+      const swallow = (c) => {
+        document.removeEventListener("click", swallow, true);
+        if (c.timeStamp - e.timeStamp > 600) return;
+        c.preventDefault();
+        c.stopPropagation();
+      };
+      document.addEventListener("click", swallow, true);
+      setTimeout(() => document.removeEventListener("click", swallow, true), 700);
     }, true);
   }
 

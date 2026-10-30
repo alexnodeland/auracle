@@ -8142,3 +8142,92 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .bank-find input, #cmdk-input { font-size: 16px; } /* token-exempt: under 16 px iOS Safari zooms the page into a focused field */
   .menubar kbd { display: none; }
 }
+
+/* ---- each level on a phone held upright (#134) ----
+   One column, read from the top, and the level scrolls where it runs past
+   the screen; nothing is cut and nothing scrolls sideways. */
+@media (max-width: 700px) and (min-height: 501px) {
+  /* PERFORM: the sound (its name and its well), then what you turn, the
+     hood and the pads, clear of the guide pill at the bottom. */
+  .view.perform { padding: var(--s3) var(--s3) calc(var(--s7) + var(--s5)); }
+  .pf-grid { flex: none; grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+  .pf-left { grid-template-rows: auto auto; }
+  .pf-well { height: min(46vh, 380px); min-height: 240px; }
+  .pf-right { justify-content: flex-start; }
+
+  /* EVOLVE: the words, then the small map the width of the screen, then
+     the pair side by side, each card's PLAY and PICK under its name. */
+  #view-evolve { overflow-y: auto; padding: var(--s3) var(--s3) var(--s5); gap: var(--s3); }
+  .ev-head { flex-direction: column; align-items: stretch; gap: var(--s3); }
+  .ev-map { width: 100%; height: 96px; }
+  .duel-row { flex: none; gap: var(--s2); }
+  .duel-card { grid-template-rows: auto auto; gap: var(--s2); }
+  .duel-well { height: min(38vh, 320px); }
+  .duel-well > .face-slot { inset: var(--s6) var(--s2) var(--s2); }
+  .duel-corner { top: var(--s2); right: var(--s2); left: var(--s2); justify-content: flex-end; gap: var(--s1); }
+  .duel-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s1); }
+  .duel-controls .hw-btn { min-width: 0; padding-left: var(--s1); padding-right: var(--s1); }
+  .ev-foot { flex-wrap: wrap; }
+  .ev-map { height: clamp(64px, 11vh, 96px); }
+
+  /* PATCH: the head stacked (the cap, the name, what it is made of, then
+     the acts), and the well the rest of the screen: a tapped module opens
+     its sheet (patch.js), and two fingers zoom the rack. */
+  #view-patch { padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+  .pt-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "cap next" "title title" "sub sub" "acts acts" "edit edit";
+  }
+  #view-patch .pt-title { font-size: var(--t-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pt-sub { min-height: 0; }
+  .pt-headacts { justify-content: flex-start; flex-wrap: wrap; }
+  .pt-editbar { justify-self: start; }
+  /* The well's foot: the readout on a line of its own over the camera, and
+     TEACH after the camera, on the next line if it must. */
+  .pt-foot { flex-wrap: wrap; row-gap: var(--s1); }
+  .pt-foot .pt-read { order: -1; flex: 1 0 100%; }
+  .pt-foot .pt-read:empty { display: none; }
+
+  /* LEARNING's room runs down the screen and scrolls, each panel at its
+     own height. */
+  .md { grid-template-rows: auto auto; }
+  .md-body > * { flex: none; }
+
+  /* TASTE and LEARNING: the headline at a title's size, so the map and the
+     room start on the first screen. */
+  #view-taste .lv-title, #view-learning .lv-title { font-size: var(--t-title); }
+}
+
+/* ---- each level on a short screen (a phone on its side, #134) ----
+   Every level scrolls where it runs past the screen, its headline at a
+   title's size, and EVOLVE's pair keeps PLAY and PICK in reach. */
+@media (max-height: 500px) and (max-width: 999px) {
+  :root { --menubar-h: 46px; }
+  .view.perform, #view-patch, #view-evolve { padding: var(--s3); }
+  #view-evolve, #view-taste { overflow-y: auto; }
+  #view-evolve .ev-title, #view-patch .pt-title, #view-taste .lv-title, #view-learning .lv-title { font-size: var(--t-title); }
+  .ev-map { height: 96px; }
+  .duel-row { flex: none; }
+  .duel-card { grid-template-rows: auto auto; }
+  .duel-well { height: min(62vh, 240px); }
+  .md { grid-template-rows: auto auto; }
+}
+
+/* The narrowest phones: the wordmark gives the sound in hand its room, and
+   the bar's names their width. */
+@media (max-width: 400px) {
+  .brand .word { display: none; }
+}
+@media (max-width: 380px) and (min-height: 501px) {
+  .rail { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .rail .rl { letter-spacing: 0; }
+}
+
+/* A touch screen has no keys to print: the hints go, and the keybed keeps
+   only its C's octave. */
+@media (hover: none) and (pointer: coarse) {
+  kbd { display: none !important; }
+  .pkey .hint, .bkey .hint { color: transparent; }
+  .pkey .hint b { color: var(--pkey-hint); }
+  .pkey.down .hint b { color: var(--pkey-down-hint); }
+}

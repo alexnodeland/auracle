@@ -4292,8 +4292,14 @@ export function createPerform(host) {
   // `host.guide`) retires once all three have. Per visitor: the booth's "new
   // visitor" brings it back.
   const coarse = () => !!window.matchMedia?.("(pointer: coarse)").matches;
+  const keysInDrawer = () => {
+    const t = document.getElementById("keys-toggle");
+    return !!t && getComputedStyle(t).display !== "none" && t.getAttribute("aria-expanded") !== "true";
+  };
   const STEPS = [
-    { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
+    // On a phone the keys are a drawer, under KEYS in the bar along the
+    // bottom (#134): the step says where they are.
+    { id: "play", text: () => (keysInDrawer() ? "Tap KEYS, then play the keybed" : coarse() ? "Play it: tap the keybed" : "Play a key: A to L, or tap the keybed") },
     { id: "turn", text: turnStep },
     { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];
