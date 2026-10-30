@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # SessionStart: say what a new session needs to know before touching anything.
 # Whatever this prints is added to the session's context. It never fails the
-# session: every check is best-effort.
+# session: every check is best-effort. On Claude Code on the web it first sets
+# the container up (web-setup.sh), so the report below is of what it left.
 set -u
 # The session's own checkout, from the cwd the hook is given: a session in a
 # worktree under .claude/worktrees/ has its own apps/web/pkg, and
 # CLAUDE_PROJECT_DIR may still name the main checkout.
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/_root.sh"
-cwd="$(python3 "$here/_input.py" cwd)"
+input="$(cat)"
+printf '%s' "$input" | bash "$here/web-setup.sh"
+cwd="$(printf '%s' "$input" | python3 "$here/_input.py" cwd)"
 root="$(checkout_root "${cwd:-$(pwd)}")"
 root="${root:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
 cd "$root" 2>/dev/null || exit 0
@@ -16,7 +19,10 @@ cd "$root" 2>/dev/null || exit 0
 # 1. Is the app's engine older than the Rust it is built from, a dev build,
 #    or unfinished?
 wasm="apps/web/pkg/auracle_wasm_bg.wasm"
-if [ ! -f "$wasm" ]; then
+setup="$(web_setup_dir "$root")"
+if web_building "$setup"; then
+  echo "The engine is building in the background (web-setup.sh's \`make wasm\`, logged to $setup/wasm.log): don't start another. The browser tests, rehearsals and recordings refuse apps/web/pkg until it finishes."
+elif [ ! -f "$wasm" ]; then
   echo "apps/web/pkg has no built engine: run \`make wasm\` before serving the app or running browser tests."
 else
   newer=$(find crates -name '*.rs' -newer "$wasm" 2>/dev/null | head -3)
@@ -32,6 +38,7 @@ else
     echo "apps/web/pkg is a dev build (\`make wasm-dev\`): the browser tests, rehearsals and recordings refuse it. Run \`make wasm\` before them."
   elif grep -qE '"profile": *"unfinished"' apps/web/pkg/build.json 2>/dev/null; then
     echo "apps/web/pkg is an unfinished build (a \`make wasm\` that failed or was stopped, or is running): the browser tests, rehearsals and recordings refuse it. Run \`make wasm\` before them."
+    [ -f "$setup/wasm.log" ] && echo "The session-start setup's build of it is logged in $setup/wasm.log: its end says why it stopped."
   fi
 fi
 

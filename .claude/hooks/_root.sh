@@ -18,3 +18,21 @@ checkout_root() {
     d="$(dirname "$d")"
   done
 }
+
+# Where web-setup.sh keeps a checkout's logs and its background engine
+# build's pid: one directory per checkout, since the build writes that
+# checkout's apps/web/pkg and a session in another is not waiting on it.
+#
+#   web_setup_dir /abs/root  -> $TMPDIR/auracle-web-setup/<a hash of the root>
+#   web_building  /abs/dir   -> succeeds while that directory's build runs
+web_setup_dir() {
+  printf '%s/auracle-web-setup/%s\n' "${TMPDIR:-/tmp}" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
+}
+# The build removes its pid file when it ends; a pid left by one that was
+# killed (a container stopped) can name another process by now, so the pid
+# counts only while it is still the build.
+web_building() {
+  local p
+  p="$(cat "$1/wasm.pid" 2>/dev/null)" || return 1
+  [ -n "$p" ] && ps -o args= -p "$p" 2>/dev/null | grep -q 'make wasm'
+}
