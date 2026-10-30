@@ -7999,10 +7999,13 @@ function choose(side) {
   const lose = choseA ? b : a;
   // `replace`: only one vote is ever undoable (this one commits the last), so
   // the lane names this one, not whichever pick's toast was first in line.
+  // `takeBack`: its window runs from now, so it goes ahead of any plain
+  // remark, and is never said once the window has closed (toasts.js rule 7).
   pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
     undo: () => retractVote(),
     undoLabel: "not what I meant",
     replace: "vote",
+    takeBack: true,
   });
   duelsSinceFit += 1;
   // The refit is *armed* here and sent in `settleFit` once this pick is in
@@ -9230,7 +9233,7 @@ function cutRow(r) {
   });
   // By name, never "#9": ids are hidden everywhere else. And it says what the
   // cut does, which is now true: the patch is not dealt again.
-  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true });
+  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true, takeBack: true });
 }
 
 function wireRename(nameEl, r) {
