@@ -617,6 +617,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .model-btn[aria-pressed="true"], body.model-view .model-btn { color: var(--phos-b); border-color: var(--phos-b-deep); }
 .model-btn[aria-pressed="true"] .led, body.model-view .model-btn .led { background: var(--phos-b); box-shadow: 0 0 10px var(--phos-b-60); }
+/* ⌥ (or MODEL) held, not yet for long enough to raise the view: the LED
+   half-lit, from the keydown (shell.js `arming`). */
+.model-btn.arming .led { background: var(--phos-b-60); }
 /* The model view's tag: what it believes, in the model's voice, under the
    bar while the view is up. A tapped view says it once and the tag settles
    away (`model-quiet`); the amber stays. */
@@ -2170,8 +2173,11 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
 .hw-btn.play { color: var(--phos-a); }
 .hw-btn.play.playing { box-shadow: inset 0 0 12px var(--phos-a-25), 0 3px 0 var(--shadow-ink); }
 /* Its buffer is still rendering (the scope above says so). Dimmed, not
-   disabled: a press still asks for that buffer first and plays it on arrival. */
-.hw-btn.play.pending { opacity: 0.5; }
+   disabled: a press still asks for that buffer first and plays it on arrival,
+   and from the press it wears the bank's dotted ring (`.pending`,
+   main.js `awaitRender`), so the press shows it was taken. */
+.hw-btn.play.rendering { opacity: 0.5; }
+.hw-btn.play.pending { opacity: 1; outline: 1px dotted var(--phos-b); outline-offset: -2px; color: var(--phos-b); }
 .hw-btn.choose { color: var(--phos-b); }
 .hw-btn.small { flex: none; font-size: var(--t-label); padding: var(--s2) var(--s3); color: var(--phos-b); }
 .hw-btn:disabled { opacity: 0.45; cursor: default; }
@@ -2458,6 +2464,9 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
 }
 .md-chip-play { background: none; border: none; color: var(--phos-a); cursor: pointer; font-size: var(--t-label); padding: 0 2px; }
 .md-chip-play:disabled { color: var(--silk-mute); cursor: default; }
+/* A ▶ pressed before its sound is here (TASTE's card and a style's
+   exemplar): the bank's dotted ring until it plays (main.js `awaitRender`). */
+.md-chip-play.pending, .util-btn.pending { outline: 1px dotted var(--phos-b); outline-offset: -2px; color: var(--phos-b); }
 /* A mark sits in a slot every row and chip keeps, left of its label, so the
    label never moves whether the mark shows or not (Plan-005 task 1). */
 .md-mark {

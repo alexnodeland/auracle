@@ -27,7 +27,8 @@ WHAT IT WEIGHS shows them, largest first.
 with its share. Click a chip to show its weights; a dot at the chip’s left
 marks the one shown. Click its name and type to name it, and every place the
 style appears uses your name; a refit keeps it on the style it named. **▶**
-plays the sound that style rates highest today.
+plays the sound that style rates highest today, with a dotted amber ring
+while it is rendered first.
 
 **The rows.** Each row is one quality: its name (*body*, *grit*, *drive &
 fold*), the technical name beside it, a bar, and the weight.

@@ -215,7 +215,7 @@ const names = () => ids().map((i) => '#' + i).join(' | ');
 const index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };
 const out = [];
 for (let i = 0; i < 12; i++) {
-  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');
+  await until(() => dealt() && !document.querySelector('#play-a.rendering, #play-b.rendering'), 120000, 'the pair to render');
   const table = ids();
   // The pair behind it. A deal that repeats the table's pair is refused by
   // the app and asked again; after three refusals it stops asking, and so
