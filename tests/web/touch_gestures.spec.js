@@ -205,10 +205,19 @@ test("a long press on a card, a bank row and a dot on TASTE's map shows the mode
   await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
   // TASTE's map, on its dots: a hold on one opens nothing, where a tap on
   // another opens that sound (its row in the bank is the one in hand).
+  // The map's places are the views the engine posts as the pool fills (on a
+  // slow runner the pool was still arriving here, and a later post moved the
+  // dots under the tap): wait for the whole pool, and for the views that
+  // place every sound in it, before reading where a dot is.
+  await app.filled();
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => {
+    const f = window.__tap.facts;
+    const placed = new Set((f.views?.map?.points || []).filter((p) => p.id != null).map((p) => p.id));
+    return f.ranked.every((r) => placed.has(r.id));
+  }), { timeout, message: "the map's views placing every sound in the pool" }).toBe(true));
   await goLevel(page, "taste");
   await landed(page);
   const held = await dotAt(page, 0);
-  const tapped = await dotAt(page, 1);
   const rowOf = (id) => page.locator(`#bank-list .bank-item[data-id="${id}"]`);
   await touch(cdp, "touchStart", [{ x: held.x, y: held.y }]);
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
@@ -216,6 +225,7 @@ test("a long press on a card, a bank row and a dot on TASTE's map shows the mode
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
   await app.quiet();
   await expect(rowOf(held.id)).not.toHaveClass(/\blive\b/);
+  const tapped = await dotAt(page, 1);
   await touch(cdp, "touchStart", [{ x: tapped.x, y: tapped.y }]);
   await touch(cdp, "touchEnd", []);
   await app.engine((timeout) => expect(rowOf(tapped.id)).toHaveClass(/\blive\b/, { timeout }), { ms: 30_000 });
