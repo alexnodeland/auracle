@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Auracle | Play</title>
 <!-- The tab icon, inline, and still inline for the original reason: it was an
      SVG data URI carrying raw `<`, `>`, `'` and spaces — legal enough that
@@ -136,6 +136,11 @@
          works (a generation, ⚡, a refit): main.js, `renderJobSlot`, which
          also gives it the job's words as its title. The word goes to
          PERFORM, the level at rest. -->
+    <!-- The bank, on a window too narrow to keep it beside the stage (999 px
+         and under: a tablet, a phone, a narrow window): it opens as a sheet
+         over the stage and goes away as you choose a sound (shell.js,
+         `sheets`). Hidden wherever the bank has its own column. -->
+    <button class="bank-btn" id="bank-btn" type="button" aria-controls="bank" aria-expanded="false" aria-label="The bank: your sounds" title="The bank"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></button>
     <a class="brand" href="./#perform" aria-label="Auracle"><span class="word">AURACLE</span><span class="lamp" id="wm-lamp"></span></a>
     <!-- Where you are: the level's name and what it is (shell.js). A polite
          live region, so a level key says where it went. -->
@@ -198,7 +203,10 @@
   <!-- ===================== deck: bank + stage ===================== -->
   <div class="deck">
 
-    <aside class="bank" aria-label="Bank">
+    <aside class="bank" id="bank" aria-label="Bank">
+      <!-- On a phone the bank is a sheet from the bottom: its handle, pulled
+           down or tapped, puts it away. Hidden where the bank is a column. -->
+      <button class="sheet-grab" id="bank-grab" type="button" aria-label="Put the bank away"></button>
       <!-- The bank's head, to the mock: three tabs and Find a sound. What the
            head used to hold lives in titles: each bank's line in its tab's,
            the save budget in SAVED's (its count amber at the cap), and the
@@ -758,18 +766,23 @@
            to the one you reach. -->
       <nav class="rail" id="rail" aria-label="Where you are">
         <span class="rail-hint" aria-hidden="true">out</span>
-        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg></button>
+        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg><span class="rl">Learning</span></button>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg></button>
+        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg><span class="rl">Taste</span></button>
         <span class="rail-line" aria-hidden="true"></span>
         <div class="rail-mid">
-          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg></button>
+          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg><span class="rl">Evolve</span></button>
           <span class="rail-branch" aria-hidden="true"></span>
-          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg></button>
+          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg><span class="rl">Perform</span></button>
         </div>
         <span class="rail-line" aria-hidden="true"></span>
-        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg></button>
+        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg><span class="rl">Patch</span></button>
         <span class="rail-hint" aria-hidden="true">in</span>
+        <!-- On a phone the cross is the bar along the bottom, the levels in
+             their order out to in, EVOLVE beside them, and then the keys,
+             whose drawer opens over the bar (shell.js, `sheets`). Hidden
+             wherever the keys have their own row. -->
+        <button class="rail-keys" id="keys-toggle" type="button" aria-controls="keybar" aria-expanded="false" aria-label="The keys" title="The keys"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M8 5.5v8M12 5.5v8M16 5.5v8"/></svg><span class="rl">Keys</span></button>
       </nav>
 
       <!-- The guide pill (guide.js): the first-visit steps, one at a time,
@@ -779,7 +792,7 @@
   </div>
 
   <!-- ===================== keyboard dock ===================== -->
-  <footer class="keybar">
+  <footer class="keybar" id="keybar">
     <!-- The side column: what the computer keys play, and Z and X to move
          the octave (they are buttons too). -->
     <div class="keys-side">
@@ -854,6 +867,10 @@
     </div>
   </footer>
 </div>
+
+<!-- Under the bank's sheet on a narrow window: a tap on it puts the sheet
+     away (shell.js, `sheets`). -->
+<div class="sheet-scrim" id="sheet-scrim" aria-hidden="true"></div>
 
 <!-- wire-drag overlay (fixed, pointer-events none) -->
 <svg id="wire-overlay" xmlns="http://www.w3.org/2000/svg"></svg>

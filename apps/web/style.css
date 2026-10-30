@@ -7896,3 +7896,249 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 /* Focused from the keyboard while it waits: the focus ring stays where it is,
    and the dotted amber cue moves onto the face's own edge, as ▶'s did. */
 .out-play.pending:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; border: 1px dotted var(--phos-b); }
+
+/* =====================================================================
+   A narrow window, a tablet and a phone (#134; Plan-008 §7, Plan-005 task
+   8), to the prototype's phone (`docs/notes/vision-2026-09/prototype/
+   style.css`, "v2: touch, designed rather than squeezed" and the shell
+   audit's four parts). Three shapes, chosen by the stylesheet alone, with
+   shell.js (`sheets`) only opening and closing them (`body.bank-open`,
+   `body.keys-open`):
+   - 999 px and under: the bank leaves its column and is a sheet from the
+     left, opened by BANK at the start of the menu bar;
+   - a phone held upright (700 px and under, taller than 500): the bank is
+     a sheet from the bottom, the cross is the bar along the bottom (the
+     levels out to in, EVOLVE beside them, then KEYS), and the keys are a
+     drawer over that bar;
+   - a short screen (a phone on its side, 500 px and under): the cross
+     stays at the right edge with KEYS under it, and the keys are a drawer.
+   Above 999 px nothing here applies, but for these four hidden things. */
+.bank-btn, .sheet-grab, .rail-keys, .rail .rl, .sheet-scrim { display: none; }
+
+.bank-btn {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  margin-left: calc(-1 * var(--s2));
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: none;
+  color: var(--silk-dim);
+  cursor: pointer;
+}
+.bank-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.bank-btn:hover, .bank-btn[aria-expanded="true"] { color: var(--silk); border-color: var(--plate-edge); }
+.bank-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.sheet-scrim { position: fixed; inset: 0; z-index: 41; background: var(--scrim-82); }
+
+@media (max-width: 999px) {
+  .app {
+    grid-template-areas: "bar" "stage" "keys";
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bank-btn { display: grid; }
+  /* The bank, a sheet from the left over the stage: above a level's lifted
+     controls (35), under the dialogs (55+), as the ladder at `.toasts`
+     places popovers. Hidden while away, so its rows take no tab stop. */
+  .bank {
+    position: fixed;
+    top: var(--menubar-h);
+    bottom: 0;
+    left: 0;
+    z-index: 42;
+    width: min(320px, 86vw);
+    flex: none;
+    border-right: 1px solid var(--plate-edge);
+    box-shadow: var(--shadow-pop);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--d-move) var(--e-settle), visibility var(--d-move);
+  }
+  body.bank-open .bank { transform: none; visibility: visible; }
+  body.bank-open .sheet-scrim { display: block; }
+  /* A word about your sounds, said while the sheet is up, stands over it. */
+  body.bank-open .toasts { z-index: 43; }
+}
+
+/* ---- a phone held upright ---- */
+@media (max-width: 700px) and (min-height: 501px) {
+  :root {
+    /* The bar along the bottom, and a phone's home indicator under it. */
+    --nav-h: calc(58px + env(safe-area-inset-bottom, 0px));
+    --menubar-h: 52px;
+  }
+  .app {
+    grid-template-areas: "bar" "stage" "keys" "nav";
+    grid-template-rows: var(--menubar-h) minmax(0, 1fr) auto var(--nav-h);
+  }
+  .stage { --rail-w: 0px; }
+  .menubar { gap: var(--s2); padding: 0 var(--s3); }
+  .bank-btn { margin-left: 0; }
+  .where { display: none; }
+  .cmdk-btn { padding: 0 var(--s2); }
+
+  /* The bank: a sheet from the bottom, its handle at the top. */
+  .bank {
+    top: auto;
+    right: 0;
+    width: auto;
+    height: 78vh;
+    border: 1px solid var(--plate-edge);
+    border-bottom: 0;
+    border-radius: var(--r3) var(--r3) 0 0;
+    transform: translateY(100%);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet-grab {
+    display: block;
+    position: relative;
+    flex: none;
+    width: 100%;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+  }
+  .sheet-grab::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    width: 40px;
+    height: 4px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: var(--plate-edge);
+  }
+  .bank-head { padding-top: 0; }
+
+  /* The cross is the bar along the bottom: the four levels out to in, then
+     EVOLVE beside them, then KEYS. The level you're at is lit, with a line
+     along its top edge. */
+  .rail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    transform: none;
+    z-index: 38;
+    height: var(--nav-h);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.1fr) minmax(0, 0.9fr);
+    justify-items: stretch;
+    align-items: stretch;
+    background: var(--panel);
+    border-top: 1px solid var(--hairline);
+  }
+  .rail-line, .rail-branch, .rail-hint, .rail-puck { display: none; }
+  .rail-mid { display: contents; }
+  .rail-stop, .rail-stop.aside, .rail-keys {
+    width: auto;
+    height: auto;
+    min-height: 44px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s1);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--silk-dim);
+    cursor: pointer;
+  }
+  .rail-stop svg, .rail-stop.aside svg, .rail-keys svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .rail .rl {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-silk);
+    font-size: var(--t-label);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .rail-stop[aria-current="location"],
+  .rail.traveling .rail-stop[aria-current="location"] {
+    color: var(--phos-a);
+    background: none;
+    box-shadow: inset 0 2px 0 var(--phos-a);
+  }
+  .rail-stop:focus-visible, .rail-keys:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -4px; }
+  .rail-stop[data-level="learning"] { order: 1; }
+  .rail-stop[data-level="taste"] { order: 2; }
+  .rail-stop[data-level="perform"] { order: 3; }
+  .rail-stop[data-level="patch"] { order: 4; }
+  .rail-stop[data-level="evolve"] { order: 5; border-left: 1px solid var(--hairline); }
+  .rail-keys { order: 6; border-left: 1px solid var(--hairline); }
+  .rail-keys[aria-expanded="true"] { color: var(--phos-a); }
+
+  /* The keys: a drawer that opens over the bar, lifting the stage rather
+     than covering it. The octave and the cluster on one line, the keybed
+     the width of the screen under them. */
+  .keybar { display: none; }
+  body.keys-open .keybar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+    padding: var(--s2) var(--s3);
+  }
+  .keys-side { width: auto; flex-direction: row; align-items: center; }
+  .keys-side .panel-label, .oct-word { display: none; }
+  .keys-cluster { margin-left: auto; gap: var(--s2); }
+  .keys-cluster .vol .pc-cap { display: none; }
+  #vol { width: 64px; }
+  .piano { order: 3; flex: 1 0 100%; height: 120px; }
+  .app.bigkeys .piano { height: clamp(160px, 32vh, 260px); }
+  .keys-pop { right: 0; max-width: calc(100vw - 2 * var(--s3)); white-space: normal; }
+  .kp-row { flex-wrap: wrap; }
+
+  .guide { left: var(--s3); right: var(--s3); bottom: var(--s3); max-width: none; }
+  .model-tag { max-width: calc(100vw - 2 * var(--s4)); }
+}
+
+/* ---- a short screen: a phone on its side ---- */
+@media (max-height: 500px) and (max-width: 999px) {
+  .app { grid-template-rows: var(--menubar-h) minmax(0, 1fr) auto; }
+  .where { display: none; }
+  .rail-keys {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-top: var(--s2);
+    padding: 0;
+    border: 1px solid var(--hairline);
+    border-radius: 50%;
+    background: var(--panel);
+    color: var(--silk-mute);
+    cursor: pointer;
+  }
+  .rail-keys svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .rail-keys[aria-expanded="true"] { color: var(--phos-a); border-color: var(--phos-a-deep); }
+  .rail-hint { display: none; }
+  .rail-line { height: 10px; }
+  .keybar { display: none; }
+  body.keys-open .keybar { display: flex; }
+}
+
+/* A finger: what is pressed is the size of one, and a field is read at a
+   size iOS does not zoom into. */
+@media (pointer: coarse) {
+  .bank-btn, .cmdk-btn { min-width: 44px; height: 44px; }
+  .bank-find input, #cmdk-input { font-size: 16px; } /* token-exempt: under 16 px iOS Safari zooms the page into a focused field */
+  .menubar kbd { display: none; }
+}

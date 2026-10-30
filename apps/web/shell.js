@@ -652,6 +652,104 @@ export function createShell(host = {}) {
     },
     true,
   );
+  // ---------- the bank's sheet and the keys' drawer (#134) ----------
+  // On a window too narrow to keep the bank beside the stage (999 px and
+  // under), the bank is a sheet: BANK at the start of the menu bar opens it,
+  // and a sound chosen in it, the scrim, its handle (tapped, or pulled down
+  // on a phone), Esc or BANK again put it away. Where the keys have no row
+  // of their own (a phone, a short screen), KEYS opens and closes their
+  // drawer. Which of these is a sheet at all is the stylesheet's; here are
+  // only `body.bank-open` and `body.keys-open`, and the buttons that say so.
+  const sheets = (() => {
+    const bankEl = document.getElementById("bank");
+    const bankBtn = document.getElementById("bank-btn");
+    const keysBtn = document.getElementById("keys-toggle");
+    const scrim = document.getElementById("sheet-scrim");
+    const grab = document.getElementById("bank-grab");
+    const list = document.getElementById("bank-list");
+    const body = document.body;
+    // Is the bank a sheet now, rather than a column? Read from the layout,
+    // so the stylesheet alone decides.
+    const bankIsSheet = () => !!bankEl && getComputedStyle(bankEl).position === "fixed";
+    /** The stage changed size under a level that draws to it (PATCH's rack,
+     *  TASTE's map): each redraws on the window's resize. */
+    const resized = () => requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    function setBank(open, { focus = false } = {}) {
+      open = !!open && bankIsSheet();
+      if (open === body.classList.contains("bank-open")) return;
+      const had = !open && bankEl && bankEl.contains(document.activeElement);
+      body.classList.toggle("bank-open", open);
+      if (bankBtn) bankBtn.setAttribute("aria-expanded", String(open));
+      if (open && focus && list) list.focus({ preventScroll: true });
+      if (had && bankBtn) bankBtn.focus({ preventScroll: true });
+    }
+    function setKeys(open) {
+      open = !!open;
+      if (open === body.classList.contains("keys-open")) return;
+      body.classList.toggle("keys-open", open);
+      if (keysBtn) keysBtn.setAttribute("aria-expanded", String(open));
+      resized();
+    }
+    if (bankBtn) bankBtn.addEventListener("click", (e) => setBank(!body.classList.contains("bank-open"), { focus: e.detail === 0 }));
+    if (keysBtn) keysBtn.addEventListener("click", () => setKeys(!body.classList.contains("keys-open")));
+    if (scrim) scrim.addEventListener("click", () => setBank(false));
+    // A sound chosen from the sheet: it opens where you are (main.js, the
+    // row's own click, which has run by now), and the sheet makes way for
+    // it. A row's own buttons (▶, ★, save, cut) leave it up.
+    if (list) {
+      list.addEventListener("click", (e) => {
+        if (!body.classList.contains("bank-open") || e.detail > 1) return;
+        if (!e.target.closest?.(".bank-item, .preset-item") || e.target.closest("button, input, a")) return;
+        setBank(false);
+      });
+      list.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !body.classList.contains("bank-open") || e.target.closest?.("button, input")) return;
+        queueMicrotask(() => setBank(false));
+      });
+    }
+    // The handle: a tap puts the sheet away, and so does a pull of a
+    // finger's width or more; a shorter pull lets it settle back.
+    if (grab && bankEl) {
+      let drag = null;
+      grab.addEventListener("pointerdown", (e) => {
+        drag = { y: e.clientY, id: e.pointerId, moved: 0 };
+        grab.setPointerCapture?.(e.pointerId);
+        bankEl.style.transition = "none";
+      });
+      grab.addEventListener("pointermove", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag.moved = Math.max(0, e.clientY - drag.y);
+        bankEl.style.transform = `translateY(${drag.moved}px)`;
+      });
+      const letGo = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const far = drag.moved > 64;
+        const tap = drag.moved < 4 && e.type === "pointerup";
+        drag = null;
+        bankEl.style.transition = "";
+        bankEl.style.transform = "";
+        if (far || tap) setBank(false);
+      };
+      grab.addEventListener("pointerup", letGo);
+      grab.addEventListener("pointercancel", letGo);
+      // From the keyboard, the handle is a button like any other.
+      grab.addEventListener("click", (e) => { if (e.detail === 0) setBank(false); });
+    }
+    // Wider again (a tablet turned, a window widened): the bank is a column
+    // again, and no sheet is left open behind it.
+    window.addEventListener("resize", () => { if (!bankIsSheet()) setBank(false); });
+    return { setBank, setKeys, bankOpen: () => body.classList.contains("bank-open"), keysOpen: () => body.classList.contains("keys-open") };
+  })();
+  // Esc puts the bank's sheet away before anything behind it hears it: the
+  // model view stays (`defaultPrevented`, below). In Find a sound, Esc is the
+  // field's while it holds words (main.js clears them), then the sheet's.
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented || !sheets.bankOpen()) return;
+    if (e.target.matches?.("#bank-find") && e.target.value) return;
+    e.preventDefault();
+    sheets.setBank(false);
+  });
+
   // Esc ends the model view only when nothing nearer took it: on the window,
   // in the bubble phase, after every handler on the page has had it, and not
   // when one of them closed something with it (`defaultPrevented`: a menu,
@@ -1131,5 +1229,11 @@ export function createShell(host = {}) {
     openCommands: () => kShow(),
     closeCommands: () => kHide(),
     commandsOpen: kOpen,
+    /** The bank's sheet and the keys' drawer, on a narrow window (#134):
+     *  open or close each, and is each open? */
+    setBank: (open) => sheets.setBank(open),
+    setKeys: (open) => sheets.setKeys(open),
+    bankOpen: () => sheets.bankOpen(),
+    keysOpen: () => sheets.keysOpen(),
   };
 }

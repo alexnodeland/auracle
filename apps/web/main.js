@@ -4834,9 +4834,13 @@ function positionToastLane() {
   // PATCH and the header copy in TASTE.
   const bar = document.querySelector(".keybar");
   const br = bar ? bar.getBoundingClientRect() : null;
+  // On a phone the levels are the bar along the bottom, and the keys a
+  // drawer over it (#134): the lane stands above whichever is higher.
+  const nav = $("rail") ? $("rail").getBoundingClientRect() : null;
+  const navTop = nav && nav.height > 0 && nav.width > window.innerWidth / 2 && nav.bottom >= window.innerHeight - 1 ? nav.top - 10 : window.innerHeight - 16;
   // Anchored by its bottom, so it grows upward as toasts stack and does not
   // jump when one leaves.
-  const floor = br && br.height > 0 ? br.top - 10 : window.innerHeight - 16;
+  const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
   holder.style.top = "auto";
   holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
   holder.style.right = "16px";
@@ -6220,6 +6224,9 @@ const PIANO_HI = 84; // C6
 const KEY_SPANS = [12, 24, 36, 48];
 const SPAN_DEFAULT_FINE = 36; // three octaves, as it has always been
 const SPAN_DEFAULT_COARSE = 24; // a finger needs the width more than the range
+const SPAN_DEFAULT_PHONE = 12; // and on a phone's width, one octave is a finger's keys (#134)
+// A phone: a screen whose shorter side is under a tablet's (#134).
+const PHONE = Math.min(window.innerWidth, window.innerHeight) < 620;
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const KEYMAP = {
   a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
@@ -6691,7 +6698,7 @@ const perf = {
   // The tall dock stays an explicit choice — it costs the rack real height,
   // and taking that without being asked is not a default's business. The
   // width, which costs nothing but range, is chosen for you.
-  bigKeys: false, keySpan: COARSE ? SPAN_DEFAULT_COARSE : SPAN_DEFAULT_FINE,
+  bigKeys: false, keySpan: COARSE ? (PHONE ? SPAN_DEFAULT_PHONE : SPAN_DEFAULT_COARSE) : SPAN_DEFAULT_FINE,
 };
 
 function sendArp() {
