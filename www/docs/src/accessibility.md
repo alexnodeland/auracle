@@ -218,11 +218,16 @@ including under its ticks, track, and value arc, and a jack answers across its
 whole ring rather than only where its outline is drawn.
 
 On a touch screen, where the rack is drawn small, the ▶ on the face at OUT
-answers a finger 44 px across, and while sockets are lit (a module in hand,
-a cable being placed) a tap or a drop on bare panel within 22 px of one goes
-to the nearest. A socket that is not lit keeps its drawn size there: a wider
-reach would cover the modules, and a tap on a module opens its settings. UNDER THE HOOD's rows are 44 px too, the hood scrolling on its own
-to the ones below its first three.
+answers a finger 44 px across (not while sockets are lit, so it never stands
+over the one beside it). While sockets are lit (a module in hand, a cable
+being placed), a tap on bare panel goes to a lit socket when the finger
+plainly means it: within 22 px of its middle, with no other lit socket
+within one and a half times that distance. A cable let go on bare panel
+goes in the same way from within 12 px; let go on a control, between two
+sockets, or away from them, it does what it did before. A socket that is
+not lit keeps its drawn size: a wider reach would cover the modules, and a
+tap on a module opens its settings. UNDER THE HOOD's rows are 44 px too,
+the hood showing three and scrolling on its own to the rest.
 
 ## Color and contrast
 

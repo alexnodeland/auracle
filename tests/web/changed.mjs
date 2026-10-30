@@ -79,6 +79,8 @@ export const MODULES = {
   "apps/web/hand.js": ["evolve_refit", "taste_marks", "taste_hold", "bank_row", "perform_recentre", "perform_wire_time"],
   // What a refit landing does: the meter, the lamp, the views it holds.
   "apps/web/refit.js": ["evolve_refit", "evolve_truth", "evolve_feedback"],
+  // A finger's reach for a lit socket on the rack.
+  "apps/web/reach.js": ["phone_fits", "patch_touch", "patch_catalog"],
 };
 export const EVERYWHERE = /^(apps\/web\/(main\.js|worker\.js|index\.html|style\.css)|crates\/|Cargo\.(toml|lock)$)/;
 

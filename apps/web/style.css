@@ -8346,10 +8346,21 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-hood-row { min-height: 44px; }
   .pf-hood { max-height: calc(2em + 3 * 46px); }
 }
+/* …and never squeezed under three of them (a short screen's 3.6em floor,
+   above, left one in sight at 1024 x 768): the hood keeps its height and the
+   column scrolls to the pads if it must. Not on a phone held upright, whose
+   controls' column scrolls already. */
+@media (pointer: coarse) and (min-width: 701px), (pointer: coarse) and (max-height: 500px) {
+  .pf-hood { flex: none; min-height: calc(2em + 3 * 46px); }
+  .pf-right { overflow-y: auto; overscroll-behavior: contain; }
+}
 
 /* The face at OUT is drawn at the rack's zoom, 14 px across on a phone:
    on a touch screen its ▶ answers a finger's 44 px around its middle,
    without the face growing (#134). */
+/* While sockets are lit the ring goes, so it never stands over the socket
+   beside OUT (the patch's own input). */
+#view-patch:has(#rack-svg .jack.legal) .out-play::before { display: none; }
 @media (pointer: coarse) {
   .out-play::before {
     content: "";

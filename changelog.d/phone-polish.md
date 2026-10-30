@@ -23,11 +23,13 @@
 - On a phone, the octave's keys show ‹ and › instead of Z and X, which a
   phone has no keys for.
 - **The rack takes a finger's tap where it is drawn small.** On a touch
-  screen the ▶ on the face at OUT answers a finger 44 px across, and with a
-  module in hand a tap beside a lit socket places it there (the nearest one
-  within 22 px), as does a cable let go beside one.
-- **UNDER THE HOOD's rows are a finger's size on a tablet**, the hood
-  scrolling to the rest.
+  screen the ▶ on the face at OUT answers a finger 44 px across. With a
+  module in hand or a cable being placed, a tap on bare panel beside a lit
+  socket goes into it when it plainly means that socket: within 22 px of
+  its middle, and no other lit socket within one and a half times as far.
+  A cable let go within 12 px of one, by the same rule, goes in too.
+- **UNDER THE HOOD's rows are a finger's size on a tablet**, three in
+  sight and the hood scrolling to the rest.
 - **On the narrowest phones (312 px)** every level's name in the bar along
   the bottom is whole (LEARNING was cut), and the sound in hand keeps its
   picture beside its ▶. Short captions that take two lines take two of a

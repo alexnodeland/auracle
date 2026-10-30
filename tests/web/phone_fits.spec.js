@@ -27,10 +27,16 @@
 // - The same of PERFORM's controls' column scrolled to its end (the hood,
 //   WANDER and the pads), and with the well in XY.
 // - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
-//   middle each way, and a tap on bare panel beside a lit socket (a module
-//   in hand) places the module there, opening no module's sheet.
+//   middle each way, and goes while sockets are lit. A tap on bare panel
+//   beside a lit socket (12 to 18 px, every other lit one over 1.6 times as
+//   far: reach.js, whose unit tests hold the rule, the ambiguous point and
+//   the drop's shorter reach) places the module in hand there, opening no
+//   module's sheet, and a tap elsewhere straight after is that control's; a
+//   finger held there opens no module's menu; and a cable being placed
+//   reaches a lit socket the same way, past the rack's pan.
 // - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows are
-//   44 px, each on the screen or in the hood's own scroll.
+//   44 px, each on the screen or in the hood's own scroll, and the hood
+//   shows its heading and at least two of them.
 // - Nothing in a level is out of reach: every control in it is on the
 //   screen, or inside something that scrolls to it.
 // - On a smaller phone (568 × 320, 667 × 375 on their sides) and on a
@@ -217,58 +223,115 @@ test.describe("a phone with larger text, 390 × 844 at 125% (312 × 675)", () =>
   });
 });
 
+/** A point of bare panel 12 to 20 px from a lit socket's middle (one of
+ *  `which`), every other lit socket over 1.6 times as far: a point the
+ *  finger unambiguously means that socket from (reach.js). */
+const besideALitSocket = (page, which) => page.evaluate((which) => {
+  const lit = [...document.querySelectorAll("#rack-svg .jack.legal")].map((j) => {
+    const r = j.querySelector(".j-nut").getBoundingClientRect();
+    return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  for (const s of lit.filter((l) => l.j.matches(which))) {
+    for (let a = 0; a < 2 * Math.PI; a += Math.PI / 8) {
+      for (const d of [12, 15, 18]) {
+        const x = s.x + d * Math.cos(a);
+        const y = s.y + d * Math.sin(a);
+        const t = document.elementFromPoint(x, y);
+        if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl")) continue;
+        if (lit.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > 1.6 * d)) return { x, y };
+      }
+    }
+  }
+  return null;
+}, which);
+
+/** PATCH on a phone with Glass Pad open, its bank put away. */
+async function patchOnAPhone(page, app) {
+  await app.boot();
+  // The bank is a sheet here, and `openPreset` reaches the presets through
+  // the rail, under the sheet's scrim: the preset is opened as a finger does.
+  await goLevel(page, "patch");
+  await landed(page);
+  await page.locator("#bank-btn").tap();
+  await page.locator("#bank-tab-presets").tap();
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name").tap();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
+  await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+}
+
+/** A module from the catalog in hand: the catalog folds, the sockets light. */
+async function moduleInHand(page) {
+  await page.locator("#pt-add").tap();
+  await page.locator('#nb-groups .nb-item[data-kind="distortion"]').tap();
+  await expect(page.locator("#rack-svg .jack.legal[data-childkey]").first()).toBeVisible();
+}
+
+const HELD_MS = 700; // a finger held past the rack's 500 ms long press
+
 test.describe("PATCH under a finger, 390 × 844", () => {
   test.use({ ...PHONE, viewport: { width: 390, height: 844 } });
 
   test("the face at OUT answers a finger 44 px across, and a tap beside a lit socket places the module in hand there", async ({ page, app }) => {
-    await app.boot();
-    // The bank is a sheet here: up first, for the preset.
-    await goLevel(page, "patch");
-    await landed(page);
-    await page.locator("#bank-btn").tap();
-    await page.locator("#bank-tab-presets").tap();
-    await page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name").tap();
-    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
-    await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
-    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    await patchOnAPhone(page, app);
     // The ▶ at OUT: 21 px from its middle each way is still its.
     const ring = await page.locator("#rack-play").evaluate((b) => {
       const r = b.getBoundingClientRect();
       const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
       return [[cx - 21, cy], [cx + 21, cy], [cx, cy - 21], [cx, cy + 21]]
         .filter(([x, y]) => !document.elementFromPoint(x, y)?.closest("#rack-play"))
-        .map(([x, y]) => `${Math.round(x)},${Math.round(y)}: ${document.elementFromPoint(x, y)?.className?.baseVal ?? document.elementFromPoint(x, y)?.className}`);
+        .map(([x, y]) => `${Math.round(x)},${Math.round(y)}`);
     });
     expect(ring, "points 21 px from the ▶'s middle that are not its").toEqual([]);
-    // A module in hand: the catalog folds to its head, and the sockets light.
-    await page.locator("#pt-add").tap();
-    await page.locator('#nb-groups .nb-item[data-kind="distortion"]').tap();
-    await expect(page.locator("#rack-svg .jack.legal[data-childkey]").first()).toBeVisible();
+    await moduleInHand(page);
+    // With sockets lit the ring is gone: it never stands over one.
+    await expect.poll(() => page.locator("#rack-play").evaluate((b) => getComputedStyle(b, "::before").display)).toBe("none");
     const before = await page.locator('#rack-svg g.mod-group[data-kind="distortion"]').count();
-    // A point of bare panel 14 to 20 px from a lit socket's middle, nearer
-    // to it than to any other lit one.
-    const at = await page.evaluate(() => {
-      const lit = [...document.querySelectorAll("#rack-svg .jack.legal")].map((j) => {
-        const r = j.querySelector(".j-nut").getBoundingClientRect();
-        return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      });
-      for (const s of lit.filter((l) => l.j.matches("[data-childkey]"))) {
-        for (let a = 0; a < 2 * Math.PI; a += Math.PI / 8) {
-          for (const d of [14, 17, 20]) {
-            const x = s.x + d * Math.cos(a);
-            const y = s.y + d * Math.sin(a);
-            const t = document.elementFromPoint(x, y);
-            if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl")) continue;
-            if (lit.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > d + 2)) return { x, y };
-          }
-        }
-      }
-      return null;
-    });
+    const at = await besideALitSocket(page, "[data-childkey]");
     expect(at, "a point of bare panel beside a lit socket").not.toBeNull();
     await page.touchscreen.tap(at.x, at.y);
     await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(before + 1, { timeout }), { ms: 30_000 });
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+    // A tap elsewhere straight after is that control's: HOW TO READ THIS opens.
+    await page.locator("#pt-how").tap();
+    await expect(page.locator("#pt-how")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  test("a finger held beside a lit socket places the module there and opens no module's menu", async ({ page, app }) => {
+    await patchOnAPhone(page, app);
+    await moduleInHand(page);
+    const before = await page.locator('#rack-svg g.mod-group[data-kind="distortion"]').count();
+    const at = await besideALitSocket(page, "[data-childkey]");
+    expect(at).not.toBeNull();
+    const cdp = await page.context().newCDPSession(page);
+    const point = [{ x: at.x, y: at.y }];
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: point });
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- the gesture: a finger held past the long press
+    await page.waitForTimeout(HELD_MS);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(before + 1, { timeout }), { ms: 30_000 });
+    await expect(page.locator(".ctx-menu:not(.hidden)")).toHaveCount(0);
+  });
+
+  test("a cable being placed reaches a lit socket from a tap beside it, past the rack's pan", async ({ page, app }) => {
+    await patchOnAPhone(page, app);
+    // Tap an output with somewhere to go (the first in the chain): the cable
+    // is picked up, and the sockets it fits light.
+    const out = await page.evaluate(() => {
+      const outs = [...document.querySelectorAll("#rack-svg .jack[data-outkey]:not(.modjack)")].map((j) => {
+        const r = j.querySelector(".j-nut").getBoundingClientRect();
+        return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }).filter((o) => o.j.contains(document.elementFromPoint(o.x, o.y))).sort((a, b) => a.x - b.x);
+      return outs.length ? { x: outs[0].x, y: outs[0].y } : null;
+    });
+    expect(out, "an output on the screen").not.toBeNull();
+    await page.touchscreen.tap(out.x, out.y);
+    await expect(page.locator("#rack-svg")).toHaveClass(/\bwiring\b/);
+    const at = await besideALitSocket(page, "*");
+    expect(at, "a point of bare panel beside a lit socket").not.toBeNull();
+    await page.touchscreen.tap(at.x, at.y);
+    // The socket took it: the cable is no longer being placed.
+    await expect(page.locator("#rack-svg")).not.toHaveClass(/\bwiring\b/);
   });
 });
 
@@ -284,6 +347,10 @@ for (const [width, height] of [[768, 1024], [1024, 768]]) {
       await expect.poll(() => page.evaluate(MISFITS, { primary: [], fits: false })).toEqual([]);
       const rows = await page.locator(".pf-hood-row").evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
       expect(rows.filter((h) => h < 44), "rows under 44 px").toEqual([]);
+      // The hood shows its heading and at least two rows, never squeezed to
+      // one by the column (1024 × 768's short-screen floor once did).
+      const hood = await page.locator(".pf-hood").evaluate((h) => ({ shown: h.clientHeight, head: h.querySelector(".pf-hood-h")?.getBoundingClientRect().height || 0 }));
+      expect(hood.shown, "the hood's height in sight").toBeGreaterThanOrEqual(hood.head + 2 * 44);
     });
   });
 }

@@ -174,6 +174,7 @@ const [
   { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
+  { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
 ] = await Promise.all([
   import(`./taste-geom.js?v=${BUILD}`), import(`./words.js?v=${BUILD}`),
   import(`./patch.js?v=${BUILD}`), import(`./taste.js?v=${BUILD}`),
@@ -185,6 +186,7 @@ const [
   import(`./params.js?v=${BUILD}`), import(`./warm.js?v=${BUILD}`), import(`./strain.js?v=${BUILD}`),
   import(`./bank-find.js?v=${BUILD}`), import(`./marks.js?v=${BUILD}`),
   import(`./hand.js?v=${BUILD}`), import(`./refit.js?v=${BUILD}`),
+  import(`./reach.js?v=${BUILD}`),
 ]);
 const { directionsScale, pullMark } = geom;
 const {
@@ -15345,6 +15347,9 @@ $("rack-scroll").addEventListener("wheel", (ev) => {
 // otherwise claim the same press — the modifier decides, not the target.
 $("rack-scroll").addEventListener("pointerdown", (ev) => {
   if (!wb.rack) return;
+  // A finger beside a lit socket means the socket (reachForSocket): neither
+  // a pan nor, held, the module's menu.
+  if (reachForSocket(ev)) return;
   // Whatever this press turns out to be, it is a press on the canvas — and the
   // camera gestures below call `preventDefault`, which suppresses the implicit
   // blur a click would otherwise perform. So the node bank's search field kept
@@ -21985,50 +21990,65 @@ function endWireDrag() {
   wire = null;
 }
 
-/** The lit socket nearest a finger, within `SOCKET_SLOP_PX` of its centre
- *  (#134). At the rack's fitted zoom on a phone a socket is drawn 3 to 6 px
- *  across; a pad that size around every socket would cover the plates and
- *  take the tap that opens a module's sheet, so only a lit socket (a
- *  destination: a module in hand, a cable being placed) reaches out, and
- *  the nearest one wins. Null for a mouse, or with nothing lit near. */
-const SOCKET_SLOP_PX = 22;
-function litSocketNear(x, y) {
-  let best = null;
-  let bd = SOCKET_SLOP_PX;
+/** The lit socket a finger at (x, y) means, or null (#134; the rule is
+ *  reach.js's `socketMeant`): the lit sockets on the rack's visible part,
+ *  measured where they are drawn now. */
+function litSocketNear(x, y, reach) {
+  const view = $("rack-scroll").getBoundingClientRect();
+  const cands = [];
   for (const j of $("rack-svg").querySelectorAll(".jack.legal")) {
     const r = (j.querySelector(".j-nut") || j).getBoundingClientRect();
     if (!r.width) continue;
-    const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
-    if (d <= bd) { bd = d; best = j; }
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (cx < view.left || cx > view.right || cy < view.top || cy > view.bottom) continue;
+    cands.push({ x: cx, y: cy, j });
   }
-  return best;
+  return socketMeant(cands, x, y, reach)?.j || null;
 }
-// A finger's press beside a lit socket, on bare panel, is the socket's: it
-// is handed the press, and the panel never sees it (nor the click after),
-// so it opens no module's sheet. A press on any control stays that
-// control's.
-$("rack-svg").addEventListener("pointerdown", (ev) => {
-  if (ev.pointerType !== "touch" || ev.slopped) return;
-  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl")) return;
-  const jack = litSocketNear(ev.clientX, ev.clientY);
-  if (!jack) return;
-  ev.stopPropagation();
+/** A finger's press on bare panel that means a lit socket is handed to it
+ *  (as a press on the socket itself), before the rack's pan and its long
+ *  press see it; the click that follows at the same place is the socket's
+ *  too, and the next press disarms that. True when it was handed over.
+ *  Called first by `#rack-scroll`'s pan handler (which, in a cable's
+ *  placing, would otherwise take the press for a pan). */
+const PLACE_CONTROLS = "[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl, .out-play";
+function reachForSocket(ev) {
+  if (ev.pointerType !== "touch" || ev.slopped || ev.button !== 0) return false;
+  if (!armed && !connectPick) return false;
+  if (ev.target?.closest?.(PLACE_CONTROLS)) return false;
+  const jack = litSocketNear(ev.clientX, ev.clientY, REACH_PRESS_PX);
+  if (!jack) return false;
+  ev.stopImmediatePropagation();
   ev.preventDefault();
   const handed = new PointerEvent("pointerdown", ev);
   handed.slopped = true;
   jack.dispatchEvent(handed);
-  // The click that follows this touch is the socket's too; one that does not
-  // come within the tap's time is not waited for.
-  const eat = (c) => { c.stopPropagation(); c.preventDefault(); };
-  window.addEventListener("click", eat, { capture: true, once: true });
-  setTimeout(() => window.removeEventListener("click", eat, true), 800);
-}, true);
+  const [px, py] = [ev.clientX, ev.clientY];
+  const eat = (c) => {
+    if (Math.hypot(c.clientX - px, c.clientY - py) > 10) return;
+    c.stopPropagation();
+    c.preventDefault();
+    disarm();
+  };
+  const disarm = () => {
+    window.removeEventListener("click", eat, true);
+    window.removeEventListener("pointerdown", disarm, true);
+  };
+  window.addEventListener("click", eat, true);
+  window.addEventListener("pointerdown", disarm, true);
+  setTimeout(disarm, 800);
+  return true;
+}
 
 function onWireUp(ev) {
   if (!wire) return endWireDrag();
   const el = document.elementFromPoint(ev.clientX, ev.clientY);
-  // A cable let go by a finger beside a lit socket lands in it.
-  const jack = (el && el.closest ? el.closest(".jack") : null) || (ev.pointerType === "touch" ? litSocketNear(ev.clientX, ev.clientY) : null);
+  // A cable let go by a finger close beside one lit socket, on bare panel,
+  // lands in it; on a control, or between two, or away from any, it does
+  // not, as before.
+  const onSocket = el && el.closest ? el.closest(".jack") : null;
+  const jack = onSocket || (ev.pointerType === "touch" && !el?.closest?.(PLACE_CONTROLS) ? litSocketNear(ev.clientX, ev.clientY, REACH_DROP_PX) : null);
   const w = wire;
   endWireDrag();
 
