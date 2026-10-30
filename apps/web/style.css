@@ -7928,8 +7928,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   }
   .bank-head { padding-top: 0; }
 
-  /* The cross is the bar along the bottom: the four levels in to out, the
-     sound's parts first (PATCH, PERFORM, TASTE, LEARNING), then EVOLVE
+  /* The cross is the bar along the bottom: the four levels from the most
+     zoomed in outward (PERFORM, PATCH, TASTE, LEARNING), then EVOLVE
      beside them, then KEYS. The level you're at is lit, with a line
      along its top edge. */
   .rail {
@@ -7989,8 +7989,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     box-shadow: inset 0 2px 0 var(--phos-a);
   }
   .rail-stop:focus-visible, .rail-keys:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -4px; }
-  .rail-stop[data-level="patch"] { order: 1; }
-  .rail-stop[data-level="perform"] { order: 2; }
+  .rail-stop[data-level="perform"] { order: 1; }
+  .rail-stop[data-level="patch"] { order: 2; }
   .rail-stop[data-level="taste"] { order: 3; }
   .rail-stop[data-level="learning"] { order: 4; }
   .rail-stop[data-level="evolve"] { order: 5; border-left: 1px solid var(--hairline); }
@@ -8370,4 +8370,315 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     left: min(0px, calc((100% - 44px) / 2));
     right: min(0px, calc((100% - 44px) / 2));
   }
+}
+
+/* ---- a phone, stationary (#134, the second pass) ----
+   As a native app's screens are: the page never moves under a finger. No
+   level scrolls (each lays out to its screen, with the keys' drawer open or
+   closed, and folds what does not fit behind a pane's tab: PERFORM's and
+   LEARNING's `.lv-panes`); a list in a sheet scrolls as every list does
+   (the bank's, the catalog's, the hood's rows). Nothing a finger holds
+   selects text or raises the page's callout and loupe: on iOS a selection
+   is UIKit's own gesture, not a DOM event, so only the stylesheet stops it,
+   and stopping it on the whole page is what lets a long press reach its
+   hold (a selection begun cancels the pointer). */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  html, body { overscroll-behavior: none; }
+  /* The stage takes no pan of the browser's own: what scrolls says so. */
+  .stage { touch-action: manipulation; }
+  .view.on { overscroll-behavior: none; }
+  /* An EVOLVE card takes every move of a finger on it: nothing under it
+     scrolls, so an upward swipe is never the browser's (main.js picks on
+     it; down and sideways do nothing). */
+  #view-evolve section[aria-label^="Sound "] { touch-action: none; }
+}
+@media (pointer: coarse) {
+  body, body * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  body :is(input, textarea, [contenteditable="true"]),
+  body :is(input, textarea, [contenteditable="true"]) * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  /* No grey flash over what a finger presses: each control lights itself. */
+  body * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* A word on a phone is a banner over the menu bar, as a phone's own are:
+   the screen's width, its words on one or two lines with the action beside
+   them (or under them when they need the room), over nothing in the level.
+   A swipe up puts it away (main.js). The model view's tag rides there too. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .toasts { left: calc(var(--s2) + env(safe-area-inset-left, 0px)); right: calc(var(--s2) + env(safe-area-inset-right, 0px)) !important; align-items: stretch; z-index: 39; }
+  .toast {
+    max-width: none;
+    flex-wrap: wrap;
+    gap: var(--s1) var(--s2);
+    min-height: calc(var(--menubar-h) - var(--s2));
+    padding: var(--s1) var(--s3);
+    border-radius: var(--r2);
+    font-size: var(--t-value);
+    line-height: 1.3;
+    touch-action: none;
+  }
+  .toast-msg {
+    flex: 1 1 14em;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    text-wrap: pretty;
+  }
+  .toast-undo { flex: none; margin-left: auto; min-height: 36px; white-space: nowrap; }
+  .toast-stack { flex: none; }
+  .toast.swiped { transform: translateY(-120%); opacity: 0; transition: transform var(--d-move) var(--e-settle), opacity var(--d-move) var(--e-settle); }
+  .model-tag { top: calc(env(safe-area-inset-top, 0px) + var(--s1)); z-index: 39; max-width: calc(100vw - 2 * var(--s3)); }
+}
+
+/* The keys' drawer, a phone held upright: one row of its controls (the
+   octave, the volume, MIDI, REC, KEYS ⋯) over a keybed the screen's width,
+   so the level above it keeps most of the screen. */
+@media (max-width: 700px) and (min-height: 501px) {
+  body.keys-open .keybar { flex-wrap: wrap; gap: var(--s1) var(--s2); padding: var(--s1) var(--s2) var(--s2); }
+  .keys-side .oct { gap: 0; }
+  #oct-label { min-width: 2em; }
+  .keys-cluster { gap: var(--s1); flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  .keys-cluster .vol .pc-val { display: none; }
+  #vol { width: clamp(48px, 18vw, 96px); }
+  .piano { height: clamp(88px, 13dvh, 120px); }
+}
+
+/* Stationary from a 360 x 600 phone held upright, and one on its side 380 px
+   tall, up: a smaller screen, or larger text (a 390 px phone at 125% lays
+   the page out 312 px wide), keeps the level's own scroll rather than
+   cutting off what does not fit. */
+@media (max-width: 700px) and (min-width: 340px) and (min-height: 600px), (max-height: 500px) and (min-height: 380px) and (max-width: 999px) {
+  .view.on, .view.perform .pf-right { overflow: hidden !important; }
+}
+
+/* A level's panes' tabs (shell.js): drawn only on a phone, where one pane
+   of the level is on the screen at a time. A segmented control: the tabs
+   share one rounded track, the one shown lit. */
+.lv-panes { display: none; }
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .lv-panes {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r2);
+    background: var(--well);
+  }
+  .lv-panes [role="tab"] {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 var(--s1);
+    border: 0;
+    border-radius: calc(var(--r2) - 2px);
+    background: none;
+    color: var(--silk-dim);
+    font-family: var(--font-silk);
+    font-size: var(--t-value);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .lv-panes [role="tab"][aria-selected="true"] { background: var(--panel); color: var(--phos-a); box-shadow: inset 0 0 0 1px var(--plate-edge); }
+  .lv-panes [role="tab"]:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -2px; }
+
+  /* PERFORM: the controls and the pads, or what is under the hood. */
+  .pf-ctlcap { display: none; }
+  .pf-ctlhead { gap: var(--s2); }
+  .pf-ctlhead .lv-panes { flex: 1 1 auto; }
+  .pf-actions { gap: var(--s1); }
+  #view-perform[data-pane="controls"] .pf-hood { display: none; }
+  #view-perform[data-pane="hood"] :is(.pf-deck, .pf-pads, .pf-status) { display: none; }
+  #view-perform[data-pane="hood"] .pf-hood { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; }
+  .view.perform .pf-right { padding-bottom: 0; }
+
+  /* LEARNING: one of its three panels, the tabs under its headline. */
+  #view-learning .md { display: flex; flex-direction: column; height: 100%; overflow: hidden; gap: var(--s2); }
+  #view-learning .md-head { order: -2; }
+  #view-learning .lv-panes { order: -1; }
+  #view-learning .md-body { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+  #view-learning .md-right { display: contents; }
+  #view-learning .md-panel { flex: 1 1 0; min-height: 0; }
+  #view-learning:not([data-pane="weighs"]) .md-weighs,
+  #view-learning:not([data-pane="map"]) .md-mapp,
+  #view-learning:not([data-pane="forecasts"]) .md-fcp { display: none; }
+  #view-learning .md-mapp { display: flex; flex-direction: column; }
+  #view-learning:not([data-pane="map"]) .md-mapp { display: none; }
+  #view-learning .md-map { flex: 1 1 0; min-height: 0; height: auto; }
+  #view-learning .md-weighs { overflow-y: auto; overscroll-behavior: contain; }
+}
+
+/* Each level on one screen, a phone held upright, the keys' drawer open or
+   not (#134). What says again what the bar along the bottom says (a
+   level's cap) goes; with the drawer up, what is for looking at (a well, a
+   map, a headline) gives its room to what is for the hands. */
+@media (max-width: 700px) and (min-height: 501px) {
+  /* PERFORM: the name, the well, the tabs, then the controls and pads. */
+  .view.perform { padding: var(--s2) var(--s3) var(--s2); }
+  .pf-grid { gap: var(--s2); }
+  .pf-cap { display: none; }
+  /* The moved bar (KEEP, BACK) rides at the name's line's end, so its coming
+     and going moves nothing under a finger; the name gives it the room. */
+  .pf-head { position: relative; display: block; }
+  .pf-cap-row { position: absolute; top: 0; right: 0; min-height: 44px; pointer-events: none; }
+  .pf-cap-row .pf-moved.on { pointer-events: auto; }
+  .pf-head:has(.pf-moved.on) .pf-title { padding-right: 172px; } /* token-exempt: the moved bar's width (MOVED, KEEP, BACK), not spacing */
+  .pf-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .pf-k-line, .pf-k-sub { min-height: 0; }
+  .pf-k-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pf-pads .pf-pad, .pf-pads > button { min-height: 44px; }
+  .pf-title { min-height: 0; }
+  .pf-well { flex: 1 1 0; height: auto; min-height: 0; }
+  .pf-left { flex: 1 1 0; min-height: 64px; }
+  .pf-right { flex: none; gap: var(--s2); }
+  .pf-deck { row-gap: var(--s1); }
+  .pf-knob svg { max-width: 52px; }
+  body.keys-open .view.perform .pf-left { display: none; }
+  body.keys-open .view.perform .pf-right { flex: 1 1 0; min-height: 0; }
+  body.keys-open .pf-status { display: none; }
+  body.keys-open .pf-k-ends { display: none; }
+
+  /* EVOLVE: the line of what to do (its pips), the small map, the pair,
+     the foot. Its cap and headline go: the bar names the level, and the
+     line says the question. */
+  #view-evolve .ev-cap, #view-evolve .ev-title { display: none; }
+  #view-evolve .duel-mid, #view-evolve .teach { margin: 0; }
+  .duel-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--t-body); }
+  .duel-fam { display: none; }
+  .duel-foot { gap: var(--s1); }
+  .duel-guess { left: var(--s1); right: var(--s1); max-width: calc(100% - 2 * var(--s1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.keys-open #view-evolve .ev-map, body.keys-open #view-evolve .ev-foot { display: none; }
+  body.keys-open .duel-well { min-height: 64px; }
+  .ev-foot .duel-rule { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* TASTE and LEARNING: the headline's cap goes with the drawer up. */
+  body.keys-open :is(#view-taste, #view-learning) :is(.lv-eyebrow, .lv-sub) { display: none; }
+}
+
+/* A bank row on a phone (#134), as a phone's own lists' rows: its name and
+   its ▶ at rest, the ▶ at the row's end; swiped left, its other actions
+   (★, save, cut) slide out beside the ▶ over the row's end, on the row's
+   ground (main.js `bankSwipedId`). A row's stars folded out stay out. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .bank-item { touch-action: pan-y; padding-right: calc(44px + var(--s2)); } /* token-exempt: the ▶'s 44 px target, not spacing */
+  .bank-item .bi-acts {
+    position: absolute;
+    right: var(--s1);
+    top: 50%;
+    transform: translateY(-50%);
+    padding-left: var(--s2);
+    gap: 0;
+    background: var(--panel-hi);
+    border-radius: var(--r1);
+  }
+  .bank-item:not(.acts-open):not(.rating) .bi-acts > :not(.bi-hear) { display: none; }
+  .bank-item:not(.acts-open):not(.rating) .bi-acts { background: none; }
+  .bank-item.acts-open .bi-acts { animation: acts-out var(--d-state) var(--e-settle); box-shadow: -8px 0 12px var(--panel-hi); }
+  .bank-item .bi-flag, .bank-item .bi-pct { right: calc(44px + var(--s2)); } /* token-exempt: past the ▶'s 44 px target */
+}
+@keyframes acts-out { from { transform: translate(24px, -50%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bank-item.acts-open .bi-acts { animation: none; } }
+
+/* …and the second look (#134): sizes that make each of these one screen. */
+@media (max-width: 700px) and (min-height: 501px) {
+  /* A level's cap names it again under the bar that names it. */
+  :is(#view-taste, #view-learning) .lv-eyebrow, #view-patch .pt-cap:not(.pt-family) { display: none; }
+  /* PERFORM's controls: the dial a thumb's size, its words close under it. */
+  .pf-knob { padding: 0; }
+  .pf-knob svg { width: 48px; height: 48px; max-width: none; }
+  .pf-k-name { margin-top: 0; }
+  .pf-deck { gap: var(--s2) var(--s1); }
+  .pf-ctlhead { flex-wrap: nowrap; }
+  .pf-ctlhead .lv-panes [role="tab"] { font-size: var(--t-label); }
+  .pf-actions .pf-disclose { letter-spacing: 0.06em; padding-left: var(--s1); padding-right: var(--s1); }
+  .pf-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.keys-open .pf-knob svg { width: 44px; height: 44px; }
+  /* The keys' drawer on one row: the octave, the volume, MIDI, REC and
+     KEYS ⋯ close together. */
+  .keys-side { flex: none; }
+  .keys-cluster { gap: 2px; }
+  #vol { width: 52px; }
+  .keys-cluster .util-btn, .midi-ind { padding-left: var(--s2); padding-right: var(--s2); letter-spacing: 0.04em; }
+  /* LEARNING's math and its JSON, opened, take part of the panel's room. */
+  #view-learning :is(.md-math, .md-json) { max-height: 28dvh; overflow: auto; }
+}
+
+/* A phone on its side (#134): the same, in a short screen. */
+@media (max-height: 500px) and (max-width: 999px) {
+  #view-evolve .ev-cap, #view-evolve .ev-title, :is(#view-taste, #view-learning) .lv-eyebrow { display: none; }
+  body.keys-open #view-evolve :is(.ev-map, .ev-foot) { display: none; }
+  body.keys-open #view-evolve .ev-head { min-height: 0; }
+  body.keys-open :is(#view-taste, #view-learning) :is(.lv-sub) { display: none; }
+}
+
+/* PERFORM, third look (#134): each control's own line says what it is
+   listening to, so the column's line of it goes; with the keys up the
+   offer pad's hint does too. On a phone on its side the controls are one
+   row of six, without their two ends' words, and with the keys up the
+   well gives the room to them. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .view.perform .pf-status { display: none; }
+  body.keys-open .pf-pad[data-sub]::after { display: none; }
+}
+@media (max-height: 500px) and (max-width: 999px) {
+  .pf-deck { --pf-cols: 6 !important; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s1); }
+  .pf-k-ends { display: none; }
+  .pf-knob svg { width: 44px; height: 44px; }
+  .pf-k-line, .pf-k-sub { min-height: 0; }
+  .pf-k-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .view.perform .pf-cap { display: none; }
+  body.keys-open .view.perform .pf-left { display: none; }
+  body.keys-open .view.perform .pf-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* WANDER at the head of the pad row, its dial and its name, so the row is
+   one line; its state is its ring's (lit while frozen), and its words are
+   its aria-valuetext. */
+@media (max-width: 700px) and (min-height: 501px) {
+  .pf-pads { grid-template-columns: auto repeat(4, minmax(0, 1fr)); column-gap: var(--s1); }
+  .pf-pads .pf-wander { grid-column: auto; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
+  .pf-pads .pf-wander svg { width: 40px; height: 40px; max-width: none; }
+  .pf-pads .pf-wander :is(.pf-k-line, .pf-k-ends) { display: none; }
+  .pf-pads .pf-wander .pf-k-name { font-size: var(--t-label); letter-spacing: 0.06em; }
+  .pf-pad { padding-left: var(--s1); padding-right: var(--s1); letter-spacing: 0.06em; }
+}
+
+/* The keys' drawer on a phone held upright, one row on every phone
+   (312 to 430 px wide; #134): the octave's arrows drawn small inside their
+   44 px, the volume as short as a thumb's throw, REC its dot (its words
+   are its name), KEYS ⋯; MIDI is a row of KEYS ⋯ here (main.js). */
+@media (max-width: 700px) and (min-height: 501px) {
+  body.keys-open .keybar { flex-wrap: wrap; row-gap: var(--s1); column-gap: var(--s1); }
+  .keybar .keys-side, .keybar .keys-cluster { flex-wrap: nowrap; }
+  .keys-side .oct { gap: 0; }
+  .kcap#oct-down, .kcap#oct-up { width: 44px; border-color: transparent; background: none; box-shadow: none; }
+  .keys-cluster { flex: 1 1 0; min-width: 0; gap: var(--s1); }
+  .keys-cluster .vol { flex: 1 1 40px; min-width: 36px; }
+  #vol { width: 100%; min-width: 36px; }
+  #rec-btn { position: relative; width: 44px; min-width: 44px; padding: 0; justify-content: center; }
+  #rec-btn .rec-w { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #keys-btn { flex: none; }
+  .keys-pop .midi-wrap { display: flex; align-items: center; }
+  .piano { order: 3; flex: 1 0 100%; }
+}
+/* Under the hood, the pane takes the column's room for its rows (#134). */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  #view-perform[data-pane="hood"] .pf-right { flex: 1 1 0; min-height: 0; }
+  #view-perform[data-pane="hood"] .pf-hood { min-height: calc(3 * 44px); }
+}
+@media (max-height: 500px) and (max-width: 999px) {
+  .duel-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 339px) {
+  .pf-ctlhead { flex-wrap: wrap; }
 }

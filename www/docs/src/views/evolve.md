@@ -44,16 +44,20 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
-On a phone held upright the small map runs the screen's width under the head,
-and each card keeps its **PLAY** and **PICK** under its name. The level is one
-screen, upright or on its side: the two faces take what the words, the map
-and the foot leave, so **PLAY** and **PICK** are always in sight.
+On a phone the head is the pips and the teaching line (the bar along the
+bottom names the level, and the line asks the question), the small map runs
+the screen's width under it, and each card keeps its **PLAY** and **PICK**
+under its name. The level is one screen that stands still, upright or on its
+side: the two faces take what the words, the map and the foot leave, so
+**PLAY** and **PICK** are always in sight. With the keys up the map and the
+foot (**ANOTHER PAIR**, **EVOLVE POOL**, what each generation did) give their
+room to the pair, and come back when the keys go.
 
 On a touch screen, swipe a card up to pick it: the card follows your finger,
 and let go past a third of its height (or swiped up fast) it is picked as
 its **PICK** picks it, with the same moment to take it back. Short of that
 it settles back and nothing is picked; a drag down or sideways leaves the
-card where it is. A long press on a card shows the model view while your
+card where it is, and nothing under it scrolls. A long press on a card shows the model view while your
 finger stays down (as holding <kbd>⌥</kbd> does).
 
 **The head.** *Pick the one you’d reach for.*, with the six pips and the

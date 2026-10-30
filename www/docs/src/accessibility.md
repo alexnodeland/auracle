@@ -138,7 +138,10 @@ mouse finds by hovering (knob lock dots, a bank row’s actions) is shown
 outright on a touch screen, because on a tablet, hover-to-reveal means never:
 every bank row shows its actions (and every preset its **▶**) at rest, on a
 line under its name, so a sound can be heard, rated, saved or cut without
-opening it. **MODEL**’s press and hold is the model view under a finger, and
+opening it. On a phone a bank row is a list's row, as a phone's own are: its
+name and its **▶** at rest, and swiped left it slides out its other
+actions (**★**, save, cut) at its end; swipe it back, scroll the list or tap
+another row and they go. **MODEL**’s press and hold is the model view under a finger, and
 two fingers spread or pinched on the stage zoom between the levels (two
 that start on PATCH’s patch move no level); a tap on a stop in the levels
 does the same. The stage keeps a pinch for the levels, so the browser does
@@ -156,8 +159,8 @@ tablet keeps them, since it may have a keyboard.
   and swipe up: the card follows. Let go past a third of its height, or
   swipe up fast, and it is picked exactly as its **PICK** would pick it,
   with the same moment to take it back. Let go short of that and it settles
-  back, picking nothing. A drag down or sideways is not the card's, so
-  whatever scrolls under it still scrolls. Under reduced motion the card
+  back, picking nothing. A drag down or sideways is not the card's, and on
+  a phone nothing under it scrolls either: the level stands still. Under reduced motion the card
   still follows the finger, and settles back without a slide.
 - **Long press to see what the model believes.** A long press (about half a
   second, without moving) on an EVOLVE card, a bank row or TASTE's map shows
@@ -172,7 +175,9 @@ tablet keeps them, since it may have a keyboard.
 - **On PERFORM a long press on a control opens its figure** (see
   [Explain a control](./views/perform.md)).
 
-Nothing is selected and no callout opens under a long press.
+Nothing is selected and no callout or magnifier opens under a long press:
+on a touch screen no text in the app is selected by a finger, but in a
+field.
 
 ### On a phone, a tablet and a narrow window
 
@@ -184,19 +189,28 @@ button again puts it away.
 
 On a phone held upright:
 
-- The levels are the bar along the bottom, each stop named under its icon:
-  PATCH, PERFORM, TASTE, LEARNING, then EVOLVE beside them. A tap goes there.
-- **KEYS** at the bar's end brings the keys up over it, one octave across the
-  screen, each key a finger wide (**span** in **KEYS ⋯** shows more), and
-  **KEYS** again puts them away.
+- The levels are the bar along the bottom, each stop named under its icon,
+  from the most zoomed in outward: PERFORM, PATCH, TASTE, LEARNING, then
+  EVOLVE beside them. A tap goes there.
+- **KEYS** at the bar's end brings the keys up over it: the octave, the
+  volume, **REC** (its dot) and **KEYS ⋯** on one row, MIDI a row inside
+  **KEYS ⋯**, and one octave across the screen under them, each key a finger wide (**span** in **KEYS ⋯** shows
+  more). **KEYS** again puts them away.
 - The bank rises from the bottom. Pull its handle down, or tap it, to put it
   away.
-- Each level is one screen, as an app's view is: what it is for (PERFORM's
-  controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight
-  without a scroll, and where there is more than fits it scrolls inside its
-  own panel (PERFORM's controls, LEARNING's room). On a smaller phone, or
-  with larger text, a level that cannot fit scrolls rather than cutting
-  anything off. Nothing scrolls sideways.
+- Each level is one screen and stands still, as an app's view does, with
+  the keys up or down: nothing in it scrolls, and what it is for (PERFORM's
+  controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight.
+  What says again what the bar says (a level's name over it) is left off,
+  and with the keys up what is for looking at gives its room to what is for
+  the hands: PERFORM's name and well, EVOLVE's map and the row under the
+  pair, until the keys go down. Where a level holds more than one screen, a
+  row of tabs under its head shows one part at a time: PERFORM's
+  **controls** (with the pads) or **under the hood**, and LEARNING's **where
+  liking rises**, **what it weighs** or **its forecasts**. A list scrolls,
+  as a phone's own lists do: the bank's, the catalog's, and the rows under
+  the hood. On a smaller phone, or with larger text, a level that cannot
+  fit scrolls rather than cutting anything off. Nothing scrolls sideways.
 - In the levels, the bank and the keys, every button, tab and field is at
   least 44 px each way, a finger's size
   (what is drawn on the rack at its zoom is the exception: a tapped module
@@ -208,8 +222,10 @@ button (a small keybed) under them, and the keys come up from the bottom.
 Each level is one screen there too, LEARNING's map beside what it weighs and
 its forecasts. On any touch screen the levels' stops are a finger's size.
 
-On a phone, upright or on its side, a toast appears at the top of the
-screen under the menu bar, clear of each level's controls.
+On a phone, upright or on its side, a toast is a banner over the menu bar,
+the screen's width, as a phone's own notices are: its words on one or two
+lines with its action beside them, covering nothing in the level. Swipe it
+up to put it away (taking it back is its action's, as before).
 
 ## Hit targets
 

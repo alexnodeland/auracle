@@ -2,12 +2,16 @@
 // for is on that screen, everything pressed is a finger's size, and no label
 // is stood one word to a line.
 //
-// What this claims, on a phone held upright (360 × 640, 390 × 844) and on
-// its side (844 × 390), with touch:
+// What this claims, on a phone held upright (360 × 640; 390 × 664, an
+// iPhone 13 in Safari with its bars; 390 × 844; 430 × 932) and on its side
+// (844 × 390), with touch, with the keys' drawer closed and open:
 //
-// - At every level the page scrolls neither way and the level itself does
-//   not scroll: where there is more than fits it scrolls inside its own
-//   panel (PERFORM's controls, LEARNING's room, the bank's list).
+// - At every level the page scrolls neither way, the level does not run
+//   past its screen, and nothing in it scrolls (an element that scrolls and
+//   has more than it shows): the screen stands still, as an app's does. A
+//   list scrolls, as a phone's own do, and is the one exception, named in
+//   LISTS (the bank's, the catalog's, the rows under the hood, what
+//   LEARNING weighs).
 // - What the level is for is on the screen without a scroll, above the bar
 //   along the bottom: PERFORM's controls (every one of them clear of a toast;
 //   the first in sight), EVOLVE's PLAY and PICK for
@@ -23,9 +27,11 @@
 //   a length (the shorter at least 60% of the longer), never a word or two
 //   left alone; each stop's name in the bar along the bottom is whole, and
 //   the menu bar holds what it shows.
+// - The keys' drawer's controls (the octave, the volume, REC, KEYS ⋯) are
+//   one row over the keybed at each size.
 //
-// - The same of PERFORM's controls' column scrolled to its end (the hood,
-//   WANDER and the pads), and with the well in XY.
+// - The same of PERFORM's other pane (under the hood), with the well in XY,
+//   and of LEARNING's other two panes (what it weighs, its forecasts).
 // - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
 //   middle each way, and goes while sockets are lit. A tap on bare panel
 //   beside a lit socket (12 to 18 px, every other lit one over 1.6 times as
@@ -56,7 +62,19 @@ const { test, expect, goLevel, landed } = require("./fixtures");
 const { rackAtRest } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
+// The lists a finger scrolls (a phone's own lists do): nothing else may.
+const LISTS = ["#bank-list", ".nb-body", "#nb-groups", ".pf-hood", ".md-weighs", "#cmdk-list"];
 const LEVELS = ["perform", "patch", "evolve", "taste", "learning"];
+// With the keys up, what a level keeps for the hands (PERFORM's controls,
+// EVOLVE's PLAY and PICK, the rack, the maps); what is for looking at gives
+// way until they go down.
+const PRIMARY_KEYS = {
+  perform: [".pf-knob"],
+  evolve: ["#play-a", "#choose-a", "#play-b", "#choose-b"],
+  patch: ["#rack-evolve"],
+  taste: ["#taste-crt"],
+  learning: [".md-mapp"],
+};
 const PRIMARY = {
   perform: [".pf-knob"],
   evolve: ["#play-a", "#choose-a", "#play-b", "#choose-b"],
@@ -68,13 +86,21 @@ const PRIMARY = {
 /** What on the screen a finger cannot use: a page or a level that scrolls,
  *  a primary control out of sight, a target under 44 px, a label one word
  *  to a line. Empty when nothing. */
-const MISFITS = ({ primary, fits = true }) => {
+const MISFITS = ({ primary, fits = true, lists = [] }) => {
   const out = [];
   const doc = document.documentElement;
   if (fits && doc.scrollHeight > innerHeight + 1) out.push(`the page scrolls: ${doc.scrollHeight} in ${innerHeight}`);
   if (doc.scrollWidth > innerWidth + 1) out.push(`the page scrolls sideways: ${doc.scrollWidth} in ${innerWidth}`);
   const view = document.querySelector("section.view.on");
   if (fits && view.scrollHeight > view.clientHeight + 1) out.push(`${view.id} scrolls: ${view.scrollHeight} in ${view.clientHeight}`);
+  // Nothing on the screen scrolls but a list.
+  if (fits) {
+    for (const e of document.querySelectorAll("body *")) {
+      if (!e.getClientRects().length || lists.some((l) => e.matches(l))) continue;
+      const cs = getComputedStyle(e);
+      if (/(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 1) out.push(`${e.id ? "#" + e.id : "." + [...e.classList].join(".")} scrolls: ${e.scrollHeight} in ${e.clientHeight}`);
+    }
+  }
   // The bar along the bottom, when the levels are one (upright).
   const rail = document.getElementById("rail").getBoundingClientRect();
   const floor = rail.width > innerWidth / 2 ? rail.top : innerHeight;
@@ -152,30 +178,48 @@ const MISFITS = ({ primary, fits = true }) => {
   return out;
 };
 
-for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
+/** Each level fits, its primary controls in sight: `MISFITS` empty. */
+async function eachLevelFits(page, keys) {
+  for (const level of LEVELS) {
+    await goLevel(page, level);
+    await landed(page);
+    await expect.poll(() => page.evaluate(MISFITS, { primary: keys ? PRIMARY_KEYS[level] : PRIMARY[level], lists: LISTS }), `what does not fit at ${level}${keys ? " with the keys up" : ""}`).toEqual([]);
+  }
+}
+
+for (const [width, height] of [[360, 640], [390, 664], [390, 844], [430, 932], [844, 390]]) {
   test.describe(`a phone, ${width} × ${height}`, () => {
     test.use({ ...PHONE, viewport: { width, height } });
 
-    test(`each level is one screen at ${width} × ${height}, its primary controls in sight and a finger's size`, async ({ page, app }) => {
+    test(`each level is one screen at ${width} × ${height} that nothing scrolls, keys up or down, its primary controls in sight and a finger's size`, async ({ page, app }) => {
       await app.boot();
       // The boot's toast (the pool still filling) is up over PERFORM, the
       // level the app opens at, when the first check runs.
       await expect(page.locator("#toasts .toast").first()).toBeVisible();
-      for (const level of LEVELS) {
-        await goLevel(page, level);
-        await landed(page);
-        await expect.poll(() => page.evaluate(MISFITS, { primary: PRIMARY[level] }), `what does not fit at ${level}`).toEqual([]);
-      }
+      await eachLevelFits(page, false);
+      // PERFORM's other pane, under the hood, and the XY pad.
       await goLevel(page, "perform");
       await landed(page);
-      await page.locator(".pf-right").evaluate((col) => { col.scrollTop = col.scrollHeight; });
-      await expect.poll(() => page.evaluate(MISFITS, { primary: [".pf-pads"] }), "what does not fit at the controls' end").toEqual([]);
-      // XY: each control's line says what the pad turns ("turns toward
-      // bloom only"), on one line or two of a length.
-      await page.locator(".pf-right").evaluate((col) => { col.scrollTop = 0; });
+      await page.locator('.lv-panes [data-pane="hood"]').tap();
+      await expect(page.locator(".pf-hood")).toBeVisible();
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit under the hood").toEqual([]);
+      await page.locator('.lv-panes [data-pane="controls"]').tap();
       await page.locator(".pf-xy-btn").tap();
       await expect(page.locator(".pf-xy")).toBeVisible();
-      await expect.poll(() => page.evaluate(MISFITS, { primary: [] }), "what does not fit in XY").toEqual([]);
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit in XY").toEqual([]);
+      await page.locator(".pf-xy-btn").tap();
+      // LEARNING's other panes.
+      await goLevel(page, "learning");
+      await landed(page);
+      for (const pane of ["weighs", "forecasts"]) {
+        await page.locator(`#view-learning .lv-panes [data-pane="${pane}"]`).tap();
+        await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), `what does not fit at LEARNING's ${pane}`).toEqual([]);
+      }
+      await page.locator('#view-learning .lv-panes [data-pane="map"]').tap();
+      // The keys up: every level again.
+      await page.locator("#keys-toggle").tap();
+      await expect(page.locator("#keybar")).toBeVisible();
+      await eachLevelFits(page, true);
     });
 
     test(`the bank's sheet and the keys' drawer are a finger's size at ${width} × ${height}`, async ({ page, app }) => {
@@ -184,13 +228,23 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
       await landed(page);
       await page.locator("#bank-btn").tap();
       await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
-      await expect.poll(() => page.evaluate(MISFITS, { primary: [] }), "what does not fit with the bank up").toEqual([]);
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit with the bank up").toEqual([]);
       // Put away as a finger does: a tap on the scrim beside the sheet.
       await page.locator(".sheet-scrim").tap({ position: { x: 8, y: 8 } });
       await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
       await page.locator("#keys-toggle").tap();
       await expect(page.locator("#keybar")).toBeVisible();
-      await expect.poll(() => page.evaluate(MISFITS, { primary: [] }), "what does not fit with the keys up").toEqual([]);
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit with the keys up").toEqual([]);
+      // The drawer's controls are one row: each one's middle on one line.
+      const row = await page.evaluate(() => {
+        return ["oct-down", "oct-label", "oct-up", "vol", "rec-btn", "keys-btn"].map((id) => {
+          const r = document.getElementById(id).getBoundingClientRect();
+          return { id, mid: Math.round(r.top + r.height / 2) };
+        });
+      });
+      // (On its side the keybed is in that row too.) A second row would be a
+      // control's height, 44 px, below the first.
+      expect(row.filter((c) => Math.abs(c.mid - row[0].mid) > 20).map((c) => c.id), `the drawer's controls off the octave's row: ${JSON.stringify(row)}`).toEqual([]);
     });
   });
 }
@@ -297,7 +351,9 @@ test.describe("PATCH under a finger, 390 × 844", () => {
     await expect(page.locator("#pt-how")).toHaveAttribute("aria-expanded", "true");
   });
 
-  test("a finger held beside a lit socket places the module there and opens no module's menu", async ({ page, app }) => {
+  test("a finger held beside a lit socket places the module there and opens no module's menu", async ({ page, app, browserName }) => {
+    // eslint-disable-next-line playwright/no-skipped-test -- a browser that cannot make the gesture, not a test turned off
+    test.skip(browserName !== "chromium", "a held finger is the browser's own touch (CDP, Chromium)");
     await patchOnAPhone(page, app);
     await moduleInHand(page);
     const before = await page.locator('#rack-svg g.mod-group[data-kind="distortion"]').count();

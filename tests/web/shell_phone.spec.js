@@ -6,8 +6,8 @@
 // What this claims:
 //
 // - A phone held upright (390 × 844, and a small one, 360 × 640) boots, with
-//   no gate and no notice. The levels are the bar along the bottom (PATCH,
-//   PERFORM, TASTE, LEARNING, then EVOLVE and KEYS), each stop's name printed
+//   no gate and no notice. The levels are the bar along the bottom (PERFORM,
+//   PATCH, TASTE, LEARNING, then EVOLVE and KEYS), each stop's name printed
 //   whole under its icon, and a tap on one goes there.
 //   At every level nothing scrolls the page sideways, the level itself
 //   scrolls no wider than the screen, the menu bar cuts nothing, and each of
@@ -83,13 +83,14 @@ for (const [width, height] of [[390, 844], [360, 640]]) {
       const box = await rail.boundingBox();
       expect(box.width, "the bar runs the screen's width").toBe(width);
       expect(box.y + box.height, "the bar sits on the screen's bottom edge").toBe(height);
-      // Left to right: the levels in to out, then EVOLVE beside them, then KEYS.
+      // Left to right: the levels from the most zoomed in outward, then
+      // EVOLVE beside them, then KEYS.
       const order = await page.evaluate(() =>
         [...document.querySelectorAll("#rail .rail-stop, #rail .rail-keys")]
           .map((b) => [b.dataset.level || "keys", b.getBoundingClientRect().left])
           .sort((a, b) => a[1] - b[1])
           .map(([name]) => name));
-      expect(order).toEqual(["patch", "perform", "taste", "learning", "evolve", "keys"]);
+      expect(order).toEqual(["perform", "patch", "taste", "learning", "evolve", "keys"]);
       for (const level of LEVELS) {
         const stop = page.locator(`.rail-stop[data-level="${level}"]`);
         await expect(stop.locator(".rl")).toBeVisible();

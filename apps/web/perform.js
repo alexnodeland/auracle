@@ -521,7 +521,22 @@ export function createPerform(host) {
   const ctlHead = el("div", "pf-ctlhead");
   const ctlCap = el("span", "pf-ctlcap", "controls");
   const ctlActs = el("div", "pf-actions");
-  ctlHead.append(ctlCap, ctlActs);
+  // On a phone (#134) the controls and what is under the hood are two panes
+  // of one screen, chosen by these tabs (shell.js, the level's `data-pane`);
+  // elsewhere the tabs are not drawn and both are on the screen.
+  const panes = el("div", "lv-panes");
+  panes.setAttribute("role", "tablist");
+  panes.setAttribute("aria-label", "Perform");
+  for (const [key, words] of [["controls", "controls"], ["hood", "under the hood"]]) {
+    const t = el("button", "", words);
+    t.type = "button";
+    t.setAttribute("role", "tab");
+    t.dataset.pane = key;
+    t.setAttribute("aria-selected", String(key === "controls"));
+    panes.append(t);
+  }
+  root.dataset.pane = "controls";
+  ctlHead.append(ctlCap, panes, ctlActs);
   right.append(ctlHead, statusEl, deck, hood, pads);
   grid.append(left, right);
   root.append(grid);

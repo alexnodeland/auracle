@@ -97,7 +97,7 @@ export const VIEWS = {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "cmdk", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "shell_phone", "phone_fits", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
-      "live_faces", "boot_modules", "farm_close", "touch_gestures", "keys_wake_audio",
+      "live_faces", "boot_modules", "farm_close", "touch_gestures", "keys_wake_audio", "bar_order",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
   },
