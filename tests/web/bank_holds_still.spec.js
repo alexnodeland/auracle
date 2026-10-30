@@ -325,14 +325,17 @@ test("a held redraw landing under the resting pointer shows the row's actions at
     await expect(row).not.toHaveClass(/\bunder\b/);
     await row.locator(".bi-hear").blur();
   }
-  // Held again, and the pointer off the bank before its rest ends: the draw
-  // lands as it leaves, and the row it left hides its actions as on any
-  // leave, held up by nothing.
+  // The views handed to main as the pointer leaves the bank, in the leave's
+  // capture, before the hold's own listener ends the hold: held, they land as
+  // it leaves, whatever the runner's speed. The row it left hides its actions
+  // as on any leave, held up by nothing.
   const row = page.locator(`#bank-list .bank-item[data-id="${third}"]`);
   await row.locator(".bi-name").hover();
   await expect(row.locator(".bi-acts")).toHaveCSS("opacity", "1");
   await watchRedraw(page, `#bank-list .bank-item[data-id="${third}"]`);
-  await app.inject({ type: "taste_views", views: s.views });
+  await page.evaluate((views) => {
+    document.getElementById("bank-list").addEventListener("pointerleave", () => window.__tap.inject({ type: "taste_views", views }), { capture: true, once: true });
+  }, s.views);
   await page.mouse.move(5, 5);
   await expect.poll(() => page.evaluate(() => window.__redrawn), { message: "the pool drawn as the pointer left" }).not.toBeNull();
   await page.evaluate(() => document.activeElement?.blur?.());
