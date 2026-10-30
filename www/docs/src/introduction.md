@@ -86,9 +86,9 @@ to end, but:
 - **The saved format may change between versions.** Your session lives in your
   browser and older ones are upgraded, but [download anything you care
   about](./your-data.md#download-and-open).
-- **Desktop only, for now.** A phone gets a screen asking for a desktop
-  instead; see [browser
-  support](./getting-started/running-locally.md#browser-support).
+- **A phone is slower to start.** Every size plays, a phone too, but a
+  phone renders the same sounds at boot on a slower processor; see [phones
+  and tablets](./getting-started/running-locally.md#phones-and-tablets).
 
 ## Where to go next
 

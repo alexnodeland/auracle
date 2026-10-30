@@ -449,6 +449,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
+| *Downloading your taste…* | The job slot, with the lamp, from the press of Download your taste until the file is ready and the toast *Downloaded your taste (…)* says what it holds | Exporting, Saving your profile, Please wait |
+| *Opening ‹name›…* | The job slot, with the lamp, while a file is opened: a taste file by its file's name until the engine has read it, a dropped or picked patch file by the name it carries until its sound is in the pool | Loading, Importing, Uploading |
+| *keeping your edit first…* | The job slot, with the lamp, while KEEP AS NEW or ⚡ evolve from this waits for an edit still on its way, from the press until it lands | committing, saving, syncing, waiting for the engine |
 | **keep** | PERFORM's Keep, in the moved bar (↵), only | every other keep |
 | **moved · KEEP · BACK** | PERFORM's head, shown exactly when the sound has left home (a control turned, a drift not kept, a glide) | changed, dirty, edited |
 | **keep as new** | PATCH: the edit joins the pool as a new sound, and the original stays | commit |
@@ -562,7 +565,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **the engine crashed: reload to continue** | B's line, or a control's toast after *nothing changed.*, for something asked of PERFORM after the engine crashed; the alarm's own words | try again (it can't), engine unavailable |
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
-| **the levels** | PERFORM, PATCH, EVOLVE, TASTE and LEARNING as one space around the sound you're playing: zoom out to TASTE and LEARNING, in to PATCH, beside it to EVOLVE; and the cross at the stage's right edge that shows where you are (its name to a screen reader: *Where you are*) | tabs, pages, "the rail" (that is the bank's), the depth rail |
+| **the levels** | PERFORM, PATCH, EVOLVE, TASTE and LEARNING as one space around the sound you're playing: zoom out to TASTE and LEARNING, in to PATCH, beside it to EVOLVE; and the cross at the stage's right edge that shows where you are (its name to a screen reader: *Where you are*), which on a phone held upright is *the bar along the bottom*, each stop named under its icon | tabs, pages, "the rail" (that is the bank's), the depth rail, tab bar, nav |
+| **the bank's button** (three lines; to a screen reader *The bank: your sounds*) | The menu bar's first button on a window under 1000 px wide, where the bank has no column: it opens the bank as a sheet over the level | BANK (no word is printed on it), menu, hamburger, drawer |
+| **KEYS** (on a phone) | The last stop of the bar along the bottom (on a phone on its side, the button under the levels, *The keys*): it brings the keys bar up and puts it away | keyboard, piano, drawer, KEYS ⋯ (that is the keys bar's settings) |
 | **the levels nod** | ⌥↑ at LEARNING, ⌥↓ at PATCH, a turn or a pinch past the end: the cross nods and no level moves | bounce, shake |
 | **a light along the levels** | The light that travels the stops from the level you left to the one you reach while a move plays | puck, indicator, dot |
 | **spread**, **pinch** | Two fingers on a touch screen moving apart, and together | pinch in / pinch out, pinch-zoom |

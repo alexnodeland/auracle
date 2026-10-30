@@ -44,6 +44,10 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
+On a phone held upright the small map runs the screen's width under the head,
+and each card keeps its **PLAY** and **PICK** under its name; the level
+scrolls. On a phone on its side, scroll down to the picks.
+
 **The head.** *Pick the one you’d reach for.*, with the six pips and the
 teaching line under it (below), and at its right a small [TASTE](./taste.md)
 map: every sound in the pool where the map puts it, with A and B ringed where
@@ -55,7 +59,9 @@ from the library keeps its preset’s), and **▶ PLAY** and **PICK A** (or
 **PICK B**). While its **PLAY** sounds, what you hear is drawn over its face
 ([while you play it](../faces.md#while-you-play-it)), and the other card’s
 stays still. While a sound’s audio is on its way, *rendering…* sweeps across
-its well. In the well’s corner, **⇄ CIRCUIT** flips the face to the patch’s
+its well and its **▶ PLAY** is dimmed; press it anyway and a dotted amber
+ring says your press was taken, and the phrase plays the moment the audio
+arrives. In the well’s corner, **⇄ CIRCUIT** flips the face to the patch’s
 modules (and back, **⇄ FACE**), and **↓ PATCH** opens the sound in
 [PATCH](./play.md) without picking. Hold <kbd>⌥</kbd> for [the model
 view](../reading-the-model.md#the-model-view) and each card also shows the

@@ -161,7 +161,9 @@ MODEL's `aria-pressed` (true only for a tapped view), and the tag
 from the counts TASTE's line uses). A hold never ends a tapped view. The
 timer starts in the same capture listener as the level keys, under the same
 rules (a text field and a modal dialog keep ⌥), and any other keydown while it
-counts cancels it, so ⌥↑ never flashes the view; a level key while ⌥ holds the
+counts cancels it, so ⌥↑ never flashes the view; while it counts (and while
+MODEL is pressed, not yet held) MODEL's LED is half-lit (`.arming`), from the
+keydown, so the press shows it was taken (#305); a level key while ⌥ holds the
 view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
 (Esc any view, held or tapped, once nothing nearer took the press: the shell
 hears Esc last, on the window in the bubble phase, and leaves a press a
@@ -2241,7 +2243,8 @@ EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 One lane, bottom right, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
 jumps the queue (and honours `replace` too), and the toast it interrupts
-comes back behind it with a fresh window unless it was already fading; an
+comes back behind it with a fresh window (its wait for the stale drop
+counted from there) unless it was already fading; an
 undo keeps its full window, and when the window closes its button is
 removed. A plain remark that has waited more than 9 s (`TOAST_STALE_MS`) is
 dropped when its turn comes, and with more than three waiting the plain
@@ -2269,6 +2272,17 @@ rather than removing it. It still takes the place of an earlier toast on its
 own key that is not one of these (the warm start's result, a keep's after
 its reveal). Its caller can still take it down when what it says stops being
 true (an undone cut).
+
+A receipt that carries a live take-back (`takeBack: true`: a pick's, a
+cut's), whose undo window runs from the gesture rather than from when the
+toast is shown, goes ahead of every plain remark waiting and, with only
+plain remarks waiting, interrupts one on screen, which comes back behind it
+with a fresh window (#305). It waits behind every refusal, undo and toast
+about the player's sounds in the queue, and a pick's receipt whose window closes while it waits is dropped, never said
+after the pick can no longer be taken back (a cut's, `bank: true`, is still
+said, its button retired). On screen it stays until its window closes, and
+at least as long as a remark. ⌘Z does not go through the toast, so it takes
+the pick back throughout.
 
 The queue is `apps/web/toasts.js` (`createToastLane`, unit-tested in
 `apps/web/tests/toasts.test.mjs`); read its rules before adding a toast.

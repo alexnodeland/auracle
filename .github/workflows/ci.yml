@@ -501,7 +501,7 @@ jobs:
       # bumps the file.
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - id: rustc
@@ -533,14 +533,14 @@ jobs:
           # tests/web/eslint-suppressions.json with HEAD^1's, the branch a
           # PR's merge commit goes onto (main's previous commit on a push).
           fetch-depth: 2
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
       # The film tools' own tests need numpy and scipy for the mix (the rest
       # of dev-check is the standard library). Only those two, pinned as
       # www/video/requirements-tools.txt pins them: about half a minute,
       # where the voice's whole set would take minutes.
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - run: grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt | xargs python3 -m pip install --quiet
@@ -575,7 +575,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
       - if: ${{ !cancelled() && steps.units.outcome == 'success' && needs.changes.outputs.lane == 'queue' }}
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-web
           path: target/js-cov/web.lcov
@@ -597,7 +597,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
           save-if: false
@@ -649,17 +649,17 @@ jobs:
       # installs from the file, and the component is 41 MB.
       - name: Install Rust (rust-toolchain.toml) and llvm-tools
         run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: coverage
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The version the Makefile's LLVM_COV_VERSION names (0.7 and later
       # instrument only the workspace's crates; 0.6 took thirteen times as long).
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-llvm-cov@0.9.1,nextest
       - run: make coverage-archive COV_ARCHIVE=coverage.tar.zst
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-archive
           path: coverage.tar.zst
@@ -684,14 +684,14 @@ jobs:
         run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
       # Nothing is compiled here, and nothing is fetched: the archive holds
       # the binaries and the metadata nextest needs (no Rust cache either).
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-llvm-cov@0.9.1,nextest
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: coverage-archive
       - run: make coverage-run COV_ARCHIVE=coverage.tar.zst NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-profiles-${{ strategy.job-index }}
           path: target/llvm-cov-target/*.profraw
@@ -716,13 +716,13 @@ jobs:
       # llvm-tools, so they read what that compiler wrote. Nothing is compiled.
       - name: Install Rust (rust-toolchain.toml) and llvm-tools
         run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-llvm-cov@0.9.1,nextest
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: coverage-archive
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-profiles-*
           path: profiles
@@ -748,7 +748,7 @@ jobs:
       # The queue's run keeps it for main's too, which uploads it to Codecov
       # when it reuses this verdict (the codecov-main job).
       - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report
           path: target/llvm-cov/
@@ -804,7 +804,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-engine
           path: apps/web/pkg
@@ -812,7 +812,7 @@ jobs:
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -922,7 +922,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-engine
           path: apps/web/pkg
@@ -940,7 +940,7 @@ jobs:
       # for the attempt, so a re-run's traces never collide with the first's.
       - name: Keep the trace of a failed boot
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-test-results-${{ github.sha }}-${{ github.run_attempt }}
           path: tests/web/test-results/
@@ -965,10 +965,10 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-engine
           path: apps/web/pkg
@@ -990,7 +990,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
       - if: needs.changes.outputs.lane == 'queue'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-worker
           path: target/js-cov/worker.lcov
@@ -1081,7 +1081,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-engine
           path: apps/web/pkg
@@ -1244,7 +1244,7 @@ jobs:
 
       - if: steps.record.outcome == 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verified-tree-${{ steps.record.outputs.tree }}
           path: verified.json

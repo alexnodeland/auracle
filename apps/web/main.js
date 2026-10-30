@@ -313,7 +313,10 @@ const guide = createGuide({
 // anything else, as PERFORM's first step asks.
 guide.add({
   id: "patch-play", levels: ["patch"],
-  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Play it: tap the keybed, or the face at OUT" : "Play it: press A, or the face at OUT"),
+  // On a phone the keybed is under KEYS (#134): the face at OUT comes first.
+  text: () => (window.matchMedia("(pointer: coarse)").matches
+    ? (getComputedStyle($("keys-toggle")).display !== "none" ? "Play it: tap the face at OUT, or KEYS and the keybed" : "Play it: tap the keybed, or the face at OUT")
+    : "Play it: press A, or the face at OUT"),
 });
 guide.add({
   id: "patch-knob", levels: ["patch"],
@@ -373,6 +376,8 @@ const renders = new Map(); // id -> {buffer: AudioBuffer, sexpr}
 // term that no longer vets is never going to produce audio no matter how long
 // anyone waits.
 const renderFailures = new Map(); // id -> reason|null
+const pinsAsked = new Map(); // id -> {want, out}: a Save on its way (`askPin`)
+const renderWaits = new Set(); // a ▶ waiting for its sound (`awaitRender`): {id, onReady, opts, waited, last, btn}
 // True while the worker is inside a synchronous engine call (fit, refine,
 // refine_from) and therefore servicing no messages at all. It is not a
 // spinner: the render deadline below stops while it is set, because during a
@@ -2851,6 +2856,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "patch_imported": {
+      patchAnswered(); // "Opening …" gives way to what became of it
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -2914,10 +2920,11 @@ worker.onmessage = (e) => {
         renderFailures.set(m.id, m.reason || null);
         onRenderArrived(m.id); // a pending scope stops sweeping and says so
         compareRenderArrived(m.id);
-        // The duel table asks for its buffers fire-and-forget (after the
-        // settle delay), so nothing is polling on its behalf — without this a
-        // side that cannot render is just a scope that stays blank.
+        // The duel table asks for its buffers fire-and-forget, so nothing
+        // waits on its behalf — without this a side that cannot render is
+        // just a scope that stays blank.
         if (currentDuel && currentDuel.includes(m.id)) renderFailed(m.id, m.reason);
+        renderSettled(m.id);
         break;
       }
       renderFailures.delete(m.id);
@@ -2925,6 +2932,8 @@ worker.onmessage = (e) => {
       const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
       buf.copyToChannel(m.buffer, 0);
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
+      // A ▶ waiting on it starts here, in this reply's task (`awaitRender`).
+      renderSettled(m.id);
       onRenderArrived(m.id);
       compareRenderArrived(m.id);
       dealer.dealAhead();
@@ -3944,6 +3953,10 @@ worker.onmessage = (e) => {
       break;
     }
     case "pinned": {
+      // The press's own ask answered: the row shows the engine's word once
+      // every ask has one (`askPin`).
+      const asked = pinsAsked.get(m.id);
+      if (asked && --asked.out <= 0) pinsAsked.delete(m.id);
       if (m.ranked && views) views.ranked = m.ranked;
       if (m.ratings && views) views.ratings = m.ratings; // a save changes what may be replaced
       takeRetiring(m); // and what a running generation will replace
@@ -3953,11 +3966,13 @@ worker.onmessage = (e) => {
       // reasons and they need different sentences: the budget is full (the
       // user can fix that by unkeeping something) or the patch is already gone
       // (they cannot).
+      // The row went back as the engine has it (`renderBank`, below), and
+      // the refusal jumps the queue: the row changed at the press.
       if (!m.ok) {
         if (rowOf(m.id)) {
-          note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`);
+          note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`, { urgent: true, replace: "pin" });
         } else {
-          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
+          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true, urgent: true, replace: "pin" });
         }
       } else if (m.pinned) {
         note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
@@ -4066,6 +4081,7 @@ worker.onmessage = (e) => {
       // downloads bar, and the app itself was silent. Counted from the file,
       // so the number is what it holds.
       if (!m.reason) {
+        fileWaitEnd("download");
         let k = null;
         try { k = kindsInLog(JSON.parse(m.json).log.observations); } catch (_) { /* counted below */ }
         note(`Downloaded your taste (${a.download}): ${taughtSentence(k || taughtKinds())}.`, { replace: "profile" });
@@ -4073,6 +4089,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "imported": {
+      fileWaitEnd("taste");
       if (m.ok) {
         applyStatus(m.status);
         // The next map TASTE keeps is this file's: a boundary on its track.
@@ -4103,7 +4120,7 @@ worker.onmessage = (e) => {
           : "Opened that taste file. Nothing has been taught in it yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true });
+        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true, replace: "profile" });
       }
       break;
     }
@@ -4134,6 +4151,16 @@ function releaseRequest(request, id, req, message, fatal = false) {
     return;
   }
   switch (request) {
+    case "export":
+      fileWaitEnd("download");
+      break;
+    case "import":
+      fileWaitEnd("taste");
+      break;
+    case "set_pinned":
+      // A Save the engine could not run: the row goes back as it has it.
+      if (id != null && pinsAsked.delete(id)) renderBank();
+      break;
     case "render_take":
       // The recording it carried is lost: say so, rather than wait forever.
       takes.rendered({ id, take: null, code: "failed" });
@@ -4145,7 +4172,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
       // The edit did not land, so neither the guess that lit COMMIT nor a
       // commit waiting on it stands.
       editPending = pendingKnobs.size > 0;
-      commitOnSettle = null;
+      setCommitWait(null);
       syncCommitBtn();
       pumpLane();
       break;
@@ -4229,6 +4256,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
         renderFailures.set(id, "engine error");
         onRenderArrived(id); // a pending scope stops sweeping and says so
         if (currentDuel && currentDuel.includes(id)) renderFailed(id, "engine error");
+        renderSettled(id);
       }
       break;
     case "preview_render":
@@ -4238,6 +4266,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
       break;
     case "import_patch":
       pendingLayout = null;
+      patchAnswered();
       break;
     default:
       break;
@@ -4255,6 +4284,12 @@ function releaseRequest(request, id, req, message, fatal = false) {
 //   (`releaseRequest`, by its `req`), or what it held stayed for good: a
 //   measurement's "listening…" or "re-checking", an offer growing (#138).
 function notReady(m) {
+  if (m.request === "set_pinned") pinsLetGo();
+  // A file asked for before the engine started: its wait in the job slot
+  // ends here, or the slot says so, lamp lit, for the rest of the session.
+  if (m.request === "export") fileWaitEnd("download");
+  if (m.request === "import") fileWaitEnd("taste");
+  if (m.request === "import_patch") fileWaitEnd("patch");
   if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
   if (m.request === "faces") facesUnanswered();
   if (typeof m.request === "string" && m.request.startsWith("perform_") && m.req != null) {
@@ -4264,6 +4299,7 @@ function notReady(m) {
 
 // Everything at once: the engine is not coming back.
 function releaseEverything(message) {
+  pinsLetGo();
   // PERFORM's questions still out will get no reply from a dead engine.
   try { if (perform) perform.failAll(message); } catch (_) {}
   for (const r of [
@@ -4489,6 +4525,20 @@ function showTasteMap() {
 }
 
 // ---------- the job slot, and the wordmark's lamp ----------
+// A file on its way (#305): Download your taste, a taste file or a patch
+// file being opened, said from the press until the engine answers, in the
+// slot with the lamp, whatever the toasts are saying. kind -> its words.
+const fileWaits = new Map();
+function fileWait(kind, text) {
+  if (!fileWaits.has(kind)) lampOn("file");
+  fileWaits.delete(kind); // the newest is the one the slot says
+  fileWaits.set(kind, text);
+  renderJobSlot();
+}
+function fileWaitEnd(kind) {
+  if (!fileWaits.delete(kind)) return;
+  lampOff("file");
+}
 // Long work has one home: the slot in the menu bar, left of the sound in hand. It
 // shows only while something long runs — "⚡ breeding 3/10 · about 40 s",
 // "⚡ evolving Glass Pad", "refitting your taste map…" — with **stop** where
@@ -4518,6 +4568,21 @@ function breedLeft() {
 
 /** The job the slot shows, most important first, or null. */
 function slotJob() {
+  // The player's own presses first: a file on its way, and KEEP AS NEW or
+  // ⚡ waiting for an edit.
+  if (lampJobs.has("file") && fileWaits.size) {
+    return { kind: "file", text: [...fileWaits.values()].pop() };
+  }
+  if (lampJobs.has("keep")) {
+    const evolving = !!(commitOnSettle && commitOnSettle.evolving);
+    return {
+      kind: "keep",
+      text: "keeping your edit first…",
+      title: evolving
+        ? "Your last edit is still on its way. It is kept as new when it lands, and ⚡ evolves from it."
+        : "Your last edit is still on its way. It is kept as new when it lands.",
+    };
+  }
   if (lampJobs.has("refine")) {
     const b = breeding || {};
     const total = b.total || 0;
@@ -4642,6 +4707,8 @@ function renderNextStep() {
 
 /** The bank's "new · generation N" group, in view and flashed once. */
 function showNewGroup() {
+  // On a narrow window the bank is a sheet, away until asked for (#134).
+  shell.showBank();
   if (bankFilter !== "pool") selectBank("pool");
   const head = document.querySelector("#bank-list .bank-group");
   if (!head) return;
@@ -4772,9 +4839,13 @@ function positionToastLane() {
   // PATCH and the header copy in TASTE.
   const bar = document.querySelector(".keybar");
   const br = bar ? bar.getBoundingClientRect() : null;
+  // On a phone the levels are the bar along the bottom, and the keys a
+  // drawer over it (#134): the lane stands above whichever is higher.
+  const nav = $("rail") ? $("rail").getBoundingClientRect() : null;
+  const navTop = nav && nav.height > 0 && nav.width > window.innerWidth / 2 && nav.bottom >= window.innerHeight - 1 ? nav.top - 10 : window.innerHeight - 16;
   // Anchored by its bottom, so it grows upward as toasts stack and does not
   // jump when one leaves.
-  const floor = br && br.height > 0 ? br.top - 10 : window.innerHeight - 16;
+  const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
   holder.style.top = "auto";
   holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
   holder.style.right = "16px";
@@ -5334,7 +5405,7 @@ function toggleAudition() {
   if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
-  awaitRender(id, () => play(id, null, "inhand"));
+  awaitRender(id, () => play(id, null, "inhand"), { inhand: true });
 }
 
 // Step the bank without the mouse: loads the next patch onto the bench and
@@ -5391,6 +5462,12 @@ function heard(id) {
 // case — the caller no longer cares (the user voted past the duel), which is a
 // silent stop, not a failure.
 //
+// The first two are answered in the reply's own task (`renderSettled`, from
+// `case "render"` and a failed request): the ▶ starts as the buffer is
+// stored, with no timer between. It used to poll every 100 ms, which added up
+// to a tenth of a second to every waited ▶ (#305). The timer left is the
+// deadline's, and it is no part of the answer.
+//
 // The deadline measures *serviceable* time, not wall time. `fit` and `refine`
 // are synchronous wasm calls that hold the worker's message queue for far
 // longer than 12 s — a generation is tens of seconds — and every ▶ in the app
@@ -5402,8 +5479,14 @@ function heard(id) {
 // So the timer only accrues across ticks where the worker said it was idle.
 // The `renderFailures` exit stays unconditional — "the engine says never" is
 // an answer, and it is the exit that actually matters.
+//
+// A press with nothing to hear yet says so at once: `btn`, when given, wears
+// the bank's dotted `.pending` (and `aria-busy`) from the press until the wait
+// ends, however it ends.
 const RENDER_WAIT_MS = 12_000;
-const RENDER_POLL_MS = 100;
+const RENDER_TICK_MS = 250;
+let renderWaitTick = 0;
+const waitMarks = new WeakMap(); // a ▶ -> the wait it is marked for
 
 function awaitRender(id, onReady, opts = {}) {
   // The duel's ▶, a bank row's, a style's exemplar and the warm start start
@@ -5423,29 +5506,76 @@ function awaitRender(id, onReady, opts = {}) {
   // A previous failure must not silently answer a fresh request: the term may
   // render fine now (the bench re-vetted it, the pool re-admitted it).
   renderFailures.delete(id);
+  const w = { id, onReady, opts, waited: 0, last: performance.now(), btn: opts.btn || null };
+  renderWaits.add(w);
+  if (w.btn) {
+    waitMarks.set(w.btn, w);
+    w.btn.classList.add("pending");
+    w.btn.setAttribute("aria-busy", "true");
+  }
+  if (opts.inhand) paintPlayPending();
   send({ type: "render", id });
-  let waited = 0;
-  let last = performance.now();
-  const stop = (fn) => {
-    clearInterval(wait);
-    if (opts.settled) opts.settled();
-    if (fn) fn();
-  };
-  const wait = setInterval(() => {
-    const now = performance.now();
-    const dt = now - last;
-    last = now;
-    if (!engineBusy) waited += dt;
-    if (opts.abandoned && opts.abandoned()) return stop(null);
-    if (renders.has(id)) return stop(onReady);
-    if (renderFailures.has(id)) {
-      return stop(() => renderFailed(id, renderFailures.get(id)));
-    }
-    if (waited > RENDER_WAIT_MS) {
-      return stop(() => renderFailed(id, "timed out"));
-    }
-  }, RENDER_POLL_MS);
-  return wait;
+  if (!renderWaitTick) renderWaitTick = setInterval(renderWaitsTick, RENDER_TICK_MS);
+  return w;
+}
+
+/** A wait's ring moved to `btn` (its button was drawn again). */
+function remarkWait(w, btn) {
+  if (w.btn && waitMarks.get(w.btn) === w) {
+    waitMarks.delete(w.btn);
+    w.btn.classList.remove("pending");
+    w.btn.removeAttribute("aria-busy");
+  }
+  w.btn = btn;
+  waitMarks.set(btn, w);
+  btn.classList.add("pending");
+  btn.setAttribute("aria-busy", "true");
+}
+
+/** A wait is over: off the list, its ▶ unmarked (unless a later wait has
+ *  marked it since), `settled` told, then what it ends with. */
+function renderWaitEnd(w, fn) {
+  if (!renderWaits.delete(w)) return;
+  if (w.btn && waitMarks.get(w.btn) === w) {
+    waitMarks.delete(w.btn);
+    w.btn.classList.remove("pending");
+    w.btn.removeAttribute("aria-busy");
+  }
+  if (!renderWaits.size) {
+    clearInterval(renderWaitTick);
+    renderWaitTick = 0;
+  }
+  if (w.opts.inhand) paintPlayPending();
+  if (w.opts.settled) w.opts.settled();
+  if (fn) fn();
+}
+
+/** The engine answered `id`, with its buffer or with "never": every wait on
+ *  it ends now, in the reply's own task. */
+function renderSettled(id) {
+  for (const w of [...renderWaits]) {
+    if (w.id !== id) continue;
+    if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+    else if (renders.has(id)) renderWaitEnd(w, w.onReady);
+    else if (renderFailures.has(id)) renderWaitEnd(w, () => renderFailed(id, renderFailures.get(id)));
+  }
+}
+
+/** The waits nobody wants any more (the pair voted past) end quietly, at
+ *  once: a ▶ reused for the next pair must not wear the last one's mark. */
+function renderWaitsAbandoned() {
+  for (const w of [...renderWaits]) if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+}
+
+function renderWaitsTick() {
+  const now = performance.now();
+  for (const w of [...renderWaits]) {
+    const dt = now - w.last;
+    w.last = now;
+    if (!engineBusy) w.waited += dt;
+    if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+    else if (w.waited > RENDER_WAIT_MS) renderWaitEnd(w, () => renderFailed(w.id, "timed out"));
+  }
 }
 
 // One place to say it, so a render that never comes is a visible condition
@@ -6099,6 +6229,9 @@ const PIANO_HI = 84; // C6
 const KEY_SPANS = [12, 24, 36, 48];
 const SPAN_DEFAULT_FINE = 36; // three octaves, as it has always been
 const SPAN_DEFAULT_COARSE = 24; // a finger needs the width more than the range
+const SPAN_DEFAULT_PHONE = 12; // and on a phone's width, one octave is a finger's keys (#134)
+// A phone: a screen whose shorter side is under a tablet's (#134).
+const PHONE = Math.min(window.innerWidth, window.innerHeight) < 620;
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const KEYMAP = {
   a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
@@ -6254,11 +6387,19 @@ const physicalKey = (e) => e.code || e.key.toLowerCase();
  *  they close in: where two hand the focus back, the later one keeps it. */
 function escFloats() {
   const shown = (id) => !$(id).classList.contains("hidden");
+  const rating = () => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating");
   return [
+    // The bank's sheet on a narrow window (#134), before anything behind it
+    // (PATCH's new patch, its selection, PERFORM's XY): after what is open
+    // in it or over it (a row's ★, Compare, its walkthrough), which close
+    // first, one a press; and after Find a sound's words, which Esc clears
+    // first.
+    [() => shell.bankOpen() && !rating() && compareId == null && !shown("bank-tour") &&
+      !(document.activeElement === $("bank-find") && $("bank-find").value), () => shell.setBank(false)],
     // A waiting handoff, or a cable half made.
     [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
     // A bank row's ★, folded out where it is drawn.
-    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [rating, foldStars],
     [() => compareId != null, closeCompare],
     [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
     // The scope and picture panels, never by listeners of their own: those
@@ -6570,7 +6711,7 @@ const perf = {
   // The tall dock stays an explicit choice — it costs the rack real height,
   // and taking that without being asked is not a default's business. The
   // width, which costs nothing but range, is chosen for you.
-  bigKeys: false, keySpan: COARSE ? SPAN_DEFAULT_COARSE : SPAN_DEFAULT_FINE,
+  bigKeys: false, keySpan: COARSE ? (PHONE ? SPAN_DEFAULT_PHONE : SPAN_DEFAULT_COARSE) : SPAN_DEFAULT_FINE,
 };
 
 function sendArp() {
@@ -7047,14 +7188,14 @@ $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
 $("pd-skip").onclick = () => anotherPair();
-// A pair put up by a pick or a deal (`placePair`) asks for its sounds at
-// once, ahead of the refit it may send (#300); the pair after is dealt, and its
-// sounds fetched, ahead (the dealer's `fetch`). The settle delay is left only
-// for a pair put back by a taken-back pick (`retractVote`'s `loadSide`): ⌘Z
-// pressed again at once asks for nothing.
-let renderWanted = null;
-const RENDER_SETTLE_MS = 180;
-
+// A pair put up asks for its sounds in the same task (`placePair`, and
+// `retractVote` for a pair a taken-back pick puts back), ahead of the refit
+// it may send (#300); the pair after is dealt, and its sounds fetched, ahead
+// (the dealer's `fetch`). A pair put back used to wait out a settle delay
+// (180 ms), kept from when every deal waited one so that a run of ↻ asked for
+// nothing it would throw away; a pair is asked for once (`pairRendersAsked`),
+// and only the pair that is up is asked for, so nothing is left to protect
+// (#305).
 // In the background (`bg`): the worker serves them after any gesture waiting
 // in its `now` lane, a render at a time, so a preset clicked while the
 // table's sounds render is opened next. ▶ on a side still waiting asks again,
@@ -7064,7 +7205,6 @@ const RENDER_SETTLE_MS = 180;
 // follows in the same turn (`settleFit`) finds them asked.
 let pairRendersAsked = null;
 function requestPairRendersNow() {
-  clearTimeout(renderWanted);
   if (!currentDuel) return;
   const key = currentDuel.join();
   if (pairRendersAsked === key) return;
@@ -7072,12 +7212,8 @@ function requestPairRendersNow() {
   for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
-function requestPairRenders() {
-  clearTimeout(renderWanted);
-  renderWanted = setTimeout(requestPairRendersNow, RENDER_SETTLE_MS);
-}
-
 function loadSide(side, id) {
+  renderWaitsAbandoned(); // a ▶ pressed for the side going away lets go
   $(`duel-${side}`).classList.remove("gone"); // a new side is in the pool
   $(`pd-${side}`).disabled = false;
   $(`readout-${side}`).textContent = "…";
@@ -7088,10 +7224,7 @@ function loadSide(side, id) {
   // patch.
   paintDuelName(side, id);
   if (renders.has(id)) onRenderArrived(id);
-  else {
-    markScopePending(side, id);
-    requestPairRenders();
-  }
+  else markScopePending(side, id);
 }
 
 // The card leads with a name a musician can hold onto and carry back to the
@@ -7141,8 +7274,9 @@ $("lineage-x").onclick = () => {
 // graticules while the next pair rendered — seconds, behind a fit — which is
 // exactly what a patch that makes no sound looks like. So a pending side says
 // what is happening in the boot field's terms: the model's amber, a slow
-// sweep across the graticule, and the word. SAMPLE is dimmed, not disabled:
-// pressing it still jumps the queue for that buffer and plays it on arrival.
+// sweep across the graticule, and the word. ▶ is dimmed (`.rendering`), not
+// disabled: pressing it still jumps the queue for that buffer, wears the
+// dotted ring from the press (`awaitRender`'s `btn`), and plays it on arrival.
 const SCOPE_SWEEP_MS = 1800;
 const scopePending = { a: null, b: null }; // side -> the id it is waiting on
 let scopePendingRaf = null;
@@ -7151,7 +7285,7 @@ const stillMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 function markScopePending(side, id) {
   scopePending[side] = id;
   const btn = $(`play-${side}`);
-  btn.classList.toggle("pending", id != null);
+  btn.classList.toggle("rendering", id != null);
   if (id != null) btn.setAttribute("aria-busy", "true");
   else btn.removeAttribute("aria-busy");
   if (id == null) return;
@@ -7872,6 +8006,7 @@ function retractVote() {
   setDuelSelection(null);
   dealCards();
   renderPlayDuel();
+  requestPairRendersNow(); // its sounds, if they have gone, asked for now
   // What went up in its place waits as the next pair. Its sounds are
   // resident, so no render will land to ask for the pair after it: asked
   // here, unless one is waiting or on its way.
@@ -7956,10 +8091,13 @@ function choose(side) {
   const lose = choseA ? b : a;
   // `replace`: only one vote is ever undoable (this one commits the last), so
   // the lane names this one, not whichever pick's toast was first in line.
+  // `takeBack`: its window runs from now, so it goes ahead of any plain
+  // remark, and is never said once the window has closed (toasts.js rule 7).
   pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
     undo: () => retractVote(),
     undoLabel: "not what I meant",
     replace: "vote",
+    takeBack: true,
   });
   duelsSinceFit += 1;
   // The refit is *armed* here and sent in `settleFit` once this pick is in
@@ -7991,10 +8129,9 @@ function choose(side) {
 //
 // It goes out once the pair is audible, too. The worker is one thread and
 // processes in order, so a fit queued ahead of the pair's buffers hands the
-// user two cards they cannot hear for the whole fit. The renders jump the
-// settle delay and go in front of it; that delay exists to protect the *next
-// deal* from a render nobody is looking at, which is the opposite situation
-// to this one.
+// user two cards they cannot hear for the whole fit. The renders go in
+// front of it: `placePair` asks for them before it sends the refit, and so
+// does this, for a pair put up some other way.
 //
 // The sixth pick always refits: the meter promises it ("1 more pick and it
 // redraws your taste map"), and a promise kept only sometimes teaches the
@@ -8033,8 +8170,8 @@ $("duel-b").addEventListener("click", (e) => {
   if (e.target.closest("button")) return;
   selectDuelSide("b");
 });
-// Pressing ▶ is an explicit request for the artwork, so it jumps the settle
-// delay rather than waiting on it.
+// Pressing ▶ is an explicit request for the artwork: the player's own
+// render, in the `now` lane, ahead of the table's background ones.
 function auditionDuelSide(i, btn) {
   if (!currentDuel) return;
   const want = currentDuel[i];
@@ -8045,6 +8182,9 @@ function auditionDuelSide(i, btn) {
   awaitRender(want, () => play(want, btn, key), {
     // Voted past it: stop silently, this is not a failure.
     abandoned: () => !currentDuel || currentDuel[i] !== want,
+    // Dimmed since the deal; pressed, it wears the dotted ring until it
+    // plays, so the press shows it was taken.
+    btn,
   });
 }
 $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
@@ -8435,8 +8575,15 @@ function renderCompare() {
       const key = `bank:${id}`;
       if (hearingNow(key)) return void stopAudition();
       const btn = () => document.querySelector(`#compare-play .cmp-hear[data-id="${id}"]`) || b;
-      awaitRender(id, () => play(id, btn(), key));
+      awaitRender(id, () => play(id, btn(), key), { btn: b, cmp: id });
     };
+  }
+  // A ▶ pressed before this redraw, still waiting: its ring moves to the
+  // button drawn in its place.
+  for (const w of renderWaits) {
+    if (w.opts.cmp == null) continue;
+    const now = playBox.querySelector(`.cmp-hear[data-id="${w.opts.cmp}"]`);
+    if (now && now !== w.btn) remarkWait(w, now);
   }
 }
 /** The figure: the seed's outline, and the child growing out of it. */
@@ -8616,7 +8763,7 @@ function poolMatches(r) {
 function bankSource() {
   const ranked = (views && views.ranked) || [];
   const live = ranked.filter((r) => !cutIds.has(r.id) && poolMatches(r));
-  if (bankFilter === "saved") return live.filter((r) => r.pinned);
+  if (bankFilter === "saved") return live.filter(pinShown);
   if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(bankQuery, p.name, p.category, p.blurb));
   return live;
 }
@@ -8628,7 +8775,7 @@ function renderBankCounts() {
   const live = ranked.filter((r) => !cutIds.has(r.id));
   const n = {
     pool: live.length,
-    saved: live.filter((r) => r.pinned).length,
+    saved: live.filter(pinShown).length,
     presets: (presetRows || []).length,
   };
   for (const el of document.querySelectorAll(".btab .bt-n")) {
@@ -8640,7 +8787,7 @@ function renderBankCounts() {
 // there too: its count turns amber at the cap. The head's "3/10 saved" line
 // and the note under the tabs were the same facts, at the cost of two rows.
 function renderPinBudget() {
-  const [used, cap] = pinBudget;
+  const [used, cap] = pinsShown();
   const n = $("pin-budget");
   // Amber at the cap (Plan-008): full is the one state of the budget worth
   // seeing without hovering (`.cap`).
@@ -8983,7 +9130,7 @@ function bankRow(r, fitted) {
     // used it, and the next digit fell through to the index-0 fallback and
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
-    + (r.pinned ? " saved" : "")
+    + (pinShown(r) ? " saved" : "")
     + (isNew ? " fresh" : "")
     + (landedNow.has(r.id) && !budding.has(r.id) ? " landed" : "")
     + (budding.has(r.id) ? " budding" : "")
@@ -9016,7 +9163,7 @@ function bankRow(r, fitted) {
     unheard.has(r.id) ? "not heard yet" : "",
     lin ? `bred from ${seedName}` : "",
     sig && engineerMode ? sig : "",
-    r.pinned ? "saved" : "",
+    pinShown(r) ? "saved" : "",
     stars ? `${stars} of 5 stars` : "unrated",
     fitted ? `its guess ${guessLabel(frac).replace("% · ", " percent, ")}` : "",
   ].filter(Boolean);
@@ -9051,9 +9198,9 @@ function bankRow(r, fitted) {
       lin
         ? `<button class="bi-cmp" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${ROW_ICON.compare}</button>`
         : ""
-    }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${r.pinned ? " on" : ""}" type="button" aria-pressed="${!!r.pinned}"
-        title="${r.pinned ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
-        aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button><button class="bi-kill" type="button" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">${ROW_ICON.cut}</button>
+    }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${pinShown(r) ? " on" : ""}" type="button" aria-pressed="${pinShown(r)}"
+        title="${pinShown(r) ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
+        aria-label="${pinShown(r) ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button><button class="bi-kill" type="button" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">${ROW_ICON.cut}</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star${stars >= s ? " lit" : ""}" type="button" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">${ROW_ICON.star}</button>`)
         .join("")}</span>
@@ -9116,9 +9263,7 @@ function bankRow(r, fitted) {
   el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && ratingId === r.id) foldStars(); });
   el.querySelector(".bi-save").onclick = () => {
     kbdRowId = r.id;
-    // Optimism here would be a lie half the time: the engine refuses at the
-    // budget, and it owns the count. Ask, then render what it says.
-    send({ type: "set_pinned", id: r.id, pinned: !r.pinned });
+    askPin(r.id, !pinShown(r));
   };
   el.querySelector(".bi-kill").onclick = () => cutRow(r);
   for (const b of el.querySelectorAll(".bi-from, .bi-cmp")) b.onclick = () => openCompare(r.id);
@@ -9139,7 +9284,9 @@ function cutRow(r) {
   // engine went on holding its save slot, so the budget was permanently short
   // and the only control that could release it was unreachable. The cut is
   // what the user just said, so the save yields to it.
-  if (r.pinned) send({ type: "set_pinned", id: r.id, pinned: false });
+  // As the row shows it: a Save still on its way is released too, or its
+  // slot would stay taken by a sound the player threw out.
+  if (pinShown(r)) askPin(r.id, false);
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
@@ -9185,7 +9332,7 @@ function cutRow(r) {
   });
   // By name, never "#9": ids are hidden everywhere else. And it says what the
   // cut does, which is now true: the patch is not dealt again.
-  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true });
+  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true, takeBack: true });
 }
 
 function wireRename(nameEl, r) {
@@ -9357,6 +9504,48 @@ function openPreset(p, el) {
 let bankFilter = "pool";
 let bankRows = []; // the rows the rail currently shows
 let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
+
+// Save answers the press (#305): the row shows what was asked for at once,
+// and the engine, which owns the pins and the count, confirms it or refuses
+// it in its `pinned` reply, where a refusal puts the row back as the engine
+// has it and says why. It used to change nothing until the reply. The
+// engine refuses for exactly two reasons, both said there: the budget is
+// full, or the sound has left the pool. id -> {want, out}: what the last
+// press asked for, and how many of its asks have no reply yet (`pinsAsked`,
+// declared with the state above).
+/** Is this row saved, as the bank shows it: what a press asked for, until
+ *  the engine has answered every ask. */
+function pinShown(r) {
+  const a = pinsAsked.get(r.id);
+  return a ? a.want : !!r.pinned;
+}
+/** The budget as the bank shows it, [used, cap]: the engine's count, with
+ *  each Save still on its way counted as asked, so SAVED's count, its title
+ *  and its amber agree with the rows. */
+function pinsShown() {
+  let [used, cap] = pinBudget;
+  for (const [id, a] of pinsAsked) {
+    const r = rowOf(id);
+    if (r && a.want !== !!r.pinned) used += a.want ? 1 : -1;
+  }
+  return [Math.max(0, used), cap];
+}
+/** Every Save on its way let go (the engine was not ready, or is gone): the
+ *  rows go back as it has them. */
+function pinsLetGo() {
+  if (!pinsAsked.size) return;
+  pinsAsked.clear();
+  renderBank();
+}
+/** Save (or release) a sound: the row says so now, the engine decides. */
+function askPin(id, want) {
+  const a = pinsAsked.get(id) || { want, out: 0 };
+  a.want = want;
+  a.out += 1;
+  pinsAsked.set(id, a);
+  send({ type: "set_pinned", id, pinned: want });
+  renderBank();
+}
 let renamingId = null; // a rename in flight; see `syncBankCursor`
 let presetCursor = -1;  // the preset bank's own row cursor (presets have no id)
 let bankRenderPending = false; // a render deferred while a rename is open
@@ -9512,7 +9701,8 @@ function saveCursorRow() {
     note("Nothing selected to save. Click a bank row, or step to one with [ and ].");
     return false;
   }
-  send({ type: "set_pinned", id, pinned: !(rowOf(id) || {}).pinned });
+  const r = rowOf(id);
+  askPin(id, !(r ? pinShown(r) : false));
   return true;
 }
 
@@ -9676,7 +9866,7 @@ const BANK_NOTES = {
 };
 
 function renderBankNote() {
-  const [used, cap] = pinBudget;
+  const [used, cap] = pinsShown();
   for (const b of document.querySelectorAll(".bank-tabs .btab")) {
     const k = b.dataset.bank;
     // SAVED carries the budget from the moment the cap is known, including
@@ -9761,6 +9951,8 @@ function tourText(s) {
 }
 
 function startBankTour(from = 0) {
+  // It points at the bank, which on a narrow window is a sheet (#134).
+  shell.showBank();
   tourAt = Math.max(0, from);
   showTourStep();
 }
@@ -10161,7 +10353,7 @@ function openOnBench(id, { auto = false } = {}) {
   openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles. Nor a ▶.
-  commitOnSettle = null;
+  setCommitWait(null);
   playWaitCancel();
   // …and so is everything still waiting in the lane. Sent after this, each
   // entry would land on the patch being opened, at an address that names
@@ -10207,6 +10399,17 @@ let editPending = false;
 // A COMMIT pressed while that edit is still on its way waits for it, so what
 // is committed (or duelled) is the tree with the edit in it.
 let commitOnSettle = null;
+/** KEEP AS NEW (or ⚡, `evolving`) waiting for the edit on its way, or not
+ *  (null). The wait says so from the press, in the job slot with the lamp
+ *  ("keeping your edit first…", `slotJob`'s `keep`): it used to show nothing
+ *  until the edit landed (#305). */
+function setCommitWait(opts) {
+  const was = commitOnSettle != null;
+  commitOnSettle = opts;
+  if (opts && !was) lampOn("keep");
+  else if (!opts && was) lampOff("keep");
+  else if (opts) renderJobSlot();
+}
 
 /** COMMIT's enabled state and both of its tooltips, in one place. */
 function syncCommitBtn() {
@@ -10378,10 +10581,7 @@ function benchSettled() {
 function playBench() {
   if (!benchSettled()) {
     playOnSettle = true;
-    for (const b of [$("rack-play"), $("inhand-play")]) {
-      b.classList.add("pending");
-      b.setAttribute("aria-busy", "true");
-    }
+    paintPlayPending();
     paintLiveLabel();
     return;
   }
@@ -10416,12 +10616,23 @@ function latestPlayWins() {
 function playWaitCancel() {
   const was = playOnSettle;
   playOnSettle = false;
-  for (const b of [$("rack-play"), $("inhand-play")]) {
-    b.classList.remove("pending");
-    b.removeAttribute("aria-busy");
-  }
+  paintPlayPending();
   if (was) paintLiveLabel();
   return was;
+}
+
+/** The rack's ▶ and the header's wear the dotted ring for what will really
+ *  play: the bench's ▶ waiting for the lane (`playOnSettle`), and for the
+ *  header's, Space waiting for a sound's render too (`awaitRender`'s
+ *  `inhand`). Two waits, one ring each, drawn from both. */
+function paintPlayPending() {
+  const inhand = playOnSettle || [...renderWaits].some((w) => w.opts.inhand);
+  for (const [b, on] of [[$("rack-play"), playOnSettle], [$("inhand-play"), inhand]]) {
+    if (!b) continue;
+    b.classList.toggle("pending", on);
+    if (on) b.setAttribute("aria-busy", "true");
+    else b.removeAttribute("aria-busy");
+  }
 }
 
 /** The deferred half of `playBench`, once the lane has settled. */
@@ -17492,7 +17703,7 @@ function commitBench(opts = {}) {
   // compare the tree from before the edit (and a bench not yet marked dirty
   // would commit "none"). What is committed is what the player sees.
   if (!laneFree() || benchLane.some((q) => q.held)) {
-    commitOnSettle = opts;
+    setCommitWait(opts);
     return;
   }
   if ($("improve-check").checked) {
@@ -17516,7 +17727,7 @@ function commitBench(opts = {}) {
 function settleCommit() {
   if (!commitOnSettle || !laneFree()) return;
   const opts = commitOnSettle;
-  commitOnSettle = null;
+  setCommitWait(null);
   if (wb.dirty && wb.vetOk) commitBench(opts);
   else if (opts.evolving && pendingEvolve && wb.subjectId != null) {
     // ⚡ waited for an edit that turned out to change nothing (refused, or a
@@ -19213,6 +19424,10 @@ function catalogReserve() {
   if (!nb || nb.hidden) return 0;
   const r = nb.getBoundingClientRect();
   const fr = $("rack-frame").getBoundingClientRect();
+  // On a phone the catalog is the well's width, over the patch rather than
+  // beside it (#134): it keeps no column clear, or the patch would be fitted
+  // into nothing, and folds away while a module is in hand.
+  if (r.width > fr.width / 2) return 0;
   return r.width ? r.right - fr.left + 8 : 0;
 }
 
@@ -22695,7 +22910,7 @@ taste = createTaste({
     bankScrollAt = performance.now();
     drawTaste();
   },
-  play: (id, btn) => awaitRender(id, () => play(id, btn)),
+  play: (id, btn) => awaitRender(id, () => play(id, btn), { btn }),
   niceName,
   styleName,
   styleColor: (k) => STYLE_COLORS[k % STYLE_COLORS.length],
@@ -22898,6 +23113,20 @@ function lineageChanges(diff) {
 }
 
 // ---------- profile ----------
+// A taste file on its way, either way, says so from the press until the
+// engine has answered (#305), in the job slot with the lamp (`fileWait`): it
+// used to say nothing until the file had landed or been read. The answer
+// says what became of it in a toast; an engine that could not run it ends
+// the wait (`releaseRequest`).
+/** Download your taste: said at once, answered by `exported`. */
+function downloadTaste() {
+  fileWait("download", "Downloading your taste…");
+  send({ type: "export" });
+}
+/** A taste file being opened, by its file's name, until `imported`. */
+function sayProfileOpening(name) {
+  fileWait("taste", `Opening ${name}…`);
+}
 // Importing a profile *replaces* the taste log — every pick, star and cut —
 // and the autosave 2.5 s later made that permanent. It used to happen on the
 // file pick, with no question asked and no copy kept. Now it asks, and the
@@ -22910,8 +23139,10 @@ $("import-input").onchange = async (e) => {
   // Reset so that picking the same file again after "keep mine" fires again.
   e.target.value = "";
   if (!file) return;
-  const json = await file.text();
   const n = picksTaught();
+  // Nothing to replace: it opens at once, and says so until it has (#305).
+  if (n === 0) sayProfileOpening(file.name);
+  const json = await file.text();
   if (n === 0) {
     send({ type: "import", json });
     return;
@@ -22924,6 +23155,7 @@ $("import-input").onchange = async (e) => {
       run: () => {
         alarm(null);
         commitPendingVote(); // counted in the question, so kept in the copy
+        sayProfileOpening(file.name);
         send({ type: "export", reason: "before-import" });
         send({ type: "import", json });
       },
@@ -23130,6 +23362,24 @@ function downloadPatch() {
   );
 }
 
+// A patch file on its way says so from the drop or the pick, by the name
+// its file carries and then the one its sidecar does, until the engine's
+// `patch_imported` says what became of it (#305). It used to say nothing
+// until the import and its render had landed.
+function sayPatchOpening(file) {
+  const stem = file.name.replace(/\.(auracle\.json|json|png|svg)$/i, "");
+  fileWait("patch", `Opening ${stem}…`);
+}
+/** The sidecar is read: its own name, where it has one. */
+function namePatchOpening(data) {
+  if (fileWaits.has("patch") && data && typeof data.name === "string" && data.name.trim()) {
+    fileWait("patch", `Opening ${data.name.trim()}…`);
+  }
+}
+function patchAnswered() {
+  fileWaitEnd("patch");
+}
+
 /** Open a parsed sidecar (or a bare tree) on the bench.
  *
  *  The single funnel every arrival goes through — file picker, drag-and-drop,
@@ -23153,6 +23403,7 @@ function loadPatchData(data) {
     tree.root && typeof tree.root === "object" && Object.keys(tree.root).length === 1;
   if (!looksLikeATerm) {
     pendingLayout = null;
+    patchAnswered();
     return note("That file is JSON, but it isn’t a patch this build understands.");
   }
   // Held until the engine says which id the patch landed as — that id is the
@@ -23207,9 +23458,15 @@ $("patch-import-input").onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
+  sayPatchOpening(file);
   const data = await readPatchFile(file);
-  if (data) loadPatchData(data);
-  else pendingLayout = null;
+  if (data) {
+    namePatchOpening(data);
+    loadPatchData(data);
+  } else {
+    pendingLayout = null;
+    patchAnswered();
+  }
 };
 
 // ===========================================================================
@@ -24161,9 +24418,15 @@ function dropInit() {
     show(false);
     const file = ev.dataTransfer.files[0];
     if (!file) return;
+    sayPatchOpening(file);
     const data = await readPatchFile(file);
-    if (data) loadPatchData(data);
-    else pendingLayout = null;
+    if (data) {
+      namePatchOpening(data);
+      loadPatchData(data);
+    } else {
+      pendingLayout = null;
+      patchAnswered();
+    }
   });
 }
 
@@ -25053,6 +25316,8 @@ const press = (id) => () => $(id)?.click();
 const pressedHint = (id) => () => ($(id)?.getAttribute("aria-pressed") === "true" ? "on" : "");
 /** Open KEYS ⋯ with the focus on one of its settings. */
 function keysSetting(id) {
+  // On a phone the keys bar is a drawer under KEYS (#134).
+  shell.showKeys();
   setKeysPop(true);
   $(id)?.focus({ preventScroll: true });
 }
@@ -25118,8 +25383,8 @@ shell.cmds(() => takes.kept().map((h) => ({ id: `kept-${h.id}`, label: `Record a
 // The keys bar: the octave, VOL, MIDI, ● REC, and every setting in KEYS ⋯.
 shell.cmd({ id: "oct-down", label: "Octave down", key: "Z", run: () => octave(-1) });
 shell.cmd({ id: "oct-up", label: "Octave up", key: "X", run: () => octave(1) });
-shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => $("vol")?.focus({ preventScroll: true }) });
-shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: press("midi-ind") });
+shell.cmd({ id: "vol", label: "Master volume: live keys and every ▶", hint: () => $("vol-val")?.textContent || "", run: () => { shell.showKeys(); $("vol")?.focus({ preventScroll: true }); } });
+shell.cmd({ id: "midi", label: "MIDI: devices, knob mapping, clock", run: () => { shell.showKeys(); press("midi-ind")(); } });
 shell.cmd({ id: "rec", label: "Record what you play; stop to download a WAV", icon: "●", run: press("rec-btn") });
 shell.cmd({ id: "keys-hold", label: "Hold: latch held notes", hint: pressedHint("hold-btn"), run: press("hold-btn") });
 shell.cmd({ id: "keys-uni", label: "Unison: all 4 voices on one note, detuned wide", hint: pressedHint("uni-btn"), run: press("uni-btn") });
@@ -25132,7 +25397,7 @@ shell.cmd({ id: "keys-span", label: "How much of the keybed to show: fewer octav
 shell.cmd({ id: "keys-silence", label: "Silence all voices", icon: "◼", run: press("panic-btn") });
 // What the ⋯ menu held: files, your taste, the scope, the warm start,
 // measurements, booth mode, and the guide and the films.
-shell.cmd({ id: "taste-download", label: "Download your taste", run: () => send({ type: "export" }) });
+shell.cmd({ id: "taste-download", label: "Download your taste", run: () => downloadTaste() });
 shell.cmd({ id: "taste-open", label: "Open a taste file…", run: () => $("import-input").click() });
 shell.cmd({ id: "patch-download", label: "Download this patch", run: () => downloadPatch() });
 shell.cmd({ id: "patch-picture", label: "Download as a picture…", run: () => { if (!panelOpen("image-panel")) toggleImagePanel(); } });

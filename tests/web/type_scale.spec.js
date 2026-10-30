@@ -139,12 +139,10 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
 test("the menu bar is one row as tall as --menubar-h, which the alarm is placed under, at every width", async ({ newContext }) => {
   // One row at every width (Plan-008): what gives way on a narrower window
   // is words (TAUGHT's, the level's line, the sound's name, then the level),
-  // never a second row, and ⌘K's button stays on screen, on a phone behind
-  // "look around anyway" too.
+  // never a second row, and ⌘K's button stays on screen, on a phone too.
   for (const [width, height, mobile] of [[1440, 900, false], [1000, 800, false], [860, 800, false], [390, 844, true]]) {
     const context = await newContext({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
     const page = await context.newPage();
-    await page.addInitScript(() => { try { sessionStorage.setItem("auracle-anyway", "1"); } catch (_) {} });
     await page.goto("/");
     await expect(page.locator(".menubar")).toBeVisible();
     const got = await page.evaluate(() => [

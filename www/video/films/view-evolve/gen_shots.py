@@ -104,7 +104,7 @@ STATE_JS = (
 FRESH_JS = "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"
 TOASTS_JS = "[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' || ')"
 # Both sides' audio is in, so 1 and 2 play at once.
-RENDERS = {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000}
+RENDERS = {"op": "until", "js": "!document.getElementById('play-a').classList.contains('rendering') && !document.getElementById('play-b').classList.contains('rendering')", "ms": 90000}
 SETTLED = {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000}
 # The first generation in a session offers the bank's tour in a toast of its
 # own, which holds the generation's toast back 7 s. Marked as seen, as it would

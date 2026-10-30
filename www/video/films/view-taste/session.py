@@ -118,7 +118,7 @@ const samePair = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.in
 // refused by the app and asked again, so it does not count; after three
 // refusals the app stops asking, and so does this wait.
 async function settle() {
-  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');
+  await until(() => dealt() && !document.querySelector('#play-a.rendering, #play-b.rendering'), 120000, 'the pair to render');
   const ids = tableIds();
   await until(() => { const a = window.__vt.ahead; return a && !samePair(a, ids) && !samePair(a, window.__vtPicked); }, 30000, 'the next pair, dealt ahead').catch(() => {});
 }
@@ -359,7 +359,7 @@ for (let i = 0; i < 40; i++) {
   if (i === 39) throw new Error('no musical pair in forty deals: ' + out.join(' / '));
   await skip();
 }
-await until(() => !document.querySelector('#play-a.pending, #play-b.pending'), 90000, 'the pair to render');
+await until(() => !document.querySelector('#play-a.rendering, #play-b.rendering'), 90000, 'the pair to render');
 return out.join('  /  ');
 """)
 

@@ -57,7 +57,7 @@ Tasks still open, each an issue (`docs/process.md`):
 
 | Task | Issue | Status |
 | --- | --- | --- |
-| 8. Touch | #134 | not started (after the shell, Plan-008) |
+| 8. Touch | #134 | in progress: the phone's shell (the bottom bar, the bank as a sheet, the keys over the bar), each level laid out for a phone, and the gates retired (`claude/mobile`); the catalog as a sheet and EVOLVE's swipe wait on the maintainer's choices |
 | 11. A sound of your own: the card | #133 | the engine and the worker are built; the card is not started |
 
 1. **Tokens from the specimen.**
@@ -314,8 +314,9 @@ Tasks still open, each an issue (`docs/process.md`):
        (*Reverb deleted and set aside below.*), whose undo puts it back;
      - the specimen's turned-knob bar (Compare, Keep, Revert) is the rack's
        KEEP AS NEW and ⌘Z;
-     - a phone still meets the handheld gate: the sheet is the specimen's
-       phone sheet below 701 px, but laying PATCH out for a phone is task 8.
+     - the sheet is the specimen's phone sheet below 701 px; PATCH's phone
+       layout (the head stacked over the well) and the gates' retirement
+       came with task 8.
 8. **Touch.**
    - A phone gets its own layout: a bottom bar, the bank and the palette as
      sheets, the keys as a drawer, swipe to keep.

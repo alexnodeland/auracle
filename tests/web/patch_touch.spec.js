@@ -103,10 +103,7 @@ test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press
   // The microphone, stubbed as granted (audio_in_stub.js).
   await page.addInitScript(`try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`);
   await page.addInitScript(STUB);
-  await app.boot({ wait: false });
-  const anyway = page.locator("#hg-anyway");
-  if (await anyway.isVisible().catch(() => false)) await anyway.click();
-  await app.booted();
+  await app.boot();
   await goLevel(page, "patch");
   const amp = { attack: 0.01, decay: 0.3, sustain: 0.95, release: 0.05 };
   const take = (n) => {
