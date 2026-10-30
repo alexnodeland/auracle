@@ -86,6 +86,7 @@ export function createShell(host = {}) {
     const was = model.on;
     model.on = !!on;
     model.held = model.on && !sticky;
+    arming(false);
     document.body.classList.toggle("model-view", model.on);
     const btn = document.getElementById("model-btn");
     if (btn) btn.setAttribute("aria-pressed", String(model.on && !model.held));
@@ -118,6 +119,13 @@ export function createShell(host = {}) {
   function cancelAltHold() {
     clearTimeout(altTimer);
     altTimer = 0;
+    arming(false);
+  }
+  // ⌥ (or MODEL) held but not yet long enough: MODEL's LED half-lit, at the
+  // keydown, so the press shows it was taken (#305). The view itself still
+  // waits for the hold (`MODEL_HOLD_MS`), so ⌥↑ never flashes it.
+  function arming(on) {
+    document.getElementById("model-btn")?.classList.toggle("arming", on);
   }
   // MODEL, pressed and held or tapped. The click a hold ends with is not a
   // tap. Enter and Space click it, so the keyboard taps.
@@ -129,6 +137,7 @@ export function createShell(host = {}) {
       if (e.button !== 0) return;
       heldByPress = false;
       clearTimeout(pressTimer);
+      if (!model.on) arming(true);
       pressTimer = setTimeout(() => {
         heldByPress = true;
         if (!model.on) setModelView(true);
@@ -136,6 +145,7 @@ export function createShell(host = {}) {
     });
     const release = () => {
       clearTimeout(pressTimer);
+      arming(false);
       if (heldByPress && model.held) setModelView(false);
     };
     for (const t of ["pointerup", "pointercancel", "pointerleave"]) modelBtn.addEventListener(t, release);
@@ -617,6 +627,7 @@ export function createShell(host = {}) {
         if (typing(e.target)) return;
         e.preventDefault();
         if (!e.repeat && !altTimer && !model.on && !(host.blocked && host.blocked())) {
+          arming(true);
           altTimer = setTimeout(() => {
             altTimer = 0;
             setModelView(true);

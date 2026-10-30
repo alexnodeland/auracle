@@ -72,7 +72,8 @@ measurement.
 
 Point at a sound and its card opens beside it: the sound’s name, how much the
 model guesses you’d like it (*would like: 59% · leaning*), **▶ PLAY**, which
-plays its phrase, and **OPEN**, which opens it as the sound you’re playing.
+plays its phrase (if it has to be rendered first, a dotted amber ring says
+it’s on its way), and **OPEN**, which opens it as the sound you’re playing.
 
 Clicking a sound opens it too. It plays at once, and the green ring moves to
 it with the click. A sound the app can’t play yet, as it starts, wears a

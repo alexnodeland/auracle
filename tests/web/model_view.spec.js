@@ -4,6 +4,7 @@
 // each bank row's guess and, once fitted, the pool in the order the model
 // rates it (letting go puts the order back); TASTE's side of its toggle;
 // EVOLVE's guess for the pair before you pick, on the card it favours.
+// ⌥'s keydown lights MODEL's LED halfway at once (#305), full with the view.
 // Another key during the hold cancels it, so ⌥↑ never flashes it; a text
 // field and a modal dialog keep ⌥; the window's blur ends it, and Esc does
 // when nothing nearer takes the press (in PATCH: the selection, the catalog
@@ -107,6 +108,51 @@ test("⌥ and an arrow move a level and never flash the model view", async ({ pa
   expect(await page.evaluate(() => window.__pwModelSeen), "the model view showed during ⌥↑").toBe(0);
   await key("keyup", "Alt", "AltLeft", false);
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
+});
+
+test("⌥ pressed lights MODEL's LED half at the keydown, without the view, and an arrow after it puts it out", async ({ page, app }) => {
+  await boot(page, app);
+  await page.locator("#warm-skip").click();
+  const led = (page) => page.evaluate(() => getComputedStyle(document.querySelector("#model-btn .led")).backgroundColor);
+  const rest = await led(page);
+  // The keydown and what MODEL shows, in its own task (#305): half-lit, and
+  // no view yet (that waits for the hold).
+  const down = await page.evaluate(() => {
+    const at = document.activeElement || document.body;
+    const t0 = performance.now();
+    at.dispatchEvent(new KeyboardEvent("keydown", { key: "Alt", code: "AltLeft", altKey: true, bubbles: true, cancelable: true }));
+    // Read with transitions off, as the end state they are heading to.
+    const dot = document.querySelector("#model-btn .led");
+    dot.style.transition = "none";
+    const out = {
+      led: getComputedStyle(dot).backgroundColor,
+      view: document.body.classList.contains("model-view"),
+      ms: performance.now() - t0,
+    };
+    dot.style.transition = "";
+    return out;
+  });
+  expect(down.view, "the view waits for the hold").toBe(false);
+  expect(down.led, "MODEL's LED changed at the keydown").not.toBe(rest);
+  app.budget("⌥ down → MODEL's LED half-lit", down.ms, 100);
+  // Held: the view, and the LED full.
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await expect.poll(() => led(page), { message: "held: the LED full" }).not.toBe(down.led);
+  await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft", bubbles: true, cancelable: true })));
+  await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
+  // ⌥ and ↑ in one task: the LED goes out with the arrow, and the view never
+  // came.
+  const chord = await page.evaluate(() => {
+    const at = document.activeElement || document.body;
+    const send = (type, key, code) => at.dispatchEvent(new KeyboardEvent(type, { key, code, altKey: true, bubbles: true, cancelable: true }));
+    send("keydown", "Alt", "AltLeft");
+    const armed = document.getElementById("model-btn").classList.contains("arming");
+    send("keydown", "ArrowUp", "ArrowUp");
+    return { armed, after: document.getElementById("model-btn").classList.contains("arming") };
+  });
+  expect(chord).toEqual({ armed: true, after: false });
+  await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft", bubbles: true, cancelable: true })));
+  await expect(page.locator("#model-btn .led")).toHaveCSS("background-color", rest);
 });
 
 test("a tap on MODEL keeps the model view until a second tap or Esc; a press held on it shows it only while held", async ({ page, app }) => {
