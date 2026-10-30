@@ -40,3 +40,14 @@
 - **A key struck after an octave shift plays its note once.** Each shift
   added another copy of the keybed's handling, so a key played its note once
   for every shift made.
+
+### Fixed: a phone's controls drawn true
+
+- **The volume's fader on a phone is lit to its thumb**, on a thin track,
+  where a pill the fader's height stood behind it with a fixed glow.
+- **Nothing stays lit after a tap** on a touch screen but what is on: a
+  tapped button kept its pointer's light.
+- **PERFORM's XY and stage buttons hold their marks in their middles,** the
+  octave's arrows sit level with the octave, and EVOLVE's **CIRCUIT** and
+  **PATCH** hold their words inside their boxes on a phone (the card's
+  letter moves to the well's foot).

@@ -6786,6 +6786,9 @@ $("hold-btn").onclick = () => {
 };
 $("panic-btn").onclick = () => panic();
 function renderVolVal() {
+  // The fader's lit part, to its thumb (the stylesheet draws it on a touch
+  // screen, where the fader is a finger tall).
+  $("vol")?.style.setProperty("--v", String(volume));
   const el = $("vol-val");
   if (!el) return;
   el.textContent = volume <= 0.001 ? "mute" : `${(20 * Math.log10(volume)).toFixed(0)} dB`;

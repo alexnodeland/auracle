@@ -8682,3 +8682,66 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 @media (max-width: 339px) {
   .pf-ctlhead { flex-wrap: wrap; }
 }
+
+/* ---- a phone, the pixel pass (#134) ---- */
+@media (pointer: coarse) {
+  /* The volume fader is a finger tall: its track stays a 4 px line through
+     its middle, lit exactly to the thumb (main.js sets --v), not a pill the
+     fader's whole height with a fixed gradient across it. */
+  #vol {
+    background:
+      linear-gradient(90deg, var(--phos-a-deep), var(--phos-a-deep)) left center / calc(6px + (100% - 12px) * var(--v, 0.8)) 4px no-repeat,
+      linear-gradient(90deg, var(--hairline), var(--hairline)) center / 100% 4px no-repeat;
+    border-radius: 0;
+  }
+}
+@media (pointer: coarse) {
+  /* A glyph or a word in a fixed square sits in its middle: PERFORM's XY
+     and stage buttons stood their glyph at the left. */
+  .pf-corner .util-btn { justify-content: center; padding-left: 0; padding-right: 0; min-width: 44px; }
+  /* The octave's arrows, in the middle of their 44 px and a thumb's size
+     to read. */
+  .kcap#oct-down::before, .kcap#oct-up::before { font-size: var(--t-title); line-height: 1; display: block; transform: translateY(3px); }
+}
+/* A finger leaves no hover behind it (iOS keeps :hover on what was last
+   tapped): a button lights only for a real state (lit, pressed, open). */
+@media (hover: none) {
+  .util-btn:hover:not(.lit):not([aria-pressed="true"]):not([aria-expanded="true"]) { border-color: var(--black); }
+  .inspect-btn:hover:not(:disabled):not([aria-pressed="true"]):not([aria-expanded="true"]) { color: var(--silk-dim); border-color: var(--hairline); }
+}
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  /* EVOLVE's card: its letter clear of the corner's buttons. */
+  .duel-corner { left: calc(var(--s3) + 1.5em); }
+  /* The bank's sheet: the row in hand drawn whole, its ring inside the list. */
+  .bank-list { padding-right: var(--s1); }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* EVOLVE's card corner: CIRCUIT and PATCH share the corner's width, each
+     its words whole inside its box. */
+  .duel-corner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .duel-corner .inspect-btn { min-width: 0; padding-left: var(--s1); padding-right: var(--s1); font-size: var(--t-label); letter-spacing: 0; justify-content: center; text-align: center; }
+  /* PLAY and PICK the card's width. */
+  .duel-foot { flex-direction: column; align-items: stretch; }
+  .duel-controls { width: 100%; }
+  .duel-controls .hw-btn { justify-content: center; }
+  /* The foot: two columns, each read from its own edge. ANOTHER PAIR over
+     how the pair was dealt; EVOLVE POOL over what each generation did. */
+  .ev-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: var(--s2); }
+  .ev-foot .duel-deal { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .ev-foot .duel-rule { max-width: 100%; text-align: left; }
+  .ev-evolve { justify-items: end; }
+  .ev-lineage-btn { letter-spacing: 0.06em; text-align: right; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* PATCH's head: no empty line where its cap was. */
+  #view-patch .pt-cap-row { min-height: 0; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* The card's letter at the well's foot, so CIRCUIT and PATCH have the
+     corner's whole width and their words fit their boxes. */
+  .duel-side { top: auto; bottom: var(--s2); }
+  .duel-corner { left: var(--s2); right: var(--s2); top: var(--s2); }
+  /* Words in the foot wrap as two lines of a length, never one alone. */
+  .ev-foot .duel-rule { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; }
+  .ev-lineage-btn { text-wrap: balance; }
+}
