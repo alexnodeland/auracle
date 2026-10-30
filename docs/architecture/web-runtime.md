@@ -1766,7 +1766,9 @@ hands (`keptInHand`): no edit open or on its way, no other sound opened since
 the press (the bench still holds the seed, `benchSeq` unchanged since
 `startEvolveFrom`, no open or preset on its way), and nothing sounding
 (`playedNow`: notes held, latched or sustained, a phrase, a monitored input).
-Otherwise its toast says which, with OPEN IT.
+Otherwise its toast says which, with OPEN IT, naming the sound opened since
+(`openedName`: a preset on its way by its name, else "the sound you
+opened").
 
 ## EVOLVE's next pair
 
@@ -1826,9 +1828,11 @@ A side of the pair on the table that leaves the pool (a generation's end, a
 preset load or an import making room) does not swap the pair: it stays where
 the hand may be reaching for it (#312, ADR-025). `applyViews` marks the side
 (`markTableGone`: `.gone` on its card, its ▶, ⇄ and ↓ PATCH off, its line
-saying so; the TEACH strip names it replaced), and the next pick
-(`choose`, which sends no vote for it: `record_duel` refuses an id the pool
-no longer holds) or ↻ puts up the next pair. A pick held in its undo window
+saying so; the TEACH strip names it replaced and its ▶ for it is off), and
+the next pick or ↻ puts up the next pair. The pick (`choose`) commits a pick
+still in its undo window, as any pick does, and sends no vote of its own
+(`record_duel` refuses an id the pool no longer holds); its refusal is
+`urgent`, so it does not wait behind the generation's toast. A pick held in its undo window
 whose pair loses a side is still refused by the engine when it commits
 (`voteDropped`); keeping it valid would need the engine to hold a sound shown
 in a pair until it is put away.

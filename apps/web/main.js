@@ -3887,7 +3887,7 @@ worker.onmessage = (e) => {
         if (kept) {
           const why = {
             edited: "your edits are still open",
-            opened: `${nameOrKnown(inHandId()) || "the sound you opened"} is still the sound in hand`,
+            opened: `${openedName() || "the sound you opened"} is still the sound in hand`,
             sounding: "what you’re playing goes on",
           }[kept];
           note(
@@ -7079,6 +7079,7 @@ function requestPairRenders() {
 
 function loadSide(side, id) {
   $(`duel-${side}`).classList.remove("gone"); // a new side is in the pool
+  $(`pd-${side}`).disabled = false;
   $(`readout-${side}`).textContent = "…";
   $(`style-${side}`).innerHTML = "";
   clearScope($(`scope-${side}`));
@@ -7891,7 +7892,8 @@ function markTableGone() {
   ["a", "b"].forEach((side, i) => {
     if (!goneIds.has(currentDuel[i])) return;
     $(`duel-${side}`).classList.add("gone");
-    for (const c of ["play", "flip", "promote"]) $(`${c}-${side}`).disabled = true;
+    // …and the TEACH strip's ▶ for it, which would open it.
+    for (const c of ["play", "flip", "promote", "pd"]) $(`${c}-${side}`).disabled = true;
     const fam = $(`fam-${side}`);
     if (fam) {
       fam.textContent = "Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.";
@@ -7916,7 +7918,10 @@ function choose(side) {
   // nothing, says so, and puts up the next pair, as ANOTHER PAIR would.
   const gone = tableGone();
   if (gone.length) {
-    note(`${nameOrKnown(gone[0]) || "That sound"} was replaced, so that pick taught nothing. Here is the next pair.`, { replace: "vote" });
+    // A pick still in its window goes into the log as any pick commits it,
+    // and this refusal jumps the queue (a generation's toast is ahead of it).
+    commitPendingVote();
+    note(`${nameOrKnown(gone[0]) || "That sound"} was replaced, so that pick taught nothing. Here is the next pair.`, { urgent: true, replace: "table-gone" });
     dealAnother();
     return;
   }
@@ -10003,6 +10008,15 @@ function unvoiceEarly() {
 function voicePresetEarly(p, id = null) {
   const v = presetVoiced(p.name);
   if (v) voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
+}
+/** The name of the sound the player opened last: a preset on its way (its
+ *  name, from the click), a pool sound on its way, or the bench's; null when
+ *  a preset clicked is still loading with nothing voiced for it. */
+function openedName() {
+  if (earlyOpen && earlyOpen.id == null) return earlyOpen.label || null;
+  if (presetClicks.size > 0) return null;
+  if (benchPending != null) return nameOrKnown(benchPending);
+  return nameOrKnown(wb.subjectId);
 }
 /** The pool sound in the player's hands: the one the voices took early, or
  *  else the bench's. */

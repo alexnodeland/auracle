@@ -226,7 +226,8 @@ The rack, the bank, and the pairs go on answering while it walks. When the
 child lands it becomes the sound you're playing by itself only if nothing has
 changed under your hands since the press: you're still on the sound ⚡
 started from, unedited, you haven't opened another, and nothing is sounding
-(no notes held or latched by HOLD or the arp, no ▶ phrase playing).
+(no notes held or latched by HOLD or the arp, no ▶ phrase playing, no input
+you're monitoring).
 Otherwise it waits at the top of the bank, and its toast says why (*your
 edits are still open*, *Soft Pad is still the sound in hand*, *what you’re
 playing goes on*) with an **OPEN IT** button.

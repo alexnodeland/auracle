@@ -85,6 +85,12 @@ test("a generation's end that replaces a side of the pair on the table leaves th
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
   // Only what the test posts changes the pool from here.
   await app.hold([{ views: true }, "refine_child", "refined"]);
+  const ids = () => page.evaluate(() => ["a", "b"].map((x) => Number(document.querySelector(`#name-${x} .dn-id`).textContent.replace("#", ""))));
+  // A pick, held in its undo window, and the next pair up.
+  const first = await ids();
+  await page.locator("#choose-a").click();
+  await app.engine((timeout) => expect.poll(ids, { timeout }).not.toEqual(first), { ms: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   const s = await app.facts();
   const was = await page.evaluate((s) => {
     const ids = () => ["a", "b"].map((x) => Number(document.querySelector(`#name-${x} .dn-id`).textContent.replace("#", "")));
@@ -98,20 +104,28 @@ test("a generation's end that replaces a side of the pair on the table leaves th
   expect(was.now, "the pair on the table, as the generation ended").toEqual(was.pair);
   expect(was.gone).toBe(true);
   await expect(page.locator("#fam-a")).toHaveText("Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.");
-  await expect(page.locator("#play-a")).toBeDisabled();
-  await expect(page.locator("#promote-a")).toBeDisabled();
+  for (const id of ["#play-a", "#promote-a", "#flip-a", "#pd-a"]) await expect(page.locator(id), `${id} on the replaced side`).toBeDisabled();
   await expect(page.locator("#play-b")).toBeEnabled();
   await expect(page.locator("#choose-a")).toBeEnabled();
   // The table stays as it is while nothing is pressed.
   await app.quiet();
-  const ids = () => page.evaluate(() => ["a", "b"].map((x) => Number(document.querySelector(`#name-${x} .dn-id`).textContent.replace("#", ""))));
   expect(await ids()).toEqual(was.pair);
-  // A pick on it teaches nothing, says so, and puts up the next pair.
+  // A pick on it commits the pick still in its window, as any pick does (its
+  // vote goes in that task), teaches nothing itself (no forecast asked for
+  // it), says so, and puts up the next pair.
   const mark = await app.toastMark();
   const t = await app.now();
-  await page.locator("#choose-b").click();
+  const sent = await page.evaluate(([a, b]) => {
+    const n = () => window.__tap.sent.filter((x) => x.m.type === "record_duel" && x.m.a === a && x.m.b === b).length;
+    const before = n();
+    document.getElementById("choose-b").click();
+    return { before, after: n() };
+  }, first);
+  expect(sent, "the pick in its window committed by this pick").toEqual({ before: 0, after: 1 });
   await app.toast(/was replaced, so that pick taught nothing\. Here is the next pair\.$/, { since: mark });
   await app.engine((timeout) => expect.poll(ids, { timeout }).not.toEqual(was.pair), { ms: 30_000 });
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bgone\b/);
-  expect(await app.sent({ type: "record_duel" }, { after: t }), "a vote sent for a pair with a side gone").toEqual([]);
+  await expect(page.locator("#pd-a")).toBeEnabled();
+  const asked = (await app.sent({ type: "duel_pred" }, { after: t })).filter((m) => !m.pre && m.a === was.pair[0] && m.b === was.pair[1]);
+  expect(asked, "a pick asked about a pair with a side gone").toEqual([]);
 });
