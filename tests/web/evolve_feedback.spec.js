@@ -285,8 +285,11 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   // next is already dealt, waiting. So the deals from here on are tagged with
   // the rule under test, and the pair is skipped until one dealt since is up:
   // the first skip puts up the pair dealt before, the second one dealt after.
+  // The tags are stacked, never cleared between rules: amends apply in the
+  // order they were set, so the newer one wins, and no deal can come through
+  // untagged. An untagged deal says "random", and a check read after it is
+  // rightly a Random one (#439).
   const deal = async (method) => {
-    await app.unamend();
     await app.amend({ type: "duel", meta: true }, { "meta.info_gain": 0, "meta.random_check": method !== "bald", "meta.method": method });
     for (let i = 0; i < 3; i++) {
       await app.engine((timeout) => expect(page.locator("#skip-duel")).toBeEnabled({ timeout }), { ms: 30_000 });
