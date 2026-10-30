@@ -407,16 +407,18 @@ to a pinned `role="alert"` strip that stays until resolved.
 - **Keybed size**: `⇕ tall` is height (the dock grows via `--keybar-h`, the
   deck re-zooms into what's left); `span` is width, 1–4 octaves. Both are in
   KEYS ⋯. Both persist
-  in `perf`. The width defaults by input device — three octaves for a mouse,
-  two for a finger — and the narrow sizes anchor on the computer keymap's
-  octave rather than an octave below it.
-- **Handheld gate**: a coarse pointer with a min viewport dimension under
-  620px never boots the engine at all — an inline check in `index.html`
-  injects `main.js` only when it passes, and otherwise shows a stand-in
-  screen asking for a desktop. Gating *before* the script tag is the point:
-  a phone would otherwise pay for 40 renders it can't display. `look around
-  anyway` sets a session flag and reloads past it. A real handheld layout is
-  still to be built.
+  in `perf`. The width defaults by input device (three octaves for a mouse,
+  two for a finger, one on a phone) and the narrow sizes anchor on the
+  computer keymap's octave rather than an octave below it.
+- **A phone and a narrow window** (#134): every size boots, and the
+  stylesheet alone picks the shape (its last section). At 999 px and under
+  the bank is a sheet from the left behind BANK in the menu bar; on a phone
+  held upright the bank is a sheet from the bottom, the levels' cross is the
+  bar along the bottom (with KEYS at its end), and the keys are a drawer over
+  it; on a short screen the cross keeps the right edge with KEYS under it.
+  `shell.js` (`sheets`) only opens and closes them (`body.bank-open`,
+  `body.keys-open`). The gates that refused a phone and a window under
+  1000 px are gone.
 - **main.js** is UI + WebAudio: audition plays pre-rendered, LUFS-normalized
   buffers transferred from the worker (never an unvetted patch: the vetting
   gate). The live keys play an edit before its check (a knob as a parameter,

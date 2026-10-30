@@ -124,7 +124,6 @@
   --knob-mid: #20242b;            /*   …and middle (the foot is --recess-lo) */
   --nut-hi: #4a505b;              /* a jack nut and a screw head: lit side; a step bar under the pointer; a tray item's edge */
   --nut-lo: #1a1d22;              /*   …and shadow side */
-  --gate-glow: #14110a;           /* the handheld gate's glow */
   --chip: #14171c;                /* a style chip; a plug's boot */
   --play-duel-glass: #14171cd9;   /* the duel strip under PATCH */
   --play-duel-edge: #262b33;      /*   …and its top edge */
@@ -794,8 +793,8 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
   .where-d, .inhand .live-label { display: none; }
 }
 @media (max-width: 560px) {
-  /* A phone that chose "look around anyway": the bar keeps the wordmark,
-     the sound in hand, its count and ⌘K (its glass alone). */
+  /* A phone: the bar keeps the wordmark, the sound in hand, its count and
+     ⌘K (its glass alone). */
   .where { display: none; }
   .menubar { gap: var(--s2); }
 }
@@ -2850,7 +2849,7 @@ input, textarea, .bi-rename {
 /* The tagline and the descriptor travel together on the first screen
    (www/brand/voice.md, "The line"). */
 .boot-tag { margin: var(--s2) 0 0; font-size: var(--t-body); color: var(--silk); }
-.boot-desc, .hg-desc { margin: var(--s1) auto 0; max-width: 40ch; font-size: var(--t-body); color: var(--silk-dim); line-height: 1.4; }
+.boot-desc { margin: var(--s1) auto 0; max-width: 40ch; font-size: var(--t-body); color: var(--silk-dim); line-height: 1.4; }
 .boot-sub { margin-top: var(--s2); font-size: var(--t-body); color: var(--silk-dim); letter-spacing: 0.06em; }
 .boot-meter {
   margin: var(--s5) auto var(--s2);
@@ -5028,7 +5027,7 @@ body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
   .wi-play { width: 34px; height: 34px; }
   .warm-cell .warm-item { padding-right: 46px; } /* token-exempt: the ▶'s column on touch: 34px wide, 6px in from the edge, 6px clear of the words */
 }
-/* A phone (behind "look around anyway"): two columns, and the ▶ takes a row
+/* A phone: two columns, and the ▶ takes a row
    under the words rather than a column beside them, which left a 98 px card
    40 px of text. The card scrolls if the nine run past the screen. */
 @media (max-width: 560px) {
@@ -5435,99 +5434,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .teach-link { cursor: pointer; }
 .teach-link:hover { text-decoration: underline; }
-
-/* ===================== handheld gate =====================
-   Shown only when the early script in index.html sets html.handheld, which
-   also means main.js never loaded — so this screen is the whole page, and it
-   is plain CSS with no engine behind it. Hide, don't just cover: the app
-   shell and boot overlay would otherwise sit under it half-built. */
-.handheld-gate { display: none; }
-html.handheld .app,
-html.handheld #boot,
-html.handheld #warmstart,
-html.handheld #cmdk,
-html.handheld #cmdk-scrim,
-html.handheld #wire-overlay { display: none !important; }
-/* The app is a fixed, non-scrolling instrument (html, body { overflow: hidden }).
-   This screen is a document — it has to scroll on a phone in landscape. */
-html.handheld, html.handheld body { height: auto; min-height: 100%; overflow: visible; }
-html.handheld .handheld-gate {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: var(--s5) var(--s4);
-  background:
-    radial-gradient(ellipse at 50% 26%, var(--gate-glow) 0%, var(--rack) 72%);
-}
-.hg-card {
-  width: min(420px, 100%);
-  text-align: center;
-  padding: var(--s6) var(--s5) var(--s5);
-}
-/* The lit E is instrumentation — it lights where the model is working. The
-   handheld gate runs nothing, so its E is silk like the rest of the word. */
-.hg-card .boot-word b { color: var(--silk); text-shadow: none; }
-.hg-lede {
-  margin-top: var(--s4);
-  font-family: var(--font-voice);
-  font-size: var(--t-body);
-  line-height: 1.45;
-  color: var(--silk);
-}
-/* The teaser: the loop, three beats, no feature list. */
-.hg-loop {
-  list-style: none;
-  margin: var(--s5) 0 0;
-  display: grid;
-  gap: var(--s2);
-  text-align: left;
-  font-size: var(--t-body);
-  color: var(--phos-a-dim);
-}
-.hg-loop li { display: flex; align-items: center; gap: var(--s2); }
-.hg-loop .hg-n {
-  flex: none;
-  width: 18px; height: 18px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--phos-a-deep);
-  border-radius: 50%;
-  font-size: var(--t-label);
-  color: var(--phos-a);
-}
-.hg-rule {
-  height: 1px;
-  margin: var(--s5) 0 var(--s4);
-  background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
-}
-.hg-ask {
-  font-size: var(--t-body);
-  line-height: 1.5;
-  color: var(--silk-dim);
-}
-.hg-ask b { color: var(--phos-b); font-weight: 500; }
-.hg-soon {
-  margin-top: var(--s3);
-  font-size: var(--t-value);
-  letter-spacing: 0.08em;
-  color: var(--silk-dim);
-}
-/* Deliberately quiet — it leads somewhere that doesn't work well yet. */
-.hg-anyway {
-  margin-top: var(--s5);
-  padding: var(--s2) var(--s3);
-  min-height: 34px;
-  border: 0;
-  background: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-label);
-  color: var(--silk-dim);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.hg-anyway:active { color: var(--silk-dim); }
 
 /* ===================== the keybed, resized =====================
    The keybed is the one surface whose size is a *performance* decision, so it
@@ -6513,28 +6419,6 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .pf-xy-field.pending-y .pf-xy-t, .pf-xy-field.pending-y .pf-xy-b { opacity: 0.55; }
 .pf-xy-note.pending { color: var(--silk-dim); }
 @media (prefers-reduced-motion: reduce) { .pf-xy-dot { transition: none; } }
-
-/* ---------- narrow desktop window ---------- */
-.narrow-gate { display: none; }
-/* At 999px and under, not 860: between the two (880×720) the rack was a
-   114px thumbnail, PERFORM's pads were half under the keybar with XY off the
-   bottom, and "0/10 saved" printed over the bank's own "?". The copy in
-   index.html says the same number, as does the handheld gate's comment there.
-   Any pointer: it asked for a fine one, so a tablet in portrait (coarse, and
-   too big for the handheld gate) got neither gate and that same layout. Not
-   over the handheld gate, and not after "look around anyway" (html.anyway). */
-@media (max-width: 999px) {
-  html:not(.handheld):not(.anyway) .narrow-gate {
-    display: flex;
-    position: fixed; inset: 0; z-index: 90;
-    align-items: center; justify-content: center;
-    padding: var(--s4);
-    background: var(--scrim-94);
-    backdrop-filter: blur(3px);
-  }
-}
-.ng-card { max-width: 380px; text-align: center; color: var(--silk-dim); font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.5; }
-.ng-title { font-family: var(--font-silk); letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a); margin-bottom: var(--s3); }
 
 /* ---------- booth attract mode ----------
    The band lies over the top of PERFORM's well (`.pf-marquee`) rather than

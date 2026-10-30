@@ -1,7 +1,7 @@
 // Text the type scale made larger still fits where it is set.
 //
-// - The warm start's nine cards fit a phone's screen, at 390 and 360 px wide
-//   (behind "look around anyway"): no card runs past the viewport, and no
+// - The warm start's nine cards fit a phone's screen, at 390 and 360 px wide:
+//   no card runs past the viewport, and no
 //   card's words run past the card. Its third column was pushed off the
 //   right edge once its words were 11 and 14 px.
 // - At 1000 px, the narrowest window the app allows, every PERFORM control
@@ -18,11 +18,8 @@ for (const width of [390, 360]) {
     test.use({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true });
 
     test(`the warm start's cards fit the screen at ${width} px`, async ({ page, app }) => {
-      // The warm start not yet seen; behind "look around anyway".
-      await app.boot({ warmed: false, wait: false });
-      await page.locator("#hg-anyway").click();
-      await page.waitForLoadState("load");
-      await app.booted();
+      // The warm start not yet seen.
+      await app.boot({ warmed: false });
       await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 60_000 });
       await app.engine((timeout) => expect(page.locator(".warm-cell .warm-item")).toHaveCount(9, { timeout }), { ms: 60_000 });
       const out = await page.evaluate(() => {

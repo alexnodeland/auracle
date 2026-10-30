@@ -145,8 +145,9 @@ for (const [label, ctx] of [
         const page = await context.newPage();
         const app = await openApp(page);
         await boot(page, app, { noFaces });
-        if (ctx.isMobile) await page.locator("#hg-anyway").click();
         await booted(app);
+        // On a phone the bank is a sheet, put away until BANK opens it.
+        if (ctx.isMobile) await page.locator("#bank-btn").click();
         await app.engine((timeout) => expect.poll(() => page.evaluate(() => document.querySelectorAll("#bank-list .bank-item[data-id]").length), { timeout }).toBeGreaterThanOrEqual(40), { ms: 120_000 });
         if (!noFaces) await bankDrawn(page, app);
         // With no faces, none comes, however long it is given.
