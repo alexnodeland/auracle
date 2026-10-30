@@ -374,6 +374,7 @@ const renders = new Map(); // id -> {buffer: AudioBuffer, sexpr}
 // anyone waits.
 const renderFailures = new Map(); // id -> reason|null
 const pinsAsked = new Map(); // id -> {want, out}: a Save on its way (`askPin`)
+const renderWaits = new Set(); // a ▶ waiting for its sound (`awaitRender`): {id, onReady, opts, waited, last, btn}
 // True while the worker is inside a synchronous engine call (fit, refine,
 // refine_from) and therefore servicing no messages at all. It is not a
 // spinner: the render deadline below stops while it is set, because during a
@@ -5390,7 +5391,7 @@ function toggleAudition() {
   if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
-  awaitRender(id, () => play(id, null, "inhand"), { btn: $("inhand-play") });
+  awaitRender(id, () => play(id, null, "inhand"), { inhand: true });
 }
 
 // Step the bank without the mouse: loads the next patch onto the bench and
@@ -5470,7 +5471,6 @@ function heard(id) {
 // ends, however it ends.
 const RENDER_WAIT_MS = 12_000;
 const RENDER_TICK_MS = 250;
-const renderWaits = new Set(); // every wait still out: {id, onReady, opts, waited, last, btn}
 let renderWaitTick = 0;
 const waitMarks = new WeakMap(); // a ▶ -> the wait it is marked for
 
@@ -5499,9 +5499,23 @@ function awaitRender(id, onReady, opts = {}) {
     w.btn.classList.add("pending");
     w.btn.setAttribute("aria-busy", "true");
   }
+  if (opts.inhand) paintPlayPending();
   send({ type: "render", id });
   if (!renderWaitTick) renderWaitTick = setInterval(renderWaitsTick, RENDER_TICK_MS);
   return w;
+}
+
+/** A wait's ring moved to `btn` (its button was drawn again). */
+function remarkWait(w, btn) {
+  if (w.btn && waitMarks.get(w.btn) === w) {
+    waitMarks.delete(w.btn);
+    w.btn.classList.remove("pending");
+    w.btn.removeAttribute("aria-busy");
+  }
+  w.btn = btn;
+  waitMarks.set(btn, w);
+  btn.classList.add("pending");
+  btn.setAttribute("aria-busy", "true");
 }
 
 /** A wait is over: off the list, its ▶ unmarked (unless a later wait has
@@ -5517,6 +5531,7 @@ function renderWaitEnd(w, fn) {
     clearInterval(renderWaitTick);
     renderWaitTick = 0;
   }
+  if (w.opts.inhand) paintPlayPending();
   if (w.opts.settled) w.opts.settled();
   if (fn) fn();
 }
@@ -8535,8 +8550,15 @@ function renderCompare() {
       const key = `bank:${id}`;
       if (hearingNow(key)) return void stopAudition();
       const btn = () => document.querySelector(`#compare-play .cmp-hear[data-id="${id}"]`) || b;
-      awaitRender(id, () => play(id, btn(), key), { btn: b });
+      awaitRender(id, () => play(id, btn(), key), { btn: b, cmp: id });
     };
+  }
+  // A ▶ pressed before this redraw, still waiting: its ring moves to the
+  // button drawn in its place.
+  for (const w of renderWaits) {
+    if (w.opts.cmp == null) continue;
+    const now = playBox.querySelector(`.cmp-hear[data-id="${w.opts.cmp}"]`);
+    if (now && now !== w.btn) remarkWait(w, now);
   }
 }
 /** The figure: the seed's outline, and the child growing out of it. */
@@ -10532,10 +10554,7 @@ function benchSettled() {
 function playBench() {
   if (!benchSettled()) {
     playOnSettle = true;
-    for (const b of [$("rack-play"), $("inhand-play")]) {
-      b.classList.add("pending");
-      b.setAttribute("aria-busy", "true");
-    }
+    paintPlayPending();
     paintLiveLabel();
     return;
   }
@@ -10570,12 +10589,23 @@ function latestPlayWins() {
 function playWaitCancel() {
   const was = playOnSettle;
   playOnSettle = false;
-  for (const b of [$("rack-play"), $("inhand-play")]) {
-    b.classList.remove("pending");
-    b.removeAttribute("aria-busy");
-  }
+  paintPlayPending();
   if (was) paintLiveLabel();
   return was;
+}
+
+/** The rack's ▶ and the header's wear the dotted ring for what will really
+ *  play: the bench's ▶ waiting for the lane (`playOnSettle`), and for the
+ *  header's, Space waiting for a sound's render too (`awaitRender`'s
+ *  `inhand`). Two waits, one ring each, drawn from both. */
+function paintPlayPending() {
+  const inhand = playOnSettle || [...renderWaits].some((w) => w.opts.inhand);
+  for (const [b, on] of [[$("rack-play"), playOnSettle], [$("inhand-play"), inhand]]) {
+    if (!b) continue;
+    b.classList.toggle("pending", on);
+    if (on) b.setAttribute("aria-busy", "true");
+    else b.removeAttribute("aria-busy");
+  }
 }
 
 /** The deferred half of `playBench`, once the lane has settled. */
