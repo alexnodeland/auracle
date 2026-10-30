@@ -11,7 +11,9 @@
 //   was pressed on. An open by ] or a click moves the keyboard's cursor to
 //   the row opened, and a preset opened from its row says IN POOL.
 // - A redraw keeps the focus on the ▶ that had it, and a preset's ▶ playing
-//   keeps its mark.
+//   keeps its mark. A held redraw landing under the resting pointer shows
+//   the row's actions at once, so its ▶ takes the focus, and the focus stays
+//   when the pointer leaves (#458).
 //
 // What must hold in the result's own task is read there: the tap hands main
 // an injected reply synchronously (`window.__tap.inject`), so one
@@ -55,6 +57,25 @@ async function pointAt(page, id, nudge = 0) {
   const box = await page.locator(`#bank-list .bank-item[data-id="${id}"] .bi-name`).boundingBox();
   await page.mouse.move(box.x + box.width / 2 + nudge, box.y + box.height / 2);
 }
+
+/** Watch the row `sel` names for the redraw that replaces it, and read, in
+ *  that redraw's own task, whether the new row's actions show and its ▶
+ *  takes the focus (`window.__redrawn`). */
+const watchRedraw = (page, sel) =>
+  page.evaluate((sel) => {
+    const was = document.querySelector(sel);
+    window.__redrawn = null;
+    const seen = new MutationObserver(() => {
+      const row = document.querySelector(sel);
+      if (!row || row === was) return;
+      seen.disconnect();
+      const hear = row.querySelector(".bi-hear");
+      const shown = getComputedStyle(row.querySelector(".bi-acts")).visibility === "visible";
+      hear.focus();
+      window.__redrawn = { shown, focused: document.activeElement === hear };
+    });
+    seen.observe(document.getElementById("bank-list"), { childList: true, subtree: true });
+  }, sel);
 
 /** A child landing as the worker posts it, `child` a sound of the pool. */
 function childReply(s, child, generation) {
@@ -234,11 +255,15 @@ test("a knob's reply rebuilds no preset row, and a click held across it opens th
 
   t0 = await app.now();
   await turn(-20);
-  const row = page.locator("#bank-list .preset-item:not(.in-bank)").nth(3);
-  const index = Number(await row.getAttribute("data-index"));
-  await row.scrollIntoViewIfNeeded();
-  const box = await row.locator(".bi-name").boundingBox();
-  await page.mouse.move(box.x + 4, box.y + box.height / 2);
+  // The row found, brought into view and aimed at in one page task: a
+  // redraw between round trips replaces the row measured (#458).
+  const { index, x, y } = await page.evaluate(() => {
+    const row = document.querySelectorAll("#bank-list .preset-item:not(.in-bank)")[3];
+    row.scrollIntoView({ block: "nearest" });
+    const box = row.querySelector(".bi-name").getBoundingClientRect();
+    return { index: Number(row.dataset.index), x: box.x + 4, y: box.y + box.height / 2 };
+  });
+  await page.mouse.move(x, y);
   await page.mouse.down();
   await app.release();
   await expect.poll(async () => (await app.replies("bench", { after: t0 })).length).toBeGreaterThan(0);
@@ -269,4 +294,34 @@ test("a redraw of the bank keeps the focus on the ▶ that had it, and a preset'
     return { rebuilt: now !== was, playing: now.classList.contains("playing"), focused: document.activeElement === now };
   }, index);
   expect(after).toEqual({ rebuilt: true, playing: true, focused: true });
+});
+
+test("a held redraw landing under the resting pointer shows the row's actions at once, and the focus its ▶ takes stays when the pointer leaves", async ({ page, app }) => {
+  await pooled(page, app);
+  const s = await app.facts();
+  const [, , third] = await rowIds(page);
+  await bankTab(page, "presets");
+  const preset = await page.locator("#bank-list .preset-item").nth(2).getAttribute("data-index");
+  for (const [tab, sel] of [["presets", `#bank-list .preset-item[data-index="${preset}"]`], ["pool", `#bank-list .bank-item[data-id="${third}"]`]]) {
+    await bankTab(page, tab);
+    const row = page.locator(sel);
+    const acts = row.locator(".bi-acts");
+    // The pointer on the row, at rest: its actions show.
+    await row.locator(".bi-name").hover();
+    await expect(acts).toHaveCSS("opacity", "1");
+    // The pool's views again, as the worker posts them: held for the hand,
+    // they land after a second's rest and draw the row again under the
+    // pointer. Its actions were showing, and show in the redraw's task: a
+    // row drawn again took the approach's delay to show them, and its ▶
+    // took no focus meanwhile (#458).
+    await watchRedraw(page, sel);
+    await app.inject({ type: "taste_views", views: s.views });
+    await expect.poll(() => page.evaluate(() => window.__redrawn), { message: `the ${tab} row drawn again under the pointer` }).toEqual({ shown: true, focused: true });
+    // The pointer away: the focus keeps the actions up.
+    await page.mouse.move(5, 5);
+    await expect(row.locator(".bi-hear")).toBeFocused();
+    await expect(acts).toHaveCSS("opacity", "1");
+    await expect(row).not.toHaveClass(/\bunder\b/);
+    await row.locator(".bi-hear").blur();
+  }
 });

@@ -1749,7 +1749,11 @@ Every draw, the player's own included (a star, a cut, an arrow step), keeps
 the row under the pointer, or the keyboard's cursor row, where it was on
 screen by scrolling the list (`bankKeep`, `keepUnder`; `overflow-anchor:
 none` keeps the browser from doing it twice), and the focus on the row or
-button that had it; a draw of its own drops what waits (`bankHand.drop`).
+button that had it. The row under a resting pointer whose actions were
+showing shows them at once (`.under`, until the pointer leaves it): drawn
+new, it would take the approach's delay to show them again, and a hidden ▶
+takes no focus or click meanwhile (#458). A draw of its own drops what waits
+(`bankHand.drop`).
 None runs between a press on the list and its release (`bankPressed`): it
 runs after the click, a held draw whose rest ran out meanwhile as itself,
 gliding (`bankAfterPress`). A press also ends on the list's `contextmenu`, the
