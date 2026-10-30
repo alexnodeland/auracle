@@ -7,7 +7,7 @@
 // pkg/ is never shadowed by the browser cache). `make wasm` must have run —
 // the test asserts that, rather than booting a page that has no engine to
 // fail on.
-const { defineConfig } = require("@playwright/test");
+const { defineConfig, devices } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 
@@ -52,6 +52,10 @@ const BROWSER = process.env.AURACLE_BROWSER || "chromium";
 const LAUNCH = {
   chromium: { args: ["--autoplay-policy=no-user-gesture-required"] },
   firefox: { firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.block-webaudio": false } },
+  // WebKit, as near iOS Safari as Playwright comes, for the touch specs on a
+  // phone (`touch-webkit` in flake-hunt.yml). Its project wears an iPhone's
+  // profile (below); a spec's own viewport still sets the screen's size.
+  webkit: {},
 };
 if (!LAUNCH[BROWSER]) throw new Error(`AURACLE_BROWSER=${BROWSER}: the specs run in ${Object.keys(LAUNCH).join(" or ")}`);
 
@@ -111,7 +115,7 @@ module.exports = defineConfig({
     // them (its failures save in seconds) and are what the run's report shows.
     trace: process.env.CI ? "retain-on-failure" : { mode: "retain-on-failure", snapshots: false },
   },
-  projects: [{ name: BROWSER }],
+  projects: [BROWSER === "webkit" ? { name: BROWSER, use: { ...devices["iPhone 13"], browserName: "webkit" } } : { name: BROWSER }],
   webServer: {
     command: `python3 ../../apps/web/serve.py ${PORT}`,
     url: `http://localhost:${PORT}/`,

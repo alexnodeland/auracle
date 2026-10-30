@@ -37,6 +37,17 @@ const MODEL_HOLD_MS = 220;
 // MODEL pressed this long is a hold (the view goes when it is let go), not a
 // tap (which keeps it), as the prototype has it.
 const PRESS_HOLD_MS = 280;
+// A long press this long on a card, a row or TASTE's map is
+// ⌥ held (#134): longer than MODEL's own press, since there a tap means
+// something else. The ring under it shows after a moment, so a tap never
+// flashes it; a move this far first is a touch, a scroll or a swipe
+// (main.js's swipe up to pick locks its axis before it).
+const TOUCH_HOLD_MS = 480;
+const TOUCH_RING_DELAY_MS = 140;
+const TOUCH_HOLD_SLOP_PX = 8;
+// The click a held finger's lift ends with comes at once; it is waited for
+// no longer than this.
+const CLICK_WAIT_MS = 600;
 // A tapped view says what it believes, then its tag settles out of the way;
 // the amber stays. When, not how long a move takes.
 const TAG_SAYS_MS = 3200;
@@ -162,6 +173,97 @@ export function createShell(host = {}) {
     });
     // A long press on a touch screen is the hold, not the page's menu.
     modelBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  // A long press on a touch screen is ⌥ held (#134): on
+  // an EVOLVE card, a bank row or TASTE's map shows the model view (a module
+  // on the rack keeps its own long press, its menu: main.js) for as long as it stays down, as holding MODEL does. A ring
+  // fills under the finger meanwhile (explain.js's `.xp-ring`, PERFORM's
+  // hold); moving it before the ring closes, or the browser taking the
+  // finger for a scroll, is an ordinary touch. The click that ends a hold is
+  // the hold's, not a tap's: it opens no row and selects no sound. A view a
+  // tap left up is already up, and a hold changes nothing.
+  {
+    // EVOLVE's two cards are its sections named "Sound A" and "Sound B".
+    const HOLDS = "#view-evolve section[aria-label^=\"Sound \"], .bank-item, .preset-item, #taste-crt";
+    // A row's own buttons, a card's PLAY and PICK, a knob and a jack keep
+    // their own meaning.
+    const NOT = "button, input, a, select, textarea, [data-addr], .jack, [data-stop]";
+    const ring = document.createElement("div");
+    ring.className = "xp-ring touch-hold-ring";
+    ring.setAttribute("aria-hidden", "true");
+    document.body.append(ring);
+    let hold = null;
+    const takeClick = () => {
+      const done = () => {
+        document.removeEventListener("click", swallow, true);
+        document.removeEventListener("pointerdown", done, true);
+      };
+      const swallow = (c) => {
+        // A click the app makes (a card swiped up presses its PICK on the
+        // touchend that follows this pointerup) is not the hold's.
+        if (!c.isTrusted) return;
+        done();
+        c.preventDefault();
+        c.stopPropagation();
+      };
+      document.addEventListener("click", swallow, true);
+      document.addEventListener("pointerdown", done, true);
+      // A lift with no click of its own must not leave this waiting for the
+      // player's next one (patch.js's tap waits the same).
+      setTimeout(done, CLICK_WAIT_MS);
+    };
+    const endHold = (e) => {
+      if (!hold || (e && e.pointerId !== hold.id)) return;
+      const h = hold;
+      hold = null;
+      clearTimeout(h.show);
+      clearTimeout(h.fire);
+      ring.classList.remove("on");
+      if (!h.fired) return;
+      if (h.mine && model.held) setModelView(false);
+      if (e && e.type === "pointerup") takeClick();
+    };
+    document.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" || hold) return;
+      const t = e.target.closest?.(HOLDS);
+      if (!t || e.target.closest(NOT)) return;
+      ring.style.left = `${e.clientX}px`;
+      ring.style.top = `${e.clientY}px`;
+      ring.classList.remove("on", "done");
+      hold = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        fired: false,
+        mine: false,
+        show: setTimeout(() => {
+          if (!hold) return;
+          void ring.offsetWidth;
+          ring.classList.add("on");
+        }, TOUCH_RING_DELAY_MS),
+        fire: setTimeout(() => {
+          if (!hold) return;
+          hold.fired = true;
+          ring.classList.remove("on");
+          ring.classList.add("done");
+          navigator.vibrate?.(8);
+          if (!model.on) {
+            hold.mine = true;
+            setModelView(true);
+          }
+        }, TOUCH_HOLD_MS),
+      };
+    }, true);
+    document.addEventListener("pointermove", (e) => {
+      if (!hold || hold.fired || e.pointerId !== hold.id) return;
+      if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > TOUCH_HOLD_SLOP_PX) endHold(e);
+    }, true);
+    document.addEventListener("pointerup", endHold, true);
+    document.addEventListener("pointercancel", endHold, true);
+    // Held, not the page's menu or a selection's callout.
+    document.addEventListener("contextmenu", (e) => {
+      if (e.target.closest?.(HOLDS) && matchMedia("(pointer: coarse)").matches) e.preventDefault();
+    });
   }
   // The window going away takes the held ⌥ with it: its keyup never comes.
   window.addEventListener("blur", () => {

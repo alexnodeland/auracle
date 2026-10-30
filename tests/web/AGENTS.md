@@ -329,7 +329,14 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     `firefox` (the gate's is `chromium`); on Linux Firefox's AudioContext
     starts only with an audio server running (PulseAudio: with none, as in
     Playwright's image, it stays suspended and every level reads silence),
-    which the nightly job starts. A spec's own route for `worker.js` or
+    which the nightly job starts. `AURACLE_BROWSER=webkit` runs them in
+    WebKit on an iPhone 13's profile (a project named `webkit`; `npx
+    playwright install webkit` once on a workstation, Playwright's image has
+    it), for the touch specs: the nightly *Touch in WebKit* job runs
+    `touch_gestures.spec.js` and `shell_phone.spec.js` there. WebKit has no
+    CDP, so a spec's finger there is made in the page (`touch_gestures`'
+    `cdpOf`), which proves the app's handling and not the browser's own
+    scroll or click. A spec's own route for `worker.js` or
     `farm.js` and a profile's cannot both hold (the one registered last
     answers): give the engine's code to `workerPrefix` and the farm's to
     `farmPrefix`, which a profile keeps (`patch_guess.spec.js` holds boot's
