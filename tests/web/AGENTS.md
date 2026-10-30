@@ -98,11 +98,12 @@ views (`changed.mjs --views`):
 
 It prints what each such file reached, and the spec files, before it runs.
 CI's fast lane runs none of these for such a change, only the smoke pair,
-so this local run is the one that sees them before the queue. `REPEAT=3`
-runs the spec files the branch adds or edits three times each, then the
-rest once: the `ship` skill's last step before a push, and the burn-in of
-the specs the branch wrote (CI runs none). The rest run once because a
-`main.js` change across several views reaches most of the tier.
+so this local run is the one that sees them before the queue, when that
+is worth the wait. `REPEAT=3` runs the spec files the branch adds or edits
+three times each, then the rest once. Neither is owed before a push: the
+PR's own CI burns in the spec files it adds or edits (*Burn-in*, three
+times each, #456), and the queue's run has the rest. Before a push, run
+your new spec, and see it fail without the fix.
 
 A new spec belongs to a view in `changed.mjs`'s `VIEWS` (or to `NO_VIEW`,
 with the reason), or the selection's tests in `make web-check` fail

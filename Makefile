@@ -700,7 +700,7 @@ browser-fast:
 ## the specs of the views its changed sections draw, and for worker.js, the
 ## page or the engine each view's sample (tests/web/changed.mjs --views).
 ## REPEAT=n runs the spec files the branch adds or edits n times each, first,
-## and the rest once (the ship skill's REPEAT=3 before a push)
+## and the rest once (as a PR's Burn-in does in CI, #456: not owed before a push)
 BASE ?= origin/main
 REPEAT ?= 1
 # Two runs when REPEAT is more than 1: the repeat is the burn-in of what the

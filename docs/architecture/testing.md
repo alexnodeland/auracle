@@ -22,7 +22,7 @@ add one then conflict only when no row sorts between theirs. -->
 | All tests | `make test` (needs `cargo-nextest`: `make setup`) | The workspace, optimized, on nextest, every test in its own process ([The local loop](#the-local-loop)), and then the doctests (the examples are not built: `make lint` compiles them); includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
-| Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
+| Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | When a change's reach is worth seeing before the queue; not owed before a push: the PR's *Burn-in* repeats its own specs, and the queue runs the rest (#456) |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
@@ -268,7 +268,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
-| Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
+| Spec files only | Web, the engine, Site, and those specs three times each (*Burn-in*, one runner per file, up to three); more than twenty, once each beside Browser smoke instead |
 | The specs' lint (`eslint.config.mjs`, `eslint-suppressions.json`, its tests) | Web, the engine, Site; beside spec files, those specs as above. No browser reads the lint |
 | `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; Worker protocol; no other spec |
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
@@ -290,18 +290,26 @@ scripts/ops/rows_resolve.py keeps both. -->
   helper nearly every spec requires, or that many specs changed at once). A
   green fast lane, with the PR checks and the *Mutants* job green beside it,
   puts the PR in the queue. It is not the gate: a `main.js` change has run
-  two specs in CI when it enters the queue.
-- **On the builder's machine, before that,** `make browser-changed` runs
+  two specs in CI when it enters the queue, and its own.
+- **The burn-in** (*Burn-in*, #456): the spec files the PR adds or edits
+  (`changed.mjs --touched`) run three times each, on up to three runners of
+  their own, beside the rest of the fast lane, and not also once in its
+  *Browser* job. It is in the required `CI`, so a new spec that fails one
+  run in three keeps its own PR out of the queue, where it would turn a
+  batch red and hold up the PRs beside it. A PR that edits more than twenty
+  spec files (a burn-down) gets none: they run once, and the queue runs them
+  all. The queue's run and `main`'s have no burn-in.
+- **On the builder's machine, when a change's reach is worth seeing before
+  the queue** (a `main.js` change across views), `make browser-changed` runs
   the same selection and follows the views too (`changed.mjs --views`):
   for `main.js`, the specs of each view (PERFORM, PATCH, EVOLVE, TASTE, the
   bank, the shell) its changed lines are drawn in, told by their section
   headings, and each view's sample for a section no view names; for
   `worker.js` and the engine, each view's sample (a spec or three per view,
   end to end), `boot_agrees.spec.js` and `reference_profile.spec.js`; for
-  the page, the samples. Before
-  the push it runs the spec files the branch adds or edits three times
-  each, and the rest once (`REPEAT=3`, the `ship` skill), on the release
-  engine (`make wasm`, or `make pkg-reuse` in a worktree that changed no
+  the page, the samples. `REPEAT=3` runs the spec files the branch adds
+  or edits three times each, and the rest once, as the PR's *Burn-in* will;
+  neither is owed before a push (#456). It runs on the release engine (`make wasm`, or `make pkg-reuse` in a worktree that changed no
   Rust; a `make wasm-dev` build, or one a build left unfinished, is
   refused).
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
@@ -460,11 +468,11 @@ offers. Otherwise the push to `main` is where a slow test catches it.
   Site, Worker protocol, the three Coverage runners, and one more for a Lint,
   Web or Doctests job still running, or the *Browser report*. One batch is tested at a
   time.
-- **A PR's fast lane** holds at most twelve: four browser runners, the three
-  Coverage runners, Site (then Browser smoke, which waits for Site and takes
-  its place), Worker protocol, and Lint, Web and the Doctests while they
-  last. Only a PR that changes both Rust and an app module with specs of its
-  own reaches that. A docs PR holds two (Web, then the engine and Site), an
+- **A PR's fast lane** holds at most fifteen: four browser runners and
+  three *Burn-in* runners, the three Coverage runners, Site (then Browser
+  smoke, which waits for Site and takes its place), Worker protocol, and
+  Lint, Web and the Doctests while they last. Only a PR that changes Rust,
+  an app module with specs of its own, and specs of its own reaches that. A docs PR holds two (Web, then the engine and Site), an
   app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
   three browser runners; the quarantined tests' runner starts once all six
@@ -737,10 +745,9 @@ a test slower, never wrong
 how long something took is a budget, recorded on the gate and judged apart
 from it ([Rules](#rules)).
 
-- **Before a push** the spec files a branch adds or edits run three times
-  each on the builder's machine, and the rest of the specs it reaches once
-  (`make browser-changed REPEAT=3`, the `ship` skill), so a new spec that
-  fails often shows there, before CI runs it once. The nightly hunt finds
+- **On the PR** the spec files a branch adds or edits run three times each,
+  in its fast lane's *Burn-in* (#456), so a new spec that fails often shows
+  there, before the queue runs it once. The nightly hunt finds
   the rarer ones, and the flakes in specs the branch didn't write.
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but

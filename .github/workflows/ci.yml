@@ -14,7 +14,9 @@ name: CI
 #   the app did (Web alone for a script's own tests); Browser smoke when the
 #   app, the engine or what runs the specs did; Worker protocol when the
 #   app, the engine or tests/worker did; and the browser specs the change
-#   reaches (tests/web/changed.mjs), on up to four runners. A change whose
+#   reaches (tests/web/changed.mjs), on up to four runners, the spec files it
+#   adds or edits three times each (Burn-in, on up to three runners of its
+#   own, #456: no other run repeats a spec before the queue). A change whose
 #   specs can't be told (main.js, worker.js, a crate) runs the smoke only,
 #   with Worker protocol beside it, and a change to CI itself runs the full
 #   gate. About five minutes
@@ -124,6 +126,9 @@ jobs:
       browser: ${{ steps.filter.outputs.browser }}
       specs: ${{ steps.filter.outputs.specs }}
       browser_matrix: ${{ steps.filter.outputs.browser_matrix }}
+      burnin: ${{ steps.filter.outputs.burnin }}
+      burnin_specs: ${{ steps.filter.outputs.burnin_specs }}
+      burnin_matrix: ${{ steps.filter.outputs.burnin_matrix }}
       reuse_lint: ${{ steps.reuse.outputs.lint }}
       reuse_web: ${{ steps.reuse.outputs.web }}
       reuse_worker: ${{ steps.reuse.outputs.worker }}
@@ -147,6 +152,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
+          one='["1/1"]'
           twelve='["1/12","2/12","3/12","4/12","5/12","6/12","7/12","8/12","9/12","10/12","11/12","12/12"]'
           # Every lane writes every output. The browser job's matrix is read
           # even when the job is skipped, and an empty one is an error.
@@ -160,6 +166,9 @@ jobs:
               echo "worker=true"
               echo "specs="
               echo "browser_matrix=$twelve"
+              echo "burnin=false"
+              echo "burnin_specs="
+              echo "burnin_matrix=$one"
             } >> "$GITHUB_OUTPUT"
           }
 
@@ -197,6 +206,9 @@ jobs:
                   echo "worker=false"
                   echo "specs="
                   echo "browser_matrix=$twelve"
+                  echo "burnin=false"
+                  echo "burnin_specs="
+                  echo "burnin_matrix=$one"
                   echo "superseded=true"
                 } >> "$GITHUB_OUTPUT"
                 {
@@ -251,11 +263,35 @@ jobs:
           # instead, whatever changed, and the queue runs them all. One
           # runner per spec file, at most four, dealt by time like the full
           # tier.
+          #
+          # The spec files the change adds or edits itself (changed.mjs
+          # --touched) are its burn-in, #456: they run three times each in
+          # the Burn-in job, so a new spec that is flaky is caught here, not
+          # in the queue, where a red batch costs every PR in it. They leave
+          # the once-run selection, which never runs a file twice. More than
+          # twenty (a burn-down that edits most of the suite) is no burn-in:
+          # they run once with the rest, and the queue runs them all.
           browser=false
           specs=""
           n=1
+          burnin=false
+          burnin_specs=""
+          bn=1
           if [ "$reach" = true ]; then
             sel="$(cd tests/web && node changed.mjs "origin/$BASE_REF")" || { echo "changed.mjs could not say: smoke only"; sel=""; }
+            touched="$(cd tests/web && node changed.mjs --touched "origin/$BASE_REF")" || { echo "changed.mjs could not say what the change edits: no burn-in"; touched=""; }
+            tcount="$(echo "$touched" | grep -c . || true)"
+            if [ "$tcount" -gt 20 ]; then
+              echo "the change edits $tcount spec files: no burn-in, they run once with the rest"
+            elif [ "$tcount" -gt 0 ]; then
+              burnin=true
+              burnin_specs="$(echo "$touched" | sed 's#^#/#' | paste -sd' ' -)"
+              # Three runners at most: the account runs 20 jobs at once, and
+              # the queue's run holds 18 (testing.md § CI tiers, Runners).
+              bn="$tcount"
+              [ "$bn" -gt 3 ] && bn=3
+              sel="$(echo "$sel" | grep -vxF -f <(echo "$touched") || true)"
+            fi
             count="$(echo "$sel" | grep -c . || true)"
             if [ "$count" -gt 20 ]; then
               echo "the change reaches $count spec files: the smoke pair here, and the queue runs them all"
@@ -270,6 +306,7 @@ jobs:
             fi
           fi
           matrix="[$(seq 1 "$n" | sed "s#.*#\"&/$n\"#" | paste -sd, -)]"
+          burnin_matrix="[$(seq 1 "$bn" | sed "s#.*#\"&/$bn\"#" | paste -sd, -)]"
 
           {
             echo "rust=$rust"
@@ -280,8 +317,11 @@ jobs:
             echo "browser=$browser"
             echo "specs=$specs"
             echo "browser_matrix=$matrix"
+            echo "burnin=$burnin"
+            echo "burnin_specs=$burnin_specs"
+            echo "burnin_matrix=$burnin_matrix"
           } >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s web=%s smoke=%s worker=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$web" "$smoke" "$worker" "$browser" "${specs:-none}" "$matrix"
+          printf '\n  rust=%s site=%s web=%s smoke=%s worker=%s browser=%s burnin=%s\n  specs=%s\n  browser runners=%s\n  burn-in=%s\n  burn-in runners=%s\n' "$rust" "$site" "$web" "$smoke" "$worker" "$browser" "$burnin" "${specs:-none}" "$matrix" "${burnin_specs:-none}" "$burnin_matrix"
 
       # A push to main is a squash merge by the merge queue. The last merge
       # of a batch has exactly the files the queue's run tested (a
@@ -937,7 +977,7 @@ jobs:
   engine:
     name: Engine for the browser
     needs: changes
-    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true' || needs.changes.outputs.worker == 'true'
+    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.burnin == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -947,7 +987,7 @@ jobs:
       - id: playwright
         uses: ./.github/actions/playwright-version
       - uses: ./.github/actions/web-engine
-      - if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
+      - if: (needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true') || needs.changes.outputs.burnin == 'true'
         uses: ./.github/actions/browser-timings
         with:
           tier: fast
@@ -1045,6 +1085,64 @@ jobs:
           failed: ${{ needs.browser.result == 'failure' }}
           timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
 
+  # A PR's burn-in (#456): the spec files it adds or edits, three times
+  # each, in the fast lane only (the changes job). A new spec that passes
+  # once and fails one run in three is the queue's most expensive flake: it
+  # turns a batch red, and the PRs beside it in the batch wait on it. Here it
+  # keeps only its own PR out of the queue. One runner per file, up to three
+  # (the changes job says why), dealt by time as the tier is; in the `CI` check, like the Browser shards,
+  # and a failure is fixed, never retried (testing.md § Flakes).
+  burnin:
+    name: Burn-in (${{ matrix.shard }})
+    needs: [changes, engine]
+    if: needs.changes.outputs.burnin == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
+    # The Browser job's limits, and why (above).
+    timeout-minutes: 20
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.burnin_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - uses: ./.github/actions/browser-shard
+        with:
+          tier: fast
+          name: burnin
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep-invert "@slow|@quarantine" --repeat-each=3
+          files: ${{ needs.changes.outputs.burnin_specs }}
+
+  # The burn-in's runners as one report, as the Browser report does for the
+  # tier's; it folds no times (three runs of a few files say nothing about
+  # the deal). Not part of the `CI` check.
+  burnin-report:
+    name: Burn-in report
+    needs: [changes, burnin]
+    if: ${{ !cancelled() && needs.burnin.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: burnin
+          failed: ${{ needs.burnin.result == 'failure' }}
+
   # One check that means "CI is green", whatever ran.
   #
   # The jobs above are conditional, and a skipped job reports neither success nor
@@ -1058,7 +1156,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, worker, engine, browser]
+    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, worker, engine, browser, burnin]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

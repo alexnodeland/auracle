@@ -9,8 +9,9 @@
 //                                     change to main.js, worker.js, the page or
 //                                     the engine reaches (`make browser-changed`)
 //   node changed.mjs --touched [base] the spec files the change adds or edits
-//                                     itself: `make browser-changed REPEAT=n`
-//                                     runs these n times, and the rest once
+//                                     itself: CI's fast lane runs these three
+//                                     times each (Burn-in, #456), and
+//                                     `make browser-changed REPEAT=n` n times
 //
 // A changed spec runs; a changed helper runs every spec that requires it; a
 // changed app module runs the specs named for what it draws (MODULES below).

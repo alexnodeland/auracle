@@ -40,8 +40,16 @@ waits ten minutes for company, not three: on 2026-10-06, with three, ten of
 fifteen batches held one PR (`.mergify.yml` says why). Since #272, the
 view-to-spec map the consequences ask for is local: `make browser-changed`
 runs the specs of the views a `main.js` change draws; in CI such a change
-still gets only the smoke before the queue. The rest of this record is as
-accepted.
+still gets only the smoke before the queue. Since #456, the fast lane also
+burns in the spec files a PR adds or edits: three times each, on up to
+three runners of their own (*Burn-in*), inside the required `CI`, and no
+longer once beside the rest. So a new spec that fails one run in three
+keeps its own PR out of the queue rather than turning a batch red, and the
+burn-in a builder ran locally before the push (`make browser-changed
+REPEAT=3`) is no longer owed: before the push only the inner loop is (the
+new spec run, and seen failing before its fix). The specs a `main.js`
+change reaches are still left to the full gate. The rest of this record is
+as accepted.
 
 ## Context
 
@@ -142,9 +150,10 @@ second has to be everything.
 - **A PR that conflicts with one ahead of it in the queue is held**, not
   dequeued, until that one merges; then it leaves the queue to be rebased by
   hand. A conflict with `main` itself dequeues it at once.
-- **The fast lane is not the gate.** A builder still runs the specs a change
-  reaches locally (`make browser-changed`), and a `main.js` change gets only
-  the smoke before the queue. A view-to-spec map for `main.js` would narrow
+- **The fast lane is not the gate.** A builder may still run the specs a
+  change reaches locally (`make browser-changed`), and a `main.js` change
+  gets only the smoke, and the burn-in of its own specs (#456), before the
+  queue. A view-to-spec map for `main.js` would narrow
   that gap (#177, wave 2).
 - **`main` reuses the queue's verdict on every batch's last merge.** The
   batch's earlier merges are never tested alone, as with any batch; their run

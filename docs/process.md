@@ -143,10 +143,10 @@ in a plan's prose, a session's notes or a conversation.
   skill) and the specs the change reaches (`make browser-changed`: the specs
   it added or touched, and for `main.js` or the engine, the views it
   reaches), through the browser queue on its own port. Not the full suite:
-  the merge queue's run of CI runs it twelve wide. Before the push, the
-  operator runs the same, the spec files the branch adds or edits three
-  times each and the rest once (`make browser-changed REPEAT=3`, the `ship`
-  skill).
+  the merge queue's run of CI runs it twelve wide. No browser run is owed
+  before the push: the PR's own CI burns in the spec files it adds or
+  edits, three times each (*Burn-in*, #456), and the queue's run has the
+  rest.
 - **Sized for one review round.** A brief that will not fit one round of
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
