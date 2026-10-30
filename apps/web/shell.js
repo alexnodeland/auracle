@@ -37,7 +37,7 @@ const MODEL_HOLD_MS = 220;
 // MODEL pressed this long is a hold (the view goes when it is let go), not a
 // tap (which keeps it), as the prototype has it.
 const PRESS_HOLD_MS = 280;
-// A finger held still this long on a card, a row, a module or TASTE's map is
+// A finger held still this long on a card, a row or TASTE's map is
 // ⌥ held (#134): longer than MODEL's own press, since there a tap means
 // something else. The ring under it shows after a moment, so a tap never
 // flashes it; a move this far first is a touch, a scroll or a swipe
@@ -45,6 +45,9 @@ const PRESS_HOLD_MS = 280;
 const TOUCH_HOLD_MS = 480;
 const TOUCH_RING_DELAY_MS = 140;
 const TOUCH_HOLD_SLOP_PX = 8;
+// The click a held finger's lift ends with comes at once; it is waited for
+// no longer than this.
+const CLICK_WAIT_MS = 600;
 // A tapped view says what it believes, then its tag settles out of the way;
 // the amber stays. When, not how long a move takes.
 const TAG_SAYS_MS = 3200;
@@ -172,8 +175,8 @@ export function createShell(host = {}) {
     modelBtn.addEventListener("contextmenu", (e) => e.preventDefault());
   }
   // A long press on a touch screen is ⌥ held (#134): a finger held still on
-  // an EVOLVE card, a bank row, a module on the rack or TASTE's map shows the
-  // model view for as long as it stays down, as holding MODEL does. A ring
+  // an EVOLVE card, a bank row or TASTE's map shows the model view (a module
+  // on the rack keeps its own long press, its menu: main.js) for as long as it stays down, as holding MODEL does. A ring
   // fills under the finger meanwhile (explain.js's `.xp-ring`, PERFORM's
   // hold); moving it before the ring closes, or the browser taking the
   // finger for a scroll, is an ordinary touch. The click that ends a hold is
@@ -181,7 +184,7 @@ export function createShell(host = {}) {
   // tap left up is already up, and a hold changes nothing.
   {
     // EVOLVE's two cards are its sections named "Sound A" and "Sound B".
-    const HOLDS = "#view-evolve section[aria-label^=\"Sound \"], .bank-item, .preset-item, #taste-crt, #rack-svg [data-key]";
+    const HOLDS = "#view-evolve section[aria-label^=\"Sound \"], .bank-item, .preset-item, #taste-crt";
     // A row's own buttons, a card's PLAY and PICK, a knob and a jack keep
     // their own meaning.
     const NOT = "button, input, a, select, textarea, [data-addr], .jack, [data-stop]";
@@ -205,6 +208,9 @@ export function createShell(host = {}) {
       };
       document.addEventListener("click", swallow, true);
       document.addEventListener("pointerdown", done, true);
+      // A lift with no click of its own must not leave this waiting for the
+      // player's next one (patch.js's tap waits the same).
+      setTimeout(done, CLICK_WAIT_MS);
     };
     const endHold = (e) => {
       if (!hold || (e && e.pointerId !== hold.id)) return;

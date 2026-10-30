@@ -160,13 +160,13 @@ tablet keeps them, since it may have a keyboard.
   scrolls under it still scrolls. Under reduced motion the card still
   follows the finger, and settles back without a slide.
 - **Hold to see what the model believes.** A finger held still for about
-  half a second on an EVOLVE card, a bank row, a module on PATCH's rack or
-  TASTE's map shows the model view for as long as it stays down, as holding
+  half a second on an EVOLVE card, a bank row or TASTE's map shows the model view for as long as it stays down, as holding
   <kbd>⌥</kbd> does on a keyboard. A ring fills under the finger while you
   hold; moving the finger first makes it an ordinary touch. Lift it and the
   view goes, and the hold opens nothing. With the model view already up (a
   tap on **MODEL** keeps it), a hold changes nothing. A bank row's actions
-  stay on the row at rest; a hold does not replace them.
+  stay on the row at rest; a hold does not replace them. On PATCH's rack a
+  module held keeps its own meaning: it opens the module's menu.
 - **On PERFORM a hold on a control opens its figure** (see
   [Explain a control](./views/perform.md)).
 

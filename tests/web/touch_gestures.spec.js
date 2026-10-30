@@ -10,10 +10,13 @@
 //   touchmove is left to the page (not cancelled), so whatever scrolls there
 //   scrolls.
 // - A long press (a finger held still about half a second) on an EVOLVE
-//   card, a bank row, a module on PATCH's rack or TASTE's map shows the model
-//   view while the finger stays down, as holding ⌥ does; the finger lifted,
-//   it goes, and the hold's click opens nothing. A finger that moves first is
-//   an ordinary touch: no model view.
+//   card, a bank row or TASTE's map shows the model view while the finger
+//   stays down, as holding ⌥ does; the finger lifted, it goes, and the
+//   hold's click opens nothing (on the map, a sound a tap on its dot opens). A finger
+//   that moves first is an ordinary touch: no model view. A module on
+//   PATCH's rack keeps its own long press (its menu) and is not held here.
+// - The flick picks on a phone and on a small one (360 × 640), where the
+//   level's column scrolls.
 //
 // Touches are the browser's own (CDP's `Input.dispatchTouchEvent`), so
 // pointer events, touch events and the click that ends a tap all come as on
@@ -64,7 +67,7 @@ async function toEvolve(page, app) {
   await watchPicks(page);
 }
 
-test("a card flicked up past a third of its height is picked through its PICK", async ({ page, app }) => {
+async function flickPicks(page, app) {
   await toEvolve(page, app);
   const cdp = await cdpOf(page);
   const at = await middle(page.locator("#duel-a .duel-well"));
@@ -72,7 +75,20 @@ test("a card flicked up past a third of its height is picked through its PICK", 
   await drag(page, cdp, at, 0, -Math.round(card.height * 0.6));
   await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
   expect((await picks(page)).cancelled, "the upward move was the card's").toBeGreaterThan(0);
+}
+
+test("a card flicked up past a third of its height is picked through its PICK", async ({ page, app }) => {
+  await flickPicks(page, app);
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bflicking\b/);
+});
+
+test.describe("a small phone, 360 × 640", () => {
+  test.use({ viewport: { width: 360, height: 640 } });
+
+  test("a card flicked up is picked where the level's column scrolls", async ({ page, app }) => {
+    await flickPicks(page, app);
+    await expect(page.locator("#duel-a")).not.toHaveClass(/\bflicking\b/);
+  });
 });
 
 test("a card let go short of the line springs back and picks nothing", async ({ page, app }) => {
@@ -109,7 +125,7 @@ test("a card held until the model view shows, then pushed up in the same touch, 
   const card = await page.locator("#duel-a").boundingBox();
   // One finger: held still until the view is up, then pushed up and lifted.
   await touch(cdp, "touchStart", [at]);
-  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/, { timeout: 3_000 });
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
   const dy = -Math.round(card.height * 0.6);
   for (let i = 1; i <= 8; i++) {
     await touch(cdp, "touchMove", [{ x: at.x, y: at.y + (dy * i) / 8 }]);
@@ -120,18 +136,39 @@ test("a card held until the model view shows, then pushed up in the same touch, 
   await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
 });
 
+/** Where TASTE's map draws a sound, on the page, by the app's own layout
+ *  (taste-geom.js, as taste_hold.spec.js reads it), the nth sound but the
+ *  one in hand. */
+async function dotAt(page, n) {
+  await expect.poll(() => page.evaluate(() => (window.__tap.facts.views?.map?.points || []).length)).toBeGreaterThan(0);
+  const q = await page.evaluate(async (n) => {
+    const geom = await import("/taste-geom.js");
+    const well = document.getElementById("taste-well");
+    const W = Math.max(200, well.clientWidth);
+    const H = Math.max(160, well.clientHeight);
+    const pts = window.__tap.facts.views.map.points.filter((p) => p.id != null);
+    const f = geom.mapFrame(W, H, pts.length, { track: true });
+    // Not the sound in hand: the nth of the others.
+    const live = document.querySelector("#bank-list .bank-item.live")?.dataset.id;
+    const [id, at] = [...geom.mapLayout(pts, f.box, f.minD)].filter(([k]) => String(k) !== live)[n];
+    return { id, x: at.x, y: at.y };
+  }, n);
+  const box = await page.locator("#taste-crt").boundingBox();
+  return { id: q.id, x: Math.round(box.x + q.x), y: Math.round(box.y + q.y) };
+}
+
 /** Hold a finger still on `loc`: the model view is up while it is down, and
  *  goes when it lifts. */
 async function holdShowsModel(page, cdp, loc) {
   const at = await middle(loc);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
   await touch(cdp, "touchStart", [{ x: at.x, y: at.y }]);
-  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/, { timeout: 3_000 });
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
   await touch(cdp, "touchEnd", []);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
 }
 
-test("a long press on a card, a bank row, a module and TASTE's map shows the model view while held", async ({ page, app }) => {
+test("a long press on a card, a bank row and a dot on TASTE's map shows the model view while held, and opens nothing a tap would", async ({ page, app }) => {
   await toEvolve(page, app);
   const cdp = await cdpOf(page);
   await holdShowsModel(page, cdp, page.locator("#duel-b .duel-well"));
@@ -145,27 +182,22 @@ test("a long press on a card, a bank row, a module and TASTE's map shows the mod
   await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
   await page.keyboard.press("Escape");
   await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
-  // TASTE's map.
+  // TASTE's map, on its dots: a hold on one opens nothing, where a tap on
+  // another opens that sound (its row in the bank is the one in hand).
   await goLevel(page, "taste");
   await landed(page);
-  await holdShowsModel(page, cdp, page.locator("#taste-crt"));
-  // The hold's click selects no sound: no card comes up.
-  await app.quiet();
-  await expect(page.locator("#taste-plate")).not.toHaveClass(/\bon\b/);
-  // A module on PATCH's rack: no sheet opens for the hold.
-  await goLevel(page, "patch");
-  await landed(page);
-  const mod = page.locator("#rack-svg [data-key]").first();
-  await app.engine((timeout) => expect(mod).toBeVisible({ timeout }), { ms: 60_000 });
-  const b = await mod.boundingBox();
-  // The module's head: its title strip, away from its knobs and jacks.
-  const at = { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + 6) };
-  await touch(cdp, "touchStart", [at]);
-  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/, { timeout: 3_000 });
+  const held = await dotAt(page, 0);
+  const tapped = await dotAt(page, 1);
+  const rowOf = (id) => page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  await touch(cdp, "touchStart", [{ x: held.x, y: held.y }]);
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
   await touch(cdp, "touchEnd", []);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
   await app.quiet();
-  await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+  await expect(rowOf(held.id)).not.toHaveClass(/\blive\b/);
+  await touch(cdp, "touchStart", [{ x: tapped.x, y: tapped.y }]);
+  await touch(cdp, "touchEnd", []);
+  await app.engine((timeout) => expect(rowOf(tapped.id)).toHaveClass(/\blive\b/, { timeout }), { ms: 30_000 });
 });
 
 test("a finger that moves before the hold closes is an ordinary touch: no model view", async ({ page, app }) => {

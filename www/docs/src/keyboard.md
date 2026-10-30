@@ -429,7 +429,7 @@ What a key does, a finger does like this:
 | <kbd>Space</kbd> | **▶** beside the sound in hand in the menu bar |
 | <kbd>A</kbd>–<kbd>L</kbd> and the row above | The keybed (on a phone, **KEYS** first) |
 | <kbd>⌘K</kbd> | The magnifying glass at the menu bar's right end |
-| Hold <kbd>⌥</kbd> | Press and hold **MODEL**, or hold a finger still on an EVOLVE card, a bank row, a module or TASTE's map until its ring fills; a tap on **MODEL** keeps it up |
+| Hold <kbd>⌥</kbd> | Press and hold **MODEL**, or hold a finger still on an EVOLVE card, a bank row or TASTE's map until its ring fills; a tap on **MODEL** keeps it up |
 | <kbd>←</kbd> / <kbd>→</kbd> in EVOLVE | Flick card A / B up past a third of its height (or tap its **PICK**) |
 | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Pinch two fingers on the stage / spread them |
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | A tap on a stop in the levels |

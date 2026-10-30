@@ -1185,7 +1185,6 @@ export function createPatch(host) {
   // RECORD) keeps its own meaning.
   // On the document, in capture: the rack's frame takes the pointer for a pan
   // (`#rack-scroll`), so the lift is not seen by the rack itself.
-  const TAP_MAX_MS = 450;
   let tapsWired = false;
   function wireTaps() {
     if (tapsWired) return;
@@ -1202,9 +1201,7 @@ export function createPatch(host) {
       const d = down;
       down = null;
       if (!d || !host.touch(e)) return;
-      // Shorter than shell.js's long press (TOUCH_HOLD_MS, 480), which is the
-      // model view held: a finger lifted after it is a hold, not a tap.
-      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || e.timeStamp - d.t > TAP_MAX_MS) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || e.timeStamp - d.t > 600) return;
       const t = d.target;
       if (!t || !t.closest) return;
       if (t.closest(".jack, .mod-menu-btn, .mod-lock, .lock-dot, .rack-guess, [data-stop]")) return;
