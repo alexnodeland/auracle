@@ -944,6 +944,9 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 .bank-list {
   flex: 1;
   overflow-y: auto;
+  /* main.js keeps the row under the pointer in place across a redraw
+     (`bankKeep`); the browser's own anchoring would move it twice. */
+  overflow-anchor: none;
   padding: 0 var(--s2) var(--s4);
   display: flex;
   flex-direction: column;
@@ -1173,7 +1176,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item .bi-acts .bi-hear.pending { outline: 1px dotted var(--phos-b); outline-offset: -2px; color: var(--phos-b); }
 /* A row that plays, or is on its way to, keeps its ▶ in sight. */
 .bank-item:has(.bi-hear.playing) .bi-acts,
-.bank-item:has(.bi-hear.pending) .bi-acts { visibility: visible; opacity: 1; }
+.bank-item:has(.bi-hear.pending) .bi-acts,
+.bank-item:has(.bi-hear.loading) .bi-acts,
+.bank-item.refocus .bi-acts { visibility: visible; opacity: 1; }
 .bank-item .bi-acts .bi-star.on { color: var(--phos-b); }
 .bank-item .bi-acts .bi-star.on svg { fill: currentColor; }
 /* Save is the user's own channel: silk, not a phosphor. */

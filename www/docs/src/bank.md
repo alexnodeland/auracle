@@ -121,6 +121,17 @@ the row’s end while you point at it.</figcaption>
 A cut sound stays in the pool until a generation replaces it. With Show
 measurements on, a row also shows its id, and its tooltip its signature.
 
+The rows hold still under your hand. While your pointer is over the bank, a
+finger is on it, or you are stepping through it with the arrow keys, what
+would move them on its own waits: a generation's child landing, a
+generation's end, the pool filling, a refit's new order under the model
+view, ⚡'s child. It lands when the pointer leaves, or after a second of
+rest, the rows that moved gliding to their places, and the list scrolls so the
+row under the pointer stays where it was, as far as it can scroll. What you do
+yourself, a star or a cut, shows at once, and keeps that row in place the same
+way. Turning a knob
+redraws no row, so a click on the bank is never lost to one.
+
 ## What the model thinks of each: hold ⌥
 
 Hold <kbd>⌥</kbd> (Alt off Apple platforms), or press and hold **MODEL** in
@@ -136,7 +147,8 @@ the menu bar, and the bank shows [the model view](./reading-the-model.md#the-mod
 - **The pool in the order the model rates it**, highest first, under
   **RANKED BY THE MODEL**, once it has been fitted. The rows glide to their
   places, and when you let go they glide back to the order they joined the
-  pool. **NEW** keeps its children in the order they were bred.
+  pool. **NEW** keeps its children in the order they were bred. A refit's new
+  order waits while your pointer is over the bank, as the rows do.
 
 Let go and the bank is as it was. A tap on **MODEL** keeps the model view up
 until you tap it again or press <kbd>Esc</kbd>. The row’s actions still come

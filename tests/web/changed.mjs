@@ -122,7 +122,7 @@ export const SECTIONS = [
   [/first-run/, ["shell"]],
   [/^PERFORM$|performed circuit|^measurements, for those|^booth mode|^live instrument|^virtual keyboard|^performance controls|^recording|Web MIDI/, ["perform"]],
   [/duel|pair|utility readout|structural budget|teaching act|^what a generation does|^a child buds|^Compare/, ["evolve"]],
-  [/^patch bank|^the three banks|^presets$|^lineage$|^patch share/, ["bank"]],
+  [/^patch bank|^the three banks|^the bank holds still|^presets$|^lineage$|^patch share/, ["bank"]],
   [/^the model view/, ["shell"]],
   [/taste|TASTE|^profile$/, ["taste"]],
   [

@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHand, heldOrTouched, holdRegion, HAND_HOLD_MS, HAND_REST_MS } from "../hand.js";
+import { createHand, handsOf, heldOrTouched, holdRegion, keepUnder, keptInHand, HAND_HOLD_MS, HAND_REST_MS } from "../hand.js";
 
 /** A clock and timers the test moves by hand. */
 function clock() {
@@ -222,4 +222,50 @@ test("a region released while hidden lets go of the mouse and a touch", () => {
   assert.equal(hand.held(), false);
   c.advance(5_000);
   assert.equal(hand.held(), false);
+});
+
+test("one region told to two hands holds what waits on each, and a region elsewhere holds only its own", () => {
+  const c = clock();
+  const main = createHand(c);
+  const bank = createHand(c);
+  const list = element();
+  const map = element();
+  holdRegion(list, handsOf(main, bank), c);
+  holdRegion(map, main, c);
+  let views = 0, rows = 0;
+  map.fire("pointerenter");
+  main.after("views", () => views++);
+  bank.after("bank", () => rows++);
+  assert.equal(views, 0, "the map holds the views");
+  assert.equal(rows, 1, "the map does not hold the bank's rows");
+  map.fire("pointerleave");
+  assert.equal(views, 1);
+  list.fire("pointerenter");
+  main.after("views", () => views++);
+  bank.after("bank", () => rows++);
+  assert.deepEqual([views, rows], [1, 1], "the bank holds both");
+  list.fire("pointerleave");
+  assert.deepEqual([views, rows], [2, 2], "and lets both go as it leaves");
+});
+
+test("a row kept under the pointer: the list scrolls by what moved it, within its room", () => {
+  // A child landed above: the row moved down 60 px, and the list scrolls 60 px on.
+  assert.equal(keepUnder(300, 360, 100, 1000), 160);
+  // Rows left above it: it moved up 40 px, and the list scrolls back 40.
+  assert.equal(keepUnder(300, 260, 100, 1000), 60);
+  // At the top already: it can scroll back only to 0.
+  assert.equal(keepUnder(300, 260, 10, 1000), 0);
+  // Past the list's room: as far as it goes.
+  assert.equal(keepUnder(300, 400, 950, 1000), 1000);
+  // Nothing moved, nothing scrolls; a list with no room stays at 0.
+  assert.equal(keepUnder(300, 300, 120, 1000), 120);
+  assert.equal(keepUnder(300, 360, 0, -5), 0);
+});
+
+test("⚡'s child opens itself only with nothing in the hand, and says the first thing that is", () => {
+  assert.equal(keptInHand({}), null);
+  assert.equal(keptInHand({ edited: false, opened: false, sounding: false }), null);
+  assert.equal(keptInHand({ sounding: true }), "sounding");
+  assert.equal(keptInHand({ opened: true, sounding: true }), "opened");
+  assert.equal(keptInHand({ edited: true, opened: true, sounding: true }), "edited");
 });

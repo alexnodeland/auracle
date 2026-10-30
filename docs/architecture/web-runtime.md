@@ -170,7 +170,8 @@ every level, a bank row's ★, PATCH's chain, PERFORM's well modes, ⌘K's list,
 the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
-- **The bank** redraws through `flipBank`: under the view, once fitted, the
+- **The bank** redraws through `flipBank` (and holds still under the hand:
+  [The bank under the hand](#the-bank-under-the-hand)): under the view, once fitted, the
   pool's rest (New keeps birth order) stands in `views.ranked`'s order (by
   posterior mean); at rest, in id order, the order the sounds joined. Each row
   that moved glides from where it was (FLIP, `--d-move`; under reduced motion
@@ -1723,6 +1724,31 @@ drawn, with how many rows; [⌘K, the one list](#k-the-one-list)).
 (`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
 `perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
 and `tests/web/budgets.spec.js` holds the budgets they measure.
+
+## The bank under the hand
+
+ADR-025's rule for a region, for the bank's rows (#312). What moves them on
+its own goes through `bankLater`, on a hand of its own (`bankHand`, so a
+pointer over TASTE's map does not hold the bank): a generation's child
+(`refine_child`, its bud flying when its row is drawn), a generation's end
+(`refined`, `pool_trimmed`), the pool filling (`taste_views`), a refit's
+views (`fitted`, which also waits on main's hand, under `views`) and ⚡'s
+child (`evolved_from`). `bankHold`, a `holdRegion` over `#bank-list` told to
+both hands (`handsOf`), holds while the mouse is over the list, from a touch
+until `HAND_REST_MS` after the finger lifts, and while the keyboard's focus
+is in it (`:focus-visible`; a click's focus is no hand), each key in it
+starting the rest again. A held draw runs when the hold ends or after
+`HAND_REST_MS` of rest, through `flipBank`, so the rows that moved glide.
+Every draw, the player's own included (a star, a cut, an arrow step), keeps
+the row under the pointer, or the keyboard's cursor row, where it was on
+screen by scrolling the list (`bankKeep`, `keepUnder`; `overflow-anchor:
+none` keeps the browser from doing it twice), and the focus on the row or
+button that had it; a draw of its own drops what waits (`bankHand.drop`).
+None runs between a press on the list and its release (`bankPressed`): it
+runs after the click. A bench reply draws no row: `markBenchRows` sets the
+bench's `.live` and `.opening` in place and scrolls to a row an open asked
+for. A preset row's ▶ carries `data-hear`, so its playing and waiting marks
+are drawn again on the rebuilt row.
 
 ## EVOLVE's next pair
 

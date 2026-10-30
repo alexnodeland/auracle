@@ -185,7 +185,10 @@ want to keep.
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
 GENERATION 1**, tagged **NEW** with a green dot until you hear it, and can be
 played at once. The line under its name says which seed it grew from and what
-changed. The ranked rows below it don’t move. Where the seed’s row is in view,
+changed. The ranked rows below it don’t move. While your pointer is over the
+bank, or you are stepping through it with the arrow keys, the child waits:
+it lands when the pointer leaves, or after a second of rest, and then the list
+scrolls so the row under the pointer stays where it is. Where the seed’s row is in view,
 the child buds out of it, its seed’s rail lit, and moves up into its place in
 New. A child the pool won’t take buds beside its seed with the reason
 (*rated below the pool*) and fades: the engine dropped it. With your system
