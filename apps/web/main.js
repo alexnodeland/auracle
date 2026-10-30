@@ -2914,10 +2914,11 @@ worker.onmessage = (e) => {
         renderFailures.set(m.id, m.reason || null);
         onRenderArrived(m.id); // a pending scope stops sweeping and says so
         compareRenderArrived(m.id);
-        // The duel table asks for its buffers fire-and-forget (after the
-        // settle delay), so nothing is polling on its behalf — without this a
-        // side that cannot render is just a scope that stays blank.
+        // The duel table asks for its buffers fire-and-forget, so nothing
+        // waits on its behalf — without this a side that cannot render is
+        // just a scope that stays blank.
         if (currentDuel && currentDuel.includes(m.id)) renderFailed(m.id, m.reason);
+        renderSettled(m.id);
         break;
       }
       renderFailures.delete(m.id);
@@ -2925,6 +2926,8 @@ worker.onmessage = (e) => {
       const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
       buf.copyToChannel(m.buffer, 0);
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
+      // A ▶ waiting on it starts here, in this reply's task (`awaitRender`).
+      renderSettled(m.id);
       onRenderArrived(m.id);
       compareRenderArrived(m.id);
       dealer.dealAhead();
@@ -4229,6 +4232,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
         renderFailures.set(id, "engine error");
         onRenderArrived(id); // a pending scope stops sweeping and says so
         if (currentDuel && currentDuel.includes(id)) renderFailed(id, "engine error");
+        renderSettled(id);
       }
       break;
     case "preview_render":
@@ -5334,7 +5338,7 @@ function toggleAudition() {
   if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
-  awaitRender(id, () => play(id, null, "inhand"));
+  awaitRender(id, () => play(id, null, "inhand"), { btn: $("inhand-play") });
 }
 
 // Step the bank without the mouse: loads the next patch onto the bench and
@@ -5391,6 +5395,12 @@ function heard(id) {
 // case — the caller no longer cares (the user voted past the duel), which is a
 // silent stop, not a failure.
 //
+// The first two are answered in the reply's own task (`renderSettled`, from
+// `case "render"` and a failed request): the ▶ starts as the buffer is
+// stored, with no timer between. It used to poll every 100 ms, which added up
+// to a tenth of a second to every waited ▶ (#305). The timer left is the
+// deadline's, and it is no part of the answer.
+//
 // The deadline measures *serviceable* time, not wall time. `fit` and `refine`
 // are synchronous wasm calls that hold the worker's message queue for far
 // longer than 12 s — a generation is tens of seconds — and every ▶ in the app
@@ -5402,8 +5412,15 @@ function heard(id) {
 // So the timer only accrues across ticks where the worker said it was idle.
 // The `renderFailures` exit stays unconditional — "the engine says never" is
 // an answer, and it is the exit that actually matters.
+//
+// A press with nothing to hear yet says so at once: `btn`, when given, wears
+// the bank's dotted `.pending` (and `aria-busy`) from the press until the wait
+// ends, however it ends.
 const RENDER_WAIT_MS = 12_000;
-const RENDER_POLL_MS = 100;
+const RENDER_TICK_MS = 250;
+const renderWaits = new Set(); // every wait still out: {id, onReady, opts, waited, last, btn}
+let renderWaitTick = 0;
+const waitMarks = new WeakMap(); // a ▶ -> the wait it is marked for
 
 function awaitRender(id, onReady, opts = {}) {
   // The duel's ▶, a bank row's, a style's exemplar and the warm start start
@@ -5423,29 +5440,61 @@ function awaitRender(id, onReady, opts = {}) {
   // A previous failure must not silently answer a fresh request: the term may
   // render fine now (the bench re-vetted it, the pool re-admitted it).
   renderFailures.delete(id);
+  const w = { id, onReady, opts, waited: 0, last: performance.now(), btn: opts.btn || null };
+  renderWaits.add(w);
+  if (w.btn) {
+    waitMarks.set(w.btn, w);
+    w.btn.classList.add("pending");
+    w.btn.setAttribute("aria-busy", "true");
+  }
   send({ type: "render", id });
-  let waited = 0;
-  let last = performance.now();
-  const stop = (fn) => {
-    clearInterval(wait);
-    if (opts.settled) opts.settled();
-    if (fn) fn();
-  };
-  const wait = setInterval(() => {
-    const now = performance.now();
-    const dt = now - last;
-    last = now;
-    if (!engineBusy) waited += dt;
-    if (opts.abandoned && opts.abandoned()) return stop(null);
-    if (renders.has(id)) return stop(onReady);
-    if (renderFailures.has(id)) {
-      return stop(() => renderFailed(id, renderFailures.get(id)));
-    }
-    if (waited > RENDER_WAIT_MS) {
-      return stop(() => renderFailed(id, "timed out"));
-    }
-  }, RENDER_POLL_MS);
-  return wait;
+  if (!renderWaitTick) renderWaitTick = setInterval(renderWaitsTick, RENDER_TICK_MS);
+  return w;
+}
+
+/** A wait is over: off the list, its ▶ unmarked (unless a later wait has
+ *  marked it since), `settled` told, then what it ends with. */
+function renderWaitEnd(w, fn) {
+  if (!renderWaits.delete(w)) return;
+  if (w.btn && waitMarks.get(w.btn) === w) {
+    waitMarks.delete(w.btn);
+    w.btn.classList.remove("pending");
+    w.btn.removeAttribute("aria-busy");
+  }
+  if (!renderWaits.size) {
+    clearInterval(renderWaitTick);
+    renderWaitTick = 0;
+  }
+  if (w.opts.settled) w.opts.settled();
+  if (fn) fn();
+}
+
+/** The engine answered `id`, with its buffer or with "never": every wait on
+ *  it ends now, in the reply's own task. */
+function renderSettled(id) {
+  for (const w of [...renderWaits]) {
+    if (w.id !== id) continue;
+    if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+    else if (renders.has(id)) renderWaitEnd(w, w.onReady);
+    else if (renderFailures.has(id)) renderWaitEnd(w, () => renderFailed(id, renderFailures.get(id)));
+  }
+}
+
+/** The waits nobody wants any more (the pair voted past) end quietly, at
+ *  once: a ▶ reused for the next pair must not wear the last one's mark. */
+function renderWaitsAbandoned() {
+  for (const w of [...renderWaits]) if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+}
+
+function renderWaitsTick() {
+  const now = performance.now();
+  for (const w of [...renderWaits]) {
+    const dt = now - w.last;
+    w.last = now;
+    if (!engineBusy) w.waited += dt;
+    if (w.opts.abandoned && w.opts.abandoned()) renderWaitEnd(w, null);
+    else if (w.waited > RENDER_WAIT_MS) renderWaitEnd(w, () => renderFailed(w.id, "timed out"));
+  }
 }
 
 // One place to say it, so a render that never comes is a visible condition
@@ -7047,14 +7096,14 @@ $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
 $("pd-skip").onclick = () => anotherPair();
-// A pair put up by a pick or a deal (`placePair`) asks for its sounds at
-// once, ahead of the refit it may send (#300); the pair after is dealt, and its
-// sounds fetched, ahead (the dealer's `fetch`). The settle delay is left only
-// for a pair put back by a taken-back pick (`retractVote`'s `loadSide`): ⌘Z
-// pressed again at once asks for nothing.
-let renderWanted = null;
-const RENDER_SETTLE_MS = 180;
-
+// A pair put up asks for its sounds in the same task (`placePair`, and
+// `retractVote` for a pair a taken-back pick puts back), ahead of the refit
+// it may send (#300); the pair after is dealt, and its sounds fetched, ahead
+// (the dealer's `fetch`). A pair put back used to wait out a settle delay
+// (180 ms), kept from when every deal waited one so that a run of ↻ asked for
+// nothing it would throw away; a pair is asked for once (`pairRendersAsked`),
+// and only the pair that is up is asked for, so nothing is left to protect
+// (#305).
 // In the background (`bg`): the worker serves them after any gesture waiting
 // in its `now` lane, a render at a time, so a preset clicked while the
 // table's sounds render is opened next. ▶ on a side still waiting asks again,
@@ -7064,7 +7113,6 @@ const RENDER_SETTLE_MS = 180;
 // follows in the same turn (`settleFit`) finds them asked.
 let pairRendersAsked = null;
 function requestPairRendersNow() {
-  clearTimeout(renderWanted);
   if (!currentDuel) return;
   const key = currentDuel.join();
   if (pairRendersAsked === key) return;
@@ -7072,12 +7120,8 @@ function requestPairRendersNow() {
   for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
-function requestPairRenders() {
-  clearTimeout(renderWanted);
-  renderWanted = setTimeout(requestPairRendersNow, RENDER_SETTLE_MS);
-}
-
 function loadSide(side, id) {
+  renderWaitsAbandoned(); // a ▶ pressed for the side going away lets go
   $(`duel-${side}`).classList.remove("gone"); // a new side is in the pool
   $(`pd-${side}`).disabled = false;
   $(`readout-${side}`).textContent = "…";
@@ -7088,10 +7132,7 @@ function loadSide(side, id) {
   // patch.
   paintDuelName(side, id);
   if (renders.has(id)) onRenderArrived(id);
-  else {
-    markScopePending(side, id);
-    requestPairRenders();
-  }
+  else markScopePending(side, id);
 }
 
 // The card leads with a name a musician can hold onto and carry back to the
@@ -7141,8 +7182,9 @@ $("lineage-x").onclick = () => {
 // graticules while the next pair rendered — seconds, behind a fit — which is
 // exactly what a patch that makes no sound looks like. So a pending side says
 // what is happening in the boot field's terms: the model's amber, a slow
-// sweep across the graticule, and the word. SAMPLE is dimmed, not disabled:
-// pressing it still jumps the queue for that buffer and plays it on arrival.
+// sweep across the graticule, and the word. ▶ is dimmed (`.rendering`), not
+// disabled: pressing it still jumps the queue for that buffer, wears the
+// dotted ring from the press (`awaitRender`'s `btn`), and plays it on arrival.
 const SCOPE_SWEEP_MS = 1800;
 const scopePending = { a: null, b: null }; // side -> the id it is waiting on
 let scopePendingRaf = null;
@@ -7151,7 +7193,7 @@ const stillMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 function markScopePending(side, id) {
   scopePending[side] = id;
   const btn = $(`play-${side}`);
-  btn.classList.toggle("pending", id != null);
+  btn.classList.toggle("rendering", id != null);
   if (id != null) btn.setAttribute("aria-busy", "true");
   else btn.removeAttribute("aria-busy");
   if (id == null) return;
@@ -7872,6 +7914,7 @@ function retractVote() {
   setDuelSelection(null);
   dealCards();
   renderPlayDuel();
+  requestPairRendersNow(); // its sounds, if they have gone, asked for now
   // What went up in its place waits as the next pair. Its sounds are
   // resident, so no render will land to ask for the pair after it: asked
   // here, unless one is waiting or on its way.
@@ -7991,10 +8034,9 @@ function choose(side) {
 //
 // It goes out once the pair is audible, too. The worker is one thread and
 // processes in order, so a fit queued ahead of the pair's buffers hands the
-// user two cards they cannot hear for the whole fit. The renders jump the
-// settle delay and go in front of it; that delay exists to protect the *next
-// deal* from a render nobody is looking at, which is the opposite situation
-// to this one.
+// user two cards they cannot hear for the whole fit. The renders go in
+// front of it: `placePair` asks for them before it sends the refit, and so
+// does this, for a pair put up some other way.
 //
 // The sixth pick always refits: the meter promises it ("1 more pick and it
 // redraws your taste map"), and a promise kept only sometimes teaches the
@@ -8033,8 +8075,8 @@ $("duel-b").addEventListener("click", (e) => {
   if (e.target.closest("button")) return;
   selectDuelSide("b");
 });
-// Pressing ▶ is an explicit request for the artwork, so it jumps the settle
-// delay rather than waiting on it.
+// Pressing ▶ is an explicit request for the artwork: the player's own
+// render, in the `now` lane, ahead of the table's background ones.
 function auditionDuelSide(i, btn) {
   if (!currentDuel) return;
   const want = currentDuel[i];
@@ -8045,6 +8087,9 @@ function auditionDuelSide(i, btn) {
   awaitRender(want, () => play(want, btn, key), {
     // Voted past it: stop silently, this is not a failure.
     abandoned: () => !currentDuel || currentDuel[i] !== want,
+    // Dimmed since the deal; pressed, it wears the dotted ring until it
+    // plays, so the press shows it was taken.
+    btn,
   });
 }
 $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
@@ -8435,7 +8480,7 @@ function renderCompare() {
       const key = `bank:${id}`;
       if (hearingNow(key)) return void stopAudition();
       const btn = () => document.querySelector(`#compare-play .cmp-hear[data-id="${id}"]`) || b;
-      awaitRender(id, () => play(id, btn(), key));
+      awaitRender(id, () => play(id, btn(), key), { btn: b });
     };
   }
 }
@@ -22695,7 +22740,7 @@ taste = createTaste({
     bankScrollAt = performance.now();
     drawTaste();
   },
-  play: (id, btn) => awaitRender(id, () => play(id, btn)),
+  play: (id, btn) => awaitRender(id, () => play(id, btn), { btn }),
   niceName,
   styleName,
   styleColor: (k) => STYLE_COLORS[k % STYLE_COLORS.length],
