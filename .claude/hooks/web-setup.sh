@@ -17,8 +17,9 @@
 #    seconds.
 # 3. The engine, in the background: another checkout's release build when
 #    one was made from this Rust (`make pkg-reuse`), otherwise `make wasm`,
-#    logged, with its pid kept so the report says it is building and a
-#    second session start does not build it again.
+#    logged, with its pid kept (per checkout, `web_setup_dir` in _root.sh)
+#    so the report says it is building and a second session start does not
+#    build it again.
 #
 # It never fails the session: a step that fails says so, with its log.
 set -u
@@ -35,8 +36,9 @@ cwd="$(field cwd)"
 root="$(checkout_root "${cwd:-$(pwd)}")"
 root="${root:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
 cd "$root" 2>/dev/null || exit 0
+[ -x scripts/setup.sh ] || exit 0 # not a checkout of this repository
 
-logs="${TMPDIR:-/tmp}/auracle-web-setup"
+logs="$(web_setup_dir "$root")"
 mkdir -p "$logs"
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -64,12 +66,11 @@ if ! { scripts/setup.sh --no-engine >"$logs/setup.log" 2>&1 || scripts/setup.sh 
 fi
 
 # 3. The engine.
-pidfile="$logs/wasm.pid"
-if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-  exit 0 # building already, from an earlier start; session-start.sh says so
-fi
+# building already, from an earlier start; session-start.sh says so
+web_building "$logs" && exit 0
 python3 scripts/wasm_pkg.py check >/dev/null 2>&1 && exit 0
 make -s pkg-reuse >/dev/null 2>&1 && exit 0
-setsid nohup nice -n 10 make wasm >"$logs/wasm.log" 2>&1 </dev/null &
+pidfile="$logs/wasm.pid"
+setsid nohup sh -c 'nice -n 10 make wasm; rm -f "$1"' sh "$pidfile" >"$logs/wasm.log" 2>&1 </dev/null &
 echo $! >"$pidfile"
 exit 0

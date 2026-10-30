@@ -19,9 +19,9 @@ cd "$root" 2>/dev/null || exit 0
 # 1. Is the app's engine older than the Rust it is built from, a dev build,
 #    or unfinished?
 wasm="apps/web/pkg/auracle_wasm_bg.wasm"
-pid="${TMPDIR:-/tmp}/auracle-web-setup/wasm.pid"
-if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then
-  echo "The engine is building in the background (web-setup.sh's \`make wasm\`, logged to ${pid%.pid}.log): don't start another. The browser tests, rehearsals and recordings refuse apps/web/pkg until it finishes."
+setup="$(web_setup_dir "$root")"
+if web_building "$setup"; then
+  echo "The engine is building in the background (web-setup.sh's \`make wasm\`, logged to $setup/wasm.log): don't start another. The browser tests, rehearsals and recordings refuse apps/web/pkg until it finishes."
 elif [ ! -f "$wasm" ]; then
   echo "apps/web/pkg has no built engine: run \`make wasm\` before serving the app or running browser tests."
 else
@@ -38,6 +38,7 @@ else
     echo "apps/web/pkg is a dev build (\`make wasm-dev\`): the browser tests, rehearsals and recordings refuse it. Run \`make wasm\` before them."
   elif grep -qE '"profile": *"unfinished"' apps/web/pkg/build.json 2>/dev/null; then
     echo "apps/web/pkg is an unfinished build (a \`make wasm\` that failed or was stopped, or is running): the browser tests, rehearsals and recordings refuse it. Run \`make wasm\` before them."
+    [ -f "$setup/wasm.log" ] && echo "The session-start setup's build of it is logged in $setup/wasm.log: its end says why it stopped."
   fi
 fi
 

@@ -172,8 +172,11 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
   `scripts/setup.sh --no-engine` before the first turn (minutes on a cold
   container, seconds once its tools are there); then the engine in the
   background (`make pkg-reuse`, else `make wasm`, logged under
-  `$TMPDIR/auracle-web-setup/`), which the report says is building. A clear
-  or a compaction sets up nothing.
+  `$TMPDIR/auracle-web-setup/<checkout>`), which the report says is
+  building. A clear or a compaction sets up nothing. Its timeout in
+  `settings.json` is 30 minutes for a cold container's first install; a
+  local session never reaches it, since everything past the report is
+  remote-only.
 - **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):
   refuses a hand edit under any of the five generated paths of the file's
   own checkout (a worktree under `.claude/worktrees/` included), saying what
