@@ -4159,7 +4159,7 @@ function releaseRequest(request, id, req, message, fatal = false) {
       // The edit did not land, so neither the guess that lit COMMIT nor a
       // commit waiting on it stands.
       editPending = pendingKnobs.size > 0;
-      commitOnSettle = null;
+      setCommitWait(null);
       syncCommitBtn();
       pumpLane();
       break;
@@ -4533,6 +4533,17 @@ function breedLeft() {
 
 /** The job the slot shows, most important first, or null. */
 function slotJob() {
+  // The player's own press first: KEEP AS NEW or ⚡ waiting for an edit.
+  if (lampJobs.has("keep")) {
+    const evolving = !!(commitOnSettle && commitOnSettle.evolving);
+    return {
+      kind: "keep",
+      text: evolving ? "keeping your edit first…" : "keeping your edit as new…",
+      title: evolving
+        ? "Your last edit is still on its way. It is kept as new when it lands, and ⚡ evolves from it."
+        : "Your last edit is still on its way. It is kept as new when it lands.",
+    };
+  }
   if (lampJobs.has("refine")) {
     const b = breeding || {};
     const total = b.total || 0;
@@ -10243,7 +10254,7 @@ function openOnBench(id, { auto = false } = {}) {
   openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles. Nor a ▶.
-  commitOnSettle = null;
+  setCommitWait(null);
   playWaitCancel();
   // …and so is everything still waiting in the lane. Sent after this, each
   // entry would land on the patch being opened, at an address that names
@@ -10289,6 +10300,17 @@ let editPending = false;
 // A COMMIT pressed while that edit is still on its way waits for it, so what
 // is committed (or duelled) is the tree with the edit in it.
 let commitOnSettle = null;
+/** KEEP AS NEW (or ⚡, `evolving`) waiting for the edit on its way, or not
+ *  (null). The wait says so from the press, in the job slot with the lamp
+ *  ("keeping your edit first…", `slotJob`'s `keep`): it used to show nothing
+ *  until the edit landed (#305). */
+function setCommitWait(opts) {
+  const was = commitOnSettle != null;
+  commitOnSettle = opts;
+  if (opts && !was) lampOn("keep");
+  else if (!opts && was) lampOff("keep");
+  else if (opts) renderJobSlot();
+}
 
 /** COMMIT's enabled state and both of its tooltips, in one place. */
 function syncCommitBtn() {
@@ -17574,7 +17596,7 @@ function commitBench(opts = {}) {
   // compare the tree from before the edit (and a bench not yet marked dirty
   // would commit "none"). What is committed is what the player sees.
   if (!laneFree() || benchLane.some((q) => q.held)) {
-    commitOnSettle = opts;
+    setCommitWait(opts);
     return;
   }
   if ($("improve-check").checked) {
@@ -17598,7 +17620,7 @@ function commitBench(opts = {}) {
 function settleCommit() {
   if (!commitOnSettle || !laneFree()) return;
   const opts = commitOnSettle;
-  commitOnSettle = null;
+  setCommitWait(null);
   if (wb.dirty && wb.vetOk) commitBench(opts);
   else if (opts.evolving && pendingEvolve && wb.subjectId != null) {
     // ⚡ waited for an edit that turned out to change nothing (refused, or a
