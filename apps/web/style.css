@@ -8150,3 +8150,23 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pkey .hint b { color: var(--pkey-hint); }
   .pkey.down .hint b { color: var(--pkey-down-hint); }
 }
+
+/* Touch gestures (#134): a long press on a card, a bank row or
+   TASTE's map is the model view held (shell.js), so it neither selects text
+   nor opens the page's callout; a card swiped up to pick (main.js) rides
+   above its neighbour while it follows the finger. */
+@media (pointer: coarse) {
+  #view-evolve section[aria-label^="Sound "], .bank-item, .preset-item, #taste-crt {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .bank-item input { -webkit-user-select: text; user-select: text; }
+  .duel-card.swiping { z-index: 2; will-change: transform; }
+  /* A finger moving up on a card is the card's from the start, so the swipe
+     wins even where the column scrolls; down and sideways stay the page's.
+     `pan-up` names the scroll a finger moving down makes (content scrolls
+     up): measured in Chromium at 360 x 640, `pan-down` let an upward finger
+     scroll the column and stopped a downward one. */
+  #view-evolve section[aria-label^="Sound "] { touch-action: pan-x pan-up; }
+}

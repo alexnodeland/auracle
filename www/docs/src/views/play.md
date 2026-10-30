@@ -288,7 +288,8 @@ how it stays on while you work, and it is still up after a reload. A tap again
 ends it, and so does <kbd>Esc</kbd> once nothing nearer is waiting for it: in
 PATCH a press first walks out one thing (a menu, a module in hand, the guess
 for a place, the selected module, the catalog), and the view stays. On a
-touch screen, MODEL's press and hold is the model view. Nothing here is shown
+touch screen, MODEL's press and hold is the model view (a finger held on a
+module opens its menu, as before). Nothing here is shown
 at rest, and every mark is the model's own data:
 
 **The belief line,** in place of the subtitle's counts, in the model's voice;
