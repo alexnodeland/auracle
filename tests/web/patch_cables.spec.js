@@ -69,21 +69,40 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   // One probe for the open, not one per knob step: a drag of ten steps asks
   // once, after it settles. While the change is unmeasured the marks are
   // hollow: they go hollow when the edit's answer lands, and are lit again
-  // when a probe has measured the tree the edit left. Every paint of them is
-  // recorded rather than polled for, because that window can be one render
-  // long: a probe already out when the knob turns waits in `later` behind
-  // the edit and measures the turned tree. On CI the marks were hollow for
-  // 0.6 s, between two polls a second apart, and the edit had been answered
-  // 1.3 s after the drag (#182, #174).
+  // when a probe has measured the tree the edit left. That window can be one
+  // render long (a probe already out when the knob turns waits in `later`
+  // behind the edit and measures the turned tree; on CI the marks were hollow
+  // for 0.6 s, between two polls a second apart, #182, #174), so the marks
+  // are read in the very task that hands the edit's answer to the page, not
+  // polled for, and by the task's order, not by the clock: the page's own
+  // handler is called from a wrapper that takes the rack's mutations just
+  // before it and just after it, so the paint read is the one that handler
+  // made for this reply. Matching paints to the reply by `performance.now()`
+  // could take a paint from the task before, in the same tick of the
+  // browser's coarsened clock, for the reply's (#446).
   const asked = () => app.sentCount("cable_levels");
   const before = await asked();
   await page.evaluate(() => {
     const svg = document.getElementById("rack-svg");
-    const paints = (window.__pwMarks = []);
-    new MutationObserver(() => {
-      const marks = [...svg.querySelectorAll(".cable-mark")];
-      paints.push({ t: performance.now(), hollow: marks.length > 0 && marks.every((m) => m.classList.contains("unknown")) });
-    }).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+    const w = window.__tap.engine;
+    const seen = new MutationObserver(() => {});
+    seen.observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+    const own = w.onmessage;
+    w.onmessage = (e) => {
+      const d = e.data;
+      const edit = d && d.type === "bench" && d.edited !== undefined && !d.more && !window.__pwEdit;
+      if (edit) seen.takeRecords();
+      const r = own.call(w, e);
+      if (edit) {
+        const marks = [...svg.querySelectorAll(".cable-mark")];
+        window.__pwEdit = {
+          painted: seen.takeRecords().length > 0,
+          marks: marks.length,
+          hollow: marks.length > 0 && marks.every((m) => m.classList.contains("unknown")),
+        };
+      }
+      return r;
+    };
   });
   const t0 = await app.now();
   const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
@@ -94,12 +113,13 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.up();
   // The edit's answer waits for the call the engine is in when it arrives (a
   // probe, a measurement's render, a dealt pair's sound rendered in the
-  // background): an engine wait. The rack is drawn for it in the task that
-  // hands it to the page, so the first paint after it is that.
-  const edit = await app.reply("bench", { where: { edited: true }, after: t0, timeout: 30_000 });
-  const painted = await page.evaluate((at) => window.__pwMarks.find((p) => p.t >= at) || null, edit._at);
-  expect(painted, "the rack was drawn for the edit's answer").not.toBeNull();
-  expect(painted.hollow, "the marks went hollow when the edit's answer landed").toBe(true);
+  // background): an engine wait.
+  await app.reply("bench", { where: { edited: true }, after: t0, timeout: 30_000 });
+  const landed = await page.evaluate(() => window.__pwEdit || null);
+  expect(landed, "the edit's answer reached the page").not.toBeNull();
+  expect(landed.painted, "the rack was drawn for the edit's answer").toBe(true);
+  expect(landed.marks, "…with its level marks").toBeGreaterThan(0);
+  expect(landed.hollow, "the marks went hollow when the edit's answer landed").toBe(true);
   await app.engine((timeout) => expect.poll(asked, { timeout }).toBeGreaterThan(before), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   // Not one per step. At most one probe at the engine and one owed
