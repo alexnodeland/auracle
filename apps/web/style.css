@@ -8150,3 +8150,16 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pkey .hint b { color: var(--pkey-hint); }
   .pkey.down .hint b { color: var(--pkey-down-hint); }
 }
+
+/* Touch gestures (#134): a long press on a card, a bank row, a module or
+   TASTE's map is the model view held (shell.js), so it neither selects text
+   nor opens the page's callout; a card flicked up to pick (main.js) rides
+   above its neighbour while it follows the finger. */
+@media (pointer: coarse) {
+  #view-evolve section[aria-label^="Sound "], .bank-item, .preset-item, #taste-crt, #rack-svg [data-key] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .duel-card.flicking { z-index: 2; will-change: transform; }
+}

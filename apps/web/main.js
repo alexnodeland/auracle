@@ -8205,6 +8205,74 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
+// On a touch screen, a card flicked up is picked (#134): the card follows
+// the finger up, and let go past a third of its height (or flicked fast) it
+// presses its own PICK, so the pick takes PICK's whole path (its undo
+// window, its toast, the dealer's judgement). Let go short of that, it
+// springs back. The axis is the first 8 px of travel's: sideways or down,
+// or two fingers, the gesture is not the card's and whatever scrolls under
+// it scrolls (only an upward vertical move is taken from the page). A
+// finger held still is shell.js's long press, which locks first.
+{
+  const LOCK_PX = 8;
+  const FLICK_PX_PER_MS = 0.6;
+  for (const side of ["a", "b"]) {
+    const card = $(`duel-${side}`);
+    const pick = $(`choose-${side}`);
+    if (!card || !pick) continue;
+    let g = null;
+    const settle = (picked) => {
+      const ms = motionMs("--d-move");
+      card.classList.remove("flicking");
+      card.style.transition = ms ? `transform ${ms}ms var(--e-settle), opacity ${ms}ms var(--e-settle)` : "none";
+      card.style.transform = "";
+      card.style.opacity = "";
+      // A tween of 0 ms jumps to its end; nothing waits on it ending.
+      setTimeout(() => { card.style.transition = ""; }, ms);
+      if (picked && !pick.disabled) pick.click();
+    };
+    card.addEventListener("touchstart", (e) => {
+      if (e.touches.length > 1) { if (g && g.axis === "y") settle(false); g = null; return; }
+      if (e.target.closest?.("button, input, a, .mini-rack")) { g = null; return; }
+      const t = e.touches[0];
+      g = { x: t.clientX, y: t.clientY, t: e.timeStamp, axis: null, dy: 0, lastT: e.timeStamp, lastY: t.clientY, v: 0 };
+    }, { passive: true });
+    card.addEventListener("touchmove", (e) => {
+      if (!g) return;
+      if (e.touches.length > 1) { if (g.axis === "y") settle(false); g = null; return; }
+      const t = e.touches[0];
+      const dx = t.clientX - g.x;
+      const dy = t.clientY - g.y;
+      if (!g.axis) {
+        if (Math.hypot(dx, dy) < LOCK_PX) return;
+        // Sideways, or down: not ours, and never taken from a scroll.
+        if (Math.abs(dx) >= Math.abs(dy) || dy > 0 || pick.disabled || !currentDuel) { g = null; return; }
+        g.axis = "y";
+        card.classList.add("flicking");
+        card.style.transition = "none";
+      }
+      e.preventDefault();
+      const dt = Math.max(1, e.timeStamp - g.lastT);
+      g.v = (g.lastY - t.clientY) / dt;
+      g.lastT = e.timeStamp;
+      g.lastY = t.clientY;
+      g.dy = Math.min(0, dy);
+      card.style.transform = `translateY(${g.dy}px)`;
+      card.style.opacity = String(Math.max(0.4, 1 + g.dy / (card.offsetHeight || 1)));
+    }, { passive: false });
+    const end = (e) => {
+      if (!g) return;
+      const was = g;
+      g = null;
+      if (was.axis !== "y") return;
+      const far = -was.dy > (card.offsetHeight || 0) / 3;
+      const fast = was.v > FLICK_PX_PER_MS && -was.dy > LOCK_PX * 3;
+      settle(e.type === "touchend" && (far || fast));
+    };
+    card.addEventListener("touchend", end);
+    card.addEventListener("touchcancel", end);
+  }
+}
 /** ANOTHER PAIR, on EVOLVE's cards (↻, and N) and PATCH's TEACH strip: the
  *  next pair, or, on a table whose deal failed, the deal again. (The strip
  *  hides with no pair on the table, so there it is only ever the first.) */

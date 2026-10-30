@@ -150,6 +150,28 @@ desktop is unchanged. A phone prints no keys: the key beside a button and the
 letters on the keybed are left off, and the keybed keeps each C's octave. A
 tablet keeps them, since it may have a keyboard.
 
+### Two gestures: flick up to pick, hold to see what the model believes
+
+- **Flick a card up to pick it.** In EVOLVE, put a finger on a card's face
+  and push it up: the card follows. Let go past a third of its height, or
+  flick it, and it is picked exactly as its **PICK** would pick it, with the
+  same moment to take it back. Let go short of that and it settles back,
+  picking nothing. A drag down or sideways is not the card's, so whatever
+  scrolls under it still scrolls. Under reduced motion the card still
+  follows the finger, and settles back without a slide.
+- **Hold to see what the model believes.** A finger held still for about
+  half a second on an EVOLVE card, a bank row, a module on PATCH's rack or
+  TASTE's map shows the model view for as long as it stays down, as holding
+  <kbd>⌥</kbd> does on a keyboard. A ring fills under the finger while you
+  hold; moving the finger first makes it an ordinary touch. Lift it and the
+  view goes, and the hold opens nothing. With the model view already up (a
+  tap on **MODEL** keeps it), a hold changes nothing. A bank row's actions
+  stay on the row at rest; a hold does not replace them.
+- **On PERFORM a hold on a control opens its figure** (see
+  [Explain a control](./views/perform.md)).
+
+Nothing is selected and no callout opens under these holds.
+
 ### On a phone, a tablet and a narrow window
 
 Every size starts the instrument. On a window under 1000 px wide (a tablet
@@ -167,8 +189,8 @@ On a phone held upright:
   **KEYS** again puts them away.
 - The bank rises from the bottom. Pull its handle down, or tap it, to put it
   away.
-- Each level is one column, read from the top, and scrolls where it runs past
-  the screen. Nothing scrolls sideways.
+- Each level is one column, read from the top. Where it runs past the
+  screen, it scrolls. Nothing scrolls sideways.
 
 On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.

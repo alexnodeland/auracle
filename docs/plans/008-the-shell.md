@@ -38,7 +38,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | D: ⌘K, and the guide for the levels | #132 | merged (#344); the screenshots' re-capture is #343 |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
 | PATCH's specs on the shared fixture | #136 | merged (#168) |
-| After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | the card not started; touch in progress (`claude/mobile`: the bottom bar, the bank as a sheet, the keys over the bar, each level's phone layout, the gates retired) |
+| After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | the card not started; touch done (#462: the bottom bar, the bank as a sheet, the keys over the bar, each level's phone layout, the gates retired; `claude/touch-gestures`: flick a card up to pick, hold for the model view) |
 
 The maintainer accepted the plan with the decisions at its end, which override
 the proposals in §6 where they differ (PATCH is rebuilt to the mock's canvas,

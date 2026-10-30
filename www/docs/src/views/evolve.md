@@ -48,6 +48,13 @@ On a phone held upright the small map runs the screen's width under the head,
 and each card keeps its **PLAY** and **PICK** under its name; the level
 scrolls. On a phone on its side, scroll down to the picks.
 
+On a touch screen, flick a card up to pick it: the card follows your finger,
+and let go past a third of its height (or flicked) it is picked as its
+**PICK** picks it, with the same moment to take it back. Short of that it
+settles back and nothing is picked; a drag down or sideways leaves the card
+where it is. Hold a finger still on a card until the ring under it fills,
+and the model view is up while you hold (as <kbd>⌥</kbd> is).
+
 **The head.** *Pick the one you’d reach for.*, with the six pips and the
 teaching line under it (below), and at its right a small [TASTE](./taste.md)
 map: every sound in the pool where the map puts it, with A and B ringed where
