@@ -146,7 +146,7 @@ A named control is in one of five states, each with its own look:
 |---|---|---|
 | A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*), or one and how many more when two names would run long | It turns both ways on this sound |
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
-| Amber, a dashed ring | *turn to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
+| Amber, a dashed ring | nothing; the line over the controls says once, for all of them, *turn an amber one to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |
 | A thin, dim travel, the pointer lit | the knobs it turns; its tooltip says *not measured yet* | It turns, before this sound is measured (see [a sound you haven't played](#a-sound-you-havent-played)) |
 
@@ -428,7 +428,9 @@ A control drawn in amber with a dashed ring is a **search control**: this
 patch’s knobs can’t make that change. A patch with no drive can’t get rougher
 by turning a filter, and one with no delay or reverb can’t get much farther
 away. Over the preset library, GRIT and SPACE are search controls on most
-sounds for that reason.
+sounds for that reason. A search control has no line under it at rest: the
+line over the controls says *turn an amber one to ask for it*, once, while
+one is on the panel.
 
 1. Turn it past the amber notch, three tenths of the way to either end. The
    line under it reads *turn further to ask* short of the notch, then *let go

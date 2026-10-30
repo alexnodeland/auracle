@@ -23,6 +23,16 @@
   on the keybed are left off, and PERFORM's first step says to tap the
   keybed, or on a phone to tap **KEYS** first.
 
+### Changed: PERFORM says once what an amber control does
+
+- **The amber controls no longer each say *turn to ask for it*.** A search
+  control (amber, a dashed ring: this patch’s knobs can’t make that change)
+  carried the same line under it as every other one, and on a phone the deck
+  was mostly that line. Its ring marks it, and the line over the controls
+  says *turn an amber one to ask for it* once, while one is on the panel.
+  Turned, it still says what letting go will ask for (*let go to ask for
+  rough*) (`perform_truth.spec.js`).
+
 ### Fixed: a tapped module's sheet presses nothing under the finger
 
 - **Opening a module's sheet with a tap no longer presses what the sheet

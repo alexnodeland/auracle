@@ -47,7 +47,7 @@ for (const width of [390, 360]) {
 // two names while they fit 24 characters, else one and how many more.
 const WORDS = ["dark", "bright", "bloom", "snap", "still", "restless", "thin", "full", "smooth", "rough", "close", "far"];
 const CAPTIONS = [
-  "turn to ask for it", "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
+  "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
   ...WORDS.map((w) => `let go to ask for ${w}`),
   ...WORDS.map((w) => `turns toward ${w} only`),
   "listening…", "no offer yet", "100% offer",

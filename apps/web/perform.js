@@ -767,10 +767,15 @@ export function createPerform(host) {
         // the same as the sound being at that end, and the dot often said
         // otherwise. Short enough for the cell at 1280 px: a caption cut off
         // with an ellipsis reads as broken, whatever it was going to say.
+        // A search control says nothing at rest: its amber, dashed ring marks
+        // it, and the status line says once what turning one does ("turn an
+        // amber one to ask for it", `renderStatus`), where the same words
+        // under each of them crowded the deck (#134). Turned, it says what
+        // letting go will ask for.
         k.sub.textContent = search
           ? k.asking
             ? askWords(w, v)
-            : "turn to ask for it"
+            : ""
           : halfLo
             ? `turns toward ${w.high} only`
             : halfHi
@@ -3576,6 +3581,10 @@ export function createPerform(host) {
       // The last measurement asked of it failed (the engine's own words are
       // its toast), and none is out now.
       else if (state.wireError) parts.push(state.wireError);
+      // What a turn of a search control does, said once for the deck rather
+      // than under each one (#134), and steadily while one is on it: last,
+      // so a re-check's word comes and goes without moving it.
+      if (state.wire.some((w) => w && w.search)) parts.push("turn an amber one to ask for it");
     } else if (state.wireError && !state.revalidating && !state.measuring) parts.push(state.wireError);
     // Written only when the words change.
     const text = parts.join(" · ");
