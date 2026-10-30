@@ -26,6 +26,10 @@ finishes.
 
 ## What to do
 
+On Claude Code on the web the session-start hook does this before the first
+turn (`.claude/hooks/web-setup.sh`), so a cloud session meets it only when
+that step failed, and the hook's report names its log. Elsewhere:
+
 Do **not** set `wasm-opt = false`: the release binary would be larger and
 slower, and the app would differ from what CI ships.
 

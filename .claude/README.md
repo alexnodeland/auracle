@@ -164,7 +164,19 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
   stopped), which the browser specs and the films refuse, in the checkout the
   session's directory is in, a worktree's own when it is in one; and how many
   jobs wait in the browser queue and whether a film's `footage.mjs` is
-  running. It never fails the session.
+  running. It never fails the session. On Claude Code on the web
+  (`CLAUDE_CODE_REMOTE=true`) it first runs `web-setup.sh`, which sets the
+  cloud container up as `make setup` sets up a laptop: binaryen's `wasm-opt`
+  at the version `wasm-pack` asks for, on `PATH`
+  ([`docs/runbooks/wasm-opt-download.md`](../docs/runbooks/wasm-opt-download.md));
+  `scripts/setup.sh --no-engine` before the first turn (minutes on a cold
+  container, seconds once its tools are there); then the engine in the
+  background (`make pkg-reuse`, else `make wasm`, logged under
+  `$TMPDIR/auracle-web-setup/<checkout>`), which the report says is
+  building. A clear or a compaction sets up nothing. Its timeout in
+  `settings.json` is 30 minutes for a cold container's first install; a
+  local session never reaches it, since everything past the report is
+  remote-only.
 - **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):
   refuses a hand edit under any of the five generated paths of the file's
   own checkout (a worktree under `.claude/worktrees/` included), saying what

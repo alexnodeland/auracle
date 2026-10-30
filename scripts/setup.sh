@@ -9,6 +9,9 @@
 #   scripts/setup.sh --no-sccache   without sccache (AURACLE_SCCACHE=0 in the
 #                               environment does the same, and tells `make` not
 #                               to compile through it)
+#   scripts/setup.sh --no-engine    everything but the app's engine (make wasm),
+#                               for a caller that builds it later itself (the
+#                               session-start hook on Claude Code on the web)
 #
 # `make setup` and `make film-setup` run the first two.
 #
@@ -57,13 +60,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 SCCACHE_VERSION=0.18.0
-FILM=0 SITE=0 SCCACHE=1
+FILM=0 SITE=0 SCCACHE=1 ENGINE=1
 if [ "${AURACLE_SCCACHE:-}" = 0 ]; then SCCACHE=0; fi
 for a in "$@"; do
   case "$a" in
     --film) FILM=1 ;;
     --site) SITE=1 ;;
     --no-sccache) SCCACHE=0 ;;
+    --no-engine) ENGINE=0 ;;
     # What asked for sccache when it was opt-in; it is in the base set now.
     --sccache) ;;
     --all) FILM=1 SITE=1 ;;
@@ -100,7 +104,9 @@ cargo nextest --version >/dev/null 2>&1 || cargo install cargo-nextest --locked
 # included, and the run took about thirteen times as long.
 rustup component add llvm-tools
 llvm_cov="$(sed -n 's/^LLVM_COV_VERSION := //p' Makefile)"
-have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }')"
+# `|| true`: with none installed cargo exits 101, and under pipefail a bare
+# assignment takes the pipeline's status, which errexit would stop on (#377).
+have="$(cargo llvm-cov --version 2>/dev/null | awk '{ print $2 }' || true)"
 if [ -z "$have" ] || [ "$(printf '%s\n%s\n' "$llvm_cov" "$have" | sort -V | head -1)" != "$llvm_cov" ]; then
   cargo install cargo-llvm-cov --version "$llvm_cov" --locked
 fi
@@ -144,8 +150,10 @@ esac
 say "Git hooks"
 make -s install-hooks
 
-say "The app's engine (make wasm)"
-make wasm
+if [ "$ENGINE" = 1 ]; then
+  say "The app's engine (make wasm)"
+  make wasm
+fi
 
 if [ "$FILM" = 1 ]; then
   say "The film tools and the voice (.venv-voice)"
