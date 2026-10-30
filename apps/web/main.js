@@ -5350,8 +5350,31 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
 }
 
 // ---------- audio helpers ----------
+// A context that is not running is woken by anything about to sound, and by
+// the next gesture the browser counts as one. Not only "suspended": iOS
+// Safari leaves it "interrupted" after a call, the lock screen, another app's
+// audio or Control Centre, and a key pressed then was silent and moved no
+// face (#134). And a touch's pointerdown is not a gesture that may start
+// audio there (the HTML spec's activation events are a touch's pointerup and
+// touchend), so a resume asked for on it alone can be refused: the lift,
+// a click and a key ask again.
+function audioAsleep() {
+  return audioCtx.state !== "running" && audioCtx.state !== "closed";
+}
+function wakeAudio() {
+  if (!audioAsleep()) return;
+  try {
+    audioCtx.resume()?.catch?.(() => {});
+  } catch (_) {
+    /* refused outside a gesture: the next one asks again */
+  }
+}
+for (const type of ["pointerup", "touchend", "click", "keydown"]) document.addEventListener(type, wakeAudio, { capture: true, passive: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wakeAudio();
+});
 function ensureAudio() {
-  if (audioCtx.state === "suspended") audioCtx.resume();
+  wakeAudio();
   // Something is about to sound (a key, a phrase, a monitored input): the
   // faces on screen listen for it.
   liveFaces?.wake();
@@ -6318,7 +6341,13 @@ function buildPiano() {
     }
     piano.appendChild(wk);
   }
-  attachPianoPointers(piano);
+  // Once: the keybed is rebuilt in this same element on every octave shift,
+  // and each rebuild used to add another set of listeners, so a key pressed
+  // after a shift struck its note once per shift.
+  if (!piano.dataset.pointers) {
+    piano.dataset.pointers = "1";
+    attachPianoPointers(piano);
+  }
   paintHints();
   // A latched chord survives the rebuild visually as well as audibly.
   for (const n of heldNotes) paintKey(n, true);
