@@ -388,8 +388,11 @@ the other way round).
 ## On a touch screen
 
 On a phone held upright the head is stacked over the well (the name, what the
-patch is made of, then the acts), and the readout takes its own line over the
-camera at the well's foot. Two fingers on the patch zoom it.
+patch is made of, then the acts on one line), and the readout takes its own
+line over the camera at the well's foot. With the keys up the well is short,
+and keeps only the rack: the words and the well's foot come back when the keys
+go. Two fingers on the patch zoom it. On a phone on its side the catalog
+(**ADD MODULE**) is the screen's height.
 
 Tap a module to open its settings in a sheet: every knob as a wide slider with
 **−** and **+** steps, every named setting as its choices, AUDIO IN's input

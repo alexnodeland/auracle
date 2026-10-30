@@ -45,8 +45,9 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 ## What you see
 
 On a phone held upright the small map runs the screen's width under the head,
-and each card keeps its **PLAY** and **PICK** under its name; the level
-scrolls. On a phone on its side, scroll down to the picks.
+and each card keeps its **PLAY** and **PICK** under its name. The level is one
+screen, upright or on its side: the two faces take what the words, the map
+and the foot leave, so **PLAY** and **PICK** are always in sight.
 
 On a touch screen, swipe a card up to pick it: the card follows your finger,
 and let go past a third of its height (or swiped up fast) it is picked as
