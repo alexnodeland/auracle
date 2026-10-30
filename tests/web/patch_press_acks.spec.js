@@ -83,6 +83,9 @@ test("a patch file dropped on the window says it is opening it, by name, until t
   const [download] = await Promise.all([page.waitForEvent("download"), runCommand(page, "Download this patch")]);
   const sidecar = JSON.parse(fs.readFileSync(await download.path(), "utf8"));
   sidecar.name = "Dropped Pad";
+  // Not the pool's own Glass Pad, so it joins as a new sound and its toast
+  // is one about the player's sounds, which always has its turn.
+  sidecar.tree.amp.attack = Math.min(1, sidecar.tree.amp.attack + 0.013);
   const id = (await app.facts()).ranked[0].id; // a sound in the pool
   await app.hold(["patch_imported"]);
   // Something else holds the toast lane (a Save refused at the cap, which
@@ -109,6 +112,6 @@ test("a patch file dropped on the window says it is opening it, by name, until t
   await app.engine(() => expect.poll(() => app.held().then((h) => h.map((x) => x.type)), { timeout: 30_000 }).toEqual(["patch_imported"]));
   await expect(page.locator("#job-text"), "still said while the import is on its way").toHaveText("Opening Dropped Pad…");
   await app.release();
-  await expect(page.locator("#toasts .toast-msg", { hasText: /^(Opened the patch file as |.+ is already in the pool)/ })).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => app.toasts(), { timeout: 30_000 }).toContainEqual(expect.stringMatching(/^Opened the patch file as /));
   await expect.poll(() => page.evaluate(() => (document.getElementById("job-slot").classList.contains("hidden") ? "" : document.getElementById("job-text").textContent)), { message: "the slot still says the file is opening" }).not.toMatch(/^Opening/);
 });
