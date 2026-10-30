@@ -20,16 +20,12 @@ Check in this order:
 7. **The tab is muted**, or your computer is sending sound somewhere else.
    Check both.
 
-## It asks for a desktop
+## On a phone, the bank and the keys are missing
 
-A touch screen whose window is under 620 px on its shorter side doesn’t start
-the engine. That is deliberate; see [handheld
-devices](./getting-started/running-locally.md#handheld-devices). *look around
-anyway →* reloads past the screen for this tab, but there is no phone
-layout behind it.
-
-Turning the device sideways doesn’t help: the shorter side stays the same. A
-tablet whose shorter side is 620 px or more starts in either orientation.
+They are a press away. **BANK**, at the start of the menu bar, opens the bank;
+**KEYS**, at the end of the bar along the bottom, brings the keys up (on a
+phone on its side, it sits under the levels at the right edge). See [phones
+and tablets](./getting-started/running-locally.md#phones-and-tablets).
 
 ## Boot is slow, or stalls
 

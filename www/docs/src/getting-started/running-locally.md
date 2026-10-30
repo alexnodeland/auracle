@@ -104,7 +104,7 @@ the six named controls on the panel, those six, BLEND, and WANDER.
 
 ## Browser support
 
-Auracle needs a current desktop browser, with AudioWorklet, WebAssembly, module
+Auracle needs a current browser, with AudioWorklet, WebAssembly, module
 workers, and IndexedDB. All have been standard for years, and Auracle uses
 them hard.
 
@@ -117,19 +117,18 @@ them hard.
 Without Web MIDI, everything still works from the computer keyboard and the
 keybed on screen; see [playing it](../playing.md).
 
-### Handheld devices
+### Phones and tablets
 
-A touch screen whose window is under 620 px on its shorter side doesn’t start
-the engine, and turning it sideways doesn’t change that. You get a screen
-asking for a desktop, with *look around anyway →* if you want to see the
-interface.
+Every size starts the instrument. On a phone the levels are the bar along the
+bottom, the bank rises from the bottom when you press **BANK**, and **KEYS**
+brings the keys up; a window under 1000 px wide keeps the bank behind
+**BANK** too. Boot costs about 40 renders, which a phone pays for on a
+slower processor, so its first sound is ready later than a desktop’s. The
+[accessibility page](../accessibility.md#on-a-phone-a-tablet-and-a-narrow-window)
+says what goes where.
 
-This is deliberate. Boot costs about 40 renders, and a phone would pay for all
-of them and then have nowhere to draw a rack, a bank, and a keybed at once. A
-phone layout is still to be designed.
-
-**Tablets work** if the window is big enough. Every rack gesture works under a
-finger: knob drags, cable pulls, locks, and the ⋯ menus. Whatever a mouse finds
+Every rack gesture works under a finger: knob drags, cable pulls, locks, and
+the ⋯ menus. Whatever a mouse finds
 by hovering is shown outright on a touch screen, because on a tablet,
 hover-to-reveal means never.
 

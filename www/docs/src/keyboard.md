@@ -24,6 +24,7 @@ at last time.
 | <kbd>⌥</kbd> and the wheel | Zoom: up in, down out, one level a turn, anywhere on the stage (over PATCH's patch too). Over a list or a panel that can still scroll that way, such as PATCH's catalog, they scroll it instead, and the model view stays up |
 | <kbd>Ctrl</kbd> and the wheel, or a trackpad's pinch | Zoom the same way, except over PATCH's patch, where they zoom the patch itself |
 | Two fingers on a touch screen | Spread to zoom in, pinch to zoom out. Two that start on PATCH's patch move no level |
+| A tap on a stop | Go there. On a phone held upright the levels are the bar along the bottom |
 | Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it once nothing nearer is open (a press closes the nearest thing first, at every level) |
 
 They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
@@ -413,3 +414,23 @@ In **KEYS ⋯**:
 
 It stays open while you play through it (the keybed, the octave, HOLD), and
 folds on a click outside the keys bar or <kbd>Esc</kbd>.
+
+On a phone held upright the keys bar is out of the way until you ask for it:
+**KEYS**, at the end of the bar along the bottom, brings it up over that bar,
+the octave and the cluster on one line and the keybed under them, and
+**KEYS** again puts it away. It starts at one octave, a finger wide a key.
+
+## On a touch screen
+
+What a key does, a finger does like this:
+
+| Key | Under a finger |
+|---|---|
+| <kbd>Space</kbd> | **▶** beside the sound in hand in the menu bar |
+| <kbd>A</kbd>–<kbd>L</kbd> and the row above | The keybed (on a phone, **KEYS** first) |
+| <kbd>⌘K</kbd> | The magnifying glass at the menu bar's right end |
+| Hold <kbd>⌥</kbd> | Press and hold **MODEL**; a tap keeps it up |
+| <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Spread two fingers on the stage / pinch them |
+| <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | A tap on a stop in the levels |
+| <kbd>Esc</kbd> | **×** on what is open, or a tap beside a sheet |
+| <kbd>?</kbd> on a control | Hold a finger on it until its ring fills |

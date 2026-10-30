@@ -129,8 +129,8 @@ Focus is always visible, and a dialog returns focus to whatever opened it.
 
 ## Touch
 
-Every rack gesture works under a finger on a tablet: knob drags, cable pulls,
-locks, and the ⋯ menus.
+Every rack gesture works under a finger on a tablet or a phone: knob drags,
+cable pulls, locks, and the ⋯ menus.
 
 Two rules make that work. Controls that own a drag claim the gesture before
 the browser can, which leaves the rack’s frame its own panning. And whatever a
@@ -146,7 +146,31 @@ not zoom the page there, by a pinch or by a double tap. A pinch still
 zooms the page over the bank, the menu bar and the keys, and your system’s
 own zoom works everywhere.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
-desktop is unchanged.
+desktop is unchanged. A touch screen prints no keys: the key beside a button
+and the letters on the keybed are left off, and the keybed keeps each C's
+octave.
+
+### On a phone, a tablet and a narrow window
+
+Every size starts the instrument. On a window under 1000 px wide (a tablet
+held upright, a narrow desktop window) the bank leaves its column: **BANK**
+at the start of the menu bar opens it as a sheet over the stage, and a sound
+chosen in it, a tap beside it, <kbd>Esc</kbd> or **BANK** again puts it away.
+
+On a phone held upright:
+
+- The levels are the bar along the bottom, each stop named under its icon:
+  LEARNING, TASTE, PERFORM, PATCH, then EVOLVE beside them. A tap goes there.
+- **KEYS** at the bar's end brings the keys up over it, one octave across the
+  screen, each key a finger wide (**span** in **KEYS ⋯** shows more), and
+  **KEYS** again puts them away.
+- The bank rises from the bottom. Pull its handle down, or tap it, to put it
+  away.
+- Each level is one column, read from the top, and scrolls where it runs past
+  the screen. Nothing scrolls sideways.
+
+On a phone on its side, the levels stay at the right edge with **KEYS** under
+them, and the keys come up from the bottom.
 
 ## Hit targets
 
@@ -203,10 +227,9 @@ than every frame. The guide and the reference follow the setting too.
 
 ## Known gaps
 
-- **No phone layout.** A touch screen under 620 px on its shorter side gets a
-  stand-in screen instead of the instrument. That is deliberate for now: a
-  phone would pay for about 40 renders at boot and have nowhere to show them.
-  It does mean Auracle can’t be played on a phone.
+- **A phone pays for its boot.** A phone renders the same 40 sounds at boot
+  as a desktop does, on a slower processor, so the first sound takes longer
+  to be ready there.
 - **The taste map is mostly visual.** Its sounds can be walked with the arrow
   keys, each card says the sound’s name and the model’s guess, and a pick is
   announced (*You picked Glass Pad over Soft Wash. Every rating moved.*).
