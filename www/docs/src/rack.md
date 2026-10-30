@@ -222,9 +222,14 @@ the same ▾, releases them all.
 The button reads **⚡ EVOLVING…**, and the job slot in the menu bar shows
 *⚡ evolving Soft Pad* with **STOP**, which drops the walk and adds nothing;
 ⚡'s ▾ has **STOP EVOLVING** too.
-The rack, the bank, and the pairs go on answering while it walks. If you go on
-editing, the child waits in the bank rather than replacing your edits, and its
-toast has an **OPEN IT** button.
+The rack, the bank, and the pairs go on answering while it walks. When the
+child lands it becomes the sound you're playing by itself only if nothing has
+changed under your hands since the press: you're still on the sound ⚡
+started from, unedited, you haven't opened another, and nothing is sounding
+(no notes held or latched by HOLD or the arp, no ▶ phrase playing).
+Otherwise it waits at the top of the bank, and its toast says why (*your
+edits are still open*, *Soft Pad is still the sound in hand*, *what you’re
+playing goes on*) with an **OPEN IT** button.
 
 ⚡ and **EVOLVE POOL** take turns. While a generation breeds, ⚡ is disabled
 and its tooltip says why; while ⚡ walks, EVOLVE POOL waits the same way.

@@ -1750,6 +1750,13 @@ bench's `.live` and `.opening` in place and scrolls to a row an open asked
 for. A preset row's ▶ carries `data-hear`, so its playing and waiting marks
 are drawn again on the rebuilt row.
 
+⚡'s child opens itself on the bench only when nothing is in the player's
+hands (`keptInHand`): no edit open or on its way, no other sound opened since
+the press (the bench still holds the seed, `benchSeq` unchanged since
+`startEvolveFrom`, no open or preset on its way), and nothing sounding
+(`playedNow`: notes held, latched or sustained, a phrase, a monitored input).
+Otherwise its toast says which, with OPEN IT.
+
 ## EVOLVE's next pair
 
 While a pair is on the table, `main.js` deals the next one (`duel` with

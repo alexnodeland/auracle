@@ -1401,14 +1401,18 @@ function markPlace(p, level, host, frame) {
   p.key = key;
   return true;
 }
+/** Is anything sounding under the player's hands? A key down, latched by
+ *  HOLD or the arp, or sustained; a ▶ phrase; a monitored input. */
+function playedNow() {
+  return heldNotes.size > 0 || sustainedNotes.size > 0 || !!playingSrc || audioIn.monitor;
+}
 function bootLiveFaces() {
   if (liveFaces) return;
   liveFaces = createLiveFaces({
     signals: [() => (live ? live.shareA : null), () => (live ? live.shareB : null), phraseAnalyser],
     // The shares and the phrase bus are tapped before the master fader.
     gainDb: () => 20 * Math.log10(Math.max(1e-6, master.gain.value)),
-    // Played now: a key down or sustained, a phrase, a monitored input.
-    held: () => heldNotes.size > 0 || sustainedNotes.size > 0 || !!playingSrc || audioIn.monitor,
+    held: playedNow,
     still: prefersStill,
     // Stage mode covers every level (it draws its own).
     off: () => !!(perform && perform.stage && perform.stage()),
@@ -3811,6 +3815,7 @@ worker.onmessage = (e) => {
     }
     case "evolved_from": {
       lampOff("refine_from");
+      const pressed = evolvingFrom;
       evolvingFrom = null;
       renderEvolveFrom();
       renderEvolveBtn(); // EVOLVE POOL's turn
@@ -3852,12 +3857,25 @@ worker.onmessage = (e) => {
         // regardless — gone without a word, and every write still in the
         // lane then landed on the child at addresses read off the patch it
         // replaced. The bench is the player's: the child waits in the bank,
-        // one click away.
-        const editedSince = wb.dirty || editPending || !laneFree();
+        // one click away. So it does when another sound was opened since the
+        // press (the bench no longer holds the seed, or an open is on its
+        // way), and while anything sounds (notes held or latched, the arp, a
+        // phrase): opening it would swap the sound under the hands (#312).
+        const kept = keptInHand({
+          edited: wb.dirty || editPending || !laneFree(),
+          opened: wb.subjectId !== m.seedId || benchPending != null || !!earlyOpen ||
+            (pressed != null && pressed.opens !== benchSeq) || presetClicks.size > 0,
+          sounding: playedNow(),
+        });
         const from = seedName ? ` from ${seedName}` : "";
-        if (editedSince) {
+        if (kept) {
+          const why = {
+            edited: "your edits are still open",
+            opened: `${nameOrKnown(inHandId()) || "the sound you opened"} is still the sound in hand`,
+            sounding: "what you’re playing goes on",
+          }[kept];
           note(
-            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
+            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and ${why}.${madeRoom(evolveEvicted)}`,
             { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from", bank: true },
           );
         } else {
@@ -17288,7 +17306,9 @@ function startEvolveFrom(id) {
   }
   // Said in the job slot (and on the button), not a toast: a toast carries
   // the result of a gesture, and this one's result comes when the walk lands.
-  evolvingFrom = { id, name: nameOf(id), stoppable: false };
+  // `opens`: the opens made so far (`benchSeq`), so its child can tell
+  // whether another sound was opened since the press (`evolved_from`).
+  evolvingFrom = { id, name: nameOf(id), stoppable: false, opens: benchSeq };
   if (mayGoShown) markMayGo(true); // its seed, and what its child would replace
   lampOn("refine_from");
   renderEvolveFrom();
