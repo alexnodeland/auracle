@@ -944,6 +944,9 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 .bank-list {
   flex: 1;
   overflow-y: auto;
+  /* main.js keeps the row under the pointer in place across a redraw
+     (`bankKeep`); the browser's own anchoring would move it twice. */
+  overflow-anchor: none;
   padding: 0 var(--s2) var(--s4);
   display: flex;
   flex-direction: column;
@@ -1173,7 +1176,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item .bi-acts .bi-hear.pending { outline: 1px dotted var(--phos-b); outline-offset: -2px; color: var(--phos-b); }
 /* A row that plays, or is on its way to, keeps its ▶ in sight. */
 .bank-item:has(.bi-hear.playing) .bi-acts,
-.bank-item:has(.bi-hear.pending) .bi-acts { visibility: visible; opacity: 1; }
+.bank-item:has(.bi-hear.pending) .bi-acts,
+.bank-item:has(.bi-hear.loading) .bi-acts,
+.bank-item.refocus .bi-acts { visibility: visible; opacity: 1; }
 .bank-item .bi-acts .bi-star.on { color: var(--phos-b); }
 .bank-item .bi-acts .bi-star.on svg { fill: currentColor; }
 /* Save is the user's own channel: silk, not a phosphor. */
@@ -5306,6 +5311,9 @@ input[type="range"]::-moz-range-thumb {
 .duel-card.dealing > :not(.deal-why) { opacity: 0.55; }
 .duel-card.dealing .duel-controls { pointer-events: none; }
 .play-duel.dealing .pd-side { opacity: 0.55; }
+/* A side that left the pool while its pair stood (#312): its face dims, and
+   its card's line says so until the next pick or ANOTHER PAIR. */
+.duel-card.gone .duel-well { opacity: 0.55; }
 /* …and one that is slow to settle says why, over the dimmed scope, at full
    strength: the reason is the one thing on the card that is current. */
 .deal-why {

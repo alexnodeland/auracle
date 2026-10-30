@@ -170,7 +170,8 @@ every level, a bank row's ★, PATCH's chain, PERFORM's well modes, ⌘K's list,
 the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
-- **The bank** redraws through `flipBank`: under the view, once fitted, the
+- **The bank** redraws through `flipBank` (and holds still under the hand:
+  [The bank under the hand](#the-bank-under-the-hand)): under the view, once fitted, the
   pool's rest (New keeps birth order) stands in `views.ranked`'s order (by
   posterior mean); at rest, in id order, the order the sounds joined. Each row
   that moved glides from where it was (FLIP, `--d-move`; under reduced motion
@@ -1724,6 +1725,51 @@ drawn, with how many rows; [⌘K, the one list](#k-the-one-list)).
 `perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
 and `tests/web/budgets.spec.js` holds the budgets they measure.
 
+## The bank under the hand
+
+ADR-025's rule for a region, for the bank's rows (#312). What moves them on
+its own goes through `bankLater`, on a hand of its own (`bankHand`, so a
+pointer over TASTE's map does not hold the bank): a generation's child
+(`refine_child`, its bud flying when its row is drawn), a generation's end
+(`refined`, `pool_trimmed`), the pool filling (`taste_views`), a refit's
+views (`fitted`, which also waits on main's hand, under `views`) and ⚡'s
+child (`evolved_from`). `bankHold`, a `holdRegion` over `#bank-list` told to
+both hands (`handsOf`), holds while the mouse is over the list, from a touch
+until `HAND_REST_MS` after the finger lifts, and while the keyboard's focus
+is in it (`:focus-visible`, asked again at each step, since a focus that came
+by a pointer becomes the keyboard's at its first arrow; a click's focus is no
+hand), each of the list's own steps (`BANK_STEP_KEYS`, not a note key played
+with the focus there) starting the rest again. A held draw runs when the
+hold ends or after `HAND_REST_MS` of rest, through `flipBank`, so the rows
+that moved glide; the tabs' counts and POOL's "+N" move no row and are drawn
+at once.
+Every draw, the player's own included (a star, a cut, an arrow step), keeps
+the row under the pointer, or the keyboard's cursor row, where it was on
+screen by scrolling the list (`bankKeep`, `keepUnder`; `overflow-anchor:
+none` keeps the browser from doing it twice), and the focus on the row or
+button that had it; a draw of its own drops what waits (`bankHand.drop`).
+None runs between a press on the list and its release (`bankPressed`): it
+runs after the click, a held draw whose rest ran out meanwhile as itself,
+gliding (`bankAfterPress`). A press also ends on the list's `contextmenu`, the
+window's `blur`, or a pointermove over the list with no button down (a
+context menu can take the release). A bench reply draws no row:
+`markBenchRows` sets the bench's `.live` and `.opening` and the keyboard's
+cursor (`.kbd` from `kbdRowId` and `kbdKeptId`, then `syncBankCursor`) in
+place, and scrolls to a row an open asked for; an open the app makes itself
+(`auto`, ⚡'s child) asks for no scroll while the bank is held. A preset
+opened from its row is drawn again once its id is known, so it says IN
+POOL. A preset row's ▶ carries `data-hear`, so its playing and waiting marks
+are drawn again on the rebuilt row.
+
+⚡'s child opens itself on the bench only when nothing is in the player's
+hands (`keptInHand`): no edit open or on its way, no other sound opened since
+the press (the bench still holds the seed, `benchSeq` unchanged since
+`startEvolveFrom`, no open or preset on its way), and nothing sounding
+(`playedNow`: notes held, latched or sustained, a phrase, a monitored input).
+Otherwise its toast says which, with OPEN IT, naming the sound opened since
+(`openedName`: a preset on its way by its name, else "the sound you
+opened").
+
 ## EVOLVE's next pair
 
 While a pair is on the table, `main.js` deals the next one (`duel` with
@@ -1777,6 +1823,19 @@ refusal. That ends, because each deal excludes the cuts made before it was
 asked for, so only a cut made while a deal is out brings one back.
 `placePair` is the one place a pair goes up: anything owed to a pair being
 shown belongs there.
+
+A side of the pair on the table that leaves the pool (a generation's end, a
+preset load or an import making room) does not swap the pair: it stays where
+the hand may be reaching for it (#312, ADR-025). `applyViews` marks the side
+(`markTableGone`: `.gone` on its card, its ▶, ⇄ and ↓ PATCH off, its line
+saying so; the TEACH strip names it replaced and its ▶ for it is off), and
+the next pick or ↻ puts up the next pair. The pick (`choose`) commits a pick
+still in its undo window, as any pick does, and sends no vote of its own
+(`record_duel` refuses an id the pool no longer holds); its refusal is
+`urgent`, so it does not wait behind the generation's toast. A pick held in its undo window
+whose pair loses a side is still refused by the engine when it commits
+(`voteDropped`); keeping it valid would need the engine to hold a sound shown
+in a pair until it is put away.
 
 A deal is refused when it is the pair of the pick held in its undo window,
 and it is judged against the pick held when the pair it was dealt behind

@@ -185,16 +185,23 @@ want to keep.
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
 GENERATION 1**, tagged **NEW** with a green dot until you hear it, and can be
 played at once. The line under its name says which seed it grew from and what
-changed. The ranked rows below it don’t move. Where the seed’s row is in view,
-the child buds out of it, its seed’s rail lit, and moves up into its place in
-New. A child the pool won’t take buds beside its seed with the reason
+changed. The ranked rows below it don’t move. While your pointer is over the
+bank, or you are stepping through it with the arrow keys, the child waits:
+it lands when the pointer leaves, or after a second of rest, and then the
+list scrolls so the row under the pointer stays where it is. Where the
+seed’s row is in view, the child buds out of it, its seed’s rail lit, and
+moves up into its place in New. A child the pool won’t take buds beside its seed with the reason
 (*rated below the pool*) and fades: the engine dropped it. With your system
 set to reduce motion nothing moves, and the button, the row, and the line
 under New say the same.
 
 When the generation ends, its toast says what joined and what was replaced,
 and **REPLACED · GENERATION 1** at the foot of the pool lists the replaced
-sounds by name. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
+sounds by name. If it replaced a sound of the pair on the table, the pair
+stays where it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line
+reads *Replaced in the pool.* A pick or ANOTHER PAIR deals the next pair. A
+pick on that pair teaches nothing (the sound is gone, so the engine can't
+take it), says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
 has the marks, and [Compare](../bank.md#compare-a-sound-beside-its-seed) shows
 a child beside its seed.
 
