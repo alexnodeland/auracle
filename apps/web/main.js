@@ -8853,6 +8853,11 @@ function bankKeep(list) {
     const at = document.elementFromPoint(bankPointer.x, bankPointer.y);
     if (at && list.contains(at)) anchor = at.closest(".bank-item");
   }
+  // The pointer's row with its actions showing: its new row shows them at
+  // once (`.under`), since a row drawn again would take the approach's delay
+  // to show them, and a ▶ hidden that long takes no focus or click (#458).
+  const acts = anchor?.querySelector(".bi-acts");
+  const under = !!acts && getComputedStyle(acts).visibility === "visible";
   if (!anchor && (inside || active === list)) anchor = list.querySelector(".bank-item.kbd") || (inside ? active.closest(".bank-item") : null);
   const anchorAt = keyOf(anchor);
   const was = anchor ? anchor.getBoundingClientRect().top : 0;
@@ -8865,6 +8870,10 @@ function bankKeep(list) {
   return () => {
     const row = anchorAt && list.querySelector(anchorAt);
     if (row) list.scrollTop = keepUnder(was, row.getBoundingClientRect().top, list.scrollTop, list.scrollHeight - list.clientHeight);
+    if (row && under && bankPointer && row.contains(document.elementFromPoint(bankPointer.x, bankPointer.y))) {
+      row.classList.add("under");
+      row.addEventListener("pointerleave", () => row.classList.remove("under"), { once: true });
+    }
     if (!focusAt || list.contains(document.activeElement)) return;
     const back = list.querySelector(focusAt);
     const to = back && button ? back.querySelector(button) || back : back;
