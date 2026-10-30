@@ -8085,7 +8085,11 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* PATCH: the head stacked (the cap, the name, what it is made of, then
      the acts), and the well the rest of the screen: a tapped module opens
      its sheet (patch.js), and two fingers zoom the rack. */
-  #view-patch { padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+  #view-patch { padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); overflow-y: auto; }
+  /* The well keeps room for the rack and its foot; past that the level
+     scrolls (a shorter screen, larger text) rather than cutting the foot. */
+  #view-patch .play-body { min-height: 200px; }
+  body.keys-open #view-patch .play-body { min-height: 120px; }
   .pt-head {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "cap next" "title title" "sub sub" "acts acts" "edit edit";
@@ -8175,6 +8179,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
      up): measured in Chromium at 360 x 640, `pan-down` let an upward finger
      scroll the column and stopped a downward one. */
   #view-evolve section[aria-label^="Sound "] { touch-action: pan-x pan-up; }
+}
+
 /* ---- a phone and a tablet, polished (#134) ----
    Each level is one screen, as an app's view is: what it is for (the
    knobs, the pair and PICK, the rack, the map) fits without the page
@@ -8206,7 +8212,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 @media (max-width: 700px) and (min-height: 501px) {
   /* PERFORM: the name, the well a third of the screen, then the controls,
      which scroll in their own column when there are more than fit. */
-  .view.perform { overflow: hidden; padding: var(--s2) var(--s3) 0; }
+  /* Each level fits; where it cannot (a shorter phone, larger text) it
+     scrolls rather than cutting what is under the fold. */
+  .view.perform { overflow-y: auto; padding: var(--s2) var(--s3) 0; }
   .pf-grid { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: var(--s3); }
   .pf-left { flex: none; display: flex; flex-direction: column; gap: var(--s2); }
   .pf-right { flex: 1 1 0; }
@@ -8219,16 +8227,15 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-cap-row { min-height: 0; }
   /* The row keeps its height (the moved bar's, shown or not), so the
      controls under it never move under a finger when the sound leaves
-     home; its word goes. */
-  .pf-cap { display: none; }
+     home. */
   .pf-name { font-size: var(--t-title); }
-  .pf-well { height: clamp(140px, 25dvh, 300px); min-height: 0; }
+  .pf-well { height: clamp(120px, 22dvh, 300px); min-height: 0; }
   .pf-right { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(var(--s7) + var(--s5)); gap: var(--s3); }
   .pf-k-ends, .pf-k-sub { white-space: nowrap; letter-spacing: 0; }
 
   /* EVOLVE: the pair fills what the words and the map leave, PLAY and PICK
      always on the screen. */
-  #view-evolve { overflow: hidden; padding: var(--s2) var(--s3) var(--s2); gap: var(--s2); }
+  #view-evolve { overflow-y: auto; padding: var(--s2) var(--s3) var(--s2); gap: var(--s2); }
   .ev-head { gap: var(--s2); }
   .duel-row { flex: 1 1 0; min-height: 0; }
   .duel-card { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
@@ -8262,19 +8269,18 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 
 /* One screen a level, a phone on its side. */
 @media (max-height: 500px) and (max-width: 999px) {
-  .view.perform { overflow: hidden; padding-bottom: 0; }
+  .view.perform { overflow-y: auto; padding-bottom: 0; }
   .pf-grid { flex: 1 1 0; min-height: 0; }
   .pf-left { grid-template-rows: auto minmax(0, 1fr); }
   .pf-cap-row { min-height: 0; }
   /* The row keeps its height (the moved bar's, shown or not), so the
      controls under it never move under a finger when the sound leaves
-     home; its word goes. */
-  .pf-cap { display: none; }
+     home. */
   .pf-name { font-size: var(--t-title); }
   .pf-well { min-height: 0; }
   .pf-right { overflow-y: auto; overscroll-behavior: contain; justify-content: flex-start; padding-bottom: calc(var(--s7) + var(--s5)); }
 
-  #view-evolve { overflow: hidden; padding-bottom: var(--s2); gap: var(--s2); }
+  #view-evolve { overflow-y: auto; padding-bottom: var(--s2); gap: var(--s2); }
   .ev-map { height: 56px; }
   .duel-row { flex: 1 1 0; min-height: 0; }
   .duel-card { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
@@ -8297,7 +8303,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 
 /* A touch tablet, and a phone on its side: the cross's stops a finger's
    size, and the levels give it the room a desktop's has. */
-@media (pointer: coarse) and (min-width: 701px) and (max-width: 1080px) {
+@media (pointer: coarse) and (min-width: 701px), (pointer: coarse) and (max-height: 500px) {
   .rail-stop, .rail-stop.aside, .rail-keys { width: 44px; height: 44px; }
   .rail-line { height: 12px; }
 }

@@ -194,8 +194,9 @@ On a phone held upright:
 - Each level is one screen, as an app's view is: what it is for (PERFORM's
   controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight
   without a scroll, and where there is more than fits it scrolls inside its
-  own panel (PERFORM's controls, LEARNING's room), never the page. Nothing
-  scrolls sideways.
+  own panel (PERFORM's controls, LEARNING's room). On a smaller phone, or
+  with larger text, a level that cannot fit scrolls rather than cutting
+  anything off. Nothing scrolls sideways.
 - Every button, tab and field is at least 44 px each way, a finger's size
   (what is drawn on the rack at its zoom is the exception: a tapped module
   opens its settings in a sheet), and the octave's two keys are arrows (a
@@ -205,6 +206,9 @@ On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.
 Each level is one screen there too, LEARNING's map beside what it weighs and
 its forecasts. On any touch screen the levels' stops are a finger's size.
+
+On a phone, upright or on its side, a toast appears at the top of the
+screen under the menu bar, clear of each level's controls.
 
 ## Hit targets
 

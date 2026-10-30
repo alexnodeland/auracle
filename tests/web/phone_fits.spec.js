@@ -9,7 +9,8 @@
 //   not scroll: where there is more than fits it scrolls inside its own
 //   panel (PERFORM's controls, LEARNING's room, the bank's list).
 // - What the level is for is on the screen without a scroll, above the bar
-//   along the bottom: PERFORM's first control, EVOLVE's PLAY and PICK for
+//   along the bottom: PERFORM's controls (every one of them clear of a toast;
+//   the first in sight), EVOLVE's PLAY and PICK for
 //   both sounds, PATCH's ⚡ and ADD, TASTE's map, LEARNING's map.
 // - Every button, field and tab a finger can reach there (not covered by
 //   anything, on the screen) is at least 44 × 44 px; the same with the bank's
@@ -21,10 +22,20 @@
 //
 // - The same of PERFORM's controls' column scrolled to its end (the hood,
 //   WANDER and the pads).
+// - Nothing in a level is out of reach: every control in it is on the
+//   screen, or inside something that scrolls to it.
+// - On a smaller phone (568 × 320, 667 × 375 on their sides) and on a
+//   390 × 844 phone zoomed to 125% for larger text (which lays the page out
+//   in 312 × 675 CSS pixels: the type tokens are pixels), a level that cannot fit
+//   scrolls instead of cutting: nothing scrolls sideways, nothing is out of
+//   reach, and what a finger reaches is still its size.
 //
-// What it does not claim: that a toast or the guide pill never covers a
-// control for the seconds it is up (a covered control is skipped, as a
-// finger could not press it either; so is one off the screen), or anything at a tablet's size
+// - A toast stands at the top of the screen, under the menu bar, and covers
+//   none of a level's primary controls.
+//
+// What it does not claim: that a toast never covers some other control
+// for the seconds it is up, or that the guide pill never does (a covered
+// control is skipped, as a finger could not press it either), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
 
@@ -41,16 +52,39 @@ const PRIMARY = {
 /** What on the screen a finger cannot use: a page or a level that scrolls,
  *  a primary control out of sight, a target under 44 px, a label one word
  *  to a line. Empty when nothing. */
-const MISFITS = ({ primary }) => {
+const MISFITS = ({ primary, fits = true }) => {
   const out = [];
   const doc = document.documentElement;
-  if (doc.scrollHeight > innerHeight + 1) out.push(`the page scrolls: ${doc.scrollHeight} in ${innerHeight}`);
+  if (fits && doc.scrollHeight > innerHeight + 1) out.push(`the page scrolls: ${doc.scrollHeight} in ${innerHeight}`);
   if (doc.scrollWidth > innerWidth + 1) out.push(`the page scrolls sideways: ${doc.scrollWidth} in ${innerWidth}`);
   const view = document.querySelector("section.view.on");
-  if (view.scrollHeight > view.clientHeight + 1) out.push(`${view.id} scrolls: ${view.scrollHeight} in ${view.clientHeight}`);
+  if (fits && view.scrollHeight > view.clientHeight + 1) out.push(`${view.id} scrolls: ${view.scrollHeight} in ${view.clientHeight}`);
   // The bar along the bottom, when the levels are one (upright).
   const rail = document.getElementById("rail").getBoundingClientRect();
   const floor = rail.width > innerWidth / 2 ? rail.top : innerHeight;
+  // Out of reach: a control in the level off the screen (or under the bar)
+  // with nothing between it and the level that scrolls to it.
+  const scrolls = (e) => {
+    for (let a = e.parentElement; a && a !== view.parentElement; a = a.parentElement) {
+      const oy = getComputedStyle(a).overflowY;
+      if ((oy === "auto" || oy === "scroll") && a.scrollHeight > a.clientHeight + 1) return true;
+    }
+    return false;
+  };
+  for (const e of view.querySelectorAll("button, [role=tab], input:not([type=hidden]), select")) {
+    const r = e.getBoundingClientRect();
+    if (!r.width || !r.height || e.closest("svg, .hidden, [hidden], #rack-play")) continue;
+    const inSight = r.top >= 0 && r.bottom <= floor + 1 && r.left >= 0 && r.right <= innerWidth + 1;
+    if (!inSight && !scrolls(e)) out.push(`${e.id ? "#" + e.id : "." + [...e.classList].join(".")} is out of reach at ${Math.round(r.top)}–${Math.round(r.bottom)}`);
+  }
+  // A toast stands at the top, under the menu bar, over none of these.
+  const toasts = [...document.querySelectorAll("#toasts .toast")].map((t) => t.getBoundingClientRect()).filter((t) => t.width);
+  for (const sel of primary) {
+    for (const p of view.querySelectorAll(sel)) {
+      const r = p.getBoundingClientRect();
+      if (toasts.some((t) => t.bottom > r.top && t.top < r.bottom && t.right > r.left && t.left < r.right)) out.push(`a toast covers ${sel}`);
+    }
+  }
   for (const sel of primary) {
     const e = view.querySelector(sel);
     const r = e && e.getBoundingClientRect();
@@ -110,7 +144,8 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
       await page.locator("#bank-btn").tap();
       await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
       await expect.poll(() => page.evaluate(MISFITS, { primary: [] }), "what does not fit with the bank up").toEqual([]);
-      await page.keyboard.press("Escape");
+      // Put away as a finger does: a tap on the scrim beside the sheet.
+      await page.locator(".sheet-scrim").tap({ position: { x: 8, y: 8 } });
       await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
       await page.locator("#keys-toggle").tap();
       await expect(page.locator("#keybar")).toBeVisible();
@@ -118,3 +153,31 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
     });
   });
 }
+
+/** What is lost at a level that cannot fit, once there: nothing out of
+ *  reach, and what a finger reaches its size (a scroll is allowed). */
+async function lostAt(page, level) {
+  await goLevel(page, level);
+  await landed(page);
+  return () => page.evaluate(MISFITS, { primary: [], fits: false });
+}
+
+for (const [width, height] of [[568, 320], [667, 375]]) {
+  test.describe(`a smaller phone on its side, ${width} × ${height}`, () => {
+    test.use({ ...PHONE, viewport: { width, height } });
+
+    test(`a level that cannot fit ${width} × ${height} scrolls, and nothing in it is out of reach`, async ({ page, app }) => {
+      await app.boot();
+      for (const level of LEVELS) await expect.poll(await lostAt(page, level), `what is lost at ${level}`).toEqual([]);
+    });
+  });
+}
+
+test.describe("a phone with larger text, 390 × 844 at 125% (312 × 675)", () => {
+  test.use({ ...PHONE, viewport: { width: 312, height: 675 } });
+
+  test("with the text at 125% a level scrolls, and nothing in it is out of reach", async ({ page, app }) => {
+    await app.boot();
+    for (const level of LEVELS) await expect.poll(await lostAt(page, level), `what is lost at ${level}`).toEqual([]);
+  });
+});
