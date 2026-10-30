@@ -8307,3 +8307,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .rail-stop, .rail-stop.aside, .rail-keys { width: 44px; height: 44px; }
   .rail-line { height: 12px; }
 }
+
+/* Narrower than a 360 px phone (or larger text): PATCH's acts take a second
+   line rather than one of them being squeezed out of sight. */
+@media (max-width: 359px) and (min-height: 501px) {
+  .pt-headacts { flex-wrap: wrap; row-gap: var(--s1); }
+}

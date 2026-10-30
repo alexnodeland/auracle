@@ -126,6 +126,9 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
 
     test(`each level is one screen at ${width} × ${height}, its primary controls in sight and a finger's size`, async ({ page, app }) => {
       await app.boot();
+      // The boot's toast (the pool still filling) is up over PERFORM, the
+      // level the app opens at, when the first check runs.
+      await expect(page.locator("#toasts .toast").first()).toBeVisible();
       for (const level of LEVELS) {
         await goLevel(page, level);
         await landed(page);

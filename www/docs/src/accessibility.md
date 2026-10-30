@@ -197,7 +197,8 @@ On a phone held upright:
   own panel (PERFORM's controls, LEARNING's room). On a smaller phone, or
   with larger text, a level that cannot fit scrolls rather than cutting
   anything off. Nothing scrolls sideways.
-- Every button, tab and field is at least 44 px each way, a finger's size
+- In the levels, the bank and the keys, every button, tab and field is at
+  least 44 px each way, a finger's size
   (what is drawn on the rack at its zoom is the exception: a tapped module
   opens its settings in a sheet), and the octave's two keys are arrows (a
   phone has no Z and X to print).
