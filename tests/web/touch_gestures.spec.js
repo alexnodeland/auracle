@@ -15,8 +15,10 @@
 //   hold's click opens nothing (on the map, a sound a tap on its dot opens). A finger
 //   that moves first is an ordinary touch: no model view. A module on
 //   PATCH's rack keeps its own long press (its menu) and is not held here.
-// - The swipe up picks on a phone and on a small one (360 × 640), where the
-//   level's column scrolls.
+// - The swipe up picks on a small phone (360 × 640) where the level's
+//   column scrolls. The level is one screen there (phone_fits.spec.js), and
+//   scrolls only where it cannot fit; the test makes the pair taller than
+//   the screen to have a column that scrolls.
 //
 // In Chromium the touches are the browser's own (CDP's
 // `Input.dispatchTouchEvent`), so pointer events, touch events and the click
@@ -150,7 +152,9 @@ test.describe("a small phone, 360 × 640", () => {
     await toEvolve(page, app);
     const cdp = await cdpOf(page);
     const col = page.locator("#view-evolve");
-    // The column runs past the screen here, and starts part way down.
+    // A pair taller than the screen, as on a phone too short for the level:
+    // the column runs past the screen, and starts part way down.
+    await page.addStyleTag({ content: "#view-evolve .duel-row { min-height: 900px; }" });
     await expect.poll(() => col.evaluate((c) => c.scrollHeight - c.clientHeight)).toBeGreaterThan(40);
     const half = (c) => { c.scrollTop = Math.round((c.scrollHeight - c.clientHeight) / 2); return c.scrollTop; };
     // A swipe up is the card's: picked, and the column stays put.

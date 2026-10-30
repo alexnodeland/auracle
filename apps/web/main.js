@@ -174,6 +174,7 @@ const [
   { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
+  { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
 ] = await Promise.all([
   import(`./taste-geom.js?v=${BUILD}`), import(`./words.js?v=${BUILD}`),
   import(`./patch.js?v=${BUILD}`), import(`./taste.js?v=${BUILD}`),
@@ -185,6 +186,7 @@ const [
   import(`./params.js?v=${BUILD}`), import(`./warm.js?v=${BUILD}`), import(`./strain.js?v=${BUILD}`),
   import(`./bank-find.js?v=${BUILD}`), import(`./marks.js?v=${BUILD}`),
   import(`./hand.js?v=${BUILD}`), import(`./refit.js?v=${BUILD}`),
+  import(`./reach.js?v=${BUILD}`),
 ]);
 const { directionsScale, pullMark } = geom;
 const {
@@ -4841,6 +4843,14 @@ function dropToast(el) {
 // the lane's edge.
 const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#pt-foot", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
+// On a phone (#134) the lane is at the top, under the menu bar, over the
+// sound's picture: at the bottom it stood over the guide pill, and above
+// that over PERFORM's controls and EVOLVE's picks. On one on its side the
+// cross's stops, at the right edge, are columns. The stylesheet's own
+// queries for those screens.
+const PHONE_SCREEN = window.matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)");
+const SHORT_SCREEN = window.matchMedia("(max-height: 500px) and (max-width: 999px)");
+const RAIL_COLUMNS = ["#rail .rail-stop", "#rail .rail-keys"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
  *  Rule 2 (toasts.js): the reserved rects are measured, not assumed. */
@@ -4860,6 +4870,22 @@ function positionToastLane() {
   // Anchored by its bottom, so it grows upward as toasts stack and does not
   // jump when one leaves.
   const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
+  if (PHONE_SCREEN.matches) {
+    // Anchored by its top under the menu bar, so it grows down as toasts
+    // stack; clear only of the cross's stops on a phone on its side.
+    const menubar = document.querySelector(".menubar");
+    holder.style.bottom = "auto";
+    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().bottom : 0) + 8)}px`;
+    holder.style.right = "12px";
+    for (const el of SHORT_SCREEN.matches ? document.querySelectorAll(RAIL_COLUMNS.join(", ")) : []) {
+      const r = el.getBoundingClientRect();
+      const lane = holder.getBoundingClientRect();
+      if (r.width && lane.bottom > r.top && lane.top < r.bottom && lane.right > r.left && lane.left < r.right) {
+        holder.style.right = `${Math.round(window.innerWidth - r.left + 8)}px`;
+      }
+    }
+    return;
+  }
   holder.style.top = "auto";
   holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
   holder.style.right = "16px";
@@ -15321,6 +15347,9 @@ $("rack-scroll").addEventListener("wheel", (ev) => {
 // otherwise claim the same press — the modifier decides, not the target.
 $("rack-scroll").addEventListener("pointerdown", (ev) => {
   if (!wb.rack) return;
+  // A finger beside a lit socket means the socket (reachForSocket): neither
+  // a pan nor, held, the module's menu.
+  if (reachForSocket(ev)) return;
   // Whatever this press turns out to be, it is a press on the canvas — and the
   // camera gestures below call `preventDefault`, which suppresses the implicit
   // blur a click would otherwise perform. So the node bank's search field kept
@@ -21961,10 +21990,65 @@ function endWireDrag() {
   wire = null;
 }
 
+/** The lit socket a finger at (x, y) means, or null (#134; the rule is
+ *  reach.js's `socketMeant`): the lit sockets on the rack's visible part,
+ *  measured where they are drawn now. */
+function litSocketNear(x, y, reach) {
+  const view = $("rack-scroll").getBoundingClientRect();
+  const cands = [];
+  for (const j of $("rack-svg").querySelectorAll(".jack.legal")) {
+    const r = (j.querySelector(".j-nut") || j).getBoundingClientRect();
+    if (!r.width) continue;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (cx < view.left || cx > view.right || cy < view.top || cy > view.bottom) continue;
+    cands.push({ x: cx, y: cy, j });
+  }
+  return socketMeant(cands, x, y, reach)?.j || null;
+}
+/** A finger's press on bare panel that means a lit socket is handed to it
+ *  (as a press on the socket itself), before the rack's pan and its long
+ *  press see it; the click that follows at the same place is the socket's
+ *  too, and the next press disarms that. True when it was handed over.
+ *  Called first by `#rack-scroll`'s pan handler (which, in a cable's
+ *  placing, would otherwise take the press for a pan). */
+const PLACE_CONTROLS = "[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl, .out-play";
+function reachForSocket(ev) {
+  if (ev.pointerType !== "touch" || ev.slopped || ev.button !== 0) return false;
+  if (!armed && !connectPick) return false;
+  if (ev.target?.closest?.(PLACE_CONTROLS)) return false;
+  const jack = litSocketNear(ev.clientX, ev.clientY, REACH_PRESS_PX);
+  if (!jack) return false;
+  ev.stopImmediatePropagation();
+  ev.preventDefault();
+  const handed = new PointerEvent("pointerdown", ev);
+  handed.slopped = true;
+  jack.dispatchEvent(handed);
+  const [px, py] = [ev.clientX, ev.clientY];
+  const eat = (c) => {
+    if (Math.hypot(c.clientX - px, c.clientY - py) > 10) return;
+    c.stopPropagation();
+    c.preventDefault();
+    disarm();
+  };
+  const disarm = () => {
+    window.removeEventListener("click", eat, true);
+    window.removeEventListener("pointerdown", disarm, true);
+  };
+  window.addEventListener("click", eat, true);
+  window.addEventListener("pointerdown", disarm, true);
+  setTimeout(disarm, 800);
+  return true;
+}
+
 function onWireUp(ev) {
   if (!wire) return endWireDrag();
   const el = document.elementFromPoint(ev.clientX, ev.clientY);
-  const jack = el && el.closest ? el.closest(".jack") : null;
+  // A cable let go by a finger close beside one lit socket, on bare panel,
+  // lands in it; on a control, or between two, or away from any, it does
+  // not, as before.
+  const onSocket = el && el.closest ? el.closest(".jack") : null;
+  const jack = onSocket || (ev.pointerType === "touch" && !el?.closest?.(PLACE_CONTROLS) ? litSocketNear(ev.clientX, ev.clientY, REACH_DROP_PX) : null);
   const w = wire;
   endWireDrag();
 
