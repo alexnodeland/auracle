@@ -18,10 +18,19 @@
 //   is not counted (its sockets, and the ▶ on the face at OUT): a tapped
 //   module opens its sheet, whose settings are (patch_touch.spec.js), and
 //   the sound in hand plays from the menu bar's ▶.
-// - No label with two or more words is set one word to a line.
+// - No label with two or more words is set one word to a line, and a label
+//   or a line of status (three to twelve words) is on one line or on two of
+//   a length (the shorter at least 60% of the longer), never a word or two
+//   left alone; each stop's name in the bar along the bottom is whole, and
+//   the menu bar holds what it shows.
 //
 // - The same of PERFORM's controls' column scrolled to its end (the hood,
-//   WANDER and the pads).
+//   WANDER and the pads), and with the well in XY.
+// - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
+//   middle each way, and a tap on bare panel beside a lit socket (a module
+//   in hand) places the module there, opening no module's sheet.
+// - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows are
+//   44 px, each on the screen or in the hood's own scroll.
 // - Nothing in a level is out of reach: every control in it is on the
 //   screen, or inside something that scrolls to it.
 // - On a smaller phone (568 × 320, 667 × 375 on their sides) and on a
@@ -38,6 +47,7 @@
 // control is skipped, as a finger could not press it either), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
+const { rackAtRest } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
 const LEVELS = ["perform", "patch", "evolve", "taste", "learning"];
@@ -114,9 +124,25 @@ const MISFITS = ({ primary, fits = true }) => {
     if (words < 2) continue;
     const range = document.createRange();
     range.selectNodeContents(e);
-    const lines = new Set([...range.getClientRects()].filter((r) => r.width > 1).map((r) => Math.round(r.bottom / 4))).size;
+    // Each line's width: a line is the rects that share a bottom.
+    const widths = new Map();
+    for (const r of range.getClientRects()) if (r.width > 1) widths.set(Math.round(r.bottom / 4), (widths.get(Math.round(r.bottom / 4)) || 0) + r.width);
+    const lines = widths.size;
     if (lines >= words) out.push(`${name(e)} is ${words} words on ${lines} lines`);
+    // A label or a line of status (up to twelve words; a paragraph is
+    // prose): on one line, or two of a length.
+    else if (words >= 3 && words <= 6 && lines > 2) out.push(`${name(e)} is ${words} words on ${lines} lines`);
+    else if (words >= 3 && words <= 12 && lines === 2) {
+      const [a, b] = [...widths.values()];
+      if (Math.min(a, b) < 0.6 * Math.max(a, b) && Math.min(a, b) < e.clientWidth * 0.5) out.push(`${name(e)} is two lines of ${Math.round(a)} and ${Math.round(b)} px`);
+    }
   }
+  // Each stop's name in the bar along the bottom is whole.
+  for (const rl of document.querySelectorAll("#rail .rl")) {
+    if (rl.offsetParent && rl.scrollWidth > rl.clientWidth + 1) out.push(`"${rl.textContent}" is cut: ${rl.scrollWidth} in ${rl.clientWidth}`);
+  }
+  const bar = document.querySelector(".menubar");
+  if (bar.scrollWidth > bar.clientWidth + 1) out.push(`the menu bar holds ${bar.scrollWidth} in ${bar.clientWidth}`);
   return out;
 };
 
@@ -138,6 +164,12 @@ for (const [width, height] of [[360, 640], [390, 844], [844, 390]]) {
       await landed(page);
       await page.locator(".pf-right").evaluate((col) => { col.scrollTop = col.scrollHeight; });
       await expect.poll(() => page.evaluate(MISFITS, { primary: [".pf-pads"] }), "what does not fit at the controls' end").toEqual([]);
+      // XY: each control's line says what the pad turns ("turns toward
+      // bloom only"), on one line or two of a length.
+      await page.locator(".pf-right").evaluate((col) => { col.scrollTop = 0; });
+      await page.locator(".pf-xy-btn").tap();
+      await expect(page.locator(".pf-xy")).toBeVisible();
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [] }), "what does not fit in XY").toEqual([]);
     });
 
     test(`the bank's sheet and the keys' drawer are a finger's size at ${width} × ${height}`, async ({ page, app }) => {
@@ -184,3 +216,74 @@ test.describe("a phone with larger text, 390 × 844 at 125% (312 × 675)", () =>
     for (const level of LEVELS) await expect.poll(await lostAt(page, level), `what is lost at ${level}`).toEqual([]);
   });
 });
+
+test.describe("PATCH under a finger, 390 × 844", () => {
+  test.use({ ...PHONE, viewport: { width: 390, height: 844 } });
+
+  test("the face at OUT answers a finger 44 px across, and a tap beside a lit socket places the module in hand there", async ({ page, app }) => {
+    await app.boot();
+    // The bank is a sheet here: up first, for the preset.
+    await goLevel(page, "patch");
+    await landed(page);
+    await page.locator("#bank-btn").tap();
+    await page.locator("#bank-tab-presets").tap();
+    await page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name").tap();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
+    await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    // The ▶ at OUT: 21 px from its middle each way is still its.
+    const ring = await page.locator("#rack-play").evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
+      return [[cx - 21, cy], [cx + 21, cy], [cx, cy - 21], [cx, cy + 21]]
+        .filter(([x, y]) => !document.elementFromPoint(x, y)?.closest("#rack-play"))
+        .map(([x, y]) => `${Math.round(x)},${Math.round(y)}: ${document.elementFromPoint(x, y)?.className?.baseVal ?? document.elementFromPoint(x, y)?.className}`);
+    });
+    expect(ring, "points 21 px from the ▶'s middle that are not its").toEqual([]);
+    // A module in hand: the catalog folds to its head, and the sockets light.
+    await page.locator("#pt-add").tap();
+    await page.locator('#nb-groups .nb-item[data-kind="distortion"]').tap();
+    await expect(page.locator("#rack-svg .jack.legal[data-childkey]").first()).toBeVisible();
+    const before = await page.locator('#rack-svg g.mod-group[data-kind="distortion"]').count();
+    // A point of bare panel 14 to 20 px from a lit socket's middle, nearer
+    // to it than to any other lit one.
+    const at = await page.evaluate(() => {
+      const lit = [...document.querySelectorAll("#rack-svg .jack.legal")].map((j) => {
+        const r = j.querySelector(".j-nut").getBoundingClientRect();
+        return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
+      for (const s of lit.filter((l) => l.j.matches("[data-childkey]"))) {
+        for (let a = 0; a < 2 * Math.PI; a += Math.PI / 8) {
+          for (const d of [14, 17, 20]) {
+            const x = s.x + d * Math.cos(a);
+            const y = s.y + d * Math.sin(a);
+            const t = document.elementFromPoint(x, y);
+            if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl")) continue;
+            if (lit.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > d + 2)) return { x, y };
+          }
+        }
+      }
+      return null;
+    });
+    expect(at, "a point of bare panel beside a lit socket").not.toBeNull();
+    await page.touchscreen.tap(at.x, at.y);
+    await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(before + 1, { timeout }), { ms: 30_000 });
+    await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+  });
+});
+
+for (const [width, height] of [[768, 1024], [1024, 768]]) {
+  test.describe(`a touch tablet, ${width} × ${height}`, () => {
+    test.use({ hasTouch: true, viewport: { width, height } });
+
+    test(`UNDER THE HOOD's rows are a finger's size at ${width} × ${height}, every one in reach`, async ({ page, app }) => {
+      await app.boot();
+      await goLevel(page, "perform");
+      await landed(page);
+      await expect(page.locator(".pf-hood-row").first()).toBeVisible();
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], fits: false })).toEqual([]);
+      const rows = await page.locator(".pf-hood-row").evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
+      expect(rows.filter((h) => h < 44), "rows under 44 px").toEqual([]);
+    });
+  });
+}

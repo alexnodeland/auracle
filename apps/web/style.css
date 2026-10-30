@@ -8139,7 +8139,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .brand .word { display: none; }
 }
 @media (max-width: 380px) and (min-height: 501px) {
-  .rail { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  /* Each column at least its name's width, the rest shared: LEARNING is the
+     longest, and in six equal columns at 312 px it was cut. */
+  .rail { grid-template-columns: repeat(6, minmax(min-content, 1fr)); }
   .rail .rl { letter-spacing: 0; }
 }
 
@@ -8231,7 +8233,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-name { font-size: var(--t-title); }
   .pf-well { height: clamp(120px, 22dvh, 300px); min-height: 0; }
   .pf-right { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(var(--s7) + var(--s5)); gap: var(--s3); }
-  .pf-k-ends, .pf-k-sub { white-space: nowrap; letter-spacing: 0; }
+  .pf-k-ends, .pf-k-sub { letter-spacing: 0; }
 
   /* EVOLVE: the pair fills what the words and the map leave, PLAY and PICK
      always on the screen. */
@@ -8312,4 +8314,49 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
    line rather than one of them being squeezed out of sight. */
 @media (max-width: 359px) and (min-height: 501px) {
   .pt-headacts { flex-wrap: wrap; row-gap: var(--s1); }
+}
+
+/* The sound in hand's pill holds its ▶ at a finger's size, and on the
+   narrowest phones the menu bar packs closer so the pill keeps its face
+   and the count beside it is not squeezed (#134). */
+@media (pointer: coarse) {
+  .inhand { height: auto; min-height: 46px; padding-top: 0; padding-bottom: 0; }
+}
+@media (max-width: 340px) {
+  .menubar { gap: var(--s1); padding-left: var(--s2); padding-right: var(--s2); }
+  .inhand { flex: none; gap: var(--s1); padding-left: 2px; padding-right: var(--s1); }
+}
+
+/* A control's two ends, its line and EVOLVE's rule for the pair: on one
+   line where they fit, else two lines of a length, never a word or two
+   stood alone (#134). */
+.pf-k-ends, .pf-k-sub, .duel-rule { text-wrap: balance; }
+/* On a phone, a line of status or guidance that takes two lines takes two
+   of a length too. */
+@media (max-width: 999px) {
+  .pf-status, .md-fcnote, #teach-copy, .md-none, .lv-sub, .lv-title { text-wrap: balance; }
+}
+@media (max-width: 340px) {
+  .pf-ctlhead { flex-wrap: wrap; row-gap: 0; }
+}
+
+/* UNDER THE HOOD on a touch screen: every row a finger's size, the hood
+   scrolling on its own to the rest, three rows in sight (#134). */
+@media (pointer: coarse) {
+  .pf-hood-row { min-height: 44px; }
+  .pf-hood { max-height: calc(2em + 3 * 46px); }
+}
+
+/* The face at OUT is drawn at the rack's zoom, 14 px across on a phone:
+   on a touch screen its ▶ answers a finger's 44 px around its middle,
+   without the face growing (#134). */
+@media (pointer: coarse) {
+  .out-play::before {
+    content: "";
+    position: absolute;
+    top: min(0px, calc((100% - 44px) / 2));
+    bottom: min(0px, calc((100% - 44px) / 2));
+    left: min(0px, calc((100% - 44px) / 2));
+    right: min(0px, calc((100% - 44px) / 2));
+  }
 }

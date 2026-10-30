@@ -217,6 +217,13 @@ Hit areas are measured, not eyeballed. A knob’s whole face is grabbable,
 including under its ticks, track, and value arc, and a jack answers across its
 whole ring rather than only where its outline is drawn.
 
+On a touch screen, where the rack is drawn small, the ▶ on the face at OUT
+answers a finger 44 px across, and while sockets are lit (a module in hand,
+a cable being placed) a tap or a drop on bare panel within 22 px of one goes
+to the nearest. A socket that is not lit keeps its drawn size there: a wider
+reach would cover the modules, and a tap on a module opens its settings. UNDER THE HOOD's rows are 44 px too, the hood scrolling on its own
+to the ones below its first three.
+
 ## Color and contrast
 
 Text meets **4.5:1** against its background. The palette has two tiers for

@@ -22,3 +22,13 @@
   edge. Now it stands over the sound's picture and clear of the levels.
 - On a phone, the octave's keys show ‹ and › instead of Z and X, which a
   phone has no keys for.
+- **The rack takes a finger's tap where it is drawn small.** On a touch
+  screen the ▶ on the face at OUT answers a finger 44 px across, and with a
+  module in hand a tap beside a lit socket places it there (the nearest one
+  within 22 px), as does a cable let go beside one.
+- **UNDER THE HOOD's rows are a finger's size on a tablet**, the hood
+  scrolling to the rest.
+- **On the narrowest phones (312 px)** every level's name in the bar along
+  the bottom is whole (LEARNING was cut), and the sound in hand keeps its
+  picture beside its ▶. Short captions that take two lines take two of a
+  length, never a word or two left alone.
