@@ -865,6 +865,10 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 }
 .bank-head {
   display: grid;
+  /* The bank's width, whatever a field's own width would ask (a finger's
+     16 px find field asked 20 characters of it, and pushed the tabs past
+     the bank's edge). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s3);
   padding: var(--s4) var(--s4) var(--s3);
 }
@@ -8078,6 +8082,14 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pt-foot { flex-wrap: wrap; row-gap: var(--s1); }
   .pt-foot .pt-read { order: -1; flex: 1 0 100%; }
   .pt-foot .pt-read:empty { display: none; }
+
+  /* The catalog: the well's width. With a module in hand it folds to its
+     head and its status line at the well's foot, so the lit sockets above
+     can be tapped (a socket chosen first keeps the list: a module is still
+     to be chosen). */
+  .nodebank { left: var(--s2); right: var(--s2); top: var(--s2); bottom: var(--s2); width: auto; }
+  .nodebank:has(.nb-item.armed) { top: auto; }
+  .nodebank:has(.nb-item.armed) :is(.nb-search, .nb-aside, .nb-inpatch, #nb-groups, .nb-legend, .nb-empty, .nb-none) { display: none; }
 
   /* LEARNING's room runs down the screen and scrolls, each panel at its
      own height. */

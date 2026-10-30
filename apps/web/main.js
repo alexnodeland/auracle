@@ -19409,6 +19409,10 @@ function catalogReserve() {
   if (!nb || nb.hidden) return 0;
   const r = nb.getBoundingClientRect();
   const fr = $("rack-frame").getBoundingClientRect();
+  // On a phone the catalog is the well's width, over the patch rather than
+  // beside it (#134): it keeps no column clear, or the patch would be fitted
+  // into nothing, and folds away while a module is in hand.
+  if (r.width > fr.width / 2) return 0;
   return r.width ? r.right - fr.left + 8 : 0;
 }
 
