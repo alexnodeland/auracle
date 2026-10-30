@@ -4962,14 +4962,12 @@ function applyViews(next) {
     }
   }
   // A pair that just lost a side to the pool is a question about a patch that
-  // no longer exists: TEACH could only print "…" for its name, and a vote on
-  // it is refused ("that patch is gone"). The next pair goes up the way a
-  // pick puts it up (`dealAnother`): the pair dealt ahead at once when one
-  // may still be dealt, or else a deal, with the old pair left standing and
-  // its controls inert until the new one lands, so the strip does not blink
-  // out and take the rack's height with it.
+  // no longer exists, and a vote on it is refused ("that patch is gone"). It
+  // is not swapped here: the pair stays where the hand may be reaching for it
+  // (#312, ADR-025), the side that left says so and goes quiet, and the next
+  // pick or ANOTHER PAIR puts up the next pair (`choose`, `anotherPair`).
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
-    dealAnother();
+    markTableGone();
   }
   dealer.check();
   // A table with nothing to deal asks again: the pool may hold two now.
@@ -6998,9 +6996,8 @@ function renderPlayDuel() {
   strip.classList.toggle("hidden", !teachOpen);
   // Said to be on its way, quietly, while the bank row hasn't landed. A bare
   // #20 collides with the bank's own numbering and names nothing, and "▶ A · …"
-  // read as a patch called "…". It is only ever a wait: a pair that loses a
-  // side to the pool is re-dealt (`applyViews`), so no name here is gone for
-  // good.
+  // read as a patch called "…". A side that left the pool while its pair
+  // stood (`markTableGone`) is named as it was, and said to be replaced.
   const side = (el, letter, id) => {
     const face = document.createElement("span");
     el.replaceChildren(`▶ ${letter} · `, face);
@@ -7011,7 +7008,8 @@ function renderPlayDuel() {
     }
     const wait = document.createElement("span");
     wait.className = "pd-wait";
-    wait.textContent = "loading…";
+    const gone = goneIds.has(id);
+    wait.textContent = gone ? `${knownNames.get(id) || "a sound"}, replaced` : "loading…";
     el.append(wait);
   };
   side($("pd-a"), "A", currentDuel[0]);
@@ -7062,6 +7060,7 @@ function requestPairRenders() {
 }
 
 function loadSide(side, id) {
+  $(`duel-${side}`).classList.remove("gone"); // a new side is in the pool
   $(`readout-${side}`).textContent = "…";
   $(`style-${side}`).innerHTML = "";
   clearScope($(`scope-${side}`));
@@ -7532,6 +7531,7 @@ let benchBeforeAudition = null;
 function selectDuelSide(side) {
   if (!currentDuel) return;
   const id = side === "a" ? currentDuel[0] : currentDuel[1];
+  if (goneIds.has(id)) return; // replaced: nothing left to open (`markTableGone`)
   if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
   voicePoolEarly(id); // heard before the cards are redrawn
   setDuelSelection(side);
@@ -7860,6 +7860,29 @@ function retractVote() {
   return true;
 }
 
+/** The sides of the pair on the table that have left the pool. */
+function tableGone() {
+  return currentDuel ? currentDuel.filter((id) => goneIds.has(id)) : [];
+}
+/** A side of the pair on the table left the pool (a generation ended, or a
+ *  preset load or an import made room): its card says so, and its ▶, ⇄ and
+ *  ↓ PATCH go quiet (there is no sound left to play, show or open). Its
+ *  pick stays live: it puts up the next pair (`choose`). */
+function markTableGone() {
+  if (!currentDuel) return;
+  ["a", "b"].forEach((side, i) => {
+    if (!goneIds.has(currentDuel[i])) return;
+    $(`duel-${side}`).classList.add("gone");
+    for (const c of ["play", "flip", "promote"]) $(`${c}-${side}`).disabled = true;
+    const fam = $(`fam-${side}`);
+    if (fam) {
+      fam.textContent = "Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.";
+      fam.title = "";
+    }
+  });
+  renderPlayDuel();
+}
+
 function choose(side) {
   if (dealing) {
     // Deliberately dropped, not queued. A queued click would vote on a pair
@@ -7870,6 +7893,15 @@ function choose(side) {
     return;
   }
   if (!currentDuel) return;
+  // A pair that lost a side to the pool asks nothing the engine can take
+  // (it refuses a vote on a sound it no longer holds): the pick teaches
+  // nothing, says so, and puts up the next pair, as ANOTHER PAIR would.
+  const gone = tableGone();
+  if (gone.length) {
+    note(`${nameOrKnown(gone[0]) || "That sound"} was replaced, so that pick taught nothing. Here is the next pair.`, { replace: "vote" });
+    dealAnother();
+    return;
+  }
   // A second vote inside the first one's window commits it — one pending
   // vote at a time keeps the log ordered. If that was the sixth, its refit
   // goes out once this pick's pair is dealt (the `duel` reply's `settleFit`).

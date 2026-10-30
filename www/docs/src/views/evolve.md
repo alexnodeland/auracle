@@ -197,7 +197,11 @@ under New say the same.
 
 When the generation ends, its toast says what joined and what was replaced,
 and **REPLACED · GENERATION 1** at the foot of the pool lists the replaced
-sounds by name. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
+sounds by name. If it replaced a sound of the pair on the table, the pair
+stays where it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line
+reads *Replaced in the pool. A pick or ANOTHER PAIR deals the next pair.* A
+pick on that pair teaches nothing (the sound is gone, so the engine can't
+take it), says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
 has the marks, and [Compare](../bank.md#compare-a-sound-beside-its-seed) shows
 a child beside its seed.
 

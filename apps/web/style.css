@@ -5311,6 +5311,9 @@ input[type="range"]::-moz-range-thumb {
 .duel-card.dealing > :not(.deal-why) { opacity: 0.55; }
 .duel-card.dealing .duel-controls { pointer-events: none; }
 .play-duel.dealing .pd-side { opacity: 0.55; }
+/* A side that left the pool while its pair stood (#312): its face dims, and
+   its card's line says so until the next pick or ANOTHER PAIR. */
+.duel-card.gone .duel-well { opacity: 0.55; }
 /* …and one that is slow to settle says why, over the dimmed scope, at full
    strength: the reason is the one thing on the card that is current. */
 .deal-why {

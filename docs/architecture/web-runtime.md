@@ -1811,6 +1811,17 @@ asked for, so only a cut made while a deal is out brings one back.
 `placePair` is the one place a pair goes up: anything owed to a pair being
 shown belongs there.
 
+A side of the pair on the table that leaves the pool (a generation's end, a
+preset load or an import making room) does not swap the pair: it stays where
+the hand may be reaching for it (#312, ADR-025). `applyViews` marks the side
+(`markTableGone`: `.gone` on its card, its ▶, ⇄ and ↓ PATCH off, its line
+saying so; the TEACH strip names it replaced), and the next pick
+(`choose`, which sends no vote for it: `record_duel` refuses an id the pool
+no longer holds) or ↻ puts up the next pair. A pick held in its undo window
+whose pair loses a side is still refused by the engine when it commits
+(`voteDropped`); keeping it valid would need the engine to hold a sound shown
+in a pair until it is put away.
+
 A deal is refused when it is the pair of the pick held in its undo window,
 and it is judged against the pick held when the pair it was dealt behind
 went up (the dealer's `behind`), not when it lands: the deal asked for ahead
