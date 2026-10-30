@@ -265,6 +265,13 @@ const bankHold = (() => {
 // never comes, so it waits for the release (`renderBank`).
 let bankPointer = null;
 let bankPressed = false;
+// The row drawn again under a resting pointer, its actions shown at once
+// (`.under`, `bankKeep`), until the pointer moves off it or off the list.
+let bankUnder = null;
+const bankUnderEnd = () => {
+  bankUnder?.classList.remove("under");
+  bankUnder = null;
+};
 // A held draw (`bankLater`) whose rest ran out during a press: drawn as it
 // would have been, gliding and budding, once the press ends.
 let bankAfterPress = null;
@@ -284,12 +291,19 @@ let bankAfterPress = null;
   };
   list.addEventListener("pointermove", (e) => {
     bankPointer = { x: e.clientX, y: e.clientY };
+    // Off that row, the browser's own hover holds the truth again.
+    if (bankUnder && !bankUnder.contains(e.target)) bankUnderEnd();
     // No button down: a release this never heard (a context menu takes the
     // mouseup on macOS) ends the press.
     if (e.buttons === 0) up();
   });
   list.addEventListener("pointerenter", (e) => { bankPointer = { x: e.clientX, y: e.clientY }; });
-  list.addEventListener("pointerleave", () => { bankPointer = null; });
+  // After the hold's own (`bankHold`, added first), which lands what waited
+  // as the pointer leaves: a row that draw marked for the pointer is unmarked.
+  list.addEventListener("pointerleave", () => {
+    bankPointer = null;
+    bankUnderEnd();
+  });
   list.addEventListener("pointerdown", () => { bankPressed = true; }, true);
   list.addEventListener("contextmenu", up);
   window.addEventListener("pointerup", up, true);
@@ -8871,8 +8885,8 @@ function bankKeep(list) {
     const row = anchorAt && list.querySelector(anchorAt);
     if (row) list.scrollTop = keepUnder(was, row.getBoundingClientRect().top, list.scrollTop, list.scrollHeight - list.clientHeight);
     if (row && under && bankPointer && row.contains(document.elementFromPoint(bankPointer.x, bankPointer.y))) {
+      bankUnder = row;
       row.classList.add("under");
-      row.addEventListener("pointerleave", () => row.classList.remove("under"), { once: true });
     }
     if (!focusAt || list.contains(document.activeElement)) return;
     const back = list.querySelector(focusAt);

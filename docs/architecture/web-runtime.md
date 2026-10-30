@@ -1750,9 +1750,10 @@ the row under the pointer, or the keyboard's cursor row, where it was on
 screen by scrolling the list (`bankKeep`, `keepUnder`; `overflow-anchor:
 none` keeps the browser from doing it twice), and the focus on the row or
 button that had it. The row under a resting pointer whose actions were
-showing shows them at once (`.under`, until the pointer leaves it): drawn
-new, it would take the approach's delay to show them again, and a hidden ▶
-takes no focus or click meanwhile (#458). A draw of its own drops what waits
+showing shows them at once (`.under`, `bankUnder`, until the pointer moves
+off it or leaves the list, a draw landing as it leaves included): drawn new,
+it would take the approach's delay to show them again, and a hidden ▶ takes
+no focus or click meanwhile (#458). A draw of its own drops what waits
 (`bankHand.drop`).
 None runs between a press on the list and its release (`bankPressed`): it
 runs after the click, a held draw whose rest ran out meanwhile as itself,

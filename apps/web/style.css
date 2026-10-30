@@ -1154,7 +1154,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item.kbd .bi-acts,
 .bank-item.rating .bi-acts { visibility: visible; opacity: 1; }
 /* The actions give the row's end to the word only when they are away. */
-.bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: hidden; }
+.bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: hidden; }
 .bank-item .bi-acts button {
   flex: none;
   width: 24px;
@@ -1270,7 +1270,7 @@ body.model-view .bank-item.seed .bi-pct,
 body.model-view .bank-item.may-go .bi-pct { visibility: hidden; opacity: 0; }
 /* Under the model view the end of a row is the guess's; its actions come
    back under the pointer. */
-body.model-view .bank-item:not(:hover):not(.under):not(.rating) .bi-acts { visibility: hidden; opacity: 0; }
+body.model-view .bank-item:not(:hover, .under):not(.rating) .bi-acts { visibility: hidden; opacity: 0; }
 
 /* A child that has just landed glows once. */
 .bank-item.landed { animation: bank-landed 900ms ease-out; } /* token-exempt: a one-shot glow, held long enough to be seen; a move is 320 ms */
@@ -4249,7 +4249,7 @@ kbd { font-family: var(--font-mono); }
   .bank-item .bi-flag,
   .bank-item .bi-pct,
   .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
-  .bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
+  .bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
   /* The ▶ is on its own line here, so IN POOL keeps the row's end. */
   .preset-item:is(:hover, .under, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
 
