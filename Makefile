@@ -336,7 +336,7 @@ sound:
 ## target/js-cov/web.lcov
 web-check: js-check spec-lint
 	$(JS_COV_MKDIR)
-	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs tests/web/burnin.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 # COVERAGE=1: Node's own coverage of the lines of apps/web that web-check's
 # unit tests and worker-test run (apps/web/tests and the generated pkg/ left
@@ -700,7 +700,7 @@ browser-fast:
 ## the specs of the views its changed sections draw, and for worker.js, the
 ## page or the engine each view's sample (tests/web/changed.mjs --views).
 ## REPEAT=n runs the spec files the branch adds or edits n times each, first,
-## and the rest once (the ship skill's REPEAT=3 before a push)
+## and the rest once (as a PR's Burn-in does in CI, #456: not owed before a push)
 BASE ?= origin/main
 REPEAT ?= 1
 # Two runs when REPEAT is more than 1: the repeat is the burn-in of what the

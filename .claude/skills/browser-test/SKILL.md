@@ -42,7 +42,8 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   `BASE=` to diff against something other than `origin/main`), or name them
   (`npx playwright test patch_ perform_layout.spec.js`). `REPEAT=3` runs the
   spec files the branch adds or edits three times each and the rest once,
-  as the `ship` skill does before a push; `--repeat-each=3` by name. The
+  as the PR's *Burn-in* does in CI (#456), so it is not owed before a push;
+  `--repeat-each=3` by name. The
   full tier is CI's job: about seventy-five minutes in one worker, twelve
   runners wide in the merge queue's run.
 
