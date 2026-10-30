@@ -6,7 +6,7 @@
   tablet held upright and a narrow window each get a layout of their own
   (`shell_phone.spec.js`, #134).
 - **On a phone held upright the levels are the bar along the bottom.** Each
-  stop is named under its icon (LEARNING, TASTE, PERFORM, PATCH, then EVOLVE
+  stop is named under its icon (PATCH, PERFORM, TASTE, LEARNING, then EVOLVE
   beside them), and a tap goes there. **KEYS** at the bar's end brings the
   keys up over it, one octave across the screen with each key a finger wide,
   and puts them away again.

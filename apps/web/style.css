@@ -7802,7 +7802,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
      left, opened by BANK at the start of the menu bar;
    - a phone held upright (700 px and under, taller than 500): the bank is
      a sheet from the bottom, the cross is the bar along the bottom (the
-     levels out to in, EVOLVE beside them, then KEYS), and the keys are a
+     levels in to out, EVOLVE beside them, then KEYS), and the keys are a
      drawer over that bar;
    - a short screen (a phone on its side, 500 px and under): the cross
      stays at the right edge with KEYS under it, and the keys are a drawer.
@@ -7918,8 +7918,9 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   }
   .bank-head { padding-top: 0; }
 
-  /* The cross is the bar along the bottom: the four levels out to in, then
-     EVOLVE beside them, then KEYS. The level you're at is lit, with a line
+  /* The cross is the bar along the bottom: the four levels in to out, the
+     sound's parts first (PATCH, PERFORM, TASTE, LEARNING), then EVOLVE
+     beside them, then KEYS. The level you're at is lit, with a line
      along its top edge. */
   .rail {
     position: fixed;
@@ -7978,10 +7979,10 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     box-shadow: inset 0 2px 0 var(--phos-a);
   }
   .rail-stop:focus-visible, .rail-keys:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -4px; }
-  .rail-stop[data-level="learning"] { order: 1; }
-  .rail-stop[data-level="taste"] { order: 2; }
-  .rail-stop[data-level="perform"] { order: 3; }
-  .rail-stop[data-level="patch"] { order: 4; }
+  .rail-stop[data-level="patch"] { order: 1; }
+  .rail-stop[data-level="perform"] { order: 2; }
+  .rail-stop[data-level="taste"] { order: 3; }
+  .rail-stop[data-level="learning"] { order: 4; }
   .rail-stop[data-level="evolve"] { order: 5; border-left: 1px solid var(--hairline); }
   .rail-keys { order: 6; border-left: 1px solid var(--hairline); }
   .rail-keys[aria-expanded="true"] { color: var(--phos-a); }

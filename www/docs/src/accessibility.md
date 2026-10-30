@@ -160,7 +160,7 @@ chosen in it, a tap beside it, <kbd>Esc</kbd> or **BANK** again puts it away.
 On a phone held upright:
 
 - The levels are the bar along the bottom, each stop named under its icon:
-  LEARNING, TASTE, PERFORM, PATCH, then EVOLVE beside them. A tap goes there.
+  PATCH, PERFORM, TASTE, LEARNING, then EVOLVE beside them. A tap goes there.
 - **KEYS** at the bar's end brings the keys up over it, one octave across the
   screen, each key a finger wide (**span** in **KEYS ⋯** shows more), and
   **KEYS** again puts them away.
