@@ -993,7 +993,14 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   the Air would be. `AURACLE_BROWSER=firefox` runs the specs in
   Firefox; on Linux its AudioContext starts only with an audio server
   running (PulseAudio), which Playwright's image lacks and the nightly job
-  starts.
+  starts. `AURACLE_BROWSER=webkit` runs them in WebKit on an iPhone 13's
+  profile, nearer iOS Safari; the nightly *Touch in WebKit* job
+  (`flake-hunt.yml`) runs the touch specs there, three times each. WebKit
+  has no CDP, so `touch_gestures.spec.js` makes its finger in the page
+  (pointer and touch events at the point): it proves the gestures' handling
+  in WebKit's engine, not what only the browser decides (its own scroll,
+  `touch-action`, a click after a long press), and its one test that needs
+  the column's own scroll runs in Chromium only.
 - **A wait on PERFORM's engine growth uses `offerBudget`**
   (`tests/web/perform_budget.js`): an offer, a drift, or work queued ahead of
   one is renders, about a quarter of a second each on a 16-core M3 Max and 1.5 to

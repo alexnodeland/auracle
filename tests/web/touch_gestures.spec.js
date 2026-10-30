@@ -18,9 +18,11 @@
 // - The swipe up picks on a phone and on a small one (360 × 640), where the
 //   level's column scrolls.
 //
-// Touches are the browser's own (CDP's `Input.dispatchTouchEvent`), so
-// pointer events, touch events and the click that ends a tap all come as on
-// a phone.
+// In Chromium the touches are the browser's own (CDP's
+// `Input.dispatchTouchEvent`), so pointer events, touch events and the click
+// that ends a tap all come as on a phone. Under AURACLE_BROWSER=webkit, on an
+// iPhone's profile, they are made in the page (`cdpOf`, which says what that
+// proves), and the test that needs the browser's own scroll is Chromium's.
 const { test, expect, goLevel, landed } = require("./fixtures");
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -30,15 +32,70 @@ const STEP_MS = 16;
 const REST_MS = 200;
 
 const touch = (cdp, type, pts) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts });
+/** A finger. In Chromium, the browser's own touches (CDP). WebKit has no
+ *  CDP and Playwright drives no touch move there, so its finger is made in
+ *  the page: pointer events (pointerType touch) and TouchEvents at the point,
+ *  to the element first touched, and a click after a short, still touch.
+ *  That proves the gestures' own handling in WebKit's engine; not what only
+ *  the browser decides (its own scroll, `touch-action`, whether it sends a
+ *  click after a long press, `isTrusted`). */
 async function cdpOf(page) {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  return cdp;
+  if (page.context().browser().browserType().name() === "chromium") {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    return cdp;
+  }
+  return { send: (_m, { type, touchPoints }) => page.evaluate(PAGE_FINGER, { type, at: touchPoints[0] || null }) };
 }
+/** WebKit's finger, in the page (above). */
+const PAGE_FINGER = ({ type, at }) => {
+  const f = window.__finger || (window.__finger = {});
+  const pointer = (name, x, y) => f.target.dispatchEvent(new PointerEvent(name, {
+    pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, bubbles: true, cancelable: true, composed: true, button: 0, buttons: name === "pointerup" ? 0 : 1,
+  }));
+  const touches = (x, y) => {
+    try {
+      return [new Touch({ identifier: 7, target: f.target, clientX: x, clientY: y })];
+    } catch {
+      return [{ identifier: 7, target: f.target, clientX: x, clientY: y }];
+    }
+  };
+  const touchEv = (name, list, x, y) => {
+    let e;
+    try {
+      e = new TouchEvent(name, { bubbles: true, cancelable: true, composed: true, touches: list, targetTouches: list, changedTouches: touches(x, y) });
+    } catch {
+      e = new Event(name, { bubbles: true, cancelable: true, composed: true });
+      Object.defineProperty(e, "touches", { value: list });
+      Object.defineProperty(e, "changedTouches", { value: touches(x, y) });
+    }
+    f.target.dispatchEvent(e);
+  };
+  if (type === "touchStart") {
+    Object.assign(f, { target: document.elementFromPoint(at.x, at.y), x: at.x, y: at.y, lx: at.x, ly: at.y, t0: document.timeline.currentTime, moved: false });
+    pointer("pointerdown", at.x, at.y);
+    touchEv("touchstart", touches(at.x, at.y), at.x, at.y);
+  } else if (type === "touchMove") {
+    if (Math.hypot(at.x - f.x, at.y - f.y) > 10) f.moved = true;
+    Object.assign(f, { lx: at.x, ly: at.y });
+    pointer("pointermove", at.x, at.y);
+    touchEv("touchmove", touches(at.x, at.y), at.x, at.y);
+  } else {
+    pointer("pointerup", f.lx, f.ly);
+    touchEv("touchend", [], f.lx, f.ly);
+    if (!f.moved && document.timeline.currentTime - f.t0 < 450) f.target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: f.lx, clientY: f.ly, detail: 1 }));
+  }
+};
 /** The middle of `loc`, brought into view. */
 async function middle(loc) {
-  await loc.scrollIntoViewIfNeeded();
-  const b = await loc.boundingBox();
+  // The bank redraws as the engine answers, so a row's node can be swapped
+  // mid-scroll: the scroll and the read are retried on the row as it is then.
+  let b = null;
+  await expect(async () => {
+    await loc.scrollIntoViewIfNeeded({ timeout: 2_000 });
+    b = await loc.boundingBox({ timeout: 2_000 });
+    expect(b).not.toBeNull();
+  }).toPass({ timeout: 15_000 });
   return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2), h: b.height };
 }
 /** A finger from `at` by (dx, dy), in steps, then lifted. */
@@ -84,6 +141,10 @@ test("a card swiped up past a third of its height is picked through its PICK", a
 
 test.describe("a small phone, 360 × 640", () => {
   test.use({ viewport: { width: 360, height: 640 } });
+  // The column's own scroll is the browser's, which WebKit's finger (made in
+  // the page) does not drive.
+  // eslint-disable-next-line playwright/no-skipped-test -- a browser that cannot make the gesture, not a test turned off
+  test.skip(({ browserName }) => browserName === "webkit", "the browser's own scroll needs the browser's own touches (CDP, Chromium)");
 
   test("a card swiped up is picked and the level's column does not scroll; a drag down scrolls it", async ({ page, app }) => {
     await toEvolve(page, app);
