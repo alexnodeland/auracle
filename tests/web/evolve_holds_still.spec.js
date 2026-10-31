@@ -23,9 +23,10 @@
 // The pick held through a preset load is on a pair the test deals: the
 // table's first deal is stalled (`app.stall`) and answered with the two
 // sounds a load replaces first. A generation's end takes the same sound
-// first and passes the table over the same way (`Engine::spared`; natively,
-// `a_sound_on_the_table_is_not_replaced_until_it_is_put_away`), but it
-// takes minutes and cannot be aimed.
+// first and passes the table over the same way (`Engine::spared`), but here
+// it takes minutes and cannot be aimed: a real one ended inside a pick's
+// window is tests/worker/table.test.mjs's, and natively
+// `a_sound_on_the_table_is_not_replaced_until_it_is_put_away`.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
 
 /** The pool sound on the bench, once one is. */
@@ -114,12 +115,18 @@ test("a pick in its undo window is counted though a preset opened in the window 
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   await expect.poll(() => held(app), { message: "the pair up is held" }).toEqual(sorted(pair));
 
-  // A pick, and a preset opened from the bank inside its window.
+  // A pick, and a preset opened from the bank inside its window: both in one
+  // task, so the load is sent inside the pick's seven seconds however slow
+  // the runner (ADR-022). The pair up is held already, so their order in the
+  // task does not matter.
+  await bankTab(page, "presets");
+  await expect(page.locator("#bank-list .preset-item").first()).toBeVisible();
   const mark = await app.toastMark();
   const t = await app.now();
-  await page.locator("#choose-a").click();
-  await bankTab(page, "presets");
-  await page.locator("#bank-list .preset-item").first().click();
+  await page.evaluate(() => {
+    document.getElementById("choose-a").click();
+    document.querySelector("#bank-list .preset-item").click();
+  });
   const loaded = await app.reply("preset_loaded", { after: t });
   const now = loaded.views.ranked.map((r) => r.id);
   expect(ranked.filter((r) => !now.includes(r.id)), "the preset replaced no sound").toHaveLength(1);
@@ -138,19 +145,45 @@ test("a pick in its undo window is counted though a preset opened in the window 
   // Held until its vote, and let go after it: with no pick held, what the
   // engine holds is the pair up (which may share a sound with the pick's).
   const told = await app.sent("on_table", { after: t });
-  expect(told.filter((m) => m._n < vote._n).every((m) => pair.every((id) => m.ids.includes(id))), "let go before its vote").toBe(true);
+  expect(told.filter((m) => m._n < vote._n && !pair.every((id) => m.ids.includes(id))), "let go before its vote").toEqual([]);
   await expect.poll(async () => (await app.sent("on_table")).filter((m) => m._n > vote._n).length, { message: "never let go" }).toBeGreaterThan(0);
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   await expect.poll(async () => (await held(app)).join(), { message: "the pair up, alone" }).toBe(sorted(await cards(page)).join());
 
   // A pick taken back holds its pair again as the pair up; ↻ puts it away,
-  // and what is held is the pair that goes up in its place.
+  // and what is held is the pair that goes up in its place. The pick puts
+  // the pair dealt ahead up in its own task (evolve_ahead.spec.js), so with
+  // that pair dealt what the pick holds is not what was held before it, and
+  // is sent: wait for it (the last deal asked for is the pair ahead, and
+  // every deal is answered, the one the test answered included).
+  await app.engine((timeout) => expect.poll(async () => {
+    const asked = await app.sent("duel");
+    const answered = new Set((await app.replies("duel", { injected: true })).map((d) => d.re));
+    return !!asked.at(-1)?.ahead && asked.every((m) => answered.has(m.rid));
+  }, { timeout }).toBe(true), { ms: 30_000 });
   const next = await cards(page);
-  await page.locator("#choose-a").click();
-  await expect.poll(async () => (await held(app)).filter((id) => next.includes(id)), { message: "the pick's pair held in its window" }).toEqual(sorted(next));
-  await page.keyboard.press("Control+z");
-  await expect.poll(() => cards(page)).toEqual(next);
-  await expect.poll(() => held(app), { message: "⌘Z: the pick's pair, up again" }).toEqual(sorted(next));
+  // The pick and ⌘Z a turn of the event loop apart (for the pick's
+  // `on_table` to go out, from its microtask), so ⌘Z lands inside the pick's
+  // seven seconds however slow the runner. Each reads the `on_table` sent
+  // after it, never one from before.
+  const r = await page.evaluate(async () => {
+    const ids = () => ["a", "b"].map((x) => Number(document.querySelector(`#name-${x} .dn-id`).textContent.replace("#", "")));
+    const told = (from) => window.__tap.sent.slice(from).filter((q) => q.m.type === "on_table").map((q) => [...q.m.ids].sort((x, y) => x - y));
+    const turn = () => new Promise((res) => setTimeout(res, 0));
+    const n0 = window.__tap.sent.length;
+    document.getElementById("choose-a").click();
+    const up = document.getElementById("choose-a").disabled ? null : ids();
+    await turn();
+    const picked = told(n0);
+    const n1 = window.__tap.sent.length;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    await turn();
+    return { up, picked, back: ids(), undone: told(n1) };
+  });
+  expect(r.up, "the pair dealt ahead went up with the pick").not.toBeNull();
+  expect(r.picked, "the pick's pair held in its window, beside the pair up").toEqual([sorted(new Set([...next, ...r.up]))]);
+  expect(r.back, "⌘Z put the pick's pair back up").toEqual(next);
+  expect(r.undone, "⌘Z: the pick's pair, up again, alone").toEqual([sorted(next)]);
   await page.locator("#skip-duel").click();
   await app.engine((timeout) => expect.poll(() => cards(page), { timeout }).not.toEqual(next), { ms: 30_000 });
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
