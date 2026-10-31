@@ -1206,6 +1206,35 @@ class App {
     return this.page.evaluate(() => window.__liveWrites || []);
   }
 
+  /** Put the audio context in `state` as the page reads it (iOS Safari's
+   *  "interrupted" is one Playwright cannot make), and count from here on
+   *  each `resume()` asked of it and each note sent to the live voice:
+   *  `audioCounts` reads both. `state` again changes it. */
+  audioState(state) {
+    return this.page.evaluate((st) => {
+      const ctx = window.__aur.audioCtx;
+      window.__ctxState = st;
+      if (ctx.__stated) return;
+      ctx.__stated = true;
+      window.__resumes = 0;
+      window.__noteOns = 0;
+      Object.defineProperty(ctx, "state", { get: () => window.__ctxState, configurable: true });
+      ctx.resume = () => (window.__resumes++, Promise.resolve());
+      const lv = window.__aur.getLive();
+      const on = lv.noteOn.bind(lv);
+      lv.noteOn = (...a) => (window.__noteOns++, on(...a));
+    }, state);
+  }
+
+  /** What `audioState` counted: `{ resumes, notes }`; `reset` zeroes both. */
+  audioCounts({ reset = false } = {}) {
+    return this.page.evaluate((r) => {
+      const out = { resumes: window.__resumes, notes: window.__noteOns };
+      if (r) { window.__resumes = 0; window.__noteOns = 0; }
+      return out;
+    }, reset);
+  }
+
   /** Go to a level by its stop on the rail (shell.js `goLevel`). */
   level(name) {
     return shell.goLevel(this.page, name);
