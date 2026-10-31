@@ -1,33 +1,34 @@
 // Framing without rendering: for each beat of a walkthrough, where each camera
 // keyframe (film.js `cam`) crops the rehearsal's screenshots, and where each
 // callout's point and label land. Prints JSON for framing.py, which draws the
-// contact sheets and flags a callout outside its frame.
+// contact sheets and flags a callout outside its frame. A film with no
+// walkthrough plan (an illustrated film, even one that cuts to takes of the
+// app, as launch does) has nothing to frame: it prints null.
 //
 //   node www/video/tools/framing.mjs FILM [BEAT]   (run by framing.py)
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { loadPlan } from "./plan.mjs";
 
 const film = process.argv[2];
 const only = process.argv[3];
 const VIDEO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fdir = path.join(VIDEO, "films", film);
 const ddir = path.join(VIDEO, "out", film, "dry");
-const tl = JSON.parse(fs.readFileSync(`${fdir}/timeline.json`, "utf8"));
-let src = fs.readFileSync(`${fdir}/film.js`, "utf8");
-src = src.replace(/import\s*\{[^}]*\}\s*from\s*"[^"]*walk\.js";/, `
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-function aim(z, x, y) { if (z <= 1) return [z, 0.5, 0.5]; const f = (p, span) => clamp(((p * z) / span - 0.5) / (z - 1), 0, 1); return [z, f(x, 1920), f(y, 1080)]; }
-let captured = null;
-async function walkthrough(stage, opts) { captured = opts; }
-export function plan() { return captured; }`);
-const tmp = path.join(os.tmpdir(), `framing-${film}-${process.pid}.mjs`);
-fs.writeFileSync(tmp, src);
-const mod = await import(tmp);
-await mod.build({});
-fs.unlinkSync(tmp);
-const { plan } = mod.plan();
+if (!fs.existsSync(fdir)) {
+  console.error(`${film}: no such film (${fdir})`);
+  process.exit(2);
+}
+let plan;
+try {
+  plan = await loadPlan(fdir);
+} catch (e) {
+  console.error(`${film}: ${e.message}`);
+  process.exit(1);
+}
+if (!plan) console.error(`${film}: no walkthrough plan, so nothing to frame`);
+const tl = plan ? JSON.parse(fs.readFileSync(`${fdir}/timeline.json`, "utf8")) : null;
 
 function wordTime(l, word) {
   const i = l.text.toLowerCase().indexOf(word.toLowerCase());
@@ -48,7 +49,7 @@ const anchor = (r, side) => {
   return side === "top" ? [cx, r.y] : side === "bottom" ? [cx, r.y + r.h] : side === "left" ? [r.x, cy] : side === "right" ? [r.x + r.w, cy] : [cx, cy];
 };
 const out = [];
-for (const p of plan) {
+for (const p of plan || []) {
   if (only && p.beat !== only) continue;
   const b = tl.beats.find((x) => x.id === p.beat);
   let meta;
@@ -74,4 +75,4 @@ for (const p of plan) {
     out.push({ beat: p.beat, i, img: path.join(ddir, img), crop: [x0, y0, w, h], calls });
   });
 }
-console.log(JSON.stringify(out));
+console.log(JSON.stringify(plan ? out : null));

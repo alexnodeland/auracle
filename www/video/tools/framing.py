@@ -4,6 +4,9 @@ each camera keyframe's crop, with the callouts drawn where they will land.
 Reports a callout outside its frame or pinned to a mark its shot never
 measured. Sheets go to www/video/out/FILM/framing/BEAT.jpg.
 
+A film with no walkthrough plan (an illustrated film, even one that cuts to
+takes of the app, as launch does) has nothing to frame, and says so.
+
 usage: framing.py FILM [BEAT]
 """
 import json, subprocess, sys, os
@@ -12,6 +15,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 film = sys.argv[1]
 beat = sys.argv[2] if len(sys.argv) > 2 else ""
 data = json.loads(subprocess.check_output(["node", os.path.join(HERE, "framing.mjs"), film] + ([beat] if beat else [])))
+if data is None:
+    print(f"{film}: no walkthrough plan (it is drawn, not recorded): nothing to frame")
+    sys.exit(0)
 odir = os.path.join(os.path.dirname(HERE), "out", film, "framing")
 os.makedirs(odir, exist_ok=True)
 sheets = {}
