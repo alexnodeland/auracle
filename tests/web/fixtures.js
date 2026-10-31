@@ -668,11 +668,11 @@ class App {
    *    worker slowed until a render takes the reference machine's time,
    *    `?farm=2` unless `query` names a width, and in Chromium the page
    *    throttled by the same rate, up to the Air's CPU against an M-series
-   *    one (profile.js `pageRateOf`, ×4.5). The engine takes the largest of
-   *    the profile's rate, `slowEngine` and the throttle, and the page the
-   *    larger of the profile's page rate and the throttle. Calibrated once
-   *    a run, on the first boot that asks; `app.profile` says what it
-   *    measured and the rates this boot runs at;
+   *    one (profile.js `pageRateOf`, `pageRateMax`). The engine takes the
+   *    largest of the profile's rate, `slowEngine` and the throttle, and the
+   *    page the larger of the profile's page rate and the throttle.
+   *    Calibrated once a run, on the first boot that asks; `app.profile`
+   *    says what it measured and the rates this boot runs at;
    *  - `workerPrefix`: a spec's own code to run in the engine worker ahead of
    *    worker.js (a slowdown of its own, switched on by a message). The
    *    fixture serves the worker with it, after its own: a spec that routed

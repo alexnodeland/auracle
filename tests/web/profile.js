@@ -19,7 +19,7 @@
 // - **The page is throttled by the same rate, up to the Air's CPU ratio**
 //   in Chromium (CDP's `Emulation.setCPUThrottlingRate`, which reaches the
 //   page and not its workers): the calibration's rate, at most `pageRateMax`
-//   (×4.5, about how much slower the Air's CPU is than an M-series one). The
+//   (about how much slower the Air's CPU is than an M-series one). The
 //   page has no calibration of its own, and no machine the specs run on is
 //   faster than an M-series, so a render's rate above that says more about
 //   the wasm (Chromium's here against the reference's Firefox) than about
@@ -40,29 +40,16 @@
 //
 // **What is measured, and what is estimated.** Measured on every run: the
 // calibration render here, unslowed, and so the rate. Estimated until the
-// Air is measured: the render's time there (`referenceMs`, 356 ms) and the
-// page's cap (`pageRateMax`, ×4.5). Each estimate is marked so where it is
-// set (`referenceIs`, `pageRateMaxIs` in `profiles.json`), and the
-// calibration line, every test's `profile` annotation and the audio
-// thread's gate print the mark beside the figure.
-//
-// - `referenceMs` was ADR-025's 1,100 ms (about 1 to 1.2 s), estimated on
-//   2026-10-06, when a phrase render took about 240 ms on an M3 Max. Three
-//   changes have made a render cheaper since, each measured on the render
-//   bench's 18 trees, before and after on one machine
-//   (docs/notes/render-cost-2026-10/README.md, § Built and § In the
-//   browsers): folding the knobs (#353), 0.804 of the time in Firefox's
-//   worker, the reference's browser; quiver-dsp 0.4.1 with `norm_sqr` (#393),
-//   0.606 in wasm; the block walk (#406), 0.665 in wasm. 1,100 × 0.804 ×
-//   0.606 × 0.665 = 356 ms (324 to 389 ms over ADR-025's range), the sum
-//   `referenceMethod` keeps beside it. Solo Flight's own calibration lines
-//   on the nightly's runners bracket it: in Firefox, #393 and #406 together
-//   took it from 383 to 133 ms on an AMD EPYC 7763 (0.35) and from 282 to
-//   130 ms on an EPYC 9V74 (0.46; the nights of 2026-10-08, before #393,
-//   and 2026-10-10 to 10-31), against the bench's 0.40, so 307 to 408 ms.
-// - `pageRateMax` is the Air's CPU against an M-series one: ADR-025's 1 to
-//   1.2 s against about 240 ms, ×4.2 to ×5, and the ×4.5 `live_cost.mjs
-//   --slowdown` works the audio thread's headroom out for.
+// Air is measured: the render's time there (`referenceMs`) and the page's
+// cap (`pageRateMax`). Each estimate is marked so where it is set
+// (`referenceIs`, `pageRateMaxIs` in `profiles.json`, the first with its sum
+// beside it, `referenceMethod`: ADR-025's 1,100 ms of 2026-10-06 times the
+// three speed-ups measured since), and the calibration line, every test's
+// `profile` annotation and the audio thread's gate print the figure and its
+// mark from there. docs/architecture/testing.md § Rules (The reference
+// profile) has today's figures, how each was estimated and what the
+// nightly's runners measured beside them; no other description states
+// either figure.
 //
 // Measuring them on the Air, in Firefox (`npx playwright install firefox`
 // once), quiet and on power, from tests/web:
@@ -77,7 +64,9 @@
 // goes). The page test prints its reading too ("page throttle: a fixed
 // piece of work … ms on the profiled page, … ms on a page with no
 // profile"): the page with no profile's figure on the Air, against the same
-// test's on an M-series machine in Firefox, is `pageRateMax`.
+// test's on an M-series machine in Firefox, is `pageRateMax` (and
+// `pageRateMaxIs` says so). Then testing.md § Rules' two *Estimated*
+// bullets become what was measured.
 //
 // Measured on a 16-core M3 Max on Oct 7, the release build after #353, with
 // other work running: Solo Flight 179 to 183 ms in Chromium and 212 to 229
@@ -250,8 +239,8 @@ function calibrationLine(c) {
 
 /** The rates a boot on a profile ran at (`app.profile`), equal ones named
  *  together: "engine, farm and page ×2.94", "engine and farm ×5.2, page
- *  ×4.5" (the page at its cap, `pageRateOf`), "engine ×4, farm and page
- *  ×1". */
+ *  ×4.5" (the page at a cap of ×4.5, `pageRateOf`), "engine ×4, farm and
+ *  page ×1". */
 function rates(p) {
   const groups = [];
   for (const [what, r] of [["engine", p.engineRate], ["farm", p.farmRate], ["page", p.pageRate]]) {

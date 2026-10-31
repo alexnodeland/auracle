@@ -178,8 +178,9 @@ jobs:
   # tests/web/profile.js): each runner times a calibration render at its
   # first boot and slows the engine worker and every farm worker until a
   # render takes the reference machine's time, boots with ?farm=2, and in
-  # Chromium throttles the page by the same rate up to x4.5, the Air's CPU
-  # against an M-series one; each shard's summary says what it measured and
+  # Chromium throttles the page by the same rate up to the profile's cap
+  # (`pageRateMax` in tests/web/profiles.json), the Air's CPU against an
+  # M-series one; each shard's summary says what it measured and
   # what is an estimate, and each budget names the profile beside its
   # figure. A spec's own slowed worker.js is kept on it (the fixture serves
   # a spec's `workerPrefix` after its own slowed engine; patch_audible's,
@@ -197,13 +198,16 @@ jobs:
   # report below folds on main), so each ends about ten minutes inside its
   # 40. On 2026-10-31, three runners a browser dealt by the gate's timings
   # were each cut at 40 minutes, and 74 of the 167 tests in Chromium and 32
-  # in Firefox never ran: on the profile a test takes about seven times its
+  # in Firefox never ran: on the profile a test took about seven times its
   # time on the gate in Chromium (about 230 minutes in all) and three and a
   # half in Firefox (about 140). Three at a time, the count the hunt's
   # comment above holds: about two and three quarter hours a night (the
   # maintainer accepted about three, 2026-10-31). Wider would be over sooner
   # and hold more of the account's twenty while the hunt runs; fewer,
-  # longer runners would leave less of each cut to spare.
+  # longer runners would leave less of each cut to spare. These figures are
+  # the 1,100 ms profile's: #509 lowered the estimate, each test is shorter
+  # on the new one, and as `perf`'s timings refresh, each runner's share and
+  # the night fall; the first nights on it give the new figures.
   perf:
     name: Speed budgets (${{ matrix.browser }} ${{ matrix.shard }})
     needs: engine

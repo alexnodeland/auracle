@@ -311,7 +311,7 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     profile names it beside each budget's figure, with the rates its boot
     ran at (`… ms of 100 ms on air in chromium (engine, farm and page
     ×2.9)`, `(engine and farm ×5.2, page ×4.5)` where the render's rate is
-    over the page's cap, or `(engine ×4, farm and page ×1)` where a spec's
+    over a page cap of ×4.5, or `(engine ×4, farm and page ×1)` where a spec's
     `slowEngine` is more than the profile's), and carries the annotation
     `profile`, what its calibration measured and those rates.
   - *The reference profile* is the reference machine (a 2018 or 2019
@@ -321,7 +321,7 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     farm worker until a render takes the reference's time, boots with
     `?farm=2` unless the spec's own `query` names a width, and in Chromium
     throttles the page by the same rate up to the Air's CPU against an
-    M-series one, ×4.5 (Firefox has no throttle for a page).
+    M-series one (`pageRateMax`; Firefox has no throttle for a page).
     The rate is measured once a run, at its first boot that asks (in UI
     mode, which keeps the output directory, once a session and engine
     build): one preset's render here, against its time on the reference; a
@@ -336,14 +336,15 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     *Measured and estimated:* the render here is measured every run (`one
     render of Solo Flight … ms here (measured)`, in each runner's
     calibration line and each test's `profile` annotation). The render's
-    time on the Air (`referenceMs`, 356 ms) and the page's cap
-    (`pageRateMax`, ×4.5) are estimates until the Air is measured, each
-    marked so in `profiles.json` (`referenceIs`, `pageRateMaxIs`, which the
-    lines print beside the figure), the first with its sum beside it
-    (`referenceMethod`: ADR-025's 1,100 ms times the three speed-ups
-    measured since; `testing.md` § Rules has the method). To measure them
-    on the Air, in Firefox (`npx playwright install firefox` once), quiet
-    and on power:
+    time on the Air (`referenceMs`) and the page's cap (`pageRateMax`) are
+    estimates until the Air is measured, each marked so in `profiles.json`
+    (`referenceIs`, `pageRateMaxIs`, which the lines print beside the
+    figure), the first with its sum beside it (`referenceMethod`: ADR-025's
+    1,100 ms times the three speed-ups measured since). [`testing.md` §
+    Rules](../../docs/architecture/testing.md#rules) has today's figures,
+    how each was estimated and the rates the runners reach; no other
+    description states either figure. To measure them on the Air, in
+    Firefox (`npx playwright install firefox` once), quiet and on power:
 
     ```bash
     cd tests/web
@@ -356,7 +357,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     here`: that figure is `referenceMs`, and `referenceIs` says where and
     when it was measured (`referenceMethod` goes). Its `page throttle: …
     ms on a page with no profile` there, against the same line on an
-    M-series machine in Firefox, is `pageRateMax`.
+    M-series machine in Firefox, is `pageRateMax` (and `pageRateMaxIs`
+    says so). Then `testing.md` § Rules' two *Estimated* bullets become
+    what was measured.
     `AURACLE_BROWSER=firefox` runs the specs in Firefox, in a project named
     `firefox` (the gate's is `chromium`); on Linux Firefox's AudioContext
     starts only with an audio server running (PulseAudio: with none, as in

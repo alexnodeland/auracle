@@ -12,8 +12,8 @@ import { test } from "node:test";
 const require = createRequire(import.meta.url);
 const profile = require("./profile.js");
 
-/** A calibration as `calibrated` keeps it, with these fields over the air
- *  profile's shape. */
+/** A calibration as `calibrated` keeps it, with these fields over it. Its
+ *  figures are the test's own, not `profiles.json`'s. */
 const calibration = (over) => ({
   name: "air",
   browser: "chromium",
