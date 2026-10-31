@@ -154,24 +154,44 @@ jobs:
   # four.
   #
   # Each leg builds the tests in a step of its own (`make test-build`), then
-  # runs them in another, each with its own limit, so a slow build and a hung
-  # test say different things. A step that runs out of time fails its job with
-  # the log it wrote; a job cut off at its own limit can lose the log (the
-  # leg of #346 was cancelled at 30 minutes, and its log was gone). The
-  # limits move together:
+  # runs them in another, each with its own limit. What that buys: the step
+  # that runs out of time is the one that fails, so the job's record says
+  # whether the build or the tests were slow; the build, which has no reason
+  # to crawl, is ended at its limit; and the two steps' times in the record
+  # are a cold build's and a cold run's, apart.
+  #
+  # What it does not buy is protection from a lost runner, which is what
+  # PR #344's search-floor leg (run 37586801423, job 112678728066) was: a
+  # runner took the job and reported nothing, so the job's record has no step
+  # at all and its log is gone, and it ended 35 minutes after it began, five
+  # past its 30-minute limit. A job cut off at its own limit on a live runner
+  # keeps its steps and its log; that leg's was not. The run's other leg,
+  # which started 35 minutes later, restored main's cache by an exact match
+  # and passed in under 7 minutes. Neither a step's limit nor the summary
+  # step below reaches a lost runner: only the job's limit ends it, and it
+  # holds this leg, and the other behind it (`max-parallel: 1`), until then.
+  #
+  # The limits move together:
   #
   # - Build, 15 minutes. With the cache, a leg compiles the workspace's own
   #   crates (rust-cache leaves them out) in ~90 to 110 s. Cold, the
-  #   dependencies come too, about a quarter of the CPU more
-  #   (docs/notes/rust-build-2026-10): 4 min 43 s from nothing on a shared
-  #   4-core workstation. A runner has not been timed cold; a run with `cold`
-  #   ticked does.
-  # - Run, 25 minutes. nextest ends a hung test first and names it in its
-  #   report: at ten minutes (the `ci` profile), the search floor at twenty
-  #   (.config/nextest.toml). 25 is only the backstop above the longest.
+  #   dependencies come too: 69 of a cold build's 285 CPU seconds, a third
+  #   more than the crates alone (docs/notes/rust-build-2026-10). From
+  #   nothing it took 4 min 43 s on a shared 4-core workstation. A runner has
+  #   not been timed cold; a run with `cold` ticked does.
+  # - Run, 25 minutes. nextest ends a hung test and names it in its report:
+  #   at ten minutes (the `ci` profile), the search floor at twenty
+  #   (.config/nextest.toml). One hung test is named well inside the step.
+  #   Tests that take most of the pool run one after another, so if several
+  #   of them hang (named_controls, closed_loop_learns_synthetic_taste and
+  #   closed_loop_learns_motion_rate, on four cores), the third's ten minutes
+  #   end after the step's; the log still names the first two. 25 is the
+  #   backstop above the longest.
   # - The job, 45: the two limits and five minutes for the steps without one
-  #   (checkout, the toolchain, the cache, nextest). While each step stays
-  #   inside its own limit, the job's is not reached.
+  #   (checkout, the toolchain, the cache, nextest). Sized against the steps,
+  #   not against a run seen: a warm leg takes 3 to 4 minutes. The price of
+  #   that headroom is what a lost runner now holds the lane for: 45 minutes
+  #   (30 before).
   #
   # (docs/architecture/testing.md § CI tiers, The Rust legs.)
   rust:
@@ -210,16 +230,18 @@ jobs:
       # a run on main has saved the new key. Main saves only from this one
       # leg, only when the leg passed (rust-cache's cache-on-failure is off)
       # and only when the key was new ("Cache up-to-date" otherwise), and a
-      # run the `scope` job skips as superseded saves none. `cold` skips the
-      # step, so a cold run neither reads nor writes the cache.
+      # run the `scope` job skips as superseded saves none. None of this was
+      # seen on PR #344, whose other leg restored main's cache by an exact
+      # match. `cold` skips the step, so a cold run neither reads nor writes
+      # the cache.
       - id: cache
         if: ${{ !inputs.cold }}
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.target == 'test-slow-rest' }}
-      # On the run's summary, which is kept when the job is cut off and its
-      # log is lost.
+      # On the run's summary, so which cache a leg had reads on the run's
+      # page without opening a log. A lost runner writes nothing.
       - name: Say which cache this leg has
         env:
           COLD: ${{ inputs.cold }}

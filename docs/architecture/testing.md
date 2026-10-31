@@ -512,23 +512,46 @@ in all.
 **The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
 in one step (`make test-build`, 15 minutes) and runs its target in the next
 (25 minutes), inside a job limit of 45: the two limits, and five minutes for
-the checkout, the toolchain, the cache and nextest. Two steps, because a job
-cut off at its own limit can lose its log (the search floor's leg was
-cancelled at 30 minutes on a PR, #346, and its log was gone), where a step
-that runs out of time ends the job with the log it wrote. A build step that
-timed out says the build was slow; a run step that did says what the tests
-were doing. nextest ends a hung test before the run step does, at ten
-minutes (the `ci` profile) and the search floor at twenty
-(`.config/nextest.toml`), and its report names the test; 25 minutes is only
-the backstop above the longest. With the cache, a leg's build is the
-workspace's own crates, which the cache leaves out: 90 and 110 s in `main`'s
-run of Oct 31, then the search floor in 101 s and the other nine tests in
-125 s. A cold build adds the dependencies, about a quarter of its CPU more
-([the build notes](../notes/rust-build-2026-10/README.md)): from nothing it
-took 4 min 43 s on a shared four-core workstation. No runner has been timed
-cold yet: run the workflow by hand (Actions → Slow suite → Run workflow) with
-*cold* ticked, which skips the Rust cache's restore and its save, and the two
-steps' times are the answer.
+the checkout, the toolchain, the cache and nextest. The split buys three
+things. The step that runs out of time is the one that fails, so the job's
+record says whether the build or the tests were slow. The build, which has no
+reason to crawl, is ended at its own limit. And the two steps' times in the
+job's record are a build's and a run's, apart, which a cold run needs.
+
+It does not protect against a lost runner, which is what PR #344's search
+floor leg was (run 37586801423, job 112678728066). Its record reads as a
+runner that took the job and reported nothing: no step at all, not even the
+setup, a log that is gone, and an end 35 minutes after it began, five past
+its 30-minute limit. A job cut off at its own limit on a live runner keeps its
+steps and its log (a *Search health* job cut at its two hours kept all nine
+steps), so this was not a slow build or a hung test, which would have left
+them. The run's other leg, which started 35 minutes later, restored `main`'s
+cache by an exact match, built in 1 min 29 s and passed its nine tests, so
+the PR's run did restore the cache. Neither a step's limit nor the leg's
+summary line (below) reaches a lost runner: only the job's limit ends it, and
+until then it holds its leg, and the other behind it (`max-parallel: 1`). The
+job's 45 minutes are sized against the two steps, not against any run seen (a
+warm leg takes 3 to 4 minutes), and the price of that headroom is 45 minutes
+of a lost runner, where it was 30.
+
+nextest ends a hung test before the run step does, at ten minutes (the `ci`
+profile) and the search floor at twenty (`.config/nextest.toml`), and its
+report names the test. One hung test is named well inside the step. Tests
+that take most of the pool run one after another, so if several of them hang
+(`named_controls_move_the_sound_they_name`,
+`closed_loop_learns_synthetic_taste` and `closed_loop_learns_motion_rate`, on
+four cores), the third's ten minutes end after the step's 25, and the log
+still names the first two. 25 minutes is the backstop above the longest.
+
+With the cache, a leg's build is the workspace's own crates, which the cache
+leaves out: 90 and 110 s in `main`'s run of Oct 31, then the search floor in
+101 s and the other nine tests in 125 s. A cold build adds the dependencies:
+69 of a cold test build's 285 CPU seconds, so a third more than the crates
+alone ([the build notes](../notes/rust-build-2026-10/README.md)). From
+nothing it took 4 min 43 s on a shared four-core workstation. No runner has
+been timed cold yet: run the workflow by hand (Actions → Slow suite → Run
+workflow) with *cold* ticked, which skips the Rust cache's restore and its
+save, and the two steps' times are the answer.
 
 The cache is `test`, which `ci.yml`'s *Doctests* job restores too. `main`
 saves it from one leg (*the rest*), only when that leg passed and its key was
@@ -540,11 +563,12 @@ own, and the values of `RUSTFLAGS`, `CARGO_INCREMENTAL`, `CARGO_NET_RETRY`
 and `CARGO_TERM_COLOR`: a new runner image with a new Rust, a toolchain bump
 or an edit to one of those starts every run cold, until a run on `main` has
 passed the leg and saved the new key. A run the `scope` job skips as
-superseded saves none. Each leg's run summary says which cache it had.
+superseded saves none. Each leg's run summary says which cache it had, so
+a run that finds no exact match says so on its page.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about 100 s
-in `main`'s latest run, 330 s when it was named; a runner of its own) and
+in `main`'s run of Oct 31, 330 s when it was named; a runner of its own) and
 `SLOW_TESTS`. Browser: a test
 over about 40 s on CI is tagged `@slow` in its declaration
 (`tests/web/AGENTS.md` says how); `npx playwright test --list --grep @slow`
