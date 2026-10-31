@@ -77,9 +77,12 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await expect(page.locator("#duel-count")).toHaveText("2");
 
   // "download & reset": the copy first, holding the two picks, then the reload.
+  // The reload is waited for from the press: it follows the download at
+  // once, and its load can come and go while the copy is being read.
   await runCommand(page, "Reset your taste…");
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 30_000 }),
+    page.waitForEvent("load", { timeout: 60_000 }),
     alarm.locator("button", { hasText: "download & reset" }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("auracle-profile-before-reset.json");
@@ -88,7 +91,6 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
 
   // A fresh taste on the reload: no picks, the warm start again, and the
   // saved patch still saved.
-  await page.waitForEvent("load", { timeout: 60_000 });
   await app.booted();
   await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 30_000 });
   await page.locator("#warm-skip").click();
@@ -122,12 +124,13 @@ test("Reset takes ?seed off the address and keeps the rest of it", async ({ page
   await app.boot({ warmed: false, seen: false, seed: 4242, query: "?farm=2" });
   expect(new URL(page.url()).searchParams.get("seed")).toBe("4242");
   await runCommand(page, "Reset your taste…");
+  // The reload, as above, is waited for from the press.
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 30_000 }),
+    page.waitForEvent("load", { timeout: 60_000 }),
     page.locator("#alarm button", { hasText: "download & reset" }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("auracle-profile-before-reset.json");
-  await page.waitForEvent("load", { timeout: 60_000 });
   await app.booted();
   const address = new URL(page.url());
   expect(address.searchParams.has("seed"), `the reset kept ${address.search}`).toBe(false);

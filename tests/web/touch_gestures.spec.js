@@ -18,6 +18,10 @@
 //   open and closed, and nothing on the page scrolls under it (no element's
 //   scroll offset moves, the page's neither), nor under a drag down: the
 //   level is one screen (phone_fits.spec.js) and nothing in it scrolls.
+//   The drag down is a drag, not a flick: its finger rests before it lifts.
+//   A tap on KEYS soon after a flick got its pointer events from Chromium
+//   but no click (most likely the flick left a fling, and a touch during
+//   one only stops it), so KEYS opened nothing.
 // - A long press selects no text (the page's selection is empty while held
 //   and after, and what is held cannot be selected), and lets no page menu
 //   through.
@@ -167,7 +171,13 @@ async function swipeMovesNothing(page, cdp) {
   expect(await offsets(page), "something scrolled under the swipe").toEqual(before);
   await touch(cdp, "touchEnd", []);
   await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
-  await drag(page, cdp, at, 0, 80);
+  // A finger still for this long has no speed when it lifts, so the browser
+  // starts no fling, and the next tap is a tap (the header says why); a
+  // slow runner only makes the rest longer.
+  await drag(page, cdp, at, 0, 80, { lift: false });
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- the finger rests before it lifts, so the release is slow
+  await page.waitForTimeout(REST_MS);
+  await touch(cdp, "touchEnd", []);
   expect(await offsets(page), "something scrolled under a drag down").toEqual(before);
   expect(await picks(page)).toMatchObject({ a: 1, b: 0 });
 }
