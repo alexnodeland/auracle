@@ -904,7 +904,7 @@ impl TasteModel {
     ///
     /// # The chain is fugue's, run over a value array
     ///
-    /// The kernel is fugue-ppl 0.2.3's adaptive single-site chain
+    /// The kernel is fugue-ppl's adaptive single-site chain
     /// (`adaptive_mcmc_chain_thinned`), with the program taken out of the
     /// loop. fugue's driver rebuilds and re-runs the whole program on every
     /// step, which here meant 226 boxed `sample` nodes, their closures and a
