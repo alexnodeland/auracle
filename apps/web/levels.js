@@ -338,11 +338,13 @@ export function cmdkList(groups, q) {
 // so its scroll and its scrollbar are the whole list's from the first
 // frame.
 
-/** The least height of a row (style.css `.cmdk-it`, 48 px on a touch
- *  screen) and of a group's name over its rows, in px: until the list has
- *  measured its own. */
+/** The least height of a row (style.css `.cmdk-it`; on a touch screen,
+ *  `CMDK_ROW_TOUCH_PX`) and the height of a group's name over its rows, in
+ *  px: what the list keeps for lines not drawn until it has measured its
+ *  own. */
 export const CMDK_ROW_PX = 40;
-export const CMDK_GROUP_PX = 31;
+export const CMDK_ROW_TOUCH_PX = 48;
+export const CMDK_GROUP_PX = 32;
 /** How tall the list can stand, as a share of the window (style.css
  *  `.cmdk`'s `max-height`). */
 export const CMDK_TALL = 0.72;

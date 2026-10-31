@@ -11,7 +11,7 @@ import {
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, flightEnds, easeInOut, flightAt,
   WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, wheelOwner, PINCH_IN, PINCH_OUT, pinchStep,
   rank, fuzzy, hitMarks, cmdkList, SOUNDS_SHOWN,
-  cmdkLines, cmdkFirst, cmdkRestPx, CMDK_ROW_PX, CMDK_GROUP_PX, CMDK_TALL,
+  cmdkLines, cmdkFirst, cmdkRestPx, CMDK_ROW_PX, CMDK_ROW_TOUCH_PX, CMDK_GROUP_PX, CMDK_TALL,
 } from "../levels.js";
 
 test("the axis runs out to in, with EVOLVE beside PERFORM", () => {
@@ -330,7 +330,9 @@ test("a key draws enough lines to fill the list at its tallest, and the rest kee
   const plan = [{ group: "This level" }, { row: 0 }, { row: 1 }, { group: "Anywhere" }, { row: 2 }];
   assert.equal(cmdkRestPx(plan, 0), 3 * CMDK_ROW_PX + 2 * CMDK_GROUP_PX);
   assert.equal(cmdkRestPx(plan, 3), CMDK_ROW_PX + CMDK_GROUP_PX);
-  assert.equal(cmdkRestPx(plan, 3, { row: 48, group: 30.5 }), 48 + 30.5);
+  assert.equal(cmdkRestPx(plan, 3, { row: CMDK_ROW_TOUCH_PX, group: 30.5 }), 48 + 30.5);
+  // The stylesheet's heights: a row's least, a finger's, a group's name.
+  assert.deepEqual([CMDK_ROW_PX, CMDK_ROW_TOUCH_PX, CMDK_GROUP_PX], [40, 48, 32]);
   assert.equal(cmdkRestPx(plan, plan.length), 0);
   assert.equal(cmdkRestPx(plan, 99), 0);
 });

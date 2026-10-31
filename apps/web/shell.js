@@ -23,7 +23,7 @@
 const {
   WHERE, isLevel, startLevel, hashLevel, levelForKey, dirOf, step, railPath,
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, NOD_PX, flightEnds, flightAt, wheelStep, wheelOwner, pinchStep,
-  BY_DIGIT, cmdkList, SOUNDS_SHOWN, cmdkLines, cmdkFirst, cmdkRestPx,
+  BY_DIGIT, cmdkList, SOUNDS_SHOWN, cmdkLines, cmdkFirst, cmdkRestPx, CMDK_ROW_PX, CMDK_ROW_TOUCH_PX, CMDK_GROUP_PX,
 } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
@@ -1272,10 +1272,13 @@ export function createShell(host = {}) {
     else K.list.append(frag);
     kKeepRest();
   }
-  /** The height of the lines not drawn yet, kept at the list's foot. */
+  /** The height of the lines not drawn yet, kept at the list's foot: by
+   *  the rows' own heights once measured, and until then the stylesheet's
+   *  (a finger's rows are taller). */
   function kKeepRest() {
     if (kBuilt >= kPlan.length) return void kRest.remove();
-    kRest.style.height = `${cmdkRestPx(kPlan, kBuilt, kH || undefined)}px`;
+    const h = kH || { row: matchMedia("(pointer: coarse)").matches ? CMDK_ROW_TOUCH_PX : CMDK_ROW_PX, group: CMDK_GROUP_PX };
+    kRest.style.height = `${cmdkRestPx(kPlan, kBuilt, h)}px`;
     if (!kRest.isConnected) K.list.append(kRest);
   }
   const kWhole = () => kBuild(kPlan.length);
