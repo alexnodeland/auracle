@@ -18,13 +18,16 @@ name: Flake hunt
 # each test's three, folded into the timings the gate deals by, whether or
 # not main's last push ran the tier.
 #
-# Its own workflow, not a job in the Slow suite, so its hour never holds that
+# Its own workflow, not a job in the Slow suite, so its hours never hold that
 # workflow's queue on main.
 #
 # Beside it, the speed budgets (ADR-022): the gate records each as an
 # annotation and never fails on one; here they are judged, once a night, on
-# main, on the reference profile (ADR-025), in Chromium and in Firefox, and
-# the ones over their limit file an issue of their own.
+# main, on the reference profile (ADR-025), in Chromium and in Firefox, each
+# test given its verdict, and the ones over their limit are listed on an
+# issue of their own. And the audio thread's budget (ADR-025's half a
+# quantum), judged on every preset as a budget that names what is over and
+# never turns the run red.
 #
 # CI's own health (scripts/ci_stats.py) is a workflow of its own,
 # ci-health.yml, after this one each night: a stop at the API's rate limit
@@ -48,9 +51,11 @@ env:
   HUNT_TESTS: '--grep-invert "@slow|@quarantine"'
 
 jobs:
-  # The engine, the fast tier's timings and the image's tag (the Playwright
-  # version tests/web/package-lock.json locks), once for the run, as in
-  # ci.yml.
+  # The engine, the timings each set of runners deals by and the image's tag
+  # (the Playwright version tests/web/package-lock.json locks), once for the
+  # run, as in ci.yml: the fast tier's for the hunt, and the speed budgets'
+  # own (`perf`, each test's last time in each browser), seeded from the fast
+  # and slow tiers' on a night it has none.
   engine:
     name: Engine for the browser
     runs-on: ubuntu-24.04
@@ -65,17 +70,25 @@ jobs:
       - uses: ./.github/actions/browser-timings
         with:
           tier: fast
+      - uses: ./.github/actions/browser-timings
+        with:
+          tier: slow
+      - uses: ./.github/actions/browser-timings
+        with:
+          tier: perf
+          seed: fast slow
 
   # The gate's twelve shards, each run three times over: about twenty
   # minutes a shard, so the job limit leaves room for a slow runner. Four at a
   # time (`max-parallel`), in three rounds of about twenty minutes: it runs at
   # night beside Search health, which holds three runners for hours, and the
-  # speed budgets' two, so together they hold nine of the account's 20, and a
-  # PR pushed then can wait for runners at its widest (slow-suite.yml counts
-  # the lanes'). At eight wide the hunt would be over sooner but hold
-  # thirteen, and a PR pushed then would wait for more. The Slow suite's
-  # nightly run (04:23 UTC, about twenty minutes) is over before this one
-  # starts (05:41 UTC).
+  # speed budgets' three, so together they hold ten of the account's 20 (and
+  # Touch in WebKit and the audio thread's budget one each, for their first
+  # few minutes), and a PR pushed then can wait for runners at its widest
+  # (slow-suite.yml counts the lanes'). At eight wide the hunt would be over
+  # sooner but hold fourteen, and a PR pushed then would wait for more. The
+  # Slow suite's nightly run (04:23 UTC, about twenty minutes) is over before
+  # this one starts (05:41 UTC).
   hunt:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
@@ -173,22 +186,22 @@ jobs:
   # there the engine and the farm are slowed and the page is not, and it
   # needs an audio server the image lacks (a step below starts one). The
   # run's project is named for its browser, so the merged report says which
-  # each test ran in. Three runners a browser, where two ran at the runner's
-  # own speed (about twenty minutes each): the profile slows what waits on
-  # the engine on a runner faster than the reference, and a shard must end
-  # inside its 40 minutes. Two at a time, as before the Firefox run, so the
-  # night's count above holds.
+  # each test ran in.
   #
-  # TODO(#288): the audio thread's budget is not judged here yet.
-  # `live_cost.mjs --sweep-only --gate=<ms>` (crates/auracle-wasm/examples/,
-  # on main) times the live voice's CPU per 128-frame quantum, but its limit
-  # is not chosen for a runner: the default, 0.59 ms, is the M3 Max's for a
-  # CPU 4.5 times slower, with 11 of the 62 presets over it there; ADR-025
-  # asks for under half a quantum on the reference machine, which is 0.30
-  # ms as measured on the M3 Max, with 50 over; and a runner measures 1.5 to
-  # 2 times the M3 Max.
-  # Wired in as a step with either, the job would go red every night on
-  # presets already known to be over, so it waits for the limit to be chosen.
+  # Every test gets its verdict (#508): eight runners for Chromium and five
+  # for Firefox, each dealt about 28 minutes of its browser's tests by
+  # shard.mjs from the job's own timings (`perf`: each test's last time in
+  # each browser, a run that failed over a budget counted too, which the
+  # report below folds on main), so each ends about ten minutes inside its
+  # 40. On 2026-10-31, three runners a browser dealt by the gate's timings
+  # were each cut at 40 minutes, and 74 of the 167 tests in Chromium and 32
+  # in Firefox never ran: on the profile a test takes about seven times its
+  # time on the gate in Chromium (about 230 minutes in all) and three and a
+  # half in Firefox (about 140). Three at a time, the count the hunt's
+  # comment above holds: about two and three quarter hours a night (the
+  # maintainer accepted about three, 2026-10-31). Wider would be over sooner
+  # and hold more of the account's twenty while the hunt runs; fewer,
+  # longer runners would leave less of each cut to spare.
   perf:
     name: Speed budgets (${{ matrix.browser }} ${{ matrix.shard }})
     needs: engine
@@ -209,10 +222,22 @@ jobs:
       HOME: /root
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
-        browser: [chromium, firefox]
-        shard: ["1/3", "2/3", "3/3"]
+        include:
+          - { browser: chromium, shard: "1/8" }
+          - { browser: chromium, shard: "2/8" }
+          - { browser: chromium, shard: "3/8" }
+          - { browser: chromium, shard: "4/8" }
+          - { browser: chromium, shard: "5/8" }
+          - { browser: chromium, shard: "6/8" }
+          - { browser: chromium, shard: "7/8" }
+          - { browser: chromium, shard: "8/8" }
+          - { browser: firefox, shard: "1/5" }
+          - { browser: firefox, shard: "2/5" }
+          - { browser: firefox, shard: "3/5" }
+          - { browser: firefox, shard: "4/5" }
+          - { browser: firefox, shard: "5/5" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -257,30 +282,81 @@ jobs:
           AURACLE_PROFILE: air
           AURACLE_BROWSER: ${{ matrix.browser }}
         with:
-          tier: fast
+          tier: perf
           name: perf
           shard: ${{ matrix.shard }}
           index: ${{ strategy.job-index }}
           files: ${{ steps.files.outputs.files }}
           args: --grep-invert "@quarantine"
 
+  # The audio thread's budget (ADR-025: its work a quantum under half a
+  # quantum on the reference machine; #361), judged nightly as a budget:
+  # never red for a preset over it (ADR-022). `live_cost.mjs --sweep-only
+  # --gate` times every preset's live voices in node, the V8 Chromium runs,
+  # at four voices (A alone) and at eight (A and an offer in B), against half
+  # a quantum divided by this runner's rate on the reference profile, which
+  # it measures first by the profile's own calibration render
+  # (tests/web/profiles.json). The run's summary names each preset over the
+  # limit and the issue it waits on (#320: a voice count from the sound's own
+  # cost), and says it is not judged at #320's ceiling until that exists.
+  # Red only when it could not measure, which is filed with the speed
+  # budgets. A runner of its own for a few minutes, so the sweep shares its
+  # cores with nothing.
+  audio:
+    name: The audio thread's budget
+    needs: engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Every preset's voices against half a quantum on the reference profile
+        run: node crates/auracle-wasm/examples/live_cost.mjs --sweep-only --gate
+
+  # Every runner's report merged: the HTML report, each budget over its limit
+  # in the run's summary, and with them each test that failed on something
+  # else (`failures`), which is the comment the next job files; and, on main,
+  # each test's time in each browser folded into the job's own timings
+  # (`--by-project`, `--failed`: a test over a budget fails having run to its
+  # end, and its time is still how long it holds its runner), which the next
+  # night deals by.
   perf-report:
     name: Speed budgets report
     needs: perf
     if: ${{ !cancelled() && needs.perf.result != 'skipped' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    outputs:
+      budgets: ${{ steps.report.outputs.budgets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/browser-report
+      - id: report
+        uses: ./.github/actions/browser-report
         with:
           name: perf
           failed: ${{ needs.perf.result == 'failure' }}
+          failures: "true"
+          timings: ${{ github.ref == 'refs/heads/main' && 'perf' || '' }}
+          timings-options: --by-project --failed
 
+  # One comment a night on *Speed budgets over their limit* (#221), readable
+  # without the run: each budget over its limit, as the report's table, and
+  # each test that failed on something else.
   perf-file:
     name: File the budgets over their limit
-    needs: perf
-    if: always() && github.event_name == 'schedule' && needs.perf.result == 'failure'
+    needs: [perf, perf-report, audio]
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (needs.perf.result == 'failure' || needs.audio.result == 'failure')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -292,17 +368,21 @@ jobs:
         with:
           title: Speed budgets over their limit
           results: ${{ toJSON(needs) }}
+          detail: ${{ needs.perf-report.outputs.budgets }}
           advice: >-
             Each budget is how long something took against the limit the app
             was built to (ADR-022). The gate records them and never fails on
             one; this run judged them on main, on the reference profile
-            (ADR-025) in Chromium and in Firefox, and the run's summary lists
-            each one over its limit with the profile it was measured on, and
-            what each shard's calibration measured and the CPU it ran on. Read
+            (ADR-025) in Chromium and in Firefox, each test once: the table
+            lists each one over its limit, with the rates its test's boot ran
+            at on the profile (from its runner's calibration) and the CPU it
+            ran on, and the run's summary has each shard's calibration. Read
             whether the app got slower or the runner was slow (a runner slower
-            than the reference is not slowed). A failure there that is not a
-            budget is the Flake hunt's to find in Chromium; in Firefox, which
-            no gate runs, it is a finding of its own.
+            than the reference is not slowed). A failure that is not a budget
+            is the Flake hunt's to find in Chromium; in Firefox, which no gate
+            runs, it is a finding of its own. The audio thread's budget is in
+            the run's summary, and is named here only when it could not
+            measure (`audio`).
 
   # Which tests failed, and on which of their three runs, in one report; the
   # issue each goes to (tests/web/flakes.mjs: the one its annotation names,

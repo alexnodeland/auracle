@@ -2,26 +2,47 @@ name: Browser report
 description: >
   A run's browser runners merged: one HTML report (every test, the traces of
   what failed) uploaded as `browser-report-<name>` when a runner failed, the
-  speed budgets recorded over their limit listed in the run's summary, and,
-  when asked, the run's times folded into the tier's timings for the next
-  run's deal.
+  speed budgets recorded over their limit listed in the run's summary (and
+  in the output `budgets`, cut to fit an issue's comment), and, when asked,
+  the run's times folded into the tier's timings for the next run's deal.
 
 inputs:
   name:
-    description: "The blob artifacts' prefix (`fast`, `slow`, `hunt`)"
+    description: "The blob artifacts' prefix (`fast`, `slow`, `hunt`, `perf`)"
     required: true
   failed:
     description: "'true' when a runner of this set failed: upload the HTML report"
     required: true
   timings:
     description: >-
-      The tier whose timings these times update (`fast`, `slow`); empty for
+      The tier whose timings these times update (`fast`, `slow`, `perf`); empty for
       none. On main they are saved to the cache; on any other ref, where a
       saved cache would be that ref's alone, they are uploaded as
       `browser-timings-folded-<tier>` for main's run to save (ci.yml's
       changes job, once main reuses the merge queue's run)
     required: false
     default: ""
+  timings-options:
+    description: >-
+      Options for the fold (`shard.mjs timings`): `--by-project` for a tier
+      that runs in more than one browser and deals each by its own times,
+      `--failed` to count a run that failed or timed out too
+    required: false
+    default: ""
+  failures:
+    description: >-
+      'true' to list beside the budgets each test that failed on something
+      other than a budget, or was interrupted (the nightly Speed budgets
+      job's, where nothing else lists them)
+    required: false
+    default: ""
+
+outputs:
+  budgets:
+    description: >-
+      The budgets over their limit (and the failures, when asked) as
+      markdown, cut to fit an issue's comment; empty with no merged report
+    value: ${{ steps.budgets.outputs.markdown }}
 
 runs:
   using: composite
@@ -56,13 +77,18 @@ runs:
         npx playwright merge-reports --reporter html,json all-blobs
 
     # The speed budgets (ADR-022) the runs recorded over their limit, in the
-    # run's summary: on the gate they are recorded, never judged.
+    # run's summary: on the gate they are recorded, never judged. The same,
+    # cut to fit, is the step's output, for the comment the nightly Speed
+    # budgets job files.
     - name: Budgets over their limit
+      id: budgets
       shell: bash
       run: |
         cd tests/web
         [ -f merged.json ] || exit 0
-        node shard.mjs budgets merged.json
+        node shard.mjs budgets ${{ inputs.failures == 'true' && '--failures' || '' }} --out budgets.md merged.json
+        d="BUDGETS_$(openssl rand -hex 8)"
+        { echo "markdown<<$d"; cat budgets.md; echo "$d"; } >> "$GITHUB_OUTPUT"
 
     - id: upload
       if: inputs.failed == 'true'
@@ -100,7 +126,7 @@ runs:
       run: |
         cd tests/web
         [ -f merged.json ] || { echo "no merged report; timings unchanged"; exit 0; }
-        node shard.mjs timings --out "timings-${{ inputs.timings }}.json" merged.json
+        node shard.mjs timings --out "timings-${{ inputs.timings }}.json" ${{ inputs.timings-options }} merged.json
 
     - if: inputs.timings != '' && github.ref == 'refs/heads/main'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

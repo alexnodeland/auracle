@@ -13,8 +13,17 @@ description: >
 
 inputs:
   tier:
-    description: "`fast` or `slow`"
+    description: "`fast`, `slow` or `perf` (the nightly Speed budgets', each test's time in each browser)"
     required: true
+  seed:
+    description: >-
+      Tiers whose timings stand in while this one has none of its own (its
+      first run, or its cache evicted), space-separated: each restored
+      earlier in the same job (its own browser-timings step), and merged
+      into this tier's file as plain times, which shard.mjs deals a tier
+      folded by project by until that project has times of its own
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -27,11 +36,23 @@ runs:
         key: browser-timings-${{ inputs.tier }}-${{ github.run_id }}
         restore-keys: browser-timings-${{ inputs.tier }}-
 
-    # None at all (evicted, the first run) is an empty file: every runner then
-    # deals by count, and still all from the same file.
+    # None at all (evicted, the first run) is the seed's times where it has
+    # one, or else an empty file, which every runner deals by count; either
+    # way all from the same file.
     - shell: bash
+      env:
+        SEED: ${{ inputs.seed }}
       run: |
         f=tests/web/timings-${{ inputs.tier }}.json
+        if [ ! -s "$f" ] && [ -n "$SEED" ]; then
+          OUT="$f" node -e '
+            const fs = require("fs");
+            const seeds = process.argv.slice(1).map((t) => `tests/web/timings-${t}.json`).filter((p) => fs.existsSync(p));
+            const merged = Object.assign({}, ...seeds.map((p) => JSON.parse(fs.readFileSync(p, "utf8"))));
+            fs.writeFileSync(process.env.OUT, JSON.stringify(merged, null, 1) + "\n");
+            console.log(`timings: none of its own yet, seeded from ${seeds.join(" and ") || "nothing"}`);
+          ' $SEED
+        fi
         [ -s "$f" ] || echo '{}' > "$f"
         echo "timings: $(node -e "console.log(Object.keys(require('./$f')).length)") tests with a time"
 

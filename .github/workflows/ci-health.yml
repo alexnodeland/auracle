@@ -8,14 +8,15 @@ name: CI health
 # (docs/notes/ci-baseline-2026-10-05.json). The budgets those numbers are read
 # against are in docs/architecture/testing.md § Budgets.
 #
-# Its own workflow, nightly after the Flake hunt (05:41 UTC, about an hour),
-# so its numbers include that night's hunt, and a stop at the API's rate limit
-# is a red run here (the script exits 3 having written what it read), not a
-# red hunt. It holds one runner for a few minutes.
+# Its own workflow, nightly after the Flake hunt (05:41 UTC, about three
+# hours with its speed budgets), so its numbers include that night's run (a
+# run still going is left to the next night's), and a stop at the API's rate
+# limit is a red run here (the script exits 3 having written what it read),
+# not a red hunt. It holds one runner for a few minutes.
 
 on:
   schedule:
-    - cron: "13 7 * * *"
+    - cron: "13 9 * * *"
   workflow_dispatch:
 
 permissions:
