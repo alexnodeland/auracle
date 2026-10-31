@@ -353,10 +353,13 @@ pub struct SessionConfig {
     ///   2026-10-08), which draws the same randomness; renders are quiver-dsp
     ///   0.5.1's (#393, 2026-10-09: φ moves by at most 1.34e-11 of a spread;
     ///   #406, 2026-10-09: the same samples bit for bit). None of these was
-    ///   meant to change what a seeded walk draws or hears, so the figures
-    ///   below are expected to hold within the noise. That is an expectation:
-    ///   the search is chaotic (#393's move in φ sent one climb seed to a
-    ///   different end), and no hit rate was measured after any of these.
+    ///   meant to change what a seeded walk draws or hears, so each is
+    ///   expected to leave a hit rate within the noise. That is an
+    ///   expectation: the search is chaotic (#393's move in φ sent one climb
+    ///   seed to a different end), and no hit rate was measured after any of
+    ///   these. #356 is not of that kind, so no figure below is main's
+    ///   baseline: a `search_health --hits` on main that differs from the
+    ///   68.0% below says nothing about a regression.
     ///
     /// The measurements that ran (#355 and #357), by `search_health --hits`:
     /// the share of locked `refine_from` tries (8 per seed, a third of the

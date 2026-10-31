@@ -148,14 +148,22 @@ Nothing below was followed by a re-measurement of these rows.
 
 `refine_steps` is still `2·N_OPS` (40), `LOCK_SCALE_CAP` is still 4.0 and
 `OCTAVE_WEIGHTS` is still [.05, .15, .40, .25, .15]. #389, #393 and #406 were
-not meant to alter what a seeded walk draws or hears, so the figures are
-expected to hold within the noise. That is an expectation, and no hit rate has
+not meant to alter what a seeded walk draws or hears, so each is expected to
+leave a hit rate within the noise. That is an expectation, and no hit rate has
 checked it. The search is chaotic: #393 moved φ by at most 1.34e-11 of a
 spread and still sent one climb seed to a different end (a final gain 0.02
 apart, in `render-cost-2026-10`). In the hit rate one flipped try moves a
-16-seed rate by 0.78 points (1 in 128), so today's 68.0% could read 67.2% or
-68.8% with nothing wrong. A re-run that differs from the figures by a try or
-two is the noise, not a regression.
+16-seed rate by 0.78 points (1 in 128), so after one of those three, a rate a
+try or two from where it was is the noise, not a regression.
+
+That noise argument is for the build the figures came from. Main also carries
+#356, and #356 is not a noise-sized change: knob acceptance went from 53% to
+85%, and the hit rate at 40 steps with octaves uniform moved +3.6 points, 95%
+interval −3.7 to +11.0, on 48 seeds. So 68.0% is the weighted octaves' reading
+on 0.2.2 and not main's baseline, and a `search_health --hits 16` on main that
+differs from it says nothing about a regression. Main's own reading, once
+taken (the first step of "If it is reopened"), is the baseline, and the noise
+above applies to a later reading compared with that one.
 
 The climbs since: #393's revalidate ran 8-seed climbs on both sides of its
 change, which `render-cost-2026-10` records only as a difference of at most
