@@ -938,10 +938,19 @@ def write_baseline(b: dict) -> None:
 
 
 def changed_lines(rel: str) -> set[int]:
-    """The lines of `rel` that differ from the last commit, if git can say."""
+    """The lines of `rel` that differ from the last commit, if git can say.
+    Without the file-system monitor whatever config says (as
+    scripts/coverage_gate.py's `git`): a user's core.fsmonitor=true makes
+    `diff` ask a daemon, and start one for a checkout that has none, and a
+    daemon that is slow to answer runs out the 20 s, which leaves this empty
+    and `show()` listing no hit on a changed line first."""
     try:
         d = subprocess.run(
-            ["git", "diff", "-U0", "HEAD", "--", rel], cwd=ROOT, capture_output=True, text=True, timeout=20
+            ["git", "-c", "core.fsmonitor=false", "diff", "-U0", "HEAD", "--", rel],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return set()

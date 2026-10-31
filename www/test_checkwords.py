@@ -15,9 +15,11 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -625,6 +627,71 @@ class TheRatchet(unittest.TestCase):
             code, _, err = t.run()
             self.assertEqual(code, 1)
             self.assertIn("is not JSON", err)
+
+
+class NoFileSystemMonitor(unittest.TestCase):
+    """A config that turns the file-system monitor on (a user's global
+    core.fsmonitor=true) does not make the changed-line marks ask it: `diff`
+    would ask a daemon, and start one for a checkout that has none. The
+    monitor here is a hook that records that it was asked (git runs one for
+    `diff` without starting a daemon), so a test that fails does so without
+    leaving one behind. The scratch repository itself is built with no user
+    config, as testing.md says of every script's tests."""
+
+    def setUp(self):
+        self.tree = Tree()
+        self.t = self.tree.__enter__()
+        self.addCleanup(self.tree.__exit__, None, None, None)
+        self.outside = tempfile.mkdtemp(prefix="checkwords-monitor-")
+        self.addCleanup(shutil.rmtree, self.outside)
+        self.asked = os.path.join(self.outside, "asked")
+        hook = os.path.join(self.outside, "monitor.sh")
+        with open(hook, "w") as f:
+            f.write(f'#!/bin/sh\necho asked >> "{self.asked}"\nprintf "\\0"\n')
+        os.chmod(hook, 0o755)
+        self.cfg = os.path.join(self.outside, "global.gitconfig")
+        with open(self.cfg, "w") as f:
+            f.write(f"[core]\n\tfsmonitor = {hook}\n")
+        self.git("init", "-q", "-b", "main")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "base")
+        self.t.edit("README.md", lambda text: text.replace("# Auracle", "# Auracle!") + "A second note.\nA third.\n")
+
+    def git(self, *args):
+        """git in the scratch repository and nowhere else. A git hook (the
+        pre-commit hook runs these tests) sets GIT_DIR and GIT_INDEX_FILE to
+        the repository being committed, and git obeys them from any
+        directory, so none of git's own variables reach these commands; no
+        system or global config is read, and the identity is given."""
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env.update(
+            GIT_CONFIG_NOSYSTEM="1",
+            GIT_CONFIG_GLOBAL=os.devnull,
+            GIT_AUTHOR_NAME="t",
+            GIT_AUTHOR_EMAIL="t@example.com",
+            GIT_COMMITTER_NAME="t",
+            GIT_COMMITTER_EMAIL="t@example.com",
+        )
+        subprocess.run(["git", "-C", self.t.root, *args], env=env, check=True, capture_output=True)
+
+    def was_asked(self):
+        asked = os.path.exists(self.asked)
+        if asked:
+            os.remove(self.asked)
+        return asked
+
+    def test_the_changed_lines_are_read_without_asking_the_monitor(self):
+        # The caller's environment as the check meets it: the monitor's
+        # config is the global one, and a hook's repository variables are gone.
+        keep = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        with mock.patch.dict(os.environ, {**keep, "GIT_CONFIG_GLOBAL": self.cfg, "GIT_CONFIG_NOSYSTEM": "1"}, clear=True):
+            # The control: plain `git diff` asks the monitor, so the check
+            # below can fail.
+            subprocess.run(["git", "-C", self.t.root, "diff", "-U0", "HEAD", "--", "README.md"], capture_output=True, check=True)
+            self.assertTrue(self.was_asked(), "git diff did not ask the monitor: this test proves nothing")
+            got = W.changed_lines("README.md")
+        self.assertFalse(self.was_asked(), "the changed-line marks asked the file-system monitor")
+        self.assertEqual(got, {1, 4, 5})
 
 
 class TheSurfaces(unittest.TestCase):
