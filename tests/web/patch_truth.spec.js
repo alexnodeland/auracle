@@ -173,7 +173,8 @@ test("moving a PERFORM control after a PATCH edit plays from the new base", asyn
 
   // Bright reaches the ladder's cutoff on First Bass (perform_circuit.spec).
   // No measurement is out to re-centre the controls after the turn: a PATCH
-  // knob turn asks for none (only a Keep or a glide's end does).
+  // knob turn asks for none (of what a player's hand does here, only a Keep
+  // or a glide's end re-measures).
   await goLevel(page, "perform");
   expect(await app.unanswered({ types: ["perform_wire"] })).toHaveLength(0);
   const box = await page.locator('.pf-knob[data-i="0"]').boundingBox();
