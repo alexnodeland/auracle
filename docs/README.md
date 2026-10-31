@@ -76,6 +76,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [023](decisions/023-the-gate-runs-in-the-queue.md) | The gate runs in the queue: a fast lane on the PR, the full gate on the batch that lands (amends ADR-021) |
 | [024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md) | A review's in-area findings are fixed in the PR, and a wave runs more than two streams (amends ADR-020's rule 2 and ADR-019's rule 5) |
 | [025](decisions/025-every-interaction-answers-at-once.md) | Every interaction answers at once, on the reference machine: direct manipulation at the next audio quantum and frame, anything else within 100 ms, budgets on a reference profile (amends ADR-022; applies ADR-012 to predictions) |
+| [026](decisions/026-the-sonic-floor.md) | The sonic floor: a verdict beside φ (noise, roughness and the high band), applied at the fill and nowhere else, and the films cast by it |
 
 ## Proposals
 
@@ -85,7 +86,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
 | [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
-| [005](proposals/005-the-sonic-floor.md) | draft | The sonic floor: where the measurement lives, what it costs, and the first deals |
+| [005](proposals/005-the-sonic-floor.md) | accepted | The sonic floor: where the measurement lives, what it costs, and the first deals |
 | [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
 | [007](proposals/007-the-sound-of-the-films.md) | accepted | The sound of the films: one key, one room, the instrument on top |
 | [008](proposals/008-audio-in.md) | accepted | Audio in: your own signal in the patch, measured and bred like any other |
@@ -103,6 +104,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [006](plans/006-the-sound-of-the-films.md) | active | RFC-007, ADR-014 (the film tools, the cast and the re-mix) |
 | [007](plans/007-audio-in.md) | active | RFC-008, ADR-015 (audio in, from quiver to the plate) |
 | [008](plans/008-the-shell.md) | accepted | RFC-006, ADR-017 (Plan-005 task 2: the shell, the levels and ⌘K, in four PRs) |
+| [009](plans/009-the-sonic-floor.md) | active | RFC-005, ADR-026 (the floor's reading, the floored fill and its revalidation, and the films cast by it) |
 
 ## Notes
 
