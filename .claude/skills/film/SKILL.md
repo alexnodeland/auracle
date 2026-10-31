@@ -26,11 +26,13 @@ order of work.
    from the shortlist in `www/brand/sound.json`), waits and dumps. Time
    actions to words (`at`, `until`) and to app states (stamps); use `clips` to
    cut waits the viewer should not sit through.
-4. **Check**: `node www/video/tools/validate.mjs <name>`.
+4. **Check**: `node www/video/tools/validate.mjs <name>` (the shots, and the
+   plan in `film.js`; a film with no `shots.json` and no plan has nothing to
+   check).
 5. **Rehearse**: `make film-rehearse FILM=<name>` (runs through the browser
    queue). Read each shot's sidecar in `out/<name>/dry/`. Every shot must pass
    with no errors and no late actions. `python3 www/video/tools/framing.py <name>`
-   for callouts and crops.
+   for callouts and crops (a walkthrough's; a film with no plan has none).
 6. **Truth**: every on-screen claim true of the recorded session (the
    `truth-pass` skill). When the app falls short, fix or report the app.
 7. **Record and render** on a quiet machine:
@@ -52,7 +54,16 @@ order of work.
 ## An illustrated film
 
 Script and voice as above; the picture is `film.js` drawing beats on the
-stage; render with `make film FILM=<name> POSTER=<seconds>`.
+stage; render with `make film FILM=<name> POSTER=<seconds>`. A film that cuts
+to takes of the app (launch, with a `shots.json`) is checked and rehearsed as
+a walkthrough's shots are (steps 4 and 5; `validate.mjs` reads its shots and
+does not run its `film.js`, and `framing.py` has no callouts to frame). It
+reads each take at the top of its scene by a literal, `const take =
+takes["l-play"]`, and the marks it points at by a literal name
+(`ck?.mark("bright")`, `rects?.blend`): `validate.mjs` finds them in the text
+and holds each to a mark that take's shot measures, so a pointer is never
+drawn at an estimate. A film with no `shots.json` and no plan has nothing to
+check: `validate.mjs` says so and passes.
 
 ## When the app changes under a film
 

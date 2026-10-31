@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Rehearse a walkthrough (footage.mjs --dry), one browser at a time, then
-# summarise it: every shot's errors, lateness, stamps and logs.
+# Rehearse a film's shots (footage.mjs --dry), one browser at a time, then
+# summarise it: every shot's errors, lateness, stamps and logs. A walkthrough's
+# shots, or the takes an illustrated film cuts to (launch).
 #
 #   www/video/tools/rehearse.sh FILM [--shot a,b]
 #
