@@ -395,7 +395,10 @@ test("a control sweeping by ear through a background re-check ends where it bega
   const control = page.locator(`${KNOB}:not(.half-hi)`).first();
   await app.countLiveWrites();
   await control.focus();
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  // Stopped 5 s ahead of the page's time (each timer due by then fires
+  // once): pauseAt throws if its time has passed by the time it runs, and
+  // two round trips on a slow runner can take longer than a tight margin.
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 5_000);
   // Swept once, with nothing landing: where the sweep leaves the sound.
   await page.keyboard.press("Enter");
   await page.clock.runFor(2_600);
@@ -448,7 +451,7 @@ test("↵ again mid-sweep starts the sweep over and it ends where it first began
   const value = async () => Number(await control.getAttribute("aria-valuenow"));
   await expect(control, "at home").toHaveAttribute("aria-valuenow", "0.00");
   await control.focus();
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 5_000); // 5 s ahead, as above
   await page.keyboard.press("Enter");
   await page.clock.runFor(1_700);
   expect(await value(), "mid-sweep, turned up").toBeGreaterThan(0.5);
