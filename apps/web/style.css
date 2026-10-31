@@ -6036,12 +6036,16 @@ input[type="range"]::-moz-range-thumb {
 .pf-ctlhead, .pf-status, .pf-deck, .pf-pads { flex: none; }
 .pf-hood-h { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.1em; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s1); }
 .pf-hood-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px var(--s4); }
-/* The value's column holds nine of the mono value's characters (7 px each
-   at the label's size in Chromium): 1.78 kHz, −24.1 dB, −120.0 dB whole.
-   At 5em it was a pixel short of eight and cut them to "1.78 k…". Only the
-   balance's far ends are ten (a +12.3 dB): where the rows stand two or
-   three across, that room would come out of every name, so they get it
-   only where a row has the column's width (max-width: 1180px, below). */
+/* The value's column holds nine of the mono value's characters: a +2.7 dB,
+   1.78 kHz, −12.0 dB whole. At the label's size a character is 7 px in
+   Chromium on Linux, which sets each on a whole pixel, and 6.6 px in
+   Firefox on Linux; at 5em the column cut nine in both, and eight to
+   "1.78 k…" in Chromium. Two values are longer. The balance's far ends
+   (a +12.3 dB) are ten, 70 px in Chromium: where the rows stand side by
+   side, that room would come out of every name, so they get it only where
+   a row has the column's width (max-width: 1180px, below). A sequencer's
+   rate with SYNC on (4.00 Hz · sync, main.js's knobInfo) is fourteen, and
+   is cut at every width. */
 .pf-hood-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px minmax(0, 6em);
