@@ -5,7 +5,10 @@
 // five (play, turn a control, ask for an offer; then the levels' two, zoom
 // out to TASTE and hold ⌥ for the model view, Plan-008 C3), and PATCH's
 // (play it, turn a knob, lock what you love, ⚡; Plan-008 C2a). A step may
-// belong to more than one level.
+// belong to more than one level. A step the sound in hand gives no way to do
+// is left out while it is in hand (its `skip`: PERFORM's turn on a sound none
+// of the controls reach, #480), pip and all, and comes back with a sound that
+// has one.
 //
 // What has been done is the player's, kept in localStorage as
 // `auracle-guide` ({done: [ids], closed: [levels]}), JS-owned. × stops one
@@ -57,12 +60,23 @@ export function readGuide(get) {
   }
 }
 
+/** The steps `level` shows now, in order, and the one up next: its own
+ *  (`levels`, PERFORM's when none) less those whose `skip()` says the sound
+ *  in hand gives no way to do them. `now` is the first not in `done` (a Set
+ *  of ids), or null when every step shown is. Pure, for the unit tests. */
+export function stepsShown(steps, level, done) {
+  const here = steps.filter((s) => (s.levels || ["perform"]).includes(level) && !s.skip?.());
+  return { here, now: here.find((s) => !done.has(s.id)) || null };
+}
+
 /** The pill. `el` is its slot (`#guide`, in the stage). Steps are added in
- *  order with `add({id, text, levels})`, `text()` giving the step's words now
- *  (a step may name what this sound can do) and `levels` the levels it shows
- *  on (PERFORM's when none). `setLevel(level)` says which level is up;
- *  `done(id)` ticks one off; `ends` is each level's closing line, said once
- *  when its last step is done. */
+ *  order with `add({id, text, levels, skip})`, `text()` giving the step's
+ *  words now (a step may name what this sound can do), `levels` the levels
+ *  it shows on (PERFORM's when none), and `skip()`, when given, true while
+ *  the sound in hand gives no way to do it (`stepsShown`). `setLevel(level)`
+ *  says which level is up; `done(id)` ticks one off; `refresh()` draws the
+ *  pill again when what a step says or skips may have changed; `ends` is
+ *  each level's closing line, said when the last step it shows is done. */
 export function createGuide({ el, ends = {} }) {
   const steps = [];
   let level = "perform";
@@ -91,19 +105,16 @@ export function createGuide({ el, ends = {} }) {
     if (text != null) e.textContent = text;
     return e;
   };
-  const levelsOf = (s) => s.levels || ["perform"];
-  const stepsOn = (l) => steps.filter((s) => levelsOf(s).includes(l));
   const allDoneOn = (l) => {
-    const here = stepsOn(l);
-    return here.length > 0 && here.every((s) => done.has(s.id));
+    const { here, now } = stepsShown(steps, l, done);
+    return here.length > 0 && !now;
   };
   // The pill: pips, the step, ×. A status, so a screen reader hears each new
   // step once.
   function render() {
     if (ending) return;
     el.innerHTML = "";
-    const here = stepsOn(level);
-    const now = here.find((s) => !done.has(s.id));
+    const { here, now } = stepsShown(steps, level, done);
     el.dataset.level = level;
     if (closed.has(level) || !now) {
       el.classList.add("hidden");
@@ -166,7 +177,7 @@ export function createGuide({ el, ends = {} }) {
       pill.setAttribute("role", "status");
       const pips = make("span", "pips");
       pips.setAttribute("aria-hidden", "true");
-      for (const s of stepsOn(level)) pips.append(make("i", "done"));
+      for (const s of stepsShown(steps, level, done).here) pips.append(make("i", "done"));
       pill.append(pips, make("span", "pf-step done all", ends[level]));
       el.append(pill);
       ending = setTimeout(() => {

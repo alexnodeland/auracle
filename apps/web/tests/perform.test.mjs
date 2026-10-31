@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -197,4 +197,20 @@ test("a refused commit leaves no pending graft, and a refusal of another tree le
   // A turn not yet committed is not what the bench refused.
   assert.equal(graftIntent.refused(turned, "grafted"), turned);
   assert.equal(graftIntent.refused(null, "grafted"), null);
+});
+
+test("no control reaches a sound only when every one was measured and can't", () => {
+  const search = (name) => ({ name, knobs: [], search: true });
+  const pending = (name) => ({ name, knobs: [], search: false, pending: true });
+  const six = ["Bright", "Snap", "Motion", "Body", "Grit", "Space"];
+  // Every control amber: the first steps' turn could never be done (#480).
+  assert.equal(reachesNone(six.map(search)), true);
+  // One control turns a knob: it can.
+  assert.equal(reachesNone([wiring("Bright", "f#cut", 0.3), ...six.slice(1).map(search)]), false);
+  // One still listening (placed and not measured yet, or left out of a
+  // guess) may reach it once it is measured.
+  assert.equal(reachesNone([...six.slice(0, 5).map(search), pending("Space")]), false);
+  // Nothing measured yet, or no panel, says nothing.
+  assert.equal(reachesNone(null), false);
+  assert.equal(reachesNone([]), false);
 });

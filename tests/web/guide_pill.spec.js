@@ -11,7 +11,15 @@
 // - × stops it, and a reload keeps it stopped (`auracle-guide`).
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
+// - On a sound none of the controls reach, the turn is left out, pip and
+//   all, and asked for again on a sound one of them turns (#480).
 const { test, expect, goLevel, modelView, SEED } = require("./fixtures");
+
+// A first visit whose sound in hand, once measured, none of the six controls
+// reach (Noisy Key, "0 of 6 controls reach this patch", when it was chosen
+// from seeds 1 to 40; most open on a sound one to five reach). A seed of its
+// own, which AURACLE_SEED does not move.
+const NONE_REACH_SEED = 39;
 
 /** A first visit. `stored`: keys in localStorage before the page's first
  *  load. `seed`: the engine's seed and the page's Math.random, when the
@@ -112,13 +120,44 @@ test("× stops the pill, and a reload keeps it stopped", async ({ page, app }) =
 
 test("the first steps' old ticks carry over into the pill, and the old key goes", async ({ page, app }) => {
   test.setTimeout(240_000);
-  await boot(app, { stored: { "auracle-perform-steps": JSON.stringify(["play"]) } });
+  // Seeded (`SEED`, as the walk above is): the sound in hand reaches, so the
+  // step after the one carried over is the turn. On one none of the
+  // controls reach, the pill leaves the turn out (below).
+  await boot(app, { stored: { "auracle-perform-steps": JSON.stringify(["play"]) }, seed: SEED });
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn /);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   const store = await page.evaluate(() => ({ old: localStorage.getItem("auracle-perform-steps"), now: JSON.parse(localStorage.getItem("auracle-guide")) }));
   expect(store.old).toBeNull();
   expect(store.now).toEqual({ done: ["play"], closed: [] });
+});
+
+test("on a sound none of the controls reach, the pill leaves the turn out, and asks for it again on a sound one turns", async ({ page, app }) => {
+  test.setTimeout(240_000);
+  await boot(app, { seed: NONE_REACH_SEED });
+  const now = page.locator("#guide .pf-step.now");
+  const done = page.locator("#guide .pips i.done");
+  // Measured: every control amber, none turns.
+  await app.engine((timeout) => expect(page.locator(".pf-status")).toContainText("0 of 6 controls reach", { timeout }));
+  await expect(page.locator(".pf-deck .pf-knob.search"), "every control amber").toHaveCount(6);
+  // Four steps, the turn not among them.
+  await expect(now).toContainText("Play a key");
+  await expect(pips(page)).toHaveCount(4);
+  await page.keyboard.press("a");
+  await expect(now, "after the note, the offer: no turn asked for").toContainText("Press OFFER");
+  await expect(pips(page)).toHaveCount(4);
+  await expect(done).toHaveCount(1);
+  // A sound a control turns: the turn is back, its pip with it, and next.
+  await app.openOnPerform("Glass Pad");
+  await expect(now).toContainText(/^Turn [A-Z]+: drag/);
+  await expect(pips(page)).toHaveCount(5);
+  await expect(done).toHaveCount(1);
+  // And a turn ticks it off.
+  const k = page.locator(".pf-deck .pf-knob:not(.search):not(.pending)").first();
+  await k.focus();
+  for (let i = 0; i < 6; i++) await page.keyboard.press(/half-hi/.test(await k.getAttribute("class")) ? "ArrowDown" : "ArrowUp");
+  await expect(now).toContainText("Press OFFER");
+  await expect(done).toHaveCount(2);
 });
 
 test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", async ({ page, app }) => {

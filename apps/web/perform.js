@@ -128,6 +128,12 @@ function rangeOf(w) {
 // taken patch's own measurement. Pending is "not measured yet", never "can't",
 // so it wears neither the amber search look nor its gesture.
 const turns = (w) => !!(w && !w.search && !w.pending);
+// Does no control on the panel reach this sound? Only when every one was
+// measured and can't (a search control): a control still listening, or one a
+// guess left out, may reach it once it is measured. The first steps leave
+// out "Turn …" on such a sound (#480): it could never be done there. Pure,
+// for the unit tests.
+export const reachesNone = (wire) => Array.isArray(wire) && wire.length > 0 && wire.every((w) => !!w && !!w.search);
 // The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
   (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
@@ -2807,6 +2813,9 @@ export function createPerform(host) {
     push();
     sendTouch();
     renderStatus();
+    // The first steps' turn names what the fresh wiring turns, or leaves
+    // itself out when it turns nothing.
+    renderSteps();
   }
 
   // A request the engine will never answer: it threw before it could reply,
@@ -2911,6 +2920,7 @@ export function createPerform(host) {
           state.carried = false;
           state.guess = null;
           state.wireError = "couldn’t measure this patch";
+          renderSteps();
         } else if (m.error) {
           // The wiring in hand still plays; it just wasn't re-checked. A
           // guess was never measured, so it says that (#290).
@@ -4319,8 +4329,9 @@ export function createPerform(host) {
   // For someone who walks up to it cold — no staff, no manual. Three moves
   // are the whole loop: play, turn a control, ask for an offer. Each ticks off
   // when it happens (not when it is read), and the guide pill (guide.js,
-  // `host.guide`) retires once all three have. Per visitor: the booth's "new
-  // visitor" brings it back.
+  // `host.guide`) retires once all three have (and the levels' two main.js
+  // adds after them), or all but the turn on a sound no control reaches. Per
+  // visitor: the booth's "new visitor" brings it back.
   const coarse = () => !!window.matchMedia?.("(pointer: coarse)").matches;
   const keysInDrawer = () => {
     const t = document.getElementById("keys-toggle");
@@ -4330,7 +4341,10 @@ export function createPerform(host) {
     // On a phone the keys are a drawer, under KEYS in the bar along the
     // bottom (#134): the step says where they are.
     { id: "play", text: () => (keysInDrawer() ? "Tap KEYS, then play the keybed" : coarse() ? "Play it: tap the keybed" : "Play a key: A to L, or tap the keybed") },
-    { id: "turn", text: turnStep },
+    // Left out while the sound in hand is one no control reaches (#480):
+    // the pips and the closing line count the steps left, and it is back
+    // with a sound a control turns.
+    { id: "turn", text: turnStep, skip: () => reachesNone(state.wire) },
     { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];
   // Step 2 names a control that turns on *this* patch. It used to say "Turn a
@@ -4349,8 +4363,8 @@ export function createPerform(host) {
     return "Turn a named control: drag up or down";
   }
   for (const st of STEPS) host.guide?.add(st);
-  // The pill's step 2 names what this sound can turn: said again when the
-  // wiring changes.
+  // The pill's step 2 names what this sound can turn, or is left out when it
+  // turns nothing: drawn again when the wiring changes.
   function renderSteps() {
     host.guide?.refresh();
   }

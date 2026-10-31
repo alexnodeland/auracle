@@ -36,7 +36,9 @@ the first three above, then zoom out to [TASTE](./taste.md)
 (<kbd>⌥↑</kbd>, or a pinch on a touch screen), and hold <kbd>⌥</kbd>
 (**MODEL** on a touch screen) to see what the model believes. Its second
 step names a control that turns on this sound (*Turn BRIGHT: drag up or
-down*), never one it can’t reach. Its **×** stops it showing.
+down*), never one it can’t reach. On a sound none of the controls reach
+(every one amber), the pill leaves that step out, pip and all, and asks for
+it again on a sound one of them turns. Its **×** stops it showing.
 
 ## What you see
 

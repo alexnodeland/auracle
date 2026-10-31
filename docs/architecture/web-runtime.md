@@ -1700,7 +1700,10 @@ never while typing, under a modal dialog (`host.blocked`, main's `modalUp`,
 the same rule as the level keys) or with ⌘, Ctrl or ⌥; ↵ only with nothing
 focused (a focused named control takes its own Enter and stops it). The first
 steps are added to the guide pill (`guide.js`, `host.guide`), which keeps what
-was done as `auracle-guide` and migrates `auracle-perform-steps` into it.
+was done as `auracle-guide` and migrates `auracle-perform-steps` into it. A
+step may carry a `skip`: the turn's is `reachesNone` (every control on the
+panel a search control), which leaves it out, its pip and the closing line's
+count with it, while such a sound is in hand (#480).
 
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls

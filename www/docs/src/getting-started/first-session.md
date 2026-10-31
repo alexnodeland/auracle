@@ -66,9 +66,10 @@ Your three are **saved**, so no generation will replace them. They take 3 of
 your 10 save slots; release any of them from its row if you want the room.
 
 At the bottom left, a pill shows the first things to try in PERFORM,
-one step at a time: *Play a key*, then a control to turn on this sound, then
-*Press OFFER*, then *Press ⌥↑ to zoom out to TASTE*, and last *Hold ⌥ to see
-what the model believes*. Each ticks off (a pip fills) when you do it, not
+one step at a time: *Play a key*, then a control to turn on this sound (on a
+sound none of them reach, it waits for one they do), then *Press OFFER*,
+then *Press ⌥↑ to zoom out to TASTE*, and last *Hold ⌥ to see what the model
+believes*. Each ticks off (a pip fills) when you do it, not
 when you read it, and **×** stops PERFORM's showing. PATCH has four of its own, in the same
 pill under its well: *Play it* (done already if you have played), *Drag a
 knob*, *Lock what you love*, and *Press ⚡ EVOLVE FROM THIS*; its **×** stops
