@@ -1,10 +1,10 @@
 // Unit tests for perform.js's pure arithmetic: what a knob sounds at, the
-// bases that keep it there when controls leave the panel, and a control's
-// sweep by ear.
+// bases that keep it there when controls leave the panel, a control's sweep
+// by ear, and what a measurement waiting on the controls says it waits for.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS, waitWords } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -232,4 +232,12 @@ test("a sweep by ear goes to both ends and back, and ends where it began", () =>
   // A control that turns only up never goes below its centre.
   near(sweptTo(0, 0.25, [0, 1]), 0);
   near(sweptTo(0, 0.75, [0, 1]), 1);
+});
+
+test("a measurement waiting on the controls asks a hand to let go only when one is held", () => {
+  // A control or the XY pad held, however still.
+  assert.equal(waitWords(true), "after you let go");
+  // None held: a sweep by ear playing, or the 1.5 s after a touch, which
+  // end by themselves.
+  assert.equal(waitWords(false), "in a moment");
 });

@@ -16,3 +16,10 @@
   where it used to start a second sweep that ended wherever the first had
   got to, and pressing the control stops the sweep and puts the control back
   where it was (#481).
+- **PERFORM asks you to let go only when you are holding something.** When
+  the instrument has heard a sound but holds its measurement back until your
+  hands are off the controls, a control still waiting and the status line
+  said *after you let go*, even while a control played its sweep or just
+  after you turned one with the arrow keys, with nothing held. They now say
+  *in a moment* then, and *after you let go* only while your hand is on a
+  control or the XY pad.

@@ -295,12 +295,16 @@ control or the XY pad, or a control plays its sweep ([below](#long-press-to-hear
 and for a second and a half after you let go or the sweep ends, a
 measurement that lands waits: the control stays where you put it, and
 nothing you hear jumps. Then the measurement takes over. A control that was
-still listening keeps saying so until the measurement is in; then it says
-*after you let go*, and the status line *heard: the controls turn after you
-let go*, also on a sound that opened on a guess, whose guessed controls play
-on meanwhile. It springs back when you let go, and starts turning a second
-and a half later. Pressing a pad is not a hand on the controls: a sound you open
-right after plays at once.
+still listening keeps saying so until the measurement is in; then, while
+your hand is on a control or the XY pad, it says *after you let go*, and the
+status line *heard: the controls turn after you let go*, also on a sound
+that opened on a guess, whose guessed controls play on meanwhile. With
+nothing held (you have let go, or turned a control with the keys, or a
+control is playing its sweep), it says *in a moment* instead, and the status
+line *heard: the controls turn in a moment*. A listening
+control you held springs back when you let go, and starts turning a second
+and a half later. Pressing a pad is not a hand on the controls: a sound you
+open right after plays at once.
 
 ### Long-press to hear it
 

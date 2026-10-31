@@ -521,9 +521,10 @@ test("a pool sound opened after a panel change plays the guess for that panel, n
 // the opening) plays the shipped or cached wiring's guess on the controls it
 // covers and listens on the rest; one that listens is turned and held still,
 // or the XY pad is, while the measurement lands. It keeps listening, drawn where
-// the hand holds it, and writes nothing to the voices; let go, the control
-// springs back, and the measurement wires the controls 1.5 s after the
-// release.
+// the hand holds it, and writes nothing to the voices, and the status line
+// says the controls turn after you let go; let go, the control springs back,
+// the line says they turn in a moment (no hand is left to let go of), and the
+// measurement wires the controls 1.5 s after the release.
 const FIRST_HANDS = {
   control: {
     open: async () => {},
@@ -542,7 +543,7 @@ const FIRST_HANDS = {
   },
 };
 for (const [name, hand] of Object.entries(FIRST_HANDS)) {
-  test(`${name === "control" ? "a" : "an"} ${name} held through its sound's first measurement is not moved, and the measurement waits for its release`, { tag: "@slow" }, async ({ page, app }) => {
+  test(`${name === "control" ? "a" : "an"} ${name} held through its sound's first measurement is not moved, the measurement waits for its release, and once let go the controls turn in a moment`, { tag: "@slow" }, async ({ page, app }) => {
     test.setTimeout(240_000);
     await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
     await app.level("perform");
@@ -590,6 +591,10 @@ for (const [name, hand] of Object.entries(FIRST_HANDS)) {
       window.__released = null;
       window.__wiredAt = null;
       window.addEventListener("pointerup", () => (window.__released = performance.now()), { capture: true, once: true });
+      // What the status line says from the release on, and when.
+      window.__said = [];
+      const status = document.querySelector(".pf-status");
+      new MutationObserver(() => window.__said.push([performance.now(), status.textContent])).observe(status, { subtree: true, childList: true, characterData: true });
       const seen = new MutationObserver(() => {
         if (window.__wiredAt == null && !document.querySelector(".pf-knob.unwired")) {
           window.__wiredAt = performance.now();
@@ -602,8 +607,9 @@ for (const [name, hand] of Object.entries(FIRST_HANDS)) {
     await page.mouse.move(10, 10);
     await expect(hand.listening(page, i), "the measurement wires the controls once the hand is off").toHaveCount(0);
     await expect(page.locator(".pf-knob.unwired"), "every control it covers").toHaveCount(0);
-    const [released, wiredAt] = await page.evaluate(() => [window.__released, window.__wiredAt]);
+    const [released, wiredAt, said] = await page.evaluate(() => [window.__released, window.__wiredAt, window.__said]);
     expect(released, "the release was seen").not.toBeNull();
     expect(wiredAt, "1.5 s after the release").toBeGreaterThanOrEqual(released + 1_500);
+    expect(said.filter(([t, text]) => t < wiredAt && /the controls turn in a moment/.test(text)).length, "let go, the line no longer asks a hand to let go").toBeGreaterThan(0);
   });
 }

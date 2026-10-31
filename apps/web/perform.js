@@ -143,6 +143,12 @@ const turns = (w) => !!(w && !w.search && !w.pending);
 // out "Turn …" on such a sound (#480): it could never be done there. Pure,
 // for the unit tests.
 export const reachesNone = (wire) => Array.isArray(wire) && wire.length > 0 && wire.every((w) => !!w && !!w.search);
+// When a measurement in hand waits on the controls (`waitsForHand`), what it
+// waits for, in words: a hand holding a control or the XY pad, however
+// still, is let go ("after you let go"); with none held the wait ends by
+// itself, through a control's sweep by ear or the 1.5 s after a touch ("in a
+// moment"). A sweep is no hand to let go of. Pure, for the unit tests.
+export const waitWords = (held) => (held ? "after you let go" : "in a moment");
 // The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
   (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
@@ -374,6 +380,10 @@ export function createPerform(host) {
     // control's arrow keys: the hand that holds a wiring back (`handsBusy`).
     // Never the pads or their keys, and never touched at all until one is.
     controlTouch: -Infinity,
+    // Whether a hand held the controls when the status line was last drawn:
+    // the quarter-second tick says a wait again when that changes
+    // (`waitWords`).
+    waitHeld: false,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
     visible: false,
@@ -756,7 +766,7 @@ export function createPerform(host) {
       // out (a first one, a re-check, or the panel's new set).
       const waiting = pending && (state.measuring || state.revalidating || inFlight("perform_wire"));
       k.wrap.classList.toggle("waiting", waiting);
-      const waitWord = !waiting ? "" : waitsForHand() ? "after you let go" : "listening…";
+      const waitWord = !waiting ? "" : waitsForHand() ? waitWords(handHolding()) : "listening…";
       if (k.wait.textContent !== waitWord) k.wait.textContent = waitWord;
       k.wrap.classList.toggle("search", search);
       // A guess until this patch's measurement lands (#290, ADR-012): it
@@ -833,9 +843,10 @@ export function createPerform(host) {
       } else {
         where.style.display = "none";
         const handWait = listening && waitsForHand();
-        k.sub.textContent = handWait ? "after you let go" : listening ? "listening…" : "";
+        const held = handWait && handHolding();
+        k.sub.textContent = handWait ? waitWords(held) : listening ? "listening…" : "";
         k.wrap.title = handWait
-          ? `${k.spec.name}: this sound is heard. It turns after you let go of the controls.`
+          ? `${k.spec.name}: this sound is heard. It turns ${held ? "after you let go of the controls" : "in a moment"}.`
           : listening
           ? `${k.spec.name}: listening to how this sound moves. It turns once that is done.`
           : k.spec.name;
@@ -1178,6 +1189,9 @@ export function createPerform(host) {
   // is held. What waits is in `state.deferredWire`, and lands from the
   // quarter-second tick (`landDeferred`).
   const handHeld = () => knobs.some((k) => k.held || !!k.sweep) || xyHeld;
+  // A hand holding a control or the XY pad: not a sweep, which ends by
+  // itself. What a wait is said in follows it (`waitWords`).
+  const handHolding = () => knobs.some((k) => k.held) || xyHeld;
   const handsBusy = () => heldOrTouched(handHeld(), state.controlTouch, performance.now());
   // The controls have nothing to turn yet, and what would wire them is in
   // hand, waiting for the hand: nothing is being listened to. A sound opened
@@ -2221,6 +2235,14 @@ export function createPerform(host) {
     // What the player asked for (a cache hit) lands once no control is
     // held; a measurement waits out the 1.5 s after the release too.
     if (state.deferredWire && !(state.deferredWire.asked ? handHeld() : handsBusy())) landDeferred();
+    // A measurement still waiting on the controls says what for
+    // (`waitWords`), which follows the hand: a control or the XY pad taken,
+    // or let go with only the 1.5 s or a sweep left, it is said again.
+    if (state.visible && waitsForHand() && handHolding() !== state.waitHeld) {
+      knobs.forEach(paintKnob);
+      if (wellMode === "xy") paintXY();
+      renderStatus();
+    }
     // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
@@ -3652,6 +3674,7 @@ export function createPerform(host) {
   // many controls reach it, re-checking it. Wander's own state is said on
   // Wander (`wanderState`).
   function renderStatus(msg) {
+    state.waitHeld = waitsForHand() && handHolding();
     host.face?.(heldFace, "well", state.cur ? state.cur.json : null);
     renderHeadWords();
     paintMoved();
@@ -3670,7 +3693,7 @@ export function createPerform(host) {
     // keeps the dials working on the old one, so it reads as a re-check, as
     // after a Take. "listening to this patch…" is for a patch with no wiring
     // yet, whose dials really are waiting.
-    else if (waitsForHand()) parts.push("heard: the controls turn after you let go");
+    else if (waitsForHand()) parts.push(`heard: the controls turn ${waitWords(handHolding())}`);
     else if (state.measuring && !state.wire) parts.push("listening to this sound…");
     else if (state.wire && state.guess) {
       // Playing on a wiring nobody measured on this sound (#290): a count of
@@ -4547,7 +4570,7 @@ export function createPerform(host) {
       ? "neither reaches this patch: pick two others"
       : dx ? `${kx.spec.name} doesn’t reach this patch`
         : dy ? `${ky.spec.name} doesn’t reach this patch`
-          : (px || py) && waitsForHand() ? "after you let go"
+          : (px || py) && waitsForHand() ? waitWords(handHolding())
             : (px || py) && listening ? "listening to this sound…" : "";
     xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
   }

@@ -323,7 +323,7 @@ test("a sound opened just after a pad press plays its kept wiring at once", { ta
   const wired = () => app.marks("perform-wired", { after: pressed }).then((ms) => ms.find((m) => m.detail?.name === "Glass Pad"));
   await app.engine((timeout) => expect.poll(wired, { timeout, message: "Glass Pad is wired" }).toBeTruthy());
   expect(["shipped", "cached"], "played on its kept wiring").toContain((await wired()).detail.how);
-  expect((await page.evaluate(() => window.__said)).filter((t) => /listening|let go/.test(t)), "it never waited for a hand").toEqual([]);
+  expect((await page.evaluate(() => window.__said)).filter((t) => /listening|let go|the controls turn/.test(t)), "it never waited for a hand").toEqual([]);
 });
 
 // Nor is the page's first moment a hand (#304's review): before any control
@@ -356,7 +356,7 @@ test("a sound in hand after a reload plays its kept wiring at once", { tag: "@sl
   const at = await wired();
   console.log(`${at.detail.name} wired ${at.detail.how} at ${Math.round(at.t)} ms of page time`);
   expect(["shipped", "cached"], "played on its kept wiring").toContain(at.detail.how);
-  expect((await page.evaluate(() => window.__said)).filter((t) => /let go|listening to this sound/.test(t)), "it never waited for a hand").toEqual([]);
+  expect((await page.evaluate(() => window.__said)).filter((t) => /let go|the controls turn|listening to this sound/.test(t)), "it never waited for a hand").toEqual([]);
 });
 
 // A control sweeping by ear is a hand on it (#481, ADR-025): ↵ on a control

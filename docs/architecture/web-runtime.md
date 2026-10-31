@@ -1579,8 +1579,11 @@ quarter-second tick (`landDeferred`): a first measurement wires the controls
 `applyRechecked`, which takes a re-check in place when it turns the same
 knobs and re-centres through `applyWired` when it does not, or when it
 replaces a wiring a Take carried over. Until then a control already playing
-keeps its wiring and its place, and one with nothing to turn says it turns
-after you let go.
+keeps its wiring and its place, and one with nothing to turn says what it
+waits for (`waitWords`): *after you let go* while a hand holds a control or
+the XY pad (`handHolding`, not a sweep), *in a moment* when none does and
+only a sweep or the 1.5 s after a touch is left. The quarter-second tick
+draws the words again when a hand takes or lets go (`state.waitHeld`).
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
