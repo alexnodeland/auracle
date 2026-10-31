@@ -71,7 +71,9 @@ test("on the air profile the page is throttled in Chromium at the render's rate 
   await app.boot({ profile: "air", wait: false });
   await app.reply("ready");
   const on = app.profile;
-  const capped = Math.max(1, Math.min(on.rate, on.pageRateMax));
+  // What the rate is (the render's, up to the cap) is profile.test.mjs's;
+  // this is that the fixture hands CDP what `pageRateOf` says.
+  const capped = profile.pageRateOf(on);
   expect(on.pageRate, `the rate CDP throttles the page at, in ${on.browser}: the render's ×${on.rate}, at most ×${on.pageRateMax}`).toBe(on.browser === "chromium" ? capped : 1);
   expect(on.engineRate, "the engine's rate stays the render's, whatever the page's").toBe(on.rate);
 
@@ -84,7 +86,9 @@ test("on the air profile the page is throttled in Chromium at the render's rate 
 });
 
 test("on the air profile a render takes about the reference machine's time, in the engine worker and on the farm", { tag: "@slow" }, async ({ page, app }) => {
-  test.setTimeout(240_000); // about 1.6 min in a four-core container, most of it the pool filling cold on the profile
+  // About 1.6 min in a four-core container on the 1,100 ms profile (runners
+  // at ×8 to ×12), most of it the pool filling cold; less at today's rates.
+  test.setTimeout(240_000);
   await app.boot({ profile: "air", workerPrefix: profile.ENGINE_PROBE, reuseRenders: true });
   await app.filled();
   const on = app.profile;
