@@ -20,7 +20,7 @@
 // the browser computes instead, on every view, so a rule that wins the
 // cascade with a smaller size, or a script that sets one, fails here even
 // when the count is clean.
-const { test, expect, goLevel } = require("./fixtures");
+const { test, expect, goLevel, listWhole } = require("./fixtures");
 
 const INIT = `(() => {
   // Every line of text a canvas draws: its words, its baseline, the canvas's
@@ -104,6 +104,7 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   expect(pip.t[2] <= pip.c[2] && pip.t[3] <= pip.c[3], `the bookmark's number fits its pip (${JSON.stringify(pip)})`).toBe(true);
   await page.keyboard.press("?");
   await expect(page.locator("#cmdk")).toBeVisible();
+  await listWhole(page);
   under["⌘K's list"] = await page.evaluate(UNDER(11));
   for (const [where, list] of Object.entries(under)) expect(list, `text under 11 px on ${where}`).toEqual([]);
 });

@@ -23,7 +23,7 @@
 const {
   WHERE, isLevel, startLevel, hashLevel, levelForKey, dirOf, step, railPath,
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, NOD_PX, flightEnds, flightAt, wheelStep, wheelOwner, pinchStep,
-  BY_DIGIT, cmdkList, SOUNDS_SHOWN,
+  BY_DIGIT, cmdkList, SOUNDS_SHOWN, cmdkLines, cmdkFirst, cmdkRestPx,
 } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
@@ -1111,11 +1111,40 @@ export function createShell(host = {}) {
     btn: document.getElementById("cmdk-btn"),
   };
   const kOpen = () => !!K.el && !K.el.classList.contains("hidden");
+  // The list is drawn a window at a time (#513): the key or the letter
+  // draws the lines the list can show, in its own task, and the rest come a
+  // few at a time in idle time once the frame is up, a line at the list's
+  // foot keeping their height meanwhile (`kRest`: padding would not do, as
+  // a flex item cannot shrink past its padding and the list would push the
+  // foot out of the dialog), so its scroll and its scrollbar are the whole
+  // list's from the first frame. A choice, a scroll or a touch on it draws
+  // the rest at once. The rows are laid out once, in the frame: the row
+  // chosen is scrolled to only when the list was scrolled away from it.
   let kSel = 0;
-  let kRows = []; // [{item, li}], in the order shown
+  let kRows = []; // the whole list's rows, in the order shown: [{item, marks, at, li}]
+  let kPlan = []; // its lines: a group's name ({group}) or a row ({row})
+  let kBuilt = 0; // how many of kPlan's lines are in the list
+  let kGen = 0; // bumped on every draw: an idle step of an earlier one does nothing
+  let kViewH = 0; // the window's height when the list opened
+  let kScrolled = false; // the list is scrolled away from its top
+  let kH = null; // a row's and a group name's height, measured once drawn
+  // The line at the list's foot that keeps the height of the rest.
+  const kRest = document.createElement("li");
+  kRest.className = "cmdk-rest";
+  kRest.setAttribute("role", "presentation");
+  kRest.setAttribute("aria-hidden", "true");
   let kFrom = null; // where the focus goes back to on close
+  // A sound's face, kept while the list is open: a letter that leaves the
+  // sound on the list moves its face to the new row, rather than parsing the
+  // picture's markup again.
+  const kFaces = new Map(); // item id -> {html, ico}
   const val = (v) => (typeof v === "function" ? v() : v);
   const keyText = (k) => (host.platformKeys ? host.platformKeys(k) : k);
+  const kIdle = window.requestIdleCallback
+    ? (f) => window.requestIdleCallback(f, { timeout: 200 })
+    : (f) => setTimeout(() => f({ didTimeout: true, timeRemaining: () => 8 }), 16);
+  // The lines an idle step draws before it asks whether there is time left.
+  const K_STEP = 8;
   function kGroups() {
     const now = [...cmdList];
     for (const fn of providers) {
@@ -1123,7 +1152,10 @@ export function createShell(host = {}) {
         now.push(...(fn() || []));
       } catch { /* a provider that cannot say gives nothing */ }
     }
+    // Another level's commands are not listed here, so their `when` is not
+    // asked (many ask the layout whether their control is shown).
     const live = now.filter((c) => {
+      if (c.level && c.level !== cur) return false;
       try {
         return !c.when || c.when();
       } catch {
@@ -1145,6 +1177,7 @@ export function createShell(host = {}) {
   }
   /** The label, with the letters the query matched marked. */
   function marked(label, marks) {
+    if (!marks.length) return label;
     const frag = document.createDocumentFragment();
     const at = new Set(marks);
     let run = "";
@@ -1169,63 +1202,126 @@ export function createShell(host = {}) {
     flush();
     return frag;
   }
-  function kDraw() {
-    const groups = cmdkList(kGroups(), K.input.value);
-    const frag = document.createDocumentFragment();
-    kRows = [];
-    for (const g of groups) {
-      const h = document.createElement("li");
-      h.className = "cmdk-grp";
-      h.setAttribute("role", "presentation");
-      h.textContent = g.name;
-      frag.append(h);
-      for (const { item, marks } of g.hits) {
-        const li = document.createElement("li");
-        li.className = "cmdk-it";
-        li.id = `cmdk-o${kRows.length}`;
-        li.setAttribute("role", "option");
-        li.setAttribute("aria-selected", "false");
-        const ico = document.createElement("span");
-        ico.className = "cmdk-ico";
-        ico.setAttribute("aria-hidden", "true");
-        // A sound's face, as the page has drawn it (main.js `faceSlot`);
-        // a command's glyph where the app has one for it (▶, ⚡), else ›.
-        if (item.face) ico.innerHTML = item.face();
-        else ico.textContent = item.icon || "›";
-        const lab = document.createElement("span");
-        lab.className = "cmdk-lab";
-        lab.append(marked(item.label, marks));
-        const hint = document.createElement("span");
-        hint.className = "cmdk-hint";
-        const keys = item.key ? (Array.isArray(item.key) ? item.key : [item.key]) : [];
-        if (item.hint) hint.append(item.hint);
-        for (const k of keys) {
-          const kb = document.createElement("kbd");
-          kb.textContent = keyText(k);
-          hint.append(kb);
-        }
-        li.append(ico, lab, hint);
-        if (item.title) li.title = item.title;
-        const at = kRows.length;
-        li.addEventListener("click", () => kRun(at));
-        li.addEventListener("pointermove", (e) => {
-          if (e.pointerType === "mouse" && kSel !== at) kMark(at, false);
-        });
-        frag.append(li);
-        kRows.push({ item, li });
+  function kGroupEl(name) {
+    const h = document.createElement("li");
+    h.className = "cmdk-grp";
+    h.setAttribute("role", "presentation");
+    h.textContent = name;
+    return h;
+  }
+  function kRowEl(i) {
+    const row = kRows[i];
+    const { item, marks } = row;
+    const li = document.createElement("li");
+    li.className = "cmdk-it";
+    li.id = `cmdk-o${i}`;
+    li.dataset.i = String(i);
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(i === kSel));
+    // Where it stands in the whole list, drawn yet or not.
+    li.setAttribute("aria-posinset", String(i + 1));
+    li.setAttribute("aria-setsize", String(kRows.length));
+    // A sound's face, as the page has drawn it (main.js `faceSlot`); a
+    // command's glyph where the app has one for it (▶, ⚡), else ›.
+    let ico = null;
+    if (item.face) {
+      const html = item.face();
+      const kept = item.id != null ? kFaces.get(item.id) : null;
+      if (kept && kept.html === html) ico = kept.ico;
+      else {
+        ico = document.createElement("span");
+        ico.innerHTML = html;
+        if (item.id != null) kFaces.set(item.id, { html, ico });
       }
+    } else {
+      ico = document.createElement("span");
+      ico.textContent = item.icon || "›";
     }
-    K.list.replaceChildren(frag);
+    ico.className = "cmdk-ico";
+    ico.setAttribute("aria-hidden", "true");
+    const lab = document.createElement("span");
+    lab.className = "cmdk-lab";
+    lab.append(marked(item.label, marks));
+    const hint = document.createElement("span");
+    hint.className = "cmdk-hint";
+    const keys = item.key ? (Array.isArray(item.key) ? item.key : [item.key]) : [];
+    if (item.hint) hint.append(item.hint);
+    for (const k of keys) {
+      const kb = document.createElement("kbd");
+      kb.textContent = keyText(k);
+      hint.append(kb);
+    }
+    li.append(ico, lab, hint);
+    if (item.title) li.title = item.title;
+    row.li = li;
+    return li;
+  }
+  /** Draw kPlan's lines up to `n`, after those drawn already. */
+  function kBuild(n) {
+    const to = Math.min(n, kPlan.length);
+    if (to <= kBuilt) return;
+    const frag = document.createDocumentFragment();
+    for (let j = kBuilt; j < to; j++) {
+      const line = kPlan[j];
+      frag.append(line.group != null ? kGroupEl(line.group) : kRowEl(line.row));
+    }
+    kBuilt = to;
     // The faces drawn already go in now; the rest stay empty slots.
-    if (host.paintSounds) host.paintSounds(K.list);
+    if (host.paintSounds) host.paintSounds(frag);
+    if (kRest.isConnected) K.list.insertBefore(frag, kRest);
+    else K.list.append(frag);
+    kKeepRest();
+  }
+  /** The height of the lines not drawn yet, kept at the list's foot. */
+  function kKeepRest() {
+    if (kBuilt >= kPlan.length) return void kRest.remove();
+    kRest.style.height = `${cmdkRestPx(kPlan, kBuilt, kH || undefined)}px`;
+    if (!kRest.isConnected) K.list.append(kRest);
+  }
+  const kWhole = () => kBuild(kPlan.length);
+  /** The rest, a few lines at a time while the page is idle. */
+  function kRestSoon() {
+    if (kBuilt >= kPlan.length) return;
+    const gen = kGen;
+    kIdle(function step(deadline) {
+      if (gen !== kGen || !kOpen()) return;
+      // The frame is up, so this reads a layout already made: the rows'
+      // own heights, for the height kept for the rest.
+      const r = K.list.querySelector(".cmdk-it")?.getBoundingClientRect().height;
+      const g = K.list.querySelector(".cmdk-grp")?.getBoundingClientRect().height;
+      if (r > 0 && g > 0) kH = { row: r, group: g };
+      do kBuild(kBuilt + K_STEP);
+      while (kBuilt < kPlan.length && !deadline.didTimeout && deadline.timeRemaining() > 4);
+      if (kBuilt < kPlan.length) kIdle(step);
+    });
+  }
+  /** Draw the list for what is typed: `groups`, ranked already, or ranked
+   *  here from the field. */
+  function kDraw(groups) {
+    kGen++;
+    // Out first, so a command's `when` that reads the layout (is its
+    // control shown?) does not lay out rows about to go.
+    K.list.replaceChildren();
+    const lines = cmdkLines(groups || cmdkList(kGroups(), K.input.value));
+    kPlan = lines.plan;
+    kRows = lines.rows;
+    kBuilt = 0;
+    kSel = 0;
+    kBuild(cmdkFirst(kViewH || window.innerHeight));
     K.list.classList.toggle("none", !kRows.length);
-    kMark(0, true);
+    // The first row is in sight unless the list was scrolled down.
+    kMark(0, kScrolled);
+    kRestSoon();
   }
   function kMark(i, scroll = true) {
+    const was = kRows[kSel];
     kSel = Math.max(0, Math.min(kRows.length - 1, i));
-    kRows.forEach(({ li }, j) => li.setAttribute("aria-selected", String(j === kSel)));
     const row = kRows[kSel];
+    // A row not drawn yet is drawn, with every line before it.
+    if (row && !row.li) kBuild(row.at + 1);
+    if (was && was !== row && was.li) was.li.setAttribute("aria-selected", "false");
     if (row) {
+      row.li.setAttribute("aria-selected", "true");
       K.input.setAttribute("aria-activedescendant", row.li.id);
       if (scroll) row.li.scrollIntoView({ block: "nearest" });
     } else K.input.removeAttribute("aria-activedescendant");
@@ -1238,11 +1334,16 @@ export function createShell(host = {}) {
     const a = document.activeElement;
     kFrom = !pointer && a && a !== document.body && a !== K.input ? a : null;
     K.input.value = "";
+    // Ranked before the list shows: a command's `when` may ask the layout
+    // whether its control is shown, and the layout is the page's alone yet.
+    kViewH = window.innerHeight;
+    const groups = cmdkList(kGroups(), "");
     K.el.classList.remove("hidden");
     K.scrim.classList.remove("hidden");
     K.btn?.setAttribute("aria-expanded", "true");
-    kDraw();
     K.input.focus({ preventScroll: true });
+    kScrolled = false;
+    kDraw(groups);
     if (host.mark) host.mark("cmdk-open", { rows: kRows.length });
   }
   function kHide() {
@@ -1255,7 +1356,11 @@ export function createShell(host = {}) {
     kFrom = null;
     if (back && document.contains(back) && back.focus) back.focus({ preventScroll: true });
     else if (K.el.contains(document.activeElement)) document.activeElement.blur();
+    kGen++;
     kRows = [];
+    kPlan = [];
+    kBuilt = 0;
+    kFaces.clear();
     K.list.replaceChildren();
   }
   /** Run the row `i`: the list closes first, giving the focus back, so what
@@ -1269,6 +1374,11 @@ export function createShell(host = {}) {
     kHide();
     row.item.run();
   }
+  /** The row a pointer event is over, by its index, or -1. */
+  const kRowAt = (e) => {
+    const li = e.target instanceof Element ? e.target.closest(".cmdk-it") : null;
+    return li && K.list.contains(li) ? Number(li.dataset.i) : -1;
+  };
   if (K.el) {
     K.input.addEventListener("input", () => kDraw());
     K.scrim.addEventListener("click", () => kHide());
@@ -1276,6 +1386,26 @@ export function createShell(host = {}) {
     K.el.addEventListener("mousedown", (e) => {
       if (e.target !== K.input) e.preventDefault();
     });
+    K.list.addEventListener("click", (e) => {
+      const at = kRowAt(e);
+      if (at >= 0) kRun(at);
+    });
+    K.list.addEventListener("pointermove", (e) => {
+      const at = kRowAt(e);
+      if (e.pointerType === "mouse" && at >= 0 && kSel !== at) kMark(at, false);
+    });
+    // A hand on the list's scroll draws what it scrolls to, and so does a
+    // window grown taller than the one the list opened in.
+    for (const ev of ["wheel", "touchmove"]) K.list.addEventListener(ev, kWhole, { passive: true });
+    window.addEventListener("resize", () => {
+      if (!kOpen()) return;
+      kViewH = window.innerHeight;
+      kWhole();
+    });
+    K.list.addEventListener("scroll", () => {
+      kScrolled = K.list.scrollTop > 0;
+      kWhole();
+    }, { passive: true });
     if (K.btn) K.btn.addEventListener("click", (e) => (kOpen() ? kHide() : kShow({ pointer: e.detail > 0 })));
   }
   // ⌘K or Ctrl K, from anywhere but under another modal dialog; taken

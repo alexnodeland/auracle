@@ -17,7 +17,7 @@
 // `navigator.userAgentData` before the app runs, so the spec reads the same
 // on a Mac and on CI's Linux. What it does not claim: what the keys do
 // (evolve_truth.spec.js holds ⌘Z, and Ctrl Z is the same handler).
-const { test, expect, goLevel, commandRow, runCommand } = require("./fixtures");
+const { test, expect, goLevel, commandRow, runCommand, listWhole } = require("./fixtures");
 
 const as = (platform, uaPlatform) => `(() => {
   Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => ${JSON.stringify(platform)} });
@@ -57,6 +57,8 @@ async function listKeys(page, keys) {
   await runCommand(page, "Booth mode");
   await page.locator("#cmdk-btn").click();
   await expect(keysOf(page, "New visitor")).toHaveText(keys.visitor);
+  // Every key the list prints: the list drawn whole first.
+  await listWhole(page);
   return (await page.locator("#cmdk-list .cmdk-hint kbd").allTextContents()).join(" ");
 }
 

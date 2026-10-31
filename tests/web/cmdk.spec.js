@@ -6,7 +6,13 @@
 // - ⌘K (and Ctrl K) opens it at any level: the focus in its field, the
 //   level's own commands first (This level), then Anywhere, then Sounds.
 //   It opens and filters from what the page holds, with no engine wait
-//   (ADR-025: within 100 ms on the reference machine, a budget here).
+//   (ADR-025: within 100 ms on the reference machine, from the key or the
+//   letter to the frame that shows it painted, a budget here).
+// - The key or the letter draws the rows the list can show in its own task,
+//   and the rest after (#513); the list stands at the whole list's height
+//   from the first frame, each row says where it stands in the whole list,
+//   ↑ from the first row chooses the last at once, and a hand on the
+//   list's scroll draws the rest at once.
 // - Typing ranks a label's start first: "patch" puts PATCH's level first,
 //   ahead of the commands that only hold the word.
 // - ↵ runs the row chosen (the arrows choose), and the list closes; with
@@ -41,7 +47,7 @@
 //   since ? away from BRIGHT is the list's.
 const fs = require("fs");
 const path = require("path");
-const { test, expect, goLevel, bankTab, commandRow, runCommand, PERFORM_SEED } = require("./fixtures");
+const { test, expect, goLevel, bankTab, commandRow, runCommand, listWhole, PERFORM_SEED } = require("./fixtures");
 const patchPage = require("./patch_page.js");
 
 // The faces the app ships for the presets (`make preset-faces`), by the key the
@@ -52,12 +58,16 @@ const SHIPPED_KEY = new Map(SHIPPED.presets.map((p) => [p.name, `${SHIPPED.ns}/$
 const list = (page) => page.locator("#cmdk");
 const field = (page) => page.locator("#cmdk-input");
 const options = (page) => page.locator("#cmdk-list .cmdk-it");
-/** The group names, in the order the list shows them. */
-const groups = (page) => page.locator("#cmdk-list .cmdk-grp").allTextContents();
+/** The group names, in the order the list shows them, once it is whole. */
+const groups = async (page) => {
+  await listWhole(page);
+  return page.locator("#cmdk-list .cmdk-grp").allTextContents();
+};
 
-/** The rows under the group `name`. */
-const rowsUnder = (page, name) =>
-  page.evaluate((name) => {
+/** The rows under the group `name`, once the list is drawn whole. */
+const rowsUnder = async (page, name) => {
+  await listWhole(page);
+  return page.evaluate((name) => {
     const out = [];
     let inside = false;
     for (const li of document.querySelectorAll("#cmdk-list > li")) {
@@ -66,6 +76,7 @@ const rowsUnder = (page, name) =>
     }
     return out;
   }, name);
+};
 
 test("⌘K and Ctrl K open the list over any level, its own commands first, at once", async ({ page, app }) => {
   await app.boot();
@@ -93,24 +104,97 @@ test("⌘K and Ctrl K open the list over any level, its own commands first, at o
   await page.keyboard.press("Control+k");
   await expect(list(page)).toBeHidden();
 
-  // How long the list takes to open and to filter, from the key to the
-  // frame after: from what the page holds (ADR-025, 100 ms).
+  // How long the list takes to open and to filter, from the key (or the
+  // letter) to the task after the frame that shows it, which runs once that
+  // frame is painted: from what the page holds (ADR-025, 100 ms). The list's
+  // frame is painted before the first letter, and each letter is timed on
+  // its own, the slower of two typed in turn. (Timed to the next frame's
+  // start, the open left out its own frame's paint and the letter counted
+  // it.)
   const took = await page.evaluate(async () => {
-    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    const painted = () => new Promise((r) => requestAnimationFrame(() => {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = () => r();
+      ch.port2.postMessage(0);
+    }));
     const t0 = performance.now();
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, bubbles: true }));
-    await frame();
+    await painted();
     const open = performance.now() - t0;
     const input = document.getElementById("cmdk-input");
-    const t1 = performance.now();
-    input.value = "ta";
-    input.dispatchEvent(new Event("input"));
-    await frame();
-    return { open, filter: performance.now() - t1, rows: document.querySelectorAll("#cmdk-list .cmdk-it").length };
+    let filter = 0;
+    for (const q of ["t", "ta"]) {
+      const t1 = performance.now();
+      input.value = q;
+      input.dispatchEvent(new Event("input"));
+      await painted();
+      filter = Math.max(filter, performance.now() - t1);
+    }
+    return { open, filter, rows: document.querySelectorAll("#cmdk-list .cmdk-it").length };
   });
   expect(took.rows).toBeGreaterThan(0);
   app.budget("⌘K → the list drawn", took.open, 100);
   app.budget("a letter typed → the list filtered", took.filter, 100);
+});
+
+test("the key draws the rows in sight at once and the rest after, the list at its whole height from the first frame", async ({ page, app }) => {
+  await app.boot();
+  // Opened once, so the list has measured its rows.
+  await page.keyboard.press("Meta+k");
+  await expect(list(page)).toBeVisible();
+  await listWhole(page);
+  await page.keyboard.press("Escape");
+  // In the key's own task: the rows the list can show, the first chosen.
+  const at = await page.evaluate(() => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, bubbles: true }));
+    const ul = document.getElementById("cmdk-list");
+    const rows = [...ul.querySelectorAll(".cmdk-it")];
+    return {
+      drawn: rows.length,
+      whole: Number(rows[0].getAttribute("aria-setsize")),
+      places: rows.map((r) => Number(r.getAttribute("aria-posinset"))),
+      // The last row drawn stands at or past the list's foot.
+      fills: rows[rows.length - 1].getBoundingClientRect().bottom >= ul.getBoundingClientRect().bottom,
+      // The list keeps to the dialog, its foot inside it.
+      footIn: document.querySelector("#cmdk .cmdk-foot").getBoundingClientRect().bottom <= document.getElementById("cmdk").getBoundingClientRect().bottom + 1,
+      box: ul.clientHeight,
+      height: ul.scrollHeight,
+      chosen: document.getElementById("cmdk-input").getAttribute("aria-activedescendant"),
+      first: rows[0].id,
+    };
+  });
+  expect(at.drawn, "the key drew the rows in sight, not every row").toBeLessThan(at.whole);
+  expect(at.fills, "the rows drawn fill the list").toBe(true);
+  expect(at.footIn, "the list's foot is inside the dialog while the list fills").toBe(true);
+  expect(at.places).toEqual(at.places.map((_, i) => i + 1));
+  expect(at.chosen).toBe(at.first);
+  // The rest come after, and the list stood at the height they take.
+  await expect(options(page)).toHaveCount(at.whole);
+  const whole = await page.evaluate(() => {
+    const ul = document.getElementById("cmdk-list");
+    return { box: ul.clientHeight, height: ul.scrollHeight };
+  });
+  expect(whole.box, "the list's box is the same size while it fills").toBe(at.box);
+  expect([at.height - 1, at.height, at.height + 1], `the list scrolled ${at.height} px while it filled, and ${whole.height} px whole`).toContain(whole.height);
+  await page.keyboard.press("Escape");
+  // ↑ from the first row chooses the last, drawn for it in the key's task;
+  // a wheel on the list draws the rest in its own.
+  const moved = await page.evaluate(() => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, bubbles: true }));
+    const input = document.getElementById("cmdk-input");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", code: "ArrowUp", bubbles: true }));
+    const last = document.getElementById(input.getAttribute("aria-activedescendant"));
+    const up = { selected: last?.getAttribute("aria-selected"), place: last?.getAttribute("aria-posinset"), of: last?.getAttribute("aria-setsize") };
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, bubbles: true }));
+    const ul = document.getElementById("cmdk-list");
+    ul.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true }));
+    const rows = ul.querySelectorAll(".cmdk-it");
+    return { up, wheeled: rows.length, whole: Number(rows[0].getAttribute("aria-setsize")) };
+  });
+  expect(moved.up.selected).toBe("true");
+  expect(moved.up.place, "↑ from the first row chose the last").toBe(moved.up.of);
+  expect(moved.wheeled, "the wheel drew every row").toBe(moved.whole);
 });
 
 test("typing ranks a label's start first, ↵ runs the row chosen, and with nothing found leaves the list open", async ({ page, app }) => {
