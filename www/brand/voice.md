@@ -45,7 +45,9 @@ second tagline.
 
 The image is a plant growing toward light. Each generation is bred toward what
 you pick, and each sound's face grows out of the one before it. The film sound
-(RFC-007, to be written) comes from the same place: soft, warm, nature-ambient.
+([RFC-007](../../docs/proposals/007-the-sound-of-the-films.md),
+accepted as [ADR-014](../../docs/decisions/014-the-films-sound.md)) comes from
+the same place: soft, warm, nature-ambient.
 Keep the image when you write about the instrument: things grow, lean, settle,
 and come closer. Don't tell the reader about the image.
 
@@ -390,7 +392,8 @@ hear the most.
   voice continue. The voice never starts over a sound's tail.
 - **The bed sits under the voice,** soft and in F. Its melody lives between
   lines, never across them. The film sound's specification sets the levels
-  (RFC-007, to be written).
+  ([RFC-007](../../docs/proposals/007-the-sound-of-the-films.md), accepted as
+  [ADR-014](../../docs/decisions/014-the-films-sound.md)).
 - **The first words come after the cold open's sound** has had its moment.
 
 ### The shape of a film
@@ -770,7 +773,9 @@ The check counts the British spellings listed in `BRITISH` in `www/checkwords.py
 
 They are one form (RFC-004 part 7), with the shape set in [the shape of a
 film](#the-shape-of-a-film). The bed, the demo's key and register, and the
-levels follow the film sound's specification (RFC-007, to be written).
+levels follow the film sound's specification
+([RFC-007](../../docs/proposals/007-the-sound-of-the-films.md),
+accepted as [ADR-014](../../docs/decisions/014-the-films-sound.md)).
 `VIEWS.md` holds each film's outline.
 
 ### The guide
