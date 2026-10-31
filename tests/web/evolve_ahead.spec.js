@@ -46,11 +46,15 @@ const cardIds = (page) =>
 /** The pairs dealt ahead, in the order main heard them. */
 const aheadPairs = async (app) => (await app.replies("duel", { where: { ahead: true, pair: true } })).map((d) => d.pair);
 const aheadCount = async (app) => (await aheadPairs(app)).length;
-/** Every deal asked for and answered after `after`, in order:
- *  [sent|got, ahead?, pair, t]. */
+/** Every deal asked for and answered after `after`, in the order the tap
+ *  saw them: [sent|got, ahead?, pair, n]. In its count (`_n`), not by the
+ *  page's clock: a deal asked for again in place of a refused answer is
+ *  posted in that answer's own handler, and the coarse clock (100 us) often
+ *  stamps the two alike, which sorted the deal before the answer that asked
+ *  for it, as if it had been asked for while one was out (#455). */
 const deals = async (app, after) => {
-  const sent = (await app.sent("duel", { after })).map((m) => ["sent", !!m.ahead, null, m._at]);
-  const got = (await app.replies("duel", { after })).map((d) => ["got", !!d.ahead, d.pair, d._at]);
+  const sent = (await app.sent("duel", { after })).map((m) => ["sent", !!m.ahead, null, m._n]);
+  const got = (await app.replies("duel", { after })).map((d) => ["got", !!d.ahead, d.pair, d._n]);
   return sent.concat(got).sort((a, b) => a[3] - b[3]);
 };
 /** Both sounds of a pair fetched: a render of each has come back (the page
@@ -195,7 +199,21 @@ const firstUsable = (pairs, refused, from = 0) => {
   return -1;
 };
 
-test("pairs go up in the order they were dealt when a pick lands while the next deal is out", async ({ page, app }) => {
+// Whether the deal that was out comes back as a pair that may go up is the
+// engine's draw, so a refused answer, and the deal asked for again in its
+// handler, came by chance (the CI run that found #455 drew the pair just
+// answered). The second case makes it so: that answer is rewritten into the
+// pair just answered, so the table refuses it and asks again once.
+const nothing = async () => {};
+const OUT_CASES = [
+  { name: "", arm: nothing, refusedFirst: () => {} },
+  {
+    name: ", and its answer is refused, the deal asked for again goes out only after that answer",
+    arm: async (app, rid, pair) => app.amend({ type: "duel", re: rid }, { pair }),
+    refusedFirst: (first, answered) => expect(key(first[0]), "the deal that was out came back as the pair just answered").toBe(answered),
+  },
+];
+for (const c of OUT_CASES) test(`pairs go up in the order they were dealt when a pick lands while the next deal is out${c.name}`, async ({ page, app }) => {
   await boot(page, app);
   await aheadReady(app);
 
@@ -209,6 +227,7 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
   // Picked again while that deal is out: the cards wait for it, and no
   // second deal is asked for meanwhile.
   const answered = await tableKey(page);
+  await c.arm(app, (await app.sent(AHEAD, { after: mark })).pop().rid, await cardIds(page));
   await page.locator("#choose-b").click();
   await expect(page.locator("#choose-a")).toBeDisabled();
   await app.quiet();
@@ -219,6 +238,7 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
   console.log(`dealt after the pick: ${JSON.stringify(first)}; on the table: ${await tableKey(page)}`);
   // The first pair dealt after the pick that may go up is the one on the
   // table (the pair just answered may not)…
+  c.refusedFirst(first, answered);
   const up = firstUsable(first, [answered]);
   expect(up, "no answer main may put up").toBeGreaterThanOrEqual(0);
   expect(await tableKey(page)).toBe(key(first[up]));
@@ -286,7 +306,6 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
 // pick; ↻ there shows the same pairs in every order too, a deal behind Q
 // being judged against the pick that put Q up (deal.test.mjs).
 const PROBE_SEED = 20260928;
-const nothing = async () => {};
 /** Each order: what is held from boot (`hold`), what "P up and Q waiting"
  *  waits for (`ready`), what is held from the first pick (`arm`), what has
  *  happened to the deal behind Q by ⌘Z (`atUndo`), and whether it had been
