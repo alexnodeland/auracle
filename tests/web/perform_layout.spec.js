@@ -4,7 +4,10 @@
 // - At 1000, 1280 and 1440 px the sound is on the left (the cap, the name,
 //   the well with its face) and what you turn is on the right (CONTROLS, the
 //   knobs, the hood, the pad row WANDER · OFFER · PEEK · TAKE · PASS), with
-//   the pads above the keybed and no pad's words past its edge.
+//   the pads above the keybed and no pad's words past its edge, and each
+//   value under the hood whole (at 1000 px a row has the column's width; at
+//   1280 and 1440 the rows stand two or three across), on Glass Pad's
+//   values, none of them the balance's ten characters.
 // - XY is a mode of the well: its button swaps the face (dimmed behind) for
 //   the field, and the button or Esc puts the face back.
 // - Blend is a slider under the two faces, shown only while B holds an
@@ -51,7 +54,7 @@ const records = async (app) => (await app.sent({ type: "perform_record" })).map(
 for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
   test.describe(`a ${width} px window`, () => {
     test.use({ viewport: { width, height } });
-    test(`PERFORM is a well and a panel at ${width} px, its pads above the keybed and whole`, async ({ page, app }) => {
+    test(`PERFORM is a well and a panel at ${width} px, its pads above the keybed and whole, and the hood's values whole`, async ({ page, app }) => {
       await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
       await app.openOnPerform("Glass Pad");
       await app.engine((timeout) => expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
@@ -64,7 +67,10 @@ for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
         const cut = [...document.querySelectorAll(".pf-pads .pf-pad, .pf-pads .pf-k-name, .pf-ctlhead button, .pf-cap")]
           .filter((e) => e.scrollWidth > e.clientWidth + 1)
           .map((e) => e.textContent.trim());
-        return { left: r(".pf-left"), right: r(".pf-right"), well: r(".pf-well"), deck: r(".pf-deck"), pads: r(".pf-pads"), keybar: r(".keybar"), order: pads, cut };
+        // A hood value is cut by a pixel too: 56 px in 55 read "1.78 k…".
+        const vals = [...document.querySelectorAll(".pf-hood-val")];
+        const valsCut = vals.filter((e) => e.scrollWidth > e.clientWidth).map((e) => `${e.textContent.trim()}: ${e.scrollWidth} in ${e.clientWidth}`);
+        return { left: r(".pf-left"), right: r(".pf-right"), well: r(".pf-well"), deck: r(".pf-deck"), pads: r(".pf-pads"), keybar: r(".keybar"), order: pads, cut, vals: vals.length, valsCut };
       });
       // Two columns: the sound on the left, what you turn on the right.
       expect(box.right.left, "the panel is right of the sound").toBeGreaterThanOrEqual(box.left.right - 1);
@@ -75,6 +81,9 @@ for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
       expect(box.order).toEqual(["Wander", "Offer", "Peek", "Take", "Pass"]);
       expect(box.pads.bottom, "the pads are above the keybed").toBeLessThanOrEqual(box.keybar.top + 1);
       expect(box.cut, "words past their edge").toEqual([]);
+      // Under the hood, every value whole, in its own units.
+      expect(box.vals, "values under the hood").toBeGreaterThan(0);
+      expect(box.valsCut, "values under the hood cut").toEqual([]);
     });
   });
 }
