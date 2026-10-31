@@ -28,7 +28,8 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches), "a coarse pointer").toBe(true);
   await at(page, "perform");
   // A preset's ▶, at rest, hears it without opening it. (First, while
-  // nothing sounds: a ▶ pressed while another phrase plays stops that one.)
+  // nothing sounds: a ▶ pressed while another phrase plays stops that one,
+  // and the row's ▶ below is that one.)
   await bankTab(page, "presets");
   const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
   await expect(preset).toBeVisible();
@@ -37,15 +38,22 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   await preset.locator(".bi-hear").tap();
   await expect.poll(async () => (await app.sent({ type: "load_preset", index, preview: true, open: false })).length).toBeGreaterThan(0);
   await at(page, "perform");
-  // It joins the pool (the bank redraws for it): act on the pool once it has.
-  await app.engine((timeout) => expect(page.locator(`#bank-list .preset-item[data-index="${index}"]`)).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
+  // It joins the pool (the bank redraws for it), and its phrase sounds: its
+  // ▶ is lit. Joining says only that the load came back; the render it then
+  // waits on is still on its way, and a ▶ tapped in that gap is a different
+  // case (the latest ▶ wins, the spec below). So the pool is acted on once
+  // the preset is heard.
+  const presetRow = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+  await app.engine((timeout) => expect(presetRow).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
+  await app.engine((timeout) => expect(presetRow.locator(".bi-hear")).toHaveClass(/\bplaying\b/, { timeout }), { ms: 60_000 });
   await bankTab(page, "pool");
   const id = await page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2).getAttribute("data-id");
   const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
   await toRow(row);
   // At rest, nothing pointed at: its actions are there.
   for (const a of [".bi-hear", ".bi-star", ".bi-save", ".bi-kill"]) await expect(row.locator(a), a).toBeVisible();
-  // ▶ plays it (lit, or on its way), and the row is not opened.
+  // ▶ plays the row (lit, or on its way), over the preset's phrase when it
+  // is still sounding, and the row is not opened.
   await row.locator(".bi-hear").tap();
   await app.engine((timeout) => expect(row.locator(".bi-hear")).toHaveClass(/\b(playing|pending)\b/, { timeout }), { ms: 30_000 });
   await at(page, "perform");
