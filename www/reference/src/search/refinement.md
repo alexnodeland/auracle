@@ -114,8 +114,8 @@ would have removed, but a patch saved (pinned) at any point before the end is
 never among them. Kept candidates are always exempt.
 
 So are the sounds on the table: the app holds the pair EVOLVE shows and the
-pair of a pick still in its undo window (`set_on_table`, four at most, read
-at the end as pins are, and never saved), so the vote that pick becomes when
+pair of a pick still in its undo window (`set_on_table`, at most
+`ON_TABLE_MAX`, four; read at the end as pins are, and never saved), so the vote that pick becomes when
 its window closes finds both its sides in the pool. One rule,
 `Engine::spared` (kept, a ⚡ seed in flight, or on the table), is what every
 eviction passes over: the bar a child must beat, the trim at the end, a

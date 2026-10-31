@@ -312,8 +312,8 @@ id; ids are issued in order), which stays in the pool as an ordinary member. A
 saved member is protected by its pin and is not counted; unsaving it bounds
 the flags again. With pins capped the same, at least half of a pool of four or
 more is never kept (below four, the caps' floor of one each can protect more
-than half). Less any ⚡ seed in flight and the sounds on the table (four at
-most), that leaves a member to evict in any pool of ten or more, the app's 40
+than half). Less any ⚡ seed in flight and the sounds on the table (at most
+`ON_TABLE_MAX`, four), that leaves a member to evict in any pool of ten or more, the app's 40
 among them, so an insert always lands and a generation's end always brings
 the pool back to size. A restore applies the cap
 again, for a file written under a larger one.
