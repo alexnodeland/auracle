@@ -114,9 +114,11 @@ test("a pool row's ▶ tapped while a preset's ▶ waits for its sound is the on
 
 // The same, a step later (#421's own gap): the preset's load has come back
 // (it joins the pool) and its render is on its way when the row's ▶ is
-// tapped. The render is held only until the row's tap, well inside the
-// render's wait (RENDER_WAIT_MS, 12 s), so the preset's wait is still
-// standing when the row takes it back.
+// tapped. The render is held only until the row's tap (about 0.4 s when
+// measured), inside the render's wait (RENDER_WAIT_MS, 12 s), so the preset's
+// wait is still standing when the row takes it back. (On a runner slow
+// enough for that wait to time out first, the preset's wait has ended by
+// itself and this test passes without reaching the gap.)
 test("a pool row's ▶ tapped while a preset's ▶ waits for its render is the one heard", async ({ page, app }) => {
   await page.addInitScript(() => {
     window.__phrases = 0;
@@ -132,13 +134,15 @@ test("a pool row's ▶ tapped while a preset's ▶ waits for its render is the o
   const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
   const index = Number(await preset.getAttribute("data-index"));
   const presetRow = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
-  const renders = await app.sentCount("render");
   await app.holdRequests("render");
   await preset.locator(".bi-hear").tap();
   // The load comes back (the preset joins the pool) and its render is asked
-  // for, and held.
+  // for, after the load (by the tap's count), and held.
+  await expect.poll(async () => (await app.sent({ type: "load_preset", index, preview: true })).length).toBeGreaterThan(0);
+  const load = (await app.sent({ type: "load_preset", index, preview: true }))[0];
+  await app.replyTo(load);
   await app.engine((timeout) => expect(presetRow).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
-  await expect.poll(() => app.sentCount("render")).toBeGreaterThan(renders);
+  await expect.poll(async () => (await app.sent({ type: "render" })).filter((r) => r._n > load._n).length).toBeGreaterThan(0);
   await bankTab(page, "pool");
   const id = await page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2).getAttribute("data-id");
   const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
