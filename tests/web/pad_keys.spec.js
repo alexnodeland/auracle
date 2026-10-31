@@ -75,6 +75,14 @@ test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ t
 test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its own Enter, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page, app }) => {
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
+  // Glass Pad plays at once on its shipped wiring and is measured again in
+  // the background ("re-checking"). That measurement landing re-centres the
+  // controls at the sound in hand, so they read zero (#442): landed after
+  // the turn below, it put the dial at 0 where the test waits for its
+  // sweep to return to where it was. It lands first, before any hand.
+  await expect.poll(async () => (await app.sent({ type: "perform_wire" })).length, { timeout: 30_000 }).toBeGreaterThan(0);
+  await app.answered({ types: ["perform_wire"] });
+  await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText(/re-checking|listening/, { timeout }), { ms: 30_000 });
   const bar = page.locator(".pf-moved");
   // At home: nothing to keep, nothing to go back to. (The level's stop the
   // spec clicked to get here is a button, whose Enter is its own.)
