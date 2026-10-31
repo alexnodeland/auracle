@@ -4,10 +4,10 @@ name: Slow suite
 # fast tier and the only required check; a PR may merge on it alone. Each test
 # runs in exactly one tier (docs/architecture/testing.md § CI tiers):
 #
-# - Rust: the search floor (`refinement_improves_pool`, ~330 s on a runner)
-#   and the ten other tests over a minute (~1030 s of test time between them),
-#   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
-#   every test NOT named there.
+# - Rust: the search floor (`refinement_improves_pool`, ~100 s on a runner)
+#   and the nine other tests that took over a minute when they were named
+#   (~260 s of test time between them), named in the Makefile as SEARCH_FLOOR
+#   and SLOW_TESTS. The fast tier runs every test NOT named there.
 # - Browser: the specs tagged `@slow` (~35 min of test time in one worker:
 #   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and,
 #   in a job of their own, any tagged `@quarantine`: a flaky test moved out
@@ -45,7 +45,10 @@ name: Slow suite
 #   since its run covers everything before it. A batch from the merge queue
 #   lands as two or three merges seconds apart; a run whose commit main has
 #   already moved past runs nothing (the `scope` job).
-# - on demand (Actions → Slow suite → Run workflow), in full.
+# - on demand (Actions → Slow suite → Run workflow), in full. Ticking `cold`
+#   starts the Rust legs without the Rust cache (nothing restored, nothing
+#   saved), to read what a cold build and a cold run cost in each leg's two
+#   steps (below).
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners; the quarantined tests' one runner
@@ -71,6 +74,11 @@ on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+    inputs:
+      cold:
+        description: "Start the Rust legs without the Rust cache (restore and save both skipped), to time a cold build and run"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -141,14 +149,60 @@ jobs:
   # The slow Rust tests, in two legs: the search floor gets a runner to itself
   # (it walks 16 seeds, one thread each, and on a 4-core runner those threads
   # queue four deep; next to other tests it makes them wait for the cores),
-  # and the other ten share one (~5 min; the longest is ~3 min). One leg at a
-  # time (`max-parallel: 1`), beside at most three browser runners: four.
+  # and the other nine share one (~2 min of tests; the longest is ~75 s). One
+  # leg at a time (`max-parallel: 1`), beside at most three browser runners:
+  # four.
+  #
+  # Each leg builds the tests in a step of its own (`make test-build`), then
+  # runs them in another, each with its own limit. What that buys: the step
+  # that runs out of time is the one that fails, so the job's record says
+  # whether the build or the tests were slow; the build, which has no reason
+  # to crawl, is ended at its limit; and the two steps' times in the record
+  # are a cold build's and a cold run's, apart.
+  #
+  # What it does not buy is protection from a lost runner, which is what
+  # PR #344's search-floor leg (run 37586801423, job 112678728066) was: a
+  # runner took the job and reported nothing, so the job's record has no step
+  # at all and its log is gone, and it ended 35 minutes after it began, five
+  # past its 30-minute limit. A job cut off at its own limit on a live runner
+  # keeps its steps and its log; that leg's was not. The run's other leg,
+  # which started 35 minutes later, restored main's cache by an exact match
+  # and passed in under 7 minutes. Neither a step's limit nor the summary
+  # step below reaches a lost runner: only the job's limit ends it, and it
+  # holds this leg, and the other behind it (`max-parallel: 1`), until then.
+  #
+  # The limits move together:
+  #
+  # - Build, 10 minutes. With the cache, a leg compiles the workspace's own
+  #   crates (rust-cache leaves them out) in ~90 to 110 s. Cold, the
+  #   dependencies come too: 69 of a cold build's 285 CPU seconds, a third
+  #   more than the crates alone (docs/notes/rust-build-2026-10). From
+  #   nothing it took 4 min 43 s on a shared 4-core workstation. A runner has
+  #   not been timed cold; a run with `cold` ticked does.
+  # - Run, 22 minutes. nextest ends a hung test and names it in its report:
+  #   at ten minutes (the `ci` profile), the search floor at twenty
+  #   (.config/nextest.toml). One hung test is named well inside the step.
+  #   Tests that take most of the pool run one after another, so if several
+  #   of them hang (named_controls, closed_loop_learns_synthetic_taste and
+  #   closed_loop_learns_motion_rate, on four cores), the third's ten minutes
+  #   end after the step's; the log still names the first two. 22 is the
+  #   backstop above the longest, at 22: two minutes past the search
+  #   floor's twenty, so nextest's report comes first.
+  # - The job, 35: the two limits and three minutes for the steps without one
+  #   (checkout, the toolchain, the cache, nextest). Sized against the steps,
+  #   not against a run seen: a warm leg takes 3 to 4 minutes. The price of
+  #   that headroom is what a lost runner now holds the lane for: 35 minutes
+  #   (30 before). A cold build is a few minutes (4 min 43 s from nothing on a
+  #   shared workstation), so 10 is double it; tighter limits keep a lost
+  #   runner's cost near what it was.
+  #
+  # (docs/architecture/testing.md § CI tiers, The Rust legs.)
   rust:
     name: Slow Rust (${{ matrix.name }})
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -162,17 +216,59 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      # The test cache, which ci.yml's Doctests job restores too. Saved from
-      # main by one leg (both build the same test binaries): CI's own Rust
-      # jobs on main reuse the merge queue's verdict and seldom run there.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The test cache, which ci.yml's Doctests job restores too: the
+      # dependencies only (the workspace's own crates are left out, so every
+      # leg compiles them). Saved from main by one leg (both build the same
+      # test binaries): CI's own Rust jobs on main reuse the merge queue's
+      # verdict and seldom run there. A PR restores main's and saves nothing.
+      #
+      # A run restores nothing when no cache has the key's prefix and its
+      # Rust-environment hash (its lockfile hash comes last, so a Cargo.lock
+      # edit still restores the older cache). That hash covers the toolchains
+      # on the runner, the pinned one and the image's own (the step's log
+      # lists them under "Environment considered"), and the values of
+      # RUSTFLAGS, CARGO_INCREMENTAL, CARGO_NET_RETRY and CARGO_TERM_COLOR
+      # (ci.yml sets the same four): a new runner image with a new Rust, a
+      # toolchain bump or an edit to one of those starts every run cold, until
+      # a run on main has saved the new key. Main saves only from this one
+      # leg, only when the leg passed (rust-cache's cache-on-failure is off)
+      # and only when the key was new ("Cache up-to-date" otherwise), and a
+      # run the `scope` job skips as superseded saves none. None of this was
+      # seen on PR #344, whose other leg restored main's cache by an exact
+      # match. `cold` skips the step, so a cold run neither reads nor writes
+      # the cache.
+      - id: cache
+        if: ${{ !inputs.cold }}
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.target == 'test-slow-rest' }}
+      # On the run's summary, so which cache a leg had reads on the run's
+      # page without opening a log. A lost runner writes nothing.
+      - name: Say which cache this leg has
+        env:
+          COLD: ${{ inputs.cold }}
+          HIT: ${{ steps.cache.outputs.cache-hit }}
+          LEG: ${{ matrix.name }}
+        run: |
+          if [ "$COLD" = true ]; then
+            note="none: this run was asked to start cold"
+          elif [ "$HIT" = true ]; then
+            note="restored, an exact match of the key"
+          else
+            note="no exact match: an older key's, or none (the cache step's log says which)"
+          fi
+          echo "Rust cache, $LEG: $note"
+          echo "Rust cache, $LEG: $note" >> "$GITHUB_STEP_SUMMARY"
       - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: nextest
-      - run: make ${{ matrix.target }}
+      - name: Build the tests
+        timeout-minutes: 10
+        run: make test-build
+      - name: Run the tests
+        timeout-minutes: 22
+        run: make ${{ matrix.target }}
 
   # The engine, this tier's timings and the image's tag (the Playwright
   # version tests/web/package-lock.json locks), once for the run, as in
