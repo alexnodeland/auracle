@@ -6,6 +6,7 @@
       "machine": "a 2018 or 2019 MacBook Air (Intel 1.6 GHz dual-core i5, 2 cores, 4 threads), in Firefox",
       "preset": "Solo Flight",
       "referenceMs": 1100,
+      "referenceIs": "ADR-025's estimate, not yet measured on the Air",
       "farm": 2
     }
   }

@@ -293,12 +293,15 @@ jobs:
   # quantum on the reference machine; #361), judged nightly as a budget:
   # never red for a preset over it (ADR-022). `live_cost.mjs --sweep-only
   # --gate` times every preset's live voices in node, the V8 Chromium runs,
-  # at four voices (A alone) and at eight (A and an offer in B), against half
-  # a quantum divided by this runner's rate on the reference profile, which
-  # it measures first by the profile's own calibration render
-  # (tests/web/profiles.json). The run's summary names each preset over the
-  # limit and the issue it waits on (#320: a voice count from the sound's own
-  # cost), and says it is not judged at #320's ceiling until that exists.
+  # at four voices (A alone) and at eight (A, and B holding the same preset,
+  # a proxy for an offer bred from it), against half a quantum divided by
+  # this runner's rate on the reference profile, which it measures first by
+  # the profile's own calibration render (tests/web/profiles.json, whose
+  # reference is ADR-025's estimate until the Air measures it, so the limit
+  # is about three times too strict for now). The run's summary names each
+  # preset over the limit and the issue it waits on (#320: a voice count
+  # from the sound's own cost), and says it is not judged at #320's ceiling
+  # until that exists.
   # Red only when it could not measure, which is filed with the speed
   # budgets. A runner of its own for a few minutes, so the sweep shares its
   # cores with nothing.

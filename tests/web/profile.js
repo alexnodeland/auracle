@@ -45,7 +45,8 @@
 // On the Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
 // reference_profile.spec.js` prints the calibration render there ("one
 // render of Solo Flight … ms here"), which is the figure to set, in
-// `profiles.json`.
+// `profiles.json`, and its `referenceIs` with it (how the figure is known,
+// which the audio thread's gate prints beside its limit).
 //
 // The profiles (each one's preset, `referenceMs` and farm width) and the
 // calibration's runs are data, in `profiles.json`, so the audio thread's

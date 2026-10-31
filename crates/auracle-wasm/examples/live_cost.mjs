@@ -17,17 +17,20 @@
 //                     the page's, the browser's and the other threads' on the same core
 //   --list            print every preset of the sweep, cheapest first
 //   --gate[=ms]       judge the sweep: every preset's voices at four (A alone, as the worklet plays
-//                     a sound) and at eight (A and an offer in B, which the worklet renders beside
-//                     it every quantum while B holds one, resting it only while the audio is
-//                     struggling), the least of the sweep's repeats, against a limit. Bare, the
+//                     a sound) and at eight (A, and B holding the same preset, a proxy for an offer
+//                     bred from it: the worklet renders B beside A every quantum while B holds one,
+//                     resting it only while the audio is struggling), the least of the sweep's
+//                     repeats, against a limit. Bare, the
 //                     limit is ADR-025's: the audio thread's work under half a quantum on the
 //                     reference machine, so half a quantum at --rate (1.33 ms at 48 kHz) divided by
 //                     this machine's rate on the reference profile (--profile), which it measures
 //                     first as tests/web/profile.js does in a browser: the profile's calibration
 //                     render (tests/web/profiles.json: its preset's farm render with its audio, one
 //                     to warm up, then the median of its runs) against that render's time on the
-//                     reference, here in node, the V8 Chromium runs, in the thread's CPU time as
-//                     the sweep is (a machine as slow as the reference, or slower, is at ×1).
+//                     reference (its `referenceIs` says how that is known: for now ADR-025's
+//                     estimate, not a measurement on the Air), here in node, the V8 Chromium runs,
+//                     in the thread's CPU time as the sweep is (a machine as slow as the
+//                     reference, or slower, is at ×1).
 //                     With ms, that many ms of CPU here, for a hand run. Each preset over the
 //                     limit is named with the issue it waits on (#320: a voice count from the
 //                     sound's own cost). Not yet judged at #320's ceiling: the
@@ -393,11 +396,12 @@ function calibrate(name) {
 const calibration = GATE === true ? calibrate(PROFILE) : null;
 if (calibration) {
   const c = calibration;
-  console.log(`profile ${c.profile.name}: one render of ${c.profile.preset} ${f(c.measuredMs, 0)} ms of CPU here (the median of ${c.runs}: ${c.times.map((t) => f(t, 0)).join(", ")}; wall ${c.walls.map((t) => f(t, 0)).join(", ")}), ${c.profile.referenceMs} ms on the reference: ×${c.rate}   load ${load()}`);
+  console.log(`profile ${c.profile.name}: one render of ${c.profile.preset} ${f(c.measuredMs, 0)} ms of CPU here (the median of ${c.runs}: ${c.times.map((t) => f(t, 0)).join(", ")}; wall ${c.walls.map((t) => f(t, 0)).join(", ")}), ${c.profile.referenceMs} ms on the reference${c.profile.referenceIs ? ` (${c.profile.referenceIs})` : ""}: ×${c.rate}   load ${load()}`);
 }
 
 // The sweep: every preset at four voices held, the least of REPS runs; with
-// --gate, at eight too (A and an offer in B, both rendered).
+// --gate, at eight too (A, and B holding the same preset, a proxy for an
+// offer bred from it: both rendered).
 const sweep = [];
 for (const t of trees) {
   const reps = [];
@@ -442,11 +446,11 @@ function gate() {
   const over = sweep.filter((s) => s.cpu > limit || s.cpu8 > limit).sort((a, b) => b.cpu8 - a.cpu8 || b.cpu - a.cpu);
   const runner = `${os.cpus().length} × ${os.cpus()[0].model}`;
   const why = calibration
-    ? `ADR-025's half a quantum on the reference machine, ${f(HALF_MS)} ms at ${RATE} Hz there, divided by this machine's ×${calibration.rate} on the reference profile (${calibration.profile.name}: one render of ${calibration.profile.preset} ${f(calibration.measuredMs, 0)} ms of CPU here, the median of ${calibration.runs}, against ${calibration.profile.referenceMs} ms on the reference)`
+    ? `ADR-025's half a quantum on the reference machine, ${f(HALF_MS)} ms at ${RATE} Hz there, divided by this machine's ×${calibration.rate} on the reference profile (${calibration.profile.name}: one render of ${calibration.profile.preset} ${f(calibration.measuredMs, 0)} ms of CPU here, the median of ${calibration.runs}, against ${calibration.profile.referenceMs} ms on the reference${calibration.profile.referenceIs ? `, ${calibration.profile.referenceIs}` : ""})`
     : `${GATE} ms here, as asked (--gate=${GATE})`;
   const ceiling = "not judged yet: the worklet plays every sound on four voices (live-audio.js) until #320 gives each sound a voice count from its own cost, up to ten, with A and B sharing the budget; then this judges the sweep at each preset's own count";
   console.log(`\nGATE  ${f(limit)} ms of CPU a quantum here: ${why}   load ${load()}`);
-  console.log(`  four voices (A alone): ${over4.length} of ${sweep.length} over; eight (A and an offer in B): ${over8.length} of ${sweep.length} over`);
+  console.log(`  four voices (A alone): ${over4.length} of ${sweep.length} over; eight (A, and B holding the same preset): ${over8.length} of ${sweep.length} over`);
   console.log(`  at #320's ceiling: ${ceiling}`);
   for (const s of over) console.log(`    ${s.name.padEnd(22)} four ${f(s.cpu)} (×${f(s.cpu / limit, 2)})  eight ${f(s.cpu8)} (×${f(s.cpu8 / limit, 2)})  waits on ${WAITS_ON}`);
   console.log("  a budget (ADR-022): a preset over the limit is named here and never fails the run");
@@ -458,7 +462,7 @@ function gate() {
   const md = [
     "### The audio thread's budget (ADR-025)",
     "",
-    `The live voices' CPU time a ${Q}-frame quantum (\`live_cost.mjs --sweep-only --gate\`, in node, the least of ${SWEEP_REPS} runs of ${QUANTA} quanta), every preset held at four voices (A alone) and at eight (A and an offer in B, both rendered), against ${f(limit)} ms here: ${why}. On ${runner}, load average ${load()}. A budget (ADR-022): a preset over the limit is named here and never turns the run red.`,
+    `The live voices' CPU time a ${Q}-frame quantum (\`live_cost.mjs --sweep-only --gate\`, in node, the least of ${SWEEP_REPS} runs of ${QUANTA} quanta), every preset held at four voices (A alone) and at eight (A, and B holding the same preset, a proxy for an offer bred from it, both rendered), against ${f(limit)} ms here: ${why}. On ${runner}, load average ${load()}. A budget (ADR-022): a preset over the limit is named here and never turns the run red.`,
     "",
     `- **Four voices:** ${over4.length} of ${sweep.length} presets over.`,
     `- **Eight voices:** ${over8.length} of ${sweep.length} presets over.`,
