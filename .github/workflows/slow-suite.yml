@@ -173,25 +173,28 @@ jobs:
   #
   # The limits move together:
   #
-  # - Build, 15 minutes. With the cache, a leg compiles the workspace's own
+  # - Build, 10 minutes. With the cache, a leg compiles the workspace's own
   #   crates (rust-cache leaves them out) in ~90 to 110 s. Cold, the
   #   dependencies come too: 69 of a cold build's 285 CPU seconds, a third
   #   more than the crates alone (docs/notes/rust-build-2026-10). From
   #   nothing it took 4 min 43 s on a shared 4-core workstation. A runner has
   #   not been timed cold; a run with `cold` ticked does.
-  # - Run, 25 minutes. nextest ends a hung test and names it in its report:
+  # - Run, 22 minutes. nextest ends a hung test and names it in its report:
   #   at ten minutes (the `ci` profile), the search floor at twenty
   #   (.config/nextest.toml). One hung test is named well inside the step.
   #   Tests that take most of the pool run one after another, so if several
   #   of them hang (named_controls, closed_loop_learns_synthetic_taste and
   #   closed_loop_learns_motion_rate, on four cores), the third's ten minutes
-  #   end after the step's; the log still names the first two. 25 is the
-  #   backstop above the longest.
-  # - The job, 45: the two limits and five minutes for the steps without one
+  #   end after the step's; the log still names the first two. 22 is the
+  #   backstop above the longest, at 22: two minutes past the search
+  #   floor's twenty, so nextest's report comes first.
+  # - The job, 35: the two limits and three minutes for the steps without one
   #   (checkout, the toolchain, the cache, nextest). Sized against the steps,
   #   not against a run seen: a warm leg takes 3 to 4 minutes. The price of
-  #   that headroom is what a lost runner now holds the lane for: 45 minutes
-  #   (30 before).
+  #   that headroom is what a lost runner now holds the lane for: 35 minutes
+  #   (30 before). A cold build is a few minutes (4 min 43 s from nothing on a
+  #   shared workstation), so 10 is double it; tighter limits keep a lost
+  #   runner's cost near what it was.
   #
   # (docs/architecture/testing.md § CI tiers, The Rust legs.)
   rust:
@@ -199,7 +202,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -261,10 +264,10 @@ jobs:
         with:
           tool: nextest
       - name: Build the tests
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: make test-build
       - name: Run the tests
-        timeout-minutes: 25
+        timeout-minutes: 22
         run: make ${{ matrix.target }}
 
   # The engine, this tier's timings and the image's tag (the Playwright

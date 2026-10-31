@@ -510,8 +510,8 @@ and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
 in all.
 
 **The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
-in one step (`make test-build`, 15 minutes) and runs its target in the next
-(25 minutes), inside a job limit of 45: the two limits, and five minutes for
+in one step (`make test-build`, 10 minutes) and runs its target in the next
+(22 minutes), inside a job limit of 35: the two limits, and three minutes for
 the checkout, the toolchain, the cache and nextest. The split buys three
 things. The step that runs out of time is the one that fails, so the job's
 record says whether the build or the tests were slow. The build, which has no
@@ -530,9 +530,11 @@ cache by an exact match, built in 1 min 29 s and passed its nine tests, so
 the PR's run did restore the cache. Neither a step's limit nor the leg's
 summary line (below) reaches a lost runner: only the job's limit ends it, and
 until then it holds its leg, and the other behind it (`max-parallel: 1`). The
-job's 45 minutes are sized against the two steps, not against any run seen (a
-warm leg takes 3 to 4 minutes), and the price of that headroom is 45 minutes
-of a lost runner, where it was 30.
+job's 35 minutes are sized against the two steps, not against any run seen (a
+warm leg takes 3 to 4 minutes; a cold build is a few minutes, so the build's
+10 is about double it), and the price of that headroom is 35 minutes of a
+lost runner, where it was 30: the limits are kept tight so that cost stays
+near what it was.
 
 nextest ends a hung test before the run step does, at ten minutes (the `ci`
 profile) and the search floor at twenty (`.config/nextest.toml`), and its
@@ -540,8 +542,9 @@ report names the test. One hung test is named well inside the step. Tests
 that take most of the pool run one after another, so if several of them hang
 (`named_controls_move_the_sound_they_name`,
 `closed_loop_learns_synthetic_taste` and `closed_loop_learns_motion_rate`, on
-four cores), the third's ten minutes end after the step's 25, and the log
-still names the first two. 25 minutes is the backstop above the longest.
+four cores), the third's ten minutes end after the step's 22, and the log
+still names the first two. 22 minutes is the backstop above the longest, two
+past the search floor's twenty, so nextest's report comes first.
 
 With the cache, a leg's build is the workspace's own crates, which the cache
 leaves out: 90 and 110 s in `main`'s run of Oct 31, then the search floor in
