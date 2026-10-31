@@ -25,6 +25,7 @@ checkout_root() {
 #
 #   web_setup_dir /abs/root  -> $TMPDIR/auracle-web-setup/<a hash of the root>
 #   web_building  /abs/dir   -> succeeds while that directory's build runs
+#   web_setting_up /abs/dir  -> succeeds while its detached setup runs
 web_setup_dir() {
   printf '%s/auracle-web-setup/%s\n' "${TMPDIR:-/tmp}" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
 }
@@ -35,4 +36,11 @@ web_building() {
   local p
   p="$(cat "$1/wasm.pid" 2>/dev/null)" || return 1
   [ -n "$p" ] && ps -o args= -p "$p" 2>/dev/null | grep -q 'make wasm'
+}
+# The detached setup (web-setup.sh run again in the background) removes its
+# pid file when it ends; the same caution about a stale pid holds.
+web_setting_up() {
+  local p
+  p="$(cat "$1/setup.pid" 2>/dev/null)" || return 1
+  [ -n "$p" ] && ps -o args= -p "$p" 2>/dev/null | grep -q 'web-setup.sh'
 }

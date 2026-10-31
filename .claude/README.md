@@ -169,14 +169,12 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
   cloud container up as `make setup` sets up a laptop: binaryen's `wasm-opt`
   at the version `wasm-pack` asks for, on `PATH`
   ([`docs/runbooks/wasm-opt-download.md`](../docs/runbooks/wasm-opt-download.md));
-  `scripts/setup.sh --no-engine` before the first turn (minutes on a cold
-  container, seconds once its tools are there); then the engine in the
-  background (`make pkg-reuse`, else `make wasm`, logged under
-  `$TMPDIR/auracle-web-setup/<checkout>`), which the report says is
-  building. A clear or a compaction sets up nothing. Its timeout in
-  `settings.json` is 30 minutes for a cold container's first install; a
-  local session never reaches it, since everything past the report is
-  remote-only.
+  `scripts/setup.sh --no-engine` (minutes on a cold container, seconds once
+  its tools are there); then the engine (`make pkg-reuse`, else
+  `make wasm`). All of it runs detached in the background, logged under
+  `$TMPDIR/auracle-web-setup/<checkout>`, so the session starts at once and
+  the report says the setup is running; a step that failed is reported at
+  the next session start. A clear or a compaction sets up nothing.
 - **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):
   refuses a hand edit under any of the five generated paths of the file's
   own checkout (a worktree under `.claude/worktrees/` included), saying what

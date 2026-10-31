@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SessionStart: say what a new session needs to know before touching anything.
 # Whatever this prints is added to the session's context. It never fails the
-# session: every check is best-effort. On Claude Code on the web it first sets
-# the container up (web-setup.sh), so the report below is of what it left.
+# session: every check is best-effort. On Claude Code on the web it first
+# starts the container's setup in the background (web-setup.sh), so the report
+# below says it is running, or what it left.
 set -u
 # The session's own checkout, from the cwd the hook is given: a session in a
 # worktree under .claude/worktrees/ has its own apps/web/pkg, and
@@ -10,17 +11,21 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/_root.sh"
 input="$(cat)"
-printf '%s' "$input" | bash "$here/web-setup.sh"
 cwd="$(printf '%s' "$input" | python3 "$here/_input.py" cwd)"
 root="$(checkout_root "${cwd:-$(pwd)}")"
 root="${root:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
+# What the last setup reported failing, read before a new one clears it.
+setup="$(web_setup_dir "$root")"
+cat "$setup/report.txt" 2>/dev/null
+printf '%s' "$input" | bash "$here/web-setup.sh"
 cd "$root" 2>/dev/null || exit 0
 
 # 1. Is the app's engine older than the Rust it is built from, a dev build,
 #    or unfinished?
 wasm="apps/web/pkg/auracle_wasm_bg.wasm"
-setup="$(web_setup_dir "$root")"
-if web_building "$setup"; then
+if web_setting_up "$setup"; then
+  echo "The cloud container is setting itself up in the background (web-setup.sh: the tools, then the engine, logged under $setup): don't run \`make setup\` or \`make wasm\` alongside it. The browser tests, rehearsals and recordings refuse apps/web/pkg until it finishes."
+elif web_building "$setup"; then
   echo "The engine is building in the background (web-setup.sh's \`make wasm\`, logged to $setup/wasm.log): don't start another. The browser tests, rehearsals and recordings refuse apps/web/pkg until it finishes."
 elif [ ! -f "$wasm" ]; then
   echo "apps/web/pkg has no built engine: run \`make wasm\` before serving the app or running browser tests."
