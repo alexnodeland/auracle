@@ -8536,7 +8536,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-head:has(.pf-moved.on) .pf-title { padding-right: 172px; } /* token-exempt: the moved bar's width (MOVED, KEEP, BACK), not spacing */
   .pf-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .pf-k-line, .pf-k-sub { min-height: 0; }
-  .pf-k-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Whole, never cut: two lines of a length where one will not hold it. */
+  .pf-k-sub { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; letter-spacing: 0; }
   .pf-pads .pf-pad, .pf-pads > button { min-height: 44px; }
   .pf-title { min-height: 0; }
   .pf-well { flex: 1 1 0; height: auto; min-height: 0; }
@@ -8643,10 +8644,14 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 }
 @media (max-height: 500px) and (max-width: 999px) {
   .pf-deck { --pf-cols: 6 !important; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s1); }
+  /* Six across, a control's line keeps only what fits whole: its one-way
+     arrow; the knobs it turns are under the hood's tab and in its title. */
+  .pf-k-sub:not([data-short]) { visibility: hidden; }
   .pf-k-ends { display: none; }
   .pf-knob svg { width: 44px; height: 44px; }
   .pf-k-line, .pf-k-sub { min-height: 0; }
-  .pf-k-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Whole, never cut: two lines of a length where one will not hold it. */
+  .pf-k-sub { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; letter-spacing: 0; }
   .view.perform .pf-cap { display: none; }
   body.keys-open .view.perform .pf-left { display: none; }
   body.keys-open .view.perform .pf-grid { grid-template-columns: minmax(0, 1fr); }
@@ -8814,4 +8819,63 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 }
 @media (max-width: 340px) {
   .menubar { gap: var(--s1); }
+}
+
+/* Nothing on a phone's levels is cut with an ellipsis (#134): a control's
+   line, a name and a tab say their words whole, on two lines of a length
+   where one will not hold them. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .pf-k-sub, .pf-k-ends { letter-spacing: 0; }
+  .duel-name, .pf-name, .lv-panes [role="tab"] { text-overflow: clip; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* EVOLVE's foot, one block: ANOTHER PAIR and EVOLVE POOL the same height
+     on one row; under them how the pair was dealt beside what each
+     generation did, each in its half, with no band between. */
+  .ev-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "deal evolve" "rule lineage" "pred pred"; row-gap: var(--s1); column-gap: var(--s2); align-items: center; }
+  .ev-foot #skip-duel, .ev-foot .evolve-wrap, .ev-foot #evolve-btn { min-height: 44px; height: 44px; }
+  .ev-foot #skip-duel { justify-self: stretch; justify-content: center; }
+  .ev-foot .evolve-wrap { justify-self: stretch; display: flex; }
+  .ev-foot #evolve-btn { flex: 1 1 auto; justify-content: center; }
+  .ev-foot .duel-rule { grid-area: rule; white-space: normal; text-wrap: balance; align-self: center; }
+  .ev-foot .duel-pred { grid-area: pred; justify-self: start; }
+  .ev-foot .duel-pred:empty { display: none; }
+  .ev-lineage-btn { grid-area: lineage; justify-self: end; white-space: normal; text-wrap: balance; letter-spacing: 0.04em; min-height: 44px; }
+}
+
+/* A half-closed control's line on a phone: the arrow and its end's word
+   (perform.js `data-short`) is drawn; the sentence stays its text, for a
+   screen reader and the control's title. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .pf-k-sub[data-short] { font-size: 0; }
+  .pf-k-sub[data-short]::after { content: attr(data-short); font-size: var(--t-label); }
+}
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  /* The menu bar's square buttons are one box (BANK's), their glyphs in
+     their middles, and the bar's two sides the same margin. */
+  .menubar { padding-left: calc(var(--s3) + env(safe-area-inset-left, 0px)); padding-right: calc(var(--s3) + env(safe-area-inset-right, 0px)); }
+  .cmdk-btn { width: 44px; padding: 0; gap: 0; justify-content: center; background: none; border-color: var(--hairline); }
+  .cmdk-btn > :not(svg) { display: none; }
+  .bank-btn, .cmdk-btn, .model-btn { display: grid; place-items: center; }
+}
+@media (max-width: 340px) {
+  .menubar { padding-left: var(--s2); padding-right: var(--s2); }
+}
+@media (max-height: 500px) and (max-width: 999px) {
+  /* On its side the column has no room for the line over the controls:
+     each control's own line says what it is listening to. */
+  .view.perform .pf-status { display: none; }
+}
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  /* PATCH's line of what it is made of, whole. */
+  #view-patch .pt-sub .subject-meta, #rack-meta { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  /* The sound's name in PATCH's head, whole: on two lines if it must. */
+  #view-patch .pt-title, #rack-subject { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; }
+}
+@media (max-height: 500px) and (max-width: 640px) {
+  /* The smallest phones on their side: PATCH's head stacked, so the
+     sound's name keeps a line of its own. */
+  .pt-head { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "cap next" "title title" "sub sub" "acts acts" "edit edit"; }
 }

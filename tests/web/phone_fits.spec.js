@@ -29,8 +29,10 @@
 //   the menu bar holds what it shows.
 // - The keys' drawer's controls (the octave, the volume, REC, KEYS ⋯) are
 //   one row over the keybed at each size; the menu bar's controls share one
-//   centre line (±1 px) and none overlaps another; and no level leaves a
-//   band over 48 px tall with nothing in it (the guide pill counts).
+//   centre line (±1 px) on a phone, none overlaps another, its two sides' margins
+//   match and each square button's glyph is in its middle (±1 px); and no level leaves a
+//   band over 48 px tall with nothing in it (the guide pill counts), and
+//   no text in a level is cut with an ellipsis.
 //
 // - The same of PERFORM's other pane (under the hood), with the well in XY,
 //   and of LEARNING's other two panes (what it weighs, its forecasts).
@@ -171,6 +173,11 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
       if (Math.min(a, b) < 0.6 * Math.max(a, b) && Math.min(a, b) < e.clientWidth * 0.5) out.push(`${name(e)} is two lines of ${Math.round(a)} and ${Math.round(b)} px`);
     }
   }
+  // No visible text in the level is cut with an ellipsis.
+  for (const e of view.querySelectorAll("*")) {
+    if (!reachable(e) || getComputedStyle(e).textOverflow !== "ellipsis") continue;
+    if (e.scrollWidth > e.clientWidth + 1) out.push(`${name(e)} is cut: ${e.scrollWidth} in ${e.clientWidth}`);
+  }
   // Each stop's name in the bar along the bottom is whole.
   for (const rl of document.querySelectorAll("#rail .rl")) {
     if (rl.offsetParent && rl.scrollWidth > rl.clientWidth + 1) out.push(`"${rl.textContent}" is cut: ${rl.scrollWidth} in ${rl.clientWidth}`);
@@ -179,7 +186,8 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
   if (bar.scrollWidth > bar.clientWidth + 1) out.push(`the menu bar holds ${bar.scrollWidth} in ${bar.clientWidth}`);
   // The menu bar's controls share one centre line (±1 px) and none
   // overlaps another.
-  const ctls = ["#bank-btn", ".inhand", "#taught", "#model-btn", "#cmdk-btn"]
+  const phone = matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)").matches;
+  const ctls = (phone ? ["#bank-btn", ".inhand", "#taught", "#model-btn", "#cmdk-btn"] : [])
     .map((q) => [q, document.querySelector(q)?.getBoundingClientRect()]).filter(([, r]) => r && r.width);
   const mids = ctls.map(([q, r]) => [q, r.top + r.height / 2]);
   for (const [q, m] of mids) if (Math.abs(m - mids[0][1]) > 1) out.push(`the menu bar's ${q} is centred ${Math.round(m - mids[0][1])} px off ${mids[0][0]}'s line`);
@@ -187,6 +195,22 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
     const [qa, a] = ctls[i - 1];
     const [qb, b] = ctls[i];
     if (a.right > b.left + 0.5) out.push(`the menu bar's ${qa} overlaps ${qb} by ${Math.round(a.right - b.left)} px`);
+  }
+  // …the bar's two sides the same margin (±1 px), and each square button's
+  // glyph in its box's middle (±1 px).
+  const br = bar.getBoundingClientRect();
+  const first = ctls[0] && ctls[0][1];
+  const last = ctls.length && ctls[ctls.length - 1][1];
+  if (first && last && Math.abs((first.left - br.left) - (br.right - last.right)) > 1) out.push(`the menu bar's margins are ${Math.round(first.left - br.left)} and ${Math.round(br.right - last.right)} px`);
+  for (const q of phone ? ["#bank-btn", "#cmdk-btn", "#model-btn"] : []) {
+    const b = document.querySelector(q);
+    const g = b && b.querySelector("svg, .led");
+    if (!g || !g.getClientRects().length) continue;
+    const r = b.getBoundingClientRect();
+    const gr = g.getBoundingClientRect();
+    const dx = gr.left + gr.width / 2 - (r.left + r.width / 2);
+    const dy = gr.top + gr.height / 2 - (r.top + r.height / 2);
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) out.push(`${q}'s glyph is ${Math.round(dx)}, ${Math.round(dy)} px off its middle`);
   }
   // No dead band: down the level, no stretch over 48 px holds nothing (a
   // leaf, or anything drawn with a ground or a border), the guide pill
