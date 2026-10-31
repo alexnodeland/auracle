@@ -11,7 +11,10 @@
 //   has more than it shows): the screen stands still, as an app's does. A
 //   list scrolls, as a phone's own do, and is the one exception, named in
 //   LISTS (the bank's, the catalog's, the rows under the hood, what
-//   LEARNING weighs).
+//   LEARNING weighs). A list is as long as what it lists, so its box counts
+//   as filled for the band below (UNDER THE HOOD lists one to ten knobs, by
+//   the sound: a short list ends where its rows do, and the pane keeps its
+//   size, or the tabs above it would move when a measurement lands).
 // - What the level is for is on the screen without a scroll, above the bar
 //   along the bottom: PERFORM's controls (every one of them clear of a toast;
 //   the first in sight), EVOLVE's PLAY and PICK for
@@ -34,8 +37,12 @@
 //   band over 48 px tall with nothing in it (the guide pill counts), and
 //   no text in a level is cut with an ellipsis.
 //
-// - The same of PERFORM's other pane (under the hood), with the well in XY,
-//   and of LEARNING's other two panes (what it weighs, its forecasts).
+// - The same of PERFORM's other pane, under the hood, every value whole,
+//   judged on Glass Pad once PERFORM has measured it and its rows are
+//   drawn (four or five of its controls reach it on every seed tried,
+//   where the session's own sound can reach none, and an empty hood checks
+//   no row); of the well in XY; and of LEARNING's other two panes (what it
+//   weighs, its forecasts).
 // - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
 //   middle each way, and goes while sockets are lit. A tap on bare panel
 //   beside a lit socket (12 to 18 px, every other lit one over 1.6 times as
@@ -44,9 +51,9 @@
 //   module's sheet, and a tap elsewhere straight after is that control's; a
 //   finger held there opens no module's menu; and a cable being placed
 //   reaches a lit socket the same way, past the rack's pan.
-// - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows are
-//   44 px, each on the screen or in the hood's own scroll, and the hood
-//   shows its heading and at least two of them.
+// - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows, on
+//   Glass Pad, are 44 px, each on the screen or in the hood's own scroll,
+//   and the hood shows its heading and at least two of them.
 // - Nothing in a level is out of reach: every control in it is on the
 //   screen, or inside something that scrolls to it.
 // - On a smaller phone (568 × 320, 667 × 375 on their sides) and on a
@@ -60,7 +67,9 @@
 //
 // What it does not claim: that a toast never covers some other control
 // for the seconds it is up, or that the guide pill never does (a covered
-// control is skipped, as a finger could not press it either), or anything at a tablet's size
+// control is skipped, as a finger could not press it either), anything of
+// the hood pane while a measurement is out or for a sound whose controls
+// turn no knob (it has no rows then), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
 const { rackAtRest } = require("./patch_page");
@@ -173,10 +182,11 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
       if (Math.min(a, b) < 0.6 * Math.max(a, b) && Math.min(a, b) < e.clientWidth * 0.5) out.push(`${name(e)} is two lines of ${Math.round(a)} and ${Math.round(b)} px`);
     }
   }
-  // No visible text in the level is cut with an ellipsis.
+  // No visible text in the level is cut with an ellipsis: by a pixel is cut
+  // (a hood value 56 px in its 55 read "1.78 k…").
   for (const e of view.querySelectorAll("*")) {
     if (!reachable(e) || getComputedStyle(e).textOverflow !== "ellipsis") continue;
-    if (e.scrollWidth > e.clientWidth + 1) out.push(`${name(e)} is cut: ${e.scrollWidth} in ${e.clientWidth}`);
+    if (e.scrollWidth > e.clientWidth) out.push(`${name(e)} is cut: ${e.scrollWidth} in ${e.clientWidth}`);
   }
   // Each stop's name in the bar along the bottom is whole.
   for (const rl of document.querySelectorAll("#rail .rl")) {
@@ -213,8 +223,9 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
     if (Math.abs(dx) > 1 || Math.abs(dy) > 1) out.push(`${q}'s glyph is ${Math.round(dx)}, ${Math.round(dy)} px off its middle`);
   }
   // No dead band: down the level, no stretch over 48 px holds nothing (a
-  // leaf, or anything drawn with a ground or a border), the guide pill
-  // counting as something.
+  // leaf, anything drawn with a ground or a border, or a list's own box),
+  // the guide pill counting as something. A list is as long as what it
+  // lists: below a short one's last row is its length, not the layout's.
   if (fits) {
     const vr = view.getBoundingClientRect();
     const spans = [];
@@ -223,7 +234,7 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
       const cs = getComputedStyle(e);
       if (cs.visibility === "hidden" || cs.display === "contents") continue;
       const drawn = cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.backgroundImage !== "none" || parseFloat(cs.borderTopWidth) > 0;
-      if (e.children.length && !drawn) continue;
+      if (e.children.length && !drawn && !lists.some((l) => e.matches(l))) continue;
       const r = e.getBoundingClientRect();
       if (!r.width || !r.height || r.bottom <= vr.top || r.top >= vr.bottom) continue;
       spans.push([Math.max(r.top, vr.top), Math.min(r.bottom, vr.bottom)]);
@@ -258,13 +269,9 @@ for (const [width, height] of [[360, 640], [390, 664], [390, 844], [430, 932], [
       // level the app opens at, when the first check runs.
       await expect(page.locator("#toasts .toast").first()).toBeVisible();
       await eachLevelFits(page, false);
-      // PERFORM's other pane, under the hood, and the XY pad.
+      // PERFORM's XY pad.
       await goLevel(page, "perform");
       await landed(page);
-      await page.locator('.lv-panes [data-pane="hood"]').tap();
-      await expect(page.locator(".pf-hood")).toBeVisible();
-      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit under the hood").toEqual([]);
-      await page.locator('.lv-panes [data-pane="controls"]').tap();
       await page.locator(".pf-xy-btn").tap();
       await expect(page.locator(".pf-xy")).toBeVisible();
       await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit in XY").toEqual([]);
@@ -277,10 +284,24 @@ for (const [width, height] of [[360, 640], [390, 664], [390, 844], [430, 932], [
         await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), `what does not fit at LEARNING's ${pane}`).toEqual([]);
       }
       await page.locator('#view-learning .lv-panes [data-pane="map"]').tap();
+      // UNDER THE HOOD, last, lists the knobs the sound's controls turn, by
+      // its measurement: judged on a sound with rows (the session's own can
+      // reach none), once measured (#504, #505, #506: judged while the
+      // measurement was out, on the two or three rows a guess had drawn,
+      // and the list's short end taken for a dead band). Glass Pad opens
+      // now, so its measurement runs while the keys-up pass does.
+      const asked = await presetByTouch(page, app, "Glass Pad");
       // The keys up: every level again.
       await page.locator("#keys-toggle").tap();
       await expect(page.locator("#keybar")).toBeVisible();
       await eachLevelFits(page, true);
+      // The keys down, and PERFORM's other pane.
+      await page.locator("#keys-toggle").tap();
+      await expect(page.locator("#keybar")).toBeHidden();
+      await measuredOnPerform(page, app, "Glass Pad", asked);
+      await page.locator('.lv-panes [data-pane="hood"]').tap();
+      await expect(page.locator(".pf-hood-row").first()).toBeVisible();
+      await expect.poll(() => page.evaluate(MISFITS, { primary: [], lists: LISTS }), "what does not fit under the hood").toEqual([]);
     });
 
     test(`the bank's sheet and the keys' drawer are a finger's size at ${width} × ${height}`, async ({ page, app }) => {
@@ -360,18 +381,49 @@ const besideALitSocket = (page, which) => page.evaluate((which) => {
   return null;
 }, which);
 
+/** The preset `name` opened in PATCH as a finger does it, the bank put away.
+ *  Where the bank is a sheet (a phone, a tablet upright) `openPreset`
+ *  reaches the presets through the rail, under the sheet's scrim, so BANK
+ *  opens it first; beside the stage (a tablet on its side) it is there.
+ *  When it was asked for, on the page's clock (for `measuredOnPerform`). */
+async function presetByTouch(page, app, name) {
+  const asked = await app.now();
+  await goLevel(page, "patch");
+  await landed(page);
+  const sheet = await page.locator("#bank-btn").isVisible();
+  if (sheet) await page.locator("#bank-btn").tap();
+  await page.locator("#bank-tab-presets").tap();
+  await page.locator(".bank-item", { hasText: name }).first().locator(".bi-name").tap();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 60_000 });
+  await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+  return asked;
+}
+
+/** PERFORM on the preset `name` (opened at `asked`, by `presetByTouch`),
+ *  measured. A preset plays at once on its shipped wiring ("re-checking")
+ *  while the session measures it again, and UNDER THE HOOD lists the knobs
+ *  its reaching controls turn, so what the hood holds is that measurement's:
+ *  the wait is for every measurement asked since the preset was (but a
+ *  pre-warm, which belongs to no sound and is never applied), each one's
+ *  last reply, and the status line past "re-checking" and "listening", as
+ *  patch_truth's `wirePerform` waits (#501). A measurement of the sound
+ *  left before is not waited for: its reply is for a sound no longer in
+ *  hand, and on a loaded machine it alone took over two minutes. Engine
+ *  waits. */
+async function measuredOnPerform(page, app, name, asked) {
+  await goLevel(page, "perform");
+  await landed(page);
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText(name, { timeout }), { ms: 30_000 });
+  const mine = async () => (await app.sent({ type: "perform_wire" }, { after: asked })).filter((s) => !s.prewarm);
+  await app.engine((timeout) => expect.poll(async () => (await mine()).length, { timeout, message: `${name} was measured` }).toBeGreaterThan(0), { ms: 30_000 });
+  for (const s of await mine()) await app.replyTo(s);
+  await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText(/re-checking|listening/, { timeout }), { ms: 30_000 });
+}
+
 /** PATCH on a phone with Glass Pad open, its bank put away. */
 async function patchOnAPhone(page, app) {
   await app.boot();
-  // The bank is a sheet here, and `openPreset` reaches the presets through
-  // the rail, under the sheet's scrim: the preset is opened as a finger does.
-  await goLevel(page, "patch");
-  await landed(page);
-  await page.locator("#bank-btn").tap();
-  await page.locator("#bank-tab-presets").tap();
-  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name").tap();
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
-  await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+  await presetByTouch(page, app, "Glass Pad");
   await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
 }
 
@@ -458,8 +510,15 @@ for (const [width, height] of [[768, 1024], [1024, 768]]) {
 
     test(`UNDER THE HOOD's rows are a finger's size at ${width} × ${height}, every one in reach`, async ({ page, app }) => {
       await app.boot();
+      // On a sound with rows: the session's own can reach no knob, and then
+      // the hood has none. Glass Pad's are there at once, from its shipped
+      // wiring; what is held here (each row's height and reach, the hood's
+      // own) is the same whichever wiring the rows are from, so its
+      // measurement is not waited for.
+      await presetByTouch(page, app, "Glass Pad");
       await goLevel(page, "perform");
       await landed(page);
+      await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
       await expect(page.locator(".pf-hood-row").first()).toBeVisible();
       await expect.poll(() => page.evaluate(MISFITS, { primary: [], fits: false })).toEqual([]);
       const rows = await page.locator(".pf-hood-row").evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
