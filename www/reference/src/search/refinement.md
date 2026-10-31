@@ -210,21 +210,24 @@ Re-run this before changing either number.
 fugue-ppl 0.2.2 and with oscillator octaves drawn uniformly, and `--budget-ab`
 has not been re-run. fugue-ppl 0.2.3 reflects a knob’s proposal into its bounds
 (at 40 steps, knob moves are accepted 85% of the time against 53%, and are
-about 1.8 times larger), and octaves are now drawn by weight. Two measurements
-on 2026-10-07 (the share of locked ⚡ walks whose child beats its parent,
-`search_health --hits`) found the shipped 40 steps not worse under either
-change, measured one at a time: 66.7% to 70.3% on 48 seeds, paired, for
+about 1.8 times larger), and octaves are now drawn by weight.
+
+Two measurements on 2026-10-07 (the share of locked ⚡ walks whose child beats
+its parent, `search_health --hits`) found the shipped 40 steps not worse under
+either change, measured one at a time: 66.7% to 70.3% on 48 seeds, paired, for
 fugue-ppl 0.2.3, and 71.1% to 68.0% on 16 seeds, unpaired, for the weighted
 octaves, which ran on fugue-ppl 0.2.2, before the branch that drew them met
-0.2.3. The two together, which is the walk now, were never measured by this
-rate at any length. On 0.2.2, “twenty steps is not enough” read as 60.9%
-against 71.1% at 20 and 40 steps with octaves uniform, and did not show with
-them weighted (71.1% against 68.0%, inside the noise); what it reads on 0.2.3
-with the weighted octaves nobody has measured. The 80-step row leans worse
-under each change, and the 160-step row under fugue-ppl 0.2.3, all inside the
-noise; longer walks are not shipped, and the weighted octaves’ 160-step row was
-never finished. Neither study was re-measured after the walk began to run its
-model once a step and the renders moved to quiver-dsp 0.5.1.
+0.2.3. The two together, which is the walk now, were never measured by this rate
+at any length.
+
+On 0.2.2, “twenty steps is not enough” read as 60.9% against 71.1% at 20 and 40
+steps with octaves uniform, and did not show with them weighted (71.1% against
+68.0%, inside the noise); what it reads on 0.2.3 with the weighted octaves
+nobody has measured. The 80-step row leans worse under each change, and the
+160-step row under fugue-ppl 0.2.3, all inside the noise; longer walks are not
+shipped, and the weighted octaves’ 160-step row was never finished. Neither
+study was re-measured after the walk began to run its model once a step and the
+renders moved to quiver-dsp 0.5.1.
 
 ## Why local climbing suits this anyway
 
