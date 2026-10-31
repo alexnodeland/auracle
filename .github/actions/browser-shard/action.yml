@@ -8,10 +8,10 @@ description: >
 
 inputs:
   tier:
-    description: "`fast` or `slow`: which timings to deal by"
+    description: "`fast`, `slow` or `perf`: which timings to deal by"
     required: true
   name:
-    description: "The blob artifacts' prefix, one per set of runners in a run (`fast`, `slow`, `hunt`)"
+    description: "The blob artifacts' prefix, one per set of runners in a run (`fast`, `slow`, `hunt`, `perf`)"
     required: true
   shard:
     description: "This runner, as k/N"

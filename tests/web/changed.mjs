@@ -13,7 +13,8 @@
 //                                     times each (Burn-in, #456), and
 //                                     `make browser-changed REPEAT=n` n times
 //
-// A changed spec runs; a changed helper runs every spec that requires it; a
+// A changed spec runs; a changed helper (or data one requires, such as the
+// reference profile's profiles.json) runs every spec that requires it; a
 // changed app module runs the specs named for what it draws (MODULES below).
 // main.js, worker.js, index.html, style.css and the engine reach every level,
 // so without --views a change to them prints nothing and says so: CI's fast
@@ -261,6 +262,34 @@ export function select({ files, specs, helpers, requires, views = false, section
   return { specs: [...out].sort(), touched: [...touched].sort(), wide, reached };
 }
 
+/** A directory's specs, its helpers and which spec reaches which helper, as
+ *  `select` takes them. A helper is a script beside the specs (not one, and
+ *  not the suite's config), or data one requires: profile.js requires
+ *  profiles.json, the reference profile's numbers, so a change to them runs
+ *  every spec that boots on it. A spec reaches a helper it requires, and
+ *  through other helpers too: patch_page.js requires shell.js, so a spec
+ *  that requires patch_page.js reaches shell.js. */
+export function suite(dir = HERE) {
+  const files = readdirSync(dir);
+  const specs = files.filter((f) => f.endsWith(".spec.js")).sort();
+  const scripts = files.filter((f) => f.endsWith(".js") && !f.endsWith(".spec.js") && f !== "playwright.config.js");
+  const text = new Map();
+  const read = (f) => (text.has(f) ? text.get(f) : text.set(f, readFileSync(join(dir, f), "utf8")).get(f));
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const requiresDirectly = (file, helper) => {
+    // A script is required with its extension or without it; data with it.
+    const name = helper.endsWith(".js") ? `${escape(helper.replace(/\.js$/, ""))}(\\.js)?` : escape(helper);
+    return new RegExp(`require\\(["']\\./${name}["']\\)`).test(read(file));
+  };
+  const data = files.filter((f) => f.endsWith(".json") && [...specs, ...scripts].some((s) => requiresDirectly(s, f)));
+  const helpers = [...scripts, ...data];
+  const requires = (spec, helper, seen = new Set()) => {
+    if (requiresDirectly(spec, helper)) return true;
+    return scripts.some((h) => !seen.has(h) && h !== helper && requiresDirectly(spec, h) && (seen.add(h), requires(h, helper, seen)));
+  };
+  return { specs, helpers, requires };
+}
+
 // git, without a GIT_* variable from whoever called it (a hook's GIT_DIR or
 // GIT_INDEX_FILE would point it at another repository or index), and
 // without the file-system monitor: on a loaded machine its daemon fell
@@ -286,19 +315,7 @@ function main(argv) {
     process.exit(2);
   }
 
-  const specs = readdirSync(HERE).filter((f) => f.endsWith(".spec.js")).sort();
-  const helpers = readdirSync(HERE).filter((f) => f.endsWith(".js") && !f.endsWith(".spec.js") && f !== "playwright.config.js");
-  const requiresDirectly = (file, helper) => {
-    const src = readFileSync(join(HERE, file), "utf8");
-    const name = helper.replace(/\.js$/, "");
-    return new RegExp(`require\\(["']\\./${name}(\\.js)?["']\\)`).test(src);
-  };
-  // Through other helpers too: patch_page.js requires shell.js, so a spec that
-  // requires patch_page.js reaches shell.js.
-  const requires = (spec, helper, seen = new Set()) => {
-    if (requiresDirectly(spec, helper)) return true;
-    return helpers.some((h) => !seen.has(h) && h !== helper && requiresDirectly(spec, h) && (seen.add(h), requires(h, helper, seen)));
-  };
+  const { specs, helpers, requires } = suite();
 
   // The headings a change to a sectioned file touched: its diff against the
   // merge base, on the working tree's lines, so uncommitted edits count. An

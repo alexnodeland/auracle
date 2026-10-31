@@ -259,7 +259,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, tells each closed issue's parent its count of sub-issues closed, and ticks each box in another open issue that names an issue that closed, once every issue the box names is closed as completed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`), each leg building the tests (`make test-build`) in a step of its own before it runs them ([The Rust legs](#ci-tiers)); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
-| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), on three runners each, two at a time; each budget names the profile beside its figure, and one over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
+| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), every test given its verdict: eight runners for Chromium and five for Firefox, three at a time, each dealt about 28 minutes of its browser's tests by the job's own timings (each test's last time in each browser), so each ends about ten minutes inside its 40-minute cut and the job takes about two and three quarter hours. Each budget names the profile beside its figure, and one over its limit comments on *Speed budgets over their limit* with a table of each (its figure and limit, the browser, the rates its boot ran at on the profile, the CPU it ran on, the test) and each test that failed on something else. Beside them, on a runner of its own, the audio thread's budget: `live_cost.mjs --sweep-only --gate` times every preset's live voices in node at four voices and at eight (A, and B holding the same preset, a proxy for an offer bred from it) against ADR-025's half a quantum divided by the runner's rate on the profile (its calibration render, in node, against the reference's 1.1 s, ADR-025's estimate until the Air measures it), and the run's summary names each preset over the limit with the issue it waits on (#320); a budget, red only when it could not measure ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
@@ -282,7 +282,8 @@ scripts/ops/rows_resolve.py keeps both. -->
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
   are the ones `tests/web/changed.mjs` picks: a changed spec, the specs that
-  require a changed helper, the specs named for a changed app module, one
+  require a changed helper (or data a helper requires, such as the reference
+  profile's `profiles.json`), the specs named for a changed app module, one
   runner per file up to four, dealt by time. A change that reaches every
   level (`main.js`, `worker.js`, the engine) picks none, and gets the smoke
   only (with Worker protocol, which is the fast lane's real check of
@@ -437,7 +438,20 @@ that PR's runs only). The nightly *Flake hunt* runs the whole tier on main
 three times, and its report folds in each test's median of the runs that
 passed, so the timings stay current when main's pushes skip the tier
 (reused, or superseded by a newer push). A test that never passed keeps the
-time it had.
+time it had. Its *Speed budgets* keep timings of their own (`perf`, in the
+same cache): each test's time in each browser on the reference profile
+(`shard.mjs timings --by-project`), a run that failed counted too, since a
+test over a budget fails having run to its end, folded on main each night.
+On the profile a test takes about seven times its gate time in Chromium and
+three and a half in Firefox, so the gate's timings dealt three runners a
+browser that were each cut at 40 minutes (2026-10-31, #508). A first night
+with none is seeded from the fast and slow tiers' times, which misweigh
+some tests badly (one took 49 s on the gate and 7.2 minutes in Firefox), so
+it may still cut a Chromium runner. A test a cut stopped, which has no time
+in its browser, then weighs its time in the other, or its gate time, scaled
+by the median ratio of the two on the tests both timed (Chromium about 1.7
+times Firefox), not the median test, so the next night's deal does not cut
+it again.
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages, a release's branch, PR,
@@ -506,8 +520,10 @@ eighteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
 fast lanes are done, twenty. On Saturdays the weekly run's two leave
 eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
 PR's fast lane then waits for runners. At night the *Flake hunt* holds four
-and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
-in all.
+for about an hour and a half and its *Speed budgets* three for about two
+and three quarter hours, beside *Search health*'s three long jobs: ten in
+all, and for the first few minutes *Touch in WebKit* and the audio thread's
+budget one each.
 
 **The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
 in one step (`make test-build`, 10 minutes) and runs its target in the next
@@ -961,7 +977,9 @@ their own on the run's port (`AURACLE_TEST_PORT`;
 A probe's finding that a test can hold belongs in a test; what it measures
 of a machine's speed is a budget at most (ADR-022). The engine's own cost
 examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
-`live_cost.mjs`), are the same kind of tool.
+`live_cost.mjs`), are the same kind of tool. One is a budget the nightly
+judges: `live_cost.mjs --sweep-only --gate`, the audio thread's
+([CI tiers](#ci-tiers)), which never fails for a preset over its limit.
 
 ## Rules
 
@@ -1044,7 +1062,10 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   page. The rate is measured once a run, on its first boot that asks: one
   preset's render here, unslowed, against its time on the reference (1.1 s,
   ADR-025's estimate until it is measured on the Air), and 1 on a machine as
-  slow as the reference or slower. Before quiver-dsp 0.4.1 and 0.5.1 made a render
+  slow as the reference or slower. The preset, the reference's time and the
+  farm's width are data, `tests/web/profiles.json`, which the audio
+  thread's budget (`live_cost.mjs --gate`) calibrates from too, in node, so
+  a figure measured on the Air moves both. Before quiver-dsp 0.4.1 and 0.5.1 made a render
   about three times cheaper (#393, #406), that render took 0.18 s in
   Chromium and 0.21 to 0.23 s in Firefox on a 16-core M3 Max (a rate of
   about 6 and 4.8 to 5.2), and 377 to 383 ms on a hosted runner (×2.9, the
@@ -1100,7 +1121,8 @@ them.
 | The browser fast tier in total: the first shard's start to the last one's end | 19 min | measured: 12.4 / 15.7 / 19.0 min | 19 runs |
 | The browser fast tier in total: runner-minutes a run | 108 | measured: 86.4 / 89.9 / 94.0 | 19 runs |
 | The *Slow suite*: a green run, created to its last job done | 67 min | measured: 33.2 / 55.2 / 77.8 min | 7 runs |
-| The nightly *Flake hunt*: created to its last job done | 72 min | the design: three rounds of about 20 min | not run yet |
+| The nightly *Flake hunt* workflow, its *Speed budgets* with it: created to its last job done | 194 min | the design: about 160 min, the budgets' thirteen runners three at a time (five on the longest lane, about 31 min each with their setup) and their report, beside the hunt's three rounds of about 20 min | not run yet |
+| The nightly *Speed budgets*, a runner: each `Speed budgets (<browser> k/N)` | 38 min | the design: about 28 min of tests and 3 of setup, against a cut at 39 min of tests | not run yet |
 
 Measured figures are median / p90 / max. The kinds of PR are ci.yml's
 lanes: a CI PR changes a workflow or an action, and its fast lane is the
@@ -1112,7 +1134,10 @@ leave out the wait for a runner: under wave 0, when every PR's own run was
 the full gate, a Rust, web or CI PR's took a median of 19.9 minutes (p90
 23.3, 19 runs) against a plan of about twelve, and its longest wait for a
 required job's runner was a median of 6.6 minutes. The *Flake hunt*'s
-twelve shards run three times over, four at a time: three rounds.
+twelve shards run three times over, four at a time: three rounds. Its
+*Speed budgets* set the workflow's length: thirteen runners three at a
+time, five on the longest lane. On 2026-10-31, in the shape before #508
+(six runners two at a time, each cut at 40 minutes), it took 2 h 23 min.
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a
 PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
