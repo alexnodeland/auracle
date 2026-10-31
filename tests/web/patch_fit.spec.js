@@ -108,7 +108,7 @@ test.describe("a phone, 390 × 844", () => {
     // A finger's tap beside an out ○, on the panel and not on the socket,
     // picks its cable up; no module's sheet opens.
     const beside = await page.evaluate(() => {
-      const jacks = [...document.querySelectorAll("#rack-svg .jack")].map((j) => {
+      const jacks = [...document.querySelectorAll("#rack-svg .jack")].filter((j) => j.querySelector(".j-nut")).map((j) => {
         const r = j.querySelector(".j-nut").getBoundingClientRect();
         return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
       });

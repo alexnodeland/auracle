@@ -179,7 +179,8 @@ AUDIO IN modules that read the same input show it as one stream fanning out
 to each.
 
 **The edges.** When the patch is wider than the view, each side says how many
-modules lie past it (*‹ 2*, *3 ›*); a press brings the nearest one in. A patch
+modules lie past it (*‹ 2*, *3 ›*); a press brings the nearest one in (the
+amp with OUT and its face, as one). A patch
 too big for the well at the size its names read (a big patch, a phone) opens
 at that size showing where it starts, and the rest past the right edge: drag
 to it, press *n ›*, or press **MAP** for the whole patch.

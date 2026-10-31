@@ -14812,7 +14812,14 @@ function rackBeyond() {
   const { w } = frameSize();
   const l = view.x;
   const r = view.x + w / view.zoom;
-  const list = [...rackBoxes.entries()].map(([key, b]) => ({ key, b, cx: b.x + b.w / 2 }));
+  // The amp and OUT past it are one place: the amp counts as in view once
+  // the middle of both is, so a press on the edge brings the face at OUT in
+  // with it (a fit that shows where the patch starts can leave it past the
+  // right edge, #519).
+  const amp = wb.rack?.modules.find((m) => m.kind === "amp")?.key;
+  const list = [...rackBoxes.entries()].map(([key, b]) => ({
+    key, b, cx: key === amp && rackOut ? (b.x + rackOut.x + rackOut.w) / 2 : b.x + b.w / 2,
+  }));
   return {
     left: list.filter((n) => n.cx < l).sort((a, b) => b.cx - a.cx),
     right: list.filter((n) => n.cx > r).sort((a, b) => a.cx - b.cx),
