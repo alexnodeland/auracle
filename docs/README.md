@@ -140,6 +140,10 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
   that leave φ the same (built) and the ones that would move it, measured for
   the maintainer (#298); the ladder's one-pass change (L1) is closed there
   (#403)
+- [`walk-length-2026-10.md`](notes/walk-length-2026-10.md): two studies of a
+  refinement walk's length, closed unfinished on 2026-10-31: fugue-ppl 0.2.3
+  and the weighted octaves, each against the 40-step walk, with the builds and
+  seeds, the rows never finished and the baselines they leave (#355, #357)
 - [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
   health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
   the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the
