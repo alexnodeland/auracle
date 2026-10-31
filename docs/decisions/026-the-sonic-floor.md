@@ -84,14 +84,15 @@ in the prior instead.
    namespace is orphaned and cleared. Correctness rests on the namespace
    alone, as it does today, not on a rule in `farm.js`.
 6. **The films cast from the same verdict.**
-   - Off the shortlist in `www/brand/sound.json`, the floor replaces RFC-007's
-     two-note probe, whose code is not in the repository.
+   - For anything not on `www/brand/sound.json`'s shortlist, the floor
+     replaces RFC-007's two-note probe, whose code is not in the repository.
    - A seeded session's prior draws in the pool, and a duel between two of
      them, are above the floor by construction, so a film can cast them.
    - The warm start's other cards stay logged, not cast. The page draws them,
      and about four warm starts in five show one below the floor.
-7. **Hollow faces read the same verdict,** sent with each sound's row, when
-   RFC-006's views draw them.
+7. **Hollow faces read the same verdict,** sent with each sound's row, if
+   they are built. They are one of RFC-006's proposed next motions (§3), not
+   yet planned.
 8. **Nothing on screen names the floor.** If the app or the guide comes to
    explain it, the word is drafted for `www/brand/voice.md` and waits for the
    maintainer ([ADR-013](013-one-voice.md)). The reference names it, in the
@@ -152,11 +153,21 @@ is a render that doesn't land.
   against 8.6, and 56.8 to a pool of 40, against 41.4. They were drawn with
   every octave equally likely, so Plan-009's first task measures them again
   under #62's weights. `max_draws` (400) stays ample.
-- **The boot is measured again.** Each browser's first boot after the bump
-  renders cold, once, as any cold boot does. The time to `playable` is
-  measured before and after, cold and with the store warm. A slower hand-over
-  is reported on #301, which holds the first sound to about a second on
-  [ADR-025](025-every-interaction-answers-at-once.md)'s reference machine.
+- **The first visit's veil is measured again.**
+  [ADR-025](025-every-interaction-answers-at-once.md) holds the boot veil to
+  1 s on a return and 2 s on a first visit (D9, the maintainer's), on #301's
+  slow profile.
+  - The floor bears on the first visit. Its veil drops at `playable`, when 8
+    prior draws have landed, and the floored fill renders about 11.8 draws
+    for them instead of 8.6.
+  - A return's veil waits on its restored bank, and restored sounds are not
+    floored. (#301 decided on 2026-10-07 that it lifts once the first 8 are
+    back.) Its only cost is that each browser's first boot after the bump
+    renders cold, once, as any cold boot does.
+  - The first visit's veil is measured before and after. If the floored veil
+    is past the 2 s budget, or measurably later than today's, the floored
+    fill waits for the maintainer before it merges. The maintainer may accept
+    the cost, change `PLAYABLE_AT`, or revisit where the floor applies.
 - **What a seed deals moves**, as #62 moved it. The boot probe is regenerated,
   the standardizer is fitted on a floored pool, and the shipped wirings and
   preset faces are measured again under the new namespace.
@@ -167,7 +178,15 @@ is a render that doesn't land.
 - **A player hears the change in what the fill deals, and nowhere else.**
   After it, the model follows their picks below the floor as well: harsh can
   be someone's taste.
-- **`apps/web` needs no code for the floor.** Its stores are stamped with the
-  namespace. Hollow faces come with RFC-006's views.
-- **Until the build, the films keep their rule:** what a seeded session deals
-  is logged, not cast.
+- **`apps/web` keeps its stores, but may need one constant.** The render store
+  and the faces' are stamped with the namespace, so the bump clears them.
+  `FARM_AUDIO_AHEAD` (`worker.js`) asks the farm for audio by draw index, for
+  the first 8, the count the app hands over at. That fits while nearly every
+  draw lands (98% today), as `fill_draw`'s over-issue does. At RFC-005's
+  rates, two or three of the 8 sounds at `playable` come from later indices,
+  on average, and carry no audio. A ▶ on one would wait on a render, which
+  ADR-025 counts as a bug. Plan-009 sizes the constant, or keys it to what
+  lands.
+- **The films keep their rule until Plan-009 changes their casting:** what a
+  seeded session deals is logged, not cast. The floored fill alone doesn't
+  change it.

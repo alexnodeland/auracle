@@ -25,8 +25,10 @@ This plan builds [RFC-005](../proposals/005-the-sonic-floor.md) under
 The maintainer accepted RFC-005 on 2026-10-06 and asked for the build before
 the films are cast (#142). #144 tracks it.
 
-Hollow faces read the same verdict, but they come with RFC-006's views
-([Plan-005](005-the-sound-at-the-centre.md)), not here.
+Hollow faces would read the same verdict, but they are not built here. They
+are one of [RFC-006](../proposals/006-the-sound-at-the-centre.md)'s proposed
+next motions (§3), with no plan or issue yet. Task 5 puts the verdict on each
+sound's row for them.
 
 ## Bounded contexts
 
@@ -36,6 +38,7 @@ Hollow faces read the same verdict, but they come with RFC-006's views
 | Reading | `FloorReport`, `FLOOR_NOISE_MAX`, `FLOOR_ROUGH_MAX`, `FLOOR_HI_MAX`; the report on `CachedFeatures`; `RENDER_EPOCH` | `crates/auracle-features` (`src/floor.rs`, `src/floor/tests.rs`, `src/cache.rs`, `src/lib.rs`, `AGENTS.md`) |
 | Fill | `SessionConfig::sonic_floor`, the admission, the verdict on `Candidate` | `crates/auracle-session` (`src/engine.rs`, `src/farm.rs`) |
 | Bindings | The verdict on each row the app reads; what the shipped seed deals | `crates/auracle-wasm`, its `tests/boot_probe.json`, and the generated `apps/web/perform-wirings.json` and `apps/web/preset-faces.json` |
+| App | The audio carried back with the fill (`FARM_AUDIO_AHEAD`); the first visit's veil | `apps/web/worker.js` (and `apps/web/farm.js` if the farm drops a buffer), `tests/worker` |
 | Words | What describes the fill | `www/reference/src/`, `docs/architecture/`, `changelog.d/` |
 | Casting | What a film may cast from a seeded session | `www/video/tools/shotgen.py`, `docs/architecture/films.md`, `www/video/README.md`, `www/brand/sound.json` |
 
@@ -48,6 +51,9 @@ Three PRs and one issue: #144 tracks the build until the last of them merges.
 | A: the acceptance record (RFC-005 accepted, ADR-026, this plan, and the pages that pointed at RFC-005) | – | #144 | built (`claude/accept-rfc-005`) |
 | B: the floor in the engine, revalidated, with the words that describe it | 1–7 | #144 | not started |
 | C: the films cast by the floor | 8 | #144 | not started; #142's casting waits for it |
+
+PR B can stop twice for the maintainer: on task 1's census and on task 5's
+veil. Each task gives its rule.
 
 PR B carries the words that describe the fill (task 7), because a description
 changes in the same change as what it describes
@@ -145,7 +151,8 @@ octave from `OCTAVE_WEIGHTS` (`[.05, .15, .40, .25, .15]` for −2…+2, in
 - The verdict on `Candidate`.
 - `farm.rs`'s docs say what the fill admits. `fill_draw` keeps a quarter more
   draws in flight than the pool still needs, plus one, sized for a pass rate
-  of 98%: check it against task 1's rate.
+  of 98%: check it against task 1's rate. The app's `FARM_AUDIO_AHEAD` is
+  sized for the same rate (task 5).
 - Nothing else is floored: walks, offers, edits, imports, restored sounds,
   presets and the warm start.
 - Tests:
@@ -157,7 +164,7 @@ octave from `OCTAVE_WEIGHTS` (`[.05, .15, .40, .25, .15]` for −2…+2, in
   - a sound below the floor that the player adds (a preset, an import) still
     joins the pool.
 
-### 5. What the shipped seed deals (`auracle-wasm` and the generated files)
+### 5. What the shipped seed deals, and the boot (`auracle-wasm`, `apps/web`)
 
 - The verdict on each row the app reads, as a field of the rows it already
   sends (not a new binding), for hollow faces later.
@@ -168,12 +175,50 @@ octave from `OCTAVE_WEIGHTS` (`[.05, .15, .40, .25, .15]` for −2…+2, in
   catch a verdict that flips.
 - `make perform-wirings` and `make preset-faces`, committed. Both files are
   generated, never edited by hand.
-- `make wasm`, then the boot in the browser: the wall clock from `init` to
-  `playable` and to `filled`, before and after, cold and with the store warm,
-  on the test port. RFC-005 put the hand-over at 11.8 draws instead of 8.6.
-  #301 holds the first sound to about a second on the reference machine
-  ([ADR-025](../decisions/025-every-interaction-answers-at-once.md)), so a
-  slower veil is reported there, with its numbers.
+- **The audio carried with the fill.** `FARM_AUDIO_AHEAD` (8, `worker.js`)
+  asks the farm for audio by draw index: the fill's `wantAudio`, through
+  `runFarm`, is `i < FARM_AUDIO_AHEAD`. It equals `PLAYABLE_AT`. That fits
+  while nearly every draw lands (98% today), as `fill_draw`'s over-issue
+  does.
+  - At RFC-005's rates, two or three of the 8 sounds landed at `playable`
+    come from indices 8 and up, on average, and carry no audio. A binomial
+    estimate (each draw landing at that rate, the first pair two of the 8)
+    puts such a side in about half of first pairs, against 4 to 14% today.
+  - For that side, `requestPairRendersNow` (`main.js`) has the engine worker
+    render the phrase itself, just after the veil drops, and a ▶ on it waits
+    on that render. Meanwhile about two of the first 8 indices fail the floor,
+    and each still ships its ~565 KB buffer.
+  - Check the constant against task 1's rate, and either:
+    - size it to the draws expected before 8 land (task 1's draws to 8;
+      about 12 at RFC-005's rates, 15 at the 90th percentile); or
+    - key it to what lands: audio asked for on each draw issued while fewer
+      than `PLAYABLE_AT` have landed, with the farm dropping the buffer of a
+      draw below the floor, whose verdict its result carries.
+  - A worker test (`tests/worker`) holds it: under the floor, every sound
+    landed at `playable` arrived with its audio.
+  - If #301 or #310 has taken audio off the veil's jobs first (the first 8
+    asking for φ only, and auditions prefetched on the farm), check what
+    replaced it the same way: the first pair is there to play.
+- **The first visit's veil.** `make wasm`, then the boot in the browser on
+  `main` and on the branch:
+  - the wall clock from `init` to `playable` and to `filled`, cold and with
+    the store warm, on the test port;
+  - the veil (`boot-start` to `veil-down`, the marks `budgets.spec.js`
+    checks) on a first visit, on #301's slow profile as its done-when gives
+    it, five runs a side.
+  - [ADR-025](../decisions/025-every-interaction-answers-at-once.md) holds the
+    veil to 2,000 ms on a first visit and 1,000 ms on a return (D9, the
+    maintainer's). The floor bears on the first visit. Its veil drops at
+    `playable`, and RFC-005 put that hand-over at 11.8 draws instead of 8.6.
+    A return's veil waits on its restored bank, which is not floored.
+  - **The stop rule:** if the floored first visit's veil is past 2,000 ms,
+    or later than `main`'s beyond the spread of the runs, PR B goes to the
+    maintainer with the numbers before it merges. The choice is theirs:
+    - accept the cost;
+    - change `PLAYABLE_AT`;
+    - or revisit where the floor applies (RFC-005's option (ii), at the deal,
+      keeps the hand-over at 8).
+  - Either way, the numbers go on #301.
 - Every seed now deals another pool, as after #62. #327 re-measures
   `PERFORM_SEED` and `SEED` under the octave weights; if it lands before the
   floor, the floored pool owes that re-measure again.
@@ -205,6 +250,9 @@ Each lands with the code it describes:
     failures burn attempts (a draw below the floor burns one too);
   - `persistence.md`, which quotes `RENDER_EPOCH` as 3: it becomes 4, and the
     page's list of what bumps the epoch gains a reading the fill admits on.
+    The same paragraph quotes `QUIVER_DSP_VERSION`, which must match
+    `cache.rs`'s (as this plan was written, the page said 0.4.0 and the code
+    0.5.1).
 - **The architecture:** `docs/architecture/system.md`'s pool step says what
   lands, and so does `web-runtime.md` wherever it says what a draw needs to
   land.
@@ -213,9 +261,14 @@ Each lands with the code it describes:
   `www/brand/voice.md`'s word table. A new word for the floor is drafted for
   the table first and waits for the maintainer; none is planned, since nothing
   on screen names the floor.
-- **What stays:** the fill's card, "listening to 40 sounds: you start as soon
-  as the first 8 land", which the guide quotes, stays true. The `truth-pass`
-  skill finds any other sentence about what the fill deals.
+- **What stays:**
+  - The fill's card, "listening to 40 sounds: you start as soon as the first
+    8 land", which the guide quotes, stays true.
+  - The films' pages say that what a seeded session deals is logged, not
+    cast, until task 8. The floored fill alone doesn't change that, so they
+    stay true after PR B.
+  - The `truth-pass` skill finds any other sentence about what the fill
+    deals.
 
 ### 8. The films cast by the floor (PR C, before #142)
 
@@ -230,14 +283,16 @@ Each lands with the code it describes:
   - `tools/test_shotgen.py` holds every committed `shots.json` to the new
     rule, in `make dev-check`.
 - `www/brand/sound.json`'s shortlist criteria point at the floor, for
-  anything a film casts off the shortlist. RFC-007's two-note probe (noise
-  share ≤ 0.02, roughness ≤ 6) has no code in the repository. Then
-  `make sound`, which writes `www/video/tools/sound_defaults.py` and the
+  anything a film casts that is not on the shortlist. RFC-007's two-note
+  probe (noise share ≤ 0.02, roughness ≤ 6) has no code in the repository.
+  Then `make sound`, which writes `www/video/tools/sound_defaults.py` and the
   scores (`make dev-check` fails while they are stale).
-- The pages that say the films wait on the floor are brought up to date:
-  [the view films' runbook](../runbooks/finish-the-view-films.md),
-  [Plan-004](004-one-design-system.md) task 8 and
-  [Plan-006](006-the-sound-of-the-films.md)'s casting.
+- The pages that say the films' casting waits for this task are brought up
+  to date: [the view films' runbook](../runbooks/finish-the-view-films.md),
+  [Plan-004](004-one-design-system.md) task 8,
+  [Plan-006](006-the-sound-of-the-films.md)'s casting and
+  [RFC-007](../proposals/007-the-sound-of-the-films.md)'s line on casting
+  from above the floor.
 
 ## Constraints
 
@@ -257,7 +312,8 @@ From RFC-005 and the records it rests on:
   the draw budget 400.
 - **No interaction waits on the floor**
   ([ADR-025](../decisions/025-every-interaction-answers-at-once.md)). Its cost
-  is the fill's extra renders, measured at boot (task 5).
+  is the fill's extra renders, measured against the first visit's 2,000 ms
+  veil, and every sound landed at `playable` has its audio (task 5).
 - **No new word for players** without the maintainer's approval
   ([ADR-013](../decisions/013-one-voice.md)).
 
@@ -270,6 +326,9 @@ From RFC-005 and the records it rests on:
   `preset-faces.json` are regenerated.
 - The paired revalidation is in this plan, with `make phi-stats` and
   `make norm-peak` unchanged.
+- Every sound landed at `playable` arrives with its audio, and the first
+  visit's veil is measured on `main` and the floored branch. Either it passes
+  task 5's stop rule, or the maintainer's decision on it is recorded here.
 - The reference, `system.md`, `persistence.md` and the changelog describe the
   floored fill.
 - The films cast a seeded session's prior draws by the floor, and

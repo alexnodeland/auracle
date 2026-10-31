@@ -437,6 +437,12 @@ For the maintainer to accept or amend.
   - The fill's card ("listening to 40 sounds: you start as soon as the
     first 8 land") stays true.
   - Hollow faces come with RFC-006's views.
+  - *Found after acceptance (2026-10-31):* one constant may need the floor.
+    `FARM_AUDIO_AHEAD` (`worker.js`) asks the farm for audio for the first 8
+    draw indices, sized for today's pass rate, so under the floor two or
+    three of the 8 sounds at `playable` would carry none. Hollow faces are
+    one of RFC-006's proposed next motions, not yet planned.
+    [Plan-009](../plans/009-the-sonic-floor.md) task 5 covers both.
 - **The films**: `www/video/tools/shotgen.py` and
   [`films.md`](../architecture/films.md) say that the prior draws in the
   pool, and a duel between two of them, are cast by the floor, and that the
@@ -522,10 +528,12 @@ recommendations as written, its recommended answers to the open questions
 included", and "the listen kit stays available for an ear check". The build
 comes before the films are cast (#142).
 
-Recorded as [ADR-026](../decisions/026-the-sonic-floor.md). Built as
-[Plan-009](../plans/009-the-sonic-floor.md). Its first task measures this
-proposal's numbers again: they were drawn with every octave equally likely,
-and #62's octave weights merged after it (#363, 2026-10-07).
+Recorded as [ADR-026](../decisions/026-the-sonic-floor.md).
+[Plan-009](../plans/009-the-sonic-floor.md) builds it. Its first task
+measures this proposal's numbers again: they were drawn with every octave
+equally likely, and #62's octave weights merged after it (#363, 2026-10-07).
+Its fifth weighs the floored fill against ADR-025's first-visit veil of 2 s,
+and goes to the maintainer if the veil is past it or later than today's.
 
 ## Open questions
 
