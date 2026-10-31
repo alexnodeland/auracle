@@ -1,6 +1,6 @@
 ---
 title: "Films: from script to the site"
-last_updated: 2026-10-01
+last_updated: 2026-10-31
 related_adrs: [3, 4, 14]
 ---
 
@@ -30,12 +30,15 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
      │
      ├─ illustrated: film.js draws beats on the timeline; with a shots.json
      │                (launch) it cuts to takes of the app (footage.mjs, as below),
+     │                checked and rehearsed like a walkthrough's shots (validate.mjs
+     │                reads the shots, and the marks film.js reads from them in its
+     │                text; film.js draws and has no plan, so it is never run),
      │                recorded first and again when their shot or timing changes,
      │                heard only in its demos (app_audio.py --demos)
      │
      └─ walkthrough: gen_shots.py ──► shots.json (actions timed to words and stamps)
                         │
-                        ├─ validate.mjs      every word, mark and beat resolves
+                        ├─ validate.mjs      every word, mark and beat of the shots and of film.js's plan resolves
                         ├─ rehearse.sh       dry run in one browser, lateness and errors
                         ├─ framing.py        callouts and crops as contact sheets
                         └─ footage.mjs       the recording: video and the app's own sound per shot
@@ -100,6 +103,16 @@ start's other cards) is logged, not cast, until the sonic floor (RFC-005).
 
 ## Readiness
 
+The checks look at a film's shots, and at its plan when it has one (the
+`walkthrough(` call in `film.js`, which `tools/plan.mjs` reads without a
+browser). So which film each tool covers follows from what the film has:
+
+| Tool | Walkthrough | Illustrated, cuts to takes (launch) | Illustrated, no takes (taste, math, dsp, engine) |
+| --- | --- | --- | --- |
+| `validate.mjs` | the shots and the plan | the shots, and the marks `film.js` reads from them (found in its text: `film.js` draws on a DOM, so it is not run) | says there is nothing to check, and passes |
+| `rehearse.sh` | every shot | every take | no `shots.json`: nothing to rehearse |
+| `framing.py` | the camera and the callouts | no plan: nothing to frame | no plan: nothing to frame |
+
 A walkthrough is ready to record when:
 
 1. `voice.sh` passes the ASR gate (every line recognised);
@@ -108,6 +121,14 @@ A walkthrough is ready to record when:
 4. `framing.py` shows every callout inside the frame;
 5. every claim on screen is true of the session it records
    ([ADR-004](../decisions/004-descriptions-stay-true.md)).
+
+An illustrated film that cuts to takes (launch) is held to 1, 2, 3 and 5; it
+has no callouts, so 4 does not apply. Its pointers are drawn at the marks its
+takes measured, and `validate.mjs` holds `film.js` to that: a mark it reads
+from a take (`tools/reads.mjs` finds them by their literal names) that the
+take's shot never measures is a problem, since the pointer would fall back to
+the kit's estimate, drawn as if measured
+([ADR-012](../decisions/012-motion-shows-what-the-engine-does.md)).
 
 Record on a quiet machine, one film at a time
 ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)). Only the recording

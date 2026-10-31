@@ -38,7 +38,8 @@ How you work:
   Keep the shot as the app should behave; do not write around the defect.
 - A film is ready when: the ASR gate passes, `validate.mjs` is clean, every
   shot passes a full rehearsal with no errors and no late actions, and
-  `framing.py` shows every callout in frame.
+  `framing.py` shows every callout in frame (a walkthrough's; an illustrated
+  film has no plan to frame).
 
 Where your work goes ([`docs/process.md`](../../docs/process.md)):
 

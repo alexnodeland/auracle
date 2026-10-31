@@ -5,24 +5,13 @@
 //
 //   node www/video/films/view-perform/lint_plan.mjs      (from the repo root)
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadPlan } from "../../tools/plan.mjs";
 const F = path.dirname(fileURLToPath(import.meta.url));
 const tl = JSON.parse(fs.readFileSync(`${F}/timeline.json`, "utf8"));
-let src = fs.readFileSync(`${F}/film.js`, "utf8");
-src = src.replace(/import\s*\{[^}]*\}\s*from\s*"[^"]*walk\.js";/, `
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-function aim(z, x, y) { if (z <= 1) return [z, 0.5, 0.5]; const f = (p, span) => clamp(((p * z) / span - 0.5) / (z - 1), 0, 1); return [z, f(x, 1920), f(y, 1080)]; }
-let captured = null;
-async function walkthrough(stage, opts) { captured = opts; }
-export function plan() { return captured; }`);
-const tmp = path.join(os.tmpdir(), `lint-vp-${process.pid}.mjs`);
-fs.writeFileSync(tmp, src);
-const mod = await import(tmp);
-await mod.build({});
-const { plan } = mod.plan();
-fs.unlinkSync(tmp);
+// The plan film.js gives walkthrough(), read the way validate.mjs reads it.
+const plan = await loadPlan(F);
 function wordTime(l, word) {
   const i = l.text.toLowerCase().indexOf(word.toLowerCase());
   if (i < 0) return l.t0;
