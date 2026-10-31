@@ -28,7 +28,7 @@
 // each recorded as the test's annotation, and judged only with AURACLE_PERF=1, by the nightly Speed budgets
 // job. Times are taken in the page's own clock, from the gesture's
 // own task, so Playwright's polling is not in them.
-const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { test, expect, goLevel, bankTab, SEED } = require("./fixtures");
 
 /** A key held long enough to be played. */
 const KEY_HELD_MS = 300;
@@ -316,19 +316,21 @@ test("on the reference profile, every sound you can see opens under the keys in 
 // drawn at once from the sounds that have arrived, while the pool fills too;
 // only a seeded session's keep to the fill's schedule and wait for its
 // sounds (#211). So the same picks are measured in both, with the same
-// budgets, the second's named for it.
+// budgets, the second's named for it. The first names its seed, so it is
+// seeded under any boot: AURACLE_SEED=random, as the nightly hunt runs,
+// would otherwise boot both without one and leave the seeded schedule
+// unmeasured there (#359).
 for (const [title, session, as] of [
-  ["a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", {}, ""],
+  ["a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", { seed: SEED }, ""],
   ["in a session with no seed, a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", { seed: null, random: null }, "no seed: "],
 ]) test(title, async ({ page, app }) => {
   await app.boot(session);
   // Only a seed in the address deals by the fill's schedule (#211): the
-  // page says which it is with `init`. The first boot's address is the
-  // fixture's to choose (AURACLE_SEED=random, as the nightly hunt runs, has
-  // none), so what is held is the address the page loaded (#359).
+  // page says which it is with `init`, held to the address the page loaded
+  // (#359), and the address is the one each variant asked for.
   const [init] = await app.sent({ type: "init" });
   const addressed = new URL(page.url()).searchParams.has("seed");
-  expect(addressed && session.seed === null, "a session with no seed has none in the address").toBe(false);
+  expect(addressed, "the address has a seed exactly when this variant names one").toBe(session.seed !== null);
   expect(init.seeded, "seeded only with a seed in the address").toBe(addressed);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
