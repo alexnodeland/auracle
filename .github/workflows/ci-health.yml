@@ -8,15 +8,20 @@ name: CI health
 # (docs/notes/ci-baseline-2026-10-05.json). The budgets those numbers are read
 # against are in docs/architecture/testing.md § Budgets.
 #
-# Its own workflow, nightly after the Flake hunt (05:41 UTC, about three
-# hours with its speed budgets), so its numbers include that night's run (a
-# run still going is left to the next night's), and a stop at the API's rate
-# limit is a red run here (the script exits 3 having written what it read),
-# not a red hunt. It holds one runner for a few minutes.
+# Its own workflow, nightly after the Flake hunt, so its numbers include
+# that night's run (a run still going is left to the next night's), and a
+# stop at the API's rate limit is a red run here (the script exits 3 having
+# written what it read), not a red hunt. It holds one runner for a few
+# minutes. Both schedules slip: over the ten nights to 2026-10-31 the hunt
+# (cron 05:41 UTC) started 4 to 6 hours late, and CI health about as late
+# (cron 07:13 then, starting 13:13 to 14:21), twice before that night's hunt
+# had finished. The hunt now takes about three hours with its speed
+# budgets, so this cron is 5.5 hours after the hunt's: its three hours, and
+# two more for the two slips to differ by.
 
 on:
   schedule:
-    - cron: "13 9 * * *"
+    - cron: "13 11 * * *"
   workflow_dispatch:
 
 permissions:
