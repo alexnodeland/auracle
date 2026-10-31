@@ -85,7 +85,7 @@ performance core's.
 
 ## In short
 
-**Where it stands (2026-10-15).** The first two of
+**Where it stands (2026-10-31).** The first two of
 [what was left](#what-is-left-ranked), and the third's block walk, are built
 ([Built](#built)): quiver-dsp
 0.4.1's ladder (L2 and L0) and shorter walk, with `norm_sqr().sqrt()` in φ's
@@ -96,11 +96,12 @@ rebuilding the program (#391) and recomputes only what its site reaches
 (#399). The third's other candidates, ports as slices and enum dispatch, are
 not built. L1, the ladder's one fixed-point pass, was carried by quiver-dsp
 0.5.0, which Auracle never took, and 0.5.1 reverts it; the maintainer closed
-it on 2026-10-31 as not worth its change to the sound (#403, [the
-ladder](#l1-is-closed-2026-10-31)). `simd128` (-2.2%, within the noise) and reusing the
-analysis's FFT buffers (under 1%) are declined: neither is worth its cost
-(#298). A lower-rate phrase stays a decision about φ, not built. The bullets below are the profile
-as of 2026-10-06, before any of that.
+it on 2026-10-31 as not worth its change to the sound (#403,
+[the ladder](#l1-is-closed-2026-10-31)). `simd128` (-2.2%, within the noise)
+and reusing the analysis's FFT buffers (under 1%) are declined: neither is
+worth its cost (#298). A lower-rate phrase stays a decision about φ, not
+built. The bullets below are the profile as of 2026-10-06, before any of
+that.
 
 - **A render is its DSP.** Natively 94% of the farm's job is ticking the patch
   through the phrase; φ's analysis is 3%, loudness 1%, the face 0.8%, vetting
@@ -193,10 +194,11 @@ alternated; the load each run saw is in its file), [`blocks/`](blocks/):
   to 3.6), 491 to 162 natively; a preset's four voices a median 0.38 of their
   cost (`live_cost.mjs --sweep-only`), and on a CPU 4.5 times slower A and B
   together over a whole quantum on 1 or 2 presets of 62, against 40 to 44.
-- What 0.5.0's L1 did, kept for the record (it is closed, [below](#l1-is-closed-2026-10-31)):
-  φ moved on 11 of 62 presets, at most 0.096 of a spread (`phi-moves.txt`),
-  one more prior draw quarantined as silent (`revalidate-diff.txt`), and the
-  climbs (`climb-before.txt`, `climb-after.txt`).
+- What 0.5.0's L1 did, kept for the record (it is closed,
+  [below](#l1-is-closed-2026-10-31)): φ moved on 11 of 62 presets, at most
+  0.096 of a spread (`phi-moves.txt`), one more prior draw quarantined as
+  silent (`revalidate-diff.txt`), and the climbs (`climb-before.txt`,
+  `climb-after.txt`).
 
 ## The render, by stage
 
@@ -482,9 +484,10 @@ a sound decision; L2 does not, at the precision the tables print.
 ### L1 is closed (2026-10-31)
 
 The maintainer closed #403 on 2026-10-31: L1 is not worth its change to the
-sound. Nothing on main takes it (quiver-dsp 0.5.1 reverted it), and the
-16-seed climb that was to settle it, `make climb SEEDS=16` on both arms, was
-never run. Two reasons.
+sound. Nothing on main takes it (quiver-dsp 0.5.1 reverted it). #403's "Done
+when" asked for `search_health --climb 16` on both arms, on a quiet machine,
+before deciding; one was started and never finished (below), and the decision
+rests on the 8-seed climb. Two reasons.
 
 **The climb that exists read lower.** `search_health --climb 8`, 2026-10-09,
 the harness's seeds `0xE05 + i·0x101`, each seed's final mean gain over six
@@ -561,7 +564,7 @@ What else is quiver's to change, measured the same way:
 ## What is left, ranked
 
 Ranked as of 2026-10-06; the last column says where each stands on
-2026-10-15.
+2026-10-31.
 
 | | Change | Where | φ | Gain, measured or estimated | Now |
 | --- | --- | --- | --- | --- | --- |
