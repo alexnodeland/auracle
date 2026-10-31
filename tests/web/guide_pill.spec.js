@@ -11,13 +11,13 @@
 // - × stops it, and a reload keeps it stopped (`auracle-guide`).
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
-const { test, expect, goLevel, modelView } = require("./fixtures");
+const { test, expect, goLevel, modelView, SEED } = require("./fixtures");
 
-/** A first visit, seeded as every spec boots (fixtures.js): an unseeded
- *  session can open on a sound none of whose controls reach ("0 of 6
- *  controls reach this patch"), where step 2 has no control to name. `stored`:
- *  keys in localStorage before the page's first load. */
-async function boot(app, { stored = null } = {}) {
+/** A first visit. `stored`: keys in localStorage before the page's first
+ *  load. `seed`: the engine's seed and the page's Math.random, when the
+ *  test needs a sound of its own; with none it boots as the fixture does
+ *  (unseeded in the nightly hunt, `AURACLE_SEED=random`). */
+async function boot(app, { stored = null, seed } = {}) {
   const { page } = app;
   if (stored) {
     await page.addInitScript((s) => {
@@ -29,7 +29,7 @@ async function boot(app, { stored = null } = {}) {
       } catch (_) {}
     }, stored);
   }
-  await app.boot({ warmed: false, seen: false });
+  await app.boot({ warmed: false, seen: false, ...(seed === undefined ? {} : { seed, random: seed }) });
   await page.locator("#warm-skip").click();
   await goLevel(page, "perform");
 }
@@ -39,7 +39,12 @@ const pips = (page) => page.locator("#guide .pips i");
 
 test("the pill shows one step at a time and ticks each off as it happens", async ({ page, app }) => {
   test.setTimeout(240_000);
-  await boot(app);
+  // Seeded with a seed of its own (`SEED`, which AURACLE_SEED does not
+  // move): the walk turns a control that reaches the first sound, and step 2
+  // names one. An unseeded first visit can open on a sound none of whose
+  // controls reach ("0 of 6 controls reach this patch": 2 of 30 unseeded
+  // boots, #443), where step 2 has no control to name and no turn ticks it.
+  await boot(app, { seed: SEED });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step")).toHaveCount(1);
@@ -75,8 +80,10 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await page.locator(".pf-pad", { hasText: /^Offer$/ }).click();
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Press (⌥|Alt) ?↑ to zoom out to TASTE/);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(3);
-  await page.keyboard.press("Alt+ArrowUp");
-  await expect(page.locator("body")).toHaveAttribute("data-level", "taste");
+  // Gone there by the rail, not ⌥↑: ⌥ held past the model view's hold
+  // (which a loaded runner can stretch between ⌥'s keydown and ↑'s) shows the
+  // model view, as it should, and ticks step 5 before it is asked for.
+  await goLevel(page, "taste");
   await goLevel(page, "perform");
   // Step 5, the model view: the last, said once, then the pill goes.
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Hold (⌥|Alt) to see what the model believes/);
