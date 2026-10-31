@@ -722,7 +722,10 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
   edit's commit, an import, the warm start), so the seeds are current after
   any of them.
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
-  so the seeds and what may be replaced.
+  so the seeds and what may be replaced, and on `on_table`, which changes
+  what the engine holds on EVOLVE's table and so what may be replaced
+  ([EVOLVE's next pair](#evolves-next-pair)). Each of
+  these carries `retiring` too while a generation is open.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
 `seeds` and `may_replace` in the bank (`evolveMarks` in `marks.js`, unit-tested
@@ -1831,18 +1834,44 @@ asked for, so only a cut made while a deal is out brings one back.
 `placePair` is the one place a pair goes up: anything owed to a pair being
 shown belongs there.
 
-A side of the pair on the table that leaves the pool (a generation's end, a
-preset load or an import making room) does not swap the pair: it stays where
+**A pick in its undo window keeps its pair.** The engine holds the sounds
+on the table (#452): the pair up and the pair
+of the pick held in its undo window, four at most (`onTable` in `deal.js`,
+`Engine::set_on_table`). No generation's end, preset load, import or ⚡
+child's trim replaces them, and EVOLVE POOL's marks pass them over, until
+main says they are put away. So the pick's `record_duel`, sent when its
+window closes, finds both its sides in the pool. It used to be refused when
+a side went in the window (`voteDropped`: *‹name› was replaced, so the pick
+wasn't recorded.*), and TAUGHT went back down.
+
+Main says so with `on_table` (`holdTable`), a `now`-lane request carrying
+the ids, whenever the table's pair or the pending pick's pair changes:
+`placePair`, a pick (`choose`), its commit (`commitPendingVote`), ⌘Z
+(`retractVote`) and ↻ or a pick putting the pair away (`dealAnother`). It
+is sent once a task, from a microtask, and only when the set changed: a
+pick commits the last pick, holds its own pair and puts the next pair up in
+one task, and says so once. Coming after every vote that task sent, it
+reaches the engine after the vote, so a pick is recorded before its pair is
+let go. The pair dealt ahead is not held: nobody has seen it, and a side it
+loses deals it again (`usable`). The reply, `on_table`, says what the engine
+holds (`ids`: the pool's, each once), with the `ratings` and `retiring` a
+save's reply carries, since the hold moves what may be replaced; main takes
+them as `pinned`'s case does. Nothing is saved: a restore holds nothing,
+and a binary without `set_on_table` holds nothing and answers `ids: []`.
+
+A side can still leave the pool before the engine hears the pair is up: a
+generation ending in the round trip between the deal and `on_table`, or an
+engine older than the hold. That side does not swap the pair: it stays where
 the hand may be reaching for it (#312, ADR-025). `applyViews` marks the side
 (`markTableGone`: `.gone` on its card, its ▶, ⇄ and ↓ PATCH off, its line
 saying so; the TEACH strip names it replaced and its ▶ for it is off), and
 the next pick or ↻ puts up the next pair. The pick (`choose`) commits a pick
 still in its undo window, as any pick does, and sends no vote of its own
 (`record_duel` refuses an id the pool no longer holds); its refusal is
-`urgent`, so it does not wait behind the generation's toast. A pick held in its undo window
-whose pair loses a side is still refused by the engine when it commits
-(`voteDropped`); keeping it valid would need the engine to hold a sound shown
-in a pair until it is put away.
+`urgent`, so it does not wait behind the generation's toast.
+`tests/web/evolve_holds_still.spec.js` holds both: a preset opened in a
+pick's window that would have replaced a side of it, with the vote counted,
+and a side gone before it was held (its end posted by the spec).
 
 A deal is refused when it is the pair of the pick held in its undo window,
 and it is judged against the pick held when the pair it was dealt behind

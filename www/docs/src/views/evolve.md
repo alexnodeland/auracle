@@ -37,7 +37,10 @@ there](../../reference/audition/phrase.html).
 A pick counts the moment you make it: **TAUGHT** in the menu bar and the pips
 move at once. For seven seconds you can take it back, with <kbd>⌘Z</kbd>
 (Ctrl Z) or **NOT WHAT I MEANT** on its toast (*Picked Glass Pad over Soft
-Wash.*). After that it goes into the log for good.
+Wash.*). After that it goes into the log for good. Nothing replaces the two
+sounds of a pick in those seven seconds, nor the pair on the table: not a
+generation, not a preset or a patch file you open. So a pick on a whole pair
+always counts.
 
 <kbd>⌘Z</kbd> in EVOLVE only ever takes back a pick or a cut. With none to
 take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
@@ -218,11 +221,13 @@ under New say the same.
 
 When the generation ends, its toast says what joined and what was replaced,
 and **REPLACED · GENERATION 1** at the foot of the pool lists the replaced
-sounds by name. If it replaced a sound of the pair on the table, the pair
-stays where it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line
-reads *Replaced in the pool.* A pick or ANOTHER PAIR deals the next pair. A
-pick on that pair teaches nothing (the sound is gone, so the engine can't
-take it), says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
+sounds by name. It never replaces a sound of the pair on the table, nor of a
+pick you can still take back. Only if it ends in the moment a new pair goes
+up can it replace one of that pair’s sounds, and then the pair stays where
+it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line reads
+*Replaced in the pool.* A pick or ANOTHER PAIR deals the next pair. A pick on
+that pair teaches nothing (the sound is gone, so the engine can't take it),
+says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
 has the marks, and [Compare](../bank.md#compare-a-sound-beside-its-seed) shows
 a child beside its seed.
 

@@ -255,7 +255,8 @@ The pool holds 40 sounds. A generation’s children join it as they are bred,
 and when the generation ends (or you stop it), it replaces the lowest-rated
 sounds it can to bring it back to 40: not a saved sound, nor one you kept as
 new that is still waiting for its first pick
-([above](#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)). The
+([above](#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)), nor
+the pair on EVOLVE’s table or a pick you can still take back. The
 toast names them: *Generation 3: 4 new sounds in the pool. It replaced the 4
 lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
 
@@ -263,13 +264,14 @@ lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
    the next generation would breed from get a solid amber rail and **SEED**;
    the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
    other sound can be replaced when it ends. A saved sound is never marked,
-   and nor is a sound you kept as new that hasn’t been in a pick yet. The
+   nor is a sound you kept as new that hasn’t been in a pick yet, nor the
+   pair on EVOLVE’s table or a pick you can still take back. The
    words sit at the row’s end, where its actions come when you point at the
    row, so no name moves.
 2. Save any you want to keep before you press it.
 
 The marks are the engine’s own lists, and they move as your picks move the
-model’s ratings.
+model’s ratings and as the pair on the table changes.
 
 While a generation runs, hovering **EVOLVE POOL** marks that generation’s
 seeds, and **WILL BE REPLACED** on the sounds its end will replace, whether
