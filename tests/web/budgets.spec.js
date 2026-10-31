@@ -327,10 +327,10 @@ for (const [title, session, as] of [
   await app.boot(session);
   // Only a seed in the address deals by the fill's schedule (#211): the
   // page says which it is with `init`, held to the address the page loaded
-  // (#359), and the address is the one each title asked for.
+  // (#359), and the address is the one each variant asked for.
   const [init] = await app.sent({ type: "init" });
   const addressed = new URL(page.url()).searchParams.has("seed");
-  expect(addressed, "the address has a seed exactly when the title names one").toBe(session.seed !== null);
+  expect(addressed, "the address has a seed exactly when this variant names one").toBe(session.seed !== null);
   expect(init.seeded, "seeded only with a seed in the address").toBe(addressed);
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
