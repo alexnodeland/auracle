@@ -5248,7 +5248,10 @@ body.model-view #view-patch #rack-meta .pm:first-child:not(.pt-made)::before { c
 .pr-belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
 .pr-belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
 
-/* The ceilings evolution can search. Quiet until it is nearly spent. */
+/* The ceilings evolution can search. Quiet until it is nearly spent: one
+   short, its number amber; at the ceiling, the whole count amber (a patch as
+   big as breeding searches, which is news, not danger); red only while an
+   edit refused at that ceiling is said (#530, main.js `budgetRefusal`). */
 .budget {
   display: flex;
   align-items: baseline;
@@ -5260,8 +5263,10 @@ body.model-view #view-patch #rack-meta .pm:first-child:not(.pt-made)::before { c
 .budget .bg-sep { opacity: 0.45; }
 .budget .bg-cell b { color: var(--silk-dim); font-weight: 400; }
 .budget .bg-cell.tight b { color: var(--phos-b); }
-.budget .bg-cell.full { color: var(--led-red); }
-.budget .bg-cell.full b { color: var(--led-red); }
+.budget .bg-cell.full { color: var(--phos-b); }
+.budget .bg-cell.full b { color: var(--phos-b); }
+.budget .bg-cell.refused,
+.budget .bg-cell.refused b { color: var(--led-red); }
 
 /* How the pair on the table was chosen (`renderDealRule`): quiet silk under
    the default, where it is the same fact about every pair; amber only for a

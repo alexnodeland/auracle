@@ -171,7 +171,7 @@ const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
-  { createShell }, { createGuide }, { createToastLane, placeLane, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS }, { createDealer, onTable },
+  { createShell }, { createGuide }, { createToastLane, placeLane, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS, TOAST_MS }, { createDealer, onTable },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
   { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
@@ -3673,6 +3673,8 @@ worker.onmessage = (e) => {
         // and it did not happen. Queued behind ordinary confirmations it
         // arrived seconds late and, under a burst, not at all.
         note(`That edit to ${nameOrKnown(wb.subjectId) || "the sound you’re playing"} didn’t happen: ${m.error}`, { urgent: true });
+        // …and the ceiling it was refused at, if that was why, goes red.
+        budgetRefusal(m.error);
         // Nothing happened, so nothing is owed to history — and nothing that
         // rode along with the edit is owed to HELD either. Without this the
         // next ⌘Z restored the patch the user is already looking at (a dead
@@ -7981,6 +7983,25 @@ function treeBudget(tree) {
   return { size, depth, mod };
 }
 
+// A ceiling an edit was just refused at (#530): its count turns red while the
+// refusal is said (`TOAST_MS`), the one time a budget is danger. Full at rest
+// is not: the patch is merely as big as breeding searches, so a full count is
+// amber, as the model's own marks are, the whole count where a tight one
+// lights only its number.
+const budgetRefused = { cells: new Set(), timer: 0 };
+/** An edit was refused: if for a ceiling (the grammar's `StructError::TooBig`,
+ *  "would pass its limits", for the size and the depth; `ModTooDeep`,
+ *  "modulation chain would exceed depth", for the mod depth), redden it. */
+function budgetRefusal(error) {
+  const cells = /pass its limits/.test(error) ? ["size", "depth"]
+    : /modulation chain would exceed depth/.test(error) ? ["mod"] : [];
+  if (!cells.length) return;
+  budgetRefused.cells = new Set(cells);
+  clearTimeout(budgetRefused.timer);
+  budgetRefused.timer = setTimeout(() => { budgetRefused.cells.clear(); renderBudget(); }, TOAST_MS);
+  renderBudget();
+}
+
 function renderBudget() {
   const el = $("budget");
   if (!el) return;
@@ -7990,9 +8011,9 @@ function renderBudget() {
   // player has already spent the room the warning was about.
   const state = (n, max) => (n >= max ? "full" : n >= max - 1 ? "tight" : "");
   const cells = [
-    [b.size, BUDGET.size, "modules"],
-    [b.depth, BUDGET.depth, "depth"],
-    [b.mod, BUDGET.mod, "mod depth"],
+    [b.size, BUDGET.size, "modules", "size"],
+    [b.depth, BUDGET.depth, "depth", "depth"],
+    [b.mod, BUDGET.mod, "mod depth", "mod"],
   ]
     // A readout of three ratios with room to spare ("2/24 modules · 2/6 depth
     // · 1/3 mod depth") is engine arithmetic, not news, and it sat beside the
@@ -8001,7 +8022,11 @@ function renderBudget() {
     // measurements) it says only what is tight or full, and nothing
     // otherwise. The warning itself is never held back.
     .filter(([n, max]) => engineerMode || state(n, max))
-    .map(([n, max, label]) => `<span class="bg-cell ${state(n, max)}"><b>${n}</b>/${max} ${label}</span>`);
+    .map(([n, max, label, id]) => {
+      const st = state(n, max);
+      const refused = st && budgetRefused.cells.has(id) ? " refused" : "";
+      return `<span class="bg-cell ${st}${refused}"><b>${n}</b>/${max} ${label}</span>`;
+    });
   el.innerHTML = cells.join(`<span class="bg-sep">·</span>`);
 }
 
@@ -16783,7 +16808,10 @@ function settlePlaceholders() {
 // sorts, and, on the six binaries only, the one op that is meaningless
 // anywhere else. `delete` is fenced off behind a rule and printed in the red
 // the rest of the app reserves for loss.
-function openStructMenu(mod, x, y) {
+function openStructMenu(mod, x, y, above) {
+  // Inside the well, clear of its foot (#530): down from (x, y) where it
+  // fits, else up to `above` (a plate's top edge, from the keyboard).
+  const place = { within: wellRoom(), above };
   if (mod.kind === "amp") {
     // A one-item menu is not a menu; it is a button wearing one. The amp's ⋯
     // has exactly one thing to offer, so it performs it.
@@ -16818,7 +16846,7 @@ function openStructMenu(mod, x, y) {
         sep: true,
         run: () => unplugMod(parentKey),
       },
-    ]);
+    ], place);
     return;
   }
 
@@ -16921,7 +16949,7 @@ function openStructMenu(mod, x, y) {
     glyph: isPlaceholderKey(key) ? EMPTY_GLYPH : spec?.glyph,
     title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
     sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
-  }, rows);
+  }, rows, place);
 }
 
 /** One line, said before the click, about what `delete` is going to cost. */
@@ -17287,7 +17315,20 @@ let menuOpenedAt = 0;
 // keystroke goes nowhere.
 let menuOpener = null;
 
-function showMenu(x, y, head, rows) {
+/** The well's room for a menu about the rack (#530): from its top to the
+ *  foot's (the camera, the readout, TEACH), which a menu must not cover. */
+function wellRoom() {
+  const fr = $("rack-frame")?.getBoundingClientRect();
+  const foot = $("pt-foot")?.getBoundingClientRect();
+  if (!fr || !fr.height) return null;
+  return { top: fr.top, bottom: foot && foot.height ? Math.min(fr.bottom, foot.top) : fr.bottom };
+}
+
+/** Open the one floating menu at (x, y). `place.within` (`{top, bottom}`)
+ *  is the room it should open inside, where it fits: down from `y`, else up
+ *  to `place.above` (its bottom edge there; `y` unless given), else held
+ *  inside it; only a menu taller than that room falls back to the window. */
+function showMenu(x, y, head, rows, place) {
   const menu = $("ctx-menu");
   menuRows = rows;
   if (!menu.contains(document.activeElement)) menuOpener = document.activeElement;
@@ -17318,9 +17359,23 @@ function showMenu(x, y, head, rows) {
   menu.style.top = "0px";
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
-  let top = y;
-  if (y + mh > window.innerHeight - 8) {
-    top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+  // The room it opens in: the window, or what `place` asks for inside it.
+  // Opened downward from a module low in the well, the structure menu cut
+  // through the well's foot, over the readout about that very module and
+  // TEACH (#530): it opens up instead, or is held inside the well.
+  const lo = Math.max(8, place?.within ? place.within.top + 4 : 8);
+  const hi = Math.min(window.innerHeight - 8, place?.within ? place.within.bottom - 4 : Infinity);
+  const above = place?.above ?? y;
+  let top;
+  if (hi - lo >= mh) {
+    if (y + mh <= hi) top = Math.max(lo, y);
+    else if (above - mh >= lo) top = above - mh;
+    else top = Math.max(lo, hi - mh);
+  } else {
+    top = y;
+    if (y + mh > window.innerHeight - 8) {
+      top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+    }
   }
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
@@ -18113,7 +18168,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
       focusRackControl(rackControls().indexOf(knobs[0]));
     } else if (e.key === "F2" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
       e.preventDefault();
-      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4);
+      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4, box.top - 4);
     } else if (e.key === "Escape") {
       // Out of the plate: the selection goes, and the next Esc closes the
       // catalog, then a new patch.

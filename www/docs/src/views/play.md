@@ -48,8 +48,10 @@ knob. With another layout it says *packed tight* or *placed by hand*. After it
 come what is happening to the patch: *opening Glass Pad…*, *2 locked*,
 *silent: nothing reaches the output*, *1 edit waiting*. Near one of the
 ceilings breeding searches within (24 modules, a depth of 6, a modulation depth
-of 3) it says that too, in amber (*5/6 depth*), and in red at one: a patch at a
-ceiling has no room to grow, and a hand-built patch past one is refused. Under
+of 3) it says that too: one short of it, its number in amber (*5/6 depth*);
+at it, the whole count in amber (*6/6 depth*), since a patch at a ceiling has
+no room to grow. An edit that would take the patch past one is refused, and
+that count turns red while the refusal is said. Under
 [the model view](#the-model-view-in-patch) the subtitle becomes the belief
 line instead: what the model makes of this sound.
 

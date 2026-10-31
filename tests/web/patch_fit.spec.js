@@ -1,4 +1,5 @@
-// PATCH's fit is readable and a finger's size on every screen (#519).
+// PATCH's fit is readable and a finger's size on every screen (#519), and the
+// head and the structure menu stay out of the way (#530).
 //
 // The seeded boot's sound is Bright Stab: seven modules, six modulators and
 // the amp, too wide to hold whole at a size you can read in a phone's well or
@@ -20,6 +21,12 @@
 // - At 1440 × 900 the same patch fits with every name at 11 px or larger and
 //   no rack text under 9 px, the rest past the right edge, and FIT after a
 //   zoom comes back to that fit.
+// - At 1440 the structure menu of a module low in the well (HOLD) opens where
+//   it fits, never over the well's foot (the camera, the readout, TEACH), by
+//   its ⋯ and by F2.
+// - The head's full depth budget (6/6) is amber at rest, as the tight one is,
+//   never red; an edit refused at that ceiling (a second filter in series)
+//   turns it red while the refusal is said, and it is amber again after.
 const { test, expect, goLevel } = require("./fixtures");
 const { rackAtRest } = require("./patch_page");
 
@@ -158,4 +165,64 @@ test("PATCH's fit at 1440 prints every module's name at the type floor, and FIT 
   await expect.poll(async () => near(await viewBox(page), fitted)).toBe(false);
   await page.locator("#pt-fit").click();
   await expect.poll(async () => near(await viewBox(page), fitted), { timeout: 5_000 }).toBe(true);
+});
+
+test("the structure menu of a module low in the well opens where it fits, clear of the well's foot", async ({ page, app }) => {
+  await patchAtFit(app);
+  const clear = () => page.evaluate(() => {
+    const m = document.getElementById("ctx-menu").getBoundingClientRect();
+    const foot = document.getElementById("pt-foot").getBoundingClientRect();
+    const frame = document.getElementById("rack-frame").getBoundingClientRect();
+    return { open: m.height > 0, clear: m.bottom <= foot.top + 0.5 && m.top >= frame.top - 0.5 };
+  });
+  // By its ⋯: select HOLD with a press on its plate, then its ⋯.
+  const plate = page.locator('#rack-svg .rack-plates g[data-kind="hold"] .mod-plate').first();
+  const b = await plate.boundingBox();
+  await page.mouse.click(b.x + 8, b.y + b.height - 6);
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="hold"].selected')).toHaveCount(1);
+  const dots = await page.locator('#rack-svg g.mod-group[data-kind="hold"] .mod-menu-btn text').boundingBox();
+  await page.mouse.click(dots.x + dots.width / 2, dots.y + dots.height / 2);
+  await expect(page.locator("#ctx-menu")).toBeVisible();
+  expect(await clear()).toEqual({ open: true, clear: true });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#ctx-menu")).toBeHidden();
+  // By F2 on the plate.
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="hold"]').focus();
+  await page.keyboard.press("F2");
+  await expect(page.locator("#ctx-menu")).toBeVisible();
+  expect(await clear()).toEqual({ open: true, clear: true });
+});
+
+test("a full depth budget is amber at rest, and red only while an edit refused at it is said", async ({ page, app }) => {
+  await patchAtFit(app);
+  const ink = (v) => page.evaluate((name) => {
+    const s = document.createElement("span");
+    s.style.color = `var(${name})`;
+    document.body.appendChild(s);
+    const c = getComputedStyle(s).color;
+    s.remove();
+    return c;
+  }, v);
+  const [amber, red] = [await ink("--phos-b"), await ink("--led-red")];
+  const depth = page.locator("#budget .bg-cell", { hasText: /\d+\/\d+ depth/ }).filter({ hasNotText: "mod" });
+  await expect(depth).toHaveText("6/6 depth");
+  await expect(depth).toHaveClass(/\bfull\b/);
+  await expect(depth).toHaveCSS("color", amber);
+  await expect(depth.locator("b")).toHaveCSS("color", amber);
+  // A second filter in series after the first one (its ⋯'s duplicate) would
+  // make the patch seven deep: refused, and said.
+  const first = await page.evaluate(() => {
+    const gs = [...document.querySelectorAll('#rack-svg .rack-controls g.mod-group[data-kind="filter"]')];
+    gs.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    return gs[0].getAttribute("data-key");
+  });
+  await page.locator(`#rack-svg .rack-controls g.mod-group[data-key="${first}"]`).focus();
+  await page.keyboard.press("F2");
+  await page.locator("#ctx-menu .cm-item", { hasText: /^duplicate/ }).click();
+  await app.toast(/didn’t happen: the patch would pass its limits/);
+  await expect(depth).toHaveClass(/\brefused\b/);
+  await expect(depth).toHaveCSS("color", red);
+  // Amber again once the refusal has been said.
+  await expect(depth).not.toHaveClass(/\brefused\b/, { timeout: 15_000 });
+  await expect(depth).toHaveCSS("color", amber);
 });

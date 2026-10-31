@@ -19,3 +19,15 @@
   module's ⋯ and lock answer a finger 44 px across at any zoom, the face at
   OUT is at least that big, and a tap beside an out ○ picks its cable up,
   as a tap right on it does (`patch_fit.spec.js`, #519).
+
+### Fixed: PATCH's structure menu and its ceilings stay out of the way
+
+- **A module's ⋯ menu opens where it fits.** Opened on a module low in the
+  well, the menu ran down over the well's foot, covering the readout about
+  that very module and TEACH. It now opens upward when there's no room
+  below, and always inside the well.
+- **A patch at a ceiling no longer reads as an error.** A full budget in
+  the head (*6/6 depth*) was red, the color of danger, though nothing was
+  wrong. It's amber now, the whole count, where a budget one short shows
+  only its number in amber. It turns red only while an edit refused at that
+  ceiling is being said (`patch_fit.spec.js`, #530).

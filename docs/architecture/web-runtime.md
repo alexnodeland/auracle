@@ -1038,7 +1038,8 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for
-  `openStructMenu`. Esc closes one thing a press. Whatever floats spends
+  `openStructMenu`, which opens inside the well, clear of its foot, upward
+  where there is no room below (`showMenu`'s `place`, `wellRoom`; #530). Esc closes one thing a press. Whatever floats spends
   it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
   pop-up, the scope or picture panel, the bank tour, KEYS ⋯, a
   context menu; main's Esc chain closes all that are open together, and
