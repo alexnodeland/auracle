@@ -344,6 +344,7 @@ Accepted as [ADR-011](../decisions/011-one-design-system.md). Built as
 other contracts; RFC-005 takes the sonic floor.
 
 RFC-005 was accepted on 2026-10-06 as
-[ADR-026](../decisions/026-the-sonic-floor.md), built by
-[Plan-009](../plans/009-the-sonic-floor.md). It leaves register to #62, so of
-part 6's three readings the floor keeps harshness and noise dominance.
+[ADR-026](../decisions/026-the-sonic-floor.md), and
+[Plan-009](../plans/009-the-sonic-floor.md) builds it. It leaves register to
+#62, so of part 6's three readings the floor keeps harshness and noise
+dominance.
