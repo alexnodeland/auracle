@@ -32,7 +32,7 @@ AUDIO IN has three settings and a row under them:
 | The input line | The input’s name (*1 · MacBook Pro Microphone*). Click it to pick another |
 | The square | Your input, before the patch: its level up the left edge, and its [face](./faces.md) as you play, from what it is playing now |
 | **MONITOR** | Hear your input through the sound |
-| **NEW CLIP** | Capture a new clip for the model (see [the clip](#the-clip-what-the-model-hears)) |
+| **NEW CLIP** | Capture a new clip of its input for the model (see [the clip](#the-clip-what-the-model-hears)) |
 
 ## Hear it: MONITOR
 
@@ -95,19 +95,22 @@ microphone for this site in the browser’s settings, then press **ASK AGAIN**.
 
 Your input is never the same twice, so the model can’t rate a sound by what it
 does to your input live. It hears a sound with AUDIO IN through a **clip**
-instead: six seconds of your input, captured the first time it carries a
-signal after you add AUDIO IN. Until then, the model hears it through a
-built-in plucked phrase.
+instead: six seconds of the input it reads, captured the first time that
+input carries a signal while a sound you’re playing or recording reads it. Until then, the model hears it
+through a built-in plucked phrase.
 
-- A toast says when the capture starts (*Capturing 6 s of …*), and when the
-  model has the clip.
-- The clip is saved with your session, in this browser. One clip serves every
-  AUDIO IN.
-- **NEW CLIP** captures again. Play what you mean to play through the sound
-  while it runs. Every sound with AUDIO IN in the pool is rated again with the
-  new clip.
-- **▶** on a sound with AUDIO IN plays it through the clip, as the model hears
-  it. The keys and MONITOR play it with your input, live.
+- Each input has a clip of its own. A sound that reads two inputs is heard
+  through each one’s clip, and each input is captured the first time you play
+  into it.
+- A toast says when a capture starts (*Capturing 6 s of …*, naming the input),
+  and when the model has the clip.
+- The clips are saved with your session, in this browser.
+- **NEW CLIP** captures its module’s input again, even on a module whose input
+  line says *meter only*. Play what you mean to play through the sound while
+  it runs. Every sound with AUDIO IN on that input in the pool is rated again
+  with the new clip.
+- **▶** on a sound with AUDIO IN plays it through its inputs’ clips, as the
+  model hears it. The keys and MONITOR play it with your input, live.
 
 The [reference](../reference/audition/clips.html) has how the clip is made,
 stored, and measured.
@@ -183,7 +186,9 @@ it too, and a CAPTURE keeps its take.
 
 ## What it doesn’t do yet
 
-- **One input for the keys** (above), and one clip for every input.
+- **One input for the keys** (above). The model hears a sound that reads two
+  inputs through each one’s clip, but the keys play it from the first one’s
+  input.
 
 ## What to try next
 

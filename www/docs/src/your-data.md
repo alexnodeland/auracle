@@ -33,12 +33,12 @@ It is kept as you play:
 | Your taste | What the model learned (its fitted guesses, at most 500), with its standardizer |
 | Layout and settings | Rack positions, the keybed’s size and width, the scope, and which of the catalog's groups are open |
 | **SET ASIDE** | What you unplugged, across reloads |
-| The clip | The seconds of your input AUDIO IN captured for the model, with the session |
+| The clips | The seconds of each input AUDIO IN captured for the model, with the session |
 | Takes | Each CAPTURE’s take, with the sound that holds it. A take you record is an edit, kept once you keep the edit as new. A sound kept safe keeps its unreadable take as it was |
 | Your inputs | Which microphone or interface each AUDIO IN input number means: the browser’s id for it and its name |
 | Taste over time | What the model posted at each of your last 200 moments (picks, stars, cuts, redraws): TASTE’s track and LEARNING’s **REPLAY**. A reset clears it, and a taste file doesn’t carry it |
 
-AUDIO IN’s input is played and measured in the tab, and only the clip is kept.
+AUDIO IN’s input is played and measured in the tab, and only the clips are kept.
 Monitoring is never kept: it starts off every time.
 
 A session comes back one sound at a time, with the bar counting them. A sound

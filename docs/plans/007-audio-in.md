@@ -4,7 +4,7 @@ number: 7
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-10-02
+updated: 2026-10-31
 originating_proposal: 8
 related_adrs: [4, 12, 15]
 ---
@@ -92,8 +92,9 @@ measured with audition clips, from quiver to the PATCH plate.
    - a built-in reference signal; *done*: a plucked figure (A2 to E4, a noise
      pick on every note, a quiet tail), deterministic, mono;
    - capturing a few seconds on first listen; *done* (task 4's web half): 6 s
-     of the input once it carries a signal, through the worker's
-     `set_audition_clip` message to `WasmEngine::set_audition_clip`;
+     of each input once it carries a signal, through the worker's
+     `set_input_clip` message to `WasmEngine::set_input_clip` (#147: one
+     capture per input, each its slot's own);
    - storing clips with the session; *done*: the session clip and a clip per
      input slot (`audition_clips`, #147's engine half), each saved as 16-bit
      base64 and bounded like quiver's `Capture`; an unreadable one restores as
@@ -109,9 +110,12 @@ measured with audition clips, from quiver to the PATCH plate.
      after a capture and a restore that installs one (task 4). *Done*
      (engine, #147): a clip per input slot (`PhraseSpec::clips`), a stream
      per slot each AUDIO IN reads by its own slot, and a render key that
-     names each slot's clip when they differ. Open: #147's web half (a
-     capture per device, NEW CLIP per input), and the live voices' stream
-     per slot (#148).
+     names each slot's clip when they differ. *Done* (web, #147): a capture
+     per device on its first listen, NEW CLIP per input, the worker's
+     `set_input_clip` and every slot's status (`clips`) on `ready`, a
+     capture's reply and a restore, the farm's phrase re-sent after one, and
+     PERFORM's key naming each slot's clip (`clips.js`). Open: the live
+     voices' stream per slot (#148).
 4. **Web capture.** *Done* (web), the live face included (#104,
    `the square draws the input's live face…` in `audio_in.spec.js`)
    (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
@@ -138,10 +142,10 @@ measured with audition clips, from quiver to the PATCH plate.
      left edge; with no stats (under four faces) the bar alone;
    - monitoring off, with a headphones note; *done*: MONITOR, off on every
      load and never saved, USE HEADPHONES under it and in its toast;
-   - the clip on first listen (task 3's web half); *done*: 6 s of the voices'
-     input once it carries a signal, sent as `set_audition_clip`; NEW CLIP
-     captures again. One clip for every input (a clip per input stays open,
-     above);
+   - the clip on first listen (task 3's web half); *done*: 6 s of each input
+     the bench reads once it carries a signal, sent as that input's own
+     (`set_input_clip`, #147); a module's NEW CLIP captures the input it
+     reads again;
    - the farm's phrase re-sent after a capture and after a restore that
      installs a clip; *done* (`farmResendPhrase`);
    - **held sounds** (task 6); *done* (the second web PR): the pool's tab

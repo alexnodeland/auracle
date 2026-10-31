@@ -545,7 +545,8 @@ has one too: its knobs can’t move the sound that way, but your taste may
 still lean there. Let go of <kbd>⌥</kbd> and the lines under the controls are
 back. The lean is asked for as the view comes up, and again when the sound in
 your hands changes (for a sound with AUDIO IN, a new
-[clip](../playing-through.md#the-clip-what-the-model-hears) too) or the model
+[clip](../playing-through.md#the-clip-what-the-model-hears) of an input it
+reads too) or the model
 learns from a pick or fits again. Open a taste file and the leans go until the
 model has fitted again (at once from a file with picks in it; from one with
 none, once you have taught it).
