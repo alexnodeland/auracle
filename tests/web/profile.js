@@ -44,27 +44,26 @@
 // phrase render about 180 to 230 ms on an M3 Max and 1 to 1.2 s on the Air.
 // On the Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
 // reference_profile.spec.js` prints the calibration render there ("one
-// render of Solo Flight … ms here"), which is the figure to set.
+// render of Solo Flight … ms here"), which is the figure to set, in
+// `profiles.json`.
+//
+// The profiles (each one's preset, `referenceMs` and farm width) and the
+// calibration's runs are data, in `profiles.json`, so the audio thread's
+// budget (`crates/auracle-wasm/examples/live_cost.mjs --gate`, nightly in
+// flake-hunt.yml) calibrates by the same render against the same reference,
+// in node, without loading Playwright.
 const fs = require("node:fs");
 const path = require("node:path");
 const performBudget = require("./perform_budget");
+const { profiles: PROFILES, calibrationRuns } = require("./profiles.json");
 
-const PROFILES = {
-  air: {
-    name: "air",
-    machine: "a 2018 or 2019 MacBook Air (Intel 1.6 GHz dual-core i5, 2 cores, 4 threads), in Firefox",
-    preset: "Solo Flight",
-    referenceMs: 1_100,
-    farm: 2,
-  },
-};
 /** Renders the calibration takes the median of, after one to warm up. */
-const CALIBRATION_RUNS = 3;
+const CALIBRATION_RUNS = calibrationRuns;
 
 /** The profile named `name`; an unknown name is an error that lists them. */
 function profileOf(name) {
   const p = PROFILES[name];
-  if (!p) throw new Error(`no profile named ${name}: the fixture knows ${Object.keys(PROFILES).join(", ")} (tests/web/profile.js)`);
+  if (!p) throw new Error(`no profile named ${name}: the fixture knows ${Object.keys(PROFILES).join(", ")} (tests/web/profiles.json)`);
   return p;
 }
 
