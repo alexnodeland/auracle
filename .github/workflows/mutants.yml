@@ -154,7 +154,12 @@ jobs:
       - id: mutants
         name: Mutants in the changed code
         if: steps.rust.outputs.changed == 'true'
+        # The diff again, now that the cache has restored: on a key that does
+        # not match exactly (a Cargo.lock or toolchain change), rust-cache
+        # cleans target/ first, and the copy the step above wrote is gone
+        # (#546, #544's run 41233577683).
         run: |
+          make -s mutants-diff BASE="$BASE"
           cmd="$(make -s mutants-command DIFF=1 MUTANTS_JOBS= MUTANTS_ARGS=--in-place)"
           echo "$cmd"
           set +e
