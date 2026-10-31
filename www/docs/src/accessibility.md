@@ -141,7 +141,8 @@ line under its name, so a sound can be heard, rated, saved or cut without
 opening it. On a phone a bank row is a list's row, as a phone's own are: its
 name and its **▶** at rest, and swiped left it slides out its other
 actions (**★**, save, cut) at its end; swipe it back, scroll the list or tap
-another row and they go. **MODEL**’s press and hold is the model view under a finger, and
+another row and they go. They are still there for a screen reader, a
+keyboard and a mouse: focus in the row slides them out as a swipe does. **MODEL**’s press and hold is the model view under a finger, and
 two fingers spread or pinched on the stage zoom between the levels (two
 that start on PATCH’s patch move no level); a tap on a stop in the levels
 does the same. The stage keeps a pinch for the levels, so the browser does
@@ -176,8 +177,8 @@ tablet keeps them, since it may have a keyboard.
   [Explain a control](./views/perform.md)).
 
 Nothing is selected and no callout or magnifier opens under a long press:
-on a touch screen no text in the app is selected by a finger, but in a
-field.
+on a phone no text in the app is selected by a finger, but in a field (a
+tablet's and a touch laptop's text still selects).
 
 ### On a phone, a tablet and a narrow window
 
@@ -203,8 +204,8 @@ On a phone held upright:
   controls, EVOLVE's **PLAY** and **PICK**, the rack, the maps) is in sight.
   What says again what the bar says (a level's name over it) is left off,
   and with the keys up what is for looking at gives its room to what is for
-  the hands: PERFORM's name and well, EVOLVE's map and the row under the
-  pair, until the keys go down. Where a level holds more than one screen, a
+  the hands: PERFORM's name and well (on a phone under 800 px tall),
+  EVOLVE's map and the row under the pair, until the keys go down. Where a level holds more than one screen, a
   row of tabs under its head shows one part at a time: PERFORM's
   **controls** (with the pads) or **under the hood**, and LEARNING's **where
   liking rises**, **what it weighs** or **its forecasts**. A list scrolls,
@@ -222,10 +223,11 @@ button (a small keybed) under them, and the keys come up from the bottom.
 Each level is one screen there too, LEARNING's map beside what it weighs and
 its forecasts. On any touch screen the levels' stops are a finger's size.
 
-On a phone, upright or on its side, a toast is a banner over the menu bar,
-the screen's width, as a phone's own notices are: its words on one or two
-lines with its action beside them, covering nothing in the level. Swipe it
-up to put it away (taking it back is its action's, as before).
+On a phone, upright or on its side, a toast stands just under the menu bar,
+never over it, as wide as its words up to the screen's: one or two lines
+with its action beside them, over the top of the level for its moment, one
+at a time. Swipe it up to put it away (taking it back is its action's, as
+before).
 
 ## Hit targets
 

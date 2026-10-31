@@ -4896,13 +4896,13 @@ function positionToastLane() {
   // jump when one leaves.
   const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
   if (PHONE_SCREEN.matches) {
-    // A banner over the menu bar, as a phone's own words are (#134): it
-    // covers nothing in the level, and goes up when swiped (`note`). Its
-    // sides are the stylesheet's; clear only of the cross's stops on a
-    // phone on its side.
+    // Just under the menu bar (#134), never over it (its ▶, BANK and ⌘K
+    // stay in reach), as wide as its words up to the screen's: it stands
+    // over the top of the level for its moment, and goes up when swiped
+    // (`note`). Clear only of the cross's stops on a phone on its side.
     const menubar = document.querySelector(".menubar");
     holder.style.bottom = "auto";
-    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().top : 0) + 4)}px`;
+    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().bottom : 0) + 6)}px`;
     holder.style.right = "";
     for (const el of SHORT_SCREEN.matches ? document.querySelectorAll(RAIL_COLUMNS.join(", ")) : []) {
       const r = el.getBoundingClientRect();
@@ -9867,6 +9867,8 @@ let bankSwipedId = null;
     }
     e.preventDefault();
     g.dx = dx;
+    g.lx = t.clientX;
+    g.ly = t.clientY;
   }, { passive: false });
   list.addEventListener("touchend", () => {
     if (!g) return;
@@ -9876,10 +9878,23 @@ let bankSwipedId = null;
     if (was.axis !== "x") { if (bankSwipedId != null && bankSwipedId !== was.id) setSwiped(null); return; }
     if (was.dx < -OPEN_PX) setSwiped(was.id);
     else if (was.dx > OPEN_PX && bankSwipedId === was.id) setSwiped(null);
-    // The click a swipe's lift may make is the swipe's, not a tap on the row.
-    const swallow = (c) => { c.preventDefault(); c.stopPropagation(); };
-    document.addEventListener("click", swallow, { capture: true, once: true });
-    setTimeout(() => document.removeEventListener("click", swallow, { capture: true }), CLICK_SETTLE_MS);
+    // The click a swipe's lift may make is the swipe's, not a tap on the row:
+    // only a click where the finger lifted, and only until the next press
+    // (patch.js's tap waits the same).
+    const at = { x: was.lx, y: was.ly };
+    const done = () => {
+      document.removeEventListener("click", swallow, true);
+      document.removeEventListener("pointerdown", done, true);
+    };
+    const swallow = (c) => {
+      if (Math.hypot(c.clientX - at.x, c.clientY - at.y) > 24) return;
+      done();
+      c.preventDefault();
+      c.stopPropagation();
+    };
+    document.addEventListener("click", swallow, true);
+    document.addEventListener("pointerdown", done, true);
+    setTimeout(done, CLICK_SETTLE_MS);
   });
   list.addEventListener("touchcancel", () => { g = null; });
 }

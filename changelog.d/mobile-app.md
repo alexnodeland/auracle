@@ -13,9 +13,9 @@
   phone (MIDI moves inside **KEYS ⋯** there), and
   what a level shows to look at (PERFORM's well, EVOLVE's map and the row
   under the pair) gives its room to what you play until the keys go down.
-- **A word on a phone is a banner over the menu bar**, the screen's width,
-  on one or two lines with its action beside it, covering nothing in the
-  level. Swipe it up to put it away. The model view's tag rides there too.
+- **A word on a phone stands just under the menu bar**, never over it, as
+  wide as its words, on one or two lines with its action beside it. Swipe it
+  up to put it away.
 - **The bar along the bottom of a phone runs PERFORM, PATCH, TASTE,
   LEARNING**, then EVOLVE and KEYS.
 - **A bank row on a phone shows its name and its ▶.** Swipe it left to slide
@@ -29,7 +29,7 @@
 - **A long press selects nothing.** On an iPhone a long press on an EVOLVE
   card or a bank row selected the words under it and raised the magnifier,
   and on a bank row the model view never came. Nothing in the app is
-  selected by a finger now, but in a field.
+  selected by a finger on a phone now, but in a field.
 
 ### Fixed: a key on a phone always sounds
 

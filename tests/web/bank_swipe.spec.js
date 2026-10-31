@@ -2,7 +2,9 @@
 // (#134): at rest it shows its name and its ▶; swiped left it slides out its
 // other actions (★, save, cut), and they answer a tap; swiped back, or the
 // list scrolled, they go. The swipe opens nothing (no row is opened by its
-// lift), and the row keeps its actions out when the bank redraws.
+// lift), and the row keeps its actions out when the bank redraws. At rest
+// they are a pixel, not gone: a screen reader, a keyboard and a mouse still
+// reach them.
 //
 // The finger is made in the page (TouchEvents on the row, as
 // touch_gestures.spec.js's WebKit finger is), in Chromium and in WebKit:
@@ -50,7 +52,9 @@ test("a bank row swiped left shows its actions, which answer a tap; swiped back 
   const at = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
   // At rest: the name and ▶, not ★, save or cut.
   await expect(at.locator(".bi-hear")).toBeVisible();
-  for (const b of [".bi-star", ".bi-save", ".bi-kill"]) await expect(at.locator(b)).toBeHidden();
+  // Away from the eye, still in the page for a screen reader: a pixel.
+  const away = (b) => at.locator(b).evaluate((e) => e.getBoundingClientRect().width <= 1);
+  for (const b of [".bi-star", ".bi-save", ".bi-kill"]) await expect.poll(() => away(b), `${b} at rest`).toBe(true);
   await swipe(at, -120);
   await expect(at).toHaveClass(/\bacts-open\b/);
   for (const b of [".bi-hear", ".bi-star", ".bi-save", ".bi-kill"]) await expect(at.locator(b)).toBeVisible();
@@ -62,7 +66,14 @@ test("a bank row swiped left shows its actions, which answer a tap; swiped back 
   await expect(at.locator(".bi-save")).toHaveAttribute("aria-pressed", "true");
   await expect(at).toHaveClass(/\bacts-open\b/);
   // Swiped back, they go.
-  await swipe(at, 120);
-  await expect(at).not.toHaveClass(/\bacts-open\b/);
-  await expect(at.locator(".bi-star")).toBeHidden();
+  // The bank redraws as the save lands, and a finger on a row being
+  // replaced lands on nothing: the swipe is made again on the row as it is.
+  await expect(async () => {
+    await swipe(at, 120);
+    await expect(at).not.toHaveClass(/\bacts-open\b/, { timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+  // Focus in the row would hold them out too, as it should: the tap's
+  // focus is let go first.
+  await page.evaluate(() => document.activeElement?.blur());
+  await expect.poll(() => away(".bi-star"), "★ after the swipe back").toBe(true);
 });

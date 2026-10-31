@@ -8392,7 +8392,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
      it; down and sideways do nothing). */
   #view-evolve section[aria-label^="Sound "] { touch-action: none; }
 }
-@media (pointer: coarse) {
+@media (pointer: coarse) and (max-width: 700px) and (min-height: 501px), (pointer: coarse) and (max-height: 500px) and (max-width: 999px) {
   body, body * {
     -webkit-user-select: none;
     user-select: none;
@@ -8407,17 +8407,17 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   body * { -webkit-tap-highlight-color: transparent; }
 }
 
-/* A word on a phone is a banner over the menu bar, as a phone's own are:
-   the screen's width, its words on one or two lines with the action beside
-   them (or under them when they need the room), over nothing in the level.
-   A swipe up puts it away (main.js). The model view's tag rides there too. */
+/* A word on a phone stands just under the menu bar, never over it: as wide
+   as its words up to the screen's, on one or two lines with the action
+   beside them (or under them when they need the room). The lane shows one
+   at a time (toasts.js), so no stack grows down over the level. A swipe up
+   puts it away (main.js). */
 @media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
-  .toasts { left: calc(var(--s2) + env(safe-area-inset-left, 0px)); right: calc(var(--s2) + env(safe-area-inset-right, 0px)) !important; align-items: stretch; z-index: 39; }
+  .toasts { left: calc(var(--s2) + env(safe-area-inset-left, 0px)); right: calc(var(--s2) + env(safe-area-inset-right, 0px)) !important; align-items: flex-end; z-index: 39; }
   .toast {
-    max-width: none;
+    max-width: 100%;
     flex-wrap: wrap;
     gap: var(--s1) var(--s2);
-    min-height: calc(var(--menubar-h) - var(--s2));
     padding: var(--s1) var(--s3);
     border-radius: var(--r2);
     font-size: var(--t-value);
@@ -8436,7 +8436,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .toast-undo { flex: none; margin-left: auto; min-height: 36px; white-space: nowrap; }
   .toast-stack { flex: none; }
   .toast.swiped { transform: translateY(-120%); opacity: 0; transition: transform var(--d-move) var(--e-settle), opacity var(--d-move) var(--e-settle); }
-  .model-tag { top: calc(env(safe-area-inset-top, 0px) + var(--s1)); z-index: 39; max-width: calc(100vw - 2 * var(--s3)); }
+  .model-tag { max-width: calc(100vw - 2 * var(--s3)); }
 }
 
 /* The keys' drawer, a phone held upright: one row of its controls (the
@@ -8544,8 +8544,10 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-right { flex: none; gap: var(--s2); }
   .pf-deck { row-gap: var(--s1); }
   .pf-knob svg { max-width: 52px; }
-  body.keys-open .view.perform .pf-left { display: none; }
   body.keys-open .view.perform .pf-right { flex: 1 1 0; min-height: 0; }
+  /* With the keys up the controls take the column's height: their rows
+     share it, the dials as large as it allows, with no band left empty. */
+  body.keys-open .view.perform .pf-deck { flex: 1 1 auto; grid-auto-rows: 1fr; align-items: center; }
   body.keys-open .pf-status { display: none; }
   body.keys-open .pf-k-ends { display: none; }
 
@@ -8582,8 +8584,11 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
     background: var(--panel-hi);
     border-radius: var(--r1);
   }
-  .bank-item:not(.acts-open):not(.rating) .bi-acts > :not(.bi-hear) { display: none; }
-  .bank-item:not(.acts-open):not(.rating) .bi-acts { background: none; }
+  /* Away, but in the accessibility tree and the tab order: a screen
+     reader, a keyboard or a mouse reaches them, and focus inside the row
+     slides them out as a swipe does. */
+  .bank-item:not(.acts-open):not(.rating):not(:focus-within) .bi-acts > :not(.bi-hear) { position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .bank-item:not(.acts-open):not(.rating):not(:focus-within) .bi-acts { background: none; }
   .bank-item.acts-open .bi-acts { animation: acts-out var(--d-state) var(--e-settle); box-shadow: -8px 0 12px var(--panel-hi); }
   .bank-item .bi-flag, .bank-item .bi-pct { right: calc(44px + var(--s2)); } /* token-exempt: past the ▶'s 44 px target */
 }
@@ -8628,7 +8633,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
    row of six, without their two ends' words, and with the keys up the
    well gives the room to them. */
 @media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
-  .view.perform .pf-status { display: none; }
+  /* The column's line (how many controls reach the patch, what it is
+     listening to, turn an amber one to ask) on one or two lines of a length
+     with the keys down; with them up each control's own line says what it
+     is listening to, and an amber control is its ask. */
+  .view.perform .pf-status { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; }
+  body.keys-open .view.perform .pf-status { display: none; }
   body.keys-open .pf-pad[data-sub]::after { display: none; }
 }
 @media (max-height: 500px) and (max-width: 999px) {
@@ -8754,4 +8764,54 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* MIDI's panel, opened from its row in KEYS ⋯, stands over the screen
      under the menu bar, whole, rather than off its top edge. */
   .keys-pop .midi-panel { position: fixed; top: calc(var(--menubar-h) + var(--s2)); left: var(--s2); right: var(--s2); bottom: auto; width: auto; max-height: 60dvh; overflow-y: auto; }
+}
+
+/* The menu bar on a phone (#134): every control 44 px tall on one centre
+   line, the same gap between each, the count whole beside MODEL, and the
+   sound in hand's pill taking what is left. */
+@media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
+  .menubar { align-items: center; gap: var(--s2); }
+  .menubar > * { margin-top: 0; margin-bottom: 0; align-self: center; }
+  .bank-btn, .cmdk-btn, .model-btn { height: 44px; min-height: 44px; min-width: 44px; margin: 0; }
+  .model-btn { width: 44px; padding: 0; justify-content: center; border-radius: var(--r2); }
+  .inhand { height: 44px; min-height: 44px; }
+  .menubar .taught { flex: none; min-width: max-content; margin: 0; position: relative; z-index: 1; }
+}
+
+/* With the keys up a phone too short for the well gives its room to the
+   controls; a taller one keeps the name and the well over them. */
+@media (max-width: 700px) and (min-height: 501px) and (max-height: 799px) {
+  body.keys-open .view.perform .pf-left { display: none; }
+}
+@media (max-width: 700px) and (min-height: 800px) {
+  body.keys-open .view.perform .pf-left { flex: 1 1 0; min-height: 0; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  body.keys-open .pf-knob svg { width: clamp(44px, 8dvh, 64px); height: clamp(44px, 8dvh, 64px); }
+  /* EVOLVE: CIRCUIT and PATCH on a row of their own at the well's top, the
+     face under them, never under the buttons. */
+  .duel-well > .face-slot { inset: calc(44px + 2 * var(--s2)) var(--s2) var(--s2); }
+  /* The foot, each line whole: ANOTHER PAIR and EVOLVE POOL side by side,
+     then how the pair was dealt, then what each generation did. */
+  .ev-foot { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "deal evolve" "rule rule" "lineage lineage"; row-gap: 2px; }
+  .ev-foot .duel-deal { display: contents; }
+  .ev-foot #skip-duel { grid-area: deal; justify-self: start; }
+  .ev-foot .duel-rule { grid-area: rule; white-space: nowrap; text-wrap: nowrap; }
+  .ev-foot .duel-pred { grid-area: lineage; justify-self: start; align-self: center; }
+  .ev-evolve { display: contents; }
+  .ev-evolve .evolve-wrap { grid-area: evolve; justify-self: end; }
+  .ev-lineage-btn { grid-area: lineage; justify-self: end; white-space: nowrap; text-wrap: nowrap; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* While the guide pill is up it stands at the foot of PERFORM's column,
+     in room kept for it there, over none of the pads. */
+  body:has(#guide:not(.hidden)) .view.perform .pf-right { padding-bottom: calc(var(--s7) + var(--s2)); }
+}
+@media (max-width: 700px) and (min-height: 800px) {
+  /* Tall enough to keep the well with the keys up: the controls take their
+     own height (and the guide pill's room), the well the rest. */
+  body.keys-open .view.perform .pf-right { flex: none; }
+}
+@media (max-width: 340px) {
+  .menubar { gap: var(--s1); }
 }

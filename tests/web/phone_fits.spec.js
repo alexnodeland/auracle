@@ -28,7 +28,9 @@
 //   left alone; each stop's name in the bar along the bottom is whole, and
 //   the menu bar holds what it shows.
 // - The keys' drawer's controls (the octave, the volume, REC, KEYS ⋯) are
-//   one row over the keybed at each size.
+//   one row over the keybed at each size; the menu bar's controls share one
+//   centre line (±1 px) and none overlaps another; and no level leaves a
+//   band over 48 px tall with nothing in it (the guide pill counts).
 //
 // - The same of PERFORM's other pane (under the hood), with the well in XY,
 //   and of LEARNING's other two panes (what it weighs, its forecasts).
@@ -175,6 +177,41 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
   }
   const bar = document.querySelector(".menubar");
   if (bar.scrollWidth > bar.clientWidth + 1) out.push(`the menu bar holds ${bar.scrollWidth} in ${bar.clientWidth}`);
+  // The menu bar's controls share one centre line (±1 px) and none
+  // overlaps another.
+  const ctls = ["#bank-btn", ".inhand", "#taught", "#model-btn", "#cmdk-btn"]
+    .map((q) => [q, document.querySelector(q)?.getBoundingClientRect()]).filter(([, r]) => r && r.width);
+  const mids = ctls.map(([q, r]) => [q, r.top + r.height / 2]);
+  for (const [q, m] of mids) if (Math.abs(m - mids[0][1]) > 1) out.push(`the menu bar's ${q} is centred ${Math.round(m - mids[0][1])} px off ${mids[0][0]}'s line`);
+  for (let i = 1; i < ctls.length; i++) {
+    const [qa, a] = ctls[i - 1];
+    const [qb, b] = ctls[i];
+    if (a.right > b.left + 0.5) out.push(`the menu bar's ${qa} overlaps ${qb} by ${Math.round(a.right - b.left)} px`);
+  }
+  // No dead band: down the level, no stretch over 48 px holds nothing (a
+  // leaf, or anything drawn with a ground or a border), the guide pill
+  // counting as something.
+  if (fits) {
+    const vr = view.getBoundingClientRect();
+    const spans = [];
+    for (const e of [...view.querySelectorAll("*"), ...document.querySelectorAll("#guide, #guide *")]) {
+      if (!e || !e.getClientRects().length || e.closest(".hidden, [hidden]")) continue;
+      const cs = getComputedStyle(e);
+      if (cs.visibility === "hidden" || cs.display === "contents") continue;
+      const drawn = cs.backgroundColor !== "rgba(0, 0, 0, 0)" || cs.backgroundImage !== "none" || parseFloat(cs.borderTopWidth) > 0;
+      if (e.children.length && !drawn) continue;
+      const r = e.getBoundingClientRect();
+      if (!r.width || !r.height || r.bottom <= vr.top || r.top >= vr.bottom) continue;
+      spans.push([Math.max(r.top, vr.top), Math.min(r.bottom, vr.bottom)]);
+    }
+    spans.sort((a, b) => a[0] - b[0]);
+    let reach = vr.top;
+    for (const [t, b] of spans) {
+      if (t - reach > 48) out.push(`${view.id} leaves ${Math.round(t - reach)} px empty at ${Math.round(reach)}`);
+      reach = Math.max(reach, b);
+    }
+    if (vr.bottom - reach > 48) out.push(`${view.id} leaves ${Math.round(vr.bottom - reach)} px empty at its foot`);
+  }
   return out;
 };
 

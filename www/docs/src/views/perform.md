@@ -44,11 +44,15 @@ On a phone PERFORM is one screen that stands still: the sound's name and its
 well on top, then two tabs, **controls** and **under the hood**, beside
 **ARRANGE** and **HOW IT WORKS**. Under **controls** are the controls and the
 pad row, Wander at its head (its dial and its name); under **under the hood**
-the hood's rows, a list that scrolls. Each control's own line says what it
-is listening to. On a phone on its side the well is on the left and the
+the hood's rows, a list that scrolls. With the keys down, the line over the
+controls says how many reach the patch, what it is listening to, and to turn
+an amber one to ask for it; with the keys up that line goes, each control's
+own line says what it is listening to, and an amber control is still the one
+to turn to ask. On a phone on its side the well is on the left and the
 controls are one row of six on the right. The keys come up with **KEYS** at
-the end of the bar along the bottom; while they are up, the name and the well
-give their room to the controls, and come back when the keys go.
+the end of the bar along the bottom; while they are up, on a phone shorter than 800 px the name and the well
+give their room to the controls (taller, they stay), and come back when the
+keys go.
 
 <img src="../img/perform.webp" alt="PERFORM: on the left the sound's family and name, large, and a well holding its face, with B's amber face beside it; on the right CONTROLS with six round controls in two rows, the knobs they turn, and the pads Wander, Next, Peek, Take and Pass." loading="eager" width="1440" height="900">
 

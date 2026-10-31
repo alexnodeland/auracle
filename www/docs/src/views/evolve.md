@@ -49,7 +49,10 @@ bottom names the level, and the line asks the question), the small map runs
 the screen's width under it, and each card keeps its **PLAY** and **PICK**
 under its name. The level is one screen that stands still, upright or on its
 side: the two faces take what the words, the map and the foot leave, so
-**PLAY** and **PICK** are always in sight. With the keys up the map and the
+**PLAY** and **PICK** are always in sight. **CIRCUIT** and **PATCH** are a
+row of their own at the top of each card's well, over the face rather than
+on it, and the foot reads one line each: **ANOTHER PAIR** beside
+**EVOLVE POOL**, how the pair was dealt, then what each generation did. With the keys up the map and the
 foot (**ANOTHER PAIR**, **EVOLVE POOL**, what each generation did) give their
 room to the pair, and come back when the keys go.
 
