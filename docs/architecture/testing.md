@@ -445,7 +445,13 @@ test over a budget fails having run to its end, folded on main each night.
 On the profile a test takes about seven times its gate time in Chromium and
 three and a half in Firefox, so the gate's timings dealt three runners a
 browser that were each cut at 40 minutes (2026-10-31, #508). A first night
-with none is seeded from the fast and slow tiers' times.
+with none is seeded from the fast and slow tiers' times, which misweigh
+some tests badly (one took 49 s on the gate and 7.2 minutes in Firefox), so
+it may still cut a Chromium runner. A test a cut stopped, which has no time
+in its browser, then weighs its time in the other, or its gate time, scaled
+by the median ratio of the two on the tests both timed (Chromium about 1.7
+times Firefox), not the median test, so the next night's deal does not cut
+it again.
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages, a release's branch, PR,

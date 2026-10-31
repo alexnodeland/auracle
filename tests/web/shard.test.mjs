@@ -133,11 +133,24 @@ test("a tier folded by project deals by the listed project's times, and before i
   const chromium = planOf(listing("chromium", tests), timings, 2);
   assert.deepEqual(chromium.loads, [1, 0.6]);
   assert.match(chromium.head, /^3 tests, 3 with a time from main \(others/);
-  // Once it has some, a test without one weighs the median of its own, not
-  // a plain time.
-  const some = planOf(listing("chromium", tests), { ...timings, "[chromium] a.spec.js › long": 240, "[chromium] a.spec.js › mid": 120 }, 1);
-  assert.deepEqual(some.loads, [10]);
-  assert.match(some.head, /^3 tests, 2 with a time from main in chromium \(others weigh 240\.0 s\)/);
+});
+
+test("a test with no time in its project weighs its time in another, or its plain one, scaled by how the two compare, and only with neither the median", () => {
+  // Chromium takes twice Firefox's time on the tests both timed, and four
+  // times the gate's. `short` is the test the cut stopped in Chromium,
+  // which Firefox ran; `solo` ran in neither, but has a time on the gate;
+  // `new` has none anywhere.
+  const timings = {
+    "a.spec.js › long": 60, "a.spec.js › mid": 30, "a.spec.js › solo": 10,
+    "[firefox] a.spec.js › long": 120, "[firefox] a.spec.js › mid": 60, "[firefox] a.spec.js › short": 300,
+    "[chromium] a.spec.js › long": 240, "[chromium] a.spec.js › mid": 120,
+  };
+  const got = planOf(listing("chromium", [["long", 1], ["mid", 2], ["short", 3], ["solo", 4], ["new", 5]]), timings, 3);
+  assert.match(got.head, /^5 tests, 2 with a time from main in chromium, 2 by their time in another browser or on the gate, scaled \(others weigh 240\.0 s\)/);
+  // short 300 × 2 = 600 s alone; long 240 and mid 120; new 240 (the
+  // median) and solo 10 × 4 = 40. Weighed the median, short would share a
+  // runner as the cut test did.
+  assert.deepEqual(got.loads, [10, 6, 4.7]);
 });
 
 /** A result of a test in `project` that recorded these annotations, ended

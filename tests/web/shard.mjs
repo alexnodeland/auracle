@@ -43,7 +43,10 @@
 // above it move; a test with no time yet (new, renamed, or no timings file at
 // all) weighs the median of the known ones. A tier folded `--by-project`
 // weighs a test by its time in the project the run lists it in, and until
-// that project has any (its first run) by the tier's plain times. Tests
+// that project has any (its first run) by the tier's plain times. There, a
+// test with no time in its project yet (one a runner's cut stopped) weighs
+// its time in another project, or else its plain time, scaled by the median
+// ratio of the two on the tests both timed, before the median. Tests
 // sharing a line (a loop over describe blocks) go to the same runner, because
 // a run selects them by line. Without a timings file the split is still
 // deterministic, by count.
@@ -172,27 +175,57 @@ function readTimings(path) {
  *  to `n` runners longest first. Returns the runners as
  *  { load, units: [{ sel, weight, keys }] }. A tier folded `--by-project`
  *  weighs each test by its time in the project it is listed in, once that
- *  project has times of its own; until then (its first run, seeded with
- *  another tier's times) by the plain ones. */
+ *  project has times of its own (until then, its first run seeded with
+ *  another tier's times, by the plain ones). A test with no time in its
+ *  project yet (one the night's cut never reached there) weighs its time in
+ *  another project, or else its plain time, scaled by how the two compare
+ *  (`ratio`), and only then the project's median: the test the cut stopped
+ *  is often the longest, and the median would deal it to a runner it fills
+ *  again. */
 function plan(tests, timings, n) {
   const isTime = (s) => typeof s === "number" && s > 0;
   const projects = [...new Set(tests.map((t) => t.project).filter(Boolean))];
-  const own = Object.entries(timings).filter(([k, s]) => isTime(s) && projects.some((p) => k.startsWith(`[${p}] `)));
-  const byProject = own.length > 0;
-  const timeOf = (t) => (byProject ? timings[projectKey(t.project, t.key)] : timings[t.key]);
-  const known = (byProject ? own : Object.entries(timings).filter(([k, s]) => isTime(s) && !k.startsWith("[")))
-    .map(([, s]) => s)
-    .sort((a, b) => a - b);
+  // The times by project (`[firefox] key`), and the plain ones.
+  const plain = new Map();
+  const by = new Map();
+  for (const [k, s] of Object.entries(timings)) {
+    if (!isTime(s)) continue;
+    const m = /^\[([^\]]+)\] (.*)$/.exec(k);
+    if (!m) plain.set(k, s);
+    else (by.get(m[1]) || by.set(m[1], new Map()).get(m[1])).set(m[2], s);
+  }
+  const byProject = projects.some((p) => by.has(p));
+  const known = (byProject ? projects.flatMap((p) => [...(by.get(p) || new Map()).values()]) : [...plain.values()]).sort((a, b) => a - b);
   const fallback = known.length ? known[known.length >> 1] : DEFAULT_WEIGHT_S;
+  const ratios = new Map();
+  const ratioOf = (p, q, mine, theirs) => {
+    const id = `${p}\n${q}`;
+    if (!ratios.has(id)) ratios.set(id, ratio(mine, theirs));
+    return ratios.get(id);
+  };
+  // A test's weight, and whether it was estimated from another's times.
+  const timeOf = (t) => {
+    if (!byProject) return [timings[t.key], false];
+    const mine = by.get(t.project);
+    if (!mine) return [undefined, false];
+    if (mine.has(t.key)) return [mine.get(t.key), false];
+    let scaled = [...by].filter(([q, theirs]) => q !== t.project && theirs.has(t.key)).map(([q, theirs]) => theirs.get(t.key) * ratioOf(t.project, q, mine, theirs));
+    if (!scaled.length && plain.has(t.key)) scaled = [plain.get(t.key) * ratioOf(t.project, "", mine, plain)];
+    scaled = scaled.filter(isTime);
+    if (!scaled.length) return [undefined, false];
+    return [Math.round((scaled.reduce((a, b) => a + b, 0) / scaled.length) * 10) / 10, true];
+  };
   const units = new Map();
   let timed = 0;
+  let estimated = 0;
   for (const t of tests) {
     // Anchored at a path separator, or `smoke.spec.js` would also select a
     // file whose name ends in it.
     const sel = `/${t.file}:${t.line}`;
     const u = units.get(sel) || { sel, weight: 0, keys: [] };
-    const time = timeOf(t);
-    if (isTime(time)) timed++;
+    const [time, guessed] = timeOf(t);
+    if (guessed) estimated++;
+    else if (isTime(time)) timed++;
     u.weight += time ?? fallback;
     u.keys.push(t.key);
     units.set(sel, u);
@@ -211,14 +244,31 @@ function plan(tests, timings, n) {
     .update(JSON.stringify(runners.map((r) => r.units.map((u) => u.sel))))
     .digest("hex")
     .slice(0, 12);
-  return { runners, fallback, timed, total: tests.length, hash, from: byProject ? ` in ${projects.join(", ")}` : "" };
+  return { runners, fallback, timed, estimated, total: tests.length, hash, from: byProject ? ` in ${projects.join(", ")}` : "" };
+}
+
+/** How one project's times compare with another's (or with the plain
+ *  ones): the median of a test's time in the first over its time in the
+ *  second, across the tests both timed; with none in common, the ratio of
+ *  their medians. On 2026-10-31's Speed budgets, Chromium took a median
+ *  1.71 times Firefox's time on the 93 tests both ran. */
+function ratio(mine, theirs) {
+  const med = (xs) => {
+    const s = [...xs].sort((a, b) => a - b);
+    return s.length ? s[s.length >> 1] : undefined;
+  };
+  const shared = [...mine].filter(([k]) => theirs.has(k)).map(([k, s]) => s / theirs.get(k));
+  if (shared.length) return med(shared);
+  const a = med(mine.values());
+  const b = med(theirs.values());
+  return a && b ? a / b : undefined;
 }
 
 const minutes = (s) => `${(s / 60).toFixed(1)} min`;
 
 function describe(p) {
   const lines = [
-    `${p.total} tests, ${p.timed} with a time from main${p.from} (others weigh ${p.fallback.toFixed(1)} s); plan ${p.hash}`,
+    `${p.total} tests, ${p.timed} with a time from main${p.from}${p.estimated ? `, ${p.estimated} by their time in another browser or on the gate, scaled` : ""} (others weigh ${p.fallback.toFixed(1)} s); plan ${p.hash}`,
     ...p.runners.map((r, i) => `  runner ${i + 1}: ${r.units.reduce((n, u) => n + u.keys.length, 0)} tests, ~${minutes(r.load)}`),
   ];
   return lines.join("\n");
