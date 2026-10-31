@@ -254,11 +254,11 @@ function farmPhrase() {
   return { phrase, ns };
 }
 
-// The phrase carries the session's audition clip, so a capture or a restore
-// that installs a saved clip changes it after the crew standing was handed the
-// old one. Until a worker has the new one, its render of a sound that listens
-// carries the old clip's key, the engine refuses it, and the sound is measured
-// serially here instead (Plan-007 task 4). Port messages arrive in order, so a
+// The phrase carries each input's audition clip, so a capture of an input or
+// a restore that installs a saved clip changes it after the crew standing was
+// handed the old one. Until a worker has the new one, its render of a sound
+// that listens carries the old clip's key, the engine refuses it, and the
+// sound is measured serially here instead (Plan-007 task 4). Port messages arrive in order, so a
 // job sent after this is rendered with the new clip.
 function farmResendPhrase() {
   if (!farm.some((f) => f.alive)) return 0;
@@ -4674,41 +4674,24 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
-    // The session's audition clip (Plan-007, ADR-015): what a sound with an
-    // AUDIO IN is measured with. A capture arrives from audio-in.js on first
-    // listen or NEW CLIP: `samples` is a Float32Array of `channels`
-    // interleaved, at `sampleRate`; without it the clip goes back to the
-    // built-in reference. A clip the engine takes changes the phrase, so the
-    // crew standing (if any) is handed it again (`farmResendPhrase`), and the
-    // listeners it measured again move their ratings, so the views go with
-    // the reply.
+    // The audition clips (Plan-007, ADR-015): what a sound with an AUDIO IN
+    // is measured with, a clip per input slot it reads (#147). Which clip
+    // each slot hears, as `ready` and a restore say it.
     case "audition_clip": {
       postClip();
       break;
     }
-    case "set_audition_clip": {
-      const reply = JSON.parse(m.samples
-        ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
-        : engine.clear_audition_clip());
-      let resent = 0;
-      if (reply.ok) resent = farmResendPhrase();
-      const moved = reply.ok && (reply.remeasured?.length || reply.unmeasured?.length);
-      post({
-        type: "audition_clip",
-        ...reply,
-        clips: inputClips(),
-        farmResent: resent,
-        ...(moved ? { views: tasteViews(), status: status() } : {}),
-      });
-      break;
-    }
     // One input's own clip (#147): a capture of the device on input `slot`,
-    // from audio-in.js on that input's first listen or a module's NEW CLIP;
-    // without `samples` the slot hears the clip every slot hears again. The
-    // engine measures again only the pool's members that read that slot, and
-    // its reply's `clip` is that slot's; `clips` is every slot's, as
-    // `ready` and a restore post them. The phrase carries every slot's clip,
-    // so the crew standing is handed it again, as for any clip.
+    // from audio-in.js on that input's first listen or a module's NEW CLIP.
+    // `samples` is a Float32Array of `channels` interleaved, at
+    // `sampleRate`; without it the slot hears the clip every slot hears
+    // again. The engine measures again only the pool's members that read
+    // that slot, and its reply's `clip` is that slot's; `clips` is every
+    // slot's, as `ready` and a restore post them. A clip the engine takes
+    // changes the phrase, which carries every slot's clip, so the crew
+    // standing (if any) is handed it again (`farmResendPhrase`), and the
+    // listeners it measured again move their ratings, so the views go with
+    // the reply.
     case "set_input_clip": {
       const slot = m.slot >>> 0;
       const reply = JSON.parse(m.samples

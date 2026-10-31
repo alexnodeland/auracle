@@ -149,15 +149,16 @@ const STUB = `(() => {
 })();`;
 
 const SPY = `(() => {
-  // Each clip main sends the engine (\`set_audition_clip\`), read as the
-  // request goes out, before its samples are transferred: the tap keeps the
-  // request, its samples by then empty. A spy on postMessage itself, which
-  // the tap's wrapper of the engine worker calls last.
+  // Each clip main sends the engine (\`set_input_clip\`, an input's by its
+  // slot), read as the request goes out, before its samples are transferred:
+  // the tap keeps the request, its samples by then empty. A spy on
+  // postMessage itself, which the tap's wrapper of the engine worker calls
+  // last.
   const clips = (window.__pwClips = []);
   const workerPost = Worker.prototype.postMessage;
   Worker.prototype.postMessage = function (m, ...rest) {
-    if (m && m.type === "set_audition_clip") {
-      clips.push({ channels: m.channels, sampleRate: m.sampleRate, frames: m.samples ? m.samples.length / Math.max(1, m.channels) : 0 });
+    if (m && m.type === "set_input_clip" && m.samples) {
+      clips.push({ slot: m.slot, channels: m.channels, sampleRate: m.sampleRate, frames: m.samples.length / Math.max(1, m.channels) });
     }
     return workerPost.call(this, m, ...rest);
   };

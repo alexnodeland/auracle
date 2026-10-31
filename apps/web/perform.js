@@ -1882,7 +1882,7 @@ export function createPerform(host) {
   // (`wireKeyOf`). Only for a sound that listens, so a new clip leaves every
   // other wiring where it was.
   function wireKey(json, set) {
-    return wireKeyOf(json, set, host.clipTag ? host.clipTag() : null);
+    return wireKeyOf(json, set, host.clipTag ? host.clipTag(json) : null);
   }
   const wireCache = (() => {
     try {

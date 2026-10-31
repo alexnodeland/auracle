@@ -26,11 +26,15 @@
 //   and a patch that listens is held open (`LivePoly::set_open`); off, nothing
 //   is written and the open voice is let go. The meter reads the input either
 //   way, so the player sees it before they hear it.
-// - **The clip on first listen.** The first time the voices' input carries a
-//   signal and the session has no captured clip, `CLIP_SECONDS` of it are
-//   captured (the worklet's tap processor) and sent to the engine as the
-//   session's audition clip (`set_audition_clip`), which measures every sound
-//   that listens with it. NEW CLIP captures again.
+// - **Each input's clip on its first listen** (#147). The first time an
+//   input the bench reads carries a signal while the engine still hears it
+//   through the reference, `CLIP_SECONDS` of it are captured (the worklet's
+//   tap processor) and sent to the engine as that input's own audition clip
+//   (`set_input_clip`, by slot), which measures again every sound that reads
+//   that input. Each input is captured on its own, so a sound reading two is
+//   measured through each one's clip. A module's NEW CLIP captures its own
+//   input again. Which clip each input is heard through is the engine's word
+//   (clips.js).
 // - **Devices come and go.** A track that ends or a device that leaves the
 //   list silences its modules and says so; the same device back is reopened.
 //
@@ -39,21 +43,23 @@
 
 const V = new URL(import.meta.url).search;
 const W = await import(new URL(`./words.js${V}`, import.meta.url).href);
+// Which clip each input is heard through, and the keys that name them.
+const { createClips, INPUT_SLOTS } = await import(new URL(`./clips.js${V}`, import.meta.url).href);
 // The input's live face: measured as a face is, drawn as every face is.
 const { createLiveMeter, FACE_FRAME, FACE_BANDS } = await import(new URL(`./faces.js${V}`, import.meta.url).href);
 const { drawVessel, vesselBox } = await import(new URL(`./vessel.js${V}`, import.meta.url).href);
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** `INPUT_SLOTS` in auracle-grammar: how many inputs a node can name. */
-export const INPUT_SLOTS = 8;
+export { INPUT_SLOTS };
 const STORE = "auracle-inputs";
 /** How long a clip is captured for. The engine cuts a clip to the phrase
  *  (about 5.05 s), and a clip shorter than the phrase falls silent at its end,
  *  so this leaves room over it. */
 export const CLIP_SECONDS = 6;
-/** The level (RMS, dBFS) the input must reach before a first-listen capture
- *  starts: a clip of a quiet room would be refused as silent, or measure every
- *  sound that listens on hiss. */
+/** The level (RMS, dBFS) an input must reach before a capture of it starts:
+ *  a clip of a quiet room would be refused as silent, or measure every sound
+ *  that listens on hiss. */
 const CLIP_SIGNAL_DB = -50;
 /** The meter's floor and ceiling, dBFS. */
 const METER_FLOOR_DB = -60;
@@ -97,9 +103,8 @@ export function createAudioIn(host) {
   let voiceSrc = null;             // its source, connected to the worklet's input
   let monitor = false;             // the player's switch (never saved)
   let monitorSent = false;         // what the worklet was last told
-  let clipSource = null;           // the session's clip: "captured" | "reference"
-  let capture = null;              // {id, phase: "armed"|"rolling"|"sent", tap, mute, timer}
-  let clipRefused = false;         // the engine refused this session's last capture
+  const clips = createClips();     // which clip each input is heard through, the engine's word
+  const captures = new Map();      // slot → {slot, id, phase: "armed"|"rolling"|"sent", tap, mute, timer}
   let raf = 0;
 
   // ---- the input list ----
@@ -344,7 +349,7 @@ export function createAudioIn(host) {
     const rec = lent.length ? entry(lent[lent.length - 1]) : first;
     recordId = rec && streams.has(rec.id) ? rec.id : null;
     connectRecord();
-    maybeArm();
+    armAll();
     paint();
     loop();
   }
@@ -400,7 +405,7 @@ export function createAudioIn(host) {
     const s = streams.get(id);
     if (!s) return;
     streams.delete(id);
-    if (capture && capture.id === id) cancelCapture();
+    for (const c of [...captures.values()]) if (c.id === id) cancelCapture(c.slot);
     if (voiceSrc === s.source) {
       try { voiceSrc.disconnect(); } catch (_) {}
       voiceSrc = null;
@@ -486,20 +491,40 @@ export function createAudioIn(host) {
     paint();
   }
 
-  // ---- the clip ----
-  /** Arm a first-listen capture on the voices' input, if the session has no
-   *  captured clip, none is under way, and the engine has not refused one
-   *  this session (then only NEW CLIP captures again, as the reference
-   *  page says). `force` is NEW CLIP. */
-  function maybeArm(force = false) {
-    if (capture || !voiceId) return;
-    if (!force && (clipSource !== "reference" || clipRefused)) return;
-    if (force) clipRefused = false;
-    capture = { id: voiceId, phase: "armed" };
+  // ---- the clips ----
+  // Each input has a clip of its own (#147): the engine measures a sound that
+  // listens through the clip of each input it reads, so each input is
+  // captured on its own first listen, and a module's NEW CLIP captures the
+  // input that module reads, whether the keys read it or its meter only.
+
+  /** The toast key for what is said of input `slot`'s clip: a later word on
+   *  one input's clip takes the place of the earlier, and leaves another's. */
+  const clipSaid = (slot) => `audio-in-clip:${slot}`;
+  /** The inputs read now: the bench's AUDIO INs', and any lent for a
+   *  recording. */
+  const slotsRead = () => new Set([...want.map((w) => w.slot), ...lent]);
+  /** Arm a first-listen capture of input `slot`, if it is open, none is
+   *  under way for it, the engine still hears it through the reference, and
+   *  the engine has not refused a capture of it since (then only NEW CLIP
+   *  captures it again, as the reference page says). `force` is NEW CLIP. */
+  function maybeArm(slot, force = false) {
+    if (captures.has(slot)) return;
+    const e = entry(slot);
+    if (!e || !streams.has(e.id)) return;
+    if (force) clips.retry(slot);
+    else if (!clips.firstListen(slot)) return;
+    captures.set(slot, { slot, id: e.id, phase: "armed" });
   }
-  function startCapture() {
-    const s = streams.get(capture.id);
-    if (!s) return cancelCapture();
+  /** Arm a first listen on every input read now, and let go of an armed
+   *  capture of an input no longer read (one rolling runs to its end). */
+  function armAll() {
+    const reads = slotsRead();
+    for (const [slot, c] of [...captures]) if (c.phase === "armed" && !reads.has(slot)) captures.delete(slot);
+    for (const slot of reads) maybeArm(slot);
+  }
+  function startCapture(c) {
+    const s = streams.get(c.id);
+    if (!s) return cancelCapture(c.slot);
     // One-shot: its processor ends once the take is handed back or dropped.
     const tap = new AudioWorkletNode(ctx, "auracle-tap", {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { once: true },
@@ -508,13 +533,12 @@ export function createAudioIn(host) {
     mute.gain.value = 0;
     s.source.connect(tap);
     tap.connect(mute).connect(ctx.destination);
-    const c = capture;
     c.phase = "rolling";
     c.tap = tap;
     c.mute = mute;
     c.channels = s.channels;
     tap.port.onmessage = (e) => {
-      if (e.data.type !== "tap_done" || capture !== c) return;
+      if (e.data.type !== "tap_done" || captures.get(c.slot) !== c) return;
       c.done = true;
       teardownTap(c);
       let samples = e.data.samples;
@@ -538,14 +562,15 @@ export function createAudioIn(host) {
         samples = mono;
       }
       c.phase = "sent";
-      host.send({ type: "set_audition_clip", samples, channels: c.channels, sampleRate: e.data.sampleRate }, [samples.buffer]);
+      // That input's own clip, by its slot: every other input keeps its own.
+      host.send({ type: "set_input_clip", slot: c.slot, samples, channels: c.channels, sampleRate: e.data.sampleRate }, [samples.buffer]);
       paint();
     };
     tap.port.postMessage({ type: "on" });
-    c.timer = setTimeout(() => { if (capture === c) tap.port.postMessage({ type: "off" }); }, CLIP_SECONDS * 1000);
+    c.timer = setTimeout(() => { if (captures.get(c.slot) === c) tap.port.postMessage({ type: "off" }); }, CLIP_SECONDS * 1000);
     // Urgent, like the engine's word that ends it (`clip`): the player is told
     // the moment their input is being recorded, never a queue's length later.
-    host.note(W.clipCapturing(labelOf(c.id), CLIP_SECONDS), { urgent: true, replace: "audio-in-clip" });
+    host.note(W.clipCapturing(labelOf(c.id), CLIP_SECONDS), { urgent: true, replace: clipSaid(c.slot) });
     paint();
   }
   function teardownTap(c) {
@@ -559,35 +584,51 @@ export function createAudioIn(host) {
     if (s && c.tap) { try { s.source.disconnect(c.tap); } catch (_) {} }
     c.tap = null;
   }
-  function cancelCapture() {
-    if (!capture) return;
-    teardownTap(capture);
-    capture = null;
+  function cancelCapture(slot) {
+    const c = captures.get(slot);
+    if (!c) return;
+    teardownTap(c);
+    captures.delete(slot);
     paint();
   }
-  function newClip() {
-    if (capture && capture.phase !== "armed") return;
-    capture = null;
-    maybeArm(true);
-    if (!capture) return host.note(W.INPUT_SAID.clipNone, { urgent: true, replace: "audio-in-clip" });
+  /** NEW CLIP on module `key`: capture the input it reads again. */
+  function newClip(key) {
+    const w = want.find((x) => x.key === key);
+    const slot = w ? w.slot : -1;
+    const c = captures.get(slot);
+    if (c && c.phase !== "armed") return; // this input's capture is under way
+    captures.delete(slot);
+    maybeArm(slot, true);
+    const armed = captures.get(slot);
+    if (!armed) return host.note(W.INPUT_SAID.clipNone, { urgent: true, replace: clipSaid(slot) });
     // It starts when the input carries a signal; say so, in case it is quiet.
-    host.note(W.clipArmed(labelOf(capture.id), CLIP_SECONDS), { urgent: true, replace: "audio-in-clip" });
+    host.note(W.clipArmed(labelOf(armed.id), CLIP_SECONDS), { urgent: true, replace: clipSaid(slot) });
     paint();
   }
-  /** The engine's word on the session's clip: after a restore, or in reply
-   *  to a capture (`ok` is there only then). */
+  /** The engine's word on the clips (clips.js `heard`): on `ready`, after a
+   *  restore, or in reply to a capture of input `m.slot` (`ok` is there
+   *  only then). */
   function clip(m) {
-    if (m && m.clip && typeof m.clip.source === "string") clipSource = m.clip.source;
-    if (m && typeof m.ok === "boolean") {
-      capture = null;
-      // Refused (silent): no capture again by itself until NEW CLIP.
-      clipRefused = !m.ok;
-      host.note(m.note, { urgent: true, replace: "audio-in-clip" });
-    } else if (m && m.clip && m.clip.unreadable && m.clip.note) {
-      // A restore whose saved clip didn't load (the status carries its note).
-      host.note(m.clip.note, { urgent: true, replace: "audio-in-clip" });
+    if (!m) return;
+    clips.heard(m);
+    if (typeof m.ok === "boolean") {
+      const slot = Number.isInteger(m.slot) ? m.slot : null;
+      for (const [s, c] of [...captures]) if (c.phase === "sent" && (slot === null || s === slot)) captures.delete(s);
+      // Refused (silent): that input is not captured again by itself until
+      // its NEW CLIP (clips.js `firstListen`).
+      host.note(m.note, { urgent: true, replace: clipSaid(slot ?? "every") });
+    } else {
+      // A restore whose saved clips didn't load (each status carries its
+      // note): each sentence once, since the inputs that fall back to one
+      // clip say the same.
+      const said = new Set();
+      for (const c of [m.clip, ...(Array.isArray(m.clips) ? m.clips : [])]) {
+        if (!c || !c.unreadable || !c.note || said.has(c.note)) continue;
+        said.add(c.note);
+        host.note(c.note, { urgent: true, replace: `audio-in-clip:restored:${said.size}` });
+      }
     }
-    if (!capture) maybeArm();
+    armAll();
     paint();
   }
 
@@ -617,9 +658,11 @@ export function createAudioIn(host) {
       // The last input closed: its level and face go with it.
       if (streams.size === 0) return paintMeters();
       for (const s of streams.values()) level(s);
-      if (capture && capture.phase === "armed") {
-        const s = streams.get(capture.id);
-        if (s && s.db > CLIP_SIGNAL_DB) startCapture();
+      // Each input armed starts its capture once it carries a signal.
+      for (const c of [...captures.values()]) {
+        if (c.phase !== "armed") continue;
+        const s = streams.get(c.id);
+        if (s && s.db > CLIP_SIGNAL_DB) startCapture(c);
       }
       paintMeters();
       raf = requestAnimationFrame(tick);
@@ -723,7 +766,7 @@ export function createAudioIn(host) {
     // input). Half the width each.
     const bw = (left - 6) / 2;
     button(lane, inset, 26, bw, W.INPUT_SILK.monitor, "ain-monitor", W.INPUT_TIPS.monitor, () => setMonitor(!monitor), interactive);
-    button(lane, inset + bw + 6, 26, bw, W.INPUT_SILK.newClip, "ain-clip", W.INPUT_TIPS.newClip, () => newClip(), interactive);
+    button(lane, inset + bw + 6, 26, bw, W.INPUT_SILK.newClip, "ain-clip", W.INPUT_TIPS.newClip, () => newClip(m.key), interactive);
     button(lane, inset, 26, left, W.INPUT_SILK.allow, "ain-ask", W.INPUT_TIPS.allow, () => ask(), interactive);
     const note = el("text", { x: inset + 8, y: 58 }, "ain-note");
     note.textContent = W.INPUT_SILK.headphones;
@@ -784,9 +827,12 @@ export function createAudioIn(host) {
     }
     const clipBtn = lane.querySelector(".ain-clip");
     if (clipBtn) {
-      const busy = !!capture && capture.phase !== "armed" && capture.id === st.id;
+      const c = captures.get(st.slot);
+      const busy = !!c && c.phase !== "armed" && c.id === st.id;
       clipBtn.classList.toggle("on", busy);
-      clipBtn.classList.toggle("off", !live);
+      // NEW CLIP captures this module's own input: it is there whenever that
+      // input is open, read by the keys or by the meter only.
+      clipBtn.classList.toggle("off", !live && st.state !== "meter");
     }
   }
 
@@ -922,13 +968,22 @@ export function createAudioIn(host) {
     follow,
     drawLane,
     clip,
+    /** The part of a listening sound's key that names the clips it is
+     *  measured through (clips.js `clipKey`), for its tree's JSON: PERFORM's
+     *  `clipTag`. Null for a sound that reads no input. */
+    clipTag: (json) => clips.key(json),
+    /** The clip every input hears, when they all hear one (its id): a
+     *  preset's shipped face is drawn under it (`presetFace`). */
+    sharedClip: () => clips.shared(),
     ask,
     setMonitor,
     get monitor() { return monitor; },
     /** For the debugging handle: where each input stands. */
     state: () => ({
-      perm, monitor, voiceId, recordId, clipSource,
-      capture: capture ? capture.phase : null,
+      perm, monitor, voiceId, recordId,
+      // Each input's clip source, by slot, and the captures under way.
+      clips: clips.sources(),
+      captures: Object.fromEntries([...captures].map(([slot, c]) => [slot, c.phase])),
       list: list.map((e) => (e ? { ...e } : null)),
       open: [...streams.keys()],
       unplugged: [...unplugged],
