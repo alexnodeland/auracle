@@ -99,6 +99,7 @@ const SECONDS = Number(flags.seconds || 4);
 const POOL = Number(flags.pool ?? 24);
 // `--gate` bare is the reference profile's limit (true); with a number, that.
 const GATE = flags.gate;
+if (GATE !== undefined && GATE !== true && !(Number(GATE) > 0)) throw new Error(`--gate=${GATE}: give a limit in ms, or no value for the reference profile's`);
 const PROFILE = typeof flags.profile === "string" ? flags.profile : "air";
 const Q = 128;
 const BUDGET_MS = (Q / RATE) * 1e3;
@@ -436,7 +437,6 @@ if (flags["sweep-only"]) process.exit(process.exitCode ?? 0);
  *  here sets the exit code. */
 function gate() {
   const limit = calibration ? HALF_MS / calibration.rate : Number(GATE);
-  if (!(limit > 0)) throw new Error(`--gate=${GATE}: give a limit in ms, or no value for the reference profile's`);
   const over4 = sweep.filter((s) => s.cpu > limit);
   const over8 = sweep.filter((s) => s.cpu8 > limit);
   const over = sweep.filter((s) => s.cpu > limit || s.cpu8 > limit).sort((a, b) => b.cpu8 - a.cpu8 || b.cpu - a.cpu);
@@ -444,7 +444,7 @@ function gate() {
   const why = calibration
     ? `ADR-025's half a quantum on the reference machine, ${f(HALF_MS)} ms at ${RATE} Hz there, divided by this machine's ×${calibration.rate} on the reference profile (${calibration.profile.name}: one render of ${calibration.profile.preset} ${f(calibration.measuredMs, 0)} ms of CPU here, the median of ${calibration.runs}, against ${calibration.profile.referenceMs} ms on the reference)`
     : `${GATE} ms here, as asked (--gate=${GATE})`;
-  const ceiling = "not judged yet: the worklet plays every sound on four voices (live-audio.js), and #320 gives each sound a voice count from its own cost, up to ten, with A and B sharing the budget; once it does, this judges the sweep at each preset's own count";
+  const ceiling = "not judged yet: the worklet plays every sound on four voices (live-audio.js) until #320 gives each sound a voice count from its own cost, up to ten, with A and B sharing the budget; then this judges the sweep at each preset's own count";
   console.log(`\nGATE  ${f(limit)} ms of CPU a quantum here: ${why}   load ${load()}`);
   console.log(`  four voices (A alone): ${over4.length} of ${sweep.length} over; eight (A and an offer in B): ${over8.length} of ${sweep.length} over`);
   console.log(`  at #320's ceiling: ${ceiling}`);
@@ -452,6 +452,9 @@ function gate() {
   console.log("  a budget (ADR-022): a preset over the limit is named here and never fails the run");
   if (!process.env.GITHUB_STEP_SUMMARY) return;
   const cellOf = (ms) => (ms > limit ? `${f(ms)} ms, ×${f(ms / limit, 2)} the limit` : `${f(ms)} ms`);
+  // A run's summary links no issue by its number by itself.
+  const repo = process.env.GITHUB_REPOSITORY;
+  const linked = (text) => (repo ? text.replace(/#(\d+)/g, (m, n) => `[${m}](https://github.com/${repo}/issues/${n})`) : text);
   const md = [
     "### The audio thread's budget (ADR-025)",
     "",
@@ -459,12 +462,12 @@ function gate() {
     "",
     `- **Four voices:** ${over4.length} of ${sweep.length} presets over.`,
     `- **Eight voices:** ${over8.length} of ${sweep.length} presets over.`,
-    `- **At #320's ceiling:** ${ceiling}.`,
+    linked(`- **At #320's ceiling:** ${ceiling}.`),
     "",
   ];
   if (over.length) {
     md.push("| Preset | Four voices | Eight voices | Waits on |", "| --- | ---: | ---: | --- |");
-    for (const s of over) md.push(`| ${s.name} | ${cellOf(s.cpu)} | ${cellOf(s.cpu8)} | ${WAITS_ON} |`);
+    for (const s of over) md.push(`| ${s.name} | ${cellOf(s.cpu)} | ${cellOf(s.cpu8)} | ${linked(WAITS_ON)} |`);
   } else md.push("No preset is over the limit.");
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${md.join("\n")}\n\n`);
 }
