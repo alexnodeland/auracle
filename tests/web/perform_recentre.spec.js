@@ -432,10 +432,14 @@ test("a control sweeping by ear through a background re-check ends where it bega
 // control back there, for the hand to turn from. A second ↵ used to
 // start a second sweep from wherever the first had the control, which then
 // ended there, turned; a press used to leave the sweep going on under it;
-// and the ↵ was logged as a turn, at the swept value, 450 ms in. Glass Pad
-// on its shipped wiring, every measurement held from main, on the page's
-// clock, stopped.
-test("↵ again mid-sweep starts the sweep over and it ends where it first began, a press takes the control back there, and neither is a turn", { tag: "@slow" }, async ({ page, app }) => {
+// and the ↵ was logged as a turn, at the swept value, 450 ms in. A turn
+// made with the arrow keys is logged once, when the keys go quiet, and a ↵
+// after it plays the sweep without logging the turn again: the arrow run's
+// timer used to stay on the knob once it had fired, so every later ↵ (a
+// long press, HEAR IT) let the run go a second time. Glass Pad on its
+// shipped wiring, every measurement held from main, on the page's clock,
+// stopped.
+test("↵ again mid-sweep starts the sweep over and it ends where it first began, a press takes the control back there, neither is a turn, and a turn before it is logged once", { tag: "@slow" }, async ({ page, app }) => {
   await page.clock.install();
   await boot(page, app);
   await app.hold("perform_wired");
@@ -468,7 +472,19 @@ test("↵ again mid-sweep starts the sweep over and it ends where it first began
   await page.mouse.move(10, 10);
   await page.clock.runFor(2_000);
   await expect(control, "the sweep did not go on").toHaveAttribute("aria-valuenow", "0.00");
+  const turns = async () => (await app.sent({ type: "log_edit" })).filter((m) => m.kind === "perform_turn").map((m) => m.detail);
+  expect(await turns(), "none of it was logged as a turn").toEqual([]);
+  // A turn by the arrow keys (the press left no focus behind), logged once
+  // the keys go quiet; then ↵: the sweep, ending where the turn left it,
+  // and the turn not logged again.
+  await control.focus();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await page.clock.runFor(500);
+  expect((await turns()).map((t) => t.value), "the arrow run, logged once").toEqual([0.1]);
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(2_600);
+  await expect(control, "the sweep ended where the turn left it").toHaveAttribute("aria-valuenow", "0.10");
+  expect((await turns()).map((t) => t.value), "the ↵ did not log the turn again").toEqual([0.1]);
   await page.clock.resume();
-  const turns = (await app.sent({ type: "log_edit" })).filter((m) => m.kind === "perform_turn");
-  expect(turns, "none of it was logged as a turn").toEqual([]);
 });

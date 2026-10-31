@@ -1145,9 +1145,13 @@ export function createPerform(host) {
       if (k.spec.kind === "wander") wanderGrab();
       else touchControl();
       // A run of arrow presses is one gesture: logged, and a search control
-      // asked, once the keys go quiet.
+      // asked, once the keys go quiet. The id goes when it fires: `hearIt`
+      // reads it as a run still settling, which it lets go itself.
       clearTimeout(k.keyTimer);
-      k.keyTimer = setTimeout(() => onRelease(k), 450);
+      k.keyTimer = setTimeout(() => {
+        k.keyTimer = null;
+        onRelease(k);
+      }, 450);
     });
   }
 
@@ -1733,8 +1737,10 @@ export function createPerform(host) {
       k.sweep.t0 = performance.now();
       return;
     }
-    // A run of arrow presses still settling is a turn of its own: it is let
-    // go where the keys left it, before the sweep moves the control.
+    // A run of arrow presses (or a pot) still settling is a turn of its own:
+    // it is let go where it left the control, before the sweep moves it. Its
+    // timer clears the id when it fires, so a run let go already is not let
+    // go again (logged as a second turn).
     if (k.keyTimer) {
       clearTimeout(k.keyTimer);
       k.keyTimer = null;
@@ -5125,9 +5131,13 @@ export function createPerform(host) {
       k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);
       onKnob(k, true);
-      // A pot has no "let go": the gesture ends when it goes quiet.
+      // A pot has no "let go": the gesture ends when it goes quiet (and its
+      // id goes, as an arrow run's does).
       clearTimeout(k.keyTimer);
-      k.keyTimer = setTimeout(() => onRelease(k), 450);
+      k.keyTimer = setTimeout(() => {
+        k.keyTimer = null;
+        onRelease(k);
+      }, 450);
     },
     // The control's position as 0..1, what a MIDI pot is compared against
     // for pickup.
