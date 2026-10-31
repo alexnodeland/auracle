@@ -134,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "fugue-ppl"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21562a1f215b8e793696023a77a2adca8be6f40212bdd0271d6493454b46059d"
+checksum = "017546395a3f478cd3b32e1d3850270765e4d57f8839d2ee2727914160aa4976"
 dependencies = [
  "libm",
  "rand",

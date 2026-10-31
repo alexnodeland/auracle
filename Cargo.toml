@@ -92,7 +92,14 @@ fugue-evo = { version = "0.4.0", default-features = false, features = ["std", "p
 # and gives a `Uniform` site (every knob) a walk reflected in its bounds, where
 # 0.2.2 walked a positive knob in log space: native fits are unchanged, native
 # walks and offers are not.
-fugue-ppl = "0.2.3"
+# 0.2.4 skips the death loop in a step that keeps the trace's structure (a knob
+# move), with bit-identical draws (#514 measured a seeded walk, fit and offer).
+# fugue puts the saving at 5-10% of a step on a model of 226 sites, but the
+# fit's 226 sites run in `auracle_taste::model`'s own kernel, which does not
+# take fugue's step, so refits gain nothing. Only the walks' and offers' steps
+# (`EvolutionChain`) take it, and it saves about 2% of a warm step's
+# instructions, which a cold step's render hides: no clock shows it.
+fugue-ppl = "0.2.4"
 
 # Shared third-party
 rand = "0.8"

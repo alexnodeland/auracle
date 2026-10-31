@@ -1,4 +1,4 @@
-//! The fit's MH kernel: fugue-ppl 0.2.3's adaptive single-site chain
+//! The fit's MH kernel: fugue-ppl's adaptive single-site chain
 //! (`adaptive_mcmc_chain_with_overrides_thinned`, no overrides), run over an
 //! array of the sites' values instead of a rebuilt program.
 //!
