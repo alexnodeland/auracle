@@ -285,17 +285,25 @@ What makes shots reliable:
 
 ### Rehearsing
 
-    node www/video/tools/validate.mjs <film>        # every word, mark and beat of the shots (and of a walkthrough's plan) resolves
+    node www/video/tools/validate.mjs <film>        # the shots' words and beats, a walkthrough's plan, the marks a film.js reads from its takes: all resolve
     www/video/tools/rehearse.sh <film> [--shot a,b] # a dry run, then its summary
     python3 www/video/tools/framing.py <film> [beat] # camera crops and callouts, as contact sheets
 
 `validate.mjs` looks at a film's `shots.json` and at its plan, the
 `walkthrough(` call in `film.js`; `framing.py` looks at the plan and the
-rehearsal's screenshots. So they cover films by what they have: a
-walkthrough has both, an illustrated film that cuts to takes (launch) has
-shots and no plan (its `film.js` draws on a DOM and is never run, and there is
-nothing to frame), and a film with no `shots.json` (taste, math, dsp, engine)
-has neither (`validate.mjs` says so and passes).
+rehearsal's screenshots. So they cover films by what they have: a walkthrough
+has both, an illustrated film that cuts to takes (launch) has shots and no
+plan, and a film with no `shots.json` (taste, math, dsp, engine) has neither
+(`validate.mjs` says so and passes, and `framing.py` has nothing to frame).
+
+An illustrated film's `film.js` draws on a DOM and is never run. What it reads
+from its takes is found in its text instead (`tools/reads.mjs`), so that a
+pointer is never drawn at an estimate where the take should have measured the
+control: a scene reads its take by a literal, `const take = takes["l-play"]`,
+and the marks it reads from it by a literal name (`ck?.mark("bright")`,
+`take.meta.rects?.blend`, or `rail("patch")` through a local function that
+passes its first argument on to one of those) must be marks that shot
+measures. A name built at run time cannot be seen.
 
 A rehearsal runs every set-up and action against the live app and records
 nothing. It saves screenshots and a sidecar per shot to `out/<film>/dry/`. A
@@ -372,8 +380,9 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/sounds.sh` | The old beds of the films not yet on N3, rendered to `out/sound/` (again only when one changes) |
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
-| `tools/validate.mjs` | Check a film's references resolve before rehearsing it: every word, mark and beat of its shots (a walkthrough's, or the takes an illustrated film cuts to) and, for a walkthrough, of the plan in its `film.js`. A film with no `shots.json` and no plan says so and passes |
+| `tools/validate.mjs` | Check a film's references resolve before rehearsing it: every word and beat of its shots (a walkthrough's, or the takes an illustrated film cuts to), for a walkthrough the plan in its `film.js`, and for a film whose `film.js` reads takes the marks it reads from them. A film with no `shots.json` and no plan says so and passes |
 | `tools/plan.mjs` | A walkthrough's plan read without a browser (`loadPlan`: `film.js` run against a stand-in for `walk.js`; null for a film that does not call `walkthrough(`), shared by `validate.mjs`, `framing.mjs` and view-perform's `lint_plan.mjs` |
+| `tools/reads.mjs` | What a `film.js` reads, found in its text and never by running it: the takes it reads and the marks it reads from them (`readsOf`), over a scan that blanks comments, strings and regular expressions (`scan`); used by `validate.mjs` |
 | `tools/rehearse.sh` | One-browser dry run, then `tools/rehearsal.py`'s summary |
 | `tools/framing.py` | Contact sheets of camera crops and callouts from a rehearsal (a walkthrough's; a film with no plan has nothing to frame, and says so) |
 | `tools/one_browser.sh` | Run a command when it is its turn for the browser (a first-come, first-served queue) |

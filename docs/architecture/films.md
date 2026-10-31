@@ -31,7 +31,8 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
      ├─ illustrated: film.js draws beats on the timeline; with a shots.json
      │                (launch) it cuts to takes of the app (footage.mjs, as below),
      │                checked and rehearsed like a walkthrough's shots (validate.mjs
-     │                reads the shots, not film.js, which draws and has no plan),
+     │                reads the shots, and the marks film.js reads from them in its
+     │                text; film.js draws and has no plan, so it is never run),
      │                recorded first and again when their shot or timing changes,
      │                heard only in its demos (app_audio.py --demos)
      │
@@ -108,7 +109,7 @@ browser). So which film each tool covers follows from what the film has:
 
 | Tool | Walkthrough | Illustrated, cuts to takes (launch) | Illustrated, no takes (taste, math, dsp, engine) |
 | --- | --- | --- | --- |
-| `validate.mjs` | the shots and the plan | the shots; `film.js` draws on a DOM, so it is not run | says there is nothing to check, and passes |
+| `validate.mjs` | the shots and the plan | the shots, and the marks `film.js` reads from them (found in its text: `film.js` draws on a DOM, so it is not run) | says there is nothing to check, and passes |
 | `rehearse.sh` | every shot | every take | no `shots.json`: nothing to rehearse |
 | `framing.py` | the camera and the callouts | no plan: nothing to frame | no plan: nothing to frame |
 
@@ -122,7 +123,12 @@ A walkthrough is ready to record when:
    ([ADR-004](../decisions/004-descriptions-stay-true.md)).
 
 An illustrated film that cuts to takes (launch) is held to 1, 2, 3 and 5; it
-has no callouts, so 4 does not apply.
+has no callouts, so 4 does not apply. Its pointers are drawn at the marks its
+takes measured, and `validate.mjs` holds `film.js` to that: a mark it reads
+from a take (`tools/reads.mjs` finds them by their literal names) that the
+take's shot never measures is a problem, since the pointer would fall back to
+the kit's estimate, drawn as if measured
+([ADR-012](../decisions/012-motion-shows-what-the-engine-does.md)).
 
 Record on a quiet machine, one film at a time
 ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)). Only the recording

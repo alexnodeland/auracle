@@ -2,14 +2,16 @@
 // shots.json (a walkthrough's, or an illustrated film's that cuts to takes of
 // the app, as launch does) has its shots checked: every "line:word" in an
 // action or a clip resolves to the same word under footage.mjs's rule (word
-// start) and walk.js's (substring), every mark is measured by its shot, and
-// every shot is in a beat of the timeline. A film whose film.js calls
-// walkthrough( has its plan checked too, run with a stand-in for walk.js
-// (plan.mjs): the same words in its camera, clips and callouts, every
-// callout's mark measured by its shot, a shot borrowed by the beat before its
-// own starting where the shot does, and every beat with a plan entry. An
-// illustrated film's film.js draws on a DOM, so it is never run. A film with
-// no shots.json and no plan (taste, math, dsp, engine) says so and passes.
+// start) and walk.js's (substring), and every shot is in a beat of the
+// timeline. A film whose film.js calls walkthrough( has its plan checked too,
+// run with a stand-in for walk.js (plan.mjs): the same words in its camera,
+// clips and callouts, every callout's mark measured by its shot, a shot
+// borrowed by the beat before its own starting where the shot does, and every
+// beat with a plan entry. A film whose film.js reads takes (takes["l-play"])
+// has the marks it reads from them checked against the marks their shots
+// measure (reads.mjs reads them out of its text: an illustrated film draws on
+// a DOM, so it is never run). A film with no shots.json and no plan (taste,
+// math, dsp, engine) says so and passes.
 //
 //   node www/video/tools/validate.mjs FILM       (exit 1 on any problem)
 //
@@ -19,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPlan } from "./plan.mjs";
+import { readsOf } from "./reads.mjs";
 
 const film = process.argv[2];
 if (!film) {
@@ -73,15 +76,37 @@ for (const sh of shots ? shots.shots : []) {
 }
 
 // film.js: its plan, run with a stand-in walkthrough (null for a film drawn
-// on the stage, which has none).
+// on the stage, which has none), and the marks it reads from its takes, found
+// in its text (null for a film that reads none).
 let plan = null;
 try {
   plan = await loadPlan(fdir);
 } catch (e) {
   problems.push(e.message);
 }
+let reads = null;
+try {
+  if (fs.existsSync(`${fdir}/film.js`)) reads = readsOf(fs.readFileSync(`${fdir}/film.js`, "utf8"));
+} catch (e) {
+  problems.push(e.message);
+}
 if (plan && !shots) problems.push("film.js calls walkthrough( but the film has no shots.json");
-if (!shots && !plan && !problems.length) {
+if (reads && !shots) for (const t of reads.takes) problems.push(`film.js line ${t.line}: reads the take "${t.id}" but the film has no shots.json`);
+if (reads && shots) {
+  for (const t of reads.takes) if (!marks[t.id]) problems.push(`film.js line ${t.line}: reads the take "${t.id}" but shots.json has no shot ${t.id}`);
+  // A mark read in a block that reads a take is that take's; any other, a
+  // mark some shot of the film measures. A footage pointer drawn at a mark
+  // its take never measured would fall back to an estimate, drawn as if
+  // measured (ADR-012).
+  const everywhere = new Set(Object.values(marks).flatMap((m) => [...m]));
+  for (const r of reads.marks) {
+    const ids = r.takes.filter((id) => marks[id]);
+    if (r.takes.length && !ids.length) continue;
+    const measured = ids.length ? ids.some((id) => marks[id].has(r.name)) : everywhere.has(r.name);
+    if (!measured) problems.push(`film.js line ${r.line}: reads the mark "${r.name}"` + (ids.length ? ` of take ${ids.join(" or ")}, but shot ${ids.join(" or ")} measures no mark "${r.name}"` : ", but no shot of the film measures it"));
+  }
+}
+if (!shots && !plan && !reads && !problems.length) {
   console.log(`${film}: no shots.json and no walkthrough plan: nothing to check`);
   process.exit(0);
 }

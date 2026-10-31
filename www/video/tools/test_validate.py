@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """validate.mjs and framing.mjs on every kind of film: a walkthrough (its shots
-and its plan), an illustrated film that cuts to takes of the app (its shots
-only, as launch does; film.js is never run), and one drawn with no takes at
-all. A broken reference exits 1 on a scratch copy, and a committed film does
-not.
+and its plan), an illustrated film that cuts to takes of the app (its shots,
+and the marks its film.js reads from them, as launch does; film.js is never
+run), and one drawn with no takes at all. A broken reference exits 1 on a
+scratch copy, and a committed film does not.
 
     python3 www/video/tools/test_validate.py      (run by `make dev-check`)
 
@@ -41,6 +41,26 @@ def read_json(path):
 def write_json(path, value):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(value, f)
+
+
+def without_mark(spec, shot, name):
+    """`spec` with the mark `name` no longer measured by `shot`: gone from its
+    `marks` and from its `mark` steps, wherever they are nested."""
+    def strip(steps):
+        keep = []
+        for a in steps:
+            if a.get("op") == "mark" and a.get("name") == name:
+                continue
+            if a.get("op") == "seq":
+                a = dict(a, steps=strip(a["steps"]))
+            keep.append(a)
+        return keep
+
+    for sh in spec["shots"]:
+        if sh["id"] == shot:
+            sh["marks"] = {k: v for k, v in sh.get("marks", {}).items() if k != name}
+            sh["actions"] = strip(sh.get("actions", []))
+    return spec
 
 
 class Scratch(unittest.TestCase):
@@ -94,6 +114,15 @@ class Scratch(unittest.TestCase):
 class AnIllustratedFilmWithTakes(Scratch):
     """launch: drawn on the stage, cuts to takes of the app (shots.json)."""
 
+    # The marks launch's film.js reads from each take (a pointer drawn on the
+    # control a take measured), by the shot that measures them: `ck?.mark(…)`,
+    # `rects?.…` and, through `rail(…)` and `rc(…)`, a local function's literal.
+    READS = {
+        "l-play": ["bright", "wander"],
+        "l-offer": ["offer", "take", "blend"],
+        "l-circuit": ["patch", "taste", "learning", "filter", "fc", "strip"],
+    }
+
     def test_its_film_js_is_not_run(self):
         # Its copy sits where film.js's relative imports (the stage, the kit)
         # resolve to nothing, and build() draws on a DOM: run, it would crash.
@@ -129,6 +158,72 @@ class AnIllustratedFilmWithTakes(Scratch):
         spec["shots"][0]["beat"] = "nosuchbeat"
         write_json(path, spec)
         self.assertIn("no beat nosuchbeat", self.problems("launch"))
+
+    def measured_by(self, shot):
+        """The marks the committed shot measures: its `marks` and `mark` steps."""
+        found = set()
+
+        def walk(steps):
+            for a in steps:
+                if a.get("op") == "mark":
+                    found.add(a["name"])
+                if a.get("op") == "seq":
+                    walk(a["steps"])
+
+        sh = next(x for x in read_json(os.path.join(FILMS, "launch", "shots.json"))["shots"] if x["id"] == shot)
+        walk(sh.get("actions", []))
+        return found | set(sh.get("marks", {}))
+
+    def test_its_shots_measure_every_mark_it_reads(self):
+        # The film is clean (above), and not because the reader found nothing:
+        # each shot measures what film.js reads from it, and the tests below
+        # take each of them away.
+        for shot, names in self.READS.items():
+            with self.subTest(shot=shot):
+                self.assertLessEqual(set(names), self.measured_by(shot))
+
+    def test_a_mark_it_reads_that_its_shot_does_not_measure_fails(self):
+        for shot, names in self.READS.items():
+            for name in names:
+                with self.subTest(shot=shot, mark=name):
+                    self.copy_film("launch")
+                    path = os.path.join(self.dir, "launch", "shots.json")
+                    write_json(path, without_mark(read_json(os.path.join(FILMS, "launch", "shots.json")), shot, name))
+                    out = self.problems("launch")
+                    self.assertIn(f'reads the mark "{name}" of take {shot}, but shot {shot} measures no mark "{name}"', out)
+
+    def test_a_shot_with_no_marks_at_all_fails_for_every_one_it_is_read_for(self):
+        # Pointers drawn at the kit's estimates, not at what the take measured:
+        # `bright` and `wander` of l-play and `take` of l-offer, found missing.
+        self.copy_film("launch")
+        path = os.path.join(self.dir, "launch", "shots.json")
+        spec = read_json(os.path.join(FILMS, "launch", "shots.json"))
+        for name in self.READS["l-play"]:
+            spec = without_mark(spec, "l-play", name)
+        spec = without_mark(spec, "l-offer", "take")
+        write_json(path, spec)
+        out = self.problems("launch")
+        for name, shot in (("bright", "l-play"), ("wander", "l-play"), ("take", "l-offer")):
+            self.assertIn(f'reads the mark "{name}" of take {shot}', out)
+        self.assertEqual(out.count("reads the mark"), 3, out)
+
+    def test_a_mark_another_shot_measures_does_not_count(self):
+        # `bright` is l-offer's and not l-play's: the pointer in PERFORM's scene
+        # would still be drawn at an estimate.
+        self.copy_film("launch")
+        path = os.path.join(self.dir, "launch", "shots.json")
+        spec = without_mark(read_json(os.path.join(FILMS, "launch", "shots.json")), "l-play", "bright")
+        next(sh for sh in spec["shots"] if sh["id"] == "l-offer")["marks"]["bright"] = "#anything"
+        write_json(path, spec)
+        self.assertIn('reads the mark "bright" of take l-play', self.problems("launch"))
+
+    def test_a_take_its_shots_json_lacks_fails(self):
+        self.copy_film("launch")
+        path = os.path.join(self.dir, "launch", "shots.json")
+        spec = read_json(path)
+        spec["shots"][0]["id"] = "l-renamed"
+        write_json(path, spec)
+        self.assertIn('reads the take "l-play" but shots.json has no shot l-play', self.problems("launch"))
 
     def test_it_has_nothing_to_frame(self):
         code, out, err = node("framing.mjs", "launch")
@@ -182,6 +277,115 @@ class AFilmDrawnWithNoTakes(Scratch):
     def test_a_film_that_is_not_there_is_a_usage_error(self):
         code, out, err = self.run_node("nosuchfilm")
         self.assertEqual(code, 2, out + err)
+
+
+class TheMarksAFilmReads(Scratch):
+    """film.js is never run, so what it reads from its takes is found in its
+    text (reads.mjs): the marks it names, by the take its block reads."""
+
+    @staticmethod
+    def film_js(body, outside=""):
+        return ('export async function build(stage) { const takes = {}; scene({ takes }); }\n'
+                'function scene({ takes }) {\n  const take = takes["s"];\n  const ck = take;\n'
+                f'{body}\n}}\n{outside}\n')
+
+    def check(self, body, outside="", marks=None):
+        self.synthetic("syn", js=self.film_js(body, outside), marks={"hood": "#hood"} if marks is None else marks)
+        return self.run_node("syn")
+
+    def test_a_measured_mark_passes(self):
+        code, out, err = self.check('const p = ck?.mark("hood");')
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(out.strip(), "syn: ok (takes only: the film has no walkthrough plan)")
+
+    def test_a_mark_made_mid_shot_by_a_step_is_measured_too(self):
+        self.synthetic("syn", js=self.film_js('const p = ck?.mark("late");'))
+        path = os.path.join(self.dir, "syn", "shots.json")
+        spec = read_json(path)
+        spec["shots"][0]["actions"] = [{"op": "seq", "steps": [{"op": "mark", "name": "late", "sel": "#toast"}]}]
+        write_json(path, spec)
+        code, out, err = self.run_node("syn")
+        self.assertEqual(code, 0, out + err)
+
+    def test_each_way_to_spell_a_read_is_seen(self):
+        body = """
+  const a = take.meta.rects.ghost1;
+  const b = take?.meta?.rects?.ghost2;
+  const c = take.meta.rects["ghost3"];
+  const d = take.meta.rects?.['ghost4'];
+  const e = take.meta.rects[`ghost5`];
+  const f = ck.mark('ghost6');
+  const g = ck?.mark( "ghost7" );
+"""
+        out = self.problems_of(body)
+        for i in range(1, 8):
+            self.assertIn(f'reads the mark "ghost{i}" of take s, but shot s measures no mark "ghost{i}"', out)
+
+    def problems_of(self, body, outside="", marks=None):
+        self.synthetic("syn", js=self.film_js(body, outside), marks={"hood": "#hood"} if marks is None else marks)
+        return self.problems("syn")
+
+    def test_a_read_through_a_local_function_is_seen(self):
+        body = """
+  const rail = (lv) => ck?.mark(lv);
+  const rc = (name, fb) => {
+    const r = take?.meta?.rects?.[name];
+    return r ? [r.x, r.y] : fb;
+  };
+  function pick(n) { return take.meta.rects[n]; }
+  rail("ghost1"); rc("ghost2", [0, 0]); pick("ghost3");
+  rail("hood");
+"""
+        out = self.problems_of(body)
+        for i in range(1, 4):
+            self.assertIn(f'reads the mark "ghost{i}" of take s', out)
+        self.assertEqual(out.count("reads the mark"), 3, out)
+
+    def test_a_function_that_does_not_read_a_mark_is_not_a_helper(self):
+        body = """
+  const near = (name) => name.length;
+  const other = (n) => take.clips.length + n;
+  near("ghost1"); other("ghost2");
+"""
+        code, out, err = self.check(body)
+        self.assertEqual(code, 0, out + err)
+
+    def test_comments_strings_and_regular_expressions_are_not_reads(self):
+        body = r"""
+  // ck.mark("ghost1")
+  /* take.meta.rects.ghost2 */
+  const a = "ck.mark('ghost3')";
+  const b = `rects?.ghost4 ${a} and ck.mark("ghost5")`;
+  const c = /['"]/.test(a) ? ck?.mark("hood") : 6 / 2 / 1;
+  const d = a.replace(/\/\*|"/g, "") + 'rects.ghost6';
+"""
+        code, out, err = self.check(body)
+        self.assertEqual(code, 0, out + err)
+
+    def test_a_name_built_at_run_time_is_not_seen(self):
+        # The check's limit: it reads what the source says and guesses nothing.
+        code, out, err = self.check('const n = "gho" + "st"; const a = take.meta.rects?.[n]; const b = ck?.mark(n);')
+        self.assertEqual(code, 0, out + err)
+
+    def test_a_film_that_reads_no_take_is_not_checked(self):
+        # `.mark(` of something that is not a take (the kit's mark drawer, say).
+        self.synthetic("syn", js='export async function build(stage) { stage.logo.mark("ghost"); }\n', marks={"hood": "#hood"})
+        code, out, err = self.run_node("syn")
+        self.assertEqual(code, 0, out + err)
+
+    def test_a_read_outside_the_block_that_reads_a_take_is_checked_against_every_shot(self):
+        outside = 'function aside(ck) { return [ck.mark("hood"), ck.mark("ghost")]; }'
+        out = self.problems_of("", outside)
+        self.assertIn('reads the mark "ghost", but no shot of the film measures it', out)
+        self.assertEqual(out.count("reads the mark"), 1, out)
+
+    def test_a_take_with_no_shots_json_fails(self):
+        self.synthetic("syn", js=self.film_js('const a = ck.mark("hood");'), shots=False)
+        self.assertIn('reads the take "s" but the film has no shots.json', self.problems("syn"))
+
+    def test_a_film_js_it_cannot_scan_says_so(self):
+        out = self.problems_of('const broken = "never closed;')
+        self.assertIn("could not be scanned", out)
 
 
 class TheCommittedFilms(Scratch):

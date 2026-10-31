@@ -64,9 +64,12 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`
   shows no callout leaving the frame and the voice passes its ASR gate. The
   tools cover a film by what it has: `validate.mjs` checks the shots of any
-  film with a `shots.json` (a walkthrough's, or launch's takes) and the plan
-  of one whose `film.js` calls `walkthrough(`; a film with neither says so
-  and passes, and `framing.py` has nothing to frame without a plan.
+  film with a `shots.json` (a walkthrough's, or launch's takes), the plan of
+  one whose `film.js` calls `walkthrough(`, and the marks a `film.js` reads
+  from its takes (`takes["l-play"]`, then `ck?.mark("bright")`; found in its
+  text, since it draws on a DOM and is never run); a film with no
+  `shots.json` and no plan says so and passes, and `framing.py` has nothing to
+  frame without a plan.
 - **Rehearsals and recordings run alone.** Every rehearsal and recording goes
   through `tools/one_browser.sh` (first come, first served, exclusive lane);
   `rehearse.sh` and `walkthrough.sh` already do. Browser tests share the
