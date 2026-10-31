@@ -178,10 +178,12 @@ jobs:
   # tests/web/profile.js): each runner times a calibration render at its
   # first boot and slows the engine worker and every farm worker until a
   # render takes the reference machine's time, boots with ?farm=2, and in
-  # Chromium throttles the page by the same rate; each shard's summary says
-  # what it measured, and each budget names the profile beside its figure. A
-  # spec's own slowed worker.js is kept on it (the fixture serves a spec's
-  # `workerPrefix` after its own slowed engine; patch_audible's, #166).
+  # Chromium throttles the page by the same rate up to x4.5, the Air's CPU
+  # against an M-series one; each shard's summary says what it measured and
+  # what is an estimate, and each budget names the profile beside its
+  # figure. A spec's own slowed worker.js is kept on it (the fixture serves
+  # a spec's `workerPrefix` after its own slowed engine; patch_audible's,
+  # #166).
   # In Chromium and in Firefox (D10): Firefox has no throttle for a page, so
   # there the engine and the farm are slowed and the page is not, and it
   # needs an audio server the image lacks (a step below starts one). The
@@ -297,8 +299,8 @@ jobs:
   # a proxy for an offer bred from it), against half a quantum divided by
   # this runner's rate on the reference profile, which it measures first by
   # the profile's own calibration render (tests/web/profiles.json, whose
-  # reference is ADR-025's estimate until the Air measures it, so the limit
-  # is about three times too strict for now). The run's summary names each
+  # reference is an estimate until the Air measures it: ADR-025's figure
+  # times the speed-ups measured since). The run's summary names each
   # preset over the limit and the issue it waits on (#320: a voice count
   # from the sound's own cost), and says it is not judged at #320's ceiling
   # until that exists.
