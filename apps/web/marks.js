@@ -7,25 +7,28 @@
 // here:
 // - at rest, a generation opened now: `ratings.seeds` (`Engine::next_seeds`,
 //   the rule `refine_jobs` takes its parents by) and `ratings.may_replace`
-//   (`Engine::may_replace`: nothing outside it can leave at its end), said
+//   (`Engine::may_replace`: nothing outside it can leave at its end,
+//   whatever is on the table by then, so a sound up now is on it too), said
 //   "may be replaced";
 // - while one runs, that generation: the seeds it opened with
 //   (`breeding.seeds`, posted with its progress: `refine_jobs`' parents), and
 //   what its end would replace if it ended now (`refine_child`'s `retiring`,
 //   `Engine::retiring`), said "will be replaced": stopped now or run out, its
 //   end replaces them. That list grows by one with each child admitted
-//   (`admit_refined` defers the eviction) and loses none, so it is empty until
-//   the first child lands, and a child still to come can add a sound not on
-//   it: it is not the whole of what may go (words.js `markWord`). A save made
-//   while it runs takes its sound off the list (`eviction_order` passes over
-//   saved sounds), and the reply says so (`retiringAfter`);
+//   (`admit_refined` defers the eviction), so it is empty until the first
+//   child lands, and a child still to come can add a sound not on it: it is
+//   not the whole of what may go (words.js `markWord`). A save made while it
+//   runs takes its sound off the list (`eviction_order` passes over saved
+//   sounds), and so does the table while a sound is up (`Engine::spared`),
+//   the next lowest standing in until it is put away; the reply says so
+//   (`retiringAfter`);
 // - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed),
 //   and what its child would replace if the pool takes it. With no
 //   generation open `absorb_from` evicts at once (`evict_to_size`, the seed
 //   protected) the lowest of `eviction_order`, which passes over the seed in
-//   flight (`evolving`); `may_replace` ranks the same way, so its first
-//   `pool + 1 − pool_target` (one at size, none while the pool fills) are
-//   those.
+//   flight (`evolving`) and the table; `may_replace`'s first part ranks the
+//   same way, so its first `pool + 1 − pool_target` (one at size, none while
+//   the pool fills) are those.
 // The rail carries the mark (amber, the model's choice: solid for a seed,
 // dashed for what may go) and the word sits on the row's second line, over
 // the stars, so the name never moves.

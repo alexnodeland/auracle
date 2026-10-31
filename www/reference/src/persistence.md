@@ -301,7 +301,11 @@ The rule is `Candidate::kept()` (`pinned || unjudged`), and with what the
 engine holds for the moment (a ⚡ seed in flight, the sounds on EVOLVE's table:
 `Engine::spared`) it is the one `insert_candidate` and `eviction_order_by` both
 apply, so `retiring()`, `may_replace()`, `refine_finish`, a ⚡ child's trim and
-a preset's insert all pass over it alike. It is not charged to `pin_cap` and
+a preset's insert all pass over it alike. (`may_replace()` passes over the
+table only for what a generation's end would take now, and lists the sounds
+the table could send it to as well:
+[refinement](search/refinement.md#before-a-generation-its-seeds-and-what-it-may-replace).)
+It is not charged to `pin_cap` and
 the app shows no mark for it. The table is not saved: the app holds the pair
 it shows and the pair of a pick in its undo window (`set_on_table`), and a
 restore holds nothing.
@@ -312,8 +316,11 @@ id; ids are issued in order), which stays in the pool as an ordinary member. A
 saved member is protected by its pin and is not counted; unsaving it bounds
 the flags again. With pins capped the same, at least half of a pool of four or
 more is never kept (below four, the caps' floor of one each can protect more
-than half). Less any ⚡ seed in flight and the sounds on the table (at most
-`ON_TABLE_MAX`, four), that leaves a member to evict in any pool of ten or more, the app's 40
-among them, so an insert always lands and a generation's end always brings
+than half). Every eviction also passes over any ⚡ seed in flight and the
+sounds on the table (at most `ON_TABLE_MAX`, four), and an insert over its own
+`protect` too (the sound a kept edit was made from). That still leaves
+an insert a member to evict in any pool of thirteen or more. In the app's 40 it
+leaves at least 14, more than the ten a generation's walks can put the pool
+over, so there an insert always lands and a generation's end always brings
 the pool back to size. A restore applies the cap
 again, for a file written under a larger one.

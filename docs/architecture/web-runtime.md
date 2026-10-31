@@ -723,8 +723,9 @@ rides on replies sent for their own reasons. (`ratings`, not `belief`, on the we
   any of them.
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
   so the seeds and what may be replaced, and on `on_table`, which changes
-  what the engine holds on EVOLVE's table and so what may be replaced
-  ([EVOLVE's next pair](#evolves-next-pair)). Each of
+  what the engine holds on EVOLVE's table and so what an eviction would take
+  now: `may_replace`'s first part, whose first is what ⚡'s child or a preset
+  takes ([EVOLVE's next pair](#evolves-next-pair)). Each of
   these carries `retiring` too while a generation is open.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
@@ -789,12 +790,14 @@ is the next press of EVOLVE POOL, and they are what to mark. While a
 generation is open or a ⚡ walk is out, a press would wait its turn (see
 [The worker's lanes](#the-workers-lanes)), so they describe one that has not
 started. What the running generation will replace is `refine_child`'s
-`retiring` (said *will be replaced*: it only grows, one per child admitted).
+`retiring` (said *will be replaced*: it grows, one per child admitted).
 A save, a preset or a kept edit joining the pool can change it too
 (`eviction_order` passes over saved sounds and sounds kept as new before
-their first pick, and a new member moves the lowest), so while a generation is open the `pinned`, `preset_loaded` and
-`committed` replies carry `retiring` as well (`openRetiring` in
-`worker.js`), and main repaints the marks from it.
+their first pick, and a new member moves the lowest), and so can the table:
+a sound on it is passed over while it is up, and the next lowest stands in
+for it until it is put away. So while a generation is open the `pinned`,
+`preset_loaded`, `committed` and `on_table` replies carry `retiring` as well
+(`openRetiring` in `worker.js`), and main repaints the marks from it.
 Its seeds come with its progress: every `refine_progress` carries `seeds`,
 `refine_jobs`' parents in job order (job `i` walks from `seeds[i]`). Main
 used to take the last `ratings.seeds` posted before the generation opened,
@@ -809,8 +812,10 @@ While a ⚡ walk is out (no generation open), the bank marks its seed and the
 first `pool + 1 − pool_target` of `ratings.may_replace` (one with the pool at
 size): ⚡'s child is trimmed against at once when it is absorbed
 (`evict_to_size` with the seed protected), lowest first by
-`eviction_order`, which passes over a seed in flight, and `may_replace` ranks
-the same way.
+`eviction_order`, which passes over a seed in flight and the table, and
+`may_replace`'s first part ranks the same way. Its rest is the sounds a
+generation's end could reach once the table has moved, the table put away:
+nothing ⚡'s child takes now.
 
 ## The model's guess and the cable probe
 
@@ -1855,7 +1860,7 @@ reaches the engine after the vote, so a pick is recorded before its pair is
 let go. The pair dealt ahead is not held: nobody has seen it, and a side it
 loses deals it again (`usable`). The reply, `on_table`, says what the engine
 holds (`ids`: the pool's, each once), with the `ratings` and `retiring` a
-save's reply carries, since the hold moves what may be replaced; main takes
+save's reply carries, since the hold moves what an eviction would take now; main takes
 them as `pinned`'s case does. Nothing is saved: a restore holds nothing,
 and a binary without `set_on_table` holds nothing and answers `ids: []`.
 

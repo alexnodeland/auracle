@@ -1874,10 +1874,11 @@ impl WasmEngine {
     }
 
     /// Stop (or close) the open generation: the children absorbed so far stay,
-    /// the lowest members not kept (`Candidate::kept`: saved, or kept as new
-    /// and not yet in a pick) are retired until the pool is back to size,
-    /// and results still in flight will read `"stale"`. Returns the retired
-    /// ids as a JSON array, lowest first. Idempotent.
+    /// the lowest members not spared (`Engine::spared`: saved, kept as new
+    /// and not yet in a pick, a ⚡ seed in flight, or on the table,
+    /// [`WasmEngine::set_on_table`]) are retired until the pool is back to
+    /// size, and results still in flight will read `"stale"`. Returns the
+    /// retired ids as a JSON array, lowest first. Idempotent.
     pub fn refine_finish(&mut self) -> String {
         json_or(&self.engine.refine_finish(), "[]")
     }
@@ -2657,9 +2658,11 @@ impl WasmEngine {
     /// the parents EVOLVE POOL would refine from if pressed now, best first,
     /// exactly as [`WasmEngine::refine_jobs`] would choose them (`[]` before
     /// the first fit). `may_replace` are the members that generation could
-    /// retire, lowest first: no other member can leave at its end unless
-    /// something else changes the pool meanwhile. It includes members the
-    /// app has cut, which the engine does not know about.
+    /// retire, lowest first: no other member can leave at its end, whatever
+    /// is on the table by then ([`WasmEngine::set_on_table`]), unless
+    /// something else changes the pool meanwhile (`Engine::may_replace`). It
+    /// includes members the app has cut, which the engine does not know
+    /// about.
     pub fn belief(&self) -> String {
         json_or(
             &self.engine.belief(),

@@ -1651,8 +1651,8 @@ fn next_seeds_and_may_replace_are_what_a_generation_does() {
     assert_eq!(seeds[0], top, "a saved patch seeds like any other");
     assert_eq!(
         may.len(),
-        engine.cfg.refine_seeds,
-        "a full pool can lose one member per walk"
+        engine.cfg.refine_seeds + ON_TABLE_MAX,
+        "a full pool can lose one member per walk, and the table can send its end past as many as it holds"
     );
     assert!(
         !may.contains(&top) && !may.contains(&bottom),
@@ -1723,7 +1723,11 @@ fn may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving() {
     let ranked = engine.ranked();
     let lowest = engine.pool[ranked[ranked.len() - 1].0].id;
     let before = engine.may_replace();
-    assert_eq!(before.len(), walks - 2, "two empty places owe two fewer");
+    assert_eq!(
+        before.len(),
+        walks - 2 + ON_TABLE_MAX,
+        "two empty places owe two fewer"
+    );
     assert_eq!(before[0], lowest);
     // As many empty places as walks: the generation's children fill them,
     // and nothing may be replaced.
@@ -2266,26 +2270,30 @@ fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
 /// window closes finds both its sides in the pool. Before, a generation's
 /// end, a preset or an import inside the window could replace a side, and
 /// the vote was refused. Held here: the two members every eviction takes
-/// first. They leave the marks, more presets are opened than the pool
-/// holds, a patch is imported and a generation runs, and both are still
-/// there; the pick on them is recorded. Put away, they compete again, and
-/// the next preset replaces the lowest.
+/// first. They stay marked (a generation's end comes long after they are
+/// put away), though what an end would take now passes them over; more
+/// presets are opened than the pool holds, a patch is imported and a
+/// generation runs, and both are still there; the pick on them is
+/// recorded. Put away, they compete again, and the next preset replaces
+/// the lowest.
 #[test]
 fn a_sound_on_the_table_is_not_replaced_until_it_is_put_away() {
     let mut engine = taught(0x7AB1E);
-    let size = engine.cfg.pool_size;
+    let (size, walks) = (engine.cfg.pool_size, engine.cfg.refine_seeds);
     let may = engine.may_replace();
     let pair = [may[0], may[1]];
     assert_eq!(engine.set_on_table(&pair), pair);
     let marked = engine.may_replace();
-    assert!(
-        !marked.contains(&pair[0]) && !marked.contains(&pair[1]),
-        "EVOLVE marks the table \"may be replaced\": {marked:?}"
-    );
     assert_eq!(
-        marked[..may.len() - 2],
-        may[2..],
-        "the next members up did not take their places"
+        marked[..walks],
+        may[2..walks + 2],
+        "what an end would take now is not the next members up"
+    );
+    let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
+    assert_eq!(
+        set(&marked),
+        set(&may),
+        "the table moved what may be replaced"
     );
     assert_eq!(engine.belief().may_replace, marked);
 
@@ -2370,7 +2378,10 @@ fn a_sound_on_the_table_is_not_replaced_until_it_is_put_away() {
 fn the_table_holds_four_sounds_of_the_pool_at_most_and_a_restore_holds_none() {
     let mut engine = taught(0x7AB2);
     let may = engine.may_replace();
-    assert!(may.len() > ON_TABLE_MAX, "too few marks to tell: {may:?}");
+    assert!(
+        may.len() >= 2 * ON_TABLE_MAX,
+        "too few marks to tell: {may:?}"
+    );
     let absent = engine.pool.iter().map(|c| c.id).max().unwrap() + 1;
     // An id the pool does not hold and a repeat take no place, and past
     // four nothing more is held.
@@ -2386,16 +2397,109 @@ fn the_table_holds_four_sounds_of_the_pool_at_most_and_a_restore_holds_none() {
         "a fifth sound was held"
     );
     // The next call holds what it names, in place of what was held.
-    assert_eq!(
-        engine.set_on_table(&may[ON_TABLE_MAX..]),
-        &may[ON_TABLE_MAX..]
-    );
+    let next = &may[ON_TABLE_MAX..2 * ON_TABLE_MAX];
+    assert_eq!(engine.set_on_table(next), next);
     assert_eq!(engine.may_replace().first(), Some(&may[0]));
     // A restore holds nothing, into the same engine too.
     let state = engine.export_state();
     engine.import_state(state);
     assert!(engine.on_table().is_empty(), "a restore kept the table");
     assert_eq!(engine.may_replace().first(), Some(&may[0]));
+}
+
+/// **What MAY BE REPLACED marks at the press bounds what the generation's
+/// end replaces, whatever is on the table by then** (#452). The end passes
+/// over the sounds on the table as it finds them (read then, as pins are),
+/// and the player keeps picking while a generation runs, so the table it
+/// finds is not the one at the press. Two ways that reached a sound the
+/// marks had left out, when the marks passed over the table at the press:
+///
+/// - a sound up at the press, put away before the end: never marked, and
+///   the first the end takes;
+/// - the sounds the end would take first, up when it ends: passed over,
+///   so the end reaches as far past the marks as the table holds of them.
+///
+/// So the marks are the lowest the end could take whatever the table
+/// holds, `ON_TABLE_MAX` past what it would take now, those first.
+#[test]
+fn may_replace_bounds_a_generations_end_whatever_is_on_the_table_by_then() {
+    let mut engine = taught(0x7AB3);
+    let walks = engine.cfg.refine_seeds;
+    let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
+    let children = |e: &Engine| -> HashSet<u64> {
+        e.lineage
+            .iter()
+            .filter(|ev| ev.generation == e.generation)
+            .map(|ev| ev.child_id)
+            .collect()
+    };
+    let at_rest = engine.may_replace();
+    assert_eq!(
+        at_rest.len(),
+        walks + ON_TABLE_MAX,
+        "not one member per walk and the table's reach past them"
+    );
+
+    // Up at the press, put away while it runs: marked, though the end
+    // would pass it over now, and replaced at the end.
+    let pair = [at_rest[0], at_rest[1]];
+    engine.set_on_table(&pair);
+    let marked = engine.may_replace();
+    assert_eq!(
+        set(&marked),
+        set(&at_rest),
+        "the table moved what is marked"
+    );
+    assert_eq!(
+        marked[0], at_rest[2],
+        "not what the end would take now first"
+    );
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB3))
+        .expect("taught");
+    engine.set_on_table(&[at_rest[2], at_rest[3]]);
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    let (retired, born) = (engine.retired().to_vec(), children(&engine));
+    assert!(
+        retired.contains(&pair[0]),
+        "the precondition: the end replaced the sound put away, {retired:?}"
+    );
+    assert!(
+        retired
+            .iter()
+            .all(|id| marked.contains(id) || born.contains(id)),
+        "the end replaced {retired:?}, outside {marked:?}"
+    );
+
+    // Nothing up at the press, and the two it would take first up at the
+    // end: it reaches past them. Two walks, so one child reaches past the
+    // first two marks.
+    engine.cfg.refine_seeds = 2;
+    engine.set_on_table(&[]);
+    let marked = engine.may_replace();
+    assert_eq!(marked.len(), 2 + ON_TABLE_MAX);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB4))
+        .expect("taught");
+    engine.set_on_table(&marked[..2]);
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    let (retired, born) = (engine.retired().to_vec(), children(&engine));
+    assert!(
+        retired.iter().any(|id| !marked[..2].contains(id)),
+        "the precondition: the end reached past the two up, {retired:?}"
+    );
+    assert!(
+        retired
+            .iter()
+            .all(|id| marked.contains(id) || born.contains(id)),
+        "the end replaced {retired:?}, outside {marked:?}"
+    );
 }
 
 /// The comparison that keeps a sound as new does not count as its pick

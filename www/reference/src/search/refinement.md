@@ -119,7 +119,7 @@ pair of a pick still in its undo window (`set_on_table`, at most
 its window closes finds both its sides in the pool. One rule,
 `Engine::spared` (kept, a ⚡ seed in flight, or on the table), is what every
 eviction passes over: the bar a child must beat, the trim at the end, a
-preset's or an import's insert, a ⚡ child's trim, and the lists below. A
+preset's or an import's insert, a ⚡ child's trim, and `retiring()` below. A
 session that holds nothing evicts exactly as it did before the hold existed.
 
 Both the bar a child must beat and the trim at the end are judged under the
@@ -143,10 +143,19 @@ Both are stated by the engine before EVOLVE POOL is pressed.
 - **`may_replace()`** is the members that generation could retire, lowest
   first. Each walk admits at most one child, and the trim takes only as many
   members as the children put the pool over size, lowest first. So with the
-  pool at size, nothing outside its `refine_seeds` lowest members not kept can
-  leave, unless something else changes the pool meanwhile (a save, an edit, a
-  preset) or the pair on the table changes. A patch the app has cut is in the pool and ranks low, so it is on
-  this list too: the engine does not know about cuts.
+  pool at size, the trim would take nothing outside the `refine_seeds` lowest
+  members not kept nor on the table: those come first. But the trim reads the
+  table as it finds it at the end, and the player keeps picking while the
+  generation runs. A sound up at the press is put away long before the end,
+  and up to `ON_TABLE_MAX` of the sounds the trim would take can be up when it
+  ends, each sending it one member further. So the list goes on with the
+  `ON_TABLE_MAX` next lowest with the table put away, and nothing outside the
+  `refine_seeds` + `ON_TABLE_MAX` lowest members not kept can leave, whatever
+  is on the table, unless something else changes the pool meanwhile (a save,
+  an edit, a preset). Natively,
+  `may_replace_bounds_a_generations_end_whatever_is_on_the_table_by_then`. A
+  patch the app has cut is in the pool and ranks low, so it is on this list
+  too: the engine does not know about cuts.
 
 The app is sent both with every pick, beside the ranked numbers
 ([the posterior](../taste/posterior.md#what-the-app-is-sent-after-each-pick)),
@@ -162,15 +171,16 @@ move the lowest. The app says
 *will be replaced* for `retiring()`, not *may be*: it is the lowest members
 not kept, as many as the children put the pool over size, under the posterior
 the generation opened with, so each child admitted adds one member and removes
-none, and the end replaces them whether it is stopped or runs out. Each child
-still to come can add one more.
+none, and the end replaces them whether it is stopped or runs out, but for a
+member saved meanwhile or on the table when it ends, whose place goes to the
+next lowest. Each child still to come can add one more.
 
 While ⚡ walks with no generation open, its child is admitted and the pool
 trimmed at once (`evict_to_size`, the seed protected), lowest first by
-`eviction_order`, which passes over a seed in flight. `may_replace()` ranks
-the same way, so its first `pool + 1 − pool_size` members (one with the pool
-at size) are what the child would replace; the app marks those, and the
-seed.
+`eviction_order`, which passes over a seed in flight. The first part of
+`may_replace()` ranks the same way, the table passed over, so its first
+`pool + 1 − pool_size` members (one with the pool at size) are what the child
+would replace; the app marks those, and the seed.
 
 ## The split is measured
 

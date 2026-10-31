@@ -2503,7 +2503,14 @@ impl Engine {
     /// ([`Engine::set_on_table`]). The one rule [`Engine::insert_candidate`]
     /// and every eviction order apply, beside the caller's own `protect`.
     fn spared(&self, c: &Candidate) -> bool {
-        c.kept() || self.evolving.contains_key(&c.id) || self.on_table.contains(&c.id)
+        self.spared_off_table(c) || self.on_table.contains(&c.id)
+    }
+
+    /// [`Engine::spared`] for a member put away: kept, or the seed of a ⚡
+    /// walk in flight. What a generation's end still passes over whatever
+    /// the table holds by then ([`Engine::may_replace`]).
+    fn spared_off_table(&self, c: &Candidate) -> bool {
+        c.kept() || self.evolving.contains_key(&c.id)
     }
 
     /// Hold `ids` as the sounds on the table, in place of what was held: the
@@ -2511,8 +2518,9 @@ impl Engine {
     /// window. Until a later call leaves one out, no eviction takes it (a
     /// generation's end, a preset, an import, a ⚡ child's trim), so the vote
     /// a pick becomes when its window closes finds both its sides in the
-    /// pool, and the marks pass over it ([`Engine::may_replace`],
-    /// [`Engine::retiring`]). Ids not in the pool are passed over, and so are
+    /// pool, and [`Engine::retiring`] passes over it. [`Engine::may_replace`]
+    /// does not: a sound up when a generation opens is put away long before
+    /// it ends, and can go then. Ids not in the pool are passed over, and so are
     /// repeats; at most [`ON_TABLE_MAX`] are held, the first given. Returns
     /// what is held, in the order given.
     ///
@@ -2616,23 +2624,32 @@ impl Engine {
     /// time.
     fn eviction_order(&self, protect: &HashSet<u64>) -> Vec<(usize, f64)> {
         let judge = self.judge();
-        self.eviction_order_by(protect, |i| mix_utility(judge, &self.pool[i].phi_std))
+        self.eviction_order_by(protect, |i| mix_utility(judge, &self.pool[i].phi_std), true)
     }
 
     /// [`Engine::eviction_order`] with each member's utility given by pool
     /// index rather than taken under [`Engine::judge`]: a generation not yet
     /// opened would rank under the posterior it would open with, the current
-    /// one.
+    /// one. With `table` false, the sounds on the table rank as if put away
+    /// ([`Engine::spared_off_table`]), as a generation's end may find them.
     fn eviction_order_by(
         &self,
         protect: &HashSet<u64>,
         utility: impl Fn(usize) -> f64,
+        table: bool,
     ) -> Vec<(usize, f64)> {
+        let spared = |c: &Candidate| {
+            if table {
+                self.spared(c)
+            } else {
+                self.spared_off_table(c)
+            }
+        };
         let mut rows: Vec<(usize, bool, f64)> = self
             .pool
             .iter()
             .enumerate()
-            .filter(|(_, c)| !self.spared(c) && !protect.contains(&c.id))
+            .filter(|(_, c)| !spared(c) && !protect.contains(&c.id))
             .map(|(i, c)| (i, !c.phi_std.is_empty(), utility(i)))
             .collect();
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
@@ -3000,9 +3017,9 @@ impl Engine {
 
     /// The members a generation opened now could retire, lowest first: no
     /// member outside this list can leave the pool at its end, whatever its
-    /// walks breed, as long as nothing else changes the pool meanwhile (a
-    /// save, an edit, a preset, a ⚡ child) or what is on the table
-    /// ([`Engine::set_on_table`]).
+    /// walks breed and whatever is on the table by then
+    /// ([`Engine::set_on_table`]), as long as nothing else changes the pool
+    /// meanwhile (a save, an edit, a preset, a ⚡ child).
     ///
     /// [`Engine::refine_jobs`] opens with a finish, which retires
     /// [`Engine::retiring`]: those come first. Then each of the generation's
@@ -3010,10 +3027,22 @@ impl Engine {
     /// finish retires only as many members as the children put the pool over
     /// size, lowest first under the posterior it opened with (the current
     /// one). A member with that many evictable members below it is never
-    /// reached, so the rest of the list is the lowest `pool + w − pool_size`
-    /// evictable members (`w` of them when the pool is at size, fewer while
-    /// it fills): not spared ([`Engine::spared`]: saved, kept as new and not
-    /// yet in a pick, the seed of a ⚡ in flight, or on the table).
+    /// reached, so next come the lowest `pool + w − pool_size` evictable
+    /// members (`w` of them when the pool is at size, fewer while it fills):
+    /// not spared ([`Engine::spared`]: saved, kept as new and not yet in a
+    /// pick, the seed of a ⚡ in flight, or on the table), what the end would
+    /// take with the table as it stands, and the first is what an insert
+    /// takes now.
+    ///
+    /// The end passes over the sounds on the table as it finds them, and the
+    /// table moves while the generation runs (the player keeps picking): a
+    /// sound up now can be put away by then, and up to [`ON_TABLE_MAX`] of
+    /// those it would take can be up then, each sending it one member
+    /// further. So the list goes on with the members next up with the table
+    /// put away ([`Engine::spared_off_table`]), up to [`ON_TABLE_MAX`] of
+    /// them. Together they are the lowest `pool + w − pool_size` +
+    /// [`ON_TABLE_MAX`] evictable members with the table put away, whatever
+    /// it holds now: the end can take no member with more of them below it.
     ///
     /// The engine does not know what the app has cut: a cut member is in the
     /// pool, ranks low, and is in this list like any other.
@@ -3044,12 +3073,19 @@ impl Engine {
         if owed == 0 {
             return out;
         }
-        out.extend(
-            self.eviction_order_by(&HashSet::new(), utility)
+        let ids = |table: bool| {
+            self.eviction_order_by(&first, &utility, table)
                 .into_iter()
                 .map(|(i, _)| self.pool[i].id)
-                .filter(|id| !first.contains(id))
-                .take(owed),
+        };
+        // What its end would take with the table as it stands, then as far
+        // past that as the table it finds could send it.
+        out.extend(ids(true).take(owed));
+        let listed: HashSet<u64> = out.iter().copied().collect();
+        out.extend(
+            ids(false)
+                .filter(|id| !listed.contains(id))
+                .take(ON_TABLE_MAX),
         );
         out
     }
