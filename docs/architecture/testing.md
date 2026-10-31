@@ -257,7 +257,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | --- | --- | --- | --- |
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, tells each closed issue's parent its count of sub-issues closed, and ticks each box in another open issue that names an issue that closed, once every issue the box names is closed as completed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`), each leg building the tests (`make test-build`) in a step of its own before it runs them ([The Rust legs](#ci-tiers)); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), on three runners each, two at a time; each budget names the profile beside its figure, and one over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
@@ -508,6 +508,39 @@ eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
 PR's fast lane then waits for runners. At night the *Flake hunt* holds four
 and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
 in all.
+
+**The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
+in one step (`make test-build`, 15 minutes) and runs its target in the next
+(25 minutes), inside a job limit of 45: the two limits, and five minutes for
+the checkout, the toolchain, the cache and nextest. Two steps, because a job
+cut off at its own limit can lose its log (the search floor's leg was
+cancelled at 30 minutes on a PR, #346, and its log was gone), where a step
+that runs out of time ends the job with the log it wrote. A build step that
+timed out says the build was slow; a run step that did says what the tests
+were doing. nextest ends a hung test before the run step does, at ten
+minutes (the `ci` profile) and the search floor at twenty
+(`.config/nextest.toml`), and its report names the test; 25 minutes is only
+the backstop above the longest. With the cache, a leg's build is the
+workspace's own crates, which the cache leaves out: 90 and 110 s in `main`'s
+run of Oct 31, then the search floor in 101 s and the other nine tests in
+125 s. A cold build adds the dependencies, about a quarter of its CPU more
+([the build notes](../notes/rust-build-2026-10/README.md)): from nothing it
+took 4 min 43 s on a shared four-core workstation. No runner has been timed
+cold yet: run the workflow by hand (Actions → Slow suite → Run workflow) with
+*cold* ticked, which skips the Rust cache's restore and its save, and the two
+steps' times are the answer.
+
+The cache is `test`, which `ci.yml`'s *Doctests* job restores too. `main`
+saves it from one leg (*the rest*), only when that leg passed and its key was
+new, and a PR restores `main`'s and saves nothing. A run restores nothing
+when no cache has its key's prefix and Rust-environment hash (the lockfile's
+hash comes last, so a `Cargo.lock` edit still restores the older cache). The
+hash covers the toolchains on the runner, the pinned one and the image's
+own, and the values of `RUSTFLAGS`, `CARGO_INCREMENTAL`, `CARGO_NET_RETRY`
+and `CARGO_TERM_COLOR`: a new runner image with a new Rust, a toolchain bump
+or an edit to one of those starts every run cold, until a run on `main` has
+passed the leg and saved the new key. A run the `scope` job skips as
+superseded saves none. Each leg's run summary says which cache it had.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about 100 s

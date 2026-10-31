@@ -45,7 +45,10 @@ name: Slow suite
 #   since its run covers everything before it. A batch from the merge queue
 #   lands as two or three merges seconds apart; a run whose commit main has
 #   already moved past runs nothing (the `scope` job).
-# - on demand (Actions → Slow suite → Run workflow), in full.
+# - on demand (Actions → Slow suite → Run workflow), in full. Ticking `cold`
+#   starts the Rust legs without the Rust cache (nothing restored, nothing
+#   saved), to read what a cold build and a cold run cost in each leg's two
+#   steps (below).
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners; the quarantined tests' one runner
@@ -71,6 +74,11 @@ on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+    inputs:
+      cold:
+        description: "Start the Rust legs without the Rust cache (restore and save both skipped), to time a cold build and run"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -144,12 +152,34 @@ jobs:
   # and the other nine share one (~2 min of tests; the longest is ~75 s). One
   # leg at a time (`max-parallel: 1`), beside at most three browser runners:
   # four.
+  #
+  # Each leg builds the tests in a step of its own (`make test-build`), then
+  # runs them in another, each with its own limit, so a slow build and a hung
+  # test say different things. A step that runs out of time fails its job with
+  # the log it wrote; a job cut off at its own limit can lose the log (the
+  # leg of #346 was cancelled at 30 minutes, and its log was gone). The
+  # limits move together:
+  #
+  # - Build, 15 minutes. With the cache, a leg compiles the workspace's own
+  #   crates (rust-cache leaves them out) in ~90 to 110 s. Cold, the
+  #   dependencies come too, about a quarter of the CPU more
+  #   (docs/notes/rust-build-2026-10): 4 min 43 s from nothing on a shared
+  #   4-core workstation. A runner has not been timed cold; a run with `cold`
+  #   ticked does.
+  # - Run, 25 minutes. nextest ends a hung test first and names it in its
+  #   report: at ten minutes (the `ci` profile), the search floor at twenty
+  #   (.config/nextest.toml). 25 is only the backstop above the longest.
+  # - The job, 45: the two limits and five minutes for the steps without one
+  #   (checkout, the toolchain, the cache, nextest). While each step stays
+  #   inside its own limit, the job's is not reached.
+  #
+  # (docs/architecture/testing.md § CI tiers, The Rust legs.)
   rust:
     name: Slow Rust (${{ matrix.name }})
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -163,17 +193,57 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      # The test cache, which ci.yml's Doctests job restores too. Saved from
-      # main by one leg (both build the same test binaries): CI's own Rust
-      # jobs on main reuse the merge queue's verdict and seldom run there.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The test cache, which ci.yml's Doctests job restores too: the
+      # dependencies only (the workspace's own crates are left out, so every
+      # leg compiles them). Saved from main by one leg (both build the same
+      # test binaries): CI's own Rust jobs on main reuse the merge queue's
+      # verdict and seldom run there. A PR restores main's and saves nothing.
+      #
+      # A run restores nothing when no cache has the key's prefix and its
+      # Rust-environment hash (its lockfile hash comes last, so a Cargo.lock
+      # edit still restores the older cache). That hash covers the toolchains
+      # on the runner, the pinned one and the image's own (the step's log
+      # lists them under "Environment considered"), and the values of
+      # RUSTFLAGS, CARGO_INCREMENTAL, CARGO_NET_RETRY and CARGO_TERM_COLOR
+      # (ci.yml sets the same four): a new runner image with a new Rust, a
+      # toolchain bump or an edit to one of those starts every run cold, until
+      # a run on main has saved the new key. Main saves only from this one
+      # leg, only when the leg passed (rust-cache's cache-on-failure is off)
+      # and only when the key was new ("Cache up-to-date" otherwise), and a
+      # run the `scope` job skips as superseded saves none. `cold` skips the
+      # step, so a cold run neither reads nor writes the cache.
+      - id: cache
+        if: ${{ !inputs.cold }}
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.target == 'test-slow-rest' }}
+      # On the run's summary, which is kept when the job is cut off and its
+      # log is lost.
+      - name: Say which cache this leg has
+        env:
+          COLD: ${{ inputs.cold }}
+          HIT: ${{ steps.cache.outputs.cache-hit }}
+          LEG: ${{ matrix.name }}
+        run: |
+          if [ "$COLD" = true ]; then
+            note="none: this run was asked to start cold"
+          elif [ "$HIT" = true ]; then
+            note="restored, an exact match of the key"
+          else
+            note="no exact match: an older key's, or none (the cache step's log says which)"
+          fi
+          echo "Rust cache, $LEG: $note"
+          echo "Rust cache, $LEG: $note" >> "$GITHUB_STEP_SUMMARY"
       - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: nextest
-      - run: make ${{ matrix.target }}
+      - name: Build the tests
+        timeout-minutes: 15
+        run: make test-build
+      - name: Run the tests
+        timeout-minutes: 25
+        run: make ${{ matrix.target }}
 
   # The engine, this tier's timings and the image's tag (the Playwright
   # version tests/web/package-lock.json locks), once for the run, as in
