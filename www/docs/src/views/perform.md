@@ -291,7 +291,8 @@ re-centered control keeps working from where it is (see [soft
 takeover](../keyboard.md#soft-takeover)).
 
 A measurement never moves a control you are holding. While your hand is on a
-control or the XY pad, and for a second and a half after you let go, a
+control or the XY pad, or a control plays its sweep ([below](#long-press-to-hear-it)),
+and for a second and a half after you let go or the sweep ends, a
 measurement that lands waits: the control stays where you put it, and
 nothing you hear jumps. Then the measurement takes over. A control that was
 still listening keeps saying so until the measurement is in; then it says
@@ -303,11 +304,16 @@ right after plays at once.
 
 ### Long-press to hear it
 
-A long-press with a mouse plays the control to you. Over about two and a half
-seconds it sweeps to the low end, across to the high end, and back to where it
-was. If no note is held, it plays a C3 for the length of the sweep. On a touch
-screen a long press opens the control's figure instead (below), and its **HEAR
-IT** plays the same sweep.
+A long-press with a mouse plays the control to you, and so does
+<kbd>Enter</kbd> on a control you reached with the keyboard. Over about two
+and a half seconds it sweeps to the low end, across to the high end, and back
+to where it was. If no note is held, it plays a C3 for the length of the
+sweep. On a touch screen a long press opens the control's figure instead
+(below), and its **HEAR IT** plays the same sweep. A measurement that lands
+meanwhile waits until the sweep has ended, as it does for your hand, so it
+never moves the control under the sweep. Pressing the control stops the
+sweep and puts the control back where it was, and turning it stops the sweep
+too. <kbd>Enter</kbd> while it plays starts it over.
 
 This is the quickest way to learn what a control does on this sound, since the
 same name moves different knobs on different patches.

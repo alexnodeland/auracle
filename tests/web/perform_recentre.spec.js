@@ -358,3 +358,117 @@ test("a sound in hand after a reload plays its kept wiring at once", { tag: "@sl
   expect(["shipped", "cached"], "played on its kept wiring").toContain(at.detail.how);
   expect((await page.evaluate(() => window.__said)).filter((t) => /let go|listening to this sound/.test(t)), "it never waited for a hand").toEqual([]);
 });
+
+// A control sweeping by ear is a hand on it (#481, ADR-025): ↵ on a control
+// sweeps it through both ends and back over 2.4 s, and a measurement that
+// lands meanwhile waits for the sweep's end, and the 1.5 s after it, as it
+// waits for a released control. It used to land once 1.5 s had passed since
+// the ↵, mid-sweep, and fold the sweep's offset into the centre: the sweep
+// then returned to its start on top of it, and the sound stayed somewhere
+// nobody had put it (Glass Pad's cutoff at 1.00 where the sweep had left it
+// at 0.65). Glass Pad plays on its shipped wiring, and its re-check is held
+// from main; the control is swept once with nothing landing, which is where
+// a sweep leaves the sound; then swept again, the re-check let through 1.7 s
+// in (past the 1.5 s after the ↵). On the page's clock (`page.clock`,
+// stopped), so the release is mid-sweep however slow the runner. The
+// re-check is seen to land on the control (its dot moves to where the
+// session measures the sound) only once the sweep has ended and 1.5 s more
+// have passed, and then every knob plays what the first sweep left it at. A
+// guess's measurement lands through the same wait (`handsBusy` on a
+// background measurement's reply), and is not booted for here: a sound on a
+// guess is a pool sound, which costs a whole pool.
+
+/** What a measurement landing changes on a control and a sweep does not:
+ *  whether it is a guess, and where its dot says the sound measures. */
+const measuredLook = (control) =>
+  control.evaluate((k) => {
+    const dot = k.querySelector(".pf-k-where");
+    return [k.classList.contains("guess"), dot.getAttribute("cx"), dot.getAttribute("cy"), dot.style.display].join(" ");
+  });
+
+test("a control sweeping by ear through a background re-check ends where it began, and the re-check waits for the sweep's end", { tag: "@slow" }, async ({ page, app }) => {
+  await page.clock.install();
+  await boot(page, app);
+  const since = await app.now();
+  await app.openOnPerform("Glass Pad");
+  await holdReply(app, since, await app.offerBudget({ waits: 1 }));
+  const control = page.locator(`${KNOB}:not(.half-hi)`).first();
+  await app.countLiveWrites();
+  await control.focus();
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  // Swept once, with nothing landing: where the sweep leaves the sound.
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(2_600);
+  await expect(control, "the sweep ended where it began").toHaveAttribute("aria-valuenow", "0.00");
+  const swept = await app.liveValues();
+  expect(Object.keys(swept).length, "the sweep was heard").toBeGreaterThan(0);
+  const unmeasured = await measuredLook(control);
+  // Swept again, and the re-check let through 1.7 s in, past the 1.5 s
+  // after the ↵, with the control far from home.
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(1_700);
+  await expect.poll(async () => Number(await control.getAttribute("aria-valuenow")), { message: "mid-sweep, turned up" }).toBeGreaterThan(0.5);
+  expect(await app.release(), "the re-check was held").toBeGreaterThan(0);
+  expect(await measuredLook(control), "it waits for the sweep").toBe(unmeasured);
+  // The sweep ends 2.4 s in; 1.4 s on, the re-check still waits.
+  await page.clock.runFor(2_100);
+  await expect(control, "the sweep ended where it began").toHaveAttribute("aria-valuenow", "0.00");
+  expect(await measuredLook(control), "it waits out the 1.5 s after the sweep").toBe(unmeasured);
+  // Past them, it lands (on the quarter-second tick), and nothing moved.
+  await page.clock.runFor(1_000);
+  await expect.poll(() => measuredLook(control), { message: "the re-check landed" }).not.toBe(unmeasured);
+  await page.clock.resume();
+  await expect(control, "nothing moved the control").toHaveAttribute("aria-valuenow", "0.00");
+  const heard = await app.liveValues();
+  const moved = Object.entries(swept)
+    .filter(([a, v]) => Math.abs((heard[a] ?? v) - v) > 1e-4)
+    .map(([a, v]) => `${a}: ${v.toFixed(4)} → ${heard[a].toFixed(4)}`);
+  expect(moved, "every knob plays what the first sweep left it at").toEqual([]);
+});
+
+// ↵ on a control is its sweep, not a turn, and the sweep ends where it began
+// whatever comes over it: ↵ again mid-sweep starts it over from the top,
+// still ending where the first began, and a press mid-sweep takes the
+// control back there, for the hand to turn from. A second ↵ used to
+// start a second sweep from wherever the first had the control, which then
+// ended there, turned; a press used to leave the sweep going on under it;
+// and the ↵ was logged as a turn, at the swept value, 450 ms in. Glass Pad
+// on its shipped wiring, every measurement held from main, on the page's
+// clock, stopped.
+test("↵ again mid-sweep starts the sweep over and it ends where it first began, a press takes the control back there, and neither is a turn", { tag: "@slow" }, async ({ page, app }) => {
+  await page.clock.install();
+  await boot(page, app);
+  await app.hold("perform_wired");
+  await app.openOnPerform("Glass Pad");
+  const control = page.locator(`${KNOB}:not(.half-hi)`).first();
+  const value = async () => Number(await control.getAttribute("aria-valuenow"));
+  await expect(control, "at home").toHaveAttribute("aria-valuenow", "0.00");
+  await control.focus();
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(1_700);
+  expect(await value(), "mid-sweep, turned up").toBeGreaterThan(0.5);
+  // ↵ again: the sweep starts over, from where the first began.
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(1_700);
+  expect(await value(), "mid-way through the sweep started over").toBeGreaterThan(0.5);
+  await page.clock.runFor(1_000);
+  await expect(control, "it ended where the first sweep began").toHaveAttribute("aria-valuenow", "0.00");
+  // A press mid-sweep: back where the sweep began, with the clock stopped,
+  // so the sweep could not have got there by itself.
+  await page.keyboard.press("Enter");
+  await page.clock.runFor(1_700);
+  expect(await value(), "mid-sweep, turned up").toBeGreaterThan(0.5);
+  const [x, y] = middle(await control.boundingBox());
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect(control, "the press took it back where the sweep began").toHaveAttribute("aria-valuenow", "0.00");
+  await page.clock.runFor(300); // held for less than the long press's 550 ms
+  await page.mouse.up();
+  await page.mouse.move(10, 10);
+  await page.clock.runFor(2_000);
+  await expect(control, "the sweep did not go on").toHaveAttribute("aria-valuenow", "0.00");
+  await page.clock.resume();
+  const turns = (await app.sent({ type: "log_edit" })).filter((m) => m.kind === "perform_turn");
+  expect(turns, "none of it was logged as a turn").toEqual([]);
+});

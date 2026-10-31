@@ -1558,8 +1558,17 @@ XY pad is held, however still, and for 1.5 s after the last touch or release
 of one (`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule
 beside `createHand`, over `state.controlTouch`). Only a control's hand
 counts: a control, the XY pad, a MIDI pot or a control's arrow keys
-(`touchControl`); a pad or a pad's key is not a hand on the controls, and
-neither is the page's first moment. A wiring read from the cache for the
+(`touchControl`), and a control sweeping by ear (`hearIt`: ↵ on it, a
+mouse's long press, explain's HEAR IT; `k.sweep`), held for the whole sweep
+and touched at its end (#481: a re-check landing mid-sweep folded the swept
+offset into the centre, and the sweep then returned to its start on top of
+it); a pad or a pad's key is not a hand on the controls, and neither is the
+page's first moment. A sweep ends at once on whatever else moves its
+control (`endSweep`): a hand (a press or an arrow key puts it back where it
+began first, a pot or the XY pad sets it where they are), a re-centre (at
+the centre), the panel rebuilt or another sound (back where it began). ↵
+again starts it over, still ending where it first began, a held ↵'s repeats
+do nothing, and a sweep is never logged as a turn. A wiring read from the cache for the
 sound just opened or a control just placed (`wire`'s hit, `measurePanel`'s)
 answers the player (ADR-025), so it waits only while a control is held
 (`handHeld`), not for the 1.5 s after. What waits is kept in

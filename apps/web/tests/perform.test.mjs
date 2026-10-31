@@ -1,9 +1,10 @@
-// Unit tests for perform.js's pure arithmetic: what a knob sounds at, and the
-// bases that keep it there when controls leave the panel.
+// Unit tests for perform.js's pure arithmetic: what a knob sounds at, the
+// bases that keep it there when controls leave the panel, and a control's
+// sweep by ear.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -213,4 +214,22 @@ test("no control reaches a sound only when every one was measured and can't", ()
   // Nothing measured yet, or no panel, says nothing.
   assert.equal(reachesNone(null), false);
   assert.equal(reachesNone([]), false);
+});
+
+test("a sweep by ear goes to both ends and back, and ends where it began", () => {
+  assert.equal(SWEEP_MS, 2400);
+  const both = [-1, 1];
+  // From the centre: down a full turn, up a full turn, home.
+  near(sweptTo(0, 0, both), 0);
+  near(sweptTo(0, 0.25, both), -1);
+  near(sweptTo(0, 0.5, both), 0);
+  near(sweptTo(0, 0.75, both), 1);
+  near(sweptTo(0, 1, both), 0);
+  // From a control already turned, held to its travel, and back to it.
+  near(sweptTo(0.4, 0.25, both), -0.6);
+  near(sweptTo(0.4, 0.75, both), 1);
+  near(sweptTo(0.4, 1, both), 0.4);
+  // A control that turns only up never goes below its centre.
+  near(sweptTo(0, 0.25, [0, 1]), 0);
+  near(sweptTo(0, 0.75, [0, 1]), 1);
 });
