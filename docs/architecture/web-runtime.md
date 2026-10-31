@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-09
+last_updated: 2026-10-31
 related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
@@ -255,6 +255,27 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   (`shippedKeyOf`) as soon as the bank has faces to draw it against, and
   `cmdk.spec.js` holds that none is asked of the engine. A sound runs as Enter on its bank row does
   (`openOnBench`, or `openPreset` with no move), at the level shown.
+- **It is drawn a window at a time** (#513). The key or the letter ranks the
+  whole list and draws the lines that fill it at its tallest (`cmdkLines`,
+  `cmdkFirst`: about twenty at 900 px), and the rest come in idle time
+  from the frame that shows those, eight lines a call
+  (`requestIdleCallback`, a 16 ms timer where there is none; asked for in
+  the letter's own task, a letter typed just after a frame had the rest
+  drawn ahead of its own frame). A line at the list's foot keeps their height
+  (`cmdkRestPx`, with the rows' own heights once measured), so the list's
+  scroll and scrollbar are the whole list's from the first frame; padding
+  would not do, as a flex item cannot shrink past its padding. ↑ from the
+  first row draws the rest and chooses the last, and a wheel, a touch's
+  move, a scroll or a taller window draws the rest at once. Each row says
+  where it stands in the whole list (`aria-posinset`, `aria-setsize`), and
+  a spec that reads every row waits for them all (`listWhole`). The rows
+  are laid out once, in the frame: nothing in the key's or the letter's
+  task asks the layout of them (the first row is scrolled to only when the
+  list was scrolled away from it), and the commands' `when`s, which may ask
+  it whether a control is shown, are asked before the dialog shows (at a
+  letter, once the old rows are out) and only for the level shown. Drawn
+  whole at every letter, the list was over its 100 ms on the reference
+  profile.
 - **The keys** while it is open are its own, taken on the window in the
   capture phase with `stopPropagation`: ↑/↓ choose
   (`aria-activedescendant`), ↵ runs (with nothing found it does nothing,
