@@ -4,7 +4,15 @@
 //   seed, nothing was opened since the press, and nothing sounds. Over notes
 //   held, or a sound opened since, it waits in the bank and the toast says
 //   why, with OPEN IT, which opens it.
-// - A generation's end that replaces a side of the pair on the table leaves
+// - The engine holds the sounds on the table (#452): the pair up and the
+//   pair of a pick still in its undo window (`on_table`). A sound opened
+//   from PRESETS in the window replaces another sound than the one the pool
+//   would have replaced first, a side of the pick, and the pick's vote is
+//   sent and counted when the window closes. It used to be refused ("…was
+//   replaced, so the pick wasn't recorded"), and TAUGHT went back down. The
+//   pick's pair is let go after its vote, and ⌘Z and ↻ say what is up.
+// - A side of the pair on the table that left the pool before the engine
+//   heard the pair was up (a generation ending in that round trip) leaves
 //   the pair standing: that side says it was replaced and goes quiet, and
 //   the next pick says it taught nothing and puts up the next pair.
 //
@@ -12,6 +20,12 @@
 // worker posts it (`app.inject`), with a child from the pool, so the test
 // does not wait out a walk or depend on one breeding. The pair is read off
 // the cards, and the generation's end is posted in the cards' own task.
+// The pick held through a preset load is on a pair the test deals: the
+// table's first deal is stalled (`app.stall`) and answered with the two
+// sounds a load replaces first. A generation's end takes the same sound
+// first and passes the table over the same way (`Engine::spared`; natively,
+// `a_sound_on_the_table_is_not_replaced_until_it_is_put_away`), but it
+// takes minutes and cannot be aimed.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
 
 /** The pool sound on the bench, once one is. */
@@ -32,6 +46,11 @@ async function zapLands(app, seedId, childId) {
 }
 
 const opened = async (app, id, after) => (await app.sent({ type: "edit_begin", id }, { after })).length;
+
+const sorted = (ids) => [...ids].sort((x, y) => x - y);
+/** The sounds main last told the engine are on the table, sorted. */
+const held = async (app) => sorted((await app.sent("on_table")).pop()?.ids ?? []);
+const cards = (page) => page.evaluate(() => ["a", "b"].map((x) => Number(document.querySelector(`#name-${x} .dn-id`).textContent.replace("#", ""))));
 
 test("⚡'s child opens itself only with nothing in the hand, and else says why with OPEN IT", async ({ page, app }) => {
   await app.boot({ random: 20260928, reuseRenders: true });
@@ -79,7 +98,66 @@ test("⚡'s child opens itself only with nothing in the hand, and else says why 
   await expect.poll(() => opened(app, pool[3], t), { message: "OPEN IT opened the child" }).toBe(1);
 });
 
-test("a generation's end that replaces a side of the pair on the table leaves the pair up, and the next pick deals the next", async ({ page, app }) => {
+test("a pick in its undo window is counted though a preset opened in the window would have replaced a side of it", async ({ page, app }) => {
+  await app.stall({ type: "duel", ahead: false });
+  await app.boot();
+  await goLevel(page, "evolve");
+  await app.filled();
+  // The premise: no fit yet, so every sound rates the same, and a preset
+  // load replaces the first sound in pool order it may: the ranked list's
+  // first (its ties keep pool order).
+  const { ranked } = await app.facts();
+  expect(ranked.every((r) => r.mean === 0), "a fit has run").toBe(true);
+  const pair = [ranked[0].id, ranked[1].id];
+  const ask = await app.stalled();
+  await app.inject({ type: "duel", pair, meta: { a: pair[0], b: pair[1], info_gain: 0, random_check: true, method: "random" }, ahead: false, re: ask.rid });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
+  await expect.poll(() => held(app), { message: "the pair up is held" }).toEqual(sorted(pair));
+
+  // A pick, and a preset opened from the bank inside its window.
+  const mark = await app.toastMark();
+  const t = await app.now();
+  await page.locator("#choose-a").click();
+  await bankTab(page, "presets");
+  await page.locator("#bank-list .preset-item").first().click();
+  const loaded = await app.reply("preset_loaded", { after: t });
+  const now = loaded.views.ranked.map((r) => r.id);
+  expect(ranked.filter((r) => !now.includes(r.id)), "the preset replaced no sound").toHaveLength(1);
+  expect(pair.filter((id) => !now.includes(id)), "the preset replaced a side of the pick").toEqual([]);
+
+  // The window closes: the vote is sent once, recorded and counted.
+  await app.engine((timeout) => expect.poll(async () => (await app.sent("record_duel", { after: t })).length, { timeout }).toBe(1), { ms: 30_000 });
+  const [vote] = await app.sent("record_duel", { after: t });
+  expect(sorted([vote.a, vote.b])).toEqual(sorted(pair));
+  const [load] = await app.sent("load_preset", { after: t });
+  expect(load._n, "the preset was opened after the window closed").toBeLessThan(vote._n);
+  const answer = await app.replyTo(vote);
+  expect(answer.recorded, "the engine refused the pick").toBe(true);
+  await expect(page.locator("#duel-count")).toHaveText("1");
+  expect((await app.toasts(mark)).filter((x) => /recorded/.test(x)), "a toast said the pick went nowhere").toEqual([]);
+  // Held until its vote, and let go after it: with no pick held, what the
+  // engine holds is the pair up (which may share a sound with the pick's).
+  const told = await app.sent("on_table", { after: t });
+  expect(told.filter((m) => m._n < vote._n).every((m) => pair.every((id) => m.ids.includes(id))), "let go before its vote").toBe(true);
+  await expect.poll(async () => (await app.sent("on_table")).filter((m) => m._n > vote._n).length, { message: "never let go" }).toBeGreaterThan(0);
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
+  await expect.poll(async () => (await held(app)).join(), { message: "the pair up, alone" }).toBe(sorted(await cards(page)).join());
+
+  // A pick taken back holds its pair again as the pair up; ↻ puts it away,
+  // and what is held is the pair that goes up in its place.
+  const next = await cards(page);
+  await page.locator("#choose-a").click();
+  await expect.poll(async () => (await held(app)).filter((id) => next.includes(id)), { message: "the pick's pair held in its window" }).toEqual(sorted(next));
+  await page.keyboard.press("Control+z");
+  await expect.poll(() => cards(page)).toEqual(next);
+  await expect.poll(() => held(app), { message: "⌘Z: the pick's pair, up again" }).toEqual(sorted(next));
+  await page.locator("#skip-duel").click();
+  await app.engine((timeout) => expect.poll(() => cards(page), { timeout }).not.toEqual(next), { ms: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
+  await expect.poll(async () => (await held(app)).join(), { message: "↻: the pair up in its place, alone" }).toBe(sorted(await cards(page)).join());
+});
+
+test("a side of the pair on the table that left the pool before the engine held it leaves the pair up, and the next pick deals the next", async ({ page, app }) => {
   await app.boot({ random: 20260928 });
   await goLevel(page, "evolve");
   await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 60_000 });
