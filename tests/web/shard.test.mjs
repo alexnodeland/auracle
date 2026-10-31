@@ -156,16 +156,18 @@ test("a test with no time in its project weighs its time in another, or its plai
 /** A result of a test in `project` that recorded these annotations, ended
  *  `status`, with these errors' messages. */
 const result = (status, annotations, errors = []) => ({ status, duration: 1000, annotations, errors: errors.map((message) => ({ message })) });
-const budgetSpec = (title, line, project, r) => ({ title, file: "b.spec.js", line, tags: [], tests: [{ projectName: project, results: [r] }] });
+const budgetSpec = (title, line, project, r, expectedStatus = "passed") => ({ title, file: "b.spec.js", line, tags: [], tests: [{ projectName: project, expectedStatus, results: [r] }] });
 const RUNNER = { type: "runner", description: "4 × AMD EPYC 7763 64-Core Processor" };
 
 /** `node shard.mjs budgets [--failures] --out <file> <report>`: what it
- *  printed, and what it wrote. */
-function budgets(rep, flags = []) {
+ *  printed, and what it wrote. Outside a run of Actions, unless `env` says
+ *  otherwise (this suite runs inside one in CI). */
+function budgets(rep, flags = [], env = {}) {
   const dir = mkdtempSync(join(tmpdir(), "shard-"));
   writeFileSync(join(dir, "merged.json"), JSON.stringify(rep));
   const out = join(dir, "over.md");
-  const printed = execFileSync(process.execPath, [join(HERE, "shard.mjs"), "budgets", ...flags, "--out", out, join(dir, "merged.json")], { encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: "" } });
+  const outside = { GITHUB_STEP_SUMMARY: "", GITHUB_SERVER_URL: "", GITHUB_REPOSITORY: "", GITHUB_SHA: "" };
+  const printed = execFileSync(process.execPath, [join(HERE, "shard.mjs"), "budgets", ...flags, "--out", out, join(dir, "merged.json")], { encoding: "utf8", env: { ...process.env, ...outside, ...env } });
   return { printed, written: readFileSync(out, "utf8") };
 }
 
@@ -183,9 +185,12 @@ test("each budget over its limit is a row: its name, figure and limit, the brows
   const { written } = budgets(rep);
   const rows = written.split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Budget") && !l.startsWith("| ---"));
   assert.deepEqual(rows, [
-    "| a frame (median) \\| loop | 5 ms | 2 ms | chromium | — | — | `b.spec.js:20` |",
-    "| pick 12 → the next pair on the table | 3404 ms | 100 ms | firefox | air: engine and farm ×8.21, page ×1 | 4 × AMD EPYC 7763 64-Core Processor | `b.spec.js:10` |",
+    "| a frame (median) \\| loop | 5 ms | 2 ms | chromium | — | — | a frame (`b.spec.js:20`) |",
+    "| pick 12 → the next pair on the table | 3404 ms | 100 ms | firefox | air: engine and farm ×8.21, page ×1 | 4 × AMD EPYC 7763 64-Core Processor | a pick (`b.spec.js:10`) |",
   ]);
+  // In a run of Actions, the place links to the test's line at the run's commit.
+  const run = { GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "o/r", GITHUB_SHA: "abc123" };
+  assert.match(budgets(rep, [], run).written, /\| a pick \(\[`b\.spec\.js:10`\]\(https:\/\/github\.com\/o\/r\/blob\/abc123\/tests\/web\/b\.spec\.js#L10\)\) \|$/m);
   assert.match(written, /^2 over their limit: 1 in chromium, 1 in firefox\./m);
   // A test that failed on its budgets alone is not a failure of another kind.
   assert.doesNotMatch(budgets(rep, ["--failures"]).written, /other than a budget/);
@@ -207,6 +212,19 @@ test("--failures lists each test that failed on something other than a budget, o
   assert.equal(printed.trim(), written.trim());
   // Without the flag, as the gate's report asks, only the budgets.
   assert.doesNotMatch(budgets(rep).written, /other than a budget/);
+});
+
+test("--failures judges a run against what its test expects: a test.fail() that fails is no failure, and one that passes is", () => {
+  const rep = report([
+    budgetSpec("judged", 70, "firefox", result("failed", [RUNNER], ["Error: budget: over", "Error: expect(received).toBe(expected)"]), "failed"),
+    budgetSpec("not judged", 80, "chromium", result("passed", [RUNNER]), "failed"),
+    budgetSpec("stalls", 90, "chromium", result("timedOut", [], ["Test timeout of 1000ms exceeded."]), "failed"),
+  ]);
+  const { written } = budgets(rep, ["--failures"]);
+  assert.match(written, /#### Failed on something other than a budget \(2\)/);
+  assert.match(written, /^- `b\.spec\.js:80` in chromium on .*: not judged: passed, where it is marked to end failed \(test\.fail\)$/m);
+  assert.match(written, /^- `b\.spec\.js:90` in chromium: stalls: Test timeout of 1000ms exceeded\.$/m);
+  assert.doesNotMatch(written, /b\.spec\.js:70/);
 });
 
 test("with none over, the file says so; with too many for a comment, it is cut to whole rows and says how many went", () => {

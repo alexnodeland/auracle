@@ -34,10 +34,13 @@
 //       the speed budgets (ADR-022, fixtures.js `budget`) the report's runs
 //       recorded over their limit, as a table (the budget, its figure and its
 //       limit, the browser, the rates its boot ran at on the profile, the CPU
-//       its test ran on, and the test), printed and added to the run's
+//       its test ran on, and the test by its titles and its line, linked at
+//       the run's commit in Actions), printed and added to the run's
 //       summary; `--failures` adds the tests that failed on something other
-//       than a budget, or were interrupted; `--out` writes the same to a file
-//       too, for an issue's comment, cut to fit one
+//       than a budget, or were interrupted, judged as Playwright judges them
+//       (a `test.fail()` that fails is no failure, one that passes is);
+//       `--out` writes the same to a file too, for an issue's comment, cut
+//       to fit one
 //
 // A test is weighed by its file and titles, so it keeps its time when lines
 // above it move; a test with no time yet (new, renamed, or no timings file at
@@ -405,8 +408,14 @@ function budgetsIn(report) {
           }
           const errors = (r.errors && r.errors.length ? r.errors : r.error ? [r.error] : []).map((e) => firstLine(e.message || e.value));
           const other = errors.filter((e) => !/^(Error: )?budget: /.test(e));
+          // Judged against what the test expects, as Playwright judges it:
+          // a `test.fail()` that fails is as expected, and one that passes
+          // is a failure.
+          const expected = t.expectedStatus || "passed";
           if (r.status === "interrupted") failures.push({ ...at, why: "interrupted: its runner reached its cut, and the tests after it there did not run" });
-          else if ((r.status === "failed" || r.status === "timedOut") && (other.length || !errors.length)) failures.push({ ...at, why: other[0] || r.status });
+          else if (r.status === "skipped" || r.status === expected) continue;
+          else if (r.status === "passed") failures.push({ ...at, why: `passed, where it is marked to end ${expected} (test.fail)` });
+          else if (other.length || !errors.length) failures.push({ ...at, why: other[0] || r.status });
         }
       }
     }
@@ -420,9 +429,19 @@ function budgetsIn(report) {
 /** A table cell: no pipe or line break of its own. */
 const cell = (s) => (s == null || s === "" ? "—" : String(s).replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " "));
 
+/** A test's place as markdown: `file:line`, linked to that line at the
+ *  run's commit where the run says which (GITHUB_SERVER_URL,
+ *  GITHUB_REPOSITORY and GITHUB_SHA, which Actions sets in every step). */
+function placeOf(file, line, env = process.env) {
+  const at = `\`${file}:${line}\``;
+  const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo, GITHUB_SHA: sha } = env;
+  return server && repo && sha ? `[${at}](${server}/${repo}/blob/${sha}/tests/web/${file}#L${line})` : at;
+}
+
 /** The budgets over their limit and, asked, the other failures, as
  *  markdown: { lines (each a line of the text), rows (the index of each
- *  line that is one budget or failure, which a cut may drop) }. */
+ *  line that is one budget or failure, which a cut may drop) }. Each names
+ *  its test by its titles and its place. */
 function budgetsMarkdown({ over, failures }, withFailures) {
   const lines = ["### Speed budgets over their limit (ADR-022)", ""];
   const rows = [];
@@ -435,7 +454,7 @@ function budgetsMarkdown({ over, failures }, withFailures) {
     for (const o of over) {
       rows.push(lines.length);
       const ms = (x) => (x == null ? "—" : `${cell(x)} ms`);
-      lines.push(`| ${cell(o.name)} | ${ms(o.figure)} | ${ms(o.limit)} | ${cell(o.browser)} | ${o.rates ? cell(`${o.profile}: ${o.rates}`) : "—"} | ${cell(o.runner)} | \`${o.file}:${o.line}\` |`);
+      lines.push(`| ${cell(o.name)} | ${ms(o.figure)} | ${ms(o.limit)} | ${cell(o.browser)} | ${o.rates ? cell(`${o.profile}: ${o.rates}`) : "—"} | ${cell(o.runner)} | ${cell(o.title)} (${placeOf(o.file, o.line)}) |`);
     }
   } else {
     lines.push("No budget was over its limit.");
@@ -444,7 +463,7 @@ function budgetsMarkdown({ over, failures }, withFailures) {
     lines.push("", `#### Failed on something other than a budget (${failures.length})`, "");
     for (const f of failures) {
       rows.push(lines.length);
-      lines.push(`- \`${f.file}:${f.line}\` in ${f.browser || "no project"}${f.runner ? ` on ${f.runner}` : ""}: ${f.title}: ${f.why}`);
+      lines.push(`- ${placeOf(f.file, f.line)} in ${f.browser || "no project"}${f.runner ? ` on ${f.runner}` : ""}: ${f.title}: ${f.why}`);
     }
   }
   return { lines, rows };
