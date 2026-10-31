@@ -702,8 +702,8 @@ no refit), so the model's ratings of the pool move with every pick. The
 worker says so with a `ratings` field (`engineRatings`, from
 `WasmEngine::belief`): every pool member's posterior mean, std and lens in
 ranked order, the `seeds` EVOLVE POOL would breed from if pressed now, and
-what that generation `may_replace`. No new message and no new lane: it rides
-on replies that already exist. (`ratings`, not `belief`, on the web side:
+what that generation `may_replace`. No message of its own and no new lane: it
+rides on replies sent for their own reasons. (`ratings`, not `belief`, on the web side:
 `belief` in `main.js` is the bench's guess.)
 
 - **On a pick's reply:** the `status` that answers `record_duel`,
