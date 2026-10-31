@@ -28,8 +28,8 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches), "a coarse pointer").toBe(true);
   await at(page, "perform");
   // A preset's ▶, at rest, hears it without opening it. (First, while
-  // nothing sounds: a ▶ pressed while another phrase plays stops that one,
-  // and the row's ▶ below is that one.)
+  // nothing sounds: a ▶ pressed while another phrase plays stops it, and the
+  // row's ▶ below may be pressed while the preset's still sounds.)
   await bankTab(page, "presets");
   const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
   await expect(preset).toBeVisible();
@@ -41,8 +41,9 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   // It joins the pool (the bank redraws for it), and its phrase sounds: its
   // ▶ is lit. Joining says only that the load came back; the render it then
   // waits on is still on its way, and a ▶ tapped in that gap is a different
-  // case (the latest ▶ wins, the spec below). So the pool is acted on once
-  // the preset is heard.
+  // case (the latest ▶ wins: the specs below, one tapping while the load is
+  // held, one while the render is). So the pool is acted on once the preset
+  // is heard.
   const presetRow = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
   await app.engine((timeout) => expect(presetRow).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
   await app.engine((timeout) => expect(presetRow.locator(".bi-hear")).toHaveClass(/\bplaying\b/, { timeout }), { ms: 60_000 });
@@ -107,6 +108,48 @@ test("a pool row's ▶ tapped while a preset's ▶ waits for its sound is the on
   await app.releaseRequests();
   await app.replyTo((await app.sent({ type: "load_preset", preview: true }))[0]);
   await app.answered({ types: ["render"] });
+  await app.quiet();
+  expect(await phrases(), "a phrase started after the row's: the preset's, over it").toBe(before + 1);
+});
+
+// The same, a step later (#421's own gap): the preset's load has come back
+// (it joins the pool) and its render is on its way when the row's ▶ is
+// tapped. The render is held only until the row's tap, well inside the
+// render's wait (RENDER_WAIT_MS, 12 s), so the preset's wait is still
+// standing when the row takes it back.
+test("a pool row's ▶ tapped while a preset's ▶ waits for its render is the one heard", async ({ page, app }) => {
+  await page.addInitScript(() => {
+    window.__phrases = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...a) {
+      window.__phrases++;
+      return start.apply(this, a);
+    };
+  });
+  const phrases = () => page.evaluate(() => window.__phrases);
+  await boot(page, app);
+  await bankTab(page, "presets");
+  const preset = page.locator("#bank-list .preset-item:not(.in-bank)").first();
+  const index = Number(await preset.getAttribute("data-index"));
+  const presetRow = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+  const renders = await app.sentCount("render");
+  await app.holdRequests("render");
+  await preset.locator(".bi-hear").tap();
+  // The load comes back (the preset joins the pool) and its render is asked
+  // for, and held.
+  await app.engine((timeout) => expect(presetRow).toHaveClass(/\bin-bank\b/, { timeout }), { ms: 60_000 });
+  await expect.poll(() => app.sentCount("render")).toBeGreaterThan(renders);
+  await bankTab(page, "pool");
+  const id = await page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2).getAttribute("data-id");
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  await toRow(row);
+  const before = await phrases();
+  await row.locator(".bi-hear").tap();
+  await expect(row.locator(".bi-hear")).toHaveClass(/\b(playing|pending)\b/);
+  // Now the preset's render, and any the row asked for, are answered.
+  await app.releaseRequests();
+  await app.answered({ types: ["render"] });
+  await app.engine((timeout) => expect.poll(phrases, { timeout, message: "the row's phrase starts" }).toBeGreaterThan(before), { ms: 30_000 });
   await app.quiet();
   expect(await phrases(), "a phrase started after the row's: the preset's, over it").toBe(before + 1);
 });
