@@ -85,7 +85,7 @@ performance core's.
 
 ## In short
 
-**Where it stands (2026-10-15).** The first two of
+**Where it stands (2026-10-31).** The first two of
 [what was left](#what-is-left-ranked), and the third's block walk, are built
 ([Built](#built)): quiver-dsp
 0.4.1's ladder (L2 and L0) and shorter walk, with `norm_sqr().sqrt()` in φ's
@@ -95,11 +95,13 @@ walk runs its model once a step (#389), and a refit deals its draws without
 rebuilding the program (#391) and recomputes only what its site reaches
 (#399). The third's other candidates, ports as slices and enum dispatch, are
 not built. L1, the ladder's one fixed-point pass, was carried by quiver-dsp
-0.5.0, which Auracle never took, and 0.5.1 reverts it; whether to take it is
-#403's to decide. `simd128` (-2.2%, within the noise) and reusing the
-analysis's FFT buffers (under 1%) are declined: neither is worth its cost
-(#298). A lower-rate phrase stays a decision about φ, not built. The bullets below are the profile
-as of 2026-10-06, before any of that.
+0.5.0, which Auracle never took, and 0.5.1 reverts it; the maintainer closed
+it on 2026-10-31 as not worth its change to the sound (#403,
+[the ladder](#l1-is-closed-2026-10-31)). `simd128` (-2.2%, within the noise)
+and reusing the analysis's FFT buffers (under 1%) are declined: neither is
+worth its cost (#298). A lower-rate phrase stays a decision about φ, not
+built. The bullets below are the profile as of 2026-10-06, before any of
+that.
 
 - **A render is its DSP.** Natively 94% of the farm's job is ticking the patch
   through the phrase; φ's analysis is 3%, loudness 1%, the face 0.8%, vetting
@@ -192,8 +194,9 @@ alternated; the load each run saw is in its file), [`blocks/`](blocks/):
   to 3.6), 491 to 162 natively; a preset's four voices a median 0.38 of their
   cost (`live_cost.mjs --sweep-only`), and on a CPU 4.5 times slower A and B
   together over a whole quantum on 1 or 2 presets of 62, against 40 to 44.
-- What 0.5.0's L1 did, kept for the record: φ moved on 11 of 62 presets, at
-  most 0.096 of a spread (`phi-moves.txt`), one more prior draw quarantined as
+- What 0.5.0's L1 did, kept for the record (it is closed,
+  [below](#l1-is-closed-2026-10-31)): φ moved on 11 of 62 presets, at most
+  0.096 of a spread (`phi-moves.txt`), one more prior draw quarantined as
   silent (`revalidate-diff.txt`), and the climbs (`climb-before.txt`,
   `climb-after.txt`).
 
@@ -478,6 +481,66 @@ per-kind rates and φ's ranges move in their last printed digit (the filter's
 quarantine rate 5.7% to 5.9%). L1 changes what the gate lets through, which is
 a sound decision; L2 does not, at the precision the tables print.
 
+### L1 is closed (2026-10-31)
+
+The maintainer closed #403 on 2026-10-31: L1 is not worth its change to the
+sound. Nothing on main takes it (quiver-dsp 0.5.1 reverted it). #403's "Done
+when" asked for `search_health --climb 16` on both arms, on a quiet machine,
+before deciding; one was started and never finished (below), and the decision
+rests on the 8-seed climb. Two reasons.
+
+**The climb that exists read lower.** `search_health --climb 8`, 2026-10-09,
+the harness's seeds `0xE05 + i·0x101`, each seed's final mean gain over six
+generations ([`blocks/`](blocks/)). The first arm is
+`9c81dca` (quiver-dsp 0.4.1, so main's sound,
+[`climb-before.txt`](blocks/climb-before.txt)); the second is `31d7783`, a
+scratch commit that is not on main (quiver-dsp 0.5.0: the block walk and L1,
+[`climb-after.txt`](blocks/climb-after.txt)).
+
+| Seed | 0.4.1 | 0.5.0 (L1) | Difference |
+| --- | ---: | ---: | ---: |
+| e05 | +1.439 | +0.079 | −1.360 |
+| f06 | +3.545 | +1.815 | −1.730 |
+| 1007 | +2.416 | +2.396 | −0.020 |
+| 1108 | +1.254 | +0.350 | −0.904 |
+| 1209 | +0.707 | +0.261 | −0.446 |
+| 130a | +1.375 | +2.491 | +1.116 |
+| 140b | +3.645 | +3.652 | +0.007 |
+| 150c | +3.362 | +2.573 | −0.789 |
+| **Mean ± se** | **+2.218 ± 0.416** | **+1.702 ± 0.467** | **−0.516 ± 0.316** |
+
+Both arms climbed on 8 of 8, and six seeds of eight were lower: the paired
+difference is about 1.6 standard errors, suggestive and not conclusive. The
+climb is chaotic, so a change in the last digit can send a seed down another
+path. A 16-seed rerun was started and stopped, because the machine was shared
+(a load of about 35 on 4 cores). At 16 seeds and the same spread the paired
+standard error would be about 0.22, so only a true drop of about 0.45 would
+show at two standard errors.
+
+**The block walk made ladders cheap enough.** The live sweep (62 presets, four
+voices held, CPU ms per 2.667 ms quantum on the 4-core Xeon VM, the least of 2,
+run twice,
+[`blocks/live-sweep-after-1.txt`](blocks/live-sweep-after-1.txt) and
+[`-2`](blocks/live-sweep-after-2.txt)) read the heaviest preset, Loom
+(`saw·mix·ladr·rvb`), at 0.368 and 0.324 ms, 14% and 12% of a quantum. Before
+the block walk it read 0.744 and 0.790 ms. Those runs were on `31d7783`, which
+still carried L1, so they include its cut, which was a further 15 to 20% on
+a ladder preset ([what is left](#what-is-left-ranked), row 4). Without it Loom
+would cost about 0.38 to 0.46 ms (14% to 17% of a quantum). That is an
+estimate, not a measurement: the sweep was not repeated on 0.5.1. On a CPU 4.5
+times slower the same runs read Loom at 62% and 55% of a quantum, so about 65%
+to 78% without L1. With L1 in the build no preset of 62 overran a quantum with
+four voices there; with a B slot rendered too, one and two did.
+
+**To reopen it** needs the 16-seed climb on both arms, on a quiet machine, with
+the threshold for adopting chosen before the run. The first arm is main; the
+second is main with `quiver-dsp` pinned to `=0.5.0`, whose difference from
+0.5.1 is the ladder alone. Then a quiver change re-landing L1 and an Auracle
+adoption that owes rule 2: `make revalidate` on both sides, `make
+perform-wirings` and `make preset-faces`. The diff
+([`quiver/ladder-one-pass.diff`](quiver/ladder-one-pass.diff)), φ's moves, the
+revalidate diff and both climbs stay here as the record.
+
 ## quiver
 
 What else is quiver's to change, measured the same way:
@@ -501,14 +564,14 @@ What else is quiver's to change, measured the same way:
 ## What is left, ranked
 
 Ranked as of 2026-10-06; the last column says where each stands on
-2026-10-15.
+2026-10-31.
 
 | | Change | Where | φ | Gain, measured or estimated | Now |
 | --- | --- | --- | --- | --- | --- |
 | 1 | The ladder's Padé `tanh` and no dead saturation (L2 and L0) | quiver | moves by at most 2e-10 of a spread | A ladder voice -35%, natively and in wasm; ladder presets' renders -30%; the set -6% | Built: quiver-dsp 0.4.1 (#393) |
 | 2 | `norm_sqr().sqrt()` for `norm()` in φ's spectral frames ([diff](analysis-norm-sqr.diff)) | `auracle-features/src/audio.rs` | moves by at most 1.1e-14 of a spread, on 43 presets | The set -9.2% in wasm ([run](ab-wasm-norm-sqr.txt)); natively the same (+0.2%) | Built, with 1 and 0.4.1's shorter walk (#393): together a wasm render -39% |
 | 3 | The walk's shape: ports as slices, blocks where there is no feedback, enum dispatch | quiver | the same where the arithmetic is | Up to the walk's 41 to 55% of every render and every live voice; not prototyped | 0.4.1 already trimmed the walk (#393). Blocks built: quiver-dsp 0.5.1's block walk (#406), a render about a third cheaper again, bit for bit; slices and enum dispatch not built |
-| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets | quiver-dsp 0.5.0 carried it and Auracle never took it; 0.5.1 reverts it after an 8-seed climb fell; #403 decides |
+| 4 | One fixed-point pass in the ladder (L1) | quiver | 0.1 of a spread on one preset; one more prior draw of 1,200 quarantined as silent | A further -15 to -20% on ladder presets | quiver-dsp 0.5.0 carried it and Auracle never took it; 0.5.1 reverts it after an 8-seed climb fell; closed 2026-10-31 as not worth its change to the sound (#403) |
 | 5 | `simd128` | the build | the same | -2.2% in wasm, within the noise; sets a browser floor | Declined (#298) |
 | 6 | Reusing the analysis's FFT buffers | `auracle-features` | the same | Under 1% | Declined (#298) |
 | 7 | A shorter or lower-rate audition phrase for measuring | `auracle-features` | moves φ everywhere | In proportion to the samples (a render is its ticks): a phrase at 22.05 kHz would be about half; a decision on what the model can hear | Not built: a decision about φ, not about speed |
