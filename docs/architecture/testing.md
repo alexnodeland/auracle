@@ -282,7 +282,8 @@ scripts/ops/rows_resolve.py keeps both. -->
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
   are the ones `tests/web/changed.mjs` picks: a changed spec, the specs that
-  require a changed helper, the specs named for a changed app module, one
+  require a changed helper (or data a helper requires, such as the reference
+  profile's `profiles.json`), the specs named for a changed app module, one
   runner per file up to four, dealt by time. A change that reaches every
   level (`main.js`, `worker.js`, the engine) picks none, and gets the smoke
   only (with Worker protocol, which is the fast lane's real check of
