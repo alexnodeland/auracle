@@ -45,8 +45,15 @@ const livePeakDb = (page) =>
   });
 
 /** Open PERFORM on the patch on the bench and wait until its controls are
- *  wired — the state in which PERFORM holds its own copy of every knob. Its
- *  measurement is the engine's: an engine wait. */
+ *  wired on its own measurement — the state in which PERFORM holds its own
+ *  copy of every knob. A preset plays at once on its shipped wiring ("N of 6
+ *  controls reach this patch · re-checking") and is measured again in the
+ *  background. That measurement can turn different knobs than the shipped
+ *  one (it is against the session's model, so it varies with the seed), and
+ *  then it re-centres the controls, folding a turn into the base. Landed
+ *  after a hand, it took Bright's turn away from the ghost (#441). So the
+ *  wait is for every measurement asked to be answered and landed, before any
+ *  hand: engine waits. */
 async function wirePerform(app, name) {
   const { page } = app;
   await goLevel(page, "perform");
@@ -56,6 +63,8 @@ async function wirePerform(app, name) {
     null,
     { timeout },
   ), { ms: 90_000 });
+  await app.answered({ types: ["perform_wire"] });
+  await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText(/re-checking|listening/, { timeout }), { ms: 30_000 });
 }
 
 /** A rack knob's centre on screen, and what it says. */
@@ -163,7 +172,10 @@ test("moving a PERFORM control after a PATCH edit plays from the new base", asyn
   expect(edited).toBeGreaterThan(before.value + 0.3);
 
   // Bright reaches the ladder's cutoff on First Bass (perform_circuit.spec).
+  // No measurement is out to re-centre the controls after the turn: a PATCH
+  // knob turn asks for none (only a Keep or a glide's end does).
   await goLevel(page, "perform");
+  expect(await app.unanswered({ types: ["perform_wire"] })).toHaveLength(0);
   const box = await page.locator('.pf-knob[data-i="0"]').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
