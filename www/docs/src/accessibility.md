@@ -189,9 +189,9 @@ button again puts it away.
 
 On a phone held upright:
 
-- The levels are the bar along the bottom, each stop named under its icon,
-  from the most zoomed in outward: PERFORM, PATCH, TASTE, LEARNING, then
-  EVOLVE beside them. A tap goes there.
+- The levels are the bar along the bottom, each stop named under its icon:
+  PERFORM (the sound under your hands) first, then PATCH, TASTE, LEARNING,
+  then EVOLVE beside them. A tap goes there.
 - **KEYS** at the bar's end brings the keys up over it: the octave, the
   volume, **REC** (its dot) and **KEYS ⋯** on one row, MIDI a row inside
   **KEYS ⋯**, and one octave across the screen under them, each key a finger wide (**span** in **KEYS ⋯** shows
@@ -208,8 +208,8 @@ On a phone held upright:
   row of tabs under its head shows one part at a time: PERFORM's
   **controls** (with the pads) or **under the hood**, and LEARNING's **where
   liking rises**, **what it weighs** or **its forecasts**. A list scrolls,
-  as a phone's own lists do: the bank's, the catalog's, and the rows under
-  the hood. On a smaller phone, or with larger text, a level that cannot
+  as a phone's own lists do: the bank's, the catalog's, the rows under the
+  hood, and what LEARNING weighs. On a smaller phone, or with larger text, a level that cannot
   fit scrolls rather than cutting anything off. Nothing scrolls sideways.
 - In the levels, the bank and the keys, every button, tab and field is at
   least 44 px each way, a finger's size

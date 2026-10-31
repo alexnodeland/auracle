@@ -7928,8 +7928,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   }
   .bank-head { padding-top: 0; }
 
-  /* The cross is the bar along the bottom: the four levels from the most
-     zoomed in outward (PERFORM, PATCH, TASTE, LEARNING), then EVOLVE
+  /* The cross is the bar along the bottom: PERFORM (the sound under your
+     hands) first, then PATCH, TASTE, LEARNING, then EVOLVE
      beside them, then KEYS. The level you're at is lit, with a line
      along its top edge. */
   .rail {
@@ -8744,4 +8744,14 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* Words in the foot wrap as two lines of a length, never one alone. */
   .ev-foot .duel-rule { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; }
   .ev-lineage-btn { text-wrap: balance; }
+}
+@media (pointer: coarse) {
+  /* Every other fader a finger tall keeps its 4 px track through its
+     middle, not a pill its whole height. */
+  input[type="range"]:not(#vol) { background: linear-gradient(90deg, var(--phos-a-deep), var(--hairline)) center / 100% 4px no-repeat; border-radius: 0; }
+}
+@media (max-width: 700px) and (min-height: 501px) {
+  /* MIDI's panel, opened from its row in KEYS ⋯, stands over the screen
+     under the menu bar, whole, rather than off its top edge. */
+  .keys-pop .midi-panel { position: fixed; top: calc(var(--menubar-h) + var(--s2)); left: var(--s2); right: var(--s2); bottom: auto; width: auto; max-height: 60dvh; overflow-y: auto; }
 }

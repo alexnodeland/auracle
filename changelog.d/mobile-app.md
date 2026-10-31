@@ -3,7 +3,7 @@
 - **Nothing scrolls on a phone.** Each level is one screen with the keys up
   or down: no level scrolls under your finger, and a swipe up on an EVOLVE
   card always picks it. Only a list scrolls, as a phone's own lists do: the
-  bank's, the catalog's, and the rows under the hood.
+  bank's, the catalog's, the rows under the hood, and what LEARNING weighs.
 - **PERFORM and LEARNING show one part at a time on a phone.** Two tabs on
   PERFORM, **controls** and **under the hood**, and three on LEARNING,
   **where liking rises**, **what it weighs** and **its forecasts**, each

@@ -1,6 +1,6 @@
-// The bar along the bottom of a phone held upright (#134) reads from the
-// most zoomed-in view outward: PERFORM, PATCH, TASTE, LEARNING, then EVOLVE
-// beside them, then KEYS. A desktop's cross is not this bar and keeps its
+// The bar along the bottom of a phone held upright (#134) puts PERFORM, the
+// sound under your hands, first: PERFORM, PATCH, TASTE, LEARNING, then
+// EVOLVE beside them, then KEYS. A desktop's cross is not this bar and keeps its
 // own order (its stops' order in the page, out to in from the top).
 //
 // What this claims: on a 390 × 844 phone the stops' left edges run in that

@@ -83,8 +83,8 @@ for (const [width, height] of [[390, 844], [360, 640]]) {
       const box = await rail.boundingBox();
       expect(box.width, "the bar runs the screen's width").toBe(width);
       expect(box.y + box.height, "the bar sits on the screen's bottom edge").toBe(height);
-      // Left to right: the levels from the most zoomed in outward, then
-      // EVOLVE beside them, then KEYS.
+      // Left to right: PERFORM, PATCH, TASTE, LEARNING, then EVOLVE beside
+      // them, then KEYS.
       const order = await page.evaluate(() =>
         [...document.querySelectorAll("#rail .rail-stop, #rail .rail-keys")]
           .map((b) => [b.dataset.level || "keys", b.getBoundingClientRect().left])
