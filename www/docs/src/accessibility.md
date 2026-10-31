@@ -255,10 +255,14 @@ being placed), a tap on bare panel goes to a lit socket when the finger
 plainly means it: within 22 px of its middle, with no other lit socket
 within one and a half times that distance. A cable let go on bare panel
 goes in the same way from within 12 px; let go on a control, between two
-sockets, or away from them, it does what it did before. A socket that is
-not lit keeps its drawn size: a wider reach would cover the modules, and a
-tap on a module opens its settings. UNDER THE HOOD's rows are 44 px too,
-the hood showing three and scrolling on its own to the rest.
+sockets, or away from them, it does what it did before. With nothing lit, a
+tap within 22 px of an out ○ (the same way, plainly meaning it) picks its
+cable up, as a tap on it does, rather than opening that module's settings; a
+drag from there still pans. An input that is not lit keeps its drawn size: a
+tap there does nothing, and a drag from it pulls its cable out. Each
+module's ⋯ and lock answer a finger 44 px across at any zoom. UNDER THE
+HOOD's rows are 44 px too, the hood showing three and scrolling on its own
+to the rest.
 
 ## Color and contrast
 
@@ -277,9 +281,12 @@ map, and named in words everywhere they appear.
 (the scopes, and TASTE’s map and tabs) is smaller than 12 px.
 
 The rack is the exception, because it’s drawn to its zoom. Its labels are 9 to
-13 px at 1×, and grow as you zoom in. A label that would print under 8 px is
-left off, unless detail is set to full. A glyph on a button (▶, ✓) is sized to
-its button.
+13 px at 1×, and grow as you zoom in. A label that would print smaller than
+9 px, the rack's smallest at 1×, is left off, unless detail is set to full.
+A module's name prints larger wherever it would print under the panels'
+11 px, and the rack's fit stops where that larger name is 11 px, so no name
+at the fit is smaller (a patch too big to fit at that size pans). A glyph on a button (▶, ✓) is sized to its
+button.
 
 Your browser’s own zoom (<kbd>⌘+</kbd> and <kbd>⌘−</kbd>; Ctrl + and Ctrl −
 off a Mac) scales the whole page. Over the stage, <kbd>Ctrl</kbd> and the

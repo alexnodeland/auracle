@@ -951,7 +951,10 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   no longer scaled by the frame's height), with its 8% band below the line.
   Above it, where the silkscreen floor takes the readouts (`data-illegible`
   `value`), the names and head settings print larger, as compact draws them
-  (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
+  (`svg.lod-compact`), and every knob stays a control. The floor is the
+  rack's own smallest type at 1× (`--t-rack-micro`, `SILK_FLOOR_PX`), and a
+  name under the app's type floor (`--t-label`, the `name` tier) prints
+  larger at any zoom under 1× (#519). Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
   are level S-curves (`wirePathD`); a cable into a module placed behind its
   source by hand takes a right-angle run below both instead. The rack's
@@ -1000,7 +1003,16 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   estimate, and its press is the rack's ▶ (`playBench`, `playWaitCancel`).
 - **Fits** keep the well's own chrome clear (`fitBox`): the top line
   (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open, the catalog
-  (`catalogReserve`), as they keep the scope's corner (`scopeReserve`).
+  (`catalogReserve`), as they keep the scope's corner (`scopeReserve`). A fit
+  of the whole patch stops at the readable zoom (`fitRead`, where a name
+  printed larger is at `--t-label`, about 0.65×; #519): a patch that does not
+  fit there shows where it starts (its sources) and its top,
+  and the rest pans; after an edit, a camera the player aimed is left where
+  it is when the readable fit could not hold the patch either (`fitHolds`).
+  On a touch screen ⋯'s and the lock's 44-unit pads grow by `--finger`
+  (1 / the zoom, set in `applyView`) to stay 44 px under 1×, and a tap
+  beside an out ○ picks its cable up (`tapOutSocket`, asked by patch.js's
+  tap before the module's sheet opens).
 - **The selection** (`plateSel`, set by a press on bare panel in the rack's
   pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
   both of a module's groups `.selected`; the readout (`renderSpecDock` into

@@ -2580,6 +2580,9 @@ const patchView = createPatch({
   releaseHeldEdits: () => releaseHeldEdits(),
   removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
+  // A finger's tap beside an out ○ picks its cable up (#519), before a
+  // module's sheet opens for it.
+  tapSocket: (ev, target) => tapOutSocket(ev, target),
   // Esc has another job first: something floating, a module in hand, a cable
   // half made, or a rack knob or plate button (`data-stop`) it backs out of.
   // A new patch opens the catalog (the specimen's `np-desk`), and leaving
@@ -6856,7 +6859,7 @@ document.addEventListener("keydown", (e) => {
   const onCanvas = !e.target || e.target === document.body || e.target === document.documentElement ||
     !!e.target.closest?.("#rack-svg, #rack-scroll");
   if (currentView === "patch" && !e.defaultPrevented && !modalUp()) {
-    // ⇧Home fits the whole patch; Home and End go to the first module and to
+    // ⇧Home fits the patch (`fitAll`); Home and End go to the first module and to
     // the last (the amp, at OUT), as they do from a plate.
     if (e.key === "Home" && e.shiftKey && onCanvas) { e.preventDefault(); fitAll(true); return; }
     if ((e.key === "Home" || e.key === "End") && wb.rack && onCanvas) {
@@ -12151,8 +12154,8 @@ function fingerPad(g, x, y, w, h) {
 // pads deliberately meet between the glyphs rather than around them: the strip
 // where they overlap is the gap between the two, so whichever wins there, no
 // glyph is ever stolen from.
-function hitPad(g, x, y, w, h) {
-  g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
+function hitPad(g, x, y, w, h, cls) {
+  g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }, cls));
 }
 
 /** A screw's rotation, in degrees, hashed off the module's identity and the
@@ -13238,18 +13241,7 @@ function buildRack(svg, rack, opts) {
   // — so any label still wider than its pitch is condensed to fit. SVG
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
-  const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name")) {
-      const avail = Number(t.dataset.fit || 0);
-      if (!avail) continue;
-      let w = 0;
-      try { w = t.getBBox().width; } catch (_) { continue; }
-      if (w > avail) {
-        t.setAttribute("textLength", avail.toFixed(1));
-        t.setAttribute("lengthAdjust", "spacingAndGlyphs");
-      }
-    }
-  };
+  const fitLabels = () => fitSilk(svg);
 
   const isModuleLockedIn = (mod) => {
     const addrs = moduleLockAddrs(mod);
@@ -13451,8 +13443,11 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      // A finger gets a wider pad (the plate is a few hundred units wide).
-      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
+      // A finger gets a wider pad (the plate is a few hundred units wide),
+      // 44 units across: a finger's 44 px at 1×, and at any zoom under it
+      // grown by the camera (`--finger`, style.css `.finger-pad`) away from
+      // the lock's beside it, so the two still meet between the glyphs.
+      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22, `finger-pad${hasLock ? " grow-l" : ""}`);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -13470,7 +13465,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
+        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22, "finger-pad grow-r");
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -14515,6 +14510,11 @@ const FIT_MAX = 1.25;
 // So: fit-to-contain wins. Below `FIT_MIN` a fit keeps going, and it carries
 // the floor down with it (`zoomFloor`) so that the clamp on the way out of
 // `applyView` does not immediately take back what it went below for.
+//
+// …until #519: a fit of the whole patch now stops at the readable zoom
+// (`fitRead`, where a module's name prints at the type floor), and what does
+// not fit there pans, the well's edges counting it and MAP showing all of it.
+// A box smaller than the patch (`fitSelection`) still fits to contain it.
 const FIT_MIN = 0.22;
 // The one hard stop, and it is arithmetic rather than taste: a zero or negative
 // zoom is a division by zero in every transform on this page.
@@ -14530,6 +14530,13 @@ function allowZoomBelow(z) {
 }
 
 const view = { x: 0, y: 0, zoom: 1 };
+// The readable fit's zoom, read off the tokens once (`fitRead`), and the last
+// whole-patch fit: whether that floor held it above what containing the
+// patch needed, and what that would have been (the stranded layout's hint
+// reads it, `syncFitHint`).
+let fitReadZoom = 0;
+const lastFit = { short: false, contain: 1 };
+let fingerSet = ""; // the `--finger` last written on the rack (`applyView`)
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
@@ -14610,6 +14617,12 @@ function applyView() {
     "viewBox",
     `${view.x.toFixed(2)} ${view.y.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`,
   );
+  // On a touch screen a finger's pads are 44 units, its 44 px at 1×; under 1×
+  // the camera grows them back to 44 px (style.css `.finger-pad`).
+  if (COARSE) {
+    const finger = Math.max(1, 1 / view.zoom).toFixed(3);
+    if (finger !== fingerSet) { fingerSet = finger; $("rack-svg").style.setProperty("--finger", finger); }
+  }
   updateEdgeFade(vw);
   drawMinimap();
   // A cable in flight is anchored in rack space, so anything that moves the
@@ -14865,11 +14878,18 @@ function scheduleRelod() {
 // fitted zoom put Glass Pad's knob labels at 5.8px at 1280×800 and First
 // Bass's at 5.7px at 1440×900 — ink on the panel that nobody could read, at a
 // size where a knob is still a perfectly good control. So each tier of rack
-// type steps aside once it would print under 8px, and returns when the camera
-// comes closer. A plate still reads by its knobs, jacks and cables, and a
-// knob still names itself on hover. Automatic detail only: "detail full" is
-// the player asking for everything, at any size, and gets it.
-const SILK_FLOOR_PX = 8;
+// type steps aside once it would print smaller than the rack's own smallest
+// type at 1× (`--t-rack-micro`, 9 px; it was 8 px until #519), and returns
+// when the camera comes closer. A plate still reads by its knobs, jacks and
+// cables, and a knob still names itself on hover. Automatic detail only:
+// "detail full" is the player asking for everything, at any size, and gets it.
+//
+// The names are held to the app's own floor, `--t-label` (11 px): a module's
+// name that would print under it prints larger (`name`, style.css's
+// `.mod-title` at `--t-rack-title` × NAME_LARGER), so a fit, which stops where
+// that larger name is at the floor (`fitRead`), never draws one smaller.
+const SILK_FLOOR_PX = parseFloat(tok("--t-rack-micro")) || 9;
+const NAME_FLOOR_PX = parseFloat(tok("--t-label")) || 11;
 // Tier → the token its size is set by (style.css). Every rack text class
 // belongs to exactly one of these; see `#rack-svg.silk-floor` there.
 const SILK_TIERS = {
@@ -14878,22 +14898,57 @@ const SILK_TIERS = {
   value: "--t-rack-value", // readouts, enum chips, and a narrow plate's title
   title: "--t-rack-title", // plate titles
 };
+// A module's name on the canvas is set at `--t-rack-value` (style.css,
+// `#rack-svg .mod-title`); under the type floor it prints larger.
+const NAME_TOKEN = "--t-rack-value";
 let silkPx = null; // tier → px, read off the tokens once
 let silkUnder = null;
+let silkFitOwed = false; // the names' fit waits for the rack to be on screen (`fitSilk`)
 function syncSilkFloor() {
   const svg = $("rack-svg");
   if (!svg) return;
   if (!silkPx) {
     const cs = getComputedStyle(document.documentElement);
-    silkPx = Object.entries(SILK_TIERS).map(([tier, tok]) => [tier, parseFloat(cs.getPropertyValue(tok)) || 0]);
+    silkPx = Object.entries(SILK_TIERS).map(([tier, tok]) => [tier, parseFloat(cs.getPropertyValue(tok)) || 0, SILK_FLOOR_PX]);
+    silkPx.push(["name", parseFloat(cs.getPropertyValue(NAME_TOKEN)) || 0, NAME_FLOOR_PX]);
   }
-  // Written only when a tier crosses the line, not per camera frame.
-  const under = silkPx.filter(([, px]) => px * view.zoom < SILK_FLOOR_PX).map(([tier]) => tier).join(" ");
+  // Written only when a tier crosses the line, not per camera frame. The
+  // hundredth spares a tier the float's last digit at 1× exactly.
+  const under = silkPx.filter(([, px, floor]) => px * view.zoom < floor - 0.01).map(([tier]) => tier).join(" ");
+  const auto = lodMode === "auto";
+  const moved = under !== silkUnder || auto !== svg.classList.contains("silk-floor");
+  svg.classList.toggle("silk-floor", auto);
   if (under !== silkUnder) {
     silkUnder = under;
     svg.dataset.illegible = under;
   }
-  svg.classList.toggle("silk-floor", lodMode === "auto");
+  // A name condensed to its room at one size is condensed again at the other
+  // (`fitSilk`): its `textLength` would stretch it, or squeeze it, to a width
+  // measured for the size it no longer prints at.
+  if (moved || silkFitOwed) fitSilk(svg);
+}
+
+/** Silkscreen never overruns its room (`buildRack`'s `fitLabels`): each
+ *  name, label and hint wider than its `data-fit` is condensed to it, and
+ *  one that fits is left as set. Measured again when a tier crosses the
+ *  silkscreen floor, since the names print larger under it. */
+function fitSilk(svg) {
+  // Behind another level the rack measures nothing (a hidden SVG's boxes
+  // are empty): owed until it is on screen again.
+  silkFitOwed = !svg.getClientRects().length;
+  if (silkFitOwed) return;
+  for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name, .gp-name")) {
+    const avail = Number(t.dataset.fit || 0);
+    if (!avail) continue;
+    t.removeAttribute("textLength");
+    t.removeAttribute("lengthAdjust");
+    let w = 0;
+    try { w = t.getBBox().width; } catch (_) { continue; }
+    if (w > avail) {
+      t.setAttribute("textLength", avail.toFixed(1));
+      t.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    }
+  }
 }
 
 function syncLodBtn() {
@@ -14905,7 +14960,7 @@ function syncLodBtn() {
     lodMode === "auto"
       // The number is read out of `lodThreshold`, so the tooltip and the
       // switch cannot disagree.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off and each module's name and setting print larger; under ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and a name that would print under ${NAME_FLOOR_PX} px prints larger; under ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for compact modules."
         : "Detail: compact. Modules, titles, jacks and three knobs each to read. Click to go back to automatic.";
@@ -15323,7 +15378,28 @@ function scheduleScopeDuck() {
 // What the well's top line and foot take, in px (style.css `.pt-foot`).
 const PT_TOP_LINE = 30;
 const PT_FOOT = 40;
-function fitBox(box, animate, coMotion) {
+
+// ---- the readable fit (#519) ----
+// A fit used to hold the whole patch whatever that cost, and on a phone held
+// upright it cost everything: Bright Stab's fourteen modules fitted the well's
+// width at 0.2×, a 330 × 60 px band in a 360 × 620 px well, its names 3 px
+// tall and its sockets 3 px across (7.9 px names at 0.47× on a 1440 px
+// screen). A patch drawn too small to read is not a view of it. So a fit stops
+// where each module's name still prints at the type floor (`--t-label`), at
+// the size the silkscreen floor draws a name at below 1× (style.css's
+// `.mod-title` at `--t-rack-title` × NAME_LARGER), and what does not fit there
+// pans: the well's edges count the modules past each side (‹ 2, 3 ›), and MAP
+// shows the whole patch.
+const NAME_LARGER = 1.3; // style.css: calc(var(--t-rack-title) * 1.3)
+function fitRead() {
+  if (!fitReadZoom) {
+    const floor = parseFloat(tok("--t-label")) || 11;
+    const name = (parseFloat(tok("--t-rack-title")) || 13) * NAME_LARGER;
+    fitReadZoom = floor / name;
+  }
+  return fitReadZoom;
+}
+function fitBox(box, animate, coMotion, whole = true) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve(box);
@@ -15334,15 +15410,15 @@ function fitBox(box, animate, coMotion) {
   ins.l = Math.max(ins.l, catalogReserve());
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
-  // No floor on the way down. Whatever it takes to hold the box is what the
-  // fit is: a plate the fit leaves outside the frame is the defect this trades
-  // against, and a patch drawn small is not a defect, it is a patch drawn
-  // small — the wheel is right there.
-  const z = clamp(
+  // What it takes to hold the box, and no less than the readable fit: past
+  // that the patch pans rather than shrinking out of reading.
+  const contain = clamp(
     Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
     ZOOM_ABS_MIN,
     FIT_MAX,
   );
+  const z = whole ? Math.max(contain, Math.min(fitRead(), FIT_MAX)) : contain;
+  if (whole) { lastFit.short = z > contain + 1e-6; lastFit.contain = contain; }
   // Both ends of the tween, so a fit *up* from a sub-floor camera does not get
   // its first frames clamped out from under it — the floor rises again only
   // when neither where we are nor where we are going needs it down.
@@ -15352,6 +15428,14 @@ function fitBox(box, animate, coMotion) {
   const cx = pad + ins.l + availW / 2;
   const cy = pad + ins.t + availH / 2;
   const t = { zoom: z, x: box.x + box.w / 2 - cx / z, y: box.y + box.h / 2 - cy / z };
+  // A patch wider than the well at the readable fit shows where it starts,
+  // its sources and what they feed first, as anything read from left to
+  // right opens at its beginning: its end is the amp and OUT, the same on
+  // every patch, and the face there is the sound in hand's in the menu bar.
+  // A taller one shows its top, where the signal path runs (modulators hang
+  // below it).
+  if (box.w * z > availW + 1) t.x = box.x - (pad + ins.l) / z;
+  if (box.h * z > availH + 1) t.y = box.y - (pad + ins.t) / z;
   // …but the reserve is the weaker of the two promises. At the floor the patch
   // can be bigger than what the reserve leaves, and centring it in a box it
   // overflows spills it equally both ways — half of that spill going straight
@@ -15386,7 +15470,7 @@ function fitSelection(animate) {
     el.getAttribute("data-key"));
   const b = key && rackBoxes.get(key);
   if (!b) return fitAll(animate);
-  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate);
+  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate, false, false);
 }
 function zoomAt(clientX, clientY, factor) {
   const before = clientToRack(clientX, clientY);
@@ -15474,8 +15558,17 @@ function aimCamera(coMotion) {
   // A fit to a frame that has never been on screen (the app opened in another
   // view) is a guess, not an aim: the first real showing fits without travel.
   if (!camAimed) { fitBox(contentBox(), false); camAimed = frameSeen != null; return; }
-  if (!hold && changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
+  if (!hold && changed && (!viewUserSet || (!contentFullyVisible() && fitHolds(contentBox())))) fitBox(contentBox(), true, coMotion);
   else applyView();
+}
+/** Would the readable fit hold the whole of `box`? When it would not, a
+ *  camera the player aimed stays where they put it after an edit: refitting
+ *  would only carry them back to where the patch starts, away from the
+ *  module they were working on, and still not show the whole patch. */
+function fitHolds(box) {
+  const { w, h } = frameSize();
+  const z = Math.min(fitRead(), FIT_MAX);
+  return box.w * z <= w - 40 - catalogReserve() && box.h * z <= h - 40 - PT_TOP_LINE - PT_FOOT;
 }
 
 /** Bring a control into view without the browser's help. `scrollIntoView` and
@@ -18597,8 +18690,12 @@ function syncFitHint() {
   if (!el) return;
   // Cheapest test first on purpose: this runs on every frame of every pan, and
   // `layoutSprawl` lays out a chain arrangement to answer.
+  // A fit stops at the readable zoom now (`fitRead`) and pans the rest, so
+  // the camera at the fit says nothing about a stranding: what the fit would
+  // have needed to hold the patch does (`lastFit.contain`).
   const show = !!wb.rack && layoutMode === "freeform" && rackBoxes.size > 2
-    && view.zoom < FIT_STRANDED_ZOOM && layoutSprawl() > SPRAWL_HINT;
+    && (!viewUserSet && lastFit.short ? lastFit.contain : view.zoom) < FIT_STRANDED_ZOOM
+    && layoutSprawl() > SPRAWL_HINT;
   el.classList.toggle("hidden", !show);
 }
 $("fh-reseed").onclick = () => resetPositions();
@@ -22423,6 +22520,33 @@ function litSocketNear(x, y, reach) {
   }
   return socketMeant(cands, x, y, reach)?.j || null;
 }
+/** A finger's tap beside an out ○, at rest, picks its cable up, as a tap on
+ *  the socket itself does (`beginConnectPick`; then a tap beside a lit ○
+ *  places it, `reachForSocket`): a socket is drawn a few px across at the
+ *  rack's fitted zoom, and a finger needs 44 (#519). Only a tap, never a drag
+ *  (a drag from beside a socket pans, as before); only an output, since a
+ *  tap on an input does nothing at rest; and only where no other socket is
+ *  about as near (reach.js `socketMeant`). Asked by patch.js's tap, with the
+ *  press's own target, before a module's sheet opens; true when it took it. */
+function tapOutSocket(ev, target) {
+  if (armed || connectPick || wire || !wb.rack || currentView !== "patch") return false;
+  if (!target || target.closest?.(PLACE_CONTROLS)) return false;
+  const view = $("rack-scroll").getBoundingClientRect();
+  if (ev.clientX < view.left || ev.clientX > view.right || ev.clientY < view.top || ev.clientY > view.bottom) return false;
+  const cands = [];
+  for (const j of $("rack-svg").querySelectorAll(".jack")) {
+    const nut = j.querySelector(".j-nut");
+    if (!nut) continue;
+    const r = nut.getBoundingClientRect();
+    if (!r.width) continue;
+    cands.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, j });
+  }
+  const j = socketMeant(cands, ev.clientX, ev.clientY, REACH_PRESS_PX)?.j;
+  const key = j && j.getAttribute("data-outkey");
+  if (!key) return false;
+  beginConnectPick(key, j.classList.contains("modjack") ? "mod" : "audio");
+  return true;
+}
 /** A finger's press on bare panel that means a lit socket is handed to it
  *  (as a press on the socket itself), before the rack's pan and its long
  *  press see it; the click that follows at the same place is the socket's
@@ -26084,7 +26208,7 @@ shell.cmd({ id: "pt-redo", level: "patch", label: "Redo an edit", key: "⇧⌘Z"
 for (const [id, btn, label] of [["pt-lock-knobs", "lock-knobs", "Lock knobs"], ["pt-lock-wiring", "lock-structure", "Lock wiring"], ["pt-lock-clear", "lock-clear", "Clear locks"]]) {
   shell.cmd({ id, level: "patch", label, when: () => !!$(btn) && !$(btn).disabled, run: press(btn) });
 }
-patchCmd("pt-fit", "Fit the whole patch", "pt-fit", { key: "⇧Home" });
+patchCmd("pt-fit", "Fit the patch", "pt-fit", { key: "⇧Home" });
 shell.cmd({ id: "pt-fit-here", level: "patch", label: "Fit what you’re on", key: ".", run: () => fitSelection(true) });
 shell.cmd({ id: "pt-actual", level: "patch", label: "Actual size", key: "⌘0", run: () => zoomActual() });
 patchCmd("pt-zoom-out", "Zoom out on the patch", "pt-zoom-out", { key: "⌘−" });

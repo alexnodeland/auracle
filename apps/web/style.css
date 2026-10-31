@@ -1791,16 +1791,18 @@ body.model-view .preset-item:not(:hover, .under) .pb-in { right: var(--s1); back
 }
 .knob-value.flashing { fill: var(--phos-a); transition: none; }
 /* The silkscreen floor (`syncSilkFloor` in main.js): the camera draws the
-   rack at 0.3–2.5×, and a tier of type that would print under 8px at the
-   current zoom steps aside rather than being drawn illegible — 5–7px labels
-   were the rule at 1280×800, not the exception. The tier names are set from
-   the size tokens, so a token change moves its threshold with it. Hidden,
-   not removed: `fitLabels` still measures them, and they come back the moment
-   the camera does. Under "detail full" nothing is hidden. */
+   rack at 0.3–2.5×, and a tier of type that would print smaller than the
+   rack's own smallest type at 1× (`--t-rack-micro`) steps aside rather than
+   being drawn illegible — 5–7px labels were the rule at 1280×800, not the
+   exception. The tier names are set from the size tokens, so a token change
+   moves its threshold with it. Hidden, not removed: `fitSilk` still measures
+   them, and they come back the moment the camera does. Under "detail full"
+   nothing is hidden. */
 #rack-svg.silk-floor[data-illegible~="micro"] .jack text,
 #rack-svg.silk-floor[data-illegible~="micro"] .plate-hint,
 #rack-svg.silk-floor[data-illegible~="micro"] .pt-msg,
 #rack-svg.silk-floor[data-illegible~="label"] .knob-label,
+#rack-svg.silk-floor[data-illegible~="label"] .out-name,
 #rack-svg.silk-floor[data-illegible~="label"] .step-num,
 #rack-svg.silk-floor[data-illegible~="label"] .mod-tab-name,
 #rack-svg.silk-floor[data-illegible~="value"] .knob-value,
@@ -6930,6 +6932,15 @@ html.xl-on .alarm { z-index: 62; }
   fill: var(--phos-b-dim);
 }
 .guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Under the silkscreen floor the guess reads as a module does (#519): its
+   name larger, its small print left off (the well's top line says it all at
+   full size). */
+#rack-svg.silk-floor[data-illegible~="name"] .guess-plate .gp-name { font-size: calc(var(--t-rack-title) * 1.3); }
+#rack-svg.silk-floor[data-illegible~="label"] .guess-plate .gp-word,
+#rack-svg.silk-floor[data-illegible~="label"] .guess-runner .gr-name,
+#rack-svg.silk-floor[data-illegible~="value"] .guess-plate .gp-p,
+#rack-svg.silk-floor[data-illegible~="value"] .guess-runner .gr-lcb,
+#rack-svg.silk-floor[data-illegible~="value"] .rack-guess .gp-face-word { visibility: hidden; }
 /* Under the model view, the ranking's next two: fainter, smaller, dashed,
    each with its lower bound; not controls. */
 .guess-runner { pointer-events: auto; }
@@ -7385,6 +7396,15 @@ html.xl-on .alarm { z-index: 62; }
 #rack-svg .rack-plates g.selected .ctrl-well,
 #rack-svg .ctrl-well.locked { opacity: 1; }
 @media (pointer: coarse) { #rack-svg .ctrl-well { opacity: 1; } }
+/* On a touch screen ⋯'s and the lock's pads are 44 units, a finger's 44 px at
+   1×; under 1× the camera grows them back to 44 px (main.js `applyView` sets
+   `--finger`, 1 / the zoom), ⋯'s leftward and the lock's rightward from where
+   they meet between the glyphs, so neither takes the other's (#519). */
+@media (pointer: coarse) {
+  #rack-svg .finger-pad { transform-box: fill-box; transform-origin: center; transform: scale(var(--finger, 1)); }
+  #rack-svg .finger-pad.grow-l { transform-origin: right center; }
+  #rack-svg .finger-pad.grow-r { transform-origin: left center; }
+}
 #rack-svg .mod-title {
   font-size: var(--t-rack-value);
   font-weight: 600;
@@ -7412,10 +7432,14 @@ html.xl-on .alarm { z-index: 62; }
 #rack-svg.lod-compact .enum-text.head { font-size: calc(var(--t-rack-value) * 1.3); }
 #rack-svg.lod-compact.silk-floor .mod-title,
 #rack-svg.lod-compact.silk-floor .enum-text.head { visibility: visible; }
-/* …and the same where the readouts are under the floor at full detail (the
-   knobs are still controls there, their values and labels left off): each
+/* …and the same at full detail: a name that would print under the type
+   floor (`--t-label`, the `name` tier) prints larger, so it never reads
+   smaller than the rest of the app's text (#519; the fit stops where this
+   size is at the floor, main.js `fitRead`, whose NAME_LARGER is this 1.3);
+   and where the readouts are under the floor (the knobs are still controls
+   there, their values and labels left off), the setting does too: each
    module still says what it is and how it is set. */
-#rack-svg.silk-floor[data-illegible~="value"] .mod-title { font-size: calc(var(--t-rack-title) * 1.3); visibility: visible; }
+#rack-svg.silk-floor[data-illegible~="name"] .mod-title { font-size: calc(var(--t-rack-title) * 1.3); visibility: visible; }
 #rack-svg.silk-floor[data-illegible~="value"] .enum-text.head { font-size: calc(var(--t-rack-value) * 1.3); visibility: visible; }
 /* The amp's envelope, drawn from its four knobs as set. */
 #rack-svg .env-fig { fill: var(--phos-a-12); stroke: var(--phos-a-60); stroke-width: 1.2; stroke-linejoin: round; pointer-events: none; }

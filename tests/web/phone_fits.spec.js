@@ -43,8 +43,9 @@
 //   sound may reach no knob and an empty hood checks no row); of the well
 //   in XY; and of LEARNING's other two panes (what it weighs, its
 //   forecasts).
-// - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
-//   middle each way, and goes while sockets are lit. A tap on bare panel
+// - PATCH at 390 × 844: the face at OUT's ▶ (brought into the well past its
+//   right edge, where the patch's fit leaves it, #519) answers a finger 21 px
+//   from its middle each way, and goes while sockets are lit. A tap on bare panel
 //   beside a lit socket (12 to 18 px, every other lit one over 1.6 times as
 //   far: reach.js, whose unit tests hold the rule, the ambiguous point and
 //   the drop's shorter reach) places the module in hand there, opening no
@@ -429,6 +430,14 @@ test.describe("PATCH under a finger, 390 × 844", () => {
 
   test("the face at OUT answers a finger 44 px across, and a tap beside a lit socket places the module in hand there", async ({ page, app }) => {
     await patchOnAPhone(page, app);
+    // The fit shows where the patch starts: the well's right edge carries the
+    // camera to OUT, a module a press.
+    const edge = page.locator("#pt-edge-r");
+    await expect.poll(async () => {
+      if (await edge.isVisible()) await edge.tap();
+      return edge.isVisible();
+    }, { timeout: 30_000, intervals: [600] }).toBe(false);
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
     // The ▶ at OUT: 21 px from its middle each way is still its.
     const ring = await page.locator("#rack-play").evaluate((b) => {
       const r = b.getBoundingClientRect();

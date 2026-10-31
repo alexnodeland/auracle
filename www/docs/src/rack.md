@@ -64,12 +64,17 @@ everywhere in the instrument.
 
 The rack is fitted to its well when it opens, no larger than the size a
 four-module patch opens at on a 1440 px screen, where every name and value
-reads. Where the readouts would be too small to read (a wide patch, a narrow
-window, the catalog open beside it), **detail: automatic** leaves the values
-and labels off and prints each module's name and setting larger; every knob is
-still a control. Zoomed out past where a knob is big enough to grab, it leaves
-each module three of its knobs to read, not to grab, so a large patch still
-says what it is until you zoom in. AUDIO IN's and CAPTURE's buttons stay.
+reads, and no smaller than the size each module's name reads at, as large as
+the app's smallest text: a patch too big for the well at that size shows
+where it starts, and the rest is a pan away (the well's edges count it, and
+**MAP** shows all of it). Drawn smaller than its own size (a wide patch, a
+narrow window, the catalog open beside it), **detail: automatic** prints each
+module's name larger, and its setting once the readouts go: it leaves off the
+values and labels that would print smaller than the rack's own smallest type;
+every knob is still a control. Zoomed out by hand past where a knob is big
+enough to grab, it leaves each module three of its knobs to read, not to grab,
+so a large patch still says what it is until you zoom in. AUDIO IN's and
+CAPTURE's buttons stay.
 
 ## Getting around
 
@@ -78,7 +83,7 @@ The camera's controls sit quietly in the well's bottom-left corner: **FIT**,
 
 | | |
 |---|---|
-| **FIT**, or <kbd>⇧Home</kbd> | Fit the whole patch |
+| **FIT**, or <kbd>⇧Home</kbd> | Fit the patch: all of it where its names read, or else where it starts |
 | <kbd>.</kbd> | Fit what you’re on |
 | <kbd>⌘0</kbd> (Ctrl 0) | Actual size |
 | **−** / **+**, or <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out or in |
@@ -91,9 +96,10 @@ The camera's controls sit quietly in the well's bottom-left corner: **FIT**,
 | <kbd>⇧1</kbd>–<kbd>⇧9</kbd> | Jump to a bookmark |
 
 Zoom runs from 0.30× to 2.50× by hand, and the rack fits its well when it
-opens (up to 2.2×), clear of the well's top line, its foot, and the catalog
-while it is open. The fits go below 0.30× when that’s what it takes to show a
-large patch whole.
+opens (from 0.65×, where a module's name reads at the app's smallest text, up
+to 1.25×), clear of the well's top line, its foot, and the catalog while it is
+open. Once you have moved the camera, an edit to a patch that is too big to
+fit whole leaves it where you put it.
 
 ### With the keyboard
 
