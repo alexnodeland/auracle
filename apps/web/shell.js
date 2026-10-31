@@ -1142,8 +1142,8 @@ export function createShell(host = {}) {
   const keyText = (k) => (host.platformKeys ? host.platformKeys(k) : k);
   const kIdle = window.requestIdleCallback
     ? (f) => window.requestIdleCallback(f, { timeout: 200 })
-    : (f) => setTimeout(() => f({ didTimeout: true, timeRemaining: () => 8 }), 16);
-  // The lines an idle step draws before it asks whether there is time left.
+    : (f) => setTimeout(f, 16);
+  // The lines an idle step draws.
   const K_STEP = 8;
   function kGroups() {
     const now = [...cmdList];
@@ -1279,21 +1279,26 @@ export function createShell(host = {}) {
     if (!kRest.isConnected) K.list.append(kRest);
   }
   const kWhole = () => kBuild(kPlan.length);
-  /** The rest, a few lines at a time while the page is idle. */
+  /** The rest, a step at a time while the page is idle, from the frame
+   *  that shows what the key or the letter drew: asked for sooner, a letter
+   *  typed just after a frame found that frame's idle time still open, and
+   *  the rest was drawn ahead of the letter's own frame, which then laid
+   *  out and painted the whole list. One step a call, so a slowed page
+   *  that overruns its idle time does it by one step at most. */
   function kRestSoon() {
     if (kBuilt >= kPlan.length) return;
     const gen = kGen;
-    kIdle(function step(deadline) {
+    const step = () => {
       if (gen !== kGen || !kOpen()) return;
       // The frame is up, so this reads a layout already made: the rows'
       // own heights, for the height kept for the rest.
       const r = K.list.querySelector(".cmdk-it")?.getBoundingClientRect().height;
       const g = K.list.querySelector(".cmdk-grp")?.getBoundingClientRect().height;
       if (r > 0 && g > 0) kH = { row: r, group: g };
-      do kBuild(kBuilt + K_STEP);
-      while (kBuilt < kPlan.length && !deadline.didTimeout && deadline.timeRemaining() > 4);
+      kBuild(kBuilt + K_STEP);
       if (kBuilt < kPlan.length) kIdle(step);
-    });
+    };
+    requestAnimationFrame(() => kIdle(step));
   }
   /** Draw the list for what is typed: `groups`, ranked already, or ranked
    *  here from the field. */
