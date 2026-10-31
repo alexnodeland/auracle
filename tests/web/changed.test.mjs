@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODULES, VIEWS, NO_VIEW, ENGINE_SPECS, EVERYWHERE, SECTIONS, headings, hunks, sectionsTouched, viewsOf, select } from "./changed.mjs";
+import { MODULES, VIEWS, NO_VIEW, ENGINE_SPECS, EVERYWHERE, SECTIONS, headings, hunks, sectionsTouched, viewsOf, select, suite } from "./changed.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -45,6 +45,23 @@ test("a changed helper runs the specs that require it, and an app module the spe
   assert.ok(helper.length > 0 && helper.every((s) => s.startsWith("patch_")), helper.join(" "));
   const mod = pick(["apps/web/taste.js"]).specs;
   assert.deepEqual(mod, SPECS.filter((s) => s.startsWith("taste_")));
+});
+
+test("data a helper requires runs what the helper runs: the reference profile's numbers reach every spec that boots on it", () => {
+  // profile.js requires profiles.json; the fixture requires profile.js.
+  const real = suite();
+  assert.ok(real.helpers.includes("profiles.json"), real.helpers.join(" "));
+  const data = select({ files: ["tests/web/profiles.json"], ...real }).specs;
+  assert.deepEqual(data, select({ files: ["tests/web/profile.js"], ...real }).specs);
+  assert.ok(data.includes("reference_profile.spec.js") && data.length > 50, `${data.length} specs`);
+  // Data no spec or helper requires is no helper (the lint's suppressions),
+  // nor are the suite's packages.
+  for (const f of ["eslint-suppressions.json", "package.json", "package-lock.json"]) assert.ok(!real.helpers.includes(f), f);
+  // A script is required without its extension (`./fixtures`) or with it
+  // (`./patch_page.js`), and reached through another (shell.js, through
+  // patch_page.js); the engine's spec requires none.
+  for (const h of ["fixtures.js", "patch_page.js", "shell.js"]) assert.ok(real.requires("patch_truth.spec.js", h), h);
+  assert.ok(!real.helpers.some((h) => real.requires("boot_agrees.spec.js", h)));
 });
 
 test("the move between the levels runs its own spec when any module it is drawn by changes alone", () => {

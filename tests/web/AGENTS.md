@@ -80,7 +80,8 @@ make browser-slow   # --grep "@slow|@quarantine"
 On a workstation, run the specs your change reaches and let CI run the rest:
 the merge queue's run is the gate, and it runs them twelve wide. `make
 browser-changed` runs the specs changed against `origin/main`, the specs of
-a changed helper, and the specs named for a changed app module, as a PR's
+a changed helper (or of data one requires, such as `profiles.json`), and the
+specs named for a changed app module, as a PR's
 fast lane in CI picks them (`changed.mjs`). Locally it also follows the
 views (`changed.mjs --views`):
 
