@@ -331,12 +331,13 @@ sound:
 ## flake routing passes its tests: which issue a failed test is said on
 ## (tests/web/flakes.mjs) and how it is said there (.github/actions/file-issue);
 ## and so do the timings the browser runners are dealt by (tests/web/shard.mjs
-## timings) and `make browser-changed`'s selection (tests/web/changed.test.mjs).
+## timings), `make browser-changed`'s selection (tests/web/changed.test.mjs)
+## and the reference profile's page cap (tests/web/profile.test.mjs).
 ## With COVERAGE=1, what the unit tests ran of apps/web as well, as an lcov in
 ## target/js-cov/web.lcov
 web-check: js-check spec-lint
 	$(JS_COV_MKDIR)
-	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs tests/web/burnin.test.mjs .github/actions/file-issue/file-issue.test.mjs
+	node --test $(call NODE_COV,web) apps/web/tests/*.test.mjs tests/web/flakes.test.mjs tests/web/shard.test.mjs tests/web/changed.test.mjs tests/web/burnin.test.mjs tests/web/profile.test.mjs .github/actions/file-issue/file-issue.test.mjs
 
 # COVERAGE=1: Node's own coverage of the lines of apps/web that web-check's
 # unit tests and worker-test run (apps/web/tests and the generated pkg/ left
