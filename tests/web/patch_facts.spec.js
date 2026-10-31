@@ -293,9 +293,14 @@ test("a bred sound shows what its generation changed: from its seed and how many
 
 test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page, app }) => {
   await app.boot();
-  // PERFORM measures the sound it plays at boot; that is the patch on the
-  // bench. Its measurement, as the worker answered it: for each control on
-  // the panel, the knobs it turns.
+  // Reese, not the sound the boot dealt: a dealt sound can be one no named
+  // control turns (a noise wash with an envelope, every control a search),
+  // and the hunt boots unseeded (#444). Reese's BRIGHT, SNAP and MOTION turn
+  // its knobs. PERFORM, in view, plays the sound on the bench and measures
+  // it (a preset's shipped wiring is measured again); its measurement, as
+  // the worker answered it: for each control on the panel, the knobs it turns.
+  await openPreset(app, "Reese");
+  await goLevel(page, "perform");
   await app.engine((timeout) => expect.poll(() => page.evaluate(() => {
     const T = window.__tap;
     const bench = T.last.bench && T.last.bench.treeJson;
