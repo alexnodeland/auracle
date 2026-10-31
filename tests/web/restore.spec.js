@@ -26,27 +26,32 @@ const RECALLING = /^recalling (\d+) of (\d+) sounds…/;
 
 /** The first visit, left as a player leaves it: the bank full, the session
  *  saved on leaving (main's `saveOnLeave`, on `pagehide`) and on disk, and
- *  every farm worker it raised closed, before the next visit begins. A farm
- *  worker says `closed` only once its writes to the render store have
- *  committed (farm.js `bye`), so its rows are on disk too: the next visit's
- *  navigation would otherwise end a worker whose last row had not committed,
- *  and the restore would render that sound again (#360). Waited for as that
- *  state, not left to the time the save takes. From here on every visit keeps what its
- *  boot veil showed until it lifted (`window.__veil`), in the order the page
- *  changed it: one observer over #boot, set before main.js runs, so its
- *  records come in the order of the changes (the sub-line, the line, the
- *  bar, the veil's `done`). */
-async function firstVisit(page, app, query = "") {
+ *  boot's farm crew (the first `width` farm workers, the width `query`
+ *  names) closed, before the next visit begins. A farm worker says `closed`
+ *  only once its writes to the render store have committed (farm.js `bye`),
+ *  so its rows are on disk too: the next visit's navigation would otherwise
+ *  end a worker whose last row had not committed, and the restore would
+ *  render that sound again (#360). Waited for as that state, not left to the
+ *  time the save takes. From here on every visit keeps what its boot veil
+ *  showed until it lifted (`window.__veil`), in the order the page changed
+ *  it: one observer over #boot, set before main.js runs, so its records come
+ *  in the order of the changes (the sub-line, the line, the bar, the veil's
+ *  `done`). */
+async function firstVisit(page, app, query) {
+  // Boot's crew is as wide as the address asks; both callers name it.
+  const width = Number(/[?&]farm=(\d+)/.exec(query)[1]);
   await page.addInitScript(() => {
-    // Each farm worker the page raises, and each that has said `closed`.
-    const farms = (window.__farms = { raised: 0, closed: 0 });
+    // Each farm worker the page raises, in order, and whether it has said
+    // `closed`.
+    const farms = (window.__farms = []);
     const Inner = window.Worker;
     function Counted(url, opts) {
       const w = new Inner(url, opts);
       if (/farm\.js/.test(String(url))) {
-        farms.raised++;
+        const f = { closed: false };
+        farms.push(f);
         w.addEventListener("message", (e) => {
-          if (e.data && e.data.type === "closed") farms.closed++;
+          if (e.data && e.data.type === "closed") f.closed = true;
         });
       }
       return w;
@@ -91,8 +96,14 @@ async function firstVisit(page, app, query = "") {
   const { json } = await app.reply("saved", { after: t });
   // On disk: the save the pool was full for, not one made while it filled.
   await app.engine((timeout) => expect.poll(() => storedSession(page), { timeout, message: "the full bank was never saved" }).toBe(json), { ms: 30_000 });
-  // The farm's rows on disk: every worker it raised has closed on its `bye`.
-  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__farms.closed === window.__farms.raised), { timeout, message: "a farm worker never said its renders were in the store" }).toBe(true), { ms: 30_000 });
+  // The farm's rows on disk: boot's crew, every worker of the width asked
+  // for, has closed on its `bye`. A crew raised after it (a walk's, reaped
+  // only when idle) is not the fill's and is not waited for.
+  const bootCrew = () => page.evaluate((n) => {
+    const crew = window.__farms.slice(0, n);
+    return { raised: crew.length, closed: crew.filter((f) => f.closed).length };
+  }, width);
+  await app.engine((timeout) => expect.poll(bootCrew, { timeout, message: "a farm worker of boot's crew never said its renders were in the store" }).toEqual({ raised: width, closed: width }), { ms: 30_000 });
 }
 
 /** The session this browser has saved (IndexedDB auracle › kv › state), as
