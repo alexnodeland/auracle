@@ -942,8 +942,8 @@ def changed_lines(rel: str) -> set[int]:
     Without the file-system monitor whatever config says (as
     scripts/coverage_gate.py's `git`): a user's core.fsmonitor=true makes
     `diff` ask a daemon, and start one for a checkout that has none, and a
-    daemon that is slow to answer runs out the 20 s and marks no hit as
-    changed."""
+    daemon that is slow to answer runs out the 20 s, which leaves this empty
+    and `show()` listing no hit on a changed line first."""
     try:
         d = subprocess.run(
             ["git", "-c", "core.fsmonitor=false", "diff", "-U0", "HEAD", "--", rel],
