@@ -231,7 +231,11 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     waits for a reply main was handed (`where` a pattern or a function),
     `app.replies`, `app.last`, `app.count`, `app.sent`, `app.sentCount`,
     `app.log` (both directions, in order), `app.facts()` (views, ranked,
-    ratings, status as main last heard them), `app.toast`/`app.toasts`;
+    ratings, status as main last heard them), `app.toast`/`app.toasts`.
+    To order requests against replies, use `_n` (on what `app.sent` and
+    `app.replies` return: the tap's one count across both directions), never
+    `_at`: the page's clock is coarse (100 µs), and a reply and the request
+    its handler posts at once often share an `_at` (#455);
   - a request and its answer: main numbers every request (`rid`), and each
     reply to it carries the number back (`re`, with `more: true` on all but
     the last; `docs/architecture/web-runtime.md` § The worker's replies).

@@ -395,6 +395,11 @@ const TAP = `(() => {
   const T = (window.__tap = {
     engine: null, workers: [],
     replies: [], last: {}, counts: {}, sent: [], toasts: [], finals: {},
+    // One count across both directions, in the order the tap saw them: the
+    // page's clock is coarse (100 us when the page is not cross-origin
+    // isolated), so a reply and the request its handler posts at once can
+    // carry the same \`at\` (#455). Order is read from \`n\`, never from \`at\`.
+    seq: 0,
     facts: { views: null, ranked: null, lineage: null, ratings: null, status: null, names: {} },
     holds: [], holdFrom: null, holdNext: [], held: [],
     amends: [],
@@ -509,7 +514,7 @@ const TAP = `(() => {
       }
       // Each reply gets its own copy of an object set into it.
       if (!injected) for (const a of T.amends) if (matches(a.match, d)) for (const [k, v] of Object.entries(a.set)) set(d, k, v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v);
-      T.replies.push({ type: d.type, at: performance.now(), injected, d: light(d) });
+      T.replies.push({ type: d.type, at: performance.now(), n: ++T.seq, injected, d: light(d) });
       // The last reply to a request: one with its number and no \`more\`.
       if (d.re != null && !d.more) for (const r of [].concat(d.re)) if (!(r in T.finals)) T.finals[r] = T.replies.length - 1;
       if (injected) return;
@@ -521,7 +526,7 @@ const TAP = `(() => {
     w.postMessage = (m, t) => {
       const typed = m && typeof m.type === "string";
       if (typed) {
-        T.sent.push({ type: m.type, at: performance.now(), m });
+        T.sent.push({ type: m.type, at: performance.now(), n: ++T.seq, m });
         T.counts["sent:" + m.type] = (T.counts["sent:" + m.type] || 0) + 1;
         if (m.type === "perform_wire" && m.tree) window.__pbTree = m.tree;
         if (T.holdFrom && matches(T.holdFrom, m)) {
@@ -890,7 +895,7 @@ class App {
       ([ty, p, t, inj]) =>
         window.__tap.replies
           .filter((r) => r.type === ty && r.at > t && (inj || !r.injected) && (!p || window.__tap.matches(p, r.d)))
-          .map((r) => ({ ...r.d, _at: r.at })),
+          .map((r) => ({ ...r.d, _at: r.at, _n: r.n })),
       [type, where, after === -Infinity ? -1e15 : after, injected],
     );
   }
@@ -911,10 +916,12 @@ class App {
   }
 
   /** The requests posted after `after` that match `pattern`, oldest first,
-   *  each with `_at`. */
+   *  each with `_at`, and `_n`, its place in the tap's one count of requests
+   *  and replies (`replies` carries it too): to order the two directions,
+   *  which `_at` cannot, its clock being coarse. */
   sent(pattern = {}, { after = -Infinity } = {}) {
     return this.page.evaluate(
-      ([p, t]) => window.__tap.sent.filter((s) => s.at > t && window.__tap.matches(p, s.m)).map((s) => ({ ...s.m, _at: s.at })),
+      ([p, t]) => window.__tap.sent.filter((s) => s.at > t && window.__tap.matches(p, s.m)).map((s) => ({ ...s.m, _at: s.at, _n: s.n })),
       [asPattern(pattern), after === -Infinity ? -1e15 : after],
     );
   }
@@ -930,9 +937,10 @@ class App {
         for (const k of Object.keys(o)) if (o[k] == null || typeof o[k] !== "object") out[k] = o[k];
         return out;
       };
-      const sent = T.sent.filter((s) => s.at > t).map((s) => ({ ...plain(s.m), type: "sent:" + s.type, at: s.at }));
-      const got = T.replies.filter((r) => r.at > t && !r.injected).map((r) => ({ ...plain(r.d), type: r.type, at: r.at }));
-      return sent.concat(got).sort((a, b) => a.at - b.at);
+      const sent = T.sent.filter((s) => s.at > t).map((s) => ({ ...plain(s.m), type: "sent:" + s.type, at: s.at, n: s.n }));
+      const got = T.replies.filter((r) => r.at > t && !r.injected).map((r) => ({ ...plain(r.d), type: r.type, at: r.at, n: r.n }));
+      // By the tap's count, not the clock: two can share an `at` (#455).
+      return sent.concat(got).sort((a, b) => a.n - b.n).map(({ n, ...e }) => e);
     }, after === -Infinity ? -1e15 : after);
   }
 
