@@ -442,6 +442,58 @@ class AWalkthrough(Scratch):
         os.remove(os.path.join(self.dir, "view-patch", "shots.json"))
         self.assertIn("has no shots.json", self.problems("view-patch"))
 
+    def test_a_renamed_walkthrough_is_still_a_walkthrough(self):
+        # `import { walkthrough as walk }` and `walk(`: read as a plan, not
+        # skipped as a film that has none.
+        self.synthetic("alias", js="""
+import { walkthrough as walk } from "../../stage/walk.js";
+export async function build(stage) {
+  await walk(stage, { plan: [{ beat: "a", shot: "nosuchshot", cam: [["l1:nosuchword", 1, 0.5, 0.5]] }] });
+}
+""")
+        out = self.problems("alias")
+        self.assertIn("plan a: no shot nosuchshot", out)
+        self.assertIn('footage finds no word "nosuchword" in l1', out)
+
+    def test_a_renamed_walkthrough_that_is_right_passes(self):
+        self.synthetic("alias", js="""
+import { walkthrough as walk, aim as pan } from "../../stage/walk.js";
+export async function build(stage) {
+  await walk(stage, { plan: [{ beat: "a", shot: "s", cam: [["l1:keys", ...pan(1.2, 960, 540)]] }] });
+}
+""")
+        code, out, err = self.run_node("alias")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(out.strip(), "alias: ok")
+
+    def test_walk_js_imported_in_two_statements_is_one_stand_in(self):
+        self.synthetic("two", js="""
+import { aim } from "../../stage/walk.js";
+import { walkthrough } from "../../stage/walk.js";
+export async function build(stage) {
+  await walkthrough(stage, { plan: [{ beat: "a", shot: "s", cam: [["l1:nosuchword", ...aim(1.2, 960, 540)]] }] });
+}
+""")
+        self.assertIn('footage finds no word "nosuchword" in l1', self.problems("two"))
+
+    def test_walkthrough_imported_and_never_called_is_no_plan(self):
+        # launch imports only `aim` from walk.js; a film may import the rest and
+        # leave it: no call, no plan, and film.js is not run.
+        self.synthetic("idle", js="""
+import { walkthrough } from "../../stage/walk.js";
+export async function build(stage) { document.body.append(stage); }
+""")
+        code, out, err = self.run_node("idle")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("takes only", out)
+
+    def test_a_walkthrough_that_imports_nothing_from_walk_js_says_so(self):
+        self.synthetic("bare", js="""
+import * as W from "../../stage/walk.js";
+export async function build(stage) { await W.walkthrough(stage, { plan: [] }); }
+""")
+        self.assertIn("imports nothing from stage/walk.js", self.problems("bare"))
+
     def test_the_standin_brings_in_only_what_the_film_imports(self):
         # The film has its own `aim` and a `clamp` of its own from a sibling
         # module, and reaches that module by a relative path from its own

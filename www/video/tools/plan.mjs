@@ -7,9 +7,11 @@
 //   const plan = await loadPlan(filmDir);   // the plan's array, or null
 //
 // null means the film has no plan to read: its film.js does not call
-// walkthrough( (an illustrated film is drawn on the stage, and so is the one
-// that cuts to takes of the app, as launch does), or it has no film.js. Such
-// a film is never evaluated: its build() draws on a DOM that Node lacks.
+// walkthrough (by the name walk.js's import gives it: `walkthrough as walk` is
+// called `walk(`), as an illustrated film, drawn on the stage, does not, and
+// nor does the one that cuts to takes of the app, as launch does; or it has no
+// film.js. Such a film is never evaluated: its build() draws on a DOM that
+// Node lacks.
 //
 // What the stand-in brings in is what film.js imports from walk.js and no
 // more: `walkthrough` (it keeps the options it is given) and `aim` (walk.js's
@@ -20,21 +22,39 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { scan } from "./reads.mjs";
 
 const WALK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../stage/walk.js");
 const KEPT = "__planFromWalkthrough";
 
-/** The source with its comments blanked to spaces, so that a name in a
- *  comment is not mistaken for code and every index still points into the
- *  original. A `//` after a quote or a colon is a string or a URL, not a
- *  comment. */
-function blanked(src) {
-  return src.replace(/\/\*[\s\S]*?\*\/|(?<![:\\"'`])\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
+/** The `import { … } from ".../walk.js"` statements of film.js (`plain`: its
+ *  source with the comments blanked): where each one is, and the names it
+ *  binds, `{ name, local }` (`walkthrough as walk` is `{ walkthrough, walk }`). */
+function walkImports(plain) {
+  const re = /\bimport\s*\{([^}]*)\}\s*from\s*(["'])([^"'\n]*\/walk\.js)\2\s*;?/dg;
+  return [...plain.matchAll(re)].map((m) => ({
+    from: m.index,
+    to: m.index + m[0].length,
+    binds: m[1]
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [name, local = name] = part.split(/\s+as\s+/);
+        return { name, local };
+      }),
+  }));
 }
 
-/** Does this film.js call walkthrough( ? */
+/** Does film.js call walkthrough? By the name walk.js's import binds it
+ *  to (`walkthrough as walk` is called `walk(`); a call of the plain name with
+ *  no such import is still a walkthrough, so that loadPlan can say what the
+ *  import is missing. A name only a comment or a string mentions is no call. */
 export function callsWalkthrough(src) {
-  return /\bwalkthrough\s*\(/.test(blanked(src));
+  const { plain, code } = scan(src);
+  const bound = walkImports(plain).flatMap((i) => i.binds).find((b) => b.name === "walkthrough");
+  if (!bound) return /\bwalkthrough\s*\(/.test(code);
+  return new RegExp(`(?<![\\w$.])${bound.local.replace(/\$/g, "\\$")}\\s*\\(`).test(code);
 }
 
 /** walk.js's `aim`, as an expression, with the stage's `clamp` it uses. */
@@ -53,20 +73,21 @@ const STUBS = {
 /** film.js's source, ready to run in Node: the walk.js import replaced by the
  *  stand-in, every other relative import pointing at the film's directory. */
 function standIn(src, fdir) {
-  const code = blanked(src);
+  const plain = scan(src).plain;
+  const imports = walkImports(plain);
+  if (!imports.length) throw new Error("film.js calls walkthrough( but imports nothing from stage/walk.js (as `import { walkthrough } from \"../../stage/walk.js\"`; only a named import is read)");
   const edits = [];
-  const walk = /\bimport\s*\{([^}]*)\}\s*from\s*(["'])([^"'\n]*\/walk\.js)\2\s*;?/d.exec(code);
-  if (!walk) throw new Error("film.js calls walkthrough( but imports nothing from stage/walk.js (as `import { walkthrough } from \"../../stage/walk.js\"`)");
   const binds = [];
-  for (const part of walk[1].split(",").map((s) => s.trim()).filter(Boolean)) {
-    const [name, local = name] = part.split(/\s+as\s+/);
-    if (!STUBS[name]) throw new Error(`film.js imports "${name}" from walk.js, and plan.mjs stands in only for ${Object.keys(STUBS).join(" and ")}`);
-    binds.push(`const ${local} = ${STUBS[name]()};`);
+  for (const imp of imports) {
+    for (const { name, local } of imp.binds) {
+      if (!STUBS[name]) throw new Error(`film.js imports "${name}" from walk.js, and plan.mjs stands in only for ${Object.keys(STUBS).join(" and ")}`);
+      binds.push(`const ${local} = ${STUBS[name]()};`);
+    }
+    edits.push({ from: imp.from, to: imp.to, text: "" });
   }
-  edits.push({ from: walk.index, to: walk.index + walk[0].length, text: "" });
   const relative = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])(\.{1,2}\/[^"'\n]*)\2/gd;
-  for (const m of code.matchAll(relative)) {
-    if (m.index >= walk.index && m.index < walk.index + walk[0].length) continue;
+  for (const m of plain.matchAll(relative)) {
+    if (imports.some((i) => m.index >= i.from && m.index < i.to)) continue;
     const [from, to] = m.indices[3];
     edits.push({ from, to, text: pathToFileURL(path.resolve(fdir, m[3])).href });
   }

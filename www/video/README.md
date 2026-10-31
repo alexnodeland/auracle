@@ -381,8 +381,8 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
 | `tools/validate.mjs` | Check a film's references resolve before rehearsing it: every word and beat of its shots (a walkthrough's, or the takes an illustrated film cuts to), for a walkthrough the plan in its `film.js`, and for a film whose `film.js` reads takes the marks it reads from them. A film with no `shots.json` and no plan says so and passes |
-| `tools/plan.mjs` | A walkthrough's plan read without a browser (`loadPlan`: `film.js` run against a stand-in for `walk.js`; null for a film that does not call `walkthrough(`), shared by `validate.mjs`, `framing.mjs` and view-perform's `lint_plan.mjs` |
-| `tools/reads.mjs` | What a `film.js` reads, found in its text and never by running it: the takes it reads and the marks it reads from them (`readsOf`), over a scan that blanks comments, strings and regular expressions (`scan`); used by `validate.mjs` |
+| `tools/plan.mjs` | A walkthrough's plan read without a browser (`loadPlan`: `film.js` run against a stand-in for `walk.js`; null for a film that does not call `walkthrough`, by whatever name it imports it), shared by `validate.mjs`, `framing.mjs` and view-perform's `lint_plan.mjs` |
+| `tools/reads.mjs` | What a `film.js` reads, found in its text and never by running it: the takes it reads and the marks it reads from them (`readsOf`), over a scan that blanks comments, strings and regular expressions (`scan`); used by `validate.mjs` and `plan.mjs` |
 | `tools/rehearse.sh` | One-browser dry run, then `tools/rehearsal.py`'s summary |
 | `tools/framing.py` | Contact sheets of camera crops and callouts from a rehearsal (a walkthrough's; a film with no plan has nothing to frame, and says so) |
 | `tools/one_browser.sh` | Run a command when it is its turn for the browser (a first-come, first-served queue) |
