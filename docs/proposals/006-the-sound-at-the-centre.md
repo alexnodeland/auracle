@@ -123,7 +123,11 @@ Proposed next, each a real fact or waiting on one:
   measured.
 - **A guess is blurred by how unsure it is.** The map already has
   `utility_std`.
-- **Faces below the sonic floor are drawn hollow,** once RFC-005 exists.
+- **Faces below the sonic floor are drawn hollow,** once each sound's row
+  carries the floor's verdict: RFC-005 is accepted as
+  [ADR-026](../decisions/026-the-sonic-floor.md), and
+  [Plan-009](../plans/009-the-sonic-floor.md) task 5 puts the verdict there.
+  Drawing them is not planned yet.
 
 ### 4. PERFORM: a pedal over the circuit
 

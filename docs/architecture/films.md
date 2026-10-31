@@ -99,7 +99,12 @@ and `tools/test_shotgen.py` lists why: `circuit` and `perform` are replaced by
 the view films; `zzprobe` is a rehearsal probe. The launch film's takes are
 generated (`films/launch/gen_shots.py`) and cast. The test (in `make
 dev-check`) holds every committed `shots.json` to this. What the session deals (the pool, a duel, the warm
-start's other cards) is logged, not cast, until the sonic floor (RFC-005).
+start's other cards) is logged, not cast, until
+[Plan-009](../plans/009-the-sonic-floor.md) task 8 changes the rule. RFC-005
+is accepted as [ADR-026](../decisions/026-the-sonic-floor.md), and that task
+casts the pool's prior draws, and a duel between two of them, by the sonic
+floor; the warm start's other cards stay logged. The floored fill alone (the
+plan's earlier tasks) doesn't change what a film may cast.
 
 ## Readiness
 
