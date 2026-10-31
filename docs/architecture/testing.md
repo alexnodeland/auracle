@@ -1083,10 +1083,17 @@ judges: `live_cost.mjs --sweep-only --gate`, the audio thread's
     383 to 133 ms on an AMD EPYC 7763 runner (0.35) and from 282 to 130 ms
     on an EPYC 9V74 (0.46), against the bench's 0.40 (the nights of
     2026-10-08, before #393, and of 10-10 to 10-31), which gives 307 to
-    408 ms. Until #509 the profile held ADR-025's 1,100 ms, so a runner's
-    render of 69 to 134 ms gave ×8.2 to ×15.9, and the page in Chromium
-    took the same rate; 356 ms gives about ×2.7 to ×5, and the page at most
-    ×4.5.
+    408 ms. On the nights since #406 (2026-10-10 to 10-31) the runners
+    rendered it in 64 to 227 ms in Chromium (most 94 to 127) and 70 to 146
+    ms in Firefox (most 128 to 135). Until #509 the profile held ADR-025's
+    1,100 ms, so they ran at ×4.8 to ×17 (most ×8.7 to ×11.7 in Chromium
+    and ×8.1 to ×8.6 in Firefox), and the page in Chromium took the same
+    rate; 356 ms gives ×1.6 to ×5.6 (most ×2.8 to ×3.8 and ×2.6 to ×2.8),
+    and the page at most ×4.5, which a render under 79 ms reaches. A
+    workstation agrees: on an M3 Max on 2026-10-31, under a load of 13 to
+    26, Playwright's Firefox 157 rendered it in 69 ms and its Chromium in
+    67 to 68 ms, which at the page's ×4.2 to ×5 below is 290 to 345 ms on
+    the Air.
   - *Estimated too:* the page's cap, ×4.5 (`pageRateMax`): how much slower
     the Air's CPU is than an M-series one, ADR-025's 1 to 1.2 s against
     about 240 ms (×4.2 to ×5), as `live_cost.mjs --slowdown` takes it. The

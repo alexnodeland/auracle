@@ -249,7 +249,9 @@ function calibrationLine(c) {
 }
 
 /** The rates a boot on a profile ran at (`app.profile`), equal ones named
- *  together: "engine, farm and page ×4.41", "engine ×4, farm and page ×1". */
+ *  together: "engine, farm and page ×2.94", "engine and farm ×5.2, page
+ *  ×4.5" (the page at its cap, `pageRateOf`), "engine ×4, farm and page
+ *  ×1". */
 function rates(p) {
   const groups = [];
   for (const [what, r] of [["engine", p.engineRate], ["farm", p.farmRate], ["page", p.pageRate]]) {

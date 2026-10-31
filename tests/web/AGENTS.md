@@ -310,9 +310,10 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     `profile.js`), in Chromium and in Firefox. A test that booted on a
     profile names it beside each budget's figure, with the rates its boot
     ran at (`… ms of 100 ms on air in chromium (engine, farm and page
-    ×4.4)`, or `(engine ×4, farm and page ×1)` where a spec's `slowEngine`
-    is more than the profile's), and carries the annotation `profile`, what
-    its calibration measured and those rates.
+    ×2.9)`, `(engine and farm ×5.2, page ×4.5)` where the render's rate is
+    over the page's cap, or `(engine ×4, farm and page ×1)` where a spec's
+    `slowEngine` is more than the profile's), and carries the annotation
+    `profile`, what its calibration measured and those rates.
   - *The reference profile* is the reference machine (a 2018 or 2019
     MacBook Air, an Intel 1.6 GHz dual-core i5, in Firefox) as near as this
     one can make it: `app.boot({ profile: "air" })`, or every boot with

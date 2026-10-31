@@ -33,9 +33,10 @@
 //   rate can tell (×2 or more), each is held to half the rate times the
 //   calibration's render measured again unslowed, now, which a slowed render
 //   clears and an unslowed one does not. Against today's estimate of the Air
-//   (356 ms) a hosted runner's rate is about ×2.7 to ×5 (its render 69 to
-//   134 ms on the nights since #406) and a workstation's more; where it is
-//   less, the first test is the check.
+//   (356 ms) a hosted runner's rate is ×1.6 to ×5.6, most ×2.6 to ×3.8 (its
+//   render 64 to 227 ms on the nights since #406, most 94 to 135), and an
+//   M-series workstation's about ×5; where it is less than ×2, the first
+//   test is the check.
 const { test, expect } = require("./fixtures");
 const profile = require("./profile");
 
