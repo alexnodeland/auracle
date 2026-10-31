@@ -152,7 +152,8 @@ Both are stated by the engine before EVOLVE POOL is pressed.
   `ON_TABLE_MAX` next lowest with the table put away, and nothing outside the
   `refine_seeds` + `ON_TABLE_MAX` lowest members not kept can leave, whatever
   is on the table, unless something else changes the pool meanwhile (a save,
-  an edit, a preset). Natively,
+  an edit, a preset) or a sound kept as new has its first pick, after which
+  it competes. Natively,
   `may_replace_bounds_a_generations_end_whatever_is_on_the_table_by_then`. A
   patch the app has cut is in the pool and ranks low, so it is on this list
   too: the engine does not know about cuts.

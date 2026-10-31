@@ -3019,7 +3019,8 @@ impl Engine {
     /// member outside this list can leave the pool at its end, whatever its
     /// walks breed and whatever is on the table by then
     /// ([`Engine::set_on_table`]), as long as nothing else changes the pool
-    /// meanwhile (a save, an edit, a preset, a ⚡ child).
+    /// meanwhile (a save, an edit, a preset, a ⚡ child) and no sound kept as
+    /// new has its first pick (it competes from then, [`Candidate::kept`]).
     ///
     /// [`Engine::refine_jobs`] opens with a finish, which retires
     /// [`Engine::retiring`]: those come first. Then each of the generation's
