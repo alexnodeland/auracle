@@ -62,7 +62,11 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
 - **Rehearse before recording.** `tools/rehearse.sh <film>` dry-runs every
   shot and summarises lateness and errors. A film is ready when every shot
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`
-  shows no callout leaving the frame and the voice passes its ASR gate.
+  shows no callout leaving the frame and the voice passes its ASR gate. The
+  tools cover a film by what it has: `validate.mjs` checks the shots of any
+  film with a `shots.json` (a walkthrough's, or launch's takes) and the plan
+  of one whose `film.js` calls `walkthrough(`; a film with neither says so
+  and passes, and `framing.py` has nothing to frame without a plan.
 - **Rehearsals and recordings run alone.** Every rehearsal and recording goes
   through `tools/one_browser.sh` (first come, first served, exclusive lane);
   `rehearse.sh` and `walkthrough.sh` already do. Browser tests share the
