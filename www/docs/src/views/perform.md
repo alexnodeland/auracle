@@ -317,7 +317,9 @@ sweep. On a touch screen a long press opens the control's figure instead
 meanwhile waits until the sweep has ended, as it does for your hand, so it
 never moves the control under the sweep. Pressing the control stops the
 sweep and puts the control back where it was, and turning it stops the sweep
-too. <kbd>Enter</kbd> while it plays starts it over.
+too. <kbd>Enter</kbd> while it plays starts it over. **KEEP** while it plays
+keeps the sound where the sweep has it at that moment, and the control
+re-centers from there, as after any KEEP.
 
 This is the quickest way to learn what a control does on this sound, since the
 same name moves different knobs on different patches.
