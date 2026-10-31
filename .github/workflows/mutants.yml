@@ -121,7 +121,8 @@ jobs:
           fetch-depth: 0
 
       # Most PRs change no Rust: say so and stop before the setup. The diff
-      # is `make mutants DIFF=1`'s, kept in target/ for the run below.
+      # is `make mutants DIFF=1`'s, here only to say whether any Rust
+      # changed; the run below writes it again, after the cache restores.
       - id: rust
         name: Is any Rust changed?
         if: steps.queue.outputs.batch == 'false'
@@ -154,10 +155,12 @@ jobs:
       - id: mutants
         name: Mutants in the changed code
         if: steps.rust.outputs.changed == 'true'
-        # The diff again, now that the cache has restored: on a key that does
-        # not match exactly (a Cargo.lock or toolchain change), rust-cache
-        # cleans target/ first, and the copy the step above wrote is gone
-        # (#546, #544's run 41233577683).
+        # The diff again, now that the cache has restored. When the restored
+        # key is not an exact match, rust-cache cleans target/ after the
+        # restore and the copy the step above wrote is gone (#546, #544's run
+        # 41233577683). The key hashes Cargo.lock, the crates' Cargo.toml and
+        # rust-toolchain.toml, and only the weekly run saves it, so any Rust
+        # PR mismatches once main's lockfile, manifests or toolchain move.
         run: |
           make -s mutants-diff BASE="$BASE"
           cmd="$(make -s mutants-command DIFF=1 MUTANTS_JOBS= MUTANTS_ARGS=--in-place)"
