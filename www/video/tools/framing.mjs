@@ -3,7 +3,8 @@
 // callout's point and label land. Prints JSON for framing.py, which draws the
 // contact sheets and flags a callout outside its frame. A film with no
 // walkthrough plan (an illustrated film, even one that cuts to takes of the
-// app, as launch does) has nothing to frame: it prints null.
+// app, as launch does) has nothing to frame: it prints null, and framing.py
+// says so.
 //
 //   node www/video/tools/framing.mjs FILM [BEAT]   (run by framing.py)
 import fs from "node:fs";
@@ -27,7 +28,6 @@ try {
   console.error(`${film}: ${e.message}`);
   process.exit(1);
 }
-if (!plan) console.error(`${film}: no walkthrough plan, so nothing to frame`);
 const tl = plan ? JSON.parse(fs.readFileSync(`${fdir}/timeline.json`, "utf8")) : null;
 
 function wordTime(l, word) {

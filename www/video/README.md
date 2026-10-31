@@ -289,8 +289,9 @@ What makes shots reliable:
     www/video/tools/rehearse.sh <film> [--shot a,b] # a dry run, then its summary
     python3 www/video/tools/framing.py <film> [beat] # camera crops and callouts, as contact sheets
 
-`validate.mjs` and `framing.py` look at a film's `shots.json` and at its plan,
-the `walkthrough(` call in `film.js`, so they cover films by what they have: a
+`validate.mjs` looks at a film's `shots.json` and at its plan, the
+`walkthrough(` call in `film.js`; `framing.py` looks at the plan and the
+rehearsal's screenshots. So they cover films by what they have: a
 walkthrough has both, an illustrated film that cuts to takes (launch) has
 shots and no plan (its `film.js` draws on a DOM and is never run, and there is
 nothing to frame), and a film with no `shots.json` (taste, math, dsp, engine)
@@ -371,7 +372,7 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/sounds.sh` | The old beds of the films not yet on N3, rendered to `out/sound/` (again only when one changes) |
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
-| `tools/validate.mjs` | Check a film's references resolve before rehearsing it: every word, mark and beat of its shots (a walkthrough's, or the takes an illustrated film cuts to) and, for a walkthrough, of the plan in its `film.js`. A film with no `shots.json` says so and passes |
+| `tools/validate.mjs` | Check a film's references resolve before rehearsing it: every word, mark and beat of its shots (a walkthrough's, or the takes an illustrated film cuts to) and, for a walkthrough, of the plan in its `film.js`. A film with no `shots.json` and no plan says so and passes |
 | `tools/plan.mjs` | A walkthrough's plan read without a browser (`loadPlan`: `film.js` run against a stand-in for `walk.js`; null for a film that does not call `walkthrough(`), shared by `validate.mjs`, `framing.mjs` and view-perform's `lint_plan.mjs` |
 | `tools/rehearse.sh` | One-browser dry run, then `tools/rehearsal.py`'s summary |
 | `tools/framing.py` | Contact sheets of camera crops and callouts from a rehearsal (a walkthrough's; a film with no plan has nothing to frame, and says so) |

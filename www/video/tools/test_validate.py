@@ -62,9 +62,10 @@ class Scratch(unittest.TestCase):
         with open(self.path(film, name), "w", encoding="utf-8") as f:
             f.write(text)
 
-    def synthetic(self, film="syn", js="", shots=True):
+    def synthetic(self, film="syn", js="", shots=True, marks=None):
         """A film of one beat `a`, one line `l1` ("Play the keys") and, unless
-        `shots` is off, one shot `s`; `js` is its film.js."""
+        `shots` is off, one shot `s` (measuring `marks`, name to selector);
+        `js` is its film.js."""
         write_json(self.path(film, "timeline.json"), {
             "film": film,
             "lines": [{"id": "l1", "text": "Play the keys", "t0": 1.0, "t1": 2.0}],
@@ -72,7 +73,7 @@ class Scratch(unittest.TestCase):
         })
         if shots:
             write_json(self.path(film, "shots.json"),
-                       {"shots": [{"id": "s", "beat": "a", "actions": [{"at": "l1:keys", "op": "click", "sel": "x"}]}]})
+                       {"shots": [{"id": "s", "beat": "a", "marks": marks or {}, "actions": [{"at": "l1:keys", "op": "click", "sel": "x"}]}]})
         if js:
             self.write(film, "film.js", js)
         return film
@@ -92,11 +93,6 @@ class Scratch(unittest.TestCase):
 
 class AnIllustratedFilmWithTakes(Scratch):
     """launch: drawn on the stage, cuts to takes of the app (shots.json)."""
-
-    def test_the_committed_film_is_clean(self):
-        code, out, err = node("validate.mjs", "launch")
-        self.assertEqual(code, 0, out + err)
-        self.assertIn("launch: ok", out)
 
     def test_its_film_js_is_not_run(self):
         # Its copy sits where film.js's relative imports (the stage, the kit)
@@ -138,13 +134,13 @@ class AnIllustratedFilmWithTakes(Scratch):
         code, out, err = node("framing.mjs", "launch")
         self.assertEqual(code, 0, err)
         self.assertEqual(json.loads(out), None)
-        self.assertIn("nothing to frame", err)
 
-    @unittest.skipUnless(subprocess.run([sys.executable, "-c", "import PIL"], capture_output=True).returncode == 0, "framing.py needs Pillow")
-    def test_framing_py_says_so(self):
+    def test_framing_py_says_so_once(self):
+        # It needs no Pillow, so this runs wherever node does (CI's Web job).
         r = subprocess.run([sys.executable, os.path.join(HERE, "framing.py"), "launch"], capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("nothing to frame", r.stdout)
+        self.assertEqual((r.stdout + r.stderr).count("nothing to frame"), 1, r.stdout + r.stderr)
+        self.assertNotIn("drawn", r.stdout + r.stderr)
 
 
 class AFilmDrawnWithNoTakes(Scratch):
@@ -171,6 +167,14 @@ class AFilmDrawnWithNoTakes(Scratch):
         self.assertEqual(code, 0, err)
         self.assertEqual(json.loads(out), None)
 
+    def test_a_film_with_no_film_js_has_nothing_to_frame_either(self):
+        # zzprobe has shots and no film.js at all: nothing is drawn, and
+        # framing.py must not say it is.
+        r = subprocess.run([sys.executable, os.path.join(HERE, "framing.py"), "zzprobe"], capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((r.stdout + r.stderr).count("nothing to frame"), 1, r.stdout + r.stderr)
+        self.assertNotIn("drawn", r.stdout + r.stderr)
+
     def test_a_film_with_no_timeline_fails(self):
         self.write("early", "film.js", self.DRAWS)
         self.assertIn("no timeline.json", self.problems("early"))
@@ -180,10 +184,10 @@ class AFilmDrawnWithNoTakes(Scratch):
         self.assertEqual(code, 2, out + err)
 
 
-class AWalkthrough(Scratch):
-    def test_the_committed_films_are_clean(self):
-        # The committed films: view-perform and view-patch were checked by
-        # hand before this test; the others by the stub it replaced.
+class TheCommittedFilms(Scratch):
+    def test_every_one_is_clean(self):
+        # Every film in films/, whatever it has: walkthroughs, launch (takes,
+        # no plan), the illustrated ones (nothing to check) and the probe.
         for film in sorted(os.listdir(FILMS)):
             if not os.path.isdir(os.path.join(FILMS, film)):
                 continue
@@ -191,13 +195,20 @@ class AWalkthrough(Scratch):
                 code, out, err = node("validate.mjs", film)
                 self.assertEqual(code, 0, out + err)
 
-    def test_view_perform_and_view_patch_check_their_plans(self):
-        for film in ("view-perform", "view-patch"):
+    def test_each_kind_says_what_it_checked(self):
+        for film, says in (
+            ("view-patch", "view-patch: ok"),
+            ("view-perform", "view-perform: ok"),
+            ("launch", "launch: ok (takes only: the film has no walkthrough plan)"),
+            ("dsp", "dsp: no shots.json and no walkthrough plan: nothing to check"),
+        ):
             with self.subTest(film=film):
                 code, out, err = node("validate.mjs", film)
                 self.assertEqual(code, 0, out + err)
-                self.assertEqual(out.strip(), f"{film}: ok")
+                self.assertEqual(out.strip(), says)
 
+
+class AWalkthrough(Scratch):
     def test_a_scratch_copy_is_clean(self):
         self.copy_film("view-patch")
         code, out, err = self.run_node("view-patch")
