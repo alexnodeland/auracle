@@ -945,8 +945,8 @@ examples, in node with no page (`crates/auracle-wasm/examples/*.mjs`, such as
   `scripts/test_coverage_gate.py` inside the pre-commit hook waited minutes
   on a daemon's socket with hundreds running (#328). On a loaded machine a
   daemon that has fallen behind also calls an edited file unchanged. So
-  `changes.py`, `coverage_gate.py` and `wasm_pkg.py` pass
-  `-c core.fsmonitor=false`, as `tests/web/changed.mjs` and
+  `changes.py`, `coverage_gate.py`, `wasm_pkg.py` and `www/checkwords.py`
+  pass `-c core.fsmonitor=false`, as `tests/web/changed.mjs` and
   `scripts/ops/ship_pr.sh` do, and the scripts' tests run their scratch
   repositories with `GIT_CONFIG_GLOBAL=/dev/null` and
   `GIT_CONFIG_NOSYSTEM=1` (or a `HOME` of their own). `changes.py` and
