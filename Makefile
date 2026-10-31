@@ -484,8 +484,9 @@ test-crate:
 # here and nowhere else: the fast tier is *everything not named*, so a new or
 # renamed test lands in the fast tier and is never dropped from both, and
 # `--no-tests=fail` turns a list that no longer matches anything into a red
-# run. The search floor is split off because it alone is ~330 s on a runner:
-# it walks 16 seeds, one thread each, and gets a runner to itself.
+# run. The search floor is split off because it alone takes the whole pool for
+# its run (~100 s on a runner, 330 s when it was first split off): it walks 16
+# seeds, one thread each, and gets a runner to itself.
 SEARCH_FLOOR := test(=engine::tests::refinement_improves_pool)
 SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) \
 	| test(=perform::tests::a_planned_measurement_is_the_measurement) \
@@ -511,7 +512,7 @@ test-fast-tier: nextest-installed
 ## test-slow-tier: the slow Rust tests: the search floor, then the rest
 test-slow-tier: test-search-floor test-slow-rest
 
-## test-search-floor: `refinement_improves_pool` alone (~5 min on a runner)
+## test-search-floor: `refinement_improves_pool` alone (~100 s on a runner)
 test-search-floor: nextest-installed
 	$(NEXTEST) -E '$(SEARCH_FLOOR)' $(NEXTEST_ARGS)
 

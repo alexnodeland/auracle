@@ -64,8 +64,8 @@ path = "junit.xml"
 # These overrides are the default profile's, so the ci profile has them too.
 
 # The search floor: sixteen seeds, a thread each. Its own limit, since on a
-# slow runner it can come near ten minutes (about five and a half on a
-# typical one).
+# slow runner it can come near ten minutes (about 100 s on a typical one now,
+# five and a half minutes when it was first timed).
 [[profile.default.overrides]]
 filter = 'test(=engine::tests::refinement_improves_pool)'
 threads-required = "num-test-threads"

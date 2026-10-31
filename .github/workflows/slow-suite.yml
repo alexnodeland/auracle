@@ -4,10 +4,10 @@ name: Slow suite
 # fast tier and the only required check; a PR may merge on it alone. Each test
 # runs in exactly one tier (docs/architecture/testing.md § CI tiers):
 #
-# - Rust: the search floor (`refinement_improves_pool`, ~330 s on a runner)
-#   and the ten other tests over a minute (~1030 s of test time between them),
-#   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
-#   every test NOT named there.
+# - Rust: the search floor (`refinement_improves_pool`, ~100 s on a runner)
+#   and the nine other tests that took over a minute when they were named
+#   (~260 s of test time between them), named in the Makefile as SEARCH_FLOOR
+#   and SLOW_TESTS. The fast tier runs every test NOT named there.
 # - Browser: the specs tagged `@slow` (~35 min of test time in one worker:
 #   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and,
 #   in a job of their own, any tagged `@quarantine`: a flaky test moved out
@@ -141,8 +141,9 @@ jobs:
   # The slow Rust tests, in two legs: the search floor gets a runner to itself
   # (it walks 16 seeds, one thread each, and on a 4-core runner those threads
   # queue four deep; next to other tests it makes them wait for the cores),
-  # and the other ten share one (~5 min; the longest is ~3 min). One leg at a
-  # time (`max-parallel: 1`), beside at most three browser runners: four.
+  # and the other nine share one (~2 min of tests; the longest is ~75 s). One
+  # leg at a time (`max-parallel: 1`), beside at most three browser runners:
+  # four.
   rust:
     name: Slow Rust (${{ matrix.name }})
     needs: scope

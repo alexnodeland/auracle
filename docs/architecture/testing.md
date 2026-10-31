@@ -510,8 +510,9 @@ and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
 in all.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
-in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
-and a half minutes, a runner of its own) and `SLOW_TESTS`. Browser: a test
+in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about 100 s
+in `main`'s latest run, 330 s when it was named; a runner of its own) and
+`SLOW_TESTS`. Browser: a test
 over about 40 s on CI is tagged `@slow` in its declaration
 (`tests/web/AGENTS.md` says how); `npx playwright test --list --grep @slow`
 lists them. The tag and the `Makefile` are the lists; this page does not
