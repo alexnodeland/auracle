@@ -343,17 +343,20 @@ pub struct SessionConfig {
     /// recorded). `--budget-ab` has **not** been re-run on anything since, so
     /// "twenty steps is not enough" is a 0.2.2 finding. What has changed:
     ///
-    /// - fugue-ppl 0.2.3 (#356, 2026-10-07) reflects a knob's proposal into
-    ///   its bounds. At 40 steps knob moves are accepted 85% of the time
-    ///   against 53%, and are about 1.8× larger, so a chain should leave its
-    ///   seed sooner than the table's did (not measured).
-    /// - Oscillator octaves are drawn by `OCTAVE_WEIGHTS` (#363, 2026-10-07).
+    /// - fugue-ppl 0.2.3 (#356, 2026-10-07, merged 12:31 UTC) reflects a
+    ///   knob's proposal into its bounds. At 40 steps knob moves are accepted
+    ///   85% of the time against 53%, and are about 1.8× larger, so a chain
+    ///   should leave its seed sooner than the table's did (not measured).
+    /// - Oscillator octaves are drawn by `OCTAVE_WEIGHTS` (#363, 2026-10-07,
+    ///   merged 14:10 UTC, after #356).
     /// - A walk runs its model once a step, on fugue-evo 0.4.0 (#389,
     ///   2026-10-08), which draws the same randomness; renders are quiver-dsp
     ///   0.5.1's (#393, 2026-10-09: φ moves by at most 1.34e-11 of a spread;
-    ///   #406, 2026-10-09: the same samples bit for bit). These are expected
-    ///   to leave the figures below as they were, and none of them was
-    ///   re-measured after #389 and #406.
+    ///   #406, 2026-10-09: the same samples bit for bit). None of these was
+    ///   meant to change what a seeded walk draws or hears, so the figures
+    ///   below are expected to hold within the noise. That is an expectation:
+    ///   the search is chaotic (#393's move in φ sent one climb seed to a
+    ///   different end), and no hit rate was measured after any of these.
     ///
     /// The measurements that ran (#355 and #357), by `search_health --hits`:
     /// the share of locked `refine_from` tries (8 per seed, a third of the
@@ -362,7 +365,8 @@ pub struct SessionConfig {
     /// of the harness's list, and the issues name no build.
     ///
     /// The fugue-ppl change, paired seed for seed, on builds that differ only
-    /// in fugue-ppl (2f97de3 and 1cf1d6e are the nearest commits on main):
+    /// in fugue-ppl, octaves uniform (2f97de3 and 1cf1d6e are the nearest
+    /// commits on main):
     ///
     /// | | Seeds | 0.2.2 | 0.2.3 | Difference, 95% interval |
     /// |---|---|---|---|---|
@@ -372,8 +376,12 @@ pub struct SessionConfig {
     /// | Pool climb, mean gain | 16 | +2.000 | +1.852 | −0.148, −0.836 to +0.540 |
     ///
     /// The weighted octaves, on 16 seeds (128 tries a rate), unpaired because
-    /// the two sides deal different pools (the commits either side of #363,
-    /// 1cf1d6e and 9c7cdf3, are the nearest on main; both on fugue-ppl 0.2.3):
+    /// the two sides deal different pools. **Both sides ran on fugue-ppl
+    /// 0.2.2**, on builds of #363's branch from before it was rebased onto
+    /// main's 0.2.3: #363's record lists these rows and only then says it was
+    /// rebased, and the uniform side's 75.0% at 80 steps (96 of 128) and its
+    /// 16-seed climb of +2.000 are #355's 0.2.2 readings, not its 0.2.3 ones.
+    /// They are not commits on main, and the issue names none:
     ///
     /// | `refine_steps` | 20 | 40 (shipped) | 80 | 160 |
     /// |---|---|---|---|---|
@@ -384,20 +392,25 @@ pub struct SessionConfig {
     /// The 95% intervals on those differences are −1.4 to +21.4, −14.2 to +8.1
     /// and −13.8 to +7.7 points. The uniform side rises with the walk's length
     /// and the weighted side stays flat, which is not significant and comes
-    /// mostly from a higher 20-step row. At 20 steps the weighted side hits
-    /// no less often than at 40 (71.1% against 68.0%, inside the noise), so
-    /// "twenty steps is not enough" does not show on this measure under the
-    /// weighted octaves. The 160-step row of the weighted side was never
-    /// finished, so its shape past 80 is unknown.
+    /// mostly from a higher 20-step row. At 20 steps the weighted side, on
+    /// 0.2.2, hit no less often than at 40 (71.1% against 68.0%, inside the
+    /// noise), where the uniform side, on the same fugue-ppl, read 60.9%
+    /// against 71.1%. fugue-ppl 0.2.3 with the weighted octaves, the walk main
+    /// has had since #363, **was never measured** by this rate at any walk
+    /// length, so whether "twenty steps is not enough" holds for it is
+    /// unknown. The 160-step row of the weighted side was never finished, so
+    /// its shape past 80 is unknown too.
     ///
-    /// The shipped 40 steps passed under both changes (not worse beyond
-    /// noise). Longer walks lean negative inside the noise and are not
-    /// shipped; the maintainer closed both studies on 2026-10-31 without
-    /// measuring further. The one climb since, `search_health --climb 8` on
-    /// 9c81dca (2026-10-09; fugue-ppl 0.2.3, weighted octaves, fugue-evo
-    /// 0.4.0, quiver-dsp 0.4.1), read a mean gain of +2.218 ± 0.416 (se) and
-    /// climbed on 8 of 8. All the tables, what was never finished and how to
-    /// reopen it are in `docs/notes/walk-length-2026-10.md`.
+    /// The shipped 40 steps passed under each change, measured one at a time
+    /// (not worse beyond noise). Longer walks lean negative inside the noise
+    /// and are not shipped; the maintainer closed both studies on 2026-10-31
+    /// without measuring further. The one reading of the two changes together
+    /// that the repository keeps, `search_health --climb 8` on 9c81dca
+    /// (2026-10-09; fugue-ppl 0.2.3, weighted octaves, fugue-evo 0.4.0,
+    /// quiver-dsp 0.4.1), is a climb and not a hit rate: a mean gain of
+    /// +2.218 ± 0.416 (se), climbed on 8 of 8. All the tables, what was never
+    /// finished and how to reopen it are in
+    /// `docs/notes/walk-length-2026-10.md`.
     pub refine_steps: usize,
     /// How many top candidates to refine from. Also scaled with [`N_OPS`] —
     /// more seeds is more *starting points*, which is what actually buys

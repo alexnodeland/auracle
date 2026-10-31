@@ -82,22 +82,31 @@
 //!
 //! ## The baselines now, and what each was measured on
 //!
-//! Compare a change against these, not against the wave-3 table below, which
-//! predates 2026-10-07 (fugue-ppl 0.2.3 and octaves drawn by weight). Every
-//! figure here but the last is copied from the bodies of #355 and #357, was
-//! measured on 2026-10-07 on frozen builds that the issues do not name, with
-//! the first N seeds of this harness's list (`0xE05 + i·0x101`) and the 95%
-//! interval the issue printed. None was re-measured after #389 (fugue-evo
-//! 0.4.0, a walk runs its model once a step: the same draws), #393
-//! (quiver-dsp 0.4.1: φ moves by at most 1.34e-11 of a spread) or #406
-//! (quiver-dsp 0.5.1's block walk: the same samples bit for bit). The
-//! maintainer closed both studies on 2026-10-31 with nothing re-measured; the
-//! tables, the rows never finished and how to reopen them are in
-//! `docs/notes/walk-length-2026-10.md`.
+//! These are the nearest readings of the search now, and better than the
+//! wave-3 table below, which predates 2026-10-07 (fugue-ppl 0.2.3 and octaves
+//! drawn by weight). Every figure here but the last is copied from the bodies
+//! of #355 and #357, was measured on 2026-10-07 on frozen builds that the
+//! issues do not name, with the first N seeds of this harness's list
+//! (`0xE05 + i·0x101`) and the 95% interval the issue printed.
+//!
+//! **Read which fugue-ppl each row ran on.** The octave rows (#357) ran on
+//! fugue-ppl 0.2.2, on builds of #363's branch from before it was rebased onto
+//! main's 0.2.3; the fugue-ppl rows (#355) ran with octaves uniform. The walk
+//! main has had since 2026-10-07, fugue-ppl 0.2.3 with weighted octaves, was
+//! never measured by the hit rate at any walk length, so no hit-rate row is
+//! its baseline, and the last row is a climb. The octave rows were taken
+//! before #356 (fugue-ppl 0.2.3) reached #363's branch, and no row was
+//! re-measured after #389 (fugue-evo 0.4.0, a walk runs its model once a
+//! step: the same draws), #393 (quiver-dsp 0.4.1: φ moves by at most 1.34e-11
+//! of a spread) or #406 (quiver-dsp 0.5.1's block walk: the same samples bit
+//! for bit). The maintainer closed both studies on 2026-10-31 with nothing
+//! re-measured; the tables, the rows never finished and how to reopen them are
+//! in `docs/notes/walk-length-2026-10.md`.
 //!
 //! ```text
 //! 3  locked refine beat its parent, by refine_steps (16 seeds, 128 tries a
-//!    rate; octaves uniform against weighted deal different pools: unpaired)
+//!    rate; octaves uniform against weighted deal different pools: unpaired;
+//!    both sides on fugue-ppl 0.2.2)
 //!    refine_steps          20           40 *         80           160
 //!    uniform octaves       60.9%        71.1%        75.0%        80.5%
 //!    weighted octaves      71.1%        68.0%        71.9%        not finished
@@ -112,7 +121,7 @@
 //!    3  beat parent, 160          8, run stopped           -0.109 (-0.272, +0.053)
 //!    1  pool climb, mean gain     16     +2.000   +1.852   -0.148 (-0.836, +0.540)
 //!    4  fit vs truth (spearman)   n/s    0.359    0.328    -0.031 (-0.070, +0.008)
-//!    2  knob moves accepted, 40   n/s    53%      85%      (moves about 1.8x larger)
+//!    2  knob moves accepted, 40   n/s    53%      85%      (moves ~1.8x larger)
 //!
 //! 1  pool climb, mean gain, 8 seeds, 9c81dca, 2026-10-09 (fugue-ppl 0.2.3,
 //!    weighted octaves, fugue-evo 0.4.0, quiver-dsp 0.4.1): +2.218 +/- 0.416
@@ -166,8 +175,9 @@
 //! so a claim about a walk's length has a number attached rather than a
 //! feeling. "Twenty steps is not enough" (`SessionConfig::refine_steps`) is
 //! a `--budget-ab` finding under fugue-ppl 0.2.2; on this measure, under the
-//! weighted octaves, 20 steps hit no less often than 40 (71.1% against
-//! 68.0%, inside the noise; see the baselines above).
+//! weighted octaves on 0.2.2, 20 steps hit no less often than 40 (71.1%
+//! against 68.0%, inside the noise; see the baselines above), and under
+//! 0.2.3 with the weighted octaves nobody has measured it.
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -747,10 +757,11 @@ fn mean(xs: &[f64]) -> f64 {
 /// Since, on the engine of 2026-10: the 16-seed mean gain's standard error
 /// read ±0.380 (`c8541631`, 2026-10-06, fugue-ppl 0.2.2), and the 8-seed
 /// paired difference of #403's two climbs (`9c81dca` against a scratch
-/// commit, 2026-10-09; `docs/notes/render-cost-2026-10/`) read −0.516 ± 0.316. At 16 seeds and that spread the
-/// paired standard error would be about 0.22, so a true drop of about 0.45
-/// shows at two standard errors and a smaller one would not reliably. The
-/// ±0.64 above is the wave-3 engine's resolution, not necessarily today's.
+/// commit, 2026-10-09; `docs/notes/render-cost-2026-10/`) read
+/// −0.516 ± 0.316. At 16 seeds and that spread the paired standard error
+/// would be about 0.22, so a true drop of about 0.45 shows at two standard
+/// errors and a smaller one would not reliably. The ±0.64 above is the wave-3
+/// engine's resolution, not necessarily today's.
 fn climb_report(seeds: &[u64]) {
     let curves: Vec<Vec<(f64, f64)>> = std::thread::scope(|s| {
         let hs: Vec<_> = seeds

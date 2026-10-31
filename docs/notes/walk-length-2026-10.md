@@ -62,9 +62,30 @@ the climb on `c8541631` (16 seeds, ± 0.380, climbed on 14 of 16).
 `OCTAVE_WEIGHTS`, [.05, .15, .40, .25, .15] over −2 to +2, where it was
 uniform. `search-check`'s measurement 3 was run on 16 seeds on both sides, on
 frozen builds. The two sides deal different pools, because the octave draw
-reads the random stream differently, so the comparison is **unpaired**. Both
-sides carry fugue-ppl 0.2.3 if they are the commits on either side of #363,
-`1cf1d6e` and `9c7cdf3`; the issue names no commit.
+reads the random stream differently, so the comparison is **unpaired**.
+
+**Both sides ran on fugue-ppl 0.2.2**, not 0.2.3. #357 was opened at 11:43 UTC
+on 2026-10-07, before #356 (fugue-ppl 0.2.3) merged at 12:31, and the sides are
+builds of #363's branch from before it was rebased onto main. Three things in
+the record say so, and the issue names no commit or version:
+
+- #363's description lists these rows (60.9 / 71.1 / 75.0% against 71.1 / 68.0
+  / 71.9%, with the 16-seed climb) and only then says it was rebased onto
+  `1cf1d6e` (fugue-ppl 0.2.3, #356). After the rebase it lists only
+  `boot_probe.json` regenerated and `perform-wirings.json` measured again, and
+  no `search-check`.
+- The uniform side's 80-step row, 75.0%, is 96 of 128 tries, the same as
+  #355's 0.2.2 arm (75%) and not its 0.2.3 arm (71%, 91 of 128). The harness is
+  deterministic per build and seed (it seeds its generator from the seed, and
+  quiver's on every render), so the same build and seeds read the same.
+- The uniform side's 16-seed climb in #363's description, +2.000 ± 0.380 (14
+  of 16), is #355's 0.2.2 climb (+2.000), and the figure `render-cost-2026-10`
+  holds for `c8541631`. The weighted side's climb read +1.813 ± 0.244 (16 of
+  16), a paired −0.187 ± 0.445.
+
+So the comparison is uniform against weighted octaves on 0.2.2. It is not the
+pair of commits on either side of #363 on main (`1cf1d6e` and `9c7cdf3`), which
+both carry 0.2.3 and were not measured. Read the table below that way.
 
 | Steps | Before (uniform) | After (weighted) | Difference, 95% interval |
 | --- | --- | --- | --- |
@@ -79,6 +100,14 @@ flat (71, 68, 72% at 20, 40 and 80), so its rise from 20 to 80 steps is about
 13 pp smaller. That is not significant, and most of it is a higher 20-step row
 rather than a lower 80-step one. A six-seed sample read −25 pp at 160 steps on
 the after side, but those six were the before side's best, so it says little.
+
+**Fugue-ppl 0.2.3 with the weighted octaves, the walk main has had since
+#363 merged, has no hit-rate reading at any walk length.** #355 measured 0.2.3
+with octaves uniform, #357 measured weighted octaves on 0.2.2, and nothing
+measured them together. That includes the 20-step row: "twenty steps is not
+enough" read 60.9% against 71.1% at 20 and 40 steps with octaves uniform on
+0.2.2, did not show with them weighted on 0.2.2 (71.1% against 68.0%, inside
+the noise), and is unmeasured on 0.2.3 with them weighted.
 
 The mechanism the issue proposed is a hypothesis that was not tested. fugue's
 Metropolis step proposes `#oct` from its prior, and the walk's target is the
@@ -110,31 +139,42 @@ Nothing below was followed by a re-measurement of these rows.
 
 | Date | Change | What it does to a walk |
 | --- | --- | --- |
-| 2026-10-07 | #363 weighted octaves | The "after" side of #357, and main's state |
+| 2026-10-07, 12:31 UTC | #356 (`1cf1d6e`): fugue-ppl 0.2.3 | A knob's proposal reflects into its bounds: moves accepted more often and about 1.8× larger. What #355 measured. #357's rows were taken before it reached #363's branch |
+| 2026-10-07, 14:10 UTC | #363 (`9c7cdf3`): weighted octaves | The "after" side of #357, on 0.2.2. It merged on top of #356, so main's walk has had both since this commit |
 | 2026-10-08 | #389 (`9c0557e`): fugue-evo 0.3.1 to 0.4.0, and a walk runs its model once per step (`step_scored`) | Cheaper per step; its message says it draws the same randomness, so a seeded walk is the same |
 | 2026-10-08, 10-09 | #391, #399 | The taste fit's cost, not the walk |
 | 2026-10-09 | #393 (`9c81dca`): quiver-dsp 0.4.1 | A render about 39% cheaper in wasm; φ moves by at most 1.34e-11 of a spread |
 | 2026-10-09 | #406 (`93e2e32`): quiver-dsp 0.5.1's block walk | The same samples bit for bit |
 
 `refine_steps` is still `2·N_OPS` (40), `LOCK_SCALE_CAP` is still 4.0 and
-`OCTAVE_WEIGHTS` is still [.05, .15, .40, .25, .15]. Because none of these
-changes was meant to alter what a seeded walk draws or hears, the figures are
-expected to still describe the walk in kind, to within the last digit. That is
-an expectation and not a measurement.
+`OCTAVE_WEIGHTS` is still [.05, .15, .40, .25, .15]. #389, #393 and #406 were
+not meant to alter what a seeded walk draws or hears, so the figures are
+expected to hold within the noise. That is an expectation, and no hit rate has
+checked it. The search is chaotic: #393 moved φ by at most 1.34e-11 of a
+spread and still sent one climb seed to a different end (a final gain 0.02
+apart, in `render-cost-2026-10`). In the hit rate one flipped try moves a
+16-seed rate by 0.78 points (1 in 128), so today's 68.0% could read 67.2% or
+68.8% with nothing wrong. A re-run that differs from the figures by a try or
+two is the noise, not a regression.
 
-The one climb since is the 8-seed run of 2026-10-09 on `9c81dca` (fugue-ppl
-0.2.3, fugue-evo 0.4.0, weighted octaves, quiver-dsp 0.4.1, before #406): mean
-gain **+2.218 ± 0.416** (se), climbed on 8 of 8
+The climbs since: #393's revalidate ran 8-seed climbs on both sides of its
+change, which `render-cost-2026-10` records only as a difference of at most
+0.006 in generations 4 to 6. The repository keeps one climb of main's
+combination, the 8-seed run of 2026-10-09 on `9c81dca` (fugue-ppl 0.2.3,
+fugue-evo 0.4.0, weighted octaves, quiver-dsp 0.4.1, before #406): mean gain
+**+2.218 ± 0.416** (se), climbed on 8 of 8
 (`render-cost-2026-10/blocks/climb-before.txt`). Its seeds are the harness's
-first eight, and it is not paired with any row above.
+first eight, it is a climb and not a hit rate, and it is not paired with any
+row above.
 
 ## Why they closed
 
 The maintainer's decision, 2026-10-31:
 
-- The shipped 40-step walk passed under both changes: not worse beyond noise
-  (+0.036 [−0.037, +0.110] for fugue-ppl 0.2.3, −3.1 pp [−14.2, +8.1] for the
-  weighted octaves).
+- The shipped 40-step walk passed under each change, measured one at a time:
+  not worse beyond noise (+0.036 [−0.037, +0.110] for fugue-ppl 0.2.3 with
+  octaves uniform, −3.1 pp [−14.2, +8.1] for the weighted octaves on 0.2.2).
+  The two together were not measured.
 - Longer walks (80 and 160 steps) are not shipped. The default `refine_steps`
   stays 40. (A locked walk's own stretch for locked sites, up to 4×, is an
   older mechanism and not what these studies asked about.)
@@ -149,11 +189,16 @@ header of `crates/auracle-session/examples/search_health.rs`.
 
 ## If it is reopened
 
-- Finish the weighted side's 160-step row, with its per-seed rows
-  (`search_health --hits 16`, about the size of a climb), and keep the TSVs.
-- The 0.2.2 arm cannot be built from main: fugue-evo 0.4.0 requires fugue-ppl
-  `^0.2.3`. It needs a frozen build from before #389 (`2f97de3` is fugue-ppl
-  0.2.2 on fugue-evo 0.3.1), run with the same seed list.
+- Measure main's walk first: `search_health --hits 16` on main at 20, 40 and
+  80 steps, the reading that does not exist. The octave comparison on 0.2.3
+  then needs the other side, main with the ten octave call sites reverted (the
+  way #363 built its base), run with the same seed list, and the per-seed rows
+  kept.
+- Finish the weighted side's 160-step row on the same build (about the size of
+  a climb), and keep the TSVs.
+- The 0.2.2 arm of #355 cannot be built from main: fugue-evo 0.4.0 requires
+  fugue-ppl `^0.2.3`. It needs a frozen build from before #389 (`2f97de3` is
+  fugue-ppl 0.2.2 on fugue-evo 0.3.1), run with the same seed list.
 - If a longer walk is worse and the paired result is clear, the levers the
   issues named: a per-site initial scale (upstream in fugue-evo, whose
   `EvolutionChain` keeps `adaptation` private, so a release the maintainer
