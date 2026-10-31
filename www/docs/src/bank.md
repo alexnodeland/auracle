@@ -263,8 +263,9 @@ lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
 1. Hover **EVOLVE POOL** in EVOLVE (or move the focus to it). The ten sounds
    the next generation would breed from get a solid amber rail and **SEED**;
    the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
-   other sound can be replaced when it ends. A saved sound is never marked,
-   and nor is a sound you kept as new that hasn’t been in a pick yet. The
+   other sound can be replaced when it ends, but for a sound you kept as new
+   that has its first pick while the generation runs. A saved sound is never
+   marked, and nor is a sound you kept as new that hasn’t been in a pick yet. The
    pair on EVOLVE’s table can be marked: nothing replaces it while it’s up,
    but you’ll have put it away long before the generation ends. Up to four
    more sounds are marked than the generation can replace, because when it
