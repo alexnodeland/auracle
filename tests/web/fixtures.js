@@ -667,11 +667,12 @@ class App {
    *    (profile.js, ADR-025), `"air"`: the engine worker and every farm
    *    worker slowed until a render takes the reference machine's time,
    *    `?farm=2` unless `query` names a width, and in Chromium the page
-   *    throttled by the same rate. The engine takes the largest of the
-   *    profile's rate, `slowEngine` and the throttle, and the page the
-   *    larger of the profile's and the throttle. Calibrated once a run, on
-   *    the first boot that asks; `app.profile` says what it measured and the
-   *    rates this boot runs at;
+   *    throttled by the same rate, up to the Air's CPU against an M-series
+   *    one (profile.js `pageRateOf`, ×4.5). The engine takes the largest of
+   *    the profile's rate, `slowEngine` and the throttle, and the page the
+   *    larger of the profile's page rate and the throttle. Calibrated once
+   *    a run, on the first boot that asks; `app.profile` says what it
+   *    measured and the rates this boot runs at;
    *  - `workerPrefix`: a spec's own code to run in the engine worker ahead of
    *    worker.js (a slowdown of its own, switched on by a message). The
    *    fixture serves the worker with it, after its own: a spec that routed
@@ -722,8 +723,11 @@ class App {
       });
     }
     // CDP throttles a Chromium page; Firefox has none, and there the page runs
-    // at this machine's speed. `pageRate` is the rate CDP took.
-    const pageRate = Math.max(throttle > 1 ? throttle : 0, on ? on.rate : 0);
+    // at this machine's speed. On a profile the page follows the render's
+    // rate up to the profile's cap, the Air's CPU against an M-series one
+    // (profile.js `pageRateOf`): no machine the specs run on is faster.
+    // `pageRate` is the rate CDP took.
+    const pageRate = Math.max(throttle > 1 ? throttle : 0, on ? profiles.pageRateOf(on) : 0);
     if (pageRate > 1 && this.where.browserName === "chromium") {
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: pageRate });

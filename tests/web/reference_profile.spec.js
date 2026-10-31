@@ -14,12 +14,15 @@
 //   farm worker the page started was served the profile's farm.js. Read at
 //   the engine's `ready`, not after the boot: this is the gate's check of
 //   the profile, and on it a boot is the reference machine's.
-// - In Chromium the page is throttled at the profile's rate (CDP), and in
-//   Firefox, which has no throttle for a page, it is not. How much slower a
-//   fixed piece of work ran on the page, against a page with no profile, is
-//   the test's annotation: on a busy machine a wall-clock throttle adds less
-//   to what the load already costs, so it is a reading, not a check
-//   (ADR-022).
+// - In Chromium the page is throttled at the render's rate up to the
+//   profile's cap (CDP; `pageRateMax`, the Air's CPU against an M-series
+//   one, ×4.5), and in Firefox, which has no throttle for a page, it is not.
+//   How much slower a fixed piece of work ran on the page, against a page
+//   with no profile, is the test's annotation, and it is printed: on a busy
+//   machine a wall-clock throttle adds less to what the load already costs,
+//   so it is a reading, not a check (ADR-022). The page with no profile's
+//   figure, on the Air and on an M-series machine, is how the cap is
+//   measured (profile.js).
 // - A render takes about the reference machine's time, in the engine worker
 //   and on the farm, each the median of three after one to warm up, once
 //   the pool is whole (before it, the app's own fill competes with them;
@@ -27,10 +30,12 @@
 //   How far over the reference's time they ran is a budget (ADR-022): a
 //   machine slower than the reference, which the profile cannot speed up,
 //   or one loaded after its calibration, is slower, not wrong. Where the
-//   rate can tell (×2 or more, a workstation), each is held to half the rate
-//   times the calibration's render measured again unslowed, now, which a
-//   slowed render clears and an unslowed one does not; a hosted runner's
-//   rate is about 1 to 1.5, and there the first test is the check.
+//   rate can tell (×2 or more), each is held to half the rate times the
+//   calibration's render measured again unslowed, now, which a slowed render
+//   clears and an unslowed one does not. Against today's estimate of the Air
+//   (356 ms) a hosted runner's rate is about ×2.7 to ×5 (its render 69 to
+//   134 ms on the nights since #406) and a workstation's more; where it is
+//   less, the first test is the check.
 const { test, expect } = require("./fixtures");
 const profile = require("./profile");
 
@@ -60,20 +65,21 @@ test("on the air profile the engine worker and every farm worker run their wasm 
   expect(farmSlowed[0].calls, "the wasm calls of a render on the farm that the slowdown slowed").toBeGreaterThan(0);
 });
 
-test("on the air profile the page is throttled at the profile's rate in Chromium, and not in Firefox, which has no throttle for a page", async ({ page, app, newContext }) => {
+test("on the air profile the page is throttled in Chromium at the render's rate up to the Air's CPU against an M-series one, and not in Firefox, which has no throttle for a page", async ({ page, app, newContext }) => {
   // The throttle is set before the page loads; the boot is not waited for.
   await app.boot({ profile: "air", wait: false });
   await app.reply("ready");
   const on = app.profile;
-  expect(on.pageRate, `the rate CDP throttles the page at, in ${on.browser}`).toBe(on.browser === "chromium" ? on.rate : 1);
+  const capped = Math.max(1, Math.min(on.rate, on.pageRateMax));
+  expect(on.pageRate, `the rate CDP throttles the page at, in ${on.browser}: the render's ×${on.rate}, at most ×${on.pageRateMax}`).toBe(on.browser === "chromium" ? capped : 1);
+  expect(on.engineRate, "the engine's rate stays the render's, whatever the page's").toBe(on.rate);
 
   const plain = await (await newContext()).newPage();
   const here = await profile.pageWork(page);
   const there = await profile.pageWork(plain);
-  test.info().annotations.push({
-    type: "page throttle",
-    description: `a fixed piece of work ${Math.round(here)} ms on the profiled page, ${Math.round(there)} ms on a page with no profile: ×${(here / there).toFixed(2)}, the throttle ×${on.pageRate}`,
-  });
+  const reading = `a fixed piece of work ${Math.round(here)} ms on the profiled page, ${Math.round(there)} ms on a page with no profile: ×${(here / there).toFixed(2)}, the throttle ×${on.pageRate}`;
+  console.log(`page throttle: ${reading}`);
+  test.info().annotations.push({ type: "page throttle", description: reading });
 });
 
 test("on the air profile a render takes about the reference machine's time, in the engine worker and on the farm", { tag: "@slow" }, async ({ page, app }) => {

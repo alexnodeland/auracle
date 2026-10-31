@@ -27,8 +27,9 @@
 //                     first as tests/web/profile.js does in a browser: the profile's calibration
 //                     render (tests/web/profiles.json: its preset's farm render with its audio, one
 //                     to warm up, then the median of its runs) against that render's time on the
-//                     reference (its `referenceIs` says how that is known: for now ADR-025's
-//                     estimate, not a measurement on the Air), here in node, the V8 Chromium runs,
+//                     reference (its `referenceIs` says how that is known: for now an estimate,
+//                     ADR-025's figure times the speed-ups measured since, not a measurement on
+//                     the Air; its `referenceMethod` shows the sum), here in node, the V8 Chromium runs,
 //                     in the thread's CPU time as the sweep is (a machine as slow as the
 //                     reference, or slower, is at ×1).
 //                     With ms, that many ms of CPU here, for a hand run. Each preset over the

@@ -259,7 +259,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, tells each closed issue's parent its count of sub-issues closed, and ticks each box in another open issue that names an issue that closed, once every issue the box names is closed as completed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`), each leg building the tests (`make test-build`) in a step of its own before it runs them ([The Rust legs](#ci-tiers)); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
-| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), every test given its verdict: eight runners for Chromium and five for Firefox, three at a time, each dealt about 28 minutes of its browser's tests by the job's own timings (each test's last time in each browser), so each ends about ten minutes inside its 40-minute cut and the job takes about two and three quarter hours. Each budget names the profile beside its figure, and one over its limit comments on *Speed budgets over their limit* with a table of each (its figure and limit, the browser, the rates its boot ran at on the profile, the CPU it ran on, the test) and each test that failed on something else. Beside them, on a runner of its own, the audio thread's budget: `live_cost.mjs --sweep-only --gate` times every preset's live voices in node at four voices and at eight (A, and B holding the same preset, a proxy for an offer bred from it) against ADR-025's half a quantum divided by the runner's rate on the profile (its calibration render, in node, against the reference's 1.1 s, ADR-025's estimate until the Air measures it), and the run's summary names each preset over the limit with the issue it waits on (#320); a budget, red only when it could not measure ([Rules](#rules)) | No |
+| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium by the same rate up to ×4.5), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), every test given its verdict: eight runners for Chromium and five for Firefox, three at a time, each dealt about 28 minutes of its browser's tests by the job's own timings (each test's last time in each browser), so each ends about ten minutes inside its 40-minute cut and the job takes about two and three quarter hours. Each budget names the profile beside its figure, and one over its limit comments on *Speed budgets over their limit* with a table of each (its figure and limit, the browser, the rates its boot ran at on the profile, the CPU it ran on, the test) and each test that failed on something else. Beside them, on a runner of its own, the audio thread's budget: `live_cost.mjs --sweep-only --gate` times every preset's live voices in node at four voices and at eight (A, and B holding the same preset, a proxy for an offer bred from it) against ADR-025's half a quantum divided by the runner's rate on the profile (its calibration render, in node, against the reference's 356 ms, an estimate until the Air measures it: [The reference profile](#rules)), and the run's summary names each preset over the limit with the issue it waits on (#320); a budget, red only when it could not measure ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
@@ -882,7 +882,7 @@ from it ([Rules](#rules)).
 | `farm_close.spec.js` | A farm worker closes only once every row it wrote to the render store has committed: each write made to commit half a second late, each of boot's two workers reports at its close that none was cut off (#360) |
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels, then an offer from that pool, the taste fitted to the duels' picks and a ⚡ walk) equals what native `shipped::boot_probe` pins in `boot_probe.json`; every preset's face, rendered in the built wasm as the worker renders a preset's (`preset_tree_json`, `face_of_tree`, an engine of its own each), is the shipped file's byte for byte, under the key the worker files it by (`farm_key`), a test per family, and the file lists the library in its order; opens no page, about twenty renders and a 500-step fit for the probe (25 to 32 s measured on a 16-core machine at a load near 150) and 20 s of CPU for the faces under Node |
-| `reference_profile.spec.js` | The reference profile (`tests/web/profile.js`, ADR-025) the nightly judges the budgets on: on it the engine worker and a farm worker the page spawns each render through the profile's slowdown, at the engine's rate and the calibration's, by the worker's own record of the calls it slowed (served at ×1 too, on a machine as slow as the reference), read at the engine's `ready`; the farm has two renderers and every farm worker was served the profile's `farm.js`; in Chromium the page is throttled at the profile's rate, and in Firefox not (how much slower a fixed piece of work ran on the page is an annotation, not a check). `@slow`: with the pool whole, a render of the calibration's preset in the engine worker and on the farm each take about the reference machine's time (how far over it, a budget), and where the rate is ×2 or more each is at least half the rate times the same render unslowed, measured then |
+| `reference_profile.spec.js` | The reference profile (`tests/web/profile.js`, ADR-025) the nightly judges the budgets on: on it the engine worker and a farm worker the page spawns each render through the profile's slowdown, at the engine's rate and the calibration's, by the worker's own record of the calls it slowed (served at ×1 too, on a machine as slow as the reference), read at the engine's `ready`; the farm has two renderers and every farm worker was served the profile's `farm.js`; in Chromium the page is throttled at the render's rate up to the profile's cap (×4.5, the Air's CPU against an M-series one), with the engine still at the render's rate, and in Firefox not (how much slower a fixed piece of work ran on the page is an annotation, printed, not a check). `@slow`: with the pool whole, a render of the calibration's preset in the engine worker and on the farm each take about the reference machine's time (how far over it, a budget), and where the rate is ×2 or more each is at least half the rate times the same render unslowed, measured then |
 | `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1`; on a worker that answers as `worker.js` does, a request's last reply (`app.replyTo`) is the one carrying its number without `more`, not the first of its type nor the engine's own news, `app.answered` waits while a request it covers has none and names it when it gives up, by type or lane, never for a request the worker never answers or one main did not number, and a reply `app.answer` or `app.fail` gives for a request carries its number; `app.visit` is a new load of the seeded address with a level's hash, even when only the hash changed; a page error in a context `newContext` made fails the test, and the context has the project's `use` |
 | `fixture_renders.spec.js` | The fixture's reused renders (`app.boot({ reuseRenders: true })`): a boot of a seed with nothing kept is cold (no rows in the render cache as its page starts, none served) and keeps its rows once its pool is whole; a boot of that seed in another context then has them in the store before the app's first script, the engine serves its fill from them (its `render_cache` tally, which only the farm keeps: a fill that fell back to serial fails it, by name), and its pool is the cold boot's, sound for sound (id, name and patch); a boot of the same seed that does not ask starts with no rows. A store that cannot be read fails it rather than counting as empty |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
@@ -1058,21 +1058,55 @@ judges: `live_cost.mjs --sweep-only --gate`, the audio thread's
   with `AURACLE_PROFILE=air`, slows the wasm in the engine worker and in
   every farm worker until a render takes the reference's time, boots with
   `?farm=2` (unless the spec's own address names a width), and in Chromium
-  throttles the page by the same rate (CDP); Firefox has no throttle for a
-  page. The rate is measured once a run, on its first boot that asks: one
-  preset's render here, unslowed, against its time on the reference (1.1 s,
-  ADR-025's estimate until it is measured on the Air), and 1 on a machine as
-  slow as the reference or slower. The preset, the reference's time and the
-  farm's width are data, `tests/web/profiles.json`, which the audio
-  thread's budget (`live_cost.mjs --gate`) calibrates from too, in node, so
-  a figure measured on the Air moves both. Before quiver-dsp 0.4.1 and 0.5.1 made a render
-  about three times cheaper (#393, #406), that render took 0.18 s in
-  Chromium and 0.21 to 0.23 s in Firefox on a 16-core M3 Max (a rate of
-  about 6 and 4.8 to 5.2), and 377 to 383 ms on a hosted runner (×2.9, the
-  nightly's calibration lines of 2026-10-08); on 2026-10-15 the runners
-  took 120 to 134 ms (×8.2 to ×9.2). The 1.1 s estimate predates both
-  changes, so the profile now holds a runner about three times slower than
-  the Air would be. `AURACLE_BROWSER=firefox` runs the specs in
+  throttles the page by the same rate up to ×4.5 (CDP); Firefox has no
+  throttle for a page. The rate is measured once a run, on its first boot
+  that asks: one preset's render here, unslowed, against its time on the
+  reference, and 1 on a machine as slow as the reference or slower. The
+  preset, the reference's time, the page's cap and the farm's width are
+  data, `tests/web/profiles.json`, which the audio thread's budget
+  (`live_cost.mjs --gate`) calibrates from too, in node, so a figure
+  measured on the Air moves both. What is measured and what is estimated:
+  - *Measured, every run:* the render here, and so the rate. Each runner's
+    calibration line, and each test's `profile` annotation, say it (`one
+    render of Solo Flight 121 ms here (measured)`).
+  - *Estimated, until the Air is measured:* the render's time there, 356 ms
+    (`referenceMs`). ADR-025 put it at about 1 to 1.2 s (1,100 ms) on
+    2026-10-06, when a render took about 240 ms on an M3 Max, and three
+    changes have made a render cheaper since, each measured before and
+    after on the render bench's 18 trees
+    ([`docs/notes/render-cost-2026-10/`](../notes/render-cost-2026-10/README.md)):
+    folding the knobs (#353, 0.804 of the time in Firefox's worker),
+    quiver-dsp 0.4.1 with `norm_sqr` (#393, 0.606 in wasm) and the block
+    walk (#406, 0.665), so 1,100 × 0.804 × 0.606 × 0.665 = 356 ms
+    (`referenceMethod` keeps the sum beside it). Solo Flight's own
+    calibration lines bracket it: in Firefox, #393 and #406 took it from
+    383 to 133 ms on an AMD EPYC 7763 runner (0.35) and from 282 to 130 ms
+    on an EPYC 9V74 (0.46), against the bench's 0.40 (the nights of
+    2026-10-08, before #393, and of 10-10 to 10-31), which gives 307 to
+    408 ms. Until #509 the profile held ADR-025's 1,100 ms, so a runner's
+    render of 69 to 134 ms gave ×8.2 to ×15.9, and the page in Chromium
+    took the same rate; 356 ms gives about ×2.7 to ×5, and the page at most
+    ×4.5.
+  - *Estimated too:* the page's cap, ×4.5 (`pageRateMax`): how much slower
+    the Air's CPU is than an M-series one, ADR-025's 1 to 1.2 s against
+    about 240 ms (×4.2 to ×5), as `live_cost.mjs --slowdown` takes it. The
+    page has no calibration of its own, and no machine the specs run on is
+    faster than an M-series, so above the cap a render's rate says more
+    about the wasm (the run's browser against the reference's Firefox)
+    than about the page's own work.
+  - *Measuring them on the Air*, in Firefox (`npx playwright install
+    firefox` once), quiet and on power, from `tests/web`:
+    `AURACLE_PROFILE=air AURACLE_BROWSER=firefox AURACLE_TEST_PORT=8690
+    ../../www/video/tools/one_browser.sh npx playwright test
+    reference_profile.spec.js --grep-invert @slow --reporter=line`. It
+    prints the calibration there, unslowed (`profile air in firefox: one
+    render of Solo Flight … ms here`): that figure is `referenceMs`, and
+    `referenceIs` says where and when it was measured (`referenceMethod`
+    goes). The page test prints its reading too (`page throttle: … ms on a
+    page with no profile`): that figure on the Air, against the same
+    test's on an M-series machine in Firefox, is `pageRateMax`.
+
+  `AURACLE_BROWSER=firefox` runs the specs in
   Firefox; on Linux its AudioContext starts only with an audio server
   running (PulseAudio), which Playwright's image lacks and the nightly job
   starts. `AURACLE_BROWSER=webkit` runs them in WebKit on an iPhone 13's
@@ -1172,7 +1206,7 @@ the least of `REPS` repeats in thread CPU ms per render, with the load
 average. It is a measurement, not a gate: nothing in CI runs it. The nightly
 *Speed budgets* job (#299) judges what a player waits on, with each runner
 slowed until a calibration render takes the reference machine's time
-(ADR-025's estimate of it)
+(an estimate of it until the Air is measured, `tests/web/profiles.json`)
 (`tests/web/profile.js`), not what a render costs on its own; and
 time is never an `expect` ([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)).
 To compare two builds, run them alternately on the same machine:

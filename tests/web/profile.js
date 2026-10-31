@@ -16,10 +16,16 @@
 //   that the wasm it timed went through it.
 // - **Two renderers:** the app boots with `?farm=2`, unless the spec's own
 //   address names a width (`?farm=0`, a spec about the path with no farm).
-// - **The page is throttled by the same rate** in Chromium (CDP's
-//   `Emulation.setCPUThrottlingRate`, which reaches the page and not its
-//   workers). Firefox has no such throttle: there the page runs at this
-//   machine's speed, and the profile slows the engine and the farm only.
+// - **The page is throttled by the same rate, up to the Air's CPU ratio**
+//   in Chromium (CDP's `Emulation.setCPUThrottlingRate`, which reaches the
+//   page and not its workers): the calibration's rate, at most `pageRateMax`
+//   (×4.5, about how much slower the Air's CPU is than an M-series one). The
+//   page has no calibration of its own, and no machine the specs run on is
+//   faster than an M-series, so a render's rate above that says more about
+//   the wasm (Chromium's here against the reference's Firefox) than about
+//   the page's own work. Firefox has no such throttle: there the page runs
+//   at this machine's speed, and the profile slows the engine and the farm
+//   only.
 //
 // The calibration render is `farm_render` (the farm's whole job: one render on
 // the audition phrase, vetted and featurized, with its audio) of one preset,
@@ -32,27 +38,59 @@
 // keeps it) a rebuilt engine or a new session calibrates again; runs from one
 // UI session on one build share a calibration.
 //
-// Measured on a 16-core M3 Max (Oct 7, the release build after #353 made a
-// measurement render cheaper, with other work running): Solo Flight 179 to
-// 183 ms in Chromium and 212 to 229 ms in Firefox (239 and 293 ms before
-// #353).
-// The render bench's wasm half (`make bench-render`, CPU time under node)
-// has the library's 62 presets at 97 to 491 ms, median 206 ms: Solo Flight
+// **What is measured, and what is estimated.** Measured on every run: the
+// calibration render here, unslowed, and so the rate. Estimated until the
+// Air is measured: the render's time there (`referenceMs`, 356 ms) and the
+// page's cap (`pageRateMax`, ×4.5). Each estimate is marked so where it is
+// set (`referenceIs`, `pageRateMaxIs` in `profiles.json`), and the
+// calibration line, every test's `profile` annotation and the audio
+// thread's gate print the mark beside the figure.
+//
+// - `referenceMs` was ADR-025's 1,100 ms (about 1 to 1.2 s), estimated on
+//   2026-10-06, when a phrase render took about 240 ms on an M3 Max. Three
+//   changes have made a render cheaper since, each measured on the render
+//   bench's 18 trees, before and after on one machine
+//   (docs/notes/render-cost-2026-10/README.md, § Built and § In the
+//   browsers): folding the knobs (#353), 0.804 of the time in Firefox's
+//   worker, the reference's browser; quiver-dsp 0.4.1 with `norm_sqr` (#393),
+//   0.606 in wasm; the block walk (#406), 0.665 in wasm. 1,100 × 0.804 ×
+//   0.606 × 0.665 = 356 ms (324 to 389 ms over ADR-025's range), the sum
+//   `referenceMethod` keeps beside it. Solo Flight's own calibration lines
+//   on the nightly's runners bracket it: in Firefox, #393 and #406 together
+//   took it from 383 to 133 ms on an AMD EPYC 7763 (0.35) and from 282 to
+//   130 ms on an EPYC 9V74 (0.46; the nights of 2026-10-08, before #393,
+//   and 2026-10-10 to 10-31), against the bench's 0.40, so 307 to 408 ms.
+// - `pageRateMax` is the Air's CPU against an M-series one: ADR-025's 1 to
+//   1.2 s against about 240 ms, ×4.2 to ×5, and the ×4.5 `live_cost.mjs
+//   --slowdown` works the audio thread's headroom out for.
+//
+// Measuring them on the Air, in Firefox (`npx playwright install firefox`
+// once), quiet and on power, from tests/web:
+//
+//   AURACLE_PROFILE=air AURACLE_BROWSER=firefox AURACLE_TEST_PORT=8690 \
+//     ../../www/video/tools/one_browser.sh npx playwright test \
+//     reference_profile.spec.js --grep-invert @slow --reporter=line
+//
+// The run prints the calibration there, unslowed: "profile air in firefox:
+// one render of Solo Flight … ms here". That figure is `referenceMs`, and
+// `referenceIs` says where and when it was measured (`referenceMethod`
+// goes). The page test prints its reading too ("page throttle: a fixed
+// piece of work … ms on the profiled page, … ms on a page with no
+// profile"): the page with no profile's figure on the Air, against the same
+// test's on an M-series machine in Firefox, is `pageRateMax`.
+//
+// Measured on a 16-core M3 Max on Oct 7, the release build after #353, with
+// other work running: Solo Flight 179 to 183 ms in Chromium and 212 to 229
+// ms in Firefox (239 and 293 ms before #353), before #393 and #406. The
+// render bench's wasm half (`make bench-render`, CPU time under node) then
+// had the library's 62 presets at 97 to 491 ms, median 206 ms: Solo Flight
 // 243 ms and Glass Pad, PERFORM's preset in the specs, 291 ms.
 //
-// `referenceMs` is ADR-025's estimate, not yet a measurement on the Air: a
-// phrase render about 180 to 230 ms on an M3 Max and 1 to 1.2 s on the Air.
-// On the Air, `AURACLE_PROFILE=air AURACLE_BROWSER=firefox npx playwright test
-// reference_profile.spec.js` prints the calibration render there ("one
-// render of Solo Flight … ms here"), which is the figure to set, in
-// `profiles.json`, and its `referenceIs` with it (how the figure is known,
-// which the audio thread's gate prints beside its limit).
-//
-// The profiles (each one's preset, `referenceMs` and farm width) and the
-// calibration's runs are data, in `profiles.json`, so the audio thread's
-// budget (`crates/auracle-wasm/examples/live_cost.mjs --gate`, nightly in
-// flake-hunt.yml) calibrates by the same render against the same reference,
-// in node, without loading Playwright.
+// The profiles (each one's preset, `referenceMs`, page cap and farm width)
+// and the calibration's runs are data, in `profiles.json`, so the audio
+// thread's budget (`crates/auracle-wasm/examples/live_cost.mjs --gate`,
+// nightly in flake-hunt.yml) calibrates by the same render against the same
+// reference, in node, without loading Playwright.
 const fs = require("node:fs");
 const path = require("node:path");
 const performBudget = require("./perform_budget");
@@ -146,8 +184,9 @@ function engineBuild() {
 /** What the profile is on this machine: its calibration (measured once a
  *  run, kept in the run's output directory for the engine build and the
  *  run's process: Playwright's, whose workers these are) and the rate it
- *  slows by. { name, browser, preset, referenceMs, measuredMs, times, rate,
- *  farm }. */
+ *  slows by. { name, browser, preset, referenceMs, referenceIs,
+ *  measuredMs, times, rate, pageRateMax, pageRateMaxIs, farm }: `rate` the
+ *  engine's and the farm's, and `pageRateOf` the page's in Chromium. */
 const calibrations = new Map();
 function calibrated(name, { browser, browserName, baseURL, outputDir }) {
   const profile = profileOf(name);
@@ -163,7 +202,19 @@ function calibrated(name, { browser, browserName, baseURL, outputDir }) {
       const times = await measure(browser, baseURL, profile);
       const measuredMs = median(times);
       const rate = Math.max(1, Math.round((profile.referenceMs / measuredMs) * 100) / 100);
-      const out = { name, browser: browserName, preset: profile.preset, referenceMs: profile.referenceMs, measuredMs: Math.round(measuredMs), times: times.map(Math.round), rate, farm: profile.farm };
+      const out = {
+        name,
+        browser: browserName,
+        preset: profile.preset,
+        referenceMs: profile.referenceMs,
+        referenceIs: profile.referenceIs || null,
+        measuredMs: Math.round(measuredMs),
+        times: times.map(Math.round),
+        rate,
+        pageRateMax: profile.pageRateMax ?? null,
+        pageRateMaxIs: profile.pageRateMaxIs || null,
+        farm: profile.farm,
+      };
       fs.mkdirSync(outputDir, { recursive: true });
       fs.writeFileSync(file, `${JSON.stringify(out)}\n`);
       const said = `profile ${calibrationLine(out)}`;
@@ -177,11 +228,24 @@ function calibrated(name, { browser, browserName, baseURL, outputDir }) {
   return calibrations.get(key);
 }
 
-/** One line for a calibration: what was measured, and the rate it gives. */
+/** The rate a profile throttles a Chromium page at (CDP), for its
+ *  calibration `c`: the render's rate, at most the profile's `pageRateMax`
+ *  (the Air's CPU against an M-series one), and 1 where the render's rate is
+ *  1. A profile with no cap throttles the page at the render's rate. */
+function pageRateOf(c) {
+  return c.pageRateMax == null ? c.rate : Math.max(1, Math.min(c.rate, c.pageRateMax));
+}
+
+/** One line for a calibration: what was measured here, the reference's time
+ *  and how that is known, and the rates they give the engine and the farm,
+ *  and the page. */
 function calibrationLine(c) {
-  const rate = c.rate > 1 ? `×${c.rate}` : "×1 (this machine is as slow as the reference, or slower: not slowed)";
-  const page = c.browser === "chromium" ? "" : `; the page is not throttled (no throttle in ${c.browser})`;
-  return `${c.name} in ${c.browser}: one render of ${c.preset} ${c.measuredMs} ms here, ${c.referenceMs} ms on the reference: ${rate}${page}`;
+  const known = (is) => (is ? ` (${is})` : "");
+  const head = `${c.name} in ${c.browser}: one render of ${c.preset} ${c.measuredMs} ms here (measured), ${c.referenceMs} ms on the reference${known(c.referenceIs)}`;
+  if (!(c.rate > 1)) return `${head}: ×1 (this machine is as slow as the reference, or slower: not slowed)`;
+  const cap = c.pageRateMax == null ? "" : ` (the render's rate, at most ×${c.pageRateMax}${c.pageRateMaxIs ? `, ${c.pageRateMaxIs}` : ""})`;
+  const page = c.browser === "chromium" ? `the page ×${pageRateOf(c)}${cap}` : `the page not throttled (no throttle in ${c.browser})`;
+  return `${head}: the engine and the farm ×${c.rate}, ${page}`;
 }
 
 /** The rates a boot on a profile ran at (`app.profile`), equal ones named
@@ -397,6 +461,7 @@ module.exports = {
   profileOf,
   calibrated,
   calibrationLine,
+  pageRateOf,
   profileLine,
   label,
   median,
