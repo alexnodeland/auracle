@@ -1,10 +1,10 @@
 ---
 title: "The sonic floor: where the measurement lives, what it costs, and the first deals"
 number: 5
-status: draft
+status: accepted
 author: Claude Code
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-31
 supersedes: null
 superseded_by: null
 ---
@@ -437,6 +437,12 @@ For the maintainer to accept or amend.
   - The fill's card ("listening to 40 sounds: you start as soon as the
     first 8 land") stays true.
   - Hollow faces come with RFC-006's views.
+  - *Found after acceptance (2026-10-31):* one constant may need the floor.
+    `FARM_AUDIO_AHEAD` (`worker.js`) asks the farm for audio for the first 8
+    draw indices, sized for today's pass rate, so under the floor two or
+    three of the 8 sounds at `playable` would carry none. Hollow faces are
+    one of RFC-006's proposed next motions, not yet planned.
+    [Plan-009](../plans/009-the-sonic-floor.md) task 5 covers both.
 - **The films**: `www/video/tools/shotgen.py` and
   [`films.md`](../architecture/films.md) say that the prior draws in the
   pool, and a duel between two of them, are cast by the floor, and that the
@@ -515,32 +521,57 @@ On laptop speakers and on headphones:
    them? The percussion is judged on the held C4 after its first 100 ms,
    which is mostly its decay: Woodblock reads noise 1.00 there.
 
+## Decided
+
+Accepted by the maintainer on 2026-10-06, on #144: "accept RFC-005's
+recommendations as written, its recommended answers to the open questions
+included", and "the listen kit stays available for an ear check". The build
+comes before the films are cast (#142).
+
+Recorded as [ADR-026](../decisions/026-the-sonic-floor.md).
+[Plan-009](../plans/009-the-sonic-floor.md) builds it. Its first task
+measures this proposal's numbers again: they were drawn with every octave
+equally likely, and #62's octave weights merged after it (#363, 2026-10-07).
+Its fifth weighs the floored fill against ADR-025's first-visit veil of 2 s,
+and goes to the maintainer if the veil is past it or later than today's.
+
 ## Open questions
 
-For the maintainer. #144 tracks them until this proposal is accepted or
-rejected.
+The acceptance above settled each on 2026-10-06 with the answer this proposal
+recommends. Questions 7 and 8 stay outside the floor, as they say.
 
-1. **Fill, deal or quota?** This proposal recommends the fill.
+1. **Fill, deal or quota?** This proposal recommends the fill. *Answered
+   (2026-10-06):* the fill.
 2. **The thresholds:** noise ≤ 0.5, rough ≤ 2.5, hi ≤ 0.2, after a listen.
+   *Answered (2026-10-06):* these three. The listen kit stays available for
+   an ear check.
 3. **Register:** leave it to #62 (recommended), or add `spk ≥ 0.05`?
+   *Answered (2026-10-06):* left to #62, which merged as #363 on 2026-10-07.
 4. **A note that doesn't speak:** add `mute ≥ −30 dB`? It removes 2.8% of
-   draws and no preset.
+   draws and no preset. *Answered (2026-10-06):* no. The floor is the three
+   rules of Recommendation 3.
 5. **The window:** noise and roughness read the held C4 after its first 100 ms
    (roughness takes the dyad too). Should they read the phrase's loudest
-   span instead, so percussion is judged on its strike?
+   span instead, so percussion is judged on its strike? *Answered
+   (2026-10-06):* the held C4 after its first 100 ms, with the dyad for
+   roughness, as Recommendation 1 reads them.
 6. **The warm start** is unfloored by design: it is there to span the space.
    About four warm starts in five show at least one preset below the floor.
    It deals one card per category, then two from the rest, so none is below
    the floor with probability (9/13)·(4/8)·(5/6)·(46/55)·(45/54) ≈ 0.20.
    Keep it so? If so, the films keep logging its other cards rather than
-   casting them.
+   casting them. *Answered (2026-10-06):* kept unfloored, so the films keep
+   logging its other cards.
 7. **Roughness and the noise share in φ**, for Grit: a separate φ change.
+   *Not decided here:* it stays a φ change of its own (option B).
 8. **Slow attacks:** 38% of draws take over a second to arrive. That is a
    question about the prior's attack site, like #62's octaves, and outside
-   the floor.
+   the floor. *Not decided here:* outside the floor.
 9. **A word for players.** Nothing here names the floor on screen. If the
    app or the guide comes to explain a hollow face, its word is drafted for
-   `www/brand/voice.md` and waits for your approval.
+   `www/brand/voice.md` and waits for your approval. *Answered
+   (2026-10-06):* no word now. One is drafted first if the app or the guide
+   comes to name the floor.
 
 ## Appendix: the measurement
 

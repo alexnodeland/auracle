@@ -27,8 +27,9 @@ under [ADR-012](../decisions/012-motion-shows-what-the-engine-does.md), inside
 - touch layouts;
 - a sound of your own.
 
-Audio in, the plugin, the sonic floor (RFC-005) and the films' sound (RFC-007)
-are their own proposals.
+Audio in, the plugin, the sonic floor (RFC-005, which
+[Plan-009](009-the-sonic-floor.md) builds) and the films' sound (RFC-007) are
+their own proposals.
 
 Plan-004 keeps its tasks. This plan changes what two of them target:
 - **Plan-004 task 4 (specimens):** prototype v2
