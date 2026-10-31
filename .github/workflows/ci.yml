@@ -1,11 +1,12 @@
 name: CI
 
 # The FAST tier: every test fast enough to gate a merge on. The tests too
-# slow for that (the search floor, the other Rust tests over a minute, the
-# browser specs tagged @slow, and any tagged @quarantine while a flake is
-# fixed) run in the Slow suite workflow (slow-suite.yml): on main, nightly,
-# and on a PR that carries the `full-ci` label. Each test runs in exactly one
-# tier; docs/architecture/testing.md § CI tiers lists which and why.
+# slow for that (the search floor, the other Rust tests that took over a
+# minute when they were named, the browser specs tagged @slow, and any
+# tagged @quarantine while a flake is fixed) run in the Slow suite workflow
+# (slow-suite.yml): on main, nightly, and on a PR that carries the `full-ci`
+# label. Each test runs in exactly one tier; docs/architecture/testing.md §
+# CI tiers lists which and why.
 #
 # Two lanes, one workflow (ADR-023); the `changes` job picks the lane.
 #
@@ -614,9 +615,10 @@ jobs:
   # A failing test fails its Coverage runner, so these are the Rust tests'
   # gate as well as coverage's: there is no separate uninstrumented run.
   #
-  # The slow tests (the search floor, `refinement_improves_pool`, ~330 s alone,
-  # and ten more over a minute each, ~1030 s of test time between them) are
-  # named in the Makefile (SEARCH_FLOOR, SLOW_TESTS) and run in the Slow suite.
+  # The slow tests (the search floor, `refinement_improves_pool`, ~100 s alone,
+  # and nine more that took over a minute when they were named, ~260 s of test
+  # time between them) are named in the Makefile (SEARCH_FLOOR, SLOW_TESTS)
+  # and run in the Slow suite.
   # These jobs run everything NOT named there, so the two tiers are exact
   # complements by construction: a new or renamed test lands here rather than
   # in neither, and `--no-tests=fail` turns a filter that empties a slice into

@@ -65,7 +65,7 @@ endif
 # `make` alone makes `all` (said here, above the first target, so the list
 # below can name it).
 .DEFAULT_GOAL := all
-RUST_GOALS := all check test test-verbose test-crate test-fast-tier test-slow-tier \
+RUST_GOALS := all check test test-verbose test-crate test-build test-fast-tier test-slow-tier \
 	test-search-floor test-slow-rest build lint lint-fix clippy doc wasm wasm-dev wasm-check \
 	bundle coverage coverage-run coverage-archive mutants perform-wirings preset-faces \
 	climb search-check islands budget-ab phi-stats norm-peak fit-bench closed-loop \
@@ -124,7 +124,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
 
 .PHONY: setup film-setup web-check spec-lint all check check-changed build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools worker-test \
-        test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
+        test-crate nextest-installed test-build test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
         mutants-installed mutants-diff mutants mutants-command \
         browser-fast browser-changed browser-slow \
@@ -484,8 +484,9 @@ test-crate:
 # here and nowhere else: the fast tier is *everything not named*, so a new or
 # renamed test lands in the fast tier and is never dropped from both, and
 # `--no-tests=fail` turns a list that no longer matches anything into a red
-# run. The search floor is split off because it alone is ~330 s on a runner:
-# it walks 16 seeds, one thread each, and gets a runner to itself.
+# run. The search floor is split off because it alone takes the whole pool for
+# its run (~100 s on a runner, 330 s when it was first split off): it walks 16
+# seeds, one thread each, and gets a runner to itself.
 SEARCH_FLOOR := test(=engine::tests::refinement_improves_pool)
 SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) \
 	| test(=perform::tests::a_planned_measurement_is_the_measurement) \
@@ -496,13 +497,23 @@ SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) 
 	| test(=perform::tests::drift_is_local_and_follows_sigma) \
 	| test(=perform::tests::a_stepped_walk_is_the_walk) \
 	| test(=engine::tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
-NEXTEST = $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS) --no-tests=fail
+# NEXTEST_BUILD is the build alone (`test-build`, where `--no-tests` is ignored
+# with a warning). A filter and the run's options do not change what cargo
+# builds, so a target below, run after `test-build`, finds its build done.
+NEXTEST_BUILD = $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS)
+NEXTEST = $(NEXTEST_BUILD) --no-tests=fail
 # CI passes `--partition slice:k/N` here to split the fast tier across runners.
 NEXTEST_ARGS ?=
 
 nextest-installed:
 	@$(CARGO) nextest --version >/dev/null 2>&1 || { \
 		printf '  cargo-nextest is missing — run: cargo install cargo-nextest --locked\n'; exit 1; }
+
+## test-build: build the tests and run none, as the targets below build them
+## (CI's Slow suite runs it as a step of its own, with its own time limit, so a
+## slow build and a hung test say different things)
+test-build: nextest-installed
+	$(NEXTEST_BUILD) --no-run
 
 ## test-fast-tier: the Rust tests CI requires on every PR (all but the slow ones)
 test-fast-tier: nextest-installed
@@ -511,7 +522,7 @@ test-fast-tier: nextest-installed
 ## test-slow-tier: the slow Rust tests: the search floor, then the rest
 test-slow-tier: test-search-floor test-slow-rest
 
-## test-search-floor: `refinement_improves_pool` alone (~5 min on a runner)
+## test-search-floor: `refinement_improves_pool` alone (~100 s on a runner, once built)
 test-search-floor: nextest-installed
 	$(NEXTEST) -E '$(SEARCH_FLOOR)' $(NEXTEST_ARGS)
 

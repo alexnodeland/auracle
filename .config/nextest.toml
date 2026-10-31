@@ -26,9 +26,10 @@ slow-timeout = { period = "60s", terminate-after = 20 }
 # at ten minutes, so a hung test ends inside its job's limit (twenty minutes
 # for a Coverage runner) and the job reports it, where the limit would cut
 # the job off with no report. On a runner the longest fast-tier test took
-# 70 s, instrumented (a queue run on Oct 6), and the longest slow one about
-# three minutes, the search floor aside. The JUnit file (junit.xml under
-# nextest's ci directory in the target directory) has every test's time.
+# 70 s, instrumented (a queue run on Oct 6), and the longest slow one 77 s
+# (main's Slow suite run of Oct 31; 169 s on Oct 7), the search floor aside.
+# The JUnit file (junit.xml under nextest's ci directory in the target
+# directory) has every test's time.
 [profile.ci]
 slow-timeout = { period = "60s", terminate-after = 10 }
 
@@ -64,8 +65,8 @@ path = "junit.xml"
 # These overrides are the default profile's, so the ci profile has them too.
 
 # The search floor: sixteen seeds, a thread each. Its own limit, since on a
-# slow runner it can come near ten minutes (about five and a half on a
-# typical one).
+# slow runner it can come near ten minutes (about 100 s on a typical one now,
+# five and a half minutes when it was first timed).
 [[profile.default.overrides]]
 filter = 'test(=engine::tests::refinement_improves_pool)'
 threads-required = "num-test-threads"
