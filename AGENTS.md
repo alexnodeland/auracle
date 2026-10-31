@@ -180,8 +180,8 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   to an approach, when stuck, and before reporting done
   ([`.claude/README.md`](.claude/README.md#choosing-the-model)).
 - **Hooks:** at session start, on Claude Code on the web, the container's
-  setup (`make setup`'s tools, `wasm-opt`, then the engine in the
-  background), and then a report of a missing or stale
+  setup (`make setup`'s tools, `wasm-opt`, then the engine), detached in
+  the background so the session starts at once, and then a report of a missing or stale
   `apps/web/pkg` (the session's own checkout's) and of the browser queue; no
   hand edits under the five generated paths of a file's own checkout, a
   worktree included (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,

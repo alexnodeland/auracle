@@ -11,17 +11,20 @@
 #    wasm-pack's own download ignores the proxy's CA bundle and fails, which
 #    stops `make wasm` after it has compiled
 #    (docs/runbooks/wasm-opt-download.md). curl trusts the proxy.
-# 2. scripts/setup.sh --no-engine, before the session's first turn: the
-#    tools, installed once per container and skipped when present (setup.sh
-#    is idempotent), so a cold container takes minutes here and a warm one
-#    seconds.
-# 3. The engine, in the background: another checkout's release build when
-#    one was made from this Rust (`make pkg-reuse`), otherwise `make wasm`,
-#    logged, with its pid kept (per checkout, `web_setup_dir` in _root.sh)
-#    so the report says it is building and a second session start does not
-#    build it again.
+# 2. scripts/setup.sh --no-engine: the tools, installed once per container
+#    and skipped when present (setup.sh is idempotent), so a cold container
+#    takes minutes here and a warm one seconds.
+# 3. The engine: another checkout's release build when one was made from
+#    this Rust (`make pkg-reuse`), otherwise `make wasm`, logged, with its
+#    pid kept (per checkout, `web_setup_dir` in _root.sh) so the report says
+#    it is building and a second session start does not build it again.
 #
-# It never fails the session: a step that fails says so, with its log.
+# All three run detached, in the background: done in the foreground, a cold
+# container's install held the session's start for many minutes, up to the
+# hook's timeout. The setup's own pid is kept beside the build's, so the
+# report says it is running, and a step that fails writes its line to
+# report.txt there, which the next session start prints. It never fails the
+# session.
 set -u
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -40,6 +43,19 @@ cd "$root" 2>/dev/null || exit 0
 
 logs="$(web_setup_dir "$root")"
 mkdir -p "$logs"
+
+# The foreground: start the detached setup, once, and return at once.
+if [ "${AURACLE_WEB_SETUP_DETACHED:-}" != 1 ]; then
+  web_setting_up "$logs" && exit 0
+  web_building "$logs" && exit 0
+  rm -f "$logs/report.txt"
+  AURACLE_WEB_SETUP_DETACHED=1 setsid nohup bash "$0" </dev/null >"$logs/web-setup.log" 2>&1 &
+  echo $! >"$logs/setup.pid"
+  exit 0
+fi
+# The background, from here on: what fails says so in report.txt.
+trap 'rm -f "$logs/setup.pid"' EXIT
+exec 3>>"$logs/report.txt"
 export PATH="$HOME/.cargo/bin:$PATH"
 
 # 1. wasm-opt. A wrapper rather than a link, so the binary finds its
@@ -54,20 +70,18 @@ if ! wasm-opt --version 2>/dev/null | grep -q "version $binaryen\b"; then
     printf '#!/bin/sh\nexec "%s/bin/wasm-opt" "$@"\n' "$dir" >"$HOME/.cargo/bin/wasm-opt"
     chmod +x "$HOME/.cargo/bin/wasm-opt"
   else
-    echo "Web setup: binaryen $binaryen's wasm-opt did not install ($logs/binaryen.log), so \`make wasm\` will stop at wasm-opt: docs/runbooks/wasm-opt-download.md."
+    echo >&3 "Web setup: binaryen $binaryen's wasm-opt did not install ($logs/binaryen.log), so \`make wasm\` will stop at wasm-opt: docs/runbooks/wasm-opt-download.md."
   fi
 fi
 
 # 2. The tools. Once more on a failure: a cold container's first install
 #    fetches hundreds of crates, and the proxy can drop a tunnel mid-download.
 if ! { scripts/setup.sh --no-engine >"$logs/setup.log" 2>&1 || scripts/setup.sh --no-engine >"$logs/setup.log" 2>&1; }; then
-  echo "Web setup: scripts/setup.sh failed twice (the end of $logs/setup.log says where). Run \`make setup\` once the cause is fixed."
+  echo >&3 "Web setup: scripts/setup.sh failed twice (the end of $logs/setup.log says where). Run \`make setup\` once the cause is fixed."
   exit 0
 fi
 
 # 3. The engine.
-# building already, from an earlier start; session-start.sh says so
-web_building "$logs" && exit 0
 python3 scripts/wasm_pkg.py check >/dev/null 2>&1 && exit 0
 make -s pkg-reuse >/dev/null 2>&1 && exit 0
 pidfile="$logs/wasm.pid"
