@@ -113,6 +113,15 @@ so the patches that leave are exactly the ones evicting one child at a time
 would have removed, but a patch saved (pinned) at any point before the end is
 never among them. Kept candidates are always exempt.
 
+So are the sounds on the table: the app holds the pair EVOLVE shows and the
+pair of a pick still in its undo window (`set_on_table`, four at most, read
+at the end as pins are, and never saved), so the vote that pick becomes when
+its window closes finds both its sides in the pool. One rule,
+`Engine::spared` (kept, a ⚡ seed in flight, or on the table), is what every
+eviction passes over: the bar a child must beat, the trim at the end, a
+preset's or an import's insert, a ⚡ child's trim, and the lists below. A
+session that holds nothing evicts exactly as it did before the hold existed.
+
 Both the bar a child must beat and the trim at the end are judged under the
 posterior the generation **opened** with, the one in its context and the one
 its walks climbed. A pick made while the generation runs reweights the
@@ -136,7 +145,7 @@ Both are stated by the engine before EVOLVE POOL is pressed.
   members as the children put the pool over size, lowest first. So with the
   pool at size, nothing outside its `refine_seeds` lowest members not kept can
   leave, unless something else changes the pool meanwhile (a save, an edit, a
-  preset). A patch the app has cut is in the pool and ranks low, so it is on
+  preset) or the pair on the table changes. A patch the app has cut is in the pool and ranks low, so it is on
   this list too: the engine does not know about cuts.
 
 The app is sent both with every pick, beside the ranked numbers
@@ -146,9 +155,10 @@ is open both describe the next one, so the app marks the running
 generation's own instead: its parents, which the worker posts with the
 generation's progress (job `i` walks from `seeds[i]`), and `retiring()`, which
 each absorbed walk's message carries with the job's `parent_id`, as does the
-reply to a save, a preset or a kept edit while the generation is open: a
-saved member drops out of `eviction_order` and the next lowest takes its
-place, and a new member can move the lowest. The app says
+reply to a save, a preset, a kept edit or a change of what is on the table
+while the generation is open: a saved or held member drops out of
+`eviction_order` and the next lowest takes its place, and a new member can
+move the lowest. The app says
 *will be replaced* for `retiring()`, not *may be*: it is the lowest members
 not kept, as many as the children put the pool over size, under the posterior
 the generation opened with, so each child admitted adds one member and removes

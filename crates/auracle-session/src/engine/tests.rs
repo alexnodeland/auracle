@@ -2260,6 +2260,144 @@ fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
     );
 }
 
+/// **A sound on the table is not replaced until it is put away** (#452).
+/// The app holds the pair EVOLVE shows and the pair of a pick still in its
+/// undo window (`set_on_table`), so the vote that pick becomes when the
+/// window closes finds both its sides in the pool. Before, a generation's
+/// end, a preset or an import inside the window could replace a side, and
+/// the vote was refused. Held here: the two members every eviction takes
+/// first. They leave the marks, more presets are opened than the pool
+/// holds, a patch is imported and a generation runs, and both are still
+/// there; the pick on them is recorded. Put away, they compete again, and
+/// the next preset replaces the lowest.
+#[test]
+fn a_sound_on_the_table_is_not_replaced_until_it_is_put_away() {
+    let mut engine = taught(0x7AB1E);
+    let size = engine.cfg.pool_size;
+    let may = engine.may_replace();
+    let pair = [may[0], may[1]];
+    assert_eq!(engine.set_on_table(&pair), pair);
+    let marked = engine.may_replace();
+    assert!(
+        !marked.contains(&pair[0]) && !marked.contains(&pair[1]),
+        "EVOLVE marks the table \"may be replaced\": {marked:?}"
+    );
+    assert_eq!(
+        marked[..may.len() - 2],
+        may[2..],
+        "the next members up did not take their places"
+    );
+    assert_eq!(engine.belief().may_replace, marked);
+
+    // One more preset than the pool holds: the first would have replaced
+    // the pair's lower side (`may_replace`'s first is the first an insert
+    // takes), and every one is passed over it.
+    let mut opened = 0;
+    for (name, tree) in auracle_grammar::presets().into_iter().take(size + 1) {
+        if engine.insert_preset(tree, name).is_some() {
+            opened += 1;
+        }
+    }
+    assert!(opened > size, "only {opened} presets opened");
+    assert_eq!(engine.pool.len(), size);
+    let here = |e: &Engine| pair.iter().all(|&id| e.find(id).is_some());
+    assert!(here(&engine), "a preset replaced a sound on the table");
+    engine
+        .import_patch(fresh_preset(0), "Shared")
+        .expect("the import lands");
+    assert_eq!(engine.pool.len(), size);
+    assert!(here(&engine), "an import replaced a sound on the table");
+
+    // A generation, bred as the farm breeds it: nothing it will replace is
+    // on the table while it runs, and its end replaces neither.
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB1F))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+        let retiring = engine.retiring();
+        assert!(
+            pair.iter().all(|id| !retiring.contains(id)),
+            "a running generation will replace a sound on the table: {retiring:?}"
+        );
+    }
+    assert_eq!(engine.refine_progress(), None, "the generation did not end");
+    assert!(
+        !engine.retired().is_empty(),
+        "the generation replaced nothing, so it could not have replaced the table"
+    );
+    assert!(
+        here(&engine),
+        "a generation's end replaced a sound on the table"
+    );
+    assert!(pair.iter().all(|id| !engine.retired().contains(id)));
+
+    // The pick the pair was held for: recorded, its lower side losing.
+    let logged = engine.log.len();
+    let (a, b) = (engine.find(pair[0]).unwrap(), engine.find(pair[1]).unwrap());
+    engine.record_duel(a, b, false);
+    assert_eq!(engine.log.len(), logged + 1, "the pick was not recorded");
+
+    // Put away: both compete again, and the lower is the next to go.
+    assert!(engine.set_on_table(&[]).is_empty());
+    assert!(engine.on_table().is_empty());
+    let order: Vec<u64> = engine
+        .eviction_order(&HashSet::new())
+        .into_iter()
+        .map(|(i, _)| engine.pool[i].id)
+        .collect();
+    assert!(
+        pair.iter().all(|id| order.contains(id)),
+        "a sound put away is still spared: {order:?}"
+    );
+    assert_eq!(
+        order[0], pair[0],
+        "the precondition: it is still the first an eviction takes"
+    );
+    assert!(engine.insert_preset(fresh_preset(1), "Fresh").is_some());
+    assert!(
+        engine.find(pair[0]).is_none(),
+        "a sound put away was not replaced"
+    );
+}
+
+/// What the table holds: sounds of the pool, each once, four at most (the
+/// pair up and the pair of a pick in its window), the first given; each
+/// call holds what it names and nothing else; and nothing after a restore,
+/// which is not saved with the session.
+#[test]
+fn the_table_holds_four_sounds_of_the_pool_at_most_and_a_restore_holds_none() {
+    let mut engine = taught(0x7AB2);
+    let may = engine.may_replace();
+    assert!(may.len() > ON_TABLE_MAX, "too few marks to tell: {may:?}");
+    let absent = engine.pool.iter().map(|c| c.id).max().unwrap() + 1;
+    // An id the pool does not hold and a repeat take no place, and past
+    // four nothing more is held.
+    let asked: Vec<u64> = [absent, may[0], may[0]]
+        .into_iter()
+        .chain(may[1..].iter().copied())
+        .collect();
+    assert_eq!(engine.set_on_table(&asked), &may[..ON_TABLE_MAX]);
+    assert_eq!(engine.on_table(), &may[..ON_TABLE_MAX]);
+    assert_eq!(
+        engine.may_replace().first(),
+        Some(&may[ON_TABLE_MAX]),
+        "a fifth sound was held"
+    );
+    // The next call holds what it names, in place of what was held.
+    assert_eq!(
+        engine.set_on_table(&may[ON_TABLE_MAX..]),
+        &may[ON_TABLE_MAX..]
+    );
+    assert_eq!(engine.may_replace().first(), Some(&may[0]));
+    // A restore holds nothing, into the same engine too.
+    let state = engine.export_state();
+    engine.import_state(state);
+    assert!(engine.on_table().is_empty(), "a restore kept the table");
+    assert_eq!(engine.may_replace().first(), Some(&may[0]));
+}
+
 /// The comparison that keeps a sound as new does not count as its pick
 /// (it judges the original), or the protection would be gone the moment
 /// it was given on KEEP AS NEW's usual path. An answered PERFORM offer

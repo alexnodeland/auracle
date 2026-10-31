@@ -1504,6 +1504,21 @@ impl WasmEngine {
         self.engine.duel_shown(u64::from(a), u64::from(b))
     }
 
+    /// The sounds on EVOLVE's table now (ids): the pair up and the pair of a
+    /// pick still in its undo window, in place of what was held. No eviction
+    /// takes them until a later call leaves them out, so the pick's vote
+    /// finds both its sides when it commits ([`Engine::set_on_table`]).
+    /// Returns the ids held: those in the pool, each once, four at most
+    /// (`ON_TABLE_MAX`), in the order given.
+    pub fn set_on_table(&mut self, ids: Vec<u32>) -> Vec<u32> {
+        let ids: Vec<u64> = ids.into_iter().map(u64::from).collect();
+        self.engine
+            .set_on_table(&ids)
+            .iter()
+            .map(|&id| id as u32)
+            .collect()
+    }
+
     fn duel_json(&self, choice: Option<auracle_session::DuelChoice>) -> String {
         #[derive(Serialize)]
         struct Row {
@@ -1707,10 +1722,13 @@ impl WasmEngine {
     /// Record a duel outcome between candidate ids. Returns `false` — and
     /// records **nothing** — when either id is no longer in the pool.
     ///
-    /// That happens: a duel side can be evicted by an evolve, a preset load or
-    /// an import inside the undo window, and the vote then arrives for a patch
-    /// that is gone. It used to vanish silently while the app counted it as
-    /// taken and toasted "rated"; a dropped vote is the app's to report.
+    /// A pick's pair is held on the table through its undo window
+    /// ([`WasmEngine::set_on_table`]), so no evolve, preset load or import
+    /// evicts a side of it before its vote arrives. It can still happen to a
+    /// pair evicted before the page said it was up (a generation ending in
+    /// that round trip), and then the vote arrives for a patch that is gone.
+    /// It used to vanish silently while the app counted it as taken and
+    /// toasted "rated"; a dropped vote is the app's to report.
     pub fn record_duel(&mut self, a: u32, b: u32, chose_a: bool) -> bool {
         let (a, b) = (a as u64, b as u64);
         match (self.engine.find(a), self.engine.find(b)) {
