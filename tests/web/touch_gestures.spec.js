@@ -7,18 +7,20 @@
 //   pick takes PICK's path: its undo window, its toast, the deal). Let go
 //   short of that it springs back, and nothing is picked. A drag down or
 //   sideways is not the card's: it does not move, picks nothing, and its
-//   touchmove is left to the page (not cancelled), so whatever scrolls there
-//   scrolls.
+//   touchmove is left to the page (not cancelled).
 // - A long press (about half a second, without moving) on an EVOLVE
 //   card, a bank row or TASTE's map shows the model view while the finger
 //   stays down, as holding ⌥ does; the finger lifted, it goes, and the
 //   hold's click opens nothing (on the map, a sound a tap on its dot opens). A finger
 //   that moves first is an ordinary touch: no model view. A module on
 //   PATCH's rack keeps its own long press (its menu) and is not held here.
-// - The swipe up picks on a small phone (360 × 640) where the level's
-//   column scrolls. The level is one screen there (phone_fits.spec.js), and
-//   scrolls only where it cannot fit; the test makes the pair taller than
-//   the screen to have a column that scrolls.
+// - The swipe up picks on a small phone (360 × 640), with the keys' drawer
+//   open and closed, and nothing on the page scrolls under it (no element's
+//   scroll offset moves, the page's neither), nor under a drag down: the
+//   level is one screen (phone_fits.spec.js) and nothing in it scrolls.
+// - A long press selects no text (the page's selection is empty while held
+//   and after, and what is held cannot be selected), and lets no page menu
+//   through.
 //
 // In Chromium the touches are the browser's own (CDP's
 // `Input.dispatchTouchEvent`), so pointer events, touch events and the click
@@ -113,6 +115,9 @@ async function drag(page, cdp, at, dx, dy, { steps = 8, lift = true } = {}) {
 /** Count PICK's clicks and the card's touchmoves the app cancelled. */
 const watchPicks = (page) => page.evaluate(() => {
   window.__picks = { a: 0, b: 0, cancelled: 0 };
+  // Counted once however often asked: a second watch only starts the count again.
+  if (window.__watching) return;
+  window.__watching = true;
   for (const s of ["a", "b"]) document.getElementById(`choose-${s}`).addEventListener("click", () => window.__picks[s]++);
   document.getElementById("duel-a").addEventListener("touchmove", (e) => { if (e.defaultPrevented) window.__picks.cancelled++; });
 });
@@ -141,39 +146,43 @@ test("a card swiped up past a third of its height is picked through its PICK", a
   await expect(page.locator("#duel-a")).not.toHaveClass(/\bswiping\b/);
 });
 
+/** What on the page is scrolled from its start, the page itself with it:
+ *  each by its name and offset. */
+const offsets = (page) => page.evaluate(() => [
+  ...(window.scrollY ? [`the page ${window.scrollY}`] : []),
+  ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => `${e.id ? "#" + e.id : e.className} ${e.scrollTop}`),
+]);
+
+/** A swipe up on A picks it, and a drag down after it picks nothing more,
+ *  with nothing on the page scrolled by either. */
+async function swipeMovesNothing(page, cdp) {
+  await watchPicks(page);
+  const view = page.locator("#view-evolve");
+  expect(await view.evaluate((v) => v.scrollHeight - v.clientHeight), "the level runs past the screen").toBeLessThanOrEqual(1);
+  const before = await offsets(page);
+  const at = await middle(page.locator("#duel-a .duel-well"));
+  const card = await page.locator("#duel-a").boundingBox();
+  // Read with the finger still down: once picked, the next pair is dealt.
+  await drag(page, cdp, at, 0, -Math.round(card.height * 0.6), { lift: false });
+  expect(await offsets(page), "something scrolled under the swipe").toEqual(before);
+  await touch(cdp, "touchEnd", []);
+  await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
+  await drag(page, cdp, at, 0, 80);
+  expect(await offsets(page), "something scrolled under a drag down").toEqual(before);
+  expect(await picks(page)).toMatchObject({ a: 1, b: 0 });
+}
+
 test.describe("a small phone, 360 × 640", () => {
   test.use({ viewport: { width: 360, height: 640 } });
-  // The column's own scroll is the browser's, which WebKit's finger (made in
-  // the page) does not drive.
-  // eslint-disable-next-line playwright/no-skipped-test -- a browser that cannot make the gesture, not a test turned off
-  test.skip(({ browserName }) => browserName === "webkit", "the browser's own scroll needs the browser's own touches (CDP, Chromium)");
 
-  test("a card swiped up is picked and the level's column does not scroll; a drag down scrolls it", async ({ page, app }) => {
+  test("a card swiped up is picked and nothing on the screen scrolls, with the keys' drawer open or closed", async ({ page, app }) => {
     await toEvolve(page, app);
     const cdp = await cdpOf(page);
-    const col = page.locator("#view-evolve");
-    // A pair taller than the screen, as on a phone too short for the level:
-    // the column runs past the screen, and starts part way down.
-    await page.addStyleTag({ content: "#view-evolve .duel-row { min-height: 900px; }" });
-    await expect.poll(() => col.evaluate((c) => c.scrollHeight - c.clientHeight)).toBeGreaterThan(40);
-    const half = (c) => { c.scrollTop = Math.round((c.scrollHeight - c.clientHeight) / 2); return c.scrollTop; };
-    // A swipe up is the card's: picked, and the column stays put.
-    const at = await middle(page.locator("#duel-a .duel-well"));
-    const before = await col.evaluate(half);
-    const box = await page.locator("#duel-a .duel-well").boundingBox();
-    const from = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
-    const card = await page.locator("#duel-a").boundingBox();
-    // Read with the finger still down: once picked, the next pair may move
-    // the column on its own.
-    await drag(page, cdp, from, 0, -Math.round(card.height * 0.6), { lift: false });
-    expect(await col.evaluate((c) => c.scrollTop), "the column did not scroll under the swipe").toBe(before);
-    await touch(cdp, "touchEnd", []);
-    await expect.poll(() => picks(page)).toMatchObject({ a: 1, b: 0 });
-    // A drag down is the column's: it scrolls, and picks nothing more.
-    const mid = await col.evaluate(half);
-    await drag(page, cdp, { x: at.x, y: from.y }, 0, 80);
-    await expect.poll(() => col.evaluate((c) => c.scrollTop)).toBeLessThan(mid);
-    expect(await picks(page)).toMatchObject({ a: 1, b: 0 });
+    await swipeMovesNothing(page, cdp);
+    await page.locator("#keys-toggle").tap();
+    await expect(page.locator("#keybar")).toBeVisible();
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
+    await swipeMovesNothing(page, cdp);
   });
 });
 
@@ -181,8 +190,9 @@ test("a card let go short of the line springs back and picks nothing", async ({ 
   await toEvolve(page, app);
   const cdp = await cdpOf(page);
   const at = await middle(page.locator("#duel-a .duel-well"));
-  // Slow and short: a quarter of the card's height, held, then lifted.
-  await drag(page, cdp, at, 0, -Math.round(at.h * 0.4), { steps: 10, lift: false });
+  // Slow and short: a fifth of the card's height, held, then lifted.
+  const card = await page.locator("#duel-a").boundingBox();
+  await drag(page, cdp, at, 0, -Math.round(card.height * 0.2), { steps: 10, lift: false });
   // It follows the finger while it is down.
   const mid = await page.locator("#duel-a").evaluate((c) => new DOMMatrix(getComputedStyle(c).transform).m42);
   expect(mid).toBeLessThan(-10);
@@ -248,10 +258,19 @@ async function dotAt(page, n) {
 async function holdShowsModel(page, cdp, loc) {
   const at = await middle(loc);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
+  await page.evaluate(() => {
+    window.getSelection().removeAllRanges();
+    window.__menus = 0;
+    document.addEventListener("contextmenu", (e) => { if (!e.defaultPrevented) window.__menus++; });
+  });
   await touch(cdp, "touchStart", [{ x: at.x, y: at.y }]);
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+  // Held: no text selected under the finger, and no page menu let through.
+  expect(await page.evaluate(() => window.getSelection().toString()), "a long press selected text").toBe("");
+  expect(await loc.evaluate((e) => getComputedStyle(e).webkitUserSelect || getComputedStyle(e).userSelect), "what is held can be selected").toBe("none");
   await touch(cdp, "touchEnd", []);
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
+  expect(await page.evaluate(() => [window.getSelection().toString(), window.__menus]), "a selection or the page's menu after the hold").toEqual(["", 0]);
 }
 
 test("a long press on a card, a bank row and a dot on TASTE's map shows the model view while held, and opens nothing a tap would", async ({ page, app }) => {

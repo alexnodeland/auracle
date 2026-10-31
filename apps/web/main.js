@@ -4819,6 +4819,31 @@ function note(text, opts = {}) {
   const stack = document.createElement("span");
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
+  // On a phone a finger swipes the banner up and away (#134), as it does a
+  // phone's own; a tap on its words does nothing, its action keeps its own.
+  // (The query is asked here, not through PHONE_SCREEN: a word can be said
+  // before that line has run.)
+  if (window.matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)").matches) {
+    let y0 = null;
+    el.addEventListener("touchstart", (e) => {
+      y0 = e.target.closest?.("button") || e.touches.length > 1 ? null : e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      if (y0 == null) return;
+      e.preventDefault();
+      el.style.transform = `translateY(${Math.min(0, e.touches[0].clientY - y0)}px)`;
+    }, { passive: false });
+    el.addEventListener("touchend", (e) => {
+      if (y0 == null) return;
+      const dy = e.changedTouches[0].clientY - y0;
+      y0 = null;
+      el.style.transform = "";
+      if (dy < -16) {
+        el.classList.add("swiped");
+        toastLane.dismiss(entry, true);
+      }
+    });
+  }
   // Whole before it goes in: the lane may show it at once.
   entry = toastLane.add(el, opts);
   return el;
@@ -4871,12 +4896,14 @@ function positionToastLane() {
   // jump when one leaves.
   const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
   if (PHONE_SCREEN.matches) {
-    // Anchored by its top under the menu bar, so it grows down as toasts
-    // stack; clear only of the cross's stops on a phone on its side.
+    // Just under the menu bar (#134), never over it (its ▶, BANK and ⌘K
+    // stay in reach), as wide as its words up to the screen's: it stands
+    // over the top of the level for its moment, and goes up when swiped
+    // (`note`). Clear only of the cross's stops on a phone on its side.
     const menubar = document.querySelector(".menubar");
     holder.style.bottom = "auto";
-    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().bottom : 0) + 8)}px`;
-    holder.style.right = "12px";
+    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().bottom : 0) + 6)}px`;
+    holder.style.right = "";
     for (const el of SHORT_SCREEN.matches ? document.querySelectorAll(RAIL_COLUMNS.join(", ")) : []) {
       const r = el.getBoundingClientRect();
       const lane = holder.getBoundingClientRect();
@@ -5350,8 +5377,31 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
 }
 
 // ---------- audio helpers ----------
+// A context that is not running is woken by anything about to sound, and by
+// the next gesture the browser counts as one. Not only "suspended": iOS
+// Safari leaves it "interrupted" after a call, the lock screen, another app's
+// audio or Control Centre, and a key pressed then was silent and moved no
+// face (#134). And a touch's pointerdown is not a gesture that may start
+// audio there (the HTML spec's activation events are a touch's pointerup and
+// touchend), so a resume asked for on it alone can be refused: the lift,
+// a click and a key ask again.
+function audioAsleep() {
+  return audioCtx.state !== "running" && audioCtx.state !== "closed";
+}
+function wakeAudio() {
+  if (!audioAsleep()) return;
+  try {
+    audioCtx.resume()?.catch?.(() => {});
+  } catch (_) {
+    /* refused outside a gesture: the next one asks again */
+  }
+}
+for (const type of ["pointerup", "touchend", "click", "keydown"]) document.addEventListener(type, wakeAudio, { capture: true, passive: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wakeAudio();
+});
 function ensureAudio() {
-  if (audioCtx.state === "suspended") audioCtx.resume();
+  wakeAudio();
   // Something is about to sound (a key, a phrase, a monitored input): the
   // faces on screen listen for it.
   liveFaces?.wake();
@@ -6318,7 +6368,13 @@ function buildPiano() {
     }
     piano.appendChild(wk);
   }
-  attachPianoPointers(piano);
+  // Once: the keybed is rebuilt in this same element on every octave shift,
+  // and each rebuild used to add another set of listeners, so a key pressed
+  // after a shift struck its note once per shift.
+  if (!piano.dataset.pointers) {
+    piano.dataset.pointers = "1";
+    attachPianoPointers(piano);
+  }
   paintHints();
   // A latched chord survives the rebuild visually as well as audibly.
   for (const n of heldNotes) paintKey(n, true);
@@ -6730,6 +6786,9 @@ $("hold-btn").onclick = () => {
 };
 $("panic-btn").onclick = () => panic();
 function renderVolVal() {
+  // The fader's lit part, to its thumb (the stylesheet draws it on a touch
+  // screen, where the fader is a finger tall).
+  $("vol")?.style.setProperty("--v", String(volume));
   const el = $("vol-val");
   if (!el) return;
   el.textContent = volume <= 0.001 ? "mute" : `${(20 * Math.log10(volume)).toFixed(0)} dB`;
@@ -6850,8 +6909,26 @@ $("arp-chip").onclick = () => setKeysPop(!keysPopOpen());
 document.addEventListener("pointerdown", (e) => {
   // The MIDI panel opens up out of the dock but is a dialog of its own, over
   // the rack: a press in it is not a press on the instrument.
-  if (keysPopOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setKeysPop(false);
+  // (On a phone MIDI is a row of KEYS ⋯ itself, below, and a press in its
+  // panel is one inside.)
+  if (keysPopOpen() && (!e.target.closest(".keybar") || (e.target.closest("#midi-panel") && !$("keys-pop").contains(e.target)))) setKeysPop(false);
 }, true);
+// On a phone held upright the keys' drawer is one row over the keybed
+// (#134): MIDI, which a phone's browser seldom has, is a row of KEYS ⋯
+// there, as it is put back in the row on a wider screen.
+{
+  const PHONE_UP = window.matchMedia("(max-width: 700px) and (min-height: 501px)");
+  const wrap = document.querySelector(".midi-wrap");
+  const home = wrap?.parentElement;
+  const after = wrap?.nextElementSibling;
+  const place = () => {
+    if (!wrap) return;
+    if (PHONE_UP.matches) $("keys-pop").prepend(wrap);
+    else home.insertBefore(wrap, after);
+  };
+  place();
+  PHONE_UP.addEventListener("change", place);
+}
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);
   $("sync-btn").classList.toggle("lit", perf.sync);
@@ -6963,7 +7040,9 @@ $("rec-btn").onclick = () => {
   if (!live) return;
   recording = !recording;
   $("rec-btn").classList.toggle("lit", recording);
-  $("rec-btn").textContent = recording ? "◼ stop" : "● rec";
+  // The mark and the word apart, so a phone's one-row drawer can show the
+  // mark alone (#134).
+  $("rec-btn").innerHTML = recording ? '<span class="rec-mark">◼</span> <span class="rec-w">stop</span>' : '<span class="rec-mark">●</span> <span class="rec-w">rec</span>';
   live.rec(recording);
   // One slot for the recording's toasts, so "saved" replaces "recording" the moment
   // you stop, rather than waiting out its window (2–3 s late on camera).
@@ -9254,6 +9333,8 @@ function bankRow(r, fitted) {
     // used it, and the next digit fell through to the index-0 fallback and
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
+    // Its actions swiped out on a phone (#134), by id, as the cursor is.
+    + (r.id === bankSwipedId ? " acts-open" : "")
     + (pinShown(r) ? " saved" : "")
     + (isNew ? " fresh" : "")
     + (landedNow.has(r.id) && !budding.has(r.id) ? " landed" : "")
@@ -9740,6 +9821,83 @@ $("bank-list").setAttribute("aria-labelledby", "bank-tab-pool-w"); // the word a
 // A rating re-renders the bank, and an index into a list that was just
 // rebuilt is a different patch.
 let kbdRowId = null;
+// On a phone the bank's rows are a list's, as a phone's own lists are
+// (#134): at rest a row shows its name and its ▶, and swiped sideways to
+// the left it slides out its other actions (★, save, cut) at its end;
+// swiped back, or another row swiped or the list scrolled, they go. Kept
+// by id, since the bank redraws its rows as the engine answers. The axis
+// is the first 6 px of travel's: up or down the list scrolls as before.
+let bankSwipedId = null;
+{
+  const PHONE = window.matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)");
+  const LOCK_PX = 6;
+  const OPEN_PX = 32;
+  // Longer than a lift takes to make its click.
+  const CLICK_SETTLE_MS = 400;
+  const list = $("bank-list");
+  let g = null;
+  const setSwiped = (id) => {
+    bankSwipedId = id;
+    for (const row of list.querySelectorAll(".bank-item.acts-open")) if (Number(row.dataset.id) !== id) row.classList.remove("acts-open");
+    if (id != null) list.querySelector(`.bank-item[data-id="${id}"]`)?.classList.add("acts-open");
+  };
+  list.addEventListener("touchstart", (e) => {
+    g = null;
+    if (!PHONE.matches || e.touches.length > 1) return;
+    const row = e.target.closest?.(".bank-item");
+    if (!row || e.target.closest("input")) return;
+    const t = e.touches[0];
+    g = { row, id: Number(row.dataset.id), x: t.clientX, y: t.clientY, axis: null, dx: 0 };
+  }, { passive: true });
+  list.addEventListener("touchmove", (e) => {
+    if (!g) return;
+    if (!e.cancelable) { g = null; return; }
+    const t = e.touches[0];
+    const dx = t.clientX - g.x;
+    const dy = t.clientY - g.y;
+    if (!g.axis) {
+      if (Math.hypot(dx, dy) < LOCK_PX) return;
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        // The list scrolls: an open row's actions go.
+        if (bankSwipedId != null) setSwiped(null);
+        g = null;
+        return;
+      }
+      g.axis = "x";
+    }
+    e.preventDefault();
+    g.dx = dx;
+    g.lx = t.clientX;
+    g.ly = t.clientY;
+  }, { passive: false });
+  list.addEventListener("touchend", () => {
+    if (!g) return;
+    const was = g;
+    g = null;
+    // A tap on another row puts the open one's actions away.
+    if (was.axis !== "x") { if (bankSwipedId != null && bankSwipedId !== was.id) setSwiped(null); return; }
+    if (was.dx < -OPEN_PX) setSwiped(was.id);
+    else if (was.dx > OPEN_PX && bankSwipedId === was.id) setSwiped(null);
+    // The click a swipe's lift may make is the swipe's, not a tap on the row:
+    // only a click where the finger lifted, and only until the next press
+    // (patch.js's tap waits the same).
+    const at = { x: was.lx, y: was.ly };
+    const done = () => {
+      document.removeEventListener("click", swallow, true);
+      document.removeEventListener("pointerdown", done, true);
+    };
+    const swallow = (c) => {
+      if (Math.hypot(c.clientX - at.x, c.clientY - at.y) > 24) return;
+      done();
+      c.preventDefault();
+      c.stopPropagation();
+    };
+    document.addEventListener("click", swallow, true);
+    document.addEventListener("pointerdown", done, true);
+    setTimeout(done, CLICK_SETTLE_MS);
+  });
+  list.addEventListener("touchcancel", () => { g = null; });
+}
 // …or on a sound kept safe, at the pool's foot (takes.js): its id. The cursor
 // runs on past the pool's last row onto them, so RECORD AGAIN has a key.
 let kbdKeptId = null;

@@ -521,7 +521,22 @@ export function createPerform(host) {
   const ctlHead = el("div", "pf-ctlhead");
   const ctlCap = el("span", "pf-ctlcap", "controls");
   const ctlActs = el("div", "pf-actions");
-  ctlHead.append(ctlCap, ctlActs);
+  // On a phone (#134) the controls and what is under the hood are two panes
+  // of one screen, chosen by these tabs (shell.js, the level's `data-pane`);
+  // elsewhere the tabs are not drawn and both are on the screen.
+  const panes = el("div", "lv-panes");
+  panes.setAttribute("role", "tablist");
+  panes.setAttribute("aria-label", "Perform");
+  for (const [key, words] of [["controls", "controls"], ["hood", "under the hood"]]) {
+    const t = el("button", "", words);
+    t.type = "button";
+    t.setAttribute("role", "tab");
+    t.dataset.pane = key;
+    t.setAttribute("aria-selected", String(key === "controls"));
+    panes.append(t);
+  }
+  root.dataset.pane = "controls";
+  ctlHead.append(ctlCap, panes, ctlActs);
   right.append(ctlHead, statusEl, deck, hood, pads);
   grid.append(left, right);
   root.append(grid);
@@ -772,15 +787,20 @@ export function createPerform(host) {
         // amber one to ask for it", `renderStatus`), where the same words
         // under each of them crowded the deck (#134). Turned, it says what
         // letting go will ask for.
+        // A half-closed control says which way it turns; on a phone the
+        // line is its end's word behind an arrow (`data-short`), whole on
+        // one line, the sentence kept for a screen reader and in its
+        // title (#134).
+        const oneWay = halfLo ? w.high : halfHi ? w.low : null;
+        if (!search && oneWay) k.sub.dataset.short = `→ ${oneWay}`;
+        else delete k.sub.dataset.short;
         k.sub.textContent = search
           ? k.asking
             ? askWords(w, v)
             : ""
-          : halfLo
-            ? `turns toward ${w.high} only`
-            : halfHi
-              ? `turns toward ${w.low} only`
-              : knobCaption(w.knobs.map(([a]) => a));
+          : oneWay
+            ? `turns toward ${oneWay} only`
+            : knobCaption(w.knobs.map(([a]) => a));
         // A sentence a player can read, not the measurement: addresses,
         // purity and σ are the engineer's, and live in the docs and the
         // under-the-hood strip, not on the knob.

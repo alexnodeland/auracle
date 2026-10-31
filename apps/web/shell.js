@@ -265,6 +265,20 @@ export function createShell(host = {}) {
       if (e.target.closest?.(HOLDS) && matchMedia("(pointer: coarse)").matches) e.preventDefault();
     });
   }
+  // A level's panes on a phone (#134): where a level holds more than one
+  // screen (PERFORM's controls and what is under the hood; LEARNING's map,
+  // what it weighs and its forecasts), a row of tabs (`.lv-panes`, shown by
+  // the stylesheet only on a phone) says which is on the screen, as the
+  // level's `data-pane`; the stylesheet shows that one. Elsewhere every
+  // pane is on the screen and the tabs are not drawn.
+  document.addEventListener("click", (e) => {
+    const tab = e.target.closest?.(".lv-panes [data-pane]");
+    if (!tab) return;
+    const view = tab.closest(".view");
+    if (!view) return;
+    view.dataset.pane = tab.dataset.pane;
+    for (const t of tab.parentElement.querySelectorAll("[data-pane]")) t.setAttribute("aria-selected", String(t === tab));
+  });
   // The window going away takes the held ⌥ with it: its keyup never comes.
   window.addEventListener("blur", () => {
     cancelAltHold();

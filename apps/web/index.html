@@ -677,8 +677,15 @@
       <!-- ------------- LEARNING: the model room -------------
            What it weighs, which way liking rises on the map, its forecasts,
            the data as JSON, and the math (taste.js). -->
-      <section id="view-learning" class="view" aria-label="Learning">
+      <section id="view-learning" class="view" aria-label="Learning" data-pane="map">
         <div class="md">
+          <!-- On a phone, one of its three panels at a time (shell.js, the
+               level's `data-pane`); elsewhere these are not drawn. -->
+          <div class="lv-panes" role="tablist" aria-label="Learning">
+            <button type="button" role="tab" data-pane="map" aria-selected="true" aria-controls="md-map-h">where liking rises</button>
+            <button type="button" role="tab" data-pane="weighs" aria-selected="false" aria-controls="md-weighs-h">what it weighs</button>
+            <button type="button" role="tab" data-pane="forecasts" aria-selected="false" aria-controls="md-fc-h">its forecasts</button>
+          </div>
           <header class="md-head">
             <span class="lv-eyebrow">learning</span>
             <h1 class="lv-title">How it learns</h1>
@@ -782,7 +789,7 @@
         <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi ·</button>
         <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
-      <button class="util-btn" id="rec-btn" type="button" title="Record what you play; stop to download a WAV">● rec</button>
+      <button class="util-btn" id="rec-btn" type="button" title="Record what you play; stop to download a WAV"><span class="rec-mark">●</span> <span class="rec-w">rec</span></button>
       <div class="keys-more">
         <button class="util-btn" id="keys-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="keys-pop" title="How the keybed plays: hold, unison, arp, sync, glide, its size, and silence">keys ⋯</button>
         <!-- Everything else the keybed does, one press away. It stays open

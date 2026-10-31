@@ -17,6 +17,11 @@ The line under the title says what the model was fitted from (*From 18
 picks.*), or how far its first fit is (*3 more picks and it fits your
 taste.*).
 
+On a phone LEARNING is one screen that stands still: three tabs under the
+title show one of its panels at a time, **where liking rises** (the map,
+first), **what it weighs** (a list that scrolls) and **its forecasts**, with
+**COPY AS JSON** and **THE MATH** under them.
+
 ## What it weighs
 
 The model hears every sound as 44 numbers: 18 about how it sounds and 26 about

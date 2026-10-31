@@ -417,7 +417,8 @@ folds on a click outside the keys bar or <kbd>Esc</kbd>.
 
 On a phone held upright the keys bar is out of the way until you ask for it:
 **KEYS**, at the end of the bar along the bottom, brings it up over that bar,
-the octave and the cluster on one line and the keybed under them, and
+the octave, the volume, **REC** (its dot) and **KEYS ⋯** on one line (MIDI
+is a row inside **KEYS ⋯** there) and the keybed under them, and
 **KEYS** again puts it away. It starts at one octave, a finger wide a key.
 
 ## On a touch screen
@@ -432,6 +433,10 @@ What a key does, a finger does like this:
 | Hold <kbd>⌥</kbd> | Press and hold **MODEL**, or a long press on an EVOLVE card, a bank row or TASTE's map; a tap on **MODEL** keeps it up |
 | <kbd>←</kbd> / <kbd>→</kbd> in EVOLVE | Swipe card A / B up past a third of its height (or tap its **PICK**) |
 | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Pinch two fingers on the stage / spread them |
-| <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | A tap on a stop in the levels |
+| <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | A tap on a stop in the levels (on a phone held upright the bar runs PERFORM, PATCH, TASTE, LEARNING, then EVOLVE) |
+| <kbd>1</kbd>–<kbd>5</kbd>, <kbd>m</kbd> on a bank row | Its **★** and save; on a phone, swipe the row left first to slide them out (with cut), and back to put them away |
 | <kbd>Esc</kbd> | **×** on what is open, or a tap beside a sheet |
 | <kbd>?</kbd> on PERFORM's controls | Hold a finger on one until its ring fills |
+
+On a phone a toast is a banner over the menu bar: swipe it up to put it
+away.
