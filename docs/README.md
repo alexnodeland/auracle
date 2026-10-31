@@ -138,7 +138,8 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
   render of the audition phrase costs, natively and in wasm: its stages, the
   graph walk against the modules, one voice of each module kind, the changes
   that leave φ the same (built) and the ones that would move it, measured for
-  the maintainer (#298)
+  the maintainer (#298); the ladder's one-pass change (L1) is closed there
+  (#403)
 - [`ci-baseline-2026-10-05.json`](notes/ci-baseline-2026-10-05.json): CI's
   health in the week before #177's wave 0 (Sep 28 to Oct 5, UTC), taken from
   the Actions API on 2026-10-06 with `scripts/ci_stats.py --format json`; the
