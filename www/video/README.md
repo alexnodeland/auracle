@@ -261,9 +261,9 @@ What makes shots reliable:
   start a preset off the list, unless the shot's `"uncast"` gives the
   reason (its line names that preset or describes its circuit), and writes
   each shot's `"cast"`. What the session deals (the pool, a duel) is logged,
-  not cast, until the sonic floor is built (RFC-005, accepted as ADR-026):
-  Plan-009 task 8 then casts the pool's prior draws, and a duel between two
-  of them, by it.
+  not cast, until Plan-009 task 8, which casts the pool's prior draws, and a
+  duel between two of them, by the sonic floor (RFC-005, accepted as
+  ADR-026). The floored fill alone doesn't change this rule.
 - **Seed the session** (`init`, from `shotgen.INIT`), so every shot deals the
   same pool, warm start and duel sides, and a rehearsal predicts the
   recording. Pick warm-start cards by category and PERFORM controls by what

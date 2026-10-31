@@ -17,8 +17,8 @@ Implements [RFC-004](../proposals/004-design-direction.md) under
 [ADR-011](../decisions/011-one-design-system.md): one source for tokens,
 words and marks, a component set, each view rebuilt to an approved specimen
 within a checked text budget, a first explanation figure, and the films'
-second pass. The sonic floor is RFC-005's, built by
-[Plan-009](009-the-sonic-floor.md). Wave 2's colour looks, channels
+second pass. The sonic floor is RFC-005's, which
+[Plan-009](009-the-sonic-floor.md) builds. Wave 2's colour looks, channels
 and printed key hints are built here; its other contracts stay in
 [Plan-003](003-one-instrument-contracts.md).
 
@@ -138,9 +138,9 @@ and printed key hints are built here; its other contracts stay in
      185 (a proposed limit).
    - Every script moves to speed 0.81.
    - Each chapter opens with a figure.
-   - Each film is cast from above the sonic floor, once it is built:
-     RFC-005 is accepted as [ADR-026](../decisions/026-the-sonic-floor.md),
-     and [Plan-009](009-the-sonic-floor.md) task 8 casts by it.
+   - Each film is cast from above the sonic floor, once
+     [Plan-009](009-the-sonic-floor.md) task 8 casts by it (RFC-005,
+     accepted as [ADR-026](../decisions/026-the-sonic-floor.md)).
    - Then re-voice, re-time, rehearse, record, review and publish. Where
      published films are stored is decided first (see the film runbook).
 

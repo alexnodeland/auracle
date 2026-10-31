@@ -15,10 +15,10 @@ walkthroughs with too little visual explanation. The second pass is
 [Plan-004](../plans/004-one-design-system.md) task 8, under
 [ADR-011](../decisions/011-one-design-system.md). It waits on the design
 system and the rebuilt views (tasks 1–6) and the sonic floor (RFC-005,
-accepted as [ADR-026](../decisions/026-the-sonic-floor.md) and built by
-[Plan-009](../plans/009-the-sonic-floor.md)), so that it films the improved
-app. The scripts, timelines and shots of the
-first round are committed; the renders were not.
+accepted as [ADR-026](../decisions/026-the-sonic-floor.md);
+[Plan-009](../plans/009-the-sonic-floor.md) builds it, and its task 8 casts
+the films by it), so that it films the improved app. The scripts, timelines
+and shots of the first round are committed; the renders were not.
 
 **Where published films live is undecided.** `publish.py` copies them into
 `www/landing/assets/film/`, which puts every version into git history for good

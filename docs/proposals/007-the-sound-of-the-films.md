@@ -98,11 +98,11 @@ Bells, tines and plucks are excluded by name.
 | Low and burbling | Held Under, Heartbeat, Ceiling, Dub Echo |
 
 A film's demos are cast from this list, or from above the sonic floor once
-it is built (RFC-005, accepted as
-[ADR-026](../decisions/026-the-sonic-floor.md);
-[Plan-009](../plans/009-the-sonic-floor.md) task 8). A shot that grows or takes an offer casts what it plays as
-well. The tour's cold open played an offer grown from Glass Pad, with a noise
-share of 0.70; that is what made round 1's opening sound like white noise.
+[Plan-009](../plans/009-the-sonic-floor.md) task 8 casts by it (RFC-005,
+accepted as [ADR-026](../decisions/026-the-sonic-floor.md)). A shot that
+grows or takes an offer casts what it plays as well. The tour's cold open
+played an offer grown from Glass Pad, with a noise share of 0.70; that is
+what made round 1's opening sound like white noise.
 
 ### 3. Key, tempo, form
 
@@ -309,7 +309,7 @@ Accepted as [ADR-014](../decisions/014-the-films-sound.md), built as
 3. **Casting from the sonic floor (RFC-005),** when it exists. *Answered
    (2026-10-06):* RFC-005 is accepted as
    [ADR-026](../decisions/026-the-sonic-floor.md). A seeded session's prior
-   draws in the pool, and a duel between two of them, are cast by the floor,
-   and the warm start's other cards stay logged.
-   [Plan-009](../plans/009-the-sonic-floor.md) task 8 builds it, after the
-   floor itself.
+   draws in the pool, and a duel between two of them, are to be cast by the
+   floor, and the warm start's other cards stay logged. Until
+   [Plan-009](../plans/009-the-sonic-floor.md) task 8 builds that casting,
+   after the floor itself, what a session deals stays logged.
