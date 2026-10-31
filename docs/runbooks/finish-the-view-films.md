@@ -14,8 +14,10 @@ seeded session dealt were often blaring, noisy or harsh, and the films were
 walkthroughs with too little visual explanation. The second pass is
 [Plan-004](../plans/004-one-design-system.md) task 8, under
 [ADR-011](../decisions/011-one-design-system.md). It waits on the design
-system and the rebuilt views (tasks 1–6) and the sonic floor (RFC-005), so
-that it films the improved app. The scripts, timelines and shots of the
+system and the rebuilt views (tasks 1–6) and the sonic floor (RFC-005,
+accepted as [ADR-026](../decisions/026-the-sonic-floor.md) and built by
+[Plan-009](../plans/009-the-sonic-floor.md)), so that it films the improved
+app. The scripts, timelines and shots of the
 first round are committed; the renders were not.
 
 **Where published films live is undecided.** `publish.py` copies them into

@@ -65,8 +65,10 @@ CATS = {
 # offer a shot grows is cast by what it grows from: it is grown from a
 # shortlisted preset, and the shot logs what grew (B's own description).
 # Sounds the session deals (the pool, a duel, the warm start's other cards)
-# are not a shot's choice; they are logged, not cast. Later the sonic floor
-# (RFC-005) decides those too.
+# are not a shot's choice; they are logged, not cast. RFC-005 is accepted
+# (ADR-026): once the fill admits only draws above the sonic floor, the
+# pool's prior draws, and a duel between two of them, are cast by it, and the
+# warm start's other cards stay logged (Plan-009 task 8).
 #
 # CAST is the preset each role plays, chosen from the shortlist by what the
 # shots need of it, and checked against the wiring each preset ships with

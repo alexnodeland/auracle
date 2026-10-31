@@ -132,8 +132,11 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
      Loom (the one preset with a step sequencer). Task 8 moves them as it
      re-scripts: view-patch onto Slow Weather.
    - Not cast, and logged instead: what the session deals (the pool,
-     duels, the warm start's other two picks). Casting those waits for the
-     sonic floor (RFC-005).
+     duels, the warm start's other two picks). Casting the pool's prior
+     draws, and a duel between two of them, waits for the floor's build:
+     RFC-005 is accepted as [ADR-026](../decisions/026-the-sonic-floor.md),
+     and [Plan-009](009-the-sonic-floor.md) task 8 casts them. The warm
+     start's other picks stay logged.
    - A picture dropped back onto the app is the one the shot just exported
      (footage.mjs `drop {download}`), so view-patch's take2 and composing's
      share3 ("it opens as the same patch") are literally true; the First
