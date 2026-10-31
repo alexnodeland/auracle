@@ -14,7 +14,7 @@ superseded_by: null
 
 Accepted by the maintainer on 2026-10-06, on #144: "accept RFC-005's
 recommendations as written, its recommended answers to the open questions
-included". The listen RFC-005 offered was not held first: "the listen kit
+included". The thresholds are the ones it proposed, and "the listen kit
 stays available for an ear check". Recorded here on 2026-10-31
 ([RFC-005](../proposals/005-the-sonic-floor.md)).
 [Plan-009](../plans/009-the-sonic-floor.md) builds it, before the films are
@@ -35,13 +35,14 @@ RFC-004 asked that the first sounds a player hears be good, under a floor the
 engine measures, and left the engineering to RFC-005 (RFC-004 part 6 and
 decision 6). Today the boot fill deals whatever the prior draws: a draw lands
 unless the vet refuses it (2.2% of draws) or it repeats a tree in the pool.
-The vet is a pathology gate, and nothing that measures a sound today tells
-harsh from not. φ's flatness misses low-passed noise, and nothing in φ reads
-roughness.
+The vet is a pathology gate, and what it and the normalizer measure would
+separate almost nothing as a floor. φ's flatness misses low-passed noise, and
+nothing in φ reads roughness.
 
 RFC-005 measured candidate readings over 2,000 fill draws and the 62 presets:
-- a noise share and a sensory roughness of the held C4, about 4 ms a patch,
-  where the render is 92–94% of a featurization;
+- a noise share of the held C4, and a sensory roughness of it and of the
+  C4+E4 dyad, about 4 ms a patch together, where the render is 92–94% of a
+  featurization;
 - the share of energy above 5 kHz, which the face already measures, so it
   costs nothing.
 
@@ -63,7 +64,8 @@ in the prior instead.
 2. **A sound clears the floor when all three hold:** `noise` ≤
    `FLOOR_NOISE_MAX` (0.5), `rough` ≤ `FLOOR_ROUGH_MAX` (2.5) and `hi` ≤
    `FLOOR_HI_MAX` (0.2). The thresholds are named constants, and the
-   reference quotes them by name.
+   reference quotes them by name. There is no fourth rule: a note that
+   doesn't speak (RFC-005's `mute`) is not floored.
 3. **The floor applies at the fill, and nowhere else.**
    - A prior draw below it is consumed and doesn't land, as a vet failure
      is. The serial fold (`fill_pool_step`) and the farm's
@@ -75,8 +77,8 @@ in the prior instead.
      deals from.
    - The prior is not reweighted.
 4. **Register is left out.** #62's octave weights take it (merged in #363).
-   There is no `spk` rule, and no `mute` rule. Of the three readings RFC-004
-   named, this keeps harshness and noise dominance.
+   There is no `spk` rule. Of the three readings RFC-004 named, the floor
+   keeps harshness and noise dominance.
 5. **No stored row without a verdict reaches the fill.** The floor moves
    `RENDER_EPOCH` from 3 to 4, so every row a browser kept under the old
    namespace is orphaned and cleared. Correctness rests on the namespace
@@ -106,7 +108,7 @@ Not decided here:
 
 A floor failure would be a quarantine.
 - It would apply to every render, walks, offers and edits included, against
-  decision 6.
+  RFC-004's decision 6.
 - A refused patch has no φ and no face, so it can't be drawn hollow.
 - The vet's thresholds are φ's contract, so `phi-stats`' quarantine table
   would move by the floor's whole rejection rate.

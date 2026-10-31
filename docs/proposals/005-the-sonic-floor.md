@@ -519,9 +519,8 @@ On laptop speakers and on headphones:
 
 Accepted by the maintainer on 2026-10-06, on #144: "accept RFC-005's
 recommendations as written, its recommended answers to the open questions
-included". The thresholds were accepted without the listen, and "the listen
-kit stays available for an ear check". The build comes before the films are
-cast (#142).
+included", and "the listen kit stays available for an ear check". The build
+comes before the films are cast (#142).
 
 Recorded as [ADR-026](../decisions/026-the-sonic-floor.md). Built as
 [Plan-009](../plans/009-the-sonic-floor.md). Its first task measures this
@@ -530,14 +529,14 @@ and #62's octave weights merged after it (#363, 2026-10-07).
 
 ## Open questions
 
-Each was answered on 2026-10-06 by the acceptance above, with the answer this
-proposal recommends.
+The acceptance above settled each on 2026-10-06 with the answer this proposal
+recommends. Questions 7 and 8 stay outside the floor, as they say.
 
 1. **Fill, deal or quota?** This proposal recommends the fill. *Answered
    (2026-10-06):* the fill.
 2. **The thresholds:** noise ≤ 0.5, rough ≤ 2.5, hi ≤ 0.2, after a listen.
-   *Answered (2026-10-06):* these three, accepted without the listen. The
-   listen kit stays available for an ear check.
+   *Answered (2026-10-06):* these three. The listen kit stays available for
+   an ear check.
 3. **Register:** leave it to #62 (recommended), or add `spk ≥ 0.05`?
    *Answered (2026-10-06):* left to #62, which merged as #363 on 2026-10-07.
 4. **A note that doesn't speak:** add `mute ≥ −30 dB`? It removes 2.8% of

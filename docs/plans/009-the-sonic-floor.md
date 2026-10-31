@@ -174,8 +174,9 @@ octave from `OCTAVE_WEIGHTS` (`[.05, .15, .40, .25, .15]` for −2…+2, in
   #301 holds the first sound to about a second on the reference machine
   ([ADR-025](../decisions/025-every-interaction-answers-at-once.md)), so a
   slower veil is reported there, with its numbers.
-- Every seed now deals another pool, as after #62. #327's re-measure of
-  `PERFORM_SEED` and `SEED` is made on the floored pool.
+- Every seed now deals another pool, as after #62. #327 re-measures
+  `PERFORM_SEED` and `SEED` under the octave weights; if it lands before the
+  floor, the floored pool owes that re-measure again.
 
 ### 6. The revalidation
 
@@ -233,7 +234,7 @@ Each lands with the code it describes:
   share ≤ 0.02, roughness ≤ 6) has no code in the repository. Then
   `make sound`, which writes `www/video/tools/sound_defaults.py` and the
   scores (`make dev-check` fails while they are stale).
-- The pages that say the films wait on the floor say they don't:
+- The pages that say the films wait on the floor are brought up to date:
   [the view films' runbook](../runbooks/finish-the-view-films.md),
   [Plan-004](004-one-design-system.md) task 8 and
   [Plan-006](006-the-sound-of-the-films.md)'s casting.
