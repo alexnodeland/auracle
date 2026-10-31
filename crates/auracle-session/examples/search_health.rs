@@ -80,7 +80,54 @@
 //! topology, structural moves find a different one, and a palette expansion
 //! can starve the second without touching the first.
 //!
+//! ## The baselines now, and what each was measured on
+//!
+//! Compare a change against these, not against the wave-3 table below, which
+//! predates 2026-10-07 (fugue-ppl 0.2.3 and octaves drawn by weight). Every
+//! figure here but the last is copied from the bodies of #355 and #357, was
+//! measured on 2026-10-07 on frozen builds that the issues do not name, with
+//! the first N seeds of this harness's list (`0xE05 + i·0x101`) and the 95%
+//! interval the issue printed. None was re-measured after #389 (fugue-evo
+//! 0.4.0, a walk runs its model once a step: the same draws), #393
+//! (quiver-dsp 0.4.1: φ moves by at most 1.34e-11 of a spread) or #406
+//! (quiver-dsp 0.5.1's block walk: the same samples bit for bit). The
+//! maintainer closed both studies on 2026-10-31 with nothing re-measured; the
+//! tables, the rows never finished and how to reopen them are in
+//! `docs/notes/walk-length-2026-10.md`.
+//!
+//! ```text
+//! 3  locked refine beat its parent, by refine_steps (16 seeds, 128 tries a
+//!    rate; octaves uniform against weighted deal different pools: unpaired)
+//!    refine_steps          20           40 *         80           160
+//!    uniform octaves       60.9%        71.1%        75.0%        80.5%
+//!    weighted octaves      71.1%        68.0%        71.9%        not finished
+//!    difference, points    +10.2        -3.1         -3.1
+//!    95% interval          -1.4..+21.4  -14.2..+8.1  -13.8..+7.7
+//!
+//!    fugue-ppl 0.2.2 -> 0.2.3, paired seed for seed, builds that differ only
+//!    in fugue-ppl (uniform octaves)
+//!                                 seeds  0.2.2    0.2.3    difference (95%)
+//!    3  beat parent, 40 *         48     66.7%    70.3%    +0.036 (-0.037, +0.110)
+//!    3  beat parent, 80           16     75%      71%      -0.039 (-0.115, +0.037)
+//!    3  beat parent, 160          8, run stopped           -0.109 (-0.272, +0.053)
+//!    1  pool climb, mean gain     16     +2.000   +1.852   -0.148 (-0.836, +0.540)
+//!    4  fit vs truth (spearman)   n/s    0.359    0.328    -0.031 (-0.070, +0.008)
+//!    2  knob moves accepted, 40   n/s    53%      85%      (moves about 1.8x larger)
+//!
+//! 1  pool climb, mean gain, 8 seeds, 9c81dca, 2026-10-09 (fugue-ppl 0.2.3,
+//!    weighted octaves, fugue-evo 0.4.0, quiver-dsp 0.4.1): +2.218 +/- 0.416
+//!    (se), climbed on 8 of 8
+//! ```
+//!
+//! `n/s`: the issue does not say. The 160-step rows were never finished: the
+//! weighted side's was not completed and the paired one was stopped at 8
+//! seeds. `*` is the shipped `refine_steps`, 40.
+//!
 //! ## The wave-3 φ reading, so it does not have to be re-derived
+//!
+//! A record of that change, measured before 2026-10-07 (its date and build
+//! were not recorded), and not a baseline: its "before" column predates
+//! fugue-ppl 0.2.3, the weighted octaves and quiver-dsp 0.4.1.
 //!
 //! `chain_balance` and `frac_sidechained` joined φ_struct. Both arms below are
 //! the same seed list; "before" is the 23-column φ_struct, "after" is the same
@@ -116,8 +163,11 @@
 //! `Engine::refine_from` with locks is the app's "⚡ evolve from this" button.
 //! Reported as two rates — one that saturates and one that does not; see
 //! [`refine_hits`]. Run at half, one, two and four times the shipped budget,
-//! so "20 steps is not enough" is a statement with a number attached rather
-//! than a feeling.
+//! so a claim about a walk's length has a number attached rather than a
+//! feeling. "Twenty steps is not enough" (`SessionConfig::refine_steps`) is
+//! a `--budget-ab` finding under fugue-ppl 0.2.2; on this measure, under the
+//! weighted octaves, 20 steps hit no less often than 40 (71.1% against
+//! 68.0%, inside the noise; see the baselines above).
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -693,6 +743,14 @@ fn mean(xs: &[f64]) -> f64 {
 /// its standard error, never the two means side by side.** If a change needs
 /// to be detected below that resolution, the fix is more seeds — the run is
 /// embarrassingly parallel — not a closer reading of eight.
+///
+/// Since, on the engine of 2026-10: the 16-seed mean gain's standard error
+/// read ±0.380 (`c8541631`, 2026-10-06, fugue-ppl 0.2.2), and the 8-seed
+/// paired difference of #403's two climbs (`9c81dca` against a scratch
+/// commit, 2026-10-09; `docs/notes/render-cost-2026-10/`) read −0.516 ± 0.316. At 16 seeds and that spread the
+/// paired standard error would be about 0.22, so a true drop of about 0.45
+/// shows at two standard errors and a smaller one would not reliably. The
+/// ±0.64 above is the wave-3 engine's resolution, not necessarily today's.
 fn climb_report(seeds: &[u64]) {
     let curves: Vec<Vec<(f64, f64)>> = std::thread::scope(|s| {
         let hs: Vec<_> = seeds
