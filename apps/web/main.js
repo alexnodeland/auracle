@@ -16817,7 +16817,8 @@ function settlePlaceholders() {
 // the rest of the app reserves for loss.
 function openStructMenu(mod, x, y, above) {
   // Inside the well, clear of its foot (#530): down from (x, y) where it
-  // fits, else up to `above` (a plate's top edge, from the keyboard).
+  // fits, else up to `above` (a plate's top edge, from the keyboard); taller
+  // than the well, cut to it and scrolled (`showMenu`).
   const place = { within: wellRoom(), above };
   if (mod.kind === "amp") {
     // A one-item menu is not a menu; it is a button wearing one. The amp's ⋯
@@ -17333,10 +17334,11 @@ function wellRoom() {
 }
 
 /** Open the one floating menu at (x, y). `place.within` (`{left, right,
- *  top, bottom}`) is the room it should open inside, where it fits: right
- *  from `x`, else held inside it; down from `y`, else up to `place.above`
- *  (its bottom edge there; `y` unless given), else held inside it. Only a
- *  menu wider or taller than that room falls back to the window, that way. */
+ *  top, bottom}`) is the room it should open inside: right from `x`, else
+ *  held inside it; down from `y`, else up to `place.above` (its bottom edge
+ *  there; `y` unless given), else held inside it. A menu taller than that
+ *  room is cut to its height and scrolls; only one wider falls back to the
+ *  window, side to side. */
 function showMenu(x, y, head, rows, place) {
   const menu = $("ctx-menu");
   menuRows = rows;
@@ -17366,7 +17368,10 @@ function showMenu(x, y, head, rows, place) {
   // `delete` among them — rendered off-screen with no way to reach them.
   menu.style.left = "0px";
   menu.style.top = "0px";
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.maxHeight = "";
+  menu.scrollTop = 0;
+  const mw = menu.offsetWidth;
+  let mh = menu.offsetHeight;
   // The room it opens in: the window, or what `place` asks for inside it.
   // Opened from a module near the well's right edge, the structure menu ran
   // on over the levels' rail beside the well (#530): it is held inside.
@@ -17379,6 +17384,14 @@ function showMenu(x, y, head, rows, place) {
   const lo = Math.max(8, place?.within ? place.within.top + 4 : 8);
   const hi = Math.min(window.innerHeight - 8, place?.within ? place.within.bottom - 4 : Infinity);
   const above = place?.above ?? y;
+  // A module's whole menu (ten verbs) is taller than the well at every size
+  // short of a big screen, and fell back to the window, over the foot again
+  // (#530). Held to its room, it is cut to the room's height and scrolls,
+  // its fade saying there is more (`cm-clamped`, below).
+  if (place?.within && mh > hi - lo && hi > lo) {
+    menu.style.maxHeight = `${Math.floor(hi - lo)}px`;
+    mh = menu.offsetHeight;
+  }
   let top;
   if (hi - lo >= mh) {
     if (y + mh <= hi) top = Math.max(lo, y);
@@ -17392,20 +17405,29 @@ function showMenu(x, y, head, rows, place) {
   }
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
-  // `max-height: 70vh` can still bite on a laptop in landscape. Say so with an
-  // edge shadow rather than letting the list end in a clean cut that reads as
+  // `max-height: 70vh`, or the room it was held to, can cut the list. Say so
+  // with an edge fade rather than letting it end in a clean cut that reads as
   // "that is all of them".
-  menu.classList.toggle("cm-clamped", menu.scrollHeight > menu.clientHeight + 1);
+  menuFade();
   menuTypeahead = { buf: "", at: 0 };
   menuOpenedAt = Date.now();
   menu.querySelector(".cm-item:not([disabled])")?.focus();
 }
+
+/** The fade at a cut list's foot, while there is more below: scrolled to its
+ *  end, the last row (`delete`, on a module's menu) is not under it. */
+function menuFade() {
+  const menu = $("ctx-menu");
+  menu.classList.toggle("cm-clamped", menu.scrollTop + menu.clientHeight < menu.scrollHeight - 1);
+}
+$("ctx-menu").addEventListener("scroll", menuFade, { passive: true });
 
 function closeMenu() {
   const menu = $("ctx-menu");
   const had = menu.contains(document.activeElement);
   menu.classList.add("hidden");
   menu.classList.remove("cm-clamped");
+  menu.style.maxHeight = "";
   menuRows = [];
   if (had && menuOpener && menuOpener.isConnected) {
     try { menuOpener.focus({ preventScroll: true }); } catch (_) {}

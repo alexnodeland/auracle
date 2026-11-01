@@ -24,8 +24,8 @@
 
 - **A module's ⋯ menu opens where it fits.** Opened on a module low in the
   well, the menu ran down over the well's foot, covering the readout about
-  that very module and TEACH. It now opens upward when there's no room
-  below, and always inside the well.
+  that very module and TEACH. It now opens inside the well, upward when
+  there's no room below, and a menu taller than the well scrolls inside it.
 - **A patch at a ceiling no longer reads as an error.** A full budget in
   the head (*6/6 depth*) was red, the color of danger, though nothing was
   wrong. It's amber now, the whole count, where a budget one short shows

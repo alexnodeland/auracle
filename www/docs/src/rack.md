@@ -269,7 +269,8 @@ in the reference has the rule.
 
 The selected module’s **⋯** (or right-click any module, hold a finger on it,
 or press <kbd>F2</kbd> on it). It opens inside the well, upward when there is
-no room below, so it never covers the readout at the well's foot:
+no room below, so it never covers the readout at the well's foot. Taller than
+the well, it is cut to the well's height and its list scrolls:
 
 | | |
 |---|---|

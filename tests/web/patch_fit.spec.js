@@ -24,7 +24,10 @@
 // - At 1440 the structure menu of a module low in the well and near its
 //   right edge (HOLD) opens where it fits, never over the well's foot (the
 //   camera, the readout, TEACH) and never past the well's sides (over the
-//   levels' rail), by its ⋯ and by F2.
+//   levels' rail), by its ⋯ and by F2. A module's whole menu (ten verbs),
+//   taller than the well at 1440, at 1280 × 800 and on the phone, stays
+//   inside it too, cut to its height: End (or, on the phone, a scroll)
+//   brings its last row, delete, in.
 // - The head's full depth budget (6/6) is amber at rest, as the tight one is,
 //   never red; an edit refused at that ceiling (a second filter in series)
 //   turns it red while the refusal is said, and it is amber again after.
@@ -67,6 +70,63 @@ const rackType = (page, under) => page.evaluate((floor) => {
 
 const viewBox = (page) => page.evaluate(() => document.getElementById("rack-svg").getAttribute("viewBox").split(/\s+/).map(Number));
 const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1);
+
+/** Where the structure menu is now: open, clear of the well's foot (the
+ *  camera, the readout, TEACH) and below its top, inside its sides; and, cut
+ *  to the well, whether its list scrolls and End brings its last row in. */
+const menuPlace = (page) => page.evaluate(() => {
+  const menu = document.getElementById("ctx-menu");
+  const m = menu.getBoundingClientRect();
+  const foot = document.getElementById("pt-foot").getBoundingClientRect();
+  const frame = document.getElementById("rack-frame").getBoundingClientRect();
+  return {
+    open: m.height > 0,
+    clear: m.bottom <= foot.top + 0.5 && m.top >= frame.top - 0.5,
+    inside: m.left >= frame.left - 0.5 && m.right <= frame.right + 0.5,
+    rows: menu.querySelectorAll(".cm-item").length,
+    cut: menu.scrollHeight > menu.clientHeight + 1,
+  };
+});
+/** The last row of the open menu, all of it within the menu's box. */
+const lastRowShown = (page) => page.evaluate(() => {
+  const menu = document.getElementById("ctx-menu");
+  const items = menu.querySelectorAll(".cm-item");
+  const r = items[items.length - 1].getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  return { label: items[items.length - 1].firstChild.textContent.trim(), shown: r.top >= m.top - 0.5 && r.bottom <= m.bottom + 0.5 };
+});
+/** The key of the leftmost module of the signal path (not a modulator, not
+ *  the amp) whose plate is whole in the well: its menu has every verb. */
+const ordinaryModule = (page) => page.evaluate(() => {
+  const f = document.getElementById("rack-scroll").getBoundingClientRect();
+  const gs = [...document.querySelectorAll("#rack-svg .rack-plates g[data-key]")].filter((g) => {
+    const p = g.querySelector(".mod-plate");
+    if (!p || p.classList.contains("modside") || g.getAttribute("data-kind") === "amp") return false;
+    const r = p.getBoundingClientRect();
+    return r.left >= f.left && r.right <= f.right && r.top >= f.top && r.bottom <= f.bottom;
+  });
+  gs.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+  return gs[0]?.getAttribute("data-key") ?? null;
+});
+/** A module's whole menu (ten verbs) from F2 on its plate: inside the well
+ *  and clear of its foot, cut to the well where it is taller and scrolled
+ *  by End to `delete`. */
+async function wholeMenuInTheWell(page) {
+  const key = await ordinaryModule(page);
+  expect(key, "a module of the signal path, whole in the well").not.toBeNull();
+  await page.locator(`#rack-svg .rack-controls g.mod-group[data-key="${key}"]`).focus();
+  await page.keyboard.press("F2");
+  await expect(page.locator("#ctx-menu")).toBeVisible();
+  const at = await menuPlace(page);
+  expect(at, `${key}'s menu`).toMatchObject({ open: true, clear: true, inside: true });
+  expect(at.rows, `${key}'s menu holds every verb`).toBeGreaterThanOrEqual(9);
+  await page.keyboard.press("End");
+  await expect(page.locator("#ctx-menu .cm-item").last()).toBeFocused();
+  expect(await lastRowShown(page)).toEqual({ label: "delete", shown: true });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#ctx-menu")).toBeHidden();
+  return at;
+}
 
 test.describe("a phone, 390 × 844", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
@@ -152,6 +212,23 @@ test.describe("a phone, 390 × 844", () => {
     await page.locator("#pt-fit").tap();
     await expect.poll(async () => near(await viewBox(page), fitted), { timeout: 5_000 }).toBe(true);
   });
+
+  test("a module's whole structure menu, by a finger on its ⋯, opens inside the well on a phone and scrolls there", async ({ page, app }) => {
+    await patchAtFit(app);
+    const key = await ordinaryModule(page);
+    expect(key, "a module of the signal path, whole in the well").not.toBeNull();
+    const dots = await page.locator(`#rack-svg g.mod-group[data-key="${key}"] .mod-menu-btn text`).boundingBox();
+    await page.touchscreen.tap(dots.x + dots.width / 2, dots.y + dots.height / 2);
+    await expect(page.locator("#ctx-menu")).toBeVisible();
+    const at = await menuPlace(page);
+    expect(at, `${key}'s menu`).toMatchObject({ open: true, clear: true, inside: true, cut: true });
+    expect(at.rows, `${key}'s menu holds every verb`).toBeGreaterThanOrEqual(9);
+    // Its list runs on under the fade, to delete.
+    await expect(page.locator("#ctx-menu")).toHaveClass(/\bcm-clamped\b/);
+    await page.locator("#ctx-menu .cm-item").last().scrollIntoViewIfNeeded();
+    expect(await lastRowShown(page)).toEqual({ label: "delete", shown: true });
+    await expect(page.locator("#ctx-menu")).not.toHaveClass(/\bcm-clamped\b/);
+  });
 });
 
 test("PATCH's fit at 1440 prints every module's name at the type floor, and FIT comes back to it", async ({ page, app }) => {
@@ -168,19 +245,10 @@ test("PATCH's fit at 1440 prints every module's name at the type floor, and FIT 
   await expect.poll(async () => near(await viewBox(page), fitted), { timeout: 5_000 }).toBe(true);
 });
 
-test("the structure menu of a module low in the well opens where it fits, inside the well and clear of its foot", async ({ page, app }) => {
+test("the structure menu opens inside the well, clear of its foot, and a module's whole menu scrolls there", async ({ page, app }) => {
   await patchAtFit(app);
-  const clear = () => page.evaluate(() => {
-    const m = document.getElementById("ctx-menu").getBoundingClientRect();
-    const foot = document.getElementById("pt-foot").getBoundingClientRect();
-    const frame = document.getElementById("rack-frame").getBoundingClientRect();
-    return {
-      open: m.height > 0,
-      clear: m.bottom <= foot.top + 0.5 && m.top >= frame.top - 0.5,
-      inside: m.left >= frame.left - 0.5 && m.right <= frame.right + 0.5,
-    };
-  });
-  // By its ⋯: select HOLD with a press on its plate, then its ⋯.
+  // By its ⋯: select HOLD, low in the well and near its right edge, with a
+  // press on its plate, then its ⋯.
   const plate = page.locator('#rack-svg .rack-plates g[data-kind="hold"] .mod-plate').first();
   const b = await plate.boundingBox();
   await page.mouse.click(b.x + 8, b.y + b.height - 6);
@@ -188,14 +256,27 @@ test("the structure menu of a module low in the well opens where it fits, inside
   const dots = await page.locator('#rack-svg g.mod-group[data-kind="hold"] .mod-menu-btn text').boundingBox();
   await page.mouse.click(dots.x + dots.width / 2, dots.y + dots.height / 2);
   await expect(page.locator("#ctx-menu")).toBeVisible();
-  expect(await clear()).toEqual({ open: true, clear: true, inside: true });
+  expect(await menuPlace(page)).toMatchObject({ open: true, clear: true, inside: true });
   await page.keyboard.press("Escape");
   await expect(page.locator("#ctx-menu")).toBeHidden();
   // By F2 on the plate.
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="hold"]').focus();
   await page.keyboard.press("F2");
   await expect(page.locator("#ctx-menu")).toBeVisible();
-  expect(await clear()).toEqual({ open: true, clear: true, inside: true });
+  expect(await menuPlace(page)).toMatchObject({ open: true, clear: true, inside: true });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#ctx-menu")).toBeHidden();
+  // A module of the signal path: ten verbs, taller than the well here.
+  expect((await wholeMenuInTheWell(page)).cut, "the whole menu, cut to the well").toBe(true);
+});
+
+test.describe("a laptop, 1280 × 800", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("a module's whole structure menu scrolls inside the well on a laptop, clear of its foot", async ({ page, app }) => {
+    await patchAtFit(app);
+    expect((await wholeMenuInTheWell(page)).cut, "the whole menu, cut to the well").toBe(true);
+  });
 });
 
 test("a full depth budget is amber at rest, and red only while an edit refused at it is said", async ({ page, app }) => {

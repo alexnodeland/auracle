@@ -3951,8 +3951,9 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   cursor: not-allowed;
 }
 .ctx-menu .cm-item[disabled]:hover { background: none; color: var(--silk-dim); }
-/* Clamped at 70vh: end the list in a fade, not in a clean cut that reads as
-   "that is all of them". */
+/* Clamped at 70vh, or to the room it opens in (main.js `showMenu`, the well
+   for the structure menu): end the list in a fade, not in a clean cut that
+   reads as "that is all of them". */
 .ctx-menu.cm-clamped {
   mask-image: linear-gradient(to bottom, var(--black) calc(100% - 26px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, var(--black) calc(100% - 26px), transparent 100%);
