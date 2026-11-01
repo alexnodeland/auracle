@@ -361,8 +361,11 @@ scripts/ops/rows_resolve.py keeps both. -->
     the next run waits. So `CI` and `Full gate` don't run in a run
     cancelled before every job they read had ended: a reset batch's run
     ends when it is cancelled. (Until #580 `CI` ran there too, runner wait
-    and all, and on a PR a new push's run waited for it: 1.5 minutes in run
-    41217848348.)
+    and all, and the next run waited for it. On a PR, run 41217848348's
+    first job was created 93 seconds after the run, the second the run it
+    replaced ended: that run was cancelled 29 seconds after this one was
+    created, and its `CI`, created then, waited 51 seconds for a runner and
+    ran for 13.)
   - A red batch's tests have all ended when the next batch's run cancels
     it, so its `CI` runs to its end: the merged browser report, the budgets
     and the records are kept. The next batch's run starts once it has.
