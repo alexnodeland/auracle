@@ -1539,6 +1539,11 @@ fn a_refusal_at_the_ceilings_names_the_size_and_depth_it_would_have_made() {
         validate_tree(&tree).unwrap_err(),
         "the patch would pass its limits (31 modules, depth 5)"
     );
+    // At the size ceiling, and not past it: let through.
+    let four = mix(mix(vco(), vco()), mix(vco(), vco()));
+    tree.root = mix(full(4, &vco), default_filter_over(four));
+    assert_eq!(tree.root.size(), mutate::MAX_SIZE);
+    assert!(validate_tree(&tree).is_ok());
 }
 
 /// A filter wrapping `inner`, built without going through the op vocabulary
