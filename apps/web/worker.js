@@ -254,12 +254,12 @@ function farmPhrase() {
   return { phrase, ns };
 }
 
-// The phrase carries the session's audition clip, so a capture or a restore
-// that installs a saved clip changes it after the crew standing was handed the
-// old one. Until a worker has the new one, its render of a sound that listens
-// carries the old clip's key, the engine refuses it, and the sound is measured
-// serially here instead (Plan-007 task 4). Port messages arrive in order, so a
-// job sent after this is rendered with the new clip.
+// The phrase carries each input's audition clip, so a capture of an input or
+// a restore that installs a saved clip changes it after the crew standing was
+// handed the old one. Until a worker has the new one, its render of a sound
+// that listens carries the old clip's key, the engine refuses it, and the
+// sound is measured serially here instead (Plan-007 task 4). Port messages
+// arrive in order, so a job sent after this is rendered with the new clip.
 function farmResendPhrase() {
   if (!farm.some((f) => f.alive)) return 0;
   const { phrase, ns } = farmPhrase();
@@ -1022,8 +1022,8 @@ const EMPTY_F32 = new Float32Array(0);
 // opening a newer save, a new enum variant, one corrupt bank tree). The
 // `_checked` / `_v2` forms say `unparseable` for the second case, and that
 // verdict goes to main as `restore_failed`, which is what stops the write.
-// The session's audition clip as the engine reports it, or null from a binary
-// too old to say.
+// The clip every input slot hears unless it has its own, as the engine
+// reports it (`audition_clip`), or null from a binary too old to say.
 function auditionClip() {
   try {
     return JSON.parse(engine.audition_clip());
@@ -1032,10 +1032,36 @@ function auditionClip() {
   }
 }
 
-// A restore installs the session's saved clip (or the reference, with why),
-// so main hears which one after every restore.
+// Which clip each input slot's sounds are measured with (#147): the slot's
+// own, else the one every slot hears, each as `audition_clip` reports it,
+// with the engine's sentence and why a saved one didn't load
+// (`WasmEngine::input_clip`), in slot order until the engine says a slot is
+// past the last; or null from a binary too old to say.
+function inputClips() {
+  if (typeof engine.input_clip !== "function") return null;
+  try {
+    const out = [];
+    for (let slot = 0; slot < 64; slot++) {
+      const c = JSON.parse(engine.input_clip(slot));
+      if (!c || c.error) break;
+      out.push(c);
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
+// A clip the farm renders with: a captured one, on any input slot. The
+// phrase carries every slot's, so the crew needs it again when one is.
+function clipsCaptured() {
+  return (inputClips() || [auditionClip()]).some((c) => c?.source === "captured");
+}
+
+// A restore installs the session's saved clips (or the reference, with why),
+// so main hears which one each input hears after every restore.
 function postClip() {
-  post({ type: "audition_clip", clip: auditionClip() });
+  post({ type: "audition_clip", clip: auditionClip(), clips: inputClips() });
 }
 
 function restoreFailed(status) {
@@ -1181,11 +1207,11 @@ async function restoreSession(saved, stages, ns) {
       return restoreSerial(saved);
     }
   }
-  // The import installed the session's saved clip; a crew standing (ready, or
-  // still starting) was handed the phrase before it. Re-sent before any bank
-  // job goes out, so the farm renders the bank's listeners with the clip they
-  // were saved with.
-  if (auditionClip()?.source === "captured") farmResendPhrase();
+  // The import installed the session's saved clips; a crew standing (ready,
+  // or still starting) was handed the phrase before them. Re-sent before any
+  // bank job goes out, so the farm renders the bank's listeners with the
+  // clips they were saved with.
+  if (clipsCaptured()) farmResendPhrase();
   if (!Array.isArray(jobs) || jobs.length === 0) {
     postClip();
     try { return engine.restore_finish(); } catch (_) { return 0; }
@@ -3588,9 +3614,11 @@ async function dispatch(m) {
         faceNs = ns;
         faceStoreOpen(); // ready for the first faces copied out of the memo
         renderStoreReady(ns); // before any farm worker opens it (`farmBoot`)
-        // The audition clip sounds with an AUDIO IN are measured with (the
-        // built-in reference until an input is captured). PERFORM keys the
-        // wiring of a sound that listens by it.
+        // The clip every input slot hears (`clip`) and the one each slot's
+        // sounds are measured with (`clips`): the built-in reference on every
+        // slot here, since a restore comes after and says what it brought
+        // back. PERFORM keys the wiring of a sound that listens by the clips
+        // of the slots it reads.
         // The longest take a CAPTURE holds (RECORD's limit), from the grammar.
         let takeSeconds = null;
         try {
@@ -3599,7 +3627,7 @@ async function dispatch(m) {
         // `init`'s answer: the engine is up. The fill that follows is the
         // worker's own news (its progress, `playable`, `filled`, a restore's
         // refit), as is a boot that fails after this.
-        answer(m, { type: "ready", ceilings, ns, clip: auditionClip(), takeSeconds });
+        answer(m, { type: "ready", ceilings, ns, clip: auditionClip(), clips: inputClips(), takeSeconds });
         readied = true;
 
         // Farm ports arrive already connected to workers main spawned before it
@@ -4666,28 +4694,37 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
-    // The session's audition clip (Plan-007, ADR-015): what a sound with an
-    // AUDIO IN is measured with. A capture arrives from audio-in.js on first
-    // listen or NEW CLIP: `samples` is a Float32Array of `channels`
-    // interleaved, at `sampleRate`; without it the clip goes back to the
-    // built-in reference. A clip the engine takes changes the phrase, so the
-    // crew standing (if any) is handed it again (`farmResendPhrase`), and the
-    // listeners it measured again move their ratings, so the views go with
-    // the reply.
+    // The audition clips (Plan-007, ADR-015): what a sound with an AUDIO IN
+    // is measured with, a clip per input slot it reads (#147). Which clip
+    // each slot hears, as `ready` and a restore say it.
     case "audition_clip": {
       postClip();
       break;
     }
-    case "set_audition_clip": {
+    // One input's own clip (#147): a capture of the device on input `slot`,
+    // from audio-in.js on that input's first listen or a module's NEW CLIP.
+    // `samples` is a Float32Array of `channels` interleaved, at
+    // `sampleRate`; without it the slot hears the clip every slot hears
+    // again. The engine measures again only the pool's members that read
+    // that slot, and its reply's `clip` is that slot's; `clips` is every
+    // slot's, as `ready` and a restore post them. A clip the engine takes
+    // changes the phrase, which carries every slot's clip, so the crew
+    // standing (if any) is handed it again (`farmResendPhrase`), and the
+    // listeners it measured again move their ratings, so the views go with
+    // the reply.
+    case "set_input_clip": {
+      const slot = m.slot >>> 0;
       const reply = JSON.parse(m.samples
-        ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
-        : engine.clear_audition_clip());
+        ? engine.set_input_clip(slot, m.samples, m.channels | 0, +m.sampleRate)
+        : engine.clear_input_clip(slot));
       let resent = 0;
       if (reply.ok) resent = farmResendPhrase();
       const moved = reply.ok && (reply.remeasured?.length || reply.unmeasured?.length);
       post({
         type: "audition_clip",
+        slot,
         ...reply,
+        clips: inputClips(),
         farmResent: resent,
         ...(moved ? { views: tasteViews(), status: status() } : {}),
       });

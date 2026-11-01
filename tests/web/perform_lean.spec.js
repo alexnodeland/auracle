@@ -9,8 +9,9 @@
 // fit the engine has no lean, and nothing is drawn. It is asked when the view
 // comes up over PERFORM and again when the posterior moves (a pick's
 // reweighting, a taste file opened) or the sound in hand changes (a drift's
-// glide landing, PATCH's knob write followed, another audition clip for a
-// sound that listens), never per frame, and nothing of it shows at rest.
+// glide landing, PATCH's knob write followed, another audition clip on an
+// input a sound that listens reads), never per frame, and nothing of it shows
+// at rest.
 //
 // What each lean is (the claiming lens, the weights) is the engine's, pinned
 // in auracle-taste and auracle-session; which end a lean names and how a
@@ -169,7 +170,8 @@ test("a taste file opened over PERFORM takes the leans away with the posterior i
 
 test("a new audition clip asks again for the lean of a sound in hand that listens", async ({ page, app }, info) => {
   // The microphone, stubbed as granted (audio_in_stub.js): its tone is what
-  // the first listen captures as the session's audition clip.
+  // the first listen captures as input 1's own audition clip, the input this
+  // sound reads (#147).
   await page.addInitScript(`try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`);
   await page.addInitScript(STUB);
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });

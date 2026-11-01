@@ -41,6 +41,9 @@ export const MODULES = {
   "apps/web/taste.js": ["taste_"],
   "apps/web/taste-geom.js": ["taste_"],
   "apps/web/audio-in.js": ["audio_in"],
+  // Which clip each input is heard through: the captures AUDIO IN makes,
+  // and the key PERFORM's lean and wirings carry for a sound that listens.
+  "apps/web/clips.js": ["audio_in", "perform_lean"],
   "apps/web/takes.js": ["audio_in_takes"],
   "apps/web/explain.js": ["explain"],
   "apps/web/faces.js": ["faces", "evolve_cards", "bank_row"],

@@ -27,11 +27,17 @@
 //   key down once MONITOR is on, and not at all while it is off, even with a
 //   key held. Monitoring starts off on every load, and a sound that listens
 //   opened after a reload gets its input without a prompt.
-// - The first listen captures a clip and the engine takes it as the
-//   session's audition clip; NEW CLIP captures another. The clip is saved
-//   with the session, and after a reload it is the session's clip again.
-//   (That the farm is then handed the phrase with the clip, after a capture
-//   or a restore, is the engine worker's: tests/worker/farm.test.mjs.)
+// - Each input's first listen captures a clip of that input, and the engine
+//   takes it as that input's own (`set_input_clip`, by slot), not every
+//   input's; an input waits for its own signal. A module's NEW CLIP captures
+//   the input it reads, the keys' or the meter's only. Each input's clip is
+//   saved with the session, and after a reload each input hears its own
+//   again. A session saved before inputs had clips of their own, its one
+//   clip heard on every input, captures each input it reads on its first
+//   listen too, the one that clip came from included, and captures none of
+//   them again once it has. (What the worker answers, and that the farm is
+//   then handed the phrase with the clips, after a capture or a restore, are
+//   the engine worker's: tests/worker/clips.test.mjs, farm.test.mjs.)
 // - An unplugged input silences its module and says so; plugged back in, it
 //   is reopened and heard again.
 // - The browser's "default" is numbered as the input it stands for, even when
@@ -89,9 +95,11 @@ const lane = (page) => page.locator("#rack-svg .ain-lane").first();
  *  that listens opened, is the engine's to finish. */
 const laneLive = (app, ms = 30_000) =>
   app.engine((timeout) => expect(lane(app.page)).toHaveAttribute("data-state", "live", { timeout }), { ms });
-/** The audition clip's source in the session main stored (IndexedDB
- *  `auracle`, `kv`, `state`, as fixtures.js `savedUi` reads it), or null. */
-const storedClip = (page) =>
+/** The audition clips in the session main stored (IndexedDB `auracle`,
+ *  `kv`, `state`, as fixtures.js `savedUi` reads it): the source of the clip
+ *  every input hears (`every`, null for none) and of each input's own by
+ *  slot (`own`), or null before a session is stored. */
+const storedClips = (page) =>
   page.evaluate(() => new Promise((resolve) => {
     let req;
     try {
@@ -111,8 +119,11 @@ const storedClip = (page) =>
       get.onsuccess = () => {
         db.close();
         try {
-          const clip = get.result && JSON.parse(get.result.session).audition_clip;
-          resolve(clip ? clip.source : null);
+          if (!get.result) return resolve(null);
+          const session = JSON.parse(get.result.session);
+          const own = {};
+          for (const [slot, c] of Object.entries(session.audition_clips || {})) own[slot] = c.source;
+          resolve({ every: session.audition_clip ? session.audition_clip.source : null, own });
         } catch (_) {
           resolve(null);
         }
@@ -120,10 +131,38 @@ const storedClip = (page) =>
       get.onerror = () => { db.close(); resolve(null); };
     };
   }));
+/** Rewrite the session main stored as a build from before inputs had clips
+ *  of their own saved it: input `slot`'s own clip as the one clip every
+ *  input hears (`audition_clip`), and no input's own (`audition_clips`).
+ *  Run on a page of the app's origin with no app on it, so no autosave
+ *  writes over it. */
+const savedAsBefore = (page, slot) =>
+  page.evaluate((slot) => new Promise((resolve, reject) => {
+    const req = indexedDB.open("auracle");
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction("kv", "readwrite");
+      const kv = tx.objectStore("kv");
+      const get = kv.get("state");
+      get.onsuccess = () => {
+        const session = JSON.parse(get.result.session);
+        session.audition_clip = session.audition_clips[String(slot)];
+        delete session.audition_clips;
+        kv.put({ ...get.result, session: JSON.stringify(session) }, "state");
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  }), slot);
 const state = (page) => page.evaluate(() => window.__aur.audioIn());
 const calls = (page) => page.evaluate(() => window.__pwMic.calls.length);
-/** The clips main sent the engine (SPY): how many, and the first. */
+/** How many clips main sent the engine (SPY), and which inputs' they were. */
 const clips = (page) => page.evaluate(() => window.__pwClips.length);
+const clipSlots = (page) => page.evaluate(() => window.__pwClips.map((c) => c.slot));
+/** The browser's grant, kept as a real one is: a sound that listens opens
+ *  its inputs with no question (the stub's permissions say granted). */
+const granted = (page) => page.addInitScript(() => { try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {} });
 // AURACLE_SHOTS=dir saves the states a reviewer looks at; the rack is let
 // come to rest first (a placement moves the plates).
 const shot = async (page, name, el) => {
@@ -319,55 +358,169 @@ test("the input is heard with no key down once MONITOR is on, and not at all whi
   expect(afterReload).toBeLessThan(-100);
 });
 
-test("the first listen captures a clip, and the engine measures with it", async ({ page, app }) => {
+test("the first listen captures a clip of that input, and the engine measures it with it", async ({ page, app }) => {
   await boot(page, app);
-  expect((await state(page)).clipSource).toBe("reference");
+  expect((await state(page)).clips[0]).toBe("reference");
   await openPreset(page, app, "Glass Pad");
   await placeAudioIn(page);
   await laneLive(app);
   // The input carries a signal, so a capture starts, says so at once (NEW
   // CLIP lit while it rolls), and goes to the engine: six seconds of two
-  // channels at the context's rate.
-  await expect.poll(async () => (await state(page)).capture, { timeout: 15_000 }).toBe("rolling");
+  // channels at the context's rate, as input 1's.
+  await expect.poll(async () => (await state(page)).captures, { timeout: 15_000 }).toEqual({ 0: "rolling" });
   await expect(lane(page).locator(".ain-clip")).toHaveClass(/\bon\b/);
   await expect(page.locator(".toast-msg").first())
     .toHaveText("Capturing 6 s of Fake Mic A as the clip the model hears it through…", { timeout: 2_000 });
   await expect.poll(() => clips(page), { timeout: 20_000 }).toBe(1);
   const sent = await page.evaluate(() => window.__pwClips[0]);
   const rate = await page.evaluate(() => window.__aur.audioCtx.sampleRate);
-  console.log(`clip sent: ${sent.frames} frames × ${sent.channels} at ${sent.sampleRate} Hz`);
+  console.log(`clip sent: ${sent.frames} frames × ${sent.channels} at ${sent.sampleRate} Hz, input ${sent.slot + 1}`);
+  expect(sent.slot).toBe(0);
   expect(sent.channels).toBe(2);
   expect(sent.sampleRate).toBe(rate);
   expect(sent.frames / rate).toBeGreaterThan(5.5);
-  // The engine took it as the session's clip, and says so.
-  const reply = await app.reply("audition_clip", { where: { ok: true }, timeout: 30_000 });
+  // The engine took it as input 1's clip, and says so; every other input
+  // still hears the reference, for its own first listen.
+  const reply = await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 30_000 });
   expect(reply.clip.source).toBe("captured");
   await app.toast("The model hears sounds with an input through the clip captured from it.", { timeout: 20_000 });
-  expect((await state(page)).clipSource).toBe("captured");
+  expect((await state(page)).clips.slice(0, 2)).toEqual(["captured", "reference"]);
   // Only the first listen captures by itself; NEW CLIP captures again. A
   // capture is under way from the moment it is armed, six seconds before
   // its clip is sent: none is.
   await app.quiet(2_000);
-  expect((await state(page)).capture, "a capture began by itself").toBeNull();
+  expect((await state(page)).captures, "a capture began by itself").toEqual({});
   expect(await clips(page)).toBe(1);
   await lane(page).locator(".ain-clip").click();
-  await expect.poll(() => clips(page), { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => clipSlots(page), { timeout: 20_000 }).toEqual([0, 0]);
   await app.engine((timeout) => expect.poll(() => app.count("audition_clip"), { timeout }).toBeGreaterThanOrEqual(2), { ms: 30_000 });
 });
 
-test("a captured clip is saved with the session, and is the session's clip again after a reload", async ({ page, app }) => {
+test("each input's first listen captures its own clip, and a module's NEW CLIP captures the input it reads", async ({ page, app }, info) => {
+  // Allowed before, so the sound that listens opens both inputs with no
+  // question; Fake Interface B is quiet, so it has not been listened to.
+  await granted(page);
   await boot(page, app);
-  await openPreset(page, app, "Glass Pad");
-  await placeAudioIn(page);
-  await app.reply("audition_clip", { where: { ok: true }, timeout: 40_000 });
-  // The clip is saved with the session: reload only once the record main
-  // stores (`persistState`, written after the worker's `saved`) holds it, or
-  // the reload can cut the write short.
-  await app.engine((timeout) => expect.poll(() => storedClip(page), { timeout }).toBe("captured"), { ms: 30_000 });
+  await page.evaluate(() => window.__pwLevel("mic-b", false));
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  const lanes = page.locator("#rack-svg .ain-lane");
+  await app.engine((timeout) => expect(lanes).toHaveCount(3, { timeout }), { ms: 60_000 });
+  const meterOnly = page.locator("#rack-svg .ain-lane[data-state='meter']");
+  await expect(meterOnly).toHaveCount(1, { timeout: 15_000 });
+  // Fake Mic A plays: input 1 is captured as its own clip, while input 2
+  // waits for its own signal.
+  const one = await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 });
+  expect(await clipSlots(page)).toEqual([0]);
+  expect((await state(page)).captures).toEqual({ 1: "armed" });
+  expect(one.clips[1].source, "input 2 took input 1's clip").toBe("reference");
+  await shot(page, "clip-each-input-armed");
+
+  // Fake Interface B plays: input 2 is captured, as its own clip, and input
+  // 1 keeps the one it has.
+  await page.evaluate(() => window.__pwLevel("mic-b", true));
+  await expect(page.locator(".toast-msg").first())
+    .toHaveText("Capturing 6 s of Fake Interface B as the clip the model hears it through…", { timeout: 15_000 });
+  await expect(meterOnly.locator(".ain-clip")).toHaveClass(/\bon\b/);
+  await shot(page, "clip-each-input-rolling");
+  const two = await app.reply("audition_clip", { where: { ok: true, slot: 1 }, timeout: 40_000 });
+  expect(await clipSlots(page)).toEqual([0, 1]);
+  expect(two.clips[1].source).toBe("captured");
+  expect(two.clips[1].id, "two inputs, one clip").not.toBe(one.clips[0].id);
+  expect(two.clips[0].id, "a capture of input 2 moved input 1's clip").toBe(one.clips[0].id);
+  expect((await state(page)).clips.slice(0, 3)).toEqual(["captured", "captured", "reference"]);
+
+  // NEW CLIP on the module whose input the keys don't read captures that
+  // input, not the keys'.
+  const t0 = await app.now();
+  const said = (await app.toasts()).length;
+  await expect(meterOnly.locator(".ain-clip")).not.toHaveClass(/\boff\b/);
+  await meterOnly.locator(".ain-clip").click();
+  await app.toast("The next 6 s of Fake Interface B become the clip", { since: said });
+  await app.toast("Capturing 6 s of Fake Interface B as the clip the model hears it through…", { since: said, timeout: 15_000 });
+  const again = await app.reply("audition_clip", { where: { ok: true, slot: 1 }, after: t0, timeout: 40_000 });
+  expect(await clipSlots(page)).toEqual([0, 1, 1]);
+  expect(again.clips[1].id, "NEW CLIP captured nothing new for input 2").not.toBe(two.clips[1].id);
+  expect(again.clips[0].id, "input 2's NEW CLIP moved input 1's clip").toBe(one.clips[0].id);
+});
+
+test("each input's clip is saved with the session, and each input hears its own again after a reload", async ({ page, app }, info) => {
+  await granted(page);
+  await boot(page, app);
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  // Both inputs play, and each is captured as its own.
+  const taken = [
+    await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 }),
+    await app.reply("audition_clip", { where: { ok: true, slot: 1 }, timeout: 40_000 }),
+  ].sort((a, b) => a._n - b._n);
+  const before = taken[1].clips.map((c) => c.id);
+  expect(before[0]).not.toBe(before[1]);
+  expect(before[2], "fixture: input 3 is heard through the reference").not.toBe(before[0]);
+  // Each is saved with the session, and nothing as every input's: reload
+  // only once the record main stores (`persistState`, written after the
+  // worker's `saved`) holds them, or the reload can cut the write short.
+  await app.engine((timeout) => expect.poll(() => storedClips(page), { timeout }).toEqual({ every: null, own: { 0: "captured", 1: "captured" } }), { ms: 30_000 });
 
   await app.reload();
-  // The restore's word on the clip reaches AUDIO IN (main.js `audioIn.clip`).
-  await app.engine((timeout) => expect.poll(async () => (await state(page)).clipSource, { timeout }).toBe("captured"), { ms: 30_000 });
+  // The restore's word on the clips reaches AUDIO IN (main.js `audioIn.clip`):
+  // each input hears the clip it was captured with.
+  await app.engine((timeout) => expect.poll(async () => (await state(page)).clips.slice(0, 3), { timeout }).toEqual(["captured", "captured", "reference"]), { ms: 30_000 });
+  const restored = (await app.replies("audition_clip")).pop();
+  expect(restored.clips.map((c) => c.id)).toEqual(before);
+  // Heard through their own again, they are not captured again by
+  // themselves when a sound reads them.
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  await app.engine((timeout) => expect(page.locator("#rack-svg .ain-lane[data-state='meter']")).toHaveCount(1, { timeout }), { ms: 60_000 });
+  await app.quiet(2_000);
+  expect((await state(page)).captures, "a restored input was armed for a first listen").toEqual({});
+  expect(await clips(page)).toBe(0);
+});
+
+test("a session saved before inputs had clips of their own captures each input on its first listen", async ({ page, app }, info) => {
+  // A session of today's with input 1 captured (Fake Interface B quiet, so
+  // input 2 is not), then saved again as an older build saved it: that clip
+  // as the one every input hears, and no input's own.
+  await granted(page);
+  await boot(page, app);
+  await page.evaluate(() => window.__pwLevel("mic-b", false));
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 });
+  await app.engine((timeout) => expect.poll(() => storedClips(page), { timeout }).toEqual({ every: null, own: { 0: "captured" } }), { ms: 30_000 });
+  await page.route("**/__seed", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>seed</title>" }));
+  await page.goto("/__seed");
+  await savedAsBefore(page, 0);
+
+  // Restored, every input hears that one clip, the input it came from too
+  // (nothing tells which that was).
+  await app.visit("/");
+  await app.engine((timeout) => expect.poll(async () => (await state(page)).clips, { timeout }).toEqual(Array(8).fill("captured")), { ms: 30_000 });
+  const restored = (await app.replies("audition_clip")).pop();
+  const old = restored.clip.id;
+  expect(restored.clip.source, "the old session's clip is not the one every input hears").toBe("captured");
+  expect(restored.clips.map((c) => c.id)).toEqual(Array(8).fill(old));
+
+  // Both inputs play: each is captured on its own first listen, as its own.
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  const taken = [
+    await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 }),
+    await app.reply("audition_clip", { where: { ok: true, slot: 1 }, timeout: 40_000 }),
+  ].sort((a, b) => a._n - b._n);
+  const now = taken[1].clips.map((c) => c.id);
+  expect(now[0], "input 1 kept the old session's clip").not.toBe(old);
+  expect(now[1], "input 2 kept the old session's clip").not.toBe(old);
+  expect(now[0]).not.toBe(now[1]);
+  expect(now[2], "input 3, read by nothing, lost the old session's clip").toBe(old);
+  expect((await clipSlots(page)).sort()).toEqual([0, 1]);
+  // Captured now, neither is captured again by itself.
+  await app.quiet(2_000);
+  expect((await state(page)).captures, "an input captured in this session was armed again").toEqual({});
+  expect(await clips(page)).toBe(2);
+  // Saved: each input's own, and the old clip still as every other input's.
+  await app.engine((timeout) => expect.poll(() => storedClips(page), { timeout }).toEqual({ every: "captured", own: { 0: "captured", 1: "captured" } }), { ms: 30_000 });
 });
 
 test("an unplugged input silences its module and says so, and plays again when it is back", async ({ page, app }) => {
@@ -404,7 +557,7 @@ test("a capture cut short drops its take, and the tap stops", async ({ page, app
   await page.evaluate(() => window.__pwLevel("mic-a", false));
   await placeAudioIn(page);
   await laneLive(app);
-  await expect.poll(async () => (await state(page)).capture).toBe("armed");
+  await expect.poll(async () => (await state(page)).captures).toEqual({ 0: "armed" });
   // Another sound, with no AUDIO IN: its input closes under the capture when
   // its bench lands. That bench is the engine's to make, which on a slow
   // runner took longer than the capture's 6 s (#350), so it is kept from
@@ -414,7 +567,7 @@ test("a capture cut short drops its take, and the tap stops", async ({ page, app
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await app.engine((timeout) => expect.poll(async () => (await app.held()).map((h) => h.type), { timeout }).toContain("bench"), { ms: 30_000 });
   await page.evaluate(() => window.__pwLevel("mic-a", true));
-  await expect.poll(async () => (await state(page)).capture, { timeout: 15_000 }).toBe("rolling");
+  await expect.poll(async () => (await state(page)).captures, { timeout: 15_000 }).toEqual({ 0: "rolling" });
   await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(1);
   await app.release();
   await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(0);
@@ -423,17 +576,19 @@ test("a capture cut short drops its take, and the tap stops", async ({ page, app
   // outlasts the 6 s capture.
   await app.quiet(8_000);
   expect(await clips(page)).toBe(0);
-  expect((await state(page)).capture).toBe(null);
+  expect((await state(page)).captures).toEqual({});
 });
 
 test("a refused capture is not taken again by itself; NEW CLIP takes another", async ({ page, app }) => {
   await boot(page, app);
   // The engine refusing the next capture it takes, as it refuses a silent
-  // one: its reply rewritten before main reads it.
+  // one: its reply rewritten before main reads it, input 1 still heard
+  // through the reference, so only the refusal keeps it from a capture.
   await app.amend({ type: "audition_clip", ok: true }, {
     ok: false,
     note: "That capture was silent, so nothing changed. Check the input, then capture again.",
     "clip.source": "reference",
+    "clips.0.source": "reference",
     views: null,
   });
   await openPreset(page, app, "Glass Pad");
@@ -446,7 +601,8 @@ test("a refused capture is not taken again by itself; NEW CLIP takes another", a
   // window that outlasts a 6 s capture.
   await app.quiet(10_000);
   expect(await clips(page)).toBe(1);
-  expect((await state(page)).capture).toBe(null);
+  expect((await state(page)).captures).toEqual({});
+  expect((await state(page)).clips[0], "fixture: input 1 is heard through the reference").toBe("reference");
   await lane(page).locator(".ain-clip").click();
   await expect.poll(() => clips(page), { timeout: 20_000 }).toBe(2);
 });

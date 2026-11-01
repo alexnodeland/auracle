@@ -8,9 +8,10 @@ A patch that reads the player’s input (an
 [`AudioIn`](../genome/grammar.md#audio-in-the-players-input) anywhere in its
 term, `PatchTree::listens`) would otherwise be rated on whatever the room
 sounded like when it was rendered. Taste would chase the room. So every AUDIO
-IN in a measurement render reads an **audition clip**: its input slot’s own
-if it has one, else the session’s, a capture of the player’s input, or, before
-one exists, a built-in reference signal
+IN in a measurement render reads an **audition clip**: its input slot’s own,
+a capture of what the player plays into that input, if it has one, else the
+clip every slot hears, which is a built-in reference signal unless a session
+saved before slots had clips of their own brought back its one capture
 ([RFC-008](https://github.com/alexnodeland/auracle/blob/main/docs/proposals/008-audio-in.md),
 part 2). The features, the vet, the walks and the render farm all render with
 it, so a patch that listens is measured, rated and bred like any other.
@@ -152,8 +153,12 @@ have to.
   away every cached render each time a player captured one.
 - **The farm’s stored key**, `"<namespace>/<render_key>"`, therefore carries
   the clip for exactly the patches that listen.
-- **PERFORM’s wiring key** (`wireKey` in `perform.js`) appends the clip’s id
-  to the key of a sound with an AUDIO IN, and to no other.
+- **PERFORM’s wiring key** (`wireKey` in `perform.js`) appends the clips to
+  the key of a sound with an AUDIO IN, and to no other, named as `render_key`
+  names them (`clipKey` in `clips.js`): the one clip’s id when every input the
+  sound reads hears it, which is the key such a sound had before an input
+  could have a clip of its own, and otherwise each input it reads with its
+  clip’s id, in order (`0:<id>+1:<id>`).
 
 ## Walks and the farm
 
@@ -170,7 +175,7 @@ carries the old clip’s key:
 
 - **A fill** draw that listens is admitted only on the session’s own key.
   `pre_featurized` refuses the stale result, and `Engine::absorb_prior`
-  measures the draw itself, on the session’s clip, as the serial fill would.
+  measures the draw itself, on the session’s clips, as the serial fill would.
   It does the same when the farm sent no result for a listener, since the old
   clip may be why it failed the vet. A draw that does not listen keys no clip
   and is taken as sent.
@@ -180,26 +185,53 @@ carries the old clip’s key:
 The pool is right either way, but each such patch costs a serial render. So
 the engine worker sends the handshake again (`farmResendPhrase` in
 `worker.js`): to the crew standing whenever a capture is taken, and in a
-staged restore right after the import installs a captured clip, before the
-bank’s first render goes out. A crew raised later is handed the current
-phrase when it starts.
+staged restore right after the import installs a captured clip on any input,
+before the bank’s first render goes out. The phrase carries every input’s
+clip, so one handshake brings the farm every one of them. A crew raised
+later is handed the current phrase when it starts.
 
 ## Capturing a clip
 
-The web app captures the clip from the player’s input (`audio-in.js`):
+The web app captures a clip of each input the player plays into
+(`audio-in.js`), and each becomes that input slot’s own:
 
-- **On first listen.** When an AUDIO IN’s input first carries a signal (over
-  −50 dBFS RMS, `CLIP_SIGNAL_DB`) and the session’s clip is still the
-  reference, it records `CLIP_SECONDS` (6 s) of that input, before the patch,
-  at the browser’s rate. The engine cuts it to the phrase (about 5.05 s), so
-  the capture leaves room over it; a mono device is sent as one channel.
-- **On NEW CLIP**, whatever the session holds.
-- It is sent to the engine worker as `set_audition_clip`, which calls
-  `WasmEngine::set_audition_clip`; the reply carries the engine’s sentence,
-  which the app shows, and what it measured again.
+- **On an input’s first listen.** When an input a sound on the bench reads,
+  or one lent to a recording (a CAPTURE’s RECORD, or RECORD AGAIN on a sound
+  kept safe, `lend`), first carries a signal (over −50 dBFS RMS,
+  `CLIP_SIGNAL_DB`) while no clip has been captured from that input (the
+  engine hears it through the reference, or through the one clip of a
+  session saved before inputs had their own, below), it records
+  `CLIP_SECONDS` (6 s) of it, before the patch, at the browser’s rate. Each
+  input waits for its own signal, so a patch reading two inputs has each
+  captured when it is first played. The engine cuts a capture to the phrase
+  (about 5.05 s), so the capture leaves room over it; a mono input is sent as
+  one channel.
+- **On NEW CLIP**, whatever the input holds: a module’s NEW CLIP captures the
+  input that module reads, whether the keys read it or its meter only.
+- It is sent to the engine worker as `set_input_clip` with the input’s slot,
+  which calls `WasmEngine::set_input_clip`. The reply carries the engine’s
+  sentence, which the app shows, what it measured again (only the pool’s
+  members that read that input), and which clip every input now hears
+  (`clips`, from `input_clip`), as the worker’s `ready` and a restore carry
+  it.
+
+The app never sets the clip every input hears (`set_audition_clip`): a
+capture of one input is that input’s own, not another’s. So in a new session
+an input that has not been listened to is heard through the reference, and
+the clip every input hears is the reference, unless a session saved before
+inputs had clips of their own brought its one clip back. Such a session’s
+inputs all hear that clip until each has its own. Since the app never sets
+it, a captured clip that every input hears is always such a session’s, and
+an input heard through it has no clip captured from it: its first listen
+captures it (`clips.js`’s `firstListen` compares the input’s clip with the
+one every input hears, `clip` on `ready` and a restore’s `audition_clip`).
+Nothing tells which input the old clip came from, so that input is captured
+again too, at the cost of one capture and of measuring again the sounds
+that read it, in the background. An input with a clip of its own, captured
+in this session or restored as its own, is left alone.
 
 A silent capture is refused (see above) and changes nothing; the app shows the
-engine’s sentence and does not capture again by itself.
+engine’s sentence and does not capture that input again by itself.
 
 ## Stored with the session
 
@@ -252,7 +284,7 @@ measures again only the members that read that slot.
 AUDIO IN is a player kind ([grammar](../genome/grammar.md#audio-in-the-players-input)):
 the prior never draws one, so no fill or walk deals an input, and it scores a
 player’s, so a listening patch is walked like any other. A walk renders every
-proposal with the session’s clip, because `WalkContext.phrase` carries it,
+proposal with the session’s clips, because `WalkContext.phrase` carries them,
 and the farm’s walk (`farm_walk`) is handed the same context: a ⚡ or a
 generation from a listening seed lands the same child on the farm as on the
 engine, with the seed’s inputs held and any CAPTURE’s take carried through
@@ -261,10 +293,9 @@ engine, with the seed’s inputs held and any CAPTURE’s take carried through
 
 ## What is open
 
-- **One clip for every input.** The app captures one clip, and every AUDIO IN
-  reads it whatever its input slot. The engine keeps a clip per slot
-  (`set_input_clip`), so a render can depend on the slot, but the app does not
-  capture one per input yet.
 - **One live input.** `LivePoly` binds one input stream, so in the live voices
-  every AUDIO IN reads the device of the patch’s first one; the app opens
-  each other input for its module’s meter only, and says so.
+  every AUDIO IN reads the input of the patch’s first one; the app opens
+  each other input for its module’s meter only, and says so. The model
+  measures a patch that reads two inputs through each input’s own clip, so it
+  rates the patch as it sounds with each input playing its own signal, which
+  the live voices do not play yet.
