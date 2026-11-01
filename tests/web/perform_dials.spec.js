@@ -1,5 +1,16 @@
 // PERFORM's dials and the pads beside them (#532, #523).
 //
+// - A control's caption names its knobs in the rack's words (its
+//   description's labels: "cutoff", "mod depth"), from the moment a sound
+//   opens, and never says a word twice. A sound opens in the click's task and
+//   the bench's rack of it comes back about a render later; the captions
+//   were drawn in that gap from the rack still there, the last sound's, and
+//   read the knobs' sites ("cut · cut +1", "mdepth · rate +2") until a
+//   re-measurement repainted them, seconds later. A preset's rack ships with
+//   its wiring, so its captions are the same before its bench rack lands as
+//   after; a pool sound's name their knobs' labels until then, and their
+//   modules after. Every caption shown is read, by an observer installed
+//   before boot: a read after the open would miss the gap.
 // - A dial or the XY pad pressed with the mouse takes the focus with no
 //   ring, once a key has been pressed too (any key in Chromium, Tab in
 //   Firefox, made focus a script gives count as the keyboard's: the ring
@@ -13,7 +24,86 @@
 //   answered by the spec.
 const { readFileSync } = require("fs");
 const path = require("path");
-const { test, expect, goLevel, PERFORM_SEED } = require("./fixtures");
+const { test, expect, goLevel, bankTab, PERFORM_SEED } = require("./fixtures");
+
+// The sites a caption printed in the gap where the rack's labels belong:
+// none is a word of a knob's name.
+const STEMS = /\b(cut|res|mdepth|dec|att|det|smix|crate|cdepth|cmix|thresh|rmix|rsize|rdamp|dmix|fb|fkind|dsamp)\b/;
+// A caption that names knobs (not one of a control's states).
+const NAMES_KNOBS = (t) => !!t && !/…|^turns toward|^let go|^turn further|^after you let go|^in a moment/.test(t);
+// The words of a caption, without its separators and its count.
+const wordsOf = (t) => t.split(/\s+/).filter((w) => w && w !== "·" && w !== "/" && !/^\+\d+$/.test(w));
+
+test("a control's caption names its knobs in the rack's words from the moment a sound opens, and never says a word twice", async ({ page, app }) => {
+  test.setTimeout(150_000);
+  // Every caption the six controls show, with the sound PERFORM names.
+  await page.addInitScript(() => {
+    window.__captions = [];
+    const was = new Map();
+    const read = () => {
+      const name = document.querySelector(".pf-name")?.textContent || "";
+      for (const sub of document.querySelectorAll(".pf-knob[data-index] .pf-k-sub")) {
+        const i = sub.parentElement.parentElement.dataset.i;
+        const t = sub.textContent;
+        if (was.get(i) === `${name}|${t}`) continue;
+        was.set(i, `${name}|${t}`);
+        window.__captions.push({ name, i, t });
+      }
+    };
+    new MutationObserver(read).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await goLevel(page, "perform");
+  await app.reached();
+  const frames = () => page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+  for (const name of ["Glass Pad", "Acid Line", "Cathedral", "Reese"]) {
+    // Its shipped wiring stays the one in hand: the re-check it is owed
+    // never reaches the engine, so a caption changes only with the words.
+    await app.stall("perform_wire");
+    await bankTab(page, "presets");
+    await page.locator(".bank-item", { hasText: name }).first().click();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
+    await expect(page.locator(".pf-name")).toHaveText(name);
+    // The bench's rack has landed, and the frame after it painted.
+    await frames();
+    const shown = await page.evaluate((n) => window.__captions.filter((c) => c.name === n), name);
+    const byDial = {};
+    for (const c of shown.filter((c) => NAMES_KNOBS(c.t))) (byDial[c.i] ||= new Set()).add(c.t);
+    console.log(`[perform_dials] ${name}: ${JSON.stringify(Object.fromEntries(Object.entries(byDial).map(([i, s]) => [i, [...s]])))}`);
+    expect(Object.keys(byDial).length, `${name}: some control names its knobs`).toBeGreaterThan(0);
+    // The same words before its bench rack landed as after.
+    for (const [i, said] of Object.entries(byDial)) expect([...said], `${name}: control ${i}'s caption`).toHaveLength(1);
+  }
+  // A pool sound, whose rack does not ship: opened from the bank. Once its
+  // bench rack has landed, its controls say what PERFORM drawn afresh says
+  // (a trip to PATCH and back paints every control again): the modules are
+  // in the tooltips (*raises filter cutoff*) and, where two knobs share a
+  // name, in the captions. They read the labels alone, without the
+  // modules, until the rack came, and kept them.
+  await bankTab(page, "pool");
+  const rows = page.locator("#bank-list .bank-item[data-id]");
+  await app.engine((timeout) => expect.poll(() => rows.count(), { timeout }).toBeGreaterThan(6), { ms: 90_000 });
+  const said = () =>
+    page.evaluate(() => [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => `${k.querySelector(".pf-k-sub").textContent} | ${k.title}`));
+  for (const n of [3, 6]) {
+    const row = rows.nth(n);
+    const name = (await row.locator(".bi-name").textContent()).trim();
+    await app.stall("perform_wire");
+    await row.click();
+    await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
+    await expect(page.locator(".pf-name")).toHaveText(name);
+    await frames();
+    const landed = await said();
+    await goLevel(page, "patch");
+    await goLevel(page, "perform");
+    expect(await said(), `${name}: its controls once its rack landed, against PERFORM drawn afresh`).toEqual(landed);
+  }
+  const all = (await page.evaluate(() => window.__captions)).filter((c) => NAMES_KNOBS(c.t));
+  const stems = all.filter((c) => STEMS.test(c.t)).map((c) => `${c.name}: ${c.t}`);
+  expect(stems, "captions that print a knob's site").toEqual([]);
+  const twice = all.filter((c) => new Set(wordsOf(c.t)).size !== wordsOf(c.t).length).map((c) => `${c.name}: ${c.t}`);
+  expect(twice, "captions that say a word twice").toEqual([]);
+});
 
 test("a dial or the XY pad pressed with the mouse shows no focus ring, and a dial reached with Tab shows one", async ({ page, app }) => {
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });

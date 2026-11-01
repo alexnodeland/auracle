@@ -674,6 +674,88 @@ export function leanWord(aim, mean, guess) {
   return `it leans ${mean >= 0 ? aim[1] : aim[0]}${guess ? "?" : ""}`;
 }
 
+/** What the rack calls each knob, by its site (the part of its address after
+ *  `#`): the labels of the grammar's rack description (auracle-grammar's
+ *  `describe`), which PATCH's rack prints. PERFORM names a control's knobs
+ *  in these words before the rack of the sound in hand has come back from
+ *  the engine (a sound opens in the click's task, the rack about a render
+ *  later), where it used to print the site itself ("cut", "dec"). A label
+ *  the rack draws with its setting (a quantizer's "root · C") is the knob's
+ *  name alone here. `words.test.mjs` reads describe.rs and holds this to
+ *  it. */
+export const KNOB_LABELS = Object.freeze({
+  // env / out
+  attack: "attack", decay: "decay", sustain: "sustain", release: "release",
+  // sources
+  wave: "wave", oct: "octave", det: "detune", mdepth: "mod depth", smix: "mix", vowel: "vowel", fshift: "shift",
+  color: "color", input: "input", gain: "gain", channel: "channel", table: "table", morph: "morph",
+  damp: "decay", bright: "brightness", bal: "balance", rgmix: "mix",
+  // the audio path
+  fkind: "mode", cut: "cutoff", res: "resonance", thresh: "threshold",
+  time: "time", fb: "feedback", dmix: "mix", crate: "rate", cdepth: "depth", cmix: "mix",
+  rsize: "size", rdamp: "damp", rmix: "mix", drive: "drive", tone: "tone", dmode: "mode",
+  bits: "bits", dsamp: "rate", prate: "rate", pdepth: "depth", pfb: "feedback",
+  frate: "rate", fdepth: "depth", ffb: "feedback", trate: "rate", tdepth: "depth", tshape: "shape",
+  vrate: "rate", vdepth: "depth", vmix: "mix", low: "low", mid: "mid", high: "high",
+  gpos: "position", gsize: "size", gdens: "density", semis: "shift", window: "window",
+  ratio: "ratio", makeup: "makeup", amount: "amount", dthresh: "threshold", drel: "release",
+  gthresh: "threshold", range: "range", grel: "release", bands: "bands", vatt: "attack", vrel: "release",
+  band: "band", tsens: "sensitivity", tdyn: "dynamics", play: "play",
+  // modulation
+  rate: "rate", att: "attack", dec: "decay", glide: "glide", sens: "sens", rel: "release",
+  erate: "rate", esteps: "steps", epulses: "pulses",
+  srate: "rate", slen: "length", sslew: "glide",
+  s0: "step 1", s1: "step 2", s2: "step 3", s3: "step 4", s4: "step 5", s5: "step 6", s6: "step 7", s7: "step 8",
+  qroot: "root", qscale: "scale", rise: "rise", fall: "fall", rmode: "mode", hrate: "rate",
+});
+
+/** A knob's name by its address, in the rack's words (`KNOB_LABELS`); a site
+ *  the table does not know is its own name. */
+export function knobLabel(addr) {
+  const site = String(addr).split("#").pop();
+  return Object.hasOwn(KNOB_LABELS, site) ? KNOB_LABELS[site] : site;
+}
+
+/** A knob as a player names it, from `{ module, label }` as the rack has
+ *  it: "cutoff", or `withModule`, "filter cutoff" (bare where the module is
+ *  not known, ""). A label the rack draws with its setting ("root · C") is
+ *  named without it. */
+export function knobName(k, withModule = false) {
+  const name = String(k.label || "").split(" · ")[0].toLowerCase();
+  return withModule && k.module ? `${k.module.toLowerCase()} ${name}` : name;
+}
+
+/** The names of a control's knobs, in its order (`knobName`): bare where no
+ *  other knob here shares the name, with the module where one does ("env /
+ *  out attack · mod env attack", never "attack · attack"). */
+export function knobNames(knobs) {
+  const bare = knobs.map((k) => knobName(k));
+  return knobs.map((k, i) => (bare.indexOf(bare[i]) !== bare.lastIndexOf(bare[i]) ? knobName(k, true) : bare[i]));
+}
+
+/** Do two names say a word twice? */
+const sharesWord = (a, b) => {
+  const words = new Set(a.split(" ").filter((w) => /\w/.test(w)));
+  return b.split(" ").some((w) => words.has(w));
+};
+
+/** The caption under a PERFORM control, from its knobs' names
+ *  (`knobNames`): two of them, then how many more ("mod depth · lfo rate
+ *  +2"), or the first and how many more where two would run past
+ *  `CAPTION_CHARS` ("wavefolder mod depth +1") or say a word twice: two
+ *  filters' cutoffs are "filter cutoff +1", a chorus's rate and an lfo's
+ *  "chorus rate +1". The caption wraps in three lines, and three lines of
+ *  the narrowest column (1000 px) hold 24 characters on any renderer; the
+ *  tooltip and the under-the-hood strip list every knob. */
+export const CAPTION_CHARS = 24;
+export function knobCaption(names) {
+  if (names.length < 2) return names.join("");
+  const more = (n) => (n > 0 ? ` +${n}` : "");
+  const two = `${names[0]} · ${names[1]}${more(names.length - 2)}`;
+  if (two.length <= CAPTION_CHARS && !sharesWord(names[0], names[1])) return two;
+  return `${names[0]}${more(names.length - 1)}`;
+}
+
 /** A weight row's words for a screen reader: the quality, which way it
  *  leans, the weight and its spread, and whether it is still a guess. */
 export function weightSaid(word, mean, std, guess) {

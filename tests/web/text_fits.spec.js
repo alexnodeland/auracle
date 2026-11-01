@@ -43,8 +43,10 @@ for (const width of [390, 360]) {
 }
 
 // Every state a control's caption can be in (perform.js `paintKnob`), with
-// the longest words each can carry. A knob list is what `knobCaption` makes:
-// two names while they fit 24 characters, else one and how many more.
+// the longest words each can carry. A knob list is what words.js
+// `knobCaption` makes: two names while they fit 24 characters and share no
+// word, else one and how many more; the longest one name is a module's and a
+// knob's ("pitch shift mod depth").
 const WORDS = ["dark", "bright", "bloom", "snap", "still", "restless", "thin", "full", "smooth", "rough", "close", "far"];
 const CAPTIONS = [
   "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
@@ -52,7 +54,7 @@ const CAPTIONS = [
   ...WORDS.map((w) => `turns toward ${w} only`),
   "listening…", "no offer yet", "100% offer",
   "resonance · threshold +1", "env / out attack · decay", "cutoff · resonance +3", "wavefolder mod depth +2",
-  "env / out attack +2", "wavefolder threshold",
+  "env / out attack +2", "wavefolder threshold", "pitch shift mod depth +3", "filter cutoff +2", "s&h rand glide +1",
   "frozen", "still", "paused 3 s", "drift · gliding · no taste yet", "roam · gliding · no taste yet", "roam · walking…",
   "ideas · one in B", "ideas · growing…", "nothing better nearby", "drift · next in 12 s",
 ];

@@ -195,7 +195,7 @@ const {
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
-  dealRule, jobEta,
+  dealRule, jobEta, knobLabel,
 } = words;
 const PATCH_WORDS = words;
 const shell = createShell({
@@ -6139,8 +6139,12 @@ async function bootPerform() {
     attractStarted: () => explain && explain.close(),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
+    // Not while the voices play a sound on its way to the bench
+    // (`voicesAheadOfRack`): the rack is still the last sound's, and an
+    // address both share can be another module there. The knob is then its
+    // label in the rack's words, with no module (`knobLabel`).
     knobInfo: (addr, v) => {
-      for (const m of wb.rack?.modules || []) {
+      for (const m of (voicesAheadOfRack() ? null : wb.rack?.modules) || []) {
         const k = (m.knobs || []).find((x) => x.addr === addr);
         if (!k) continue;
         const fk = m.knobs.find((x) => x.addr.endsWith("#fkind"));
@@ -6154,7 +6158,7 @@ async function bootPerform() {
         if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
         return { module: m.title, label: k.label, text };
       }
-      return { module: "", label: addr.split("#").pop(), text: knobUnit(addr, v) };
+      return { module: "", label: knobLabel(addr), text: knobUnit(addr, v) };
     },
     // Opening PATCH re-renders the rack, which can replace the node found on
     // the first frame, so the pulse re-finds its knob until the rack settles.

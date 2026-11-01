@@ -102,7 +102,14 @@ import {
   dealRule,
   jobEta,
   resetQuestion,
+  KNOB_LABELS,
+  knobLabel,
+  knobName,
+  knobNames,
+  knobCaption,
+  CAPTION_CHARS,
 } from "../words.js";
+import { readFileSync } from "node:fs";
 
 // Every sentence here is copy: held to the voice's mechanics.
 function voiced(s) {
@@ -848,4 +855,104 @@ test("Reset asks with the counts, and says what stays", () => {
       "A copy of your taste downloads first.",
   );
   for (const saved of [0, 1, 2]) voiced(resetQuestion({ picks: 1, saved }));
+});
+
+// The rack's words for each knob, read from the grammar's rack description
+// itself (auracle-grammar's describe.rs, and the site lists it draws on), so
+// a label renamed there, or a knob added, fails here until KNOB_LABELS says
+// the same. A change to the crates runs this file in CI's Web job too.
+const rust = (rel) => readFileSync(new URL(`../../../crates/auracle-grammar/src/${rel}`, import.meta.url), "utf8");
+function describedLabels() {
+  const src = rust("describe.rs");
+  const steps = [...rust("prior.rs").match(/pub const STEPS_SITES: &\[&str\] = &\[([^\]]*)\]/)[1].matchAll(/"(\w+)"/g)].map((m) => m[1]);
+  const hold = rust("term.rs").match(/ModOp::Hold => &\["(\w+)"\]/)[1];
+  const out = new Map();
+  const put = (site, label) => {
+    assert.ok(!out.has(site) || out.get(site) === label, `${site} is drawn as both ${out.get(site)} and ${label}`);
+    out.set(site, label);
+  };
+  const calls = [...src.matchAll(/knob_[ce]\(\s*(?:key|"amp")\s*,\s*([^,]+?)\s*,\s*("[^"]*"|&format!\(\s*"[^"]*")/g)];
+  assert.ok(calls.length > 80, `describe.rs's knobs read (${calls.length})`);
+  for (const [, siteArg, labelArg] of calls) {
+    // A label drawn with its setting ("root · {}") is the knob's name before it.
+    const label = labelArg.replace(/^&format!\(\s*/, "").slice(1, -1).split(" · ")[0];
+    if (siteArg === "STEPS_SITES[3 + i]") {
+      assert.equal(label, "step {}");
+      steps.slice(3).forEach((s, i) => put(s, `step ${i + 1}`));
+      continue;
+    }
+    const at = siteArg.match(/^STEPS_SITES\[(\d)\]$/);
+    const site = siteArg === "sites[0]" ? hold : at ? steps[Number(at[1])] : siteArg.match(/^"(\w+)"$/)?.[1];
+    assert.ok(site, `a site describe.rs draws that this test cannot read: ${siteArg}`);
+    put(site, label);
+  }
+  const oct = src.match(/fn knob_oct[\s\S]*?#(\w+)"[\s\S]*?label: "([^"]+)"/);
+  put(oct[1], oct[2]);
+  return out;
+}
+
+test("every knob is named in the rack's words, as describe.rs draws it", () => {
+  const drawn = describedLabels();
+  for (const [site, label] of drawn) assert.equal(KNOB_LABELS[site], label, `#${site}`);
+  assert.deepEqual(Object.keys(KNOB_LABELS).filter((s) => !drawn.has(s)), [], "sites describe.rs no longer draws");
+  // By address: the site after the module's key, and a site it does not know
+  // is its own name.
+  assert.equal(knobLabel("node/0#cut"), "cutoff");
+  assert.equal(knobLabel("node/0/m#dec"), "decay");
+  assert.equal(knobLabel("node/1/m#s7"), "step 8");
+  assert.equal(knobLabel("amp#attack"), "attack");
+  assert.equal(knobLabel("node#mystery"), "mystery");
+  assert.equal(knobLabel("node#constructor"), "constructor");
+});
+
+test("the knobs of every shipped preset's rack are named as the rack names them", () => {
+  const file = JSON.parse(readFileSync(new URL("../perform-wirings.json", import.meta.url), "utf8"));
+  let n = 0;
+  for (const p of file.presets) {
+    for (const m of p.rack.modules) {
+      for (const k of m.knobs) {
+        assert.equal(knobLabel(k.addr), knobName(k), `${p.name}: ${k.addr} is "${k.label}" on its rack`);
+        n += 1;
+      }
+    }
+  }
+  assert.ok(n > 300, `the presets' knobs read (${n})`);
+});
+
+test("a knob's name: bare, or with its module, never with its setting", () => {
+  assert.equal(knobName({ module: "filter", label: "cutoff" }), "cutoff");
+  assert.equal(knobName({ module: "filter", label: "cutoff" }, true), "filter cutoff");
+  assert.equal(knobName({ module: "", label: "cutoff" }, true), "cutoff");
+  assert.equal(knobName({ module: "quantize", label: "root · C" }), "root");
+  assert.equal(knobName({ module: "env / out", label: "Attack" }, true), "env / out attack");
+});
+
+test("a control's knobs are named bare, with the module only where two share a name", () => {
+  const k = (module, label) => ({ module, label });
+  assert.deepEqual(knobNames([k("filter", "cutoff"), k("filter", "resonance")]), ["cutoff", "resonance"]);
+  assert.deepEqual(knobNames([k("env / out", "attack"), k("mod env", "attack"), k("mod env", "decay")]), ["env / out attack", "mod env attack", "decay"]);
+  // Before the rack of the sound is known (no module): bare, both.
+  assert.deepEqual(knobNames([k("", "cutoff"), k("", "cutoff")]), ["cutoff", "cutoff"]);
+});
+
+test("a control's caption names two knobs, or one and how many more, and never says a word twice", () => {
+  assert.equal(knobCaption([]), "");
+  assert.equal(knobCaption(["cutoff"]), "cutoff");
+  assert.equal(knobCaption(["cutoff", "resonance"]), "cutoff · resonance");
+  assert.equal(knobCaption(["mod depth", "lfo rate", "chorus rate", "depth"]), "mod depth · lfo rate +2");
+  // Two that would run past the line's 24 characters: one, and how many more.
+  assert.equal(knobCaption(["wavefolder mod depth", "vco mod depth"]), "wavefolder mod depth +1");
+  // Two filters' cutoffs (the same module's name and the knob's), and two
+  // known only by their name: one, and how many more. It read "cut · cut +1".
+  assert.equal(knobCaption(["filter cutoff", "filter cutoff", "mix"]), "filter cutoff +2");
+  assert.equal(knobCaption(["cutoff", "cutoff", "mix"]), "cutoff +2");
+  // A word shared, not the whole name: "chorus rate · lfo rate" says rate twice.
+  assert.equal(knobCaption(["chorus rate", "lfo rate"]), "chorus rate +1");
+  assert.equal(knobCaption(["mod depth", "depth"]), "mod depth +1");
+  // A module's name is no word of its own ("env / out": the slash).
+  assert.equal(knobCaption(["env / out attack", "decay"]), "env / out attack · decay");
+  // Every caption from a long name fits the line.
+  for (const names of [["pitch shift mod depth", "x", "y", "z"], ["compressor threshold", "a", "b", "c"]]) {
+    assert.ok(knobCaption(names).length <= CAPTION_CHARS, knobCaption(names));
+  }
 });

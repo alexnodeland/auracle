@@ -160,6 +160,8 @@ The name is fixed, and the knobs behind it are not. Each control is wired to
 at most four of this patch’s knobs: the ones that move the sound most purely
 in its direction. A full turn moves any one knob at most half its range. Hover
 a control to see which knobs it moves, how purely, and how far it measured.
+The knobs are named as PATCH’s rack names them, from the moment a sound
+opens, with the module beside a name two of them share.
 
 A small amber dot on a control’s outer ring shows where the sound measures on
 that axis, compared with the sounds in your session. A sound that is already
@@ -169,7 +171,7 @@ A named control is in one of five states, each with its own look:
 
 | Look | Line under it | What it means |
 |---|---|---|
-| A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*), or one and how many more when two names would run long | It turns both ways on this sound |
+| A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*), or one and how many more when two names would run long or say a word twice (two filters’ cutoffs are *filter cutoff +1*) | It turns both ways on this sound |
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
 | Amber, a dashed ring | nothing; the line over the controls says once, for all of them, *turn an amber one to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |

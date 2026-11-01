@@ -24,7 +24,7 @@
 
 // The palette's words (names, end words, what each does), with this module's
 // own build stamp so a new build fetches both together.
-const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys, leanWord } = await import(`./words.js${new URL(import.meta.url).search}`);
+const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys, leanWord, knobLabel, knobName, knobNames, knobCaption: captionOf } = await import(`./words.js${new URL(import.meta.url).search}`);
 // The model view's lean on each control is the guess mark LEARNING's weights
 // and PATCH's θ cell draw (`pullMark`), laid on the dial (`leanMarks`).
 const { leanMarks } = await import(`./taste-geom.js${new URL(import.meta.url).search}`);
@@ -1112,6 +1112,20 @@ export function createPerform(host) {
     k.bumpTimer = setTimeout(() => k.wrap.classList.remove(cls), 160);
   }
 
+  // Focus taken by a press (a dial's, the XY pad's), so the keys go to it
+  // while it is held: a pointer's, never the keyboard's, so it draws no
+  // ring. The press's own default is prevented (no text selected, no
+  // scroll), so the browser does not focus it, and a focus a script gives
+  // is shown as the keyboard's once a key has been pressed anywhere (any key
+  // in Chromium, Tab in Firefox): the ring came up under the mouse.
+  // `focusVisible: false` says it is not; a control the keyboard had already
+  // focused is let go first, so its ring goes for the drag too. The ring
+  // stays `:focus-visible`'s, for Tab and the arrows.
+  function pointerFocus(node) {
+    if (document.activeElement === node) node.blur();
+    node.focus({ preventScroll: true, focusVisible: false });
+  }
+
   function bindDrag(k) {
     let startY = 0;
     let startV = 0;
@@ -1131,20 +1145,6 @@ export function createPerform(host) {
       const half = k.spec.kind === "named" && (sLo === 0 || sHi === 0) && sLo !== sHi;
       const pushed = half ? (v < sLo - 1e-9 ? -1 : v > sHi + 1e-9 ? 1 : 0) : 0;
       if (pushed && !k.atStop) bump(k, pushed);
-  // Focus taken by a press (a dial's, the XY pad's), so the keys go to it
-  // while it is held: a pointer's, never the keyboard's, so it draws no
-  // ring. The press's own default is prevented (no text selected, no
-  // scroll), so the browser does not focus it, and a focus a script gives
-  // is shown as the keyboard's once a key has been pressed anywhere (any key
-  // in Chromium, Tab in Firefox): the ring came up under the mouse.
-  // `focusVisible: false` says it is not; a control the keyboard had already
-  // focused is let go first, so its ring goes for the drag too. The ring
-  // stays `:focus-visible`'s, for Tab and the arrows.
-  function pointerFocus(node) {
-    if (document.activeElement === node) node.blur();
-    node.focus({ preventScroll: true, focusVisible: false });
-  }
-
       k.atStop = !!pushed;
       // A light detent at the centre of a bipolar control: home is findable
       // by feel.
@@ -1660,35 +1660,36 @@ export function createPerform(host) {
     return c ? { k, sign: dir > 0 ? 1 : -1, word: c.aim[dir > 0 ? 1 : 0] } : null;
   }
 
-  // A knob as a player names it: "cutoff", or with its module, "filter
-  // cutoff". The rack's own labels, via the host; the address suffix only
-  // when the host has nothing better.
-  function knobWord(addr, withModule) {
+  // A knob as the rack names it, `{ module, label }`, for the sound in hand:
+  // a preset's from the rack description shipped with its wiring
+  // (`shippedRack`), at once; any other sound's from the bench's rack once it
+  // holds this sound (`host.knobInfo`); until then its label alone, in the
+  // rack's words (`knobLabel`), never the site it is addressed by ("cut").
+  function knobOf(addr) {
+    const shippedHit = shippedRack(state.cur && state.cur.json)?.get(addr);
+    if (shippedHit) return shippedHit;
     const info = host.knobInfo ? host.knobInfo(addr, 0) : null;
-    const label = (info && info.label) || addr.split("#").pop();
-    return withModule && info && info.module ? `${info.module.toLowerCase()} ${label.toLowerCase()}` : label.toLowerCase();
+    return { module: (info && info.module) || "", label: (info && info.module && info.label) || knobLabel(addr) };
+  }
+
+  // A knob as a player names it: "cutoff", or with its module, "filter
+  // cutoff" (`knobNames`).
+  function knobWord(addr, withModule) {
+    return knobName(knobOf(addr), withModule);
   }
 
   // Several knobs as a phrase: bare names where they are unambiguous, with the
-  // module where two share a name ("env attack · lfo attack", never
+  // module where two share a name ("env / out attack · mod env attack", never
   // "attack · attack").
   function knobWords(addrs) {
-    const bare = addrs.map((a) => knobWord(a));
-    return addrs.map((a, i) => (bare.indexOf(bare[i]) !== bare.lastIndexOf(bare[i]) ? knobWord(a, true) : bare[i])).join(" · ");
+    return knobNames(addrs.map(knobOf)).join(" · ");
   }
 
-  // The caption under a control: at most two knobs by name, then how many
-  // more ("mod depth · lfo rate +1"), and one when two would run past
-  // CAPTION_CHARS (two names that need their modules, "wavefolder mod depth ·
-  // vco mod depth"). The caption wraps in three lines, and three lines of
-  // the narrowest column (1000 px) hold 24 characters on any renderer; the
-  // tooltip and the under-the-hood strip list every knob.
-  const CAPTION_CHARS = 24;
+  // The caption under a control (words.js `knobCaption`): two of its knobs by
+  // name, then how many more, or one where two would run long or say a word
+  // twice.
   function knobCaption(addrs) {
-    const names = knobWords(addrs).split(" · ");
-    const two = names.length <= 2 ? names.join(" · ") : `${names.slice(0, 2).join(" · ")} +${names.length - 2}`;
-    if (names.length < 2 || two.length <= CAPTION_CHARS) return two;
-    return `${names[0]} +${names.length - 1}`;
+    return captionOf(knobNames(addrs.map(knobOf)));
   }
 
   function onKnob(k, fromMidi) {
@@ -2013,6 +2014,17 @@ export function createPerform(host) {
   const SHIPPED_WAIT_MS = 3000;
   const shipped = new Map(); // wireKey -> {data, rev, shipped: true, tree}
   const shippedByName = new Map(); // preset name -> its tree text
+  // Each preset's knobs as its rack names them (the file's `rack`, the rack
+  // description PATCH draws), by wireKey: addr -> { module, label }. A
+  // preset's controls name their knobs from it the moment it opens, before
+  // the bench's rack of it comes back (`knobOf`).
+  const shippedRacks = new Map();
+  let rackAt = { json: null, size: -1, names: null };
+  function shippedRack(json) {
+    if (!json) return null;
+    if (rackAt.json !== json || rackAt.size !== shippedRacks.size) rackAt = { json, size: shippedRacks.size, names: shippedRacks.get(wireKey(json)) || null };
+    return rackAt.names;
+  }
   let shippedLoaded = false;
   const shippedReady = (async () => {
     try {
@@ -2026,6 +2038,9 @@ export function createPerform(host) {
           if (!p || typeof p.tree !== "string" || !p.data) continue;
           shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true, shape: p.shape, set: "" });
           shippedByName.set(p.name, p.tree);
+          const names = new Map();
+          for (const m of (p.rack && p.rack.modules) || []) for (const k of m.knobs || []) names.set(k.addr, { module: m.title || "", label: k.label || knobLabel(k.addr) });
+          if (names.size) shippedRacks.set(wireKey(p.tree), names);
         }
       })();
       load.catch(() => {}); // failing after the wait gave up on it: nothing to say
@@ -3510,7 +3525,7 @@ export function createPerform(host) {
     // The labels are part of the key: an open reaches PERFORM before PATCH's
     // rack has named its modules, so rows built then read raw addresses
     // ("thresh", "dec") and must be rebuilt once the names arrive.
-    const info = (a) => (host.knobInfo ? host.knobInfo(a, 0) : { module: "", label: a });
+    const info = knobOf;
     const key = addrs.map((a) => `${a}=${info(a).module} ${info(a).label}`).join("|");
     if (key === hoodKey) return paintHood();
     hoodKey = key;
@@ -3554,6 +3569,7 @@ export function createPerform(host) {
     }
   }
   let hoodQueued = false;
+  let rackQueued = false;
   function paintHoodSoon() {
     if (hoodQueued || !state.visible) return;
     hoodQueued = true;
@@ -4974,8 +4990,21 @@ export function createPerform(host) {
     marquee,
     // PATCH's rack changed (a bench reply or a rebuild): the hood's rows are
     // named from it, and an open reaches PERFORM before the rack does.
+    // The bench's rack is the sound in hand's now: its controls' captions and
+    // tooltips name the knobs with their modules where two share a name, as
+    // the rack does (`knobOf`). In the next frame, once main has finished
+    // landing the reply (until then it still counts the voices ahead of the
+    // rack, `voicesAheadOfRack`); painted in place, never rebuilt, so a
+    // control under the hand stays where it is.
     rackChanged() {
-      if (state.visible) renderHood();
+      if (!state.visible || rackQueued) return;
+      rackQueued = true;
+      requestAnimationFrame(() => {
+        rackQueued = false;
+        if (!state.visible) return;
+        renderHood();
+        knobs.forEach(paintKnob);
+      });
     },
     // For booth attract mode (booth.js): the pads by name, whether a control
     // reaches this patch, whether B holds an offer, and quiet — nothing done
