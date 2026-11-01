@@ -661,6 +661,9 @@ export function createPerform(host) {
   // First steps live in the guide pill (guide.js): the whole loop in three
   // moves, ticked off as they happen.
 
+  // The toasts saying an offer is still growing, by pad (`sayNotOffered`).
+  const growingNotes = new Map();
+
   // ---------- knobs ----------
   const knobs = [];
   function makeKnob(i, spec) {
@@ -3667,8 +3670,36 @@ export function createPerform(host) {
     return shape(a) !== shape(b);
   }
 
+  // PEEK or TAKE (`pad`) pressed with nothing in B says so (`notOffered`).
+  // A toast saying an offer is still growing is kept, by pad
+  // (`growingNotes`), so it goes the moment B stops growing (`renderOffer`):
+  // the offer landed, the walk came back empty, or the sound changed under
+  // it. Left up for its window, it said B was growing beside the offer B
+  // showed.
+  function sayNotOffered(pad) {
+    const growing = growingOffer(state.pending, state.gen);
+    const toast = host.note(notOffered(pad, growing), { urgent: true, replace: `pf-${pad}` });
+    if (growing) growingNotes.set(pad, toast);
+    return toast;
+  }
+  function dropGrowingNotes() {
+    if (!growingNotes.size || (!state.offer && growingOffer(state.pending, state.gen))) return;
+    for (const toast of growingNotes.values()) {
+      host.dropNote?.(toast);
+      // Stage mode said it in its own line too (`stageOn.watch`): that goes
+      // with it.
+      const st = stageOn;
+      if (st && st.hint.classList.contains("said") && st.hint.textContent === toast.querySelector(".toast-msg")?.textContent) {
+        clearTimeout(st.hintTimer);
+        st.hint.replaceChildren(...st.hintNodes);
+        st.hint.classList.remove("said");
+      }
+    }
+    growingNotes.clear();
+  }
+
   function take() {
-    if (!state.offer) return host.note(notOffered("take", growingOffer(state.pending, state.gen)), { urgent: true, replace: "pf-take" });
+    if (!state.offer) return sayNotOffered("take");
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
@@ -3715,7 +3746,7 @@ export function createPerform(host) {
     const live = host.live();
     state.peeking = true;
     if (live && state.offer) live.bMix(1);
-    else host.note(notOffered("peek", growingOffer(state.pending, state.gen)), { urgent: true, replace: "pf-peek" });
+    else sayNotOffered("peek");
   }
   function peekOff() {
     if (!state.peeking) return;
@@ -3907,6 +3938,8 @@ export function createPerform(host) {
     offerCard.append(lab, offerFace, body);
     paintPads();
     knobs.forEach((k) => k.spec.kind === "blend" && paintKnob(k));
+    // B no longer growing: a toast still saying it is goes now.
+    dropGrowingNotes();
   }
   // Take and Peek act on an offer; until there is one they look it.
   // Waiting, not broken: a disabled pad is dashed, and what they wait for is

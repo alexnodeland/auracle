@@ -6088,6 +6088,9 @@ async function bootPerform() {
     },
     locks: () => [...lockedAddrs()],
     note,
+    // A toast whose claim stopped being true (B was growing an offer, and it
+    // landed): off the lane now, on screen or waiting.
+    dropNote: (el) => dropToast(el),
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
     heldCount: () => heldNotes.size,
     // Whether a note is still held (or sustained): PERFORM draws the knobs

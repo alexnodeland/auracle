@@ -22,4 +22,5 @@
   says so.** It said *Nothing offered yet. Press Offer first.*, though you
   had just pressed Offer. Now it says *Still growing an offer.*, and what to
   do: keep holding PEEK and you hear the offer as it lands, all of it at
-  once; press TAKE once it's in B (`perform_dials.spec.js`, #523).
+  once; press TAKE once it's in B. The message goes as the offer lands
+  (`perform_dials.spec.js`, #523).

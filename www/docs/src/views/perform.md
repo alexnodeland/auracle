@@ -726,8 +726,8 @@ focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 
 PEEK, TAKE and PASS wait, dashed, until B holds one, and OFFER says so once,
 *then peek, take or pass* under its name. Their keys pressed while an offer
-grows say it is still growing, and <kbd>B</kbd> held until it lands plays it
-as it lands.
+grows say it is still growing, until it lands, and <kbd>B</kbd> held until
+then plays it as it lands.
 
 **Moved · KEEP · BACK.** When the sound has left home (a control turned, a
 drift not kept, a glide under way), *moved · KEEP · BACK* shows at the end of

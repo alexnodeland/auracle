@@ -18,11 +18,11 @@
 //   came up under the mouse). A dial reached with Tab still shows it, and
 //   its arrows still turn it.
 // - PEEK and TAKE pressed (by their keys: the pads wait, dashed) while an
-//   offer grows say it is still growing, not "Nothing offered yet". B held
-//   until the offer lands plays it at once, all of B; TAKE pressed while it
-//   grew takes nothing. Every offer is kept from the engine (the tap's
-//   `holdRequests`, from boot, so a spare cannot land first) and B's is
-//   answered by the spec.
+//   offer grows say it is still growing, not "Nothing offered yet", and the
+//   toasts go as it lands. B held until the offer lands plays it at once,
+//   all of B; TAKE pressed while it grew takes nothing. Every offer is kept
+//   from the engine (the tap's `holdRequests`, from boot, so a spare cannot
+//   land first) and B's is answered by the spec.
 const { readFileSync } = require("fs");
 const path = require("path");
 const { test, expect, goLevel, bankTab, PERFORM_SEED } = require("./fixtures");
@@ -161,8 +161,10 @@ test("a dial or the XY pad pressed with the mouse shows no focus ring, and a dia
   await expect(dial).toHaveCSS("outline-style", "solid");
 });
 
-test("PEEK and TAKE pressed while an offer grows say it is growing, and B held until it lands plays all of it", async ({ page, app }) => {
-  // What B is told to play at, each time (the worklet's `b_mix`).
+test("PEEK and TAKE pressed while an offer grows say it is growing until it lands, B held until then plays all of it, and TAKE takes nothing", async ({ page, app }) => {
+  // What B is told to play at, each time (the worklet's `b_mix`), and the
+  // toasts on screen the moment B holds the offer (read after the task that
+  // put it there, so a toast that task took down is gone).
   await page.addInitScript(() => {
     window.__bMix = [];
     const post = MessagePort.prototype.postMessage;
@@ -170,6 +172,11 @@ test("PEEK and TAKE pressed while an offer grows say it is growing, and B held u
       if (m && m.type === "b_mix") window.__bMix.push(m.mix);
       return post.call(this, m, ...rest);
     };
+    window.__toastsAsBLanded = null;
+    new MutationObserver(() => {
+      if (window.__toastsAsBLanded || !document.querySelector(".pf-offer.ready")) return;
+      window.__toastsAsBLanded = [...document.querySelectorAll("#toasts .toast:not(.out) .toast-msg")].map((t) => t.textContent);
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["class"] });
   });
   // Every offer kept from the engine, from boot: a spare grown ahead too.
   await app.holdRequests("perform_offer");
@@ -194,6 +201,11 @@ test("PEEK and TAKE pressed while an offer grows say it is growing, and B held u
   expect(out.length, "an offer is out").toBeGreaterThan(0);
   for (const m of out) await app.inject({ type: "perform_offered", req: m.req, re: m.rid, offer: { tree: JSON.parse(m.tree), makeup: glass.makeup, taste: false, diff: [] } });
   await expect(b).toHaveClass(/\bready\b/);
+  // The toasts said B was growing: they went as it landed, not when their
+  // window ran out (4.2 s on, beside the offer B showed).
+  const asItLanded = await page.evaluate(() => window.__toastsAsBLanded);
+  expect(asItLanded, "the toasts on screen as B landed").not.toBeNull();
+  expect(asItLanded.filter((t) => /Still growing/.test(t)), "a toast still saying B is growing as it lands").toEqual([]);
   await expect.poll(lastMix, { message: "B is all of what is heard while PEEK is held" }).toBe(1);
   await page.keyboard.up("b");
   await expect.poll(lastMix, { message: "let go, B goes back to Blend's home" }).toBe(0);
