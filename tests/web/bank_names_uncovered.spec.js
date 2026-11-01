@@ -60,6 +60,10 @@ const actionsOf = (i) => (BRED.includes(i) ? FIVE : FOUR);
 async function setUp(page, app, { sheet }) {
   await app.boot({ random: 20260928, reuseRenders: true });
   await app.poolRows(40);
+  // A toast stands over a phone's sheet (the boot's "32 more sounds are still
+  // arriving" can come after the rows do, and covered a name in Firefox). What
+  // this holds is what the row draws over its name: not the lane's.
+  await page.addStyleTag({ content: "#toasts { display: none !important; }" });
   if (sheet) {
     await page.locator("#bank-btn").tap();
     await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
@@ -105,8 +109,11 @@ const layout = (page, ids) =>
 const drawn = (page, id) =>
   page.evaluate(async (id) => {
     const row = document.querySelector(`#bank-list .bank-item[data-id="${id}"]`);
-    // Drawn where it will stay: the strip's slide out and fade in are done
-    // (none runs under reduced motion).
+    // In the list's view, where a point on the name is the list's and not
+    // what stands under its edge (a finger's tap takes the focus, and a short
+    // list scrolls to it), and drawn where it will stay: the strip's slide out
+    // and fade in are done (none runs under reduced motion).
+    row.scrollIntoView({ block: "nearest", behavior: "instant" });
     await Promise.all(row.querySelector(".bi-acts").getAnimations().map((a) => a.finished));
     const name = row.querySelector(".bi-name");
     const box = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
@@ -115,9 +122,10 @@ const drawn = (page, id) =>
     const cs = getComputedStyle(strip);
     const nb = box(name);
     const y = (nb.t + nb.b) / 2;
+    // What answers at each point, as the name's own or as what stands there.
     const hits = [nb.l + 2, (nb.l + nb.r) / 2, nb.r - 2].map((x) => {
       const hit = document.elementFromPoint(x, y);
-      return !!hit && (hit === name || name.contains(hit));
+      return !!hit && (hit === name || name.contains(hit)) ? "the name" : `${hit?.tagName}.${hit?.className} at ${Math.round(x)}, ${Math.round(y)}${hit?.closest(".toast") ? `, a toast: ${hit.closest(".toast").textContent.trim()}` : ""}`;
     });
     return {
       name: nb,
@@ -140,7 +148,7 @@ function uncovered(d, what) {
   for (const over of [...(d.strip ? [{ kind: "the strip", ...d.strip }] : []), ...d.buttons]) {
     expect(apart(d.name, over), `${what}: ${over.kind} (${Math.round(over.l)}–${Math.round(over.r)}, ${Math.round(over.t)}–${Math.round(over.b)}) is over the name (${Math.round(d.name.l)}–${Math.round(d.name.r)}, ${Math.round(d.name.t)}–${Math.round(d.name.b)})`).toBe(true);
   }
-  expect(d.hits, `${what}: the name answers across it (its left, middle and right)`).toEqual([true, true, true]);
+  expect(d.hits, `${what}: the name answers across it (its left, middle and right)`).toEqual(["the name", "the name", "the name"]);
   expect(d.title, `${what}: the full name is in its tooltip`).toContain(d.text);
   for (const b of d.buttons) {
     expect(b.l, `${what}: ${b.kind} is inside the list's left edge`).toBeGreaterThanOrEqual(d.list.l - 0.5);
