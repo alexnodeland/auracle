@@ -119,7 +119,10 @@ every alternative must win some heading.
 
 When CI fails, the run's summary links one HTML report of every runner, with
 the failed tests' traces: download it and run `npx playwright show-report
-<dir>` here. A runner that ran out of time is in it too: `shard.mjs`
+<dir>` here. A run without one (its report step ran out of time) still has
+each runner's blob report: `gh run download <run> -p 'blob-fast-*' -D <dir>`,
+the zips copied into one directory, then `npx playwright merge-reports
+--reporter html <that directory>` here. A runner that ran out of time is in it too: `shard.mjs`
 interrupts the run a minute before Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`, which CI sets; none locally), and the test
 that was running is reported as interrupted.

@@ -43,8 +43,9 @@ defaults:
     # (docs/process.md § Flakes). 0 is the default, written so it stays.
     max_checks_retries: 0
     # The draft PRs' branches: CI tells a queue run from a PR's run by this
-    # prefix (ci.yml's `changes` job), so the two must agree. It is Mergify's
-    # default, written here so a change to it is a change to both files.
+    # prefix (ci.yml's `changes` job, its concurrency group and its
+    # `Full gate` job), so the two must agree. It is Mergify's default,
+    # written here so a change to it is a change to both files.
     queue_branch_prefix: mergify/merge-queue/
     # No `update_method`: it applies only to checks run on the PR itself. The
     # queue tests a draft PR and never pushes to a PR's branch.

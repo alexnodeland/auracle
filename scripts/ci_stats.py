@@ -23,15 +23,20 @@ on stderr, and exits 3; `--compare` refuses such a run as a base.
 
 What it counts, with the definitions #177's numbers used:
 - A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job (on a
-  queue batch, its `Full gate` job, the check the queue merges on): green
-  (success), red (failure or timed out) or cancelled. A re-run is counted
+  queue batch, its `Full gate` and `CI` jobs, which the queue merges on: a
+  red one, else the one done last; `Full gate` came after `CI` until #580,
+  and runs beside it since): green (success), red (failure or timed out) or
+  cancelled. A re-run is counted
   (`reruns`), not believed. A run on main that ran nothing (main had moved
   past it, so ci.yml's `changes` job skipped everything) has no verdict.
 - Two lanes (ADR-023). A PR's own run is the fast lane, reported by the kind
   of PR. The kind follows ci.yml's `changes` job, in its order, from the PR's
   files: CI when it changes a workflow or an action (the fast lane runs the
   full gate), whatever else it changes; then Rust (crates/, Cargo.*,
-  rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh); then
+  rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh; not
+  the files outside crates/ the Rust reads, which the `changes` job has
+  counted as Rust since #581: kept in their old kinds here, so a saved
+  baseline still compares like with like); then
   web (apps/web/ and tests/web/, their Markdown and the specs' lint aside);
   and docs and other
   (anything else: the site, docs/, .claude/, the other scripts,
@@ -42,11 +47,13 @@ What it counts, with the definitions #177's numbers used:
   are the full gate: a row of their own (queue batch), belonging to no PR. A
   push to main is a row of its own too.
 - CI wall time: the run created to its `CI` job completed (a queue batch's
-  `Full gate`), on green and red runs.
+  later of `Full gate` and `CI`), on green and red runs.
 - Runner wait: each required job's start minus its creation (a job `CI`
-  needs; on a queue batch, one `Full gate` needs), summed per run, the
-  longest in the run, and every one's; and the longest of all the run's jobs,
-  required or not.
+  needs; on a queue batch, a job `Full gate` and `CI` need, and the two
+  themselves since #580, when they run side by side and the merge waits for
+  both; before, `Full gate` came after `CI`, and its own wait was left out,
+  as `CI`'s is on a PR's run), summed per run, the longest in the run, and
+  every one's; and the longest of all the run's jobs, required or not.
 - Red rate: red runs of the green and red ones; cancelled runs are left out.
 - Runs per PR: the `ci.yml` runs on a merged PR's branch while it was open
   (its fast lane; the queue's batches are counted on their own row).
@@ -66,7 +73,8 @@ What it counts, with the definitions #177's numbers used:
   runs only the specs its change reaches, on fewer).
 - Jobs: each job's time on green runs, by name with the shard numbers folded
   (`Browser (k/12)`); the Coverage chain from its build's start to its
-  report's end; and the Slow suite's and the Flake hunt's runs, created to
+  report's end (since #580 one job, *Coverage*, whose own time it is; its
+  name was the report's before); and the Slow suite's and the Flake hunt's runs, created to
   their last job done, each judged by its first attempt.
 
 Python 3 standard library only.
@@ -258,18 +266,26 @@ def superseded(run) -> bool:
 
 
 def gate_job(run) -> dict | None:
-    """The first attempt's job that answers for the run: `Full gate` on a
-    queue run (falling back on `CI` before it ran), `CI` on any other."""
+    """The first attempt's job that answers for the run: `CI`, or on a
+    queue run, of `Full gate` and `CI`, which the queue merges on, a red one
+    (`Full gate` first), else the one done last (falling back on `CI` before
+    `Full gate` ran). Until #580 `Full gate` needed `CI`, so it was the
+    last; since, the two run side by side."""
     jobs = {j.get("name"): j for j in first_attempt(run.get("jobs"))}
     if is_queue(run) and "Full gate" in jobs:
-        return jobs["Full gate"]
+        both = [j for j in (jobs["Full gate"], jobs.get("CI")) if j]
+        red = [j for j in both if j.get("conclusion") in ("failure", "timed_out")]
+        if red:
+            return red[0]
+        return max(both, key=lambda j: j.get("completed_at") or "")
     return jobs.get("CI")
 
 
 def verdict(run) -> str | None:
-    """green, red or cancelled, from the first attempt's `CI` job (`Full
-    gate` on a queue run); None while it runs, and for a superseded run on
-    main. It fails when a job it needs was cancelled, with nothing else
+    """green, red or cancelled, from the first attempt's job that answers
+    for the run (`gate_job`: `CI`, or on a queue run the red one of `Full
+    gate` and `CI`, else the later); None while it runs, and for a
+    superseded run on main. It fails when a job it needs was cancelled, with nothing else
     failed: that run was cancelled when the run itself was (a newer push
     replaced it), and red otherwise (a job reached its time limit). A run
     with no jobs read falls back on its own conclusion."""
@@ -293,7 +309,7 @@ def verdict(run) -> str | None:
 
 
 def ci_done(run) -> dt.datetime | None:
-    """When the first attempt's `CI` job (`Full gate` on a queue run)
+    """When the first attempt's job that answers for the run (`gate_job`)
     completed; the run's last update when its jobs were not read."""
     j = gate_job(run)
     if j is not None:
@@ -307,13 +323,27 @@ def wall(run) -> float | None:
 
 def needed(run, job) -> bool:
     """A job the run's answer waits for: one `CI` needs, or on a queue run
-    one `Full gate` needs (`CI` itself and the two reports with them)."""
+    one `Full gate` and `CI` need (before #580 `CI` itself and the reports
+    beside it), and `Full gate` itself where it ran beside `CI`, since the
+    merge waits for both and either's wait holds it."""
     name = job.get("name")
     if name in NOT_NEEDED:
         return False
     if is_queue(run):
-        return name != "Full gate"
+        return name != "Full gate" or beside(run)
     return name not in ("CI", "Full gate", "Browser report", "Burn-in report")
+
+
+def beside(run) -> bool:
+    """Whether a queue run's `Full gate` ran beside `CI` (since #580), not
+    after it: created before `CI` was done. Until #580 it needed `CI`, so it
+    was created once `CI` was done."""
+    jobs = {j.get("name"): j for j in first_attempt(run.get("jobs"))}
+    gate, ci = jobs.get("Full gate"), jobs.get("CI")
+    if gate is None or ci is None:
+        return gate is not None
+    made, done = ts(gate.get("created_at")), ts(ci.get("completed_at"))
+    return made is not None and (done is None or made < done)
 
 
 def waits(run, required: bool = True) -> list:
@@ -659,7 +689,8 @@ def shard_stats(runs) -> dict:
 
 def job_stats(runs) -> dict:
     """Each job's minutes on green runs, by folded name, with the Coverage
-    chain as one more."""
+    chain as one more: from *Coverage build*'s start to the report's end
+    before #580, and the one *Coverage* job's own time since."""
     times = defaultdict(list)
     for r in runs:
         cov = []
@@ -670,8 +701,9 @@ def job_stats(runs) -> dict:
             times[fold(j["name"])].append(mins(a, b))
             if j["name"].startswith("Coverage"):
                 cov.append((a, b))
-        built = any(j.get("name") == "Coverage build" and ran(j) for j in first_attempt(r.get("jobs")))
-        if built and cov:
+        # Before #580 a build, three runners and a report; since, one job,
+        # whose span is its own.
+        if cov:
             times["Coverage, build to report"].append(mins(min(a for a, _ in cov), max(b for _, b in cov)))
     return {name: dist(times[name]) for name in sorted(times, key=natural)}
 
@@ -829,8 +861,8 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
     w(
         "*`scripts/ci_stats.py`: `ci.yml` runs created in the window, the PRs merged in it, minutes "
         "unless marked. A run's verdict and wall time are its first attempt's `CI` job (a queue "
-        "batch's `Full gate`, the check the queue merges on). Runner waits are the required jobs' "
-        "unless marked.*"
+        "batch's `Full gate` and `CI`, which the queue merges on: a red one, else the later to end). "
+        "Runner waits are the required jobs' unless marked.*"
     )
     w("")
     w("### By kind of PR (the fast lane), the queue, and main")
