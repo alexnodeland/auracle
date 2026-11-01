@@ -150,6 +150,25 @@ export const reachesNone = (wire) => Array.isArray(wire) && wire.length > 0 && w
 // itself, through a control's sweep by ear or the 1.5 s after a touch ("in a
 // moment"). A sweep is no hand to let go of. Pure, for the unit tests.
 export const waitWords = (held) => (held ? "after you let go" : "in a moment");
+// The offer B shows growing (`renderOffer`'s *growing an offer…*), among the
+// requests out (`pending`, req -> entry): a `perform_offer` for the sound in
+// hand (`gen`) that no other turn has withdrawn (`superseded`), and not a
+// spare nobody has claimed yet (`spare` without `promote`: grown ahead, out
+// of sight). Null when there is none. Pure, for the unit tests.
+export function growingOffer(pending, gen) {
+  for (const q of pending.values()) {
+    if (q.kind === "perform_offer" && q.gen === gen && !q.superseded && !(q.spare && !q.promote)) return q;
+  }
+  return null;
+}
+// What PEEK or TAKE (`pad`) says pressed with nothing in B (#523): while an
+// offer grows, that it is on its way and what the press will do then (a
+// PEEK still held hears it as it lands, `presentOffer`); with none growing,
+// that none was asked for. Pure, for the unit tests.
+export function notOffered(pad, growing) {
+  if (growing) return pad === "peek" ? "Still growing an offer. Keep holding Peek to hear it as it lands." : "Still growing an offer. Take it once it’s in B.";
+  return pad === "peek" ? "Nothing offered yet. Press Offer first." : "Nothing offered yet. Press Offer, or turn Wander up.";
+}
 // The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
   (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
@@ -2479,7 +2498,9 @@ export function createPerform(host) {
     const live = host.live();
     if (live) {
       live.bPatch(state.offer.json, state.offer.makeup);
-      live.bMix(state.visible ? state.blend : 0);
+      // A PEEK held since before it landed (B's key down while it grew) is
+      // heard at once: all of B, as a press on PEEK now would be.
+      live.bMix(state.visible ? (state.peeking ? 1 : state.blend) : 0);
     }
     renderOffer();
     // An undone pass brings back an offer already grown: it is not grown
@@ -3614,7 +3635,7 @@ export function createPerform(host) {
   }
 
   function take() {
-    if (!state.offer) return host.note("Nothing offered yet. Press Offer, or turn Wander up.", { urgent: true });
+    if (!state.offer) return host.note(notOffered("take", growingOffer(state.pending, state.gen)), { urgent: true, replace: "pf-take" });
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
@@ -3661,7 +3682,7 @@ export function createPerform(host) {
     const live = host.live();
     state.peeking = true;
     if (live && state.offer) live.bMix(1);
-    else host.note("Nothing offered yet. Press Offer first.", { urgent: true, replace: "pf-peek" });
+    else host.note(notOffered("peek", growingOffer(state.pending, state.gen)), { urgent: true, replace: "pf-peek" });
   }
   function peekOff() {
     if (!state.peeking) return;

@@ -723,7 +723,9 @@ focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 | **PASS** | | Passes on B without growing another: B empties and BLEND glides home. A pass as NEXT’s is, with the same UNDO |
 
 PEEK, TAKE and PASS wait, dashed, until B holds one, and OFFER says so once,
-*then peek, take or pass* under its name.
+*then peek, take or pass* under its name. Their keys pressed while an offer
+grows say it is still growing, and <kbd>B</kbd> held until it lands plays it
+as it lands.
 
 **Moved · KEEP · BACK.** When the sound has left home (a control turned, a
 drift not kept, a glide under way), *moved · KEEP · BACK* shows at the end of
