@@ -277,7 +277,8 @@ scripts/ops/rows_resolve.py keeps both. -->
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
-| The coverage gate's scripts, `scripts/setup.sh`, nextest's config (`.config/nextest.toml`) | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
+| The coverage gate's scripts, `scripts/setup.sh`, nextest's config (`.config/nextest.toml`) | Lint, Coverage, the Doctests, Web, the engine, Site. Not Worker protocol: the engine isn't built from them |
+| A file outside `crates/` that the crates' Rust reads (`RUST_READS` in `scripts/changes.py`: `apps/web/words.js`, the presets' wirings and faces, two fixtures in `apps/web/tests/fixtures/`, `www/brand/sound.json`) | Lint, Coverage and the Doctests, beside what its own place reaches (an app module's row, or the site's) |
 | The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
 | Another script (`scripts/*.py`: the changelog's assembler, the PR checks, and their tests; anything in `scripts/ops/`: the operator's scripts and the workflows' check) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |

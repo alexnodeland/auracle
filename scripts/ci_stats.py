@@ -33,7 +33,10 @@ What it counts, with the definitions #177's numbers used:
   of PR. The kind follows ci.yml's `changes` job, in its order, from the PR's
   files: CI when it changes a workflow or an action (the fast lane runs the
   full gate), whatever else it changes; then Rust (crates/, Cargo.*,
-  rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh); then
+  rust-toolchain, the Makefile, the coverage gate's scripts, setup.sh; not
+  the files outside crates/ the Rust reads, which the `changes` job has
+  counted as Rust since #581: kept in their old kinds here, so a saved
+  baseline still compares like with like); then
   web (apps/web/ and tests/web/, their Markdown and the specs' lint aside);
   and docs and other
   (anything else: the site, docs/, .claude/, the other scripts,

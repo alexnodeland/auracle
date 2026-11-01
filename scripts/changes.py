@@ -21,7 +21,8 @@ The classes (docs/architecture/testing.md § CI tiers, *The two lanes*):
             fast lane runs the full gate, as the queue runs it, and
             `make check-changed` all of `make check`
     rust    anything that changes what the compiler sees or how the Rust is
-            built and tested: Lint, Coverage and the Doctests
+            built and tested, and the files outside crates/ the crates' Rust
+            reads (RUST_READS): Lint, Coverage and the Doctests
     site    the site's sources (the Rust, which it embeds as the engine and
             rustdoc; the app; www/; docs/; the Claude Code setup; an
             AGENTS.md or CLAUDE.md): Site
@@ -30,9 +31,10 @@ The classes (docs/architecture/testing.md § CI tiers, *The two lanes*):
             Web (`make web-check`, `make dev-check`)
     smoke   what the browser reads changed, other than spec files alone (a
             spec runs against main's app, and runs itself): Browser smoke
-    worker  the engine, apps/web, or tests/worker, their prose aside: Worker
-            protocol. changed.mjs picks no spec for worker.js, so this is
-            the fast lane's check of it
+    worker  what the engine is built from (ENGINE), apps/web, or
+            tests/worker, their prose aside: Worker protocol. changed.mjs
+            picks no spec for worker.js, so this is the fast lane's check of
+            it
     reach   what the browser reads changed at all: ci.yml then asks
             tests/web/changed.mjs which specs
 
@@ -55,14 +57,35 @@ import sys
 # A change to CI itself. This file decides what the fast lane runs, so a
 # change to it runs everything, as a workflow's does.
 FULL = re.compile(r"^\.github/(workflows|actions)/|^scripts/changes\.py$")
+# The files outside crates/ that the crates' Rust reads: a test's
+# `include_str!` or a path from CARGO_MANIFEST_DIR, and an example's
+# `include_str!`, which clippy reads when Lint compiles the examples
+# (--all-targets). The Rust jobs' answer depends on them as on the crates, so
+# a change to one runs them. A test in scripts/test_changes.py reads the
+# crates' sources for path literals that leave crates/, and fails when this
+# list misses one or names one no longer read (#581). A node script beside
+# the examples (live_cost.mjs) is not here: no Rust job runs it.
+RUST_READS = (
+    "Cargo.lock",
+    "apps/web/perform-wirings.json",
+    "apps/web/preset-faces.json",
+    "apps/web/tests/fixtures/live-frame-face.json",
+    "apps/web/tests/fixtures/sexpr-heads.json",
+    "apps/web/words.js",
+    "www/brand/sound.json",
+)
+_READS = "|".join(re.escape(f) + "$" for f in RUST_READS)
+# What `make wasm` builds the engine from: the key of the web-engine action's
+# cache (.github/actions/web-engine).
+ENGINE = re.compile(r"^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)")
 # The Makefile defines every build, so a change to it touches everything.
-# So do the coverage gate's own scripts, which only the Coverage jobs run on
+# So do the coverage gate's own scripts, which only the Coverage job runs on
 # real numbers (their tests run in Web's dev-check), setup.sh, and nextest's
 # config (.config/nextest.toml), which every Rust test run reads. Another
 # script under scripts/ is no reason to run the Rust.
 RUST = re.compile(
     r"^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.config/nextest\.toml$"
-    r"|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)"
+    r"|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$|" + _READS + ")"
 )
 SITE = re.compile(r"^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$")
 SCRIPT = re.compile(r"^scripts/([^/]+\.py$|ops/)")
@@ -115,7 +138,9 @@ def classify(files: list[str]) -> dict[str, bool]:
     reach = [f for f in files if BROWSER.search(f) and not PROSE.search(f) and not WEB_ONLY.search(f)]
     # Spec files alone run against main's app, and run themselves.
     smoke = any(not SPEC.search(f) for f in reach)
-    worker = rust or any(WORKER.search(f) and not PROSE.search(f) for f in files)
+    # The engine the tests run, not the Rust's tests: a file only a Rust test
+    # reads (www/brand/sound.json) or the coverage gate is nothing to it.
+    worker = any(ENGINE.search(f) for f in files) or any(WORKER.search(f) and not PROSE.search(f) for f in files)
     return {"full": False, "rust": rust, "site": site, "web": web, "smoke": smoke, "worker": worker, "reach": bool(reach)}
 
 

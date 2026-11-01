@@ -11,6 +11,7 @@ system or global config. Python 3 standard library only.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,7 @@ import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import changes as C  # noqa: E402
 
@@ -95,10 +97,23 @@ class Lanes(unittest.TestCase):
             with self.subTest(f=f):
                 self.assertEqual(reached(f), {"rust", "site", "web", "smoke", "worker", "reach"})
 
-    def test_the_rust_tests_tooling_reaches_the_rust_and_no_browser(self):
+    def test_the_rust_tests_tooling_reaches_the_rust_and_no_browser_and_no_engine(self):
+        # None of them is what the engine is built from, so Worker protocol,
+        # which runs the engine, has nothing to try.
         for f in ("scripts/coverage_gate.py", "scripts/test_coverage_gate.py", "scripts/setup.sh", ".config/nextest.toml"):
             with self.subTest(f=f):
-                self.assertEqual(reached(f), {"rust", "site", "web", "worker"})
+                self.assertEqual(reached(f), {"rust", "site", "web"})
+
+    def test_a_file_the_rust_reads_outside_crates_reaches_the_rust_beside_its_own_place(self):
+        # The app's files the Rust tests read reach what an app file does, and
+        # the Rust too; the films' sound.json, the site and the Rust.
+        for f in ("apps/web/words.js", "apps/web/perform-wirings.json", "apps/web/preset-faces.json", "apps/web/tests/fixtures/sexpr-heads.json"):
+            with self.subTest(f=f):
+                self.assertEqual(reached(f), {"rust", "site", "web", "smoke", "worker", "reach"})
+        self.assertEqual(reached("www/brand/sound.json"), {"rust", "site", "web"})
+        # Its neighbours are not read by the Rust.
+        self.assertEqual(reached("apps/web/tests/faces.test.mjs"), {"site", "web", "smoke", "worker", "reach"})
+        self.assertEqual(reached("www/brand/tokens.json"), {"site", "web"})
 
     def test_the_worker_protocol_tests_reach_only_themselves(self):
         self.assertEqual(reached("tests/worker/harness.mjs"), {"worker"})
@@ -132,6 +147,59 @@ class Lanes(unittest.TestCase):
             out.splitlines(),
             ["full=false", "rust=false", "site=false", "web=false", "smoke=false", "worker=true", "reach=false"],
         )
+
+
+# A string literal in Rust, escapes included.
+LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def rust_reads_outside_crates():
+    """Each file outside crates/ that a path literal in the crates' Rust
+    names (a `../` path, from the file's directory as `include_str!` reads
+    it, or from its crate's as CARGO_MANIFEST_DIR builds it), and each such
+    literal that names nothing there."""
+    found, unresolved = set(), []
+    crates = os.path.join(ROOT, "crates")
+    for dirpath, dirs, files in os.walk(crates):
+        dirs[:] = [d for d in dirs if d != "target"]
+        for name in sorted(f for f in files if f.endswith(".rs")):
+            path = os.path.join(dirpath, name)
+            rel = os.path.relpath(path, ROOT)
+            crate = os.path.join(ROOT, *rel.split(os.sep)[:2])
+            with open(path, encoding="utf-8") as f:
+                for n, line in enumerate(f, 1):
+                    if line.lstrip().startswith("//"):
+                        continue
+                    for lit in LITERAL.findall(line):
+                        if "../" not in lit:
+                            continue
+                        tail = lit[lit.index("../") :]
+                        hits = [os.path.normpath(os.path.join(d, tail)) for d in (dirpath, crate)]
+                        hits = [h for h in hits if os.path.exists(h)]
+                        if not hits:
+                            unresolved.append(f"{rel}:{n}: {lit}")
+                        for h in hits:
+                            if os.path.commonpath([h, crates]) != crates:
+                                found.add(os.path.relpath(h, ROOT).replace(os.sep, "/"))
+    return found, unresolved
+
+
+class RustReads(unittest.TestCase):
+    """The files outside crates/ the crates' Rust reads are the Rust's to
+    run on (#581), read from the sources."""
+
+    def test_the_list_is_what_the_crates_read_outside_crates(self):
+        found, unresolved = rust_reads_outside_crates()
+        self.assertEqual(unresolved, [], "a path literal in the crates names no file: fix it, or teach this scan where it points")
+        self.assertEqual(
+            sorted(found - set(C.RUST_READS)), [], "the crates read these outside crates/: add them to RUST_READS in scripts/changes.py"
+        )
+        self.assertEqual(sorted(set(C.RUST_READS) - found), [], "no crate reads these any more: take them out of RUST_READS")
+
+    def test_each_reaches_the_rust(self):
+        for f in C.RUST_READS:
+            with self.subTest(f=f):
+                self.assertTrue(C.classify([f])["rust"])
 
 
 class CheckParts(unittest.TestCase):
