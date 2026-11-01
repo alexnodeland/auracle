@@ -8,7 +8,9 @@ its dev-ops part).
 Python 3 standard library only.
 """
 
+import json
 import os
+import subprocess
 import sys
 import unittest
 
@@ -105,6 +107,139 @@ class Watch(unittest.TestCase):
     def test_a_status_context_is_read_too(self):
         ctx = {"__typename": "StatusContext", "context": "CI", "state": "FAILURE", "targetUrl": URL.format(run=5, job=0)}
         self.assertEqual(Q.classify(pr(ctx)), "CI red")
+
+
+MUTANTS = "Mutants in the changed code"
+
+
+def gates(ci="SUCCESS", checks="SUCCESS", mutants="SUCCESS", run=100):
+    """The three checks the queue's conditions read, each from a run of its own."""
+    return [
+        check("CI", ci, run=run, job=1),
+        check("PR checks", checks, run=run + 1, job=2, workflow="PR checks"),
+        check(MUTANTS, mutants, run=run + 2, job=3, workflow="Mutants"),
+    ]
+
+
+class Ready(unittest.TestCase):
+    """What queue_group.sh waits on: the three checks green on their latest
+    run, and for a full-ci PR its Slow suite too."""
+
+    def test_the_three_gates_green_is_ready(self):
+        self.assertEqual(Q.ready(pr(*gates(), labels=())), "ready")
+        # The queue label, and a stale dequeued one, change nothing here.
+        self.assertEqual(Q.ready(pr(*gates(), labels=("queue", "dequeued"))), "ready")
+
+    def test_a_gate_still_running_or_missing_is_waiting(self):
+        running = lambda called, **kw: check(called, status="IN_PROGRESS", **kw)  # noqa: E731
+        self.assertIsNone(Q.ready(pr(running("CI"), *gates()[1:])))
+        self.assertIsNone(Q.ready(pr(*gates()[:2], running(MUTANTS, run=102, job=3, workflow="Mutants"))))
+        # No check at all yet: nothing to be green.
+        self.assertIsNone(Q.ready(pr()))
+        self.assertIsNone(Q.ready(pr(*gates()[:2])))
+        self.assertIsNone(Q.ready({"state": "OPEN", "labels": [], "statusCheckRollup": None}))
+
+    def test_each_gate_red_is_named(self):
+        self.assertEqual(Q.ready(pr(*gates(ci="FAILURE"))), "CI red")
+        self.assertEqual(Q.ready(pr(*gates(checks="FAILURE"))), "PR checks red")
+        self.assertEqual(Q.ready(pr(*gates(mutants="FAILURE"))), f"{MUTANTS} red")
+        self.assertEqual(Q.ready(pr(*gates(mutants="TIMED_OUT"))), f"{MUTANTS} red")
+        # Red is told while the others still run: the group need not wait for them.
+        self.assertEqual(Q.ready(pr(check("CI", status="IN_PROGRESS"), *gates(mutants="FAILURE")[1:])), f"{MUTANTS} red")
+
+    def test_a_gate_is_read_by_its_latest_run(self):
+        # Red, then a later run (a push, an edit to the body) went green.
+        again = check(MUTANTS, "SUCCESS", run=110, job=3, workflow="Mutants")
+        self.assertEqual(Q.ready(pr(*gates(mutants="FAILURE"), again)), "ready")
+        # Green, then a later run went red.
+        later = check("CI", "FAILURE", run=120)
+        self.assertEqual(Q.ready(pr(*gates(), later)), "CI red")
+        # A later run still going is not green yet, though an earlier one was.
+        self.assertIsNone(Q.ready(pr(*gates(), check("CI", status="IN_PROGRESS", run=120))))
+
+    def test_a_skipped_or_cancelled_gate_is_not_green(self):
+        # `check-success` is Mergify's rule, and a skipped check is not a success.
+        self.assertIsNone(Q.ready(pr(*gates(mutants="SKIPPED"))))
+        self.assertIsNone(Q.ready(pr(*gates(ci="NEUTRAL"))))
+        # Cancelled is not red: a newer run's check may not exist yet.
+        self.assertIsNone(Q.ready(pr(*gates(ci="CANCELLED"))))
+
+    def test_closed_and_merged_are_told(self):
+        self.assertEqual(Q.ready(pr(*gates(), state="MERGED")), "MERGED")
+        self.assertEqual(Q.ready(pr(*gates(), state="CLOSED")), "CLOSED")
+
+    def test_a_status_context_is_read_too(self):
+        ctx = lambda state: {"__typename": "StatusContext", "context": "CI", "state": state, "targetUrl": URL.format(run=100, job=0)}  # noqa: E731
+        self.assertEqual(Q.ready(pr(ctx("SUCCESS"), *gates()[1:])), "ready")
+        self.assertEqual(Q.ready(pr(ctx("FAILURE"), *gates()[1:])), "CI red")
+        self.assertIsNone(Q.ready(pr(ctx("PENDING"), *gates()[1:])))
+
+    def slow(self, run=300, conclusion="SUCCESS", status="COMPLETED"):
+        return [
+            check("Asked for", run=run, workflow="Slow suite"),
+            check("Slow browser (1/3)", conclusion, status=status, run=run, job=2, workflow="Slow suite"),
+        ]
+
+    def test_a_full_ci_pr_is_ready_only_with_its_slow_suite_green(self):
+        full = ("full-ci",)
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(), labels=full)), "ready")
+        # Running: wait. Red or cancelled: told, with the gates green or not.
+        self.assertIsNone(Q.ready(pr(*gates(), *self.slow(status="IN_PROGRESS"), labels=full)))
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(conclusion="FAILURE"), labels=full)), "Slow suite red")
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(conclusion="CANCELLED"), labels=full)), "Slow suite cancelled")
+        self.assertEqual(Q.ready(pr(check("CI", status="IN_PROGRESS"), *gates()[1:], *self.slow(conclusion="FAILURE"), labels=full)), "Slow suite red")
+        # Slow suite green, gates still running: wait.
+        self.assertIsNone(Q.ready(pr(check("CI", status="IN_PROGRESS"), *gates()[1:], *self.slow(), labels=full)))
+        # A red gate wins over the Slow suite.
+        self.assertEqual(Q.ready(pr(*gates(ci="FAILURE"), *self.slow(), labels=full)), "CI red")
+        # Queued by hand already: it is still read, not skipped.
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(), labels=("full-ci", "queue"))), "ready")
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(conclusion="FAILURE"), labels=("full-ci", "queue"))), "Slow suite red")
+
+    def test_a_pr_without_full_ci_ignores_the_slow_suite(self):
+        self.assertEqual(Q.ready(pr(*gates(), *self.slow(conclusion="FAILURE"), labels=())), "ready")
+
+    def test_a_full_ci_pr_the_slow_suite_never_ran_for_is_told_once_the_gates_are_green(self):
+        full = ("full-ci",)
+        # Nothing asked for, or only a run another label started (its jobs skipped).
+        self.assertEqual(Q.ready(pr(*gates(), labels=full)), "Slow suite not run")
+        skipped = check("Asked for", "SKIPPED", run=301, workflow="Slow suite")
+        self.assertEqual(Q.ready(pr(*gates(), skipped, labels=full)), "Slow suite not run")
+        # While a gate runs it may still be starting: nothing yet.
+        self.assertIsNone(Q.ready(pr(check("CI", status="IN_PROGRESS"), *gates()[1:], labels=full)))
+
+    def test_a_slow_suite_verdict_waits_for_its_run_to_complete(self):
+        full = ("full-ci",)
+        p = pr(*gates(), *self.slow(), labels=full)
+        self.assertEqual(Q.ready_run(p), 300)
+        self.assertIsNone(Q.ready(p, run_status="in_progress"))
+        self.assertEqual(Q.ready(p, run_status="completed"), "ready")
+        # Red is a verdict only once the run is done, too.
+        red_p = pr(*gates(), *self.slow(conclusion="FAILURE"), labels=full)
+        self.assertIsNone(Q.ready(red_p, run_status="in_progress"))
+        self.assertEqual(Q.ready(red_p, run_status="completed"), "Slow suite red")
+
+    def test_the_run_to_look_up_is_a_full_ci_pr_s_queued_or_not(self):
+        self.assertEqual(Q.ready_run(pr(*gates(), *self.slow(), labels=("full-ci", "queue"))), 300)
+        self.assertIsNone(Q.ready_run(pr(*gates(), *self.slow(), labels=())))
+        self.assertIsNone(Q.ready_run(pr(*gates(), labels=("full-ci",))))
+        self.assertIsNone(Q.ready_run(pr(*gates(), *self.slow(), labels=("full-ci",), state="CLOSED")))
+
+    def test_the_command_line_prints_what_the_functions_say(self):
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue_state.py")
+        full = pr(*gates(), *self.slow(), labels=("full-ci",))
+
+        def cli(p, *args):
+            done = subprocess.run([sys.executable, script, *args], input=json.dumps(p), capture_output=True, text=True, check=True)
+            return done.stdout
+
+        self.assertEqual(cli(pr(*gates(), labels=()), "--ready"), "ready\n")
+        self.assertEqual(cli(pr(*gates(ci="FAILURE")), "--ready"), "CI red\n")
+        self.assertEqual(cli(pr(), "--ready"), "")
+        self.assertEqual(cli(full, "--ready-run"), "300\n")
+        self.assertEqual(cli(pr(*gates()), "--ready-run"), "")
+        self.assertEqual(cli(full, "--ready", "--run-status", "in_progress"), "")
+        self.assertEqual(cli(full, "--ready", "--run-status", "completed"), "ready\n")
 
 
 if __name__ == "__main__":

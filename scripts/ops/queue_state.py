@@ -5,6 +5,8 @@ skill).
 
     gh pr view N --json state,labels,statusCheckRollup | python3 scripts/ops/queue_state.py [--run-status S]
     gh pr view N --json state,labels,statusCheckRollup | python3 scripts/ops/queue_state.py --slow-run
+    gh pr view N --json state,labels,statusCheckRollup | python3 scripts/ops/queue_state.py --ready [--run-status S]
+    gh pr view N --json state,labels,statusCheckRollup | python3 scripts/ops/queue_state.py --ready-run
 
 Prints one word or phrase when something happened, and nothing while the PR
 is still on its way:
@@ -28,6 +30,18 @@ is still on its way:
   with which a verdict waits until the run is `completed`. watch_queue.sh
   passes it.
 
+`--ready` is `queue_group.sh`'s rule: whether a PR may be queued now. It
+prints `ready` when `CI`, `PR checks` and `Mutants in the changed code` (the
+three checks `.mergify.yml`'s queue conditions read) are each green on their
+latest run and, for a PR carrying `full-ci`, its Slow suite is green too
+(queued or not); `MERGED` or `CLOSED`; `<check> red` for a gate whose latest
+run failed or timed out; `Slow suite red` or `Slow suite cancelled`; or
+`Slow suite not run` for a `full-ci` PR whose gates are green and that has no
+Slow suite run asked for, which nothing will turn green by itself. It prints
+nothing while the PR is on its way, a cancelled gate run included: a newer run
+may not have its check yet (see above). `--ready-run` prints the id of the
+Slow suite run `--ready` waits on, for `--run-status`, as `--slow-run` does.
+
 Python 3 standard library only.
 """
 
@@ -38,6 +52,8 @@ import re
 import sys
 
 RED = {"FAILURE", "TIMED_OUT", "STARTUP_FAILURE"}
+# The checks `.mergify.yml`'s queue conditions require of every PR.
+GATES = ("CI", "PR checks", "Mutants in the changed code")
 WAITING = {"IN_PROGRESS", "QUEUED", "PENDING", "WAITING", "REQUESTED", "EXPECTED"}
 IDS = re.compile(r"/runs/(\d+)(?:/job/(\d+))?")
 
@@ -60,13 +76,23 @@ def red(check: dict | None) -> bool:
     return bool(check) and (check.get("conclusion") or check.get("state") or "").upper() in RED
 
 
+def green(check: dict | None) -> bool:
+    return bool(check) and (check.get("conclusion") or check.get("state") or "").upper() == "SUCCESS"
+
+
+def asked_run(checks: list[dict]) -> int | None:
+    """The id of the Slow suite's latest run that was asked for: one whose
+    *Asked for* job ran. A run another label started asks for nothing."""
+    asked = [ids(c)[0] for c in checks if c.get("workflowName") == "Slow suite" and name(c) == "Asked for" and (c.get("conclusion") or "").upper() != "SKIPPED"]
+    return max(asked) if asked else None
+
+
 def slow_suite(checks: list[dict]) -> str | None:
     """The Slow suite's verdict on its latest run that was asked for."""
-    jobs = [c for c in checks if c.get("workflowName") == "Slow suite"]
-    asked = [ids(c)[0] for c in jobs if name(c) == "Asked for" and (c.get("conclusion") or "").upper() != "SKIPPED"]
-    if not asked:
+    run = asked_run(checks)
+    if not run:
         return None
-    run = max(asked)
+    jobs = [c for c in checks if c.get("workflowName") == "Slow suite"]
     this = [c for c in jobs if ids(c)[0] == run]
     if any((c.get("status") or "").upper() in WAITING for c in this):
         return None
@@ -87,9 +113,7 @@ def slow_run(pr: dict) -> int | None:
     its latest run that was asked for."""
     if not waits_for_slow_suite(pr):
         return None
-    checks = pr.get("statusCheckRollup") or []
-    asked = [ids(c)[0] for c in checks if c.get("workflowName") == "Slow suite" and name(c) == "Asked for" and (c.get("conclusion") or "").upper() != "SKIPPED"]
-    return max(asked) if asked else None
+    return asked_run(pr.get("statusCheckRollup") or [])
 
 
 def classify(pr: dict, run_status: str | None = None) -> str | None:
@@ -112,12 +136,54 @@ def classify(pr: dict, run_status: str | None = None) -> str | None:
     return None
 
 
+def ready(pr: dict, run_status: str | None = None) -> str | None:
+    """Whether the PR may be queued now: `ready`, or why not (a closed or
+    merged state, a red gate, a Slow suite that is red, cancelled or never
+    asked for), or None while it is on its way. `run_status`: as for
+    `classify`."""
+    if pr.get("state") and pr["state"] != "OPEN":
+        return pr["state"]
+    checks = pr.get("statusCheckRollup") or []
+    gates = {called: latest(checks, called) for called in GATES}
+    for called, check in gates.items():
+        if red(check):
+            return f"{called} red"
+    full_ci = "full-ci" in {lab.get("name") for lab in pr.get("labels") or []}
+    slow = None
+    if full_ci and (run_status is None or run_status.lower() == "completed"):
+        slow = slow_suite(checks)
+        if slow in ("Slow suite red", "Slow suite cancelled"):
+            return slow
+    if not all(green(check) for check in gates.values()):
+        return None
+    if not full_ci or slow == "Slow suite green":
+        return "ready"
+    return None if asked_run(checks) else "Slow suite not run"
+
+
+def ready_run(pr: dict) -> int | None:
+    """The id of the Slow suite run `ready` waits on: a full-ci PR's, queued or not."""
+    if pr.get("state", "OPEN") != "OPEN" or "full-ci" not in {lab.get("name") for lab in pr.get("labels") or []}:
+        return None
+    return asked_run(pr.get("statusCheckRollup") or [])
+
+
 def main(argv: list[str]) -> int:
     pr = json.load(sys.stdin)
     if argv[:1] == ["--slow-run"]:
         run = slow_run(pr)
         if run:
             print(run)
+        return 0
+    if argv[:1] == ["--ready-run"]:
+        run = ready_run(pr)
+        if run:
+            print(run)
+        return 0
+    if argv[:1] == ["--ready"]:
+        verdict = ready(pr, argv[2] if argv[1:2] == ["--run-status"] and len(argv) > 2 else None)
+        if verdict:
+            print(verdict)
         return 0
     run_status = argv[1] if argv[:1] == ["--run-status"] and len(argv) > 1 else None
     state = classify(pr, run_status)
