@@ -38,8 +38,8 @@ It is kept as you play:
 | Your inputs | Which microphone or interface each AUDIO IN input number means: the browser’s id for it and its name |
 | Taste over time | What the model posted at each of your last 200 moments (picks, stars, cuts, redraws): TASTE’s track and LEARNING’s **REPLAY**. A reset clears it, and a taste file doesn’t carry it |
 
-AUDIO IN’s input is played and measured in the tab, and only the clips are kept.
-Monitoring is never kept: it starts off every time.
+AUDIO IN’s input is played and measured in the tab, and only the clips are
+kept. Monitoring is never kept: it starts off every time.
 
 A session comes back one sound at a time, with the bar counting them. A sound
 the render workers measured as the app loaded, or that an earlier return

@@ -1,6 +1,6 @@
-// Each input's clip (#147, docs/architecture/web-runtime.md, AUDIO IN, "The clips"): a
-// capture of one input goes to the engine worker as `set_input_clip` with its
-// slot, and is that slot's clip alone. Its reply, `audition_clip`, carries the
+// Each input's clip (#147, docs/architecture/web-runtime.md, AUDIO IN, "The
+// clips"): a capture of one input goes to the engine worker as
+// `set_input_clip` with its slot, and is that slot's clip alone. Its reply, `audition_clip`, carries the
 // slot, the engine's sentence, the slot's own status (`clip`) and every
 // slot's (`clips`), as `ready` and a restore carry them, so the page knows
 // which clip each input is heard through; the pool's members that read that

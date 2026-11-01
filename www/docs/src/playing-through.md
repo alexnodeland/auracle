@@ -96,8 +96,8 @@ microphone for this site in the browser’s settings, then press **ASK AGAIN**.
 Your input is never the same twice, so the model can’t rate a sound by what it
 does to your input live. It hears a sound with AUDIO IN through a **clip**
 instead: six seconds of the input it reads, captured the first time that
-input carries a signal while a sound you’re playing or recording reads it. Until then, the model hears it
-through a built-in plucked phrase.
+input carries a signal while a sound you’re playing or recording reads it.
+Until then, the model hears it through a built-in plucked phrase.
 
 - Each input has a clip of its own. A sound that reads two inputs is heard
   through each one’s clip, and each input is captured the first time you play
@@ -178,9 +178,9 @@ pool again.
 ## Breeding it
 
 A sound with AUDIO IN breeds like any other. ⚡ EVOLVE FROM THIS and a
-generation walk it through the clip, and every child keeps its AUDIO IN on
-the input you set, while its gain, its channel, and everything around it can
-change. No generation adds AUDIO IN to a sound by itself: an input is in a
+generation walk it through its inputs’ clips, and every child keeps its AUDIO
+IN on the input you set, while its gain, its channel, and everything around it
+can change. No generation adds AUDIO IN to a sound by itself: an input is in a
 sound only because you patched it in. A TRACK or a CAPTURE stays where you put
 it too, and a CAPTURE keeps its take.
 

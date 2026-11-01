@@ -2,8 +2,9 @@
 // docs/architecture/web-runtime.md "The farm's phrase"): the phrase carries
 // each input's audition clip (#147), so when a capture of an input or a
 // restore changes a clip, every farm worker standing is handed the new phrase
-// before any work that would be measured with it. Until then a worker's render of a sound
-// that listens carries the old clip, and the sound is measured again here.
+// before any work that would be measured with it. Until then a worker's
+// render of a sound that listens carries the old clip, and the sound is
+// measured again here.
 //
 // worker.js runs here as it is, over the built engine (harness.mjs), and the
 // farm is ports the test holds (`fakeCrew`): what reaches a farm worker, and

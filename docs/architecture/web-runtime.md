@@ -204,14 +204,15 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   only under the view. It is asked when the view comes up over PERFORM,
   when PERFORM comes into sight with the view up, when the sound or the
   panel changes (a sound that listens included, when main reports a new
-  audition clip: `perform.clipChanged` on `audition_clip`), and when main
-  reports the posterior moved (`perform.posteriorChanged`: on `fitted`, on
-  a `status` carrying `ratings`, and on `imported`, whose engine has no
-  posterior until its refit); once per sound, posterior and panel
-  (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the clips of
-  the inputs it reads are part of a listening sound's key), never per frame. A lean of the same
-  sound stays drawn until a newer one lands; one asked under another
-  posterior or panel is not shown when the view comes up.
+  clip on an input it reads: `perform.clipChanged` on `audition_clip`), and
+  when main reports the posterior moved (`perform.posteriorChanged`: on
+  `fitted`, on a `status` carrying `ratings`, and on `imported`, whose
+  engine has no posterior until its refit); once per sound, posterior and
+  panel (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the
+  clips of the inputs it reads are part of a listening sound's key), never
+  per frame. A lean of the same sound stays drawn until a newer one lands;
+  one asked under another posterior or panel is not shown when the view
+  comes up.
 
 ### ⌘K, the one list
 
@@ -645,12 +646,12 @@ A request whose handler throws is answered with `engine_error`, carrying its
 `re`. What the worker says of its own accord carries no `re`: `busy` and
 `idle`, a log line, a crew wanted or reaped (`farm_want`, `farm_done`), the
 boot's fill (`fill_progress`, `repaired`, `playable`, `filled`, a restore's
-`audition_clip` with each input's clip, `restore_failed` and `fitted`, and `boot_failed` once `ready`
-has gone: `init` itself is answered by `ready`, or by `boot_failed` before
-it), a face that was `pending` when its `faces` request was answered, the
-sound of your own re-ranked when the presets' file lands (`own_sound` with
-`presets`), and the `engine_error` for a rejection nothing awaited
-(`request: null`).
+`audition_clip` with each input's clip, `restore_failed` and `fitted`, and
+`boot_failed` once `ready` has gone: `init` itself is answered by `ready`,
+or by `boot_failed` before it), a face that was `pending` when its `faces`
+request was answered, the sound of your own re-ranked when the presets'
+file lands (`own_sound` with `presets`), and the `engine_error` for a
+rejection nothing awaited (`request: null`).
 
 The reply path in `worker.js` is one function, `emit`, behind three names,
 so the echo cannot be forgotten:
@@ -2240,19 +2241,21 @@ the voices' input in the worklet, and each input's clip in the engine.
   inputs' clips moved) and saves the session, which carries each slot's
   clip. A restore and an `audition_clip` request post `audition_clip` with
   the status only: `clip`, the clip every slot hears, and `clips`; `ready`
-  carries the same two on itself. The
-  app never sets that clip (the engine's `set_audition_clip`, which would
-  take every slot's own away): it is the reference, or the one clip of a
-  session saved before slots had their own, which then stands for every
-  input until its NEW CLIP. A refusal holds back that input's first listen
+  carries the same two on itself. The app never sets that clip (the
+  engine's `set_audition_clip`, which would take every slot's own away): it
+  is the reference, or the one clip of a session saved before slots had
+  their own, which then stands for every input until its NEW CLIP (no
+  first listen captures an input that hears it, as none did before slots
+  had clips of their own). A refusal holds back that input's first listen
   only, until its NEW CLIP.
 - **The farm's phrase.** The phrase carries every slot's clip, so the worker
   sends the `phrase` handshake again to the crew standing after a clip is
   taken (`farmResendPhrase`), and in a staged restore right after
   `import_session_deferred_v2` installs a captured clip on any slot, before
-  any bank job goes out (port messages are ordered). A crew raised later gets the current
-  phrase in `farmSetup`. `farm.js` keeps its open render store when the
-  namespace is unchanged (the namespace never sees the clip).
+  any bank job goes out (port messages are ordered). A crew raised later
+  gets the current phrase in `farmSetup`. `farm.js` keeps its open render
+  store when the namespace is unchanged (the namespace never sees the
+  clips).
 
 ### TRACK and CAPTURE
 

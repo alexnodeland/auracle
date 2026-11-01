@@ -990,8 +990,8 @@ measurement renders it first) or the bench has opened it, and then the lean
 is a few dot products per draw; a tree not in the memo costs one render, as
 ▶ does. A control turned since is not part of it, and it is asked again when
 the view comes up, the sound or the panel changes (for a sound with an AUDIO
-IN, a new [audition clip](../audition/clips.md) too, since it is
-measured through it), and the posterior moves (a refit, a pick’s
+IN, a new [audition clip](../audition/clips.md) of an input it reads too,
+since it is measured through it), and the posterior moves (a refit, a pick’s
 reweighting, a taste file opened), never per frame.
 
 ## What is not done
