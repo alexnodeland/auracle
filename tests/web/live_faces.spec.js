@@ -22,9 +22,12 @@
 //   mid-sound, as it stood, once a window of frames painted on the page
 //   measured over budget, or painted them from the first frame, the idle
 //   probe over budget.
-// - Chromium, whose canvas calls only record the drawing, paints them on the
-//   page, in the frame that read them, on the reference profile at the
-//   Air's Retina scale, and starts no painter.
+// - Wherever the faces are painted, a live layer is stroked only in the
+//   loop's call that read the signals, and a painter started in a frame is
+//   started only once a window of frames was painted on the page; where
+//   that is (Chromium, whose canvas calls only record the drawing, paints
+//   them on the page; Firefox, which blurs the glow as it is called, hands
+//   them to the painter at idle) is a speed, recorded beside them.
 // - A frame of live faces is cheap: the loop's own time a frame, its share
 //   of the main thread, and the long tasks while a key sounds, on the
 //   reference profile at the Air's Retina scale, are budgets.
@@ -539,14 +542,12 @@ test.describe("at the Air's Retina scale", () => {
 // length, not a wait for anything).
 const HELD_MS = 3_000;
 
-// Chromium's frames are timed for a second: the window its paint is judged
-// over (live-face.js `LIVE_PAINT_WINDOW`, ten frames) six times over.
-const CHROMIUM_HELD_MS = 1_000;
-
 /** A key held at PERFORM, booted on the reference profile, and the live
- *  faces' frames timed for `ms` while it sounds; with what the faces' layers
- *  under the well are once it has. */
-async function timedLiveFaces(page, app, ms) {
+ *  faces' frames timed while it sounds, for `ms` (a gesture's length) or
+ *  until `windows` windows of frames (live-face.js `LIVE_PAINT_WINDOW`,
+ *  `paintWindow`) have been read; with what the faces' layers under the
+ *  well are once it has. */
+async function timedLiveFaces(page, app, { ms = 0, windows = 0 } = {}) {
   // The loop's own time each call (live-face.js `liveFacesFrame`), and
   // what the call did: a call that reads a signal is a frame, painted on
   // the page in that call (it stroked a live layer) or sent to the
@@ -555,16 +556,26 @@ async function timedLiveFaces(page, app, ms) {
   // is not a frame. The page's time showing the pictures the painter
   // answers with (its `onmessage`), and when each frame sent was shown;
   // every long task, from the page's clock; the painter's own time
-  // painting each frame (live-paint.js answers each with it); and how
-  // many frames the page painted before it handed the faces over.
+  // painting each frame (live-paint.js answers each with it). And, from
+  // boot: each frame painted on the page before the first was sent to a
+  // painter (its time), every stroke on a live layer made anywhere but in
+  // a call that read the signals, whether the painter was started in a
+  // frame or outside one (the idle probe, live-face.js `warm`) and how
+  // many frames the page had painted by then, and how many before it
+  // handed the faces over.
   await page.addInitScript(() => {
     const raf = window.requestAnimationFrame.bind(window);
     const calls = (window.__liveCalls = []);
     const frames = (window.__liveFrames = []);
+    const before = (window.__beforePainter = []);
     let read = false;
     let stroked = false;
     let posted = false;
+    let inLoop = false;
+    let anySent = false;
     let paintedHere = 0;
+    window.__stray = 0;
+    window.__started = null;
     window.__handedAfter = null;
     const getData = AnalyserNode.prototype.getFloatTimeDomainData;
     AnalyserNode.prototype.getFloatTimeDomainData = function (...a) {
@@ -573,7 +584,10 @@ async function timedLiveFaces(page, app, ms) {
     };
     const stroke = CanvasRenderingContext2D.prototype.stroke;
     CanvasRenderingContext2D.prototype.stroke = function (...a) {
-      if (this.canvas && this.canvas.classList && this.canvas.classList.contains("face-live")) stroked = true;
+      if (this.canvas && this.canvas.classList && this.canvas.classList.contains("face-live")) {
+        stroked = true;
+        if (!inLoop || !read) window.__stray++;
+      }
       return stroke.apply(this, a);
     };
     // The page's frames so far (every callback of one is handed its time).
@@ -587,11 +601,19 @@ async function timedLiveFaces(page, app, ms) {
         }
         if (cb.name !== "liveFacesFrame") return cb(t);
         read = stroked = posted = false;
+        inLoop = true;
         const t0 = performance.now();
-        cb(t);
+        try {
+          cb(t);
+        } finally {
+          inLoop = false;
+        }
         const ms = performance.now() - t0;
         calls.push(ms);
-        if (stroked) paintedHere++;
+        if (stroked) {
+          paintedHere++;
+          if (!anySent) before.push(ms);
+        }
         if (read) frames.push({ ms, here: stroked, sent: posted });
       });
     const painted = (window.__painted = []);
@@ -607,11 +629,13 @@ async function timedLiveFaces(page, app, ms) {
         super(url, opts);
         if (!/live-paint\.js/.test(String(url))) return;
         window.__painters++;
+        window.__started = { inFrame: inLoop, after: paintedHere + (inLoop && stroked ? 1 : 0) };
         const sent = new Map();
         const post = this.postMessage.bind(this);
         this.postMessage = (m, ...rest) => {
           if (m.seed || m.faces.length) {
             posted = true;
+            anySent = true;
             if (m.seed) window.__handedAfter = paintedHere;
             sent.set(m.frame, { at: performance.now(), frame: pageFrames });
           }
@@ -646,22 +670,28 @@ async function timedLiveFaces(page, app, ms) {
     }
   });
   await boot(app, { profile: "air" });
+  const paintWindow = await page.evaluate(async () => (await import(`./live-face.js?v=${window.__aurBuild}`)).LIVE_PAINT_WINDOW);
   await goLevel(page, "perform");
   await app.engine((timeout) => expect(page.locator("#view-perform .pf-face img.face").first()).toBeVisible({ timeout }));
   await page.keyboard.down("a");
   await app.engine((timeout) => expect.poll(() => lit(page, "#view-perform .pf-faces"), { timeout }).toBeGreaterThan(50), { ms: 30_000 });
-  const got = await page.evaluate(async (ms) => {
+  await page.evaluate(() => {
     for (const k of ["__liveCalls", "__liveFrames", "__painted", "__shown", "__late", "__long"]) window[k].length = 0;
     // Every frame the page draws meanwhile, to say how smooth it stayed.
-    let frames = 0;
-    let on = true;
+    window.__pageFrames = 0;
+    window.__counting = true;
     const count = () => {
-      frames++;
-      if (on) requestAnimationFrame(count);
+      window.__pageFrames++;
+      if (window.__counting) requestAnimationFrame(count);
     };
     requestAnimationFrame(count);
-    await new Promise((ok) => setTimeout(ok, ms));
-    on = false;
+    window.__from = performance.now();
+  });
+  if (windows) await expect.poll(() => page.evaluate(() => window.__liveFrames.length), { message: "frames of the live faces read while the key sounds" }).toBeGreaterThanOrEqual(windows * paintWindow);
+  else await page.evaluate((ms) => new Promise((ok) => setTimeout(ok, ms)), ms);
+  const got = await page.evaluate(() => {
+    window.__counting = false;
+    const ms = performance.now() - window.__from;
     const sorted = (a) => a.slice().sort((x, y) => x - y);
     const sum = (a) => a.reduce((x, y) => x + y, 0);
     const mid = (a) => (a.length ? a[a.length >> 1] : null);
@@ -669,14 +699,16 @@ async function timedLiveFaces(page, app, ms) {
     const f = sorted(all.map((x) => x.ms));
     const sh = sorted(window.__shown);
     const w = sorted(window.__painted);
+    const before = sorted(window.__beforePainter);
     return {
+      ms,
       // The frames, those painted on the page in the call that read them
       // and those sent to the painter, and the calls that waited.
       n: f.length,
       here: all.filter((x) => x.here).length,
       sent: all.filter((x) => x.sent).length,
       waited: window.__liveCalls.length - f.length,
-      fps: (frames * 1000) / ms,
+      fps: (window.__pageFrames * 1000) / ms,
       p50: mid(f),
       p95: f.length ? f[Math.floor(f.length * 0.95)] : null,
       max: f.length ? f[f.length - 1] : null,
@@ -689,9 +721,16 @@ async function timedLiveFaces(page, app, ms) {
       showP50: mid(sh),
       long: window.__long.slice(),
       dpr: devicePixelRatio,
-      // Face painters started, and the frames painted on the page (since
-      // boot) before the faces were handed to one.
+      // Since boot: the frames painted on the page before the first was
+      // sent to a painter (how many, their median and longest), strokes
+      // on a live layer outside a call that read, face painters started,
+      // where the first was started (in a frame, or outside one: the idle
+      // probe) and how many frames the page had painted by then, and by
+      // the hand-over (none: there was none).
+      beforePainter: { n: before.length, p50: mid(before), max: before.length ? before[before.length - 1] : null },
+      stray: window.__stray,
       painters: window.__painters,
+      started: window.__started,
       handedAfter: window.__handedAfter,
       // The painter's: frames painted, a second, and a frame's time there
       // (median).
@@ -702,18 +741,18 @@ async function timedLiveFaces(page, app, ms) {
       lateMs: mid(sorted(window.__late.map((l) => l.ms))),
       lateFrames: mid(sorted(window.__late.map((l) => l.frames))),
     };
-  }, ms);
+  });
   const layers = await layerKinds(page, "#view-perform .pf-faces");
   await page.keyboard.up("a");
   test.info().annotations.push({ type: "live faces", description: JSON.stringify({ ...got, layers }) });
-  return { ...got, layers };
+  return { ...got, layers, paintWindow };
 }
 
 test.describe("on the reference profile, at the Air's Retina scale", () => {
   test.use({ deviceScaleFactor: AIR_SCALE });
 
   test("a frame of live faces is cheap on the reference profile", async ({ page, app }) => {
-    const got = await timedLiveFaces(page, app, HELD_MS);
+    const got = await timedLiveFaces(page, app, { ms: HELD_MS });
     expect(got.n, "the loop ran frames while the key sounded").toBeGreaterThan(10);
     expect(got.here + got.sent, "each painted on the page or sent to the painter").toBeGreaterThan(10);
     // A throttled page is paused now and then (CDP's throttle), and a frame
@@ -725,19 +764,27 @@ test.describe("on the reference profile, at the Air's Retina scale", () => {
     app.budget("the longest task while a key sounds at PERFORM", got.long.length ? Math.max(...got.long) : 0, 50);
   });
 
-  test("Chromium paints the live faces on the page, in the frame that read them, and starts no painter", async ({ page, app, browserName }) => {
-    // eslint-disable-next-line playwright/no-skipped-test -- a claim about Chromium's canvas, whose calls only record the drawing, not a test turned off: Firefox's draws as it is called, and is handed to the painter (the hand-over's own test)
-    test.skip(browserName !== "chromium", "Chromium's canvas, whose calls only record the drawing");
-    // Chromium only records a canvas's calls, and draws them after the
-    // frame's script (on the GPU, where there is one; here, on SwiftShader):
-    // the calls the loop times measure inside the live faces' budget, so it
-    // paints the faces itself, in the frame that read them, and starts no
-    // painter (live-face.js `createPaintSwitch`).
-    const got = await timedLiveFaces(page, app, CHROMIUM_HELD_MS);
-    expect(got.painters, "no face painter started").toBe(0);
-    expect(got.sent, "no frame sent to one").toBe(0);
-    expect(got.here, "frames painted on the page, each in the call that read it").toBeGreaterThan(10);
-    expect(got.layers.shown, "no layer shows a painter's pictures").toBe(0);
-    expect(got.layers.here, "the layers are painted on the page").toBeGreaterThan(0);
+  test("each frame of the live faces is painted on the page in the call that read it, or by a face painter started at idle or after a window of frames", async ({ page, app }) => {
+    // Where the faces are painted is decided from what painting them on the
+    // page measures (live-face.js `createPaintSwitch`): a speed, recorded
+    // beside the frames (the annotation `live faces`: the page's paint a
+    // frame, the painters started, where and after how many frames), never
+    // asserted. Chromium, whose canvas calls only record the drawing,
+    // measures inside budget and paints them on the page; Firefox, which
+    // blurs the glow as it is called, measures over it at idle and starts
+    // the painter then; a loaded runner may measure either. What holds
+    // wherever they are painted is asserted: a live layer is stroked only in
+    // the loop's call that read the signals, and a painter started in a
+    // frame is started only once the page has painted a window of frames
+    // (outside a frame, it was the idle probe). The key is held until
+    // three windows of frames are read.
+    const got = await timedLiveFaces(page, app, { windows: 3 });
+    const { paintWindow } = got;
+    expect(got.stray, "no live layer stroked but in the loop's call that read the signals").toBe(0);
+    expect(got.here + got.sent, "frames painted on the page or sent to the painter").toBeGreaterThanOrEqual(paintWindow);
+    expect(got.painters, "one face painter at most").toBeLessThanOrEqual(1);
+    expect(!got.started || !got.started.inFrame || got.started.after >= paintWindow, `a painter started in a frame only once a window of frames was painted on the page (${JSON.stringify(got.started)})`).toBe(true);
+    expect(got.painters > 0 || got.layers.shown === 0, "no layer shows a painter's pictures where none was started").toBe(true);
+    expect(got.layers.here + got.layers.shown, "the well's layers").toBeGreaterThan(0);
   });
 });
