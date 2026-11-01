@@ -1001,14 +1001,17 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   counts it, so every fit shows it). Its slot is the bench's face
   (`setFaceSlot(..., "out", {tree: benchTreeJson})`), so it is never an
   estimate, and its press is the rack's ▶ (`playBench`, `playWaitCancel`).
-- **Fits** keep the well's own chrome clear (`fitBox`): the top line
-  (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open, the catalog
-  (`catalogReserve`), as they keep the scope's corner (`scopeReserve`). A fit
-  of the whole patch stops at the readable zoom (`fitRead`, where a name
-  printed larger is at `--t-label`, about 0.65×; #519): a patch that does not
-  fit there shows where it starts (its sources) and its top,
-  and the rest pans; after an edit, a camera the player aimed is left where
-  it is when the readable fit could not hold the patch either (`fitHolds`).
+- **Fits** keep the well's own chrome clear (`fitRoom`, which `fitBox` frames
+  in): the top line (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open,
+  the catalog (`catalogReserve`), as they keep the scope's corner
+  (`scopeReserve`). A fit of the whole patch stops at the readable zoom
+  (`fitRead`, where a name printed larger is at `--t-label`, about 0.65×;
+  #519): a patch that does not fit there shows where it starts (its sources)
+  and its top, and the rest pans. After an edit to such a patch (`aimCamera`,
+  `fitHolds` in the same room), a camera aimed anywhere but that fit is left
+  where it is, aimed by a hand (`viewUserSet`) or by the keys
+  (`ensureRackVisible`'s pans and ".", `viewAimed`); another sound
+  (`benchOpens`) is framed as any patch is.
   On a touch screen a tap on bare panel beside an out ○, a module's ⋯ or
   its lock is that control's by reach.js's rule, among them all and every
   socket (`tapReach`, asked by patch.js's tap before the module's sheet

@@ -14567,9 +14567,11 @@ const lastFit = { short: false, contain: 1 };
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
+let viewAimed = false;                // …or has the camera followed the keys off the whole patch's fit?
 let camAimed = false;                 // first fit done?
 let camHold = false;                  // leave the next build's framing alone
 let camSig = "";                      // bounding-box signature of the last build
+let camOpens = 0;                     // `benchOpens` as of the last build: another sound since?
 let viewTween = null;
 
 // The frame's size the last time it was on screen. Behind another view it
@@ -15427,17 +15429,24 @@ function fitRead() {
   }
   return fitReadZoom;
 }
-function fitBox(box, animate, coMotion, whole = true) {
+/** The room a fit of `box` has: the frame, less a margin and the well's
+ *  own chrome (the line along its top, the guess and the thing in hand; the
+ *  foot, the camera and the readout; the catalog while open), and the
+ *  scope's corner where the box would sit under it. `fitBox` frames in it,
+ *  and `fitHolds` asks of it. */
+function fitRoom(box) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve(box);
-  // The well's own chrome: the line along its top (the guess, the thing in
-  // hand), the foot (the camera, the readout), and the catalog while open.
   ins.t = Math.max(ins.t, PT_TOP_LINE);
   ins.b = Math.max(ins.b, PT_FOOT);
   ins.l = Math.max(ins.l, catalogReserve());
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
+  return { w, h, pad, ins, availW, availH };
+}
+function fitBox(box, animate, coMotion, whole = true) {
+  const { w, h, pad, ins, availW, availH } = fitRoom(box);
   // What it takes to hold the box, and no less than the readable fit: past
   // that the patch pans rather than shrinking out of reading.
   const contain = clamp(
@@ -15475,6 +15484,9 @@ function fitBox(box, animate, coMotion, whole = true) {
   t.x = fit(box.x + box.w - (w - pad) / z, box.x - pad / z, t.x);
   t.y = fit(box.y + box.h - (h - pad) / z, box.y - pad / z, t.y);
   viewUserSet = false;
+  // "Fit what you're on" is the player aiming the camera at a module; the
+  // whole patch's fit is the camera back at the patch.
+  viewAimed = !whole;
   if (animate) tweenView(t, motionMs(coMotion ? "--d-move" : "--d-state"), coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
 }
@@ -15583,20 +15595,32 @@ function aimCamera(coMotion) {
   // structural edit is compared against what is actually on screen.
   const hold = camHold;
   camHold = false;
+  // Another sound on the bench, not an edit of this one (`benchOpens`).
+  const another = camOpens !== benchOpens;
+  camOpens = benchOpens;
   // A fit to a frame that has never been on screen (the app opened in another
   // view) is a guess, not an aim: the first real showing fits without travel.
   if (!camAimed) { fitBox(contentBox(), false); camAimed = frameSeen != null; return; }
-  if (!hold && changed && (!viewUserSet || (!contentFullyVisible() && fitHolds(contentBox())))) fitBox(contentBox(), true, coMotion);
+  // A patch is fitted again when the player has not aimed the camera, or
+  // when it has grown out of what they aimed at. An edit to one the readable
+  // fit cannot hold is the exception: it is fitted again only when the
+  // camera is still at the fit, where the patch starts. Aimed anywhere else,
+  // by a hand or by the keys (End, the arrows, ".", PERFORM's hand-off), a
+  // fit would carry the player back to the start, away from the module they
+  // were working on, and still not show the whole patch; on a keyboard it
+  // once did, and left the focus off-screen. Another sound is framed as any
+  // patch is: it is not where they were working.
+  const box = contentBox();
+  const refit = !another && !fitHolds(box) ? !viewUserSet && !viewAimed : !viewUserSet || !contentFullyVisible();
+  if (!hold && changed && refit) fitBox(box, true, coMotion);
   else applyView();
 }
-/** Would the readable fit hold the whole of `box`? When it would not, a
- *  camera the player aimed stays where they put it after an edit: refitting
- *  would only carry them back to where the patch starts, away from the
- *  module they were working on, and still not show the whole patch. */
+/** Would the readable fit hold the whole of `box`, in the room a fit of it
+ *  has (`fitRoom`)? */
 function fitHolds(box) {
-  const { w, h } = frameSize();
+  const { availW, availH } = fitRoom(box);
   const z = Math.min(fitRead(), FIT_MAX);
-  return box.w * z <= w - 40 - catalogReserve() && box.h * z <= h - 40 - PT_TOP_LINE - PT_FOOT;
+  return box.w * z <= availW + 1 && box.h * z <= availH + 1;
 }
 
 /** Bring a control into view without the browser's help. `scrollIntoView` and
@@ -15615,6 +15639,8 @@ function ensureRackVisible(el) {
   if (r.top < f.top + m) dy = r.top - (f.top + m);
   else if (r.bottom > f.bottom - m) dy = r.bottom - (f.bottom - m);
   if (dx === 0 && dy === 0) return;
+  // The keys moving the camera are the player aiming it (`aimCamera`).
+  viewAimed = true;
   tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, motionMs("--d-state"));
 }
 

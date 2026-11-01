@@ -30,11 +30,15 @@
 //   taller than the well at 1440, at 1280 × 800 and on the phone, stays
 //   inside it too, cut to its height: End (or, on the phone, a scroll)
 //   brings its last row, delete, in.
+// - At 1280 × 800, where the patch is too big to fit, the keys carry the
+//   camera along it (End, ←), and an edit made there (that module deleted
+//   from its menu) leaves the camera where they put it; another sound too
+//   big to fit, opened from there, opens where it starts.
 // - The head's full depth budget (6/6) is amber at rest, as the tight one is,
 //   never red; an edit refused at that ceiling (a second filter in series)
 //   turns it red while the refusal is said, and it is amber again after.
-const { test, expect, goLevel } = require("./fixtures");
-const { rackAtRest } = require("./patch_page");
+const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { rackAtRest, settled } = require("./patch_page");
 
 const TYPE_FLOOR = 11; // --t-label
 const RACK_FLOOR = 9; // --t-rack-micro
@@ -175,6 +179,34 @@ async function wholeMenuInTheWell(page) {
   await page.keyboard.press("Escape");
   await expect(page.locator("#ctx-menu")).toBeHidden();
   return at;
+}
+
+/** Open the pool's row `id` on PATCH, its rack at rest; its name. */
+async function openRow(app, id) {
+  const { page } = app;
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`).first();
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  await row.click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText(name, { timeout }), { ms: 60_000 });
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+  return name;
+}
+/** The pool's row of the sound on the bench (`home`), and of another sound
+ *  too big to fit (`big`, a module past the well's right edge), opened one
+ *  by one until one is; the sound left open is that one. */
+async function bigOtherSound(app) {
+  const { page } = app;
+  const first = (await page.locator("#rack-subject").textContent()).trim();
+  await bankTab(page, "pool");
+  const ids = await page.locator("#bank-list .bank-item[data-id]").evaluateAll((rs) => rs.map((r) => r.getAttribute("data-id")));
+  let home = null;
+  for (const id of ids) {
+    const name = (await page.locator(`#bank-list .bank-item[data-id="${id}"] .bi-name`).first().textContent()).trim();
+    if (name === first) { home = id; continue; }
+    await openRow(app, id);
+    if (await page.locator("#pt-edge-r").isVisible()) return { big: id, home };
+  }
+  return { big: null, home };
 }
 
 test.describe("a phone, 390 × 844", () => {
@@ -322,6 +354,38 @@ test.describe("a laptop, 1280 × 800", () => {
   test("a module's whole structure menu scrolls inside the well on a laptop, clear of its foot", async ({ page, app }) => {
     await patchAtFit(app);
     expect((await wholeMenuInTheWell(page)).cut, "the whole menu, cut to the well").toBe(true);
+  });
+
+  test("an edit made from the keys far along a patch too big to fit leaves the camera there, and another sound opens where it starts", async ({ page, app }) => {
+    await patchAtFit(app);
+    const atRest = () => app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    const { big, home } = await bigOtherSound(app);
+    expect(big, "another sound of the pool too big to fit at 1280").not.toBeNull();
+    await openRow(app, home);
+    await expect(page.locator("#pt-edge-l")).toBeHidden();
+
+    // The keys carry the camera to the end of the patch, and back one module.
+    await page.locator("#rack-svg .rack-controls g.mod-group").first().focus();
+    await page.keyboard.press("End");
+    await atRest();
+    await page.keyboard.press("ArrowLeft");
+    await atRest();
+    await expect(page.locator("#pt-edge-l")).toBeVisible();
+    const aimed = await viewBox(page);
+    // That module deleted from its menu: the camera stays where the keys put it.
+    await page.keyboard.press("F2");
+    await page.locator("#ctx-menu .cm-item", { hasText: /^delete/ }).click();
+    await settled(app);
+    await atRest();
+    const after = await viewBox(page);
+    expect(Math.abs(after[0] - aimed[0]), `the camera's x, ${aimed[0].toFixed(0)} before the edit and ${after[0].toFixed(0)} after`).toBeLessThan(1);
+    expect(Math.abs(after[2] - aimed[2]), "the camera's zoom").toBeLessThan(1);
+    await expect(page.locator("#pt-edge-l")).toBeVisible();
+
+    // Another sound, from there, opens where it starts.
+    await openRow(app, big);
+    await expect(page.locator("#pt-edge-l")).toBeHidden();
+    await expect(page.locator("#pt-edge-r")).toBeVisible();
   });
 });
 

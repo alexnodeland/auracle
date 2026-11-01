@@ -10,7 +10,8 @@
   text, and a patch that is still too big shows where it starts, with the
   rest past the well's right edge: drag or swipe to it, press the edge's
   *n ›*, or open **MAP** to see it all. Once you've moved the camera over a
-  patch that big, an edit leaves it where you put it.
+  patch that big, with your hands or the keys, an edit leaves it where you
+  put it.
 - **Nothing on the rack is drawn too small to read.** Drawn smaller than
   its own size, each module's name prints larger, and the knob labels, the
   readouts and OUT's name step aside before they would print smaller than

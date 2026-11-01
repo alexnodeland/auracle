@@ -98,8 +98,9 @@ The camera's controls sit quietly in the well's bottom-left corner: **FIT**,
 Zoom runs from 0.30× to 2.50× by hand, and the rack fits its well when it
 opens (from 0.65×, where a module's name reads at the app's smallest text, up
 to 1.25×), clear of the well's top line, its foot, and the catalog while it is
-open. Once you have moved the camera, an edit to a patch that is too big to
-fit whole leaves it where you put it.
+open. Once you have moved the camera, by hand or with the keys (<kbd>End</kbd>,
+the arrows, <kbd>.</kbd>), an edit to a patch that is too big to fit whole
+leaves it where you put it; another sound opens where it starts.
 
 ### With the keyboard
 
