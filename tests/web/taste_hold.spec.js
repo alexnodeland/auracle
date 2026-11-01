@@ -45,7 +45,8 @@ async function openView(page, view) {
 }
 
 /** Where the map puts each pool sound, by the app's own layout, for the
- *  posted map's points or `points`. */
+ *  posted map's points or `points`; the mark's size (`s0`) and the distance
+ *  a mouse finds a sound from (`reach`, the app's `MAP_MARK_REACH` marks). */
 function mapPositions(page, points = null) {
   return page.evaluate(async (given) => {
     const geom = await import("/taste-geom.js");
@@ -59,6 +60,7 @@ function mapPositions(page, points = null) {
       out[track ? "pos" : "noTrack"] = Object.fromEntries([...geom.mapLayout(pts, f.box, f.minD)]);
       out.s0 = out.s0 || f.s0;
     }
+    out.reach = out.s0 * geom.MAP_MARK_REACH;
     return out;
   }, points);
 }
@@ -328,9 +330,8 @@ test("the track's room along the map is kept from the start: its first appearanc
   await installSoundAt(page);
   const time = page.locator("#taste-time");
   await expect(time).not.toHaveClass(/\bon\b/);
-  const { pos, noTrack, s0 } = await mapPositions(page);
+  const { pos, noTrack, reach } = await mapPositions(page);
   const ids = Object.keys(pos).map(Number);
-  const reach = s0 * 0.62;
   const gap = (id) => far(pos[id], noTrack[id]);
   // A point just inside the sound's reach on the side away from where it
   // would be without the track's room: its card comes up there only if the
