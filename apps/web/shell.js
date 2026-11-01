@@ -1117,16 +1117,17 @@ export function createShell(host = {}) {
   // foot keeping their height meanwhile (`kRest`: padding would not do, as
   // a flex item cannot shrink past its padding and the list would push the
   // foot out of the dialog), so its scroll and its scrollbar are the whole
-  // list's from the first frame. A choice, a scroll or a touch on it draws
-  // the rest at once. The rows are laid out once, in the frame: the row
-  // chosen is scrolled to only when the list was scrolled away from it.
+  // list's from the first frame. ↑ from the first row, a wheel or a touch
+  // on it, or a scroll down it draws the rest at once. The rows are
+  // laid out once, in the frame: the key's or the letter's task puts the
+  // list back at its top while it is empty, and asks the layout nothing of
+  // the rows it draws.
   let kSel = 0;
   let kRows = []; // the whole list's rows, in the order shown: [{item, marks, at, li}]
   let kPlan = []; // its lines: a group's name ({group}) or a row ({row})
   let kBuilt = 0; // how many of kPlan's lines are in the list
   let kGen = 0; // bumped on every draw: an idle step of an earlier one does nothing
   let kViewH = 0; // the window's height when the list opened
-  let kScrolled = false; // the list is scrolled away from its top
   let kH = null; // a row's and a group name's height, measured once drawn
   // The line at the list's foot that keeps the height of the rest.
   const kRest = document.createElement("li");
@@ -1310,6 +1311,11 @@ export function createShell(host = {}) {
     // Out first, so a command's `when` that reads the layout (is its
     // control shown?) does not lay out rows about to go.
     K.list.replaceChildren();
+    // Back to the top while the list is empty, so the layout this asks for
+    // has no rows to lay out, and the first row is in sight however the
+    // list was scrolled: by an arrow in this frame (whose scroll is not
+    // heard until the next), a wheel or a finger.
+    K.list.scrollTop = 0;
     const lines = cmdkLines(groups || cmdkList(kGroups(), K.input.value));
     kPlan = lines.plan;
     kRows = lines.rows;
@@ -1317,8 +1323,7 @@ export function createShell(host = {}) {
     kSel = 0;
     kBuild(cmdkFirst(kViewH || window.innerHeight));
     K.list.classList.toggle("none", !kRows.length);
-    // The first row is in sight unless the list was scrolled down.
-    kMark(0, kScrolled);
+    kMark(0, false);
     kRestSoon();
   }
   function kMark(i, scroll = true) {
@@ -1350,7 +1355,6 @@ export function createShell(host = {}) {
     K.scrim.classList.remove("hidden");
     K.btn?.setAttribute("aria-expanded", "true");
     K.input.focus({ preventScroll: true });
-    kScrolled = false;
     kDraw(groups);
     if (host.mark) host.mark("cmdk-open", { rows: kRows.length });
   }
@@ -1410,9 +1414,11 @@ export function createShell(host = {}) {
       kViewH = window.innerHeight;
       kWhole();
     });
+    // So does a scroll down the list. One that ends at its top shows the
+    // first lines, drawn already: a letter puts the list back there, and the
+    // scroll event that says so comes a frame later.
     K.list.addEventListener("scroll", () => {
-      kScrolled = K.list.scrollTop > 0;
-      kWhole();
+      if (K.list.scrollTop > 0) kWhole();
     }, { passive: true });
     if (K.btn) K.btn.addEventListener("click", (e) => (kOpen() ? kHide() : kShow({ pointer: e.detail > 0 })));
   }

@@ -12,7 +12,10 @@
 //   and the rest after (#513); the list stands at the whole list's height
 //   from the first frame, each row says where it stands in the whole list,
 //   ↑ from the first row chooses the last at once, and a hand on the
-//   list's scroll draws the rest at once.
+//   list's scroll draws the rest at once. A letter puts the list back at
+//   its top, its first row chosen and in sight, typed in the same frame as
+//   the arrows that scrolled it down too, and that scroll back draws no
+//   more than the rows in sight.
 // - Typing ranks a label's start first: "patch" puts PATCH's level first,
 //   ahead of the commands that only hold the word.
 // - ↵ runs the row chosen (the arrows choose), and the list closes; with
@@ -195,6 +198,46 @@ test("the key draws the rows in sight at once and the rest after, the list at it
   expect(moved.up.selected).toBe("true");
   expect(moved.up.place, "↑ from the first row chose the last").toBe(moved.up.of);
   expect(moved.wheeled, "the wheel drew every row").toBe(moved.whole);
+});
+
+test("a letter typed in the arrows' own frame shows its first row at the list's top, and draws only the rows in sight", async ({ page, app }) => {
+  // A window of a known height: its list shows about twenty lines, and
+  // TASTE's list for "e" holds over forty, which this test needs.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.boot();
+  // TASTE's commands ask the layout nothing, so nothing but the list itself
+  // brings it back to its top.
+  await app.level("taste");
+  await page.keyboard.press("Meta+k");
+  await expect(list(page)).toBeVisible();
+  await listWhole(page);
+  const at = await page.evaluate(async () => {
+    const input = document.getElementById("cmdk-input");
+    const ul = document.getElementById("cmdk-list");
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const key = (k) => input.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: k, bubbles: true }));
+    // Twenty ↓ and a letter in one task, as keys typed during a long task
+    // are handled: no frame, and so no scroll event, between them.
+    for (let i = 0; i < 20; i++) key("ArrowDown");
+    const down = ul.scrollTop;
+    input.value = "e";
+    input.dispatchEvent(new Event("input"));
+    // The next frame: its scroll event has been heard, the idle steps not.
+    await frame();
+    const rows = ul.querySelectorAll(".cmdk-it");
+    const drawn = rows.length;
+    const whole = Number(rows[0].getAttribute("aria-setsize"));
+    await frame();
+    const chosen = document.getElementById(input.getAttribute("aria-activedescendant"));
+    const box = ul.getBoundingClientRect();
+    const r = chosen.getBoundingClientRect();
+    return { down, top: ul.scrollTop, drawn, whole, chosen: chosen.id, inSight: r.top >= box.top - 1 && r.bottom <= box.bottom + 1 };
+  });
+  expect(at.down, "twenty ↓ scrolled the list").toBeGreaterThan(0);
+  expect(at.chosen).toBe("cmdk-o0");
+  expect(at.inSight, `the first row, chosen, is in sight (the list stood ${at.top} px down)`).toBe(true);
+  expect(at.top, "the list is back at its top").toBe(0);
+  expect(at.drawn, "the letter's frame holds the rows in sight, not every row").toBeLessThan(at.whole);
 });
 
 test("typing ranks a label's start first, ↵ runs the row chosen, and with nothing found leaves the list open", async ({ page, app }) => {
