@@ -257,11 +257,12 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   (`openOnBench`, or `openPreset` with no move), at the level shown.
 - **It is drawn a window at a time** (#513). The key or the letter ranks the
   whole list and draws the lines that fill it at its tallest (`cmdkLines`,
-  `cmdkFirst`: about twenty at 900 px), and the rest come in idle time
-  from the frame that shows those, eight lines a call
-  (`requestIdleCallback`, a 16 ms timer where there is none; asked for in
-  the letter's own task, a letter typed just after a frame had the rest
-  drawn ahead of its own frame). A line at the list's foot keeps their height
+  `cmdkFirst`: about twenty at 900 px), and the rest come in idle time,
+  eight lines a call (`requestIdleCallback`, or a 16 ms timer where there
+  is none). They are asked for from the frame that shows the first lines,
+  not from the letter's own task: asked for there, a letter typed just
+  after a frame had the rest drawn in that frame's idle time, ahead of its
+  own frame. A line at the list's foot keeps their height
   (`cmdkRestPx`, with the rows' own heights once measured), so the list's
   scroll and scrollbar are the whole list's from the first frame; padding
   would not do, as a flex item cannot shrink past its padding. ↑ from the
