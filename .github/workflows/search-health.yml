@@ -24,10 +24,10 @@
 #     tested green runs nothing (the `scope` job, scripts/ci_skip.py, #582):
 #     the measurements are seeded, so the same commit gives the same
 #     tables, and that run's summary has them. Over Oct 18 to 29, when main
-#     did not move, that was 11 of 12 nights, about 125 runner-minutes each,
+#     did not move, that was all 12 nights, about 125 runner-minutes each,
 #     at the hours the merge queue runs (GitHub starts the cron 4.5 to 7
-#     hours late: from 08:51 to 11:17 UTC over Oct 18 to Nov 1). The skip and the run whose answer stands are said in the
-#     run's summary. A run by hand always runs, and anything that keeps the
+#     hours late: from 08:51 to 11:17 UTC over Oct 18 to Nov 1). The skip
+#     and the run whose answer stands are said in the run's summary. A run by hand always runs, and anything that keeps the
 #     job from deciding is a run, never a skip and never red.
 name: Search health
 

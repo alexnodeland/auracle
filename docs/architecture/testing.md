@@ -521,8 +521,9 @@ answer stands:
 - **A nightly run of the *Slow suite* or of *Search health* when `main`'s
   head is the commit** the last scheduled run that tested anything tested
   green. Both are seeded, so the same commit gives the same answer. Over
-  Oct 18 to 29, when `main` did not move, each would have run on 1 of the
-  12 nights (about 1,900 runner-minutes saved between them).
+  Oct 18 to 29, when `main` did not move, each would have run on none of
+  the 12 nights, since both had tested that commit green on Oct 17 (about
+  2,100 runner-minutes saved between them).
 - **Never the *Flake hunt*:** it boots unseeded, so the same commit can show
   a new flake.
 

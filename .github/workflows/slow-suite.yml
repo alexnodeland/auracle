@@ -63,7 +63,7 @@ name: Slow suite
 #   The nightly run, on a night when main's head is the commit the last
 #   scheduled run that tested anything tested green, runs nothing: these
 #   tests are seeded, so the same commit gives the same answer (over Oct
-#   18 to 29, when main did not move, that was 11 of 12 nights). Each skip
+#   18 to 29, when main did not move, that was all 12 nights). Each skip
 #   says why in the run's summary, with the run whose answer stands
 #   (scripts/ci_skip.py), and anything that keeps the `scope` job from
 #   deciding is a run, never a skip and never red.
