@@ -5006,6 +5006,15 @@ function positionToastLane({ fresh = false } = {}) {
   const level = document.body.dataset.level;
   const prefer = phone ? (PHONE_FROM_TOP.has(level) ? "top" : "bottom") : "corner";
   const { reserved, pictures, strips, guide } = laneObstacles();
+  // On a phone, a banner across the screen that meets a control standing
+  // along a picture's side is first narrowed to the picture's inside
+  // between such controls (toasts.js `bannerColumn`), the picture nearest
+  // the level's foot first, still clear of every control and the guide
+  // pill: PATCH's edges (*n ›*, *‹ n*), shown while the patch is wider than
+  // the well, run down the well's sides from 48 px below its top to 48 px
+  // above its foot, and a banner across the screen met the right one at
+  // every height (#519). Only a picture with such a control has a column,
+  // so PERFORM's, EVOLVE's and the rest's steps below are as they were.
   // Nowhere free of every control (a level crowded at this size: PERFORM on
   // a small phone, the XY pad or HOW IT WORKS filling the well), it steps
   // down:
@@ -5018,15 +5027,10 @@ function positionToastLane({ fresh = false } = {}) {
   //  - elsewhere, the toast is narrowed to the inside of a picture, the
   //    nearest its corner first (PERFORM's well on a phone on its side is a
   //    little narrower than a toast, and the controls fill the rest);
-  //  - on a phone, the banner is narrowed to the inside of a picture whose
-  //    sides have controls standing along them, between those controls
-  //    (toasts.js `bannerColumn`), at its own shape and then one row, the
-  //    picture nearest the level's foot first: PATCH's edges (*n ›*), shown
-  //    while the patch is wider than the well, run down the well's sides
-  //    from 48 px below its top to 48 px above its foot, and a banner
-  //    across the screen met the right one at every height (#519). One row
-  //    is tried only where the column is LANE_NARROWEST or wider; at its own
-  //    shape the action goes under the words when they need the room;
+  //  - on a phone, the banner in a column again, over the guide pill now,
+  //    at its own shape and then, where the column is LANE_NARROWEST or
+  //    wider, one row (at its own shape the action goes under the words
+  //    when they need the room);
   //  - then clear of the teaching strips and the panels at least, as the
   //    lane always was, and failing that, its corner.
   const yielding = guide ? reserved.filter((r) => r !== guide) : reserved;
@@ -5050,20 +5054,28 @@ function positionToastLane({ fresh = false } = {}) {
   };
   const rungs = [
     { keep: reserved },
+    ...columns.map((c) => ({ keep: reserved, column: true, shape: inColumn(c, false) })),
     ...(guide ? [{ keep: yielding }] : []),
     ...(phone ? [{ keep: yielding, shape: () => holder.classList.add("tight") }] : []),
     ...narrower.map(({ w }) => ({ keep: yielding, shape: () => { holder.style.maxWidth = `${w}px`; } })),
     ...columns.flatMap((c) => [
-      { keep: yielding, column: true, shape: inColumn(c, false) },
+      ...(guide ? [{ keep: yielding, column: true, shape: inColumn(c, false) }] : []),
       ...(c.right - c.left >= LANE_NARROWEST ? [{ keep: yielding, column: true, shape: inColumn(c, true) }] : []),
     ]),
   ];
   let kept = reserved;
   let at = null;
-  // Placed in a column (`bannerColumn`): already narrowed, `insetBanner`
-  // has nothing to do.
+  // In a column (`bannerColumn`), and if placed there already narrowed:
+  // `insetBanner` has nothing to do.
   let inAColumn = false;
   for (const rung of rungs) {
+    // Out of a column, the banner is across the screen again.
+    if (inAColumn && !rung.column) {
+      holder.style.left = "";
+      holder.style.right = "";
+      size = measured();
+    }
+    inAColumn = !!rung.column;
     if (rung.shape) {
       rung.shape();
       size = measured();
@@ -5072,20 +5084,18 @@ function positionToastLane({ fresh = false } = {}) {
     const t = rung.column ? holder.getBoundingClientRect() : null;
     at = placeLane({ size, bounds: t ? { ...bounds, left: t.left, right: t.right } : bounds, reserved: rung.keep, pictures, prefer });
     kept = rung.keep;
-    if (at) {
-      inAColumn = !!rung.column;
-      break;
-    }
+    if (at) break;
   }
   if (!at && narrower.length) {
     holder.style.maxWidth = "";
     size = measured();
   }
-  if (!at && columns.length) {
+  if (!at && inAColumn) {
     holder.style.left = "";
     holder.style.right = "";
     holder.classList.add("tight");
     size = measured();
+    inAColumn = false;
   }
   if (!at) {
     at = placeLane({ size, bounds, reserved: strips, prefer })

@@ -2420,6 +2420,23 @@ while it is on the toast (the lane's own pointerenter and pointerleave, and
 touch screen leaves `:hover` on what a finger last tapped, and read alone it
 held the banner over the XY pad opened under it after a tap on its words.
 
+On a phone held upright, a banner across the screen that meets a control
+standing along a picture's side is first narrowed to the picture's inside
+between such controls (`bannerColumn` in toasts.js: a control within the
+picture's height, at least half as tall, reaching to within `LANE_INSET`
+of a side), still clear of every control and the guide pill. That is
+PATCH's rack while the patch is wider than the well (#519): its edges
+(*n ›*, *‹ n*) run down the well's sides from 48 px below its top to 48 px
+above its foot, and a banner across the screen meets them at every height
+but the well's top, 32 px of free band where one row needs 46. The banner
+stands left of *n ›*, over the rack's floor above its foot: at 21 to 325
+px across at 390 × 844 (the edge from 333) and 21 to 310 at 375 × 667
+(from 318), and between the two edges once the camera is inside the patch
+(65 to 310 at 375 × 667). On PATCH's first visit its steps stay in sight
+in the pill under the well, which the banner across the screen stood over
+before. No other picture has such a control, so what follows is as it
+was for every other level.
+
 With no spot free of every control (a level crowded at its size), it
 steps down until one is:
 
@@ -2438,18 +2455,9 @@ steps down until one is:
    nearest its corner first, down to `LANE_NARROWEST` (240 px): PERFORM's
    well on a phone on its side, a little narrower than a toast, with the
    controls filling the rest;
-4. on a phone held upright, the banner is narrowed to the inside of a
-   picture between the controls that stand along its sides (`bannerColumn`
-   in toasts.js: a control within the picture's height, at least half as
-   tall, reaching to within `LANE_INSET` of a side), at its own shape and
-   then, in a column `LANE_NARROWEST` or wider, one row. That is PATCH's
-   rack while the patch is wider than the well (#519): its edges (*n ›*,
-   *‹ n*) run down the well's sides from 48 px below its top to 48 px above
-   its foot, and a banner across the screen meets them at every height but
-   the well's top, 32 px of free band where one row needs 46. The banner
-   stands left of *n ›*, at 21 to 325 px across at 390 × 844 (the edge from
-   333) and 21 to 310 at 375 × 667 (from 318), and between the two edges
-   once the camera is inside the patch (65 to 310 at 375 × 667);
+4. on a phone held upright, the banner in a picture's column again (above),
+   over the guide pill now, at its own shape and then, in a column
+   `LANE_NARROWEST` or wider, one row;
 5. then it keeps clear of the strips and panels, as it did before #517,
    and failing that stands in its corner.
 
@@ -2467,20 +2475,22 @@ the top, under the cards' corners, where no thumb starts the swipe that
 picks. Over one picture (PERFORM's well, the rack, TASTE's map) it is
 narrowed to the picture's inside, as a caption is, rather than laid across
 its frame (`insetBanner`), and over the rack with PATCH's edges up, to the
-part between them (rung 4). Its counter keeps to its words' row where the
-row has room for it. A swipe up puts it away. It used to stand just under
-the menu bar, over PERFORM's share button and KEEP/BACK, EVOLVE's pips and
-its small TASTE map. On a phone on its side a banner as wide as the screen
-finds no band clear of the controls beside the well, so the toast there is
-as wide as its words and placed as on a desk, left of the levels' stops.
+part between them (`bannerColumn`, above). Its counter keeps to its words'
+row where the row has room for it. A swipe up puts it away. It used to
+stand just under the menu bar, over PERFORM's share button and KEEP/BACK,
+EVOLVE's pips and its small TASTE map. On a phone on its side a banner as
+wide as the screen finds no band clear of the controls beside the well, so
+the toast there is as wide as its words and placed as on a desk, left of
+the levels' stops.
 `toasts_keep_clear.spec.js` holds all of this at 1440 × 900, 1280 × 720,
 820 × 1180, 390 × 844, 375 × 667 and 844 × 390.
 
 The controls drawn on TASTE's map and PATCH's rack are not kept clear of
 (`LANE_SURFACES`): their sounds and modules reach to every corner, and there
 is nowhere clear of them to go. PATCH's edges are not drawn on the rack but
-stand over it in its frame, and are kept clear of like any control. On TASTE a toast lets the pointer through to
-the sound under it, and only its buttons and links take a click (#412).
+stand over it in its frame, and are kept clear of like any control. On TASTE
+a toast lets the pointer through to the sound under it, and only its buttons
+and links take a click (#412).
 
 A toast that reports a change to the player's sounds (`bank: true`: a sound
 joined or left the pool, or was saved or released) has its turn whatever

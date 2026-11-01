@@ -30,7 +30,8 @@
 //   each of which must be in the level (a phone hides EVOLVE's title).
 // - On a phone held upright at PATCH, with the patch wider than the well,
 //   the toast stands clear of the edges (*n ›*, and *‹ n* once a tap on
-//   *n ›* brings it up under the toast), which are controls like any other.
+//   *n ›* brings it up under the toast), which are controls like any other,
+//   and on PATCH's first visit the guide pill does not give way to it.
 // - On a phone, a swipe up on the banner puts it away: the swipe itself
 //   (`.swiped`, which nothing but a swipe adds), not its window running out.
 // - A change under the receipt (what each generation did, opened from the
@@ -292,6 +293,26 @@ test.describe("a phone, 375 × 667, PATCH's edges", () => {
     await page.locator("#pt-edge-r").tap();
     await expect(page.locator("#pt-edge-l"), "‹ n: a module past the well's left edge too").toBeVisible();
     await expect.poll(() => covered(page, "patch", false), { message: "what a pick's receipt covers at patch, both edges up", timeout: SETTLE_MS }).toEqual([]);
+  });
+
+  // On PATCH's first visit its steps are up in the guide pill, under the
+  // well. The banner across the screen found no band over the rack, and
+  // stood over the pill, which gave way (unseen, its × out of reach) though
+  // the rack beside *n ›* had room: the column is tried before the pill
+  // gives way.
+  test("on a phone, on PATCH's first visit, a toast over the rack stands beside n › and leaves the guide pill in sight", async ({ page, app }) => {
+    await app.boot({ seen: false });
+    await receiptAt(page, app, "patch");
+    await expect(page.locator("#pt-edge-r"), "n ›: the patch is wider than the well at its fit").toBeVisible();
+    await expect(page.locator("#guide"), "PATCH's first steps").toBeVisible();
+    await expect.poll(() => covered(page, "patch", false), { message: "what a pick's receipt covers at patch, the guide pill up", timeout: SETTLE_MS }).toEqual([]);
+    // Read once, with the receipt still up: a retried assertion would pass
+    // once the receipt's window ran out and the pill came back.
+    const at = await page.evaluate(() => ({
+      receipt: [...document.querySelectorAll("#toasts .toast:not(.out)")].some((t) => /^Picked .+ over .+/.test(t.textContent)),
+      pillAside: document.getElementById("guide").classList.contains("under-toast"),
+    }));
+    expect(at, "the guide pill in sight beside the receipt").toEqual({ receipt: true, pillAside: false });
   });
 });
 
