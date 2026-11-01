@@ -371,7 +371,9 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
   "pool"|"saved"|"presets")`, into the model view with `modelView(page,
   on)`, and run a command from ⌘K's list with `runCommand(page, label)`
   (⌘K's button, the label typed, its row clicked; `commandRow(page, label)`
-  is the row), from `shell.js` (re-exported by `fixtures.js`). What the ⋯
+  is the row; `listWhole(page)` waits for the list to be drawn whole, which
+  a read of every row needs, as the rest comes in idle time after the rows
+  in sight, #513), from `shell.js` (re-exported by `fixtures.js`). What the ⋯
   menu held are commands there, and the ? card is gone (Plan-008 PR D). A bank row's guess
   (`.bi-pct`, `.bi-u`) shows only under the model view, its actions
   (`.bi-acts`) only on approach, and its stars through ★ or the 1–5 keys;

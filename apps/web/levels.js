@@ -233,24 +233,42 @@ export function pinchStep(ratio) {
 export function rank(q, s) {
   const k = String(q || "").trim().toLowerCase();
   if (!k) return 1;
-  const l = String(s || "").toLowerCase();
+  const { l, starts } = labelOf(s);
   if (l.startsWith(k)) return 100 - l.length * 0.05;
-  const wi = wordStarts(l).findIndex((at) => l.startsWith(k, at));
+  const wi = starts.findIndex((at) => l.startsWith(k, at));
   if (wi >= 0) return 80 - wi;
   const ci = l.indexOf(k);
   if (ci >= 0) return 60 - ci * 0.2;
   return fuzzy(k, l) ? 20 : -1;
 }
 
+const WORD = /[\p{L}\p{N}]/u;
 /** Where each word of a label starts: after anything that is not a letter or
  *  a digit. */
 function wordStarts(l) {
   const at = [];
   for (let i = 0; i < l.length; i++) {
-    const word = /[\p{L}\p{N}]/u.test(l[i]);
-    if (word && (i === 0 || !/[\p{L}\p{N}]/u.test(l[i - 1]))) at.push(i);
+    const word = WORD.test(l[i]);
+    if (word && (i === 0 || !WORD.test(l[i - 1]))) at.push(i);
   }
   return at;
+}
+// A label in lower case and where its words start, kept: the list ranks
+// every label again at every letter (#513). Labels come and go (a sound's
+// name, a setting's state), so the store is emptied when it grows past
+// LABELS_KEEP.
+const LABELS = new Map();
+const LABELS_KEEP = 2000;
+function labelOf(s) {
+  const key = String(s || "");
+  let hit = LABELS.get(key);
+  if (!hit) {
+    const l = key.toLowerCase();
+    hit = { l, starts: wordStarts(l) };
+    if (LABELS.size >= LABELS_KEEP) LABELS.clear();
+    LABELS.set(key, hit);
+  }
+  return hit;
 }
 
 /** A query's letters in a label, in order and case aside: where each falls
@@ -269,10 +287,10 @@ export function fuzzy(q, s) {
 export function hitMarks(q, s) {
   const k = String(q || "").trim().toLowerCase();
   if (!k) return [];
-  const l = String(s || "").toLowerCase();
+  const { l, starts } = labelOf(s);
   const run = (from) => Array.from({ length: k.length }, (_, i) => from + i);
   if (l.startsWith(k)) return run(0);
-  const w = wordStarts(l).find((at) => l.startsWith(k, at));
+  const w = starts.find((at) => l.startsWith(k, at));
   if (w != null) return run(w);
   const ci = l.indexOf(k);
   if (ci >= 0) return run(ci);
@@ -309,4 +327,59 @@ export function cmdkList(groups, q) {
   }
   if (k) out.sort((a, b) => b.best - a.best);
   return out.map(({ name, hits }) => ({ name, hits }));
+}
+
+// ---------- ⌘K: drawing the list a window at a time (#513) ----------
+// A key or a letter draws the rows the list can show in its own task, and
+// the rest a few at a time once the frame is up. The whole list rebuilt at
+// every letter (fifty rows and more, each built, laid out in the letter's
+// own task to scroll to the first, and painted) was over its 100 ms on the
+// reference profile. The list keeps the height of the rows still to come,
+// so its scroll and its scrollbar are the whole list's from the first
+// frame.
+
+/** The least height of a row (style.css `.cmdk-it`; on a touch screen,
+ *  `CMDK_ROW_TOUCH_PX`) and the height of a group's name over its rows, in
+ *  px: what the list keeps for lines not drawn until it has measured its
+ *  own. */
+export const CMDK_ROW_PX = 40;
+export const CMDK_ROW_TOUCH_PX = 48;
+export const CMDK_GROUP_PX = 32;
+/** How tall the list can stand, as a share of the window (style.css
+ *  `.cmdk`'s `max-height`). */
+export const CMDK_TALL = 0.72;
+
+/** The list in the order it is shown: `plan`, an entry for each line (a
+ *  group's name, `{group}`, or a row, `{row}`, its index in `rows`), and
+ *  `rows`, each hit of `cmdkList` with `at`, its line in `plan`. */
+export function cmdkLines(groups) {
+  const plan = [];
+  const rows = [];
+  for (const g of groups || []) {
+    plan.push({ group: g.name });
+    for (const hit of g.hits || []) {
+      plan.push({ row: rows.length });
+      rows.push({ ...hit, at: plan.length - 1 });
+    }
+  }
+  return { plan, rows };
+}
+
+/** How many lines to draw at once in a window `viewH` px tall: as many as
+ *  fill the list at its tallest, each at a row's least height, and a group's
+ *  name more for each group (a name is shorter than a row), so the rows the
+ *  list shows are always drawn. At least one screen's worth for a window
+ *  that has not said its height. */
+export function cmdkFirst(viewH, groups = 3) {
+  const h = Number.isFinite(viewH) && viewH > 0 ? viewH : 900;
+  return Math.ceil((h * CMDK_TALL) / CMDK_ROW_PX) + Math.max(0, groups);
+}
+
+/** The height, in px, of the lines of `plan` from `built` on: what the list
+ *  keeps for them until they are drawn. `row` and `group` are a row's and a
+ *  group name's height. */
+export function cmdkRestPx(plan, built, { row = CMDK_ROW_PX, group = CMDK_GROUP_PX } = {}) {
+  let px = 0;
+  for (let i = Math.max(0, built); i < (plan || []).length; i++) px += plan[i].group != null ? group : row;
+  return px;
 }
