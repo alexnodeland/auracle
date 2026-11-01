@@ -20,12 +20,20 @@
 //   while something is played or a trace is still fading, and draws only the
 //   faces on screen; under reduced motion it never runs, and the faces stay
 //   still. What each frame draws is decided here, on the page; the canvas
-//   calls are live-paint.js's, made in a worker of their own on canvases
-//   handed to it, where the browser can (the glow is a blur that a browser
-//   drawing on the CPU makes on the thread that asks: #512), and here where
-//   it cannot. One frame is in the worker at a time: the loop sends the next
-//   once the last is painted, so a frame there is a frame here, as slow a
-//   machine as it is.
+//   calls are live-paint.js's, made in a worker of their own, the face
+//   painter (the glow is a blur that a browser drawing on the CPU makes on
+//   the thread that asks: #512). It paints each layer on an OffscreenCanvas
+//   of its own and answers the frame with a picture of each, which the
+//   face's layer here, a `bitmaprenderer` canvas, shows as it is: so a frame
+//   is shown one round trip after it is read (the next frame, where the
+//   painter takes a few ms). No canvas of the page's is handed to it
+//   (`transferControlToOffscreen`: in Firefox without a window that froze
+//   the audio for seconds at a time). One frame is in the worker at a time:
+//   the loop reads, eases and fades the next only once the last is
+//   answered, so the trail is the same at whatever rate the painter paints.
+//   With no painter, a canvas with no `bitmaprenderer` context, a painter
+//   that errs, or a frame it answers `failed`, the layers are made again as
+//   2D canvases and painted here, by the same calls.
 //
 // ADR-012: what moves is a measurement of what is heard, never a guess. A face
 // listens only to the signal that is its own sound (main.js says which: the
@@ -224,10 +232,14 @@ export const traceReach = (scale) => (18 + 56) * scale * 2 + 4;
  *  - `silk()`: the live outline's color.
  *  - `flightHears(frame)`: what the face in flight hears (it is the sound in
  *    hand's).
- *  - `paintWorker()`: a new worker running live-paint.js, which paints the
- *    layers on canvases handed to it; with none (or a canvas that cannot be
- *    handed over, or a worker that fails) they are painted here, the same
- *    calls on the same canvases.
+ *  - `paintWorker()`: a new worker running live-paint.js (the face
+ *    painter), started while the page is idle (`warm`, never under reduced
+ *    motion) or at the first face drawn. It paints each layer on an
+ *    OffscreenCanvas of its own and answers each frame with a picture of
+ *    each, which the layer shows (`bitmaprenderer`). With none, a canvas
+ *    with no `bitmaprenderer` context, a worker error or `messageerror`, or
+ *    a frame answered `failed`, the layers are made again as 2D canvases and
+ *    painted here, by the same calls.
  *  - `raf`, `now`, `doc`, `dpr`: the page's, handed in for the tests.
  *
  *  `add({place})` adds a face. `place(p, frame)` says each frame where it is
@@ -265,13 +277,9 @@ export function createLiveFaces({
   let frameNo = 0;
   let pending = false;
   const counts = { frames: 0, reads: 0, measures: 0, posted: 0, painted: 0 };
-  // The worker that paints the layers (live-paint.js), once started: the
-  // frame sent and whether it is painted yet, and each face's frame for the
-  // next. It paints each layer on a canvas of its own and answers with a
-  // picture of it, which the page's layer shows as it is
-  // (`transferFromImageBitmap`): a canvas the page hands to a worker
-  // (`transferControlToOffscreen`) froze the audio for seconds at a time in
-  // Firefox without a window (the specs', and CI's), and this does not.
+  // The face painter (live-paint.js's worker, see the top), once started:
+  // the frame sent and whether it is answered yet, and each face's frame
+  // for the next.
   let painter = null;
   let painterTried = false;
 

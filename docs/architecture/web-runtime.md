@@ -1231,9 +1231,12 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   layer on an `OffscreenCanvas` of its own with the same calls
   (`paintLayer`) and answers the frame with a picture of each
   (`createImageBitmap`), which the layer shows as it is
-  (`transferFromImageBitmap` on a `bitmaprenderer` canvas). One frame is in
-  the worker at a time: the loop reads, eases and fades a frame only once
-  the last is answered, so the trail is the same at whatever rate the
+  (`transferFromImageBitmap` on a `bitmaprenderer` canvas). So a frame is
+  shown one round trip after it is read: the frame after, where the painter
+  takes a few ms, and two or three frames after where it takes 30 ms;
+  painted on the main thread it showed in the frame that read it. One frame
+  is in the worker at a time: the loop reads, eases and fades a frame only
+  once the last is answered, so the trail is the same at whatever rate the
   worker paints. The two outlines glow (`shadowBlur`), and a browser that
   draws a canvas on the CPU blurs them on the thread that asks: on the main
   thread, in Firefox on an M3 Max at the Air's Retina scale (×2), a key

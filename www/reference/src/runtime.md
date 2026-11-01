@@ -1,6 +1,6 @@
 # The web runtime
 
-<p class="lede">Four thread kinds, one wasm binary, and a set of constraints that shaped
+<p class="lede">Five thread kinds, one wasm binary, and a set of constraints that shaped
 the architecture more than any design preference did.</p>
 
 <!-- film:dsp -->
@@ -20,6 +20,7 @@ the architecture more than any design preference did.</p>
 | **Main** | UI, Web Audio graph | `main.js`, never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js`: pool fill, fits, refinement, workbench |
 | **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation’s walks and ⚡, `task → posterior` for a refit |
+| **Face painter** | An `OffscreenCanvas` for each face of a sound being played, nothing else | `live-paint.js`: each frame of what is drawn over those faces, answered with a picture of each |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -30,6 +31,18 @@ thread.
 No nested workers (Safari shipped those only in 16.4), no `SharedArrayBuffer`,
 no COOP/COEP headers, no build step, and no server change. Those constraints are
 why the topology is a star around the engine worker rather than a tree.
+
+The face painter is main's own, outside that star, and holds no wasm. The
+face of a sound being played answers what is heard
+([the guide](../docs/faces.html#while-you-play-it)): each frame, main
+measures what is heard and decides what is drawn over each such face (each
+outline's points, color and glow, and the trail's fade); the painter makes
+those canvas calls and answers with a picture of each face, which main shows
+as it is, so a frame is shown one round trip after it is read. The glow is a blur, and a browser that draws canvases on the CPU
+makes it on the thread that asks: on the main thread, in Firefox on a Retina
+screen, that was 7 ms of every frame. One frame is with the painter at a
+time. Main paints the faces itself, with the same calls, where the painter
+cannot run.
 
 ## The AudioWorklet’s hostile environment
 
