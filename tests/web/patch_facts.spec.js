@@ -27,8 +27,8 @@
 //
 // The worker is reached through the fixture's tap (fixtures.js): the faces
 // a page asks for, with their trees, and every face it is handed back.
-const { test, expect, goLevel } = require("./fixtures");
-const { openPreset } = require("./patch_page.js");
+const { test, expect, goLevel, bankTab } = require("./fixtures");
+const { openPreset, rackAtRest, knobInReach } = require("./patch_page.js");
 const { FLOOR_MS } = require("./perform_budget.js");
 
 /** Select a module on the canvas by its kind, as a press on its plate does. */
@@ -218,7 +218,7 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
 });
 
-test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: ["@slow", "@quarantine"], annotation: { type: "issue", description: "#590" } }, async ({ page, app }) => {
+test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(120_000); // about 45 s on CI, most of it ⚡'s walk
   await app.boot({ warmed: false });
   await app.warmStart();
@@ -231,6 +231,9 @@ test("a bred sound shows what its generation changed: from its seed and how many
     return id !== s && window.__tap.last.bench && window.__tap.last.bench.subject === id ? id : null;
   }, seedId), { timeout }).not.toBeNull(), { ms: 240_000 });
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
+  // The child's arrival played out (the camera's fit is a tween): a knob is
+  // pressed where it rests, below.
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
   // What the engine recorded of it, and what the canvas should mark.
   const want = await page.evaluate(() => {
     const id = window.__aur.wb.subjectId;
@@ -250,7 +253,7 @@ test("a bred sound shows what its generation changed: from its seed and how many
     for (const m of window.__aur.wb.rack.modules) for (const k of m.knobs) knobs[k.addr] = k;
     const pointers = Object.entries(seeds).filter(([a, b]) => knobs[a] && knobs[a].kind.t === "continuous" && Math.abs(Number(b) - knobs[a].value) >= 0.004 &&
       document.querySelector(`#rack-svg .rack-controls [data-addr="${CSS.escape(a)}"]`));
-    return { parent: ev.parent_id, ticked: plates.filter((k) => keys.has(k)).sort(), pointers };
+    return { child: id, parent: ev.parent_id, ticked: plates.filter((k) => keys.has(k)).sort(), pointers };
   });
   expect(want.parent).toBe(seedId);
   expect(want.ticked.length, "the generation changed something on the canvas").toBeGreaterThan(0);
@@ -263,23 +266,24 @@ test("a bred sound shows what its generation changed: from its seed and how many
   expect(at.from).toMatch(/^from Reese · \d+ changes?$/);
   expect(at.ticked).toEqual(want.ticked);
   expect(at.pointers.sort()).toEqual(want.pointers.map(([a, b]) => [a, Number(b).toFixed(2)]).sort());
-  // The count is the bank row's: its line lists the same changes.
-  const rowParts = await page.evaluate((id) => {
-    const t = document.querySelector(`#bank-list .bank-item[data-id="${id}"] .bi-from`)?.textContent || "";
-    const m = /^from .+? · (.*?)(?:, \+(\d+) more)?$/.exec(t);
-    return m ? m[1].split(", ").length + Number(m[2] || 0) : null;
-  }, await page.evaluate(() => window.__aur.wb.subjectId));
-  if (rowParts != null) expect(at.from).toContain(`· ${rowParts} change`);
 
   // An edit: the bench is no longer the child as bred, and the marks go.
-  const hit = page.locator("#rack-svg g[data-addr] > .knob-hit").first();
-  const b = await hit.boundingBox();
+  // Turned on a knob a press reaches: a child wider than the well runs past
+  // its right edge, whose chip lies over the knob at the chain's end, and a
+  // press on the chip pans the rack, turning nothing (#590).
+  const knob = await knobInReach(page);
+  expect(knob, "a knob on the canvas a press reaches").not.toBeNull();
   const t0 = await app.now();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.move(knob.x, knob.y);
   await page.mouse.down();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 30, { steps: 5 });
+  await page.mouse.move(knob.x, knob.y + knob.dy, { steps: 5 });
   await page.mouse.up();
-  await app.reply("bench", { after: t0 });
+  // The turn goes to the engine as the hand lets go (behind any edit still
+  // in the bench lane), and its answer lands.
+  await app.engine((timeout) => expect.poll(async () => (await app.sent("edit_param", { after: t0 })).length,
+    { timeout, message: "the turn was sent to the engine" }).toBeGreaterThan(0), { ms: 30_000 });
+  const [turn] = await app.sent("edit_param", { after: t0 });
+  await app.replyTo(turn);
   await expect(page.locator("#rack-meta .pt-from")).toHaveCount(0);
   await expect(page.locator("#rack-svg .lineage-tick, #rack-svg .knob-seed")).toHaveCount(0);
   // Undo to as opened: the child as bred again, and its marks with it.
@@ -289,6 +293,20 @@ test("a bred sound shows what its generation changed: from its seed and how many
   await expect(page.locator("#rack-meta .pt-from")).toHaveText(at.from);
   await expect.poll(async () => (await marks()).ticked).toEqual(want.ticked);
   await expect(page.locator("#rack-svg .knob-seed")).toHaveCount(want.pointers.length);
+
+  // The count is the bank row's: its line lists the same changes, the first
+  // three and "+N more". The child is a pool sound, on POOL; PRESETS, where
+  // Reese was opened, has no row for it. Read last, so the bank redrawn
+  // under another tab cannot move the rack before the turn above.
+  await bankTab(page, "pool");
+  const rowFrom = page.locator(`#bank-list .bank-item[data-id="${want.child}"] .bi-from`);
+  await expect(rowFrom).toHaveText(/^from Reese · /);
+  const rowParts = await rowFrom.evaluate((el) => {
+    const m = /^from .+? · (.*?)(?:, \+(\d+) more)?$/.exec(el.textContent);
+    return m ? m[1].split(", ").length + Number(m[2] || 0) : null;
+  });
+  expect(rowParts, "the bank row's from line names its changes").not.toBeNull();
+  expect(at.from).toContain(`· ${rowParts} change`);
 });
 
 test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page, app }) => {
