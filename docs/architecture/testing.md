@@ -374,7 +374,12 @@ scripts/ops/rows_resolve.py keeps both. -->
     opened the next draft PR 15 to 90 seconds after the first red check, so
     that wait is usually what is left of the report's half minute, if
     anything; longer only when `CI` waits for a runner longer than `Full
-    gate` did.
+    gate` did. The records and the report carry on through a cancel that
+    comes while they run: they are `always()` steps, and the report's
+    action is called with `through-cancel`. Without it the action's own
+    steps would stop at the cancel whatever the step that calls it says: a
+    composite action's steps are judged by the action's status, which the
+    cancel sets to cancelled.
 - A push to `main` and a run by hand are the full gate too.
 
 **How long.** The fast tier's browser tests are about seventy-five minutes
@@ -422,9 +427,9 @@ also folds the run's times into the timings the next run deals by, each
 test's time from its runs that passed (*The timings come from the queue's
 run*, below). The step reports on `CI`'s answer and is not part of it: it
 carries on past an error (npm's registry slow, a download failed), inside
-five minutes of its own, and it runs in a red batch's run that the next
-batch's cancelled (*The queue's runs share one concurrency group*, above).
-A run with no merged report (the step ran out of time) still has each
+five minutes of its own, and it runs to its end in a red batch's run that
+the next batch's cancelled (*The queue's runs share one concurrency group*,
+above). A run with no merged report (the step ran out of time) still has each
 runner's blob report, the `blob-fast-*` artifacts, kept seven days:
 `gh run download <run> -p 'blob-fast-*' -D <dir>`, their zips copied into
 one directory, then `npx playwright merge-reports --reporter html <that

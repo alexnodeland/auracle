@@ -1206,10 +1206,10 @@ jobs:
   # cancelled after they had all ended (a red batch, once the queue's next
   # draft PR starts its run) still runs it to its end: the records and the
   # report below describe finished jobs, so their steps are `always()`, and
-  # carry on through a cancel that comes while they run. They come after
-  # the answer, the records first, which take seconds. A job that hit its
-  # own limit reads as cancelled too, in a run that was not, and is red
-  # here, as before.
+  # carry on through a cancel that comes while they run, the report's own
+  # steps too (its `through-cancel`). They come after the answer, the
+  # records first, which take seconds. A job that hit its own limit reads
+  # as cancelled too, in a run that was not, and is red here, as before.
   ci:
     name: CI
     if: ${{ !cancelled() || !contains(needs.*.result, 'cancelled') }}
@@ -1431,6 +1431,10 @@ jobs:
       # a download failed), `CI` says what the results above said, as it
       # did when the report was a job beside it. Each step carries on past
       # an error, and the report has a limit of its own inside the job's.
+      # Both carry on through a cancel of the job that comes while they run
+      # (a red batch's, above): the checkout by its `always()`, the report
+      # by that and its `through-cancel`, without which the action's own
+      # steps would stop at the cancel (the action says why).
       - id: checkout
         if: ${{ always() && needs.browser.result != 'skipped' }}
         continue-on-error: true
@@ -1445,6 +1449,7 @@ jobs:
           name: fast
           failed: ${{ needs.browser.result == 'failure' }}
           timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
+          through-cancel: "true"
 
   # The check the merge queue merges on (.mergify.yml's merge_conditions):
   # green when this is the queue's run and every job `CI` needs passed. It
