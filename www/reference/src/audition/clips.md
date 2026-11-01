@@ -288,5 +288,5 @@ engine, with the seed’s inputs held and any CAPTURE’s take carried through
   every AUDIO IN reads the input of the patch’s first one; the app opens
   each other input for its module’s meter only, and says so. The model
   measures a patch that reads two inputs through each input’s own clip, so it
-  rates the patch as it sounds with each input playing its own source, which
+  rates the patch as it sounds with each input playing its own signal, which
   the live voices do not play yet.
