@@ -335,7 +335,7 @@ jobs:
           fi
           echo "Rust cache, $LEG: $note"
           echo "Rust cache, $LEG: $note" >> "$GITHUB_STEP_SUMMARY"
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: nextest
       - name: Build the tests
