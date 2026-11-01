@@ -480,10 +480,18 @@ test("the track keeps the sounds clear of it", () => {
 });
 
 // A sound under the SOUND / TASTE switch could be reached by neither a
-// finger nor a mouse: a press there is the switch's (#573). The canvases a
-// phone held upright, a small phone, a desktop and a phone on its side give
-// TASTE's map.
-const MAP_SIZES = [[340, 596], [300, 470], [1100, 560], [700, 360]];
+// finger nor a mouse: a press there is the switch's (#573). TASTE's map's
+// canvas on a 390 × 844 phone held upright (340 × 596) and on its side
+// (698 × 218, the band the sounds share at its narrowest), a small phone's,
+// a desktop's, and a short, wide one.
+const MAP_SIZES = [[340, 596], [698, 218], [300, 470], [1100, 560], [700, 360]];
+
+// The switch's right edge, in px on the map. Its width is its words' at
+// --t-label, a size no screen changes (a touch screen makes it taller, not
+// wider): measured in Chromium on a 390 × 844 phone upright and on its side,
+// a 360 × 640 one, an 820 × 1180 tablet and a 1280 × 800 desktop, it spans
+// x 12 to 164.8 on each.
+const TOG_RIGHT = 165;
 
 /** 40 sounds: one past every other's left and top, three crowding in
  *  beside it, and six crowding the foot, so the opening up pushes marks
@@ -512,7 +520,7 @@ test("no sound is drawn under the map's SOUND / TASTE switch or its track: every
       }
       // The one past every other's left and top is at the map's top left,
       // where the switch is: below it, not under it.
-      assert.ok(pos.get(0).x < 165, `${w}×${h}: the top-left sound is at the switch's side of the map`);
+      assert.ok(pos.get(0).x < TOG_RIGHT, `${w}×${h}: the top-left sound is at the switch's side of the map (left of ${TOG_RIGHT})`);
     }
   }
 });
