@@ -23,8 +23,9 @@
 // - Stage mode left before the browser has filled the screen hands the screen
 //   back once it has (#575: the page stayed on the whole screen with no
 //   stage). Its annotation `race` says whether the ⇧F that left came first.
-// apps/web/tests/perform.test.mjs holds that bookkeeping to every order a
-// browser may answer in.
+// apps/web/tests/perform.test.mjs holds which stage each grant and exit
+// belongs to, in the orders Chromium was measured answering in, whatever the
+// runner's speed.
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
@@ -170,8 +171,9 @@ test("⇧F to leave and ⇧F straight back keeps stage mode on, on the whole scr
   await page.keyboard.press("Shift+F");
   const inFlight = await page.evaluate(() => window.__fs.atShiftF[2]);
   test.info().annotations.push({ type: "race", description: inFlight ? "the second ⇧F came while the exit was in flight" : "the exit landed before the second ⇧F" });
-  // The first stage's exit lands and says so (the stage it closed was the
-  // new one, in the same task), and the new stage is still on.
+  // The first stage's exit lands and says so, and the new stage is still on
+  // (before #575 it closed the new stage, in that same task, so the stage is
+  // read after it).
   await expect.poll(changes).toBeGreaterThanOrEqual(2);
   await expect(stage).toBeVisible();
   await expect(page.locator("html")).toHaveClass(/\bst-on\b/);

@@ -376,6 +376,44 @@ test("a stage is in full screen by its own request only", async () => {
   assert.deepEqual(st.closed, []);
 });
 
+test("a grant that comes after its stage has gone leaves the stage on now in full screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  st.close(); // left before A's request was granted: nothing to leave yet
+  const c = st.open("B"); // and ⇧F straight back
+  await b.land(); // A's request, granted late, with B on
+  await b.land(); // B's own
+  await b.frame();
+  // Handing A's grant back would have left B with an exit in flight, and
+  // that exit, landing, would have closed it.
+  assert.equal(b.exits, 0, "A's late grant handed back the screen B is on");
+  assert.ok(b.idle());
+  assert.deepEqual(st.closed, []);
+  assert.equal(c.entered, true);
+  assert.equal(b.doc.fullscreenElement, b.doc.documentElement);
+});
+
+test("a stage closed while it waits on the last one's exit never asks for the screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  await b.land();
+  await b.frame();
+  st.close(); // ⇧F leaves: A's exit is in flight
+  st.open("B"); // ⇧F: B waits on that exit
+  st.close(); // ⇧F: B leaves before it has landed, a second exit
+  await b.land(); // A's exit
+  await b.land(); // B's
+  await b.frame();
+  // Asked once both had landed, it would have filled the window with no
+  // stage on it, and handed it straight back.
+  assert.equal(b.asked, 1, "B asked for the screen after it had closed");
+  assert.ok(b.idle());
+  assert.equal(b.doc.fullscreenElement, null);
+  assert.deepEqual(st.closed, []);
+});
+
 test("a stage left before the screen filled leaves no full screen behind", async () => {
   const b = slowBrowser();
   const st = stageOf(b);
