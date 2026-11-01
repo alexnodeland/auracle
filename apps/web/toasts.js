@@ -1,9 +1,10 @@
 // The toast lane's queue: which toast is on screen, which wait, in what
-// order, and which are cut. main.js's `note()` builds a toast's element and
-// hands it here; where the lane sits on screen (rules 1 and 2, below) is
-// main.js's `positionToastLane`. Pure: the DOM, the clock and the timers are
-// handed in (`createToastLane`), so tests/toasts.test.mjs drives the lane with
-// node:test's mock timers.
+// order, and which are cut; and where the lane stands (`placeLane`, rule 2).
+// main.js's `note()` builds a toast's element and hands it here, and its
+// `positionToastLane` measures the page and moves the lane to the spot
+// `placeLane` chose. Pure: the DOM, the clock and the timers are handed in
+// (`createToastLane`), and so are the rects (`placeLane`), so
+// tests/toasts.test.mjs drives the lane with node:test's mock timers.
 //
 // Transient chrome used to stack upward from the bottom centre of the window,
 // which is exactly where PICK A / PICK B live. The app's recovery affordance
@@ -12,11 +13,15 @@
 // collect. Three rules, and the first two are geometric so the collision
 // cannot silently come back with the next feature:
 //
-//   1. ONE LANE, anchored bottom-right just above the keybar (see
-//      `positionToastLane` for why there and not the rack's top-right).
-//   2. RESERVED RECTS: whatever teaching strip is on screen — and every other
-//      surface in LANE_STRIPS / LANE_COLUMNS — is measured and the lane is
-//      pushed clear of it, whatever the window size.
+//   1. ONE LANE, its corner the bottom right of the stage, just above the
+//      keybar (see `positionToastLane` for why there and not the rack's
+//      top-right); on a phone held upright, a banner as wide as the screen.
+//   2. RESERVED RECTS: every control on screen in the level (and its
+//      heading, its teaching strips and the panels in LANE_STRIPS /
+//      LANE_COLUMNS) is measured, and the lane stands in the free spot
+//      nearest its corner (`placeLane`), whatever the window size. It used
+//      to step over a list of strips by hand, and a level's footer missing
+//      from the list (EVOLVE's, #517) was covered after every pick.
 //   3. ONE VISIBLE TOAST, with a stacking counter. Three toasts saying
 //      different things at once is not three times the information.
 //
@@ -284,8 +289,10 @@ export function createToastLane({
     const t = queue.shift();
     if (!t) return;
     live = t;
-    view.show(t.el);
+    // Its counter first, so it is shown at the size it will stand at (the
+    // lane is placed for that size, main.js `positionToastLane`).
     renderStack();
+    view.show(t.el);
     // Must not outlive the action it can still cancel (see the cut handler).
     const ms = t.opts.takeBack
       ? Math.max(TOAST_MS, windowLeft(t))
@@ -337,4 +344,71 @@ export function createToastLane({
   }
 
   return { add, dismiss, drop, retire, peek };
+}
+
+/** How far the lane keeps from a control it stands beside, in px. */
+export const LANE_GAP = 8;
+/** How far inside a picture's edge it keeps when it stands over one. */
+export const LANE_INSET = 8;
+
+/** Rule 2: where the lane stands. The free spot nearest its corner for a
+ *  toast of `size` ({w, h}) inside `bounds`, as `{left, top}`, or null when
+ *  there is none.
+ *
+ *  - `reserved`: rects it never overlaps (the level's controls, its heading,
+ *    the teaching strips and panels). It keeps `gap` from those it stands
+ *    beside.
+ *  - `pictures`: what it may stand over (a well with the sound's face, the
+ *    rack, the map), wholly inside one, `inset` from its edges, or clear of
+ *    it: never across a picture's edge.
+ *  - `prefer`: `"corner"`, the bottom right of `bounds`, nearest in its two
+ *    distances added; or, for a banner as wide as `bounds` (a phone), only
+ *    its height is chosen, nearest the `"bottom"` or the `"top"`.
+ *
+ *  Rects are `{left, top, right, bottom}` in the page's px. Each candidate
+ *  lines the toast up against an edge of `bounds`, of a reserved rect (with
+ *  `gap`) or of a picture (with `inset`), on each axis; the nearest that
+ *  breaks no rule wins, and a tie goes to the lower, then to the righter. */
+export function placeLane({ size, bounds, reserved = [], pictures = [], prefer = "corner", gap = LANE_GAP, inset = LANE_INSET }) {
+  const { w, h } = size;
+  if (!(w > 0 && h > 0)) return null;
+  const banner = prefer !== "corner";
+  const xs = banner ? [bounds.left] : [
+    bounds.right - w,
+    ...reserved.flatMap((r) => [r.left - gap - w, r.right + gap]),
+    ...pictures.flatMap((p) => [p.right - inset - w, p.left + inset]),
+  ];
+  const ys = [
+    bounds.bottom - h,
+    bounds.top,
+    ...reserved.flatMap((r) => [r.top - gap - h, r.bottom + gap]),
+    ...pictures.flatMap((p) => [p.bottom - inset - h, p.top + inset]),
+  ];
+  // Half a pixel either way: a page's rects are fractional, and a toast
+  // flush against a control (or a picture's inset) does not cover it.
+  const E = 0.5;
+  const within = (v, lo, hi) => v >= lo - E && v <= hi + E;
+  const meets = (a, b) => a.left < b.right - E && a.right > b.left + E && a.top < b.bottom - E && a.bottom > b.top + E;
+  // On one axis: inside the picture (`inset` from its edges) or across all of
+  // it (a banner wider than a well) is fine; part-way across an edge is not.
+  const fits = (a0, a1, b0, b1) => (a0 >= b0 + inset - E && a1 <= b1 - inset + E) || (a0 <= b0 + E && a1 >= b1 - E);
+  const free = (t) =>
+    !reserved.some((r) => meets(t, r)) &&
+    !pictures.some((p) => meets(t, p) && !(fits(t.left, t.right, p.left, p.right) && fits(t.top, t.bottom, p.top, p.bottom)));
+  const far = (t) =>
+    prefer === "top" ? t.top - bounds.top
+      : prefer === "bottom" ? bounds.bottom - t.bottom
+        : (bounds.right - t.right) + (bounds.bottom - t.bottom);
+  let best = null;
+  for (const x of new Set(xs)) {
+    if (!within(x, bounds.left, bounds.right - w)) continue;
+    for (const y of new Set(ys)) {
+      if (!within(y, bounds.top, bounds.bottom - h)) continue;
+      const t = { left: x, top: y, right: x + w, bottom: y + h };
+      if (!free(t)) continue;
+      const d = far(t);
+      if (!best || d < best.d - E || (Math.abs(d - best.d) <= E && (y > best.t.top + E || (Math.abs(y - best.t.top) <= E && x > best.t.left)))) best = { t, d };
+    }
+  }
+  return best ? { left: best.t.left, top: best.t.top } : null;
 }
