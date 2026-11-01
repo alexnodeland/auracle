@@ -598,8 +598,22 @@ class SideBySide(unittest.TestCase):
         self.assertEqual((S.gate_job(r)["name"], S.verdict(r)), ("Full gate", "red"))
 
     def test_the_merge_waits_for_both_so_both_waits_count(self):
-        # The shards' 1 and 1, CI's 0; not Full gate's own.
-        self.assertEqual(sorted(S.waits(self.side_by_side(44, 12, 11))), [0, 1, 1])
+        # The shards' 1 and 1, CI's 0, and Full gate's own 1: beside CI,
+        # either's wait holds the merge.
+        r = self.side_by_side(44, 12, 11)
+        self.assertTrue(S.beside(r))
+        self.assertEqual(sorted(S.waits(r)), [0, 1, 1, 1])
+        # A Full gate that waited ten minutes for its runner, CI one.
+        r["jobs"][-1].update(started_at=at(19), completed_at=at(20))
+        r["jobs"][-2].update(started_at=at(10), completed_at=at(11))
+        self.assertEqual(max(S.waits(r)), 10)
+
+    def test_before_it_ran_after_ci_and_its_own_wait_was_left_out(self):
+        # queue_run's Full gate is created when CI is done, as before #580.
+        r = queue_run(47, 0, 12)
+        self.assertFalse(S.beside(r))
+        r["jobs"][-1]["started_at"] = at(11)  # Full gate waited a minute
+        self.assertEqual(sorted(S.waits(r)), [0, 1, 1])
 
     def test_the_coverage_chain_is_the_one_job_since_and_the_five_before(self):
         one = run(45, 0, [job("Coverage", 1, 2, 9), job("CI", 9, 9, 10)])

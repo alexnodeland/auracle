@@ -49,9 +49,11 @@ What it counts, with the definitions #177's numbers used:
 - CI wall time: the run created to its `CI` job completed (a queue batch's
   later of `Full gate` and `CI`), on green and red runs.
 - Runner wait: each required job's start minus its creation (a job `CI`
-  needs; on a queue batch, every job but `Full gate`, `CI` included), summed per run, the
-  longest in the run, and every one's; and the longest of all the run's jobs,
-  required or not.
+  needs; on a queue batch, a job `Full gate` and `CI` need, and the two
+  themselves since #580, when they run side by side and the merge waits for
+  both; before, `Full gate` came after `CI`, and its own wait was left out,
+  as `CI`'s is on a PR's run), summed per run, the longest in the run, and
+  every one's; and the longest of all the run's jobs, required or not.
 - Red rate: red runs of the green and red ones; cancelled runs are left out.
 - Runs per PR: the `ci.yml` runs on a merged PR's branch while it was open
   (its fast lane; the queue's batches are counted on their own row).
@@ -280,9 +282,10 @@ def gate_job(run) -> dict | None:
 
 
 def verdict(run) -> str | None:
-    """green, red or cancelled, from the first attempt's `CI` job (`Full
-    gate` on a queue run); None while it runs, and for a superseded run on
-    main. It fails when a job it needs was cancelled, with nothing else
+    """green, red or cancelled, from the first attempt's job that answers
+    for the run (`gate_job`: `CI`, or on a queue run the red one of `Full
+    gate` and `CI`, else the later); None while it runs, and for a
+    superseded run on main. It fails when a job it needs was cancelled, with nothing else
     failed: that run was cancelled when the run itself was (a newer push
     replaced it), and red otherwise (a job reached its time limit). A run
     with no jobs read falls back on its own conclusion."""
@@ -306,7 +309,7 @@ def verdict(run) -> str | None:
 
 
 def ci_done(run) -> dt.datetime | None:
-    """When the first attempt's `CI` job (`Full gate` on a queue run)
+    """When the first attempt's job that answers for the run (`gate_job`)
     completed; the run's last update when its jobs were not read."""
     j = gate_job(run)
     if j is not None:
@@ -320,14 +323,27 @@ def wall(run) -> float | None:
 
 def needed(run, job) -> bool:
     """A job the run's answer waits for: one `CI` needs, or on a queue run
-    every job but `Full gate` (`CI` itself, which the queue waits for too,
-    and before #580 the reports beside it)."""
+    one `Full gate` and `CI` need (before #580 `CI` itself and the reports
+    beside it), and `Full gate` itself where it ran beside `CI`, since the
+    merge waits for both and either's wait holds it."""
     name = job.get("name")
     if name in NOT_NEEDED:
         return False
     if is_queue(run):
-        return name != "Full gate"
+        return name != "Full gate" or beside(run)
     return name not in ("CI", "Full gate", "Browser report", "Burn-in report")
+
+
+def beside(run) -> bool:
+    """Whether a queue run's `Full gate` ran beside `CI` (since #580), not
+    after it: created before `CI` was done. Until #580 it needed `CI`, so it
+    was created once `CI` was done."""
+    jobs = {j.get("name"): j for j in first_attempt(run.get("jobs"))}
+    gate, ci = jobs.get("Full gate"), jobs.get("CI")
+    if gate is None or ci is None:
+        return gate is not None
+    made, done = ts(gate.get("created_at")), ts(ci.get("completed_at"))
+    return made is not None and (done is None or made < done)
 
 
 def waits(run, required: bool = True) -> list:
@@ -845,8 +861,8 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
     w(
         "*`scripts/ci_stats.py`: `ci.yml` runs created in the window, the PRs merged in it, minutes "
         "unless marked. A run's verdict and wall time are its first attempt's `CI` job (a queue "
-        "batch's `Full gate`, the check the queue merges on). Runner waits are the required jobs' "
-        "unless marked.*"
+        "batch's `Full gate` and `CI`, which the queue merges on: a red one, else the later to end). "
+        "Runner waits are the required jobs' unless marked.*"
     )
     w("")
     w("### By kind of PR (the fast lane), the queue, and main")
