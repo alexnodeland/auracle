@@ -197,11 +197,31 @@ async function presetInPool(page, app, { finger }) {
   return index;
 }
 
-/** The model view, held as a keyboard holds it (⌥), for the rest of the test:
- *  a phone's sheet stands over MODEL. */
+/** The model view, held as a keyboard holds it (⌥), for the rest of the test.
+ *  The hold is the app's timer (220 ms after the key goes down) and is given
+ *  up by a field with the focus, a modal dialog or the window losing focus,
+ *  so the message says which of them the page was in when the key went down:
+ *  a hold that never takes is then read from the failure, not guessed at. */
 const modelViewHeld = async (page) => {
+  const before = await page.evaluate(() => {
+    const at = document.activeElement;
+    return {
+      active: at ? `${at.tagName.toLowerCase()}${at.id ? `#${at.id}` : ""}` : "none",
+      windowFocused: document.hasFocus(),
+      modalUp: [...document.querySelectorAll('[aria-modal="true"]')].some((el) => !el.classList.contains("hidden") && el.getClientRects().length > 0),
+      alreadyOn: document.body.classList.contains("model-view"),
+    };
+  });
   await page.keyboard.down("Alt");
-  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+  await expect(page.locator("body"), `⌥ held, the page was in ${JSON.stringify(before)}`).toHaveClass(/\bmodel-view\b/);
+};
+
+/** The model view as a finger keeps it: MODEL tapped (a touch screen has no ⌥
+ *  under the thumb, and a tap keeps the view up where a hold is a glance, so
+ *  no timer, key or window focus stands between the tap and the view). */
+const modelViewTapped = async (page) => {
+  await page.locator("#model-btn").tap();
+  await expect(page.locator("body"), "MODEL tapped").toHaveClass(/\bmodel-view\b/);
 };
 
 /** The preset row's IN POOL words, its name's column and what else shows:
@@ -380,7 +400,7 @@ test.describe("a touch tablet at 1024 × 768 (the bank 228 px)", () => {
     const at = await inPoolDrawn(page, index);
     expect(at.buttons.map((b) => b.kind), "the ▶ is there at rest").toEqual(["bi-hear"]);
     inPoolClear(at, "at rest");
-    await modelViewHeld(page);
+    await modelViewTapped(page);
     inPoolClear(await inPoolDrawn(page, index), "in the model view");
   });
 });
@@ -432,7 +452,13 @@ for (const [w, h] of [[390, 844], [844, 390]]) {
       const at = await inPoolDrawn(page, index);
       expect(at.buttons.map((b) => b.kind), "the ▶ is at the row's end at rest").toEqual(["bi-hear"]);
       inPoolClear(at, "at rest");
-      await modelViewHeld(page);
+      // The sheet and its scrim stand over MODEL: a tap on the scrim puts the
+      // sheet away, MODEL is tapped, and BANK brings the sheet back.
+      await page.locator("#sheet-scrim").tap({ position: { x: 4, y: 4 } });
+      await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+      await modelViewTapped(page);
+      await page.locator("#bank-btn").tap();
+      await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
       inPoolClear(await inPoolDrawn(page, index), "in the model view");
     });
   });
