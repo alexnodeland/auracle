@@ -39,9 +39,10 @@
 //   keep the face they had until it lands, and show the new one, drawn
 //   whole, the frame it is gone. No frame shows the well or the chip empty,
 //   more than one face in the well, or the new face at rest in the hand
-//   while it still flies. A face on an EVOLVE card opened by its body, or
-//   by ↓ patch as the levels move to PATCH, flies from the card the same
-//   way, into the menu bar's chip.
+//   while it still flies. A preset the pool doesn't hold, opened from
+//   PRESETS, flies the same way while the engine loads it. A face on an
+//   EVOLVE card opened by its body, or by ↓ patch as the levels move to
+//   PATCH, flies from the card the same way, into the menu bar's chip.
 // - However late the engine says faces (a slow engine, seconds after the
 //   sound itself), the face flies in the click's task: it is the row's,
 //   already here. At PATCH, where the rack is still the patch being left
@@ -49,7 +50,7 @@
 //   chip, and the face at OUT is the new one once the rack is.
 // - Under reduced motion nothing flies, and the well and the chip show the
 //   new face in the click's own task: never an empty well.
-const { test, expect, goLevel, landed } = require("./fixtures");
+const { test, expect, goLevel, landed, bankTab } = require("./fixtures");
 
 // A player's pace between two moves (gesture pacing, in the page: the
 // second click comes this long after the first, on the app's own clock).
@@ -513,6 +514,34 @@ test("opening a sound from the bank flies one face into the well, and the well i
   const [taken] = await app.marks("taken-up", { after: t0 });
   expect(taken.detail.level).toBe("perform");
   near(taken.detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
+});
+
+test("a preset not in the pool, opened from PRESETS, flies its face from its row into the well, which is never empty", async ({ page, app }) => {
+  await performWithFaces(app);
+  await bankTab(page, "presets");
+  // A preset the pool doesn't hold: the engine loads it, and its open
+  // reaches the bench a while after the face has left its row.
+  const row = page.locator("#bank-list .preset-item:not(.in-bank)", { has: page.locator(":scope > .face-slot > img.face") }).first();
+  await expect(row).toBeVisible();
+  const index = await row.getAttribute("data-index");
+  const name = (await row.locator(".bi-name").textContent()).trim();
+  const t0 = await app.now();
+  const seen = await watchOpen(page, `#bank-list .preset-item[data-index="${index}"]`);
+  expect(seen.task.flying, "the face flies in the click's own task").toBe(true);
+  expect([seen.task.well, seen.task.chip], "the hand keeps its face while the new one flies").toEqual(["old", "old"]);
+  expect([seen.task.title, seen.task.name], "PERFORM's title and the menu bar's name, in the click's task").toEqual([name, name]);
+  expect(seen.emptyWell, `frames with the well empty, of ${seen.frames}`).toBe(0);
+  expect(seen.emptyChip, `frames with the menu bar's chip empty, of ${seen.frames}`).toBe(0);
+  expect(seen.manyInWell, "frames with more than one face in the well").toBe(0);
+  expect(seen.twice, "frames with the new face at rest in the hand while it still flies").toBe(0);
+  expect(seen.landed, "the frame the flight is gone, the well and the chip show the new face").toEqual({ well: "new", chip: "new" });
+  const [taken] = await app.marks("taken-up", { after: t0 });
+  expect(taken.detail.level).toBe("perform");
+  near(taken.detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
+  // The engine loads it and opens it on the bench: it stays in hand.
+  await app.answered({ types: ["load_preset", "edit_begin"], lanes: ["bench"] });
+  await expect(page.locator("#live-label")).toHaveText(name);
+  await expect(page.locator("#view-perform .pf-faces > .pf-face > img.face")).toHaveCount(1);
 });
 
 test("an EVOLVE card opened by its body flies its face from the card into the menu bar's chip, which is never empty", async ({ page, app }) => {

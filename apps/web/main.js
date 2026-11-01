@@ -1013,6 +1013,9 @@ function facesLanded(m) {
     faceAsked.delete(target);
     faceLazy.delete(target);
     faceNone.add(target);
+    // A tree filed under a face it was known to have (`knowFace`): the
+    // engine has none for it, and its word stands.
+    if (f.id == null) faceKeyByRef.delete(target);
   }
   // Dropped by the worker as their slots left the view: asked again when
   // they come back into it, or now, if one came back while the drop was on
