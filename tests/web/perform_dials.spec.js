@@ -28,15 +28,87 @@ const path = require("path");
 const { test, expect, goLevel, bankTab, PERFORM_SEED } = require("./fixtures");
 
 // The sites a caption printed in the gap where the rack's labels belong:
-// none is a word of a knob's name.
+// none is a word of a knob's name. On the app before the fix a preset's
+// controls painted once, in the gap, and were not painted again (Glass Pad:
+// "cut", "mdepth · rate +2"), so `oneEach` passed for the presets: this
+// check, and the one for a word said twice, are what fail them.
 const STEMS = /\b(cut|res|mdepth|dec|att|det|smix|crate|cdepth|cmix|thresh|rmix|rsize|rdamp|dmix|fb|fkind|dsamp)\b/;
 // A caption that names knobs (not one of a control's states).
 const NAMES_KNOBS = (t) => !!t && !/…|^turns toward|^let go|^turn further|^after you let go|^in a moment/.test(t);
 // The words of a caption, without its separators and its count.
 const wordsOf = (t) => t.split(/\s+/).filter((w) => w && w !== "·" && w !== "/" && !/^\+\d+$/.test(w));
+// The presets' wirings and racks the app ships.
+const WIRINGS = JSON.parse(readFileSync(path.join(__dirname, "../../apps/web/perform-wirings.json"), "utf8"));
+const PRESETS = ["Glass Pad", "Acid Line", "Cathedral", "Reese"];
+
+// Each pool member's tree as main was last handed it (`trees`, beside the
+// rows), by id: the knob names that ride with it (`names`, [addr, module,
+// label]), and its shape and the wiring the engine predicted for it
+// (`first`). A wrapper outside the fixture's tap, its listener ahead of
+// main.js's own.
+function recordTrees() {
+  window.__trees = new Map();
+  const Orig = window.Worker;
+  function Wrapped(url, opts) {
+    const w = new Orig(url, opts);
+    if (/worker\.js/.test(String(url))) {
+      w.addEventListener("message", (e) => {
+        const d = e.data || {};
+        for (const [id, t] of Object.entries(d.trees || (d.views && d.views.trees) || {})) {
+          const first = t.first || {};
+          window.__trees.set(Number(id), { json: t.json, names: t.names, shape: first.shape, wiring: (first.predicted && first.predicted.wiring) || [] });
+        }
+      });
+    }
+    return w;
+  }
+  Wrapped.prototype = Orig.prototype;
+  window.Worker = Wrapped;
+}
+
+// Up to two pool members, by id (so the choice holds on any seed), whose
+// captions must name a module from the click: a control of the wiring
+// predicted for each whose first knob shares its name with another of its
+// knobs, so its caption names that knob's module ("env / out attack +3",
+// `knobNames`). Without the names that ride with the tree, it said
+// "attack · sustain +2" until the bench's rack landed. None whose shape a
+// measured sound shares (a preset's, `shapes`, or one PERFORM asked to
+// measure here, `measured`): it would play that sound's wiring
+// (`relativeWiring`), not this one. Names unlike each other's and the
+// presets', as the captions are read by name. `{ id, name, index, says }`:
+// the control's palette index, and the name its caption starts with.
+function telling(page, shapes, measured) {
+  return page.evaluate(([shapes, measured, taken]) => {
+    const sound = (j) => {
+      try {
+        return JSON.stringify(JSON.parse(j), (k, v) => (k === "uid" ? undefined : v));
+      } catch {
+        return j;
+      }
+    };
+    const heard = new Set(measured.map(sound));
+    const near = new Set(shapes);
+    for (const t of window.__trees.values()) if (heard.has(sound(t.json))) near.add(t.shape);
+    const nameOf = (k) => String(k.label || "").split(" · ")[0].toLowerCase();
+    const out = [];
+    for (const [id, t] of window.__trees) {
+      const name = document.querySelector(`#bank-list .bank-item[data-id="${id}"] .bi-name`)?.textContent.trim();
+      if (!name || !t.names || near.has(t.shape) || taken.includes(name) || out.some((o) => o.name === name)) continue;
+      const by = new Map(t.names.map(([a, module, label]) => [a, { module, label }]));
+      const w = t.wiring.find((w) => {
+        const ks = (w.knobs || []).map(([a]) => by.get(a));
+        return ks.length > 1 && ks.every(Boolean) && ks[0].module && ks.slice(1).some((k) => nameOf(k) === nameOf(ks[0]));
+      });
+      if (!w) continue;
+      const k = by.get(w.knobs[0][0]);
+      out.push({ id, name, index: w.index, says: `${k.module.toLowerCase()} ${nameOf(k)}` });
+    }
+    return out.slice(0, 2);
+  }, [shapes, measured, PRESETS]);
+}
 
 test("a control's caption names its knobs in the rack's words from the moment a sound opens, and never says a word twice", async ({ page, app }) => {
-  test.setTimeout(150_000);
+  await page.addInitScript(recordTrees);
   // Every caption the six controls show, with the sound PERFORM names.
   await page.addInitScript(() => {
     window.__captions = [];
@@ -70,7 +142,7 @@ test("a control's caption names its knobs in the rack's words from the moment a 
   // What the controls say, captions and tooltips (*raises filter cutoff*).
   const said = () =>
     page.evaluate(() => [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => `${k.querySelector(".pf-k-sub").textContent} | ${k.title}`));
-  for (const name of ["Glass Pad", "Acid Line", "Cathedral", "Reese"]) {
+  for (const name of PRESETS) {
     // Its shipped wiring stays the one in hand: the re-check it is owed
     // never reaches the engine, so a caption changes only with the words.
     await app.stall("perform_wire");
@@ -83,21 +155,29 @@ test("a control's caption names its knobs in the rack's words from the moment a 
     await oneEach(name);
   }
   // Pool sounds, whose racks do not ship, opened from the bank, their
-  // guesses' measurements stalled as the presets' re-checks are. Once the
-  // bench's rack has landed, their controls also say what PERFORM drawn
-  // afresh says (a trip to PATCH and back paints every control again).
+  // guesses' measurements stalled as the presets' re-checks are: two whose
+  // captions name a module only with the names that ride with their trees
+  // (`telling`). Once the bench's rack has landed, their controls also say
+  // what PERFORM drawn afresh says (a trip to PATCH and back paints every
+  // control again).
   await bankTab(page, "pool");
-  const rows = page.locator("#bank-list .bank-item[data-id]");
-  await app.engine((timeout) => expect.poll(() => rows.count(), { timeout }).toBeGreaterThan(6), { ms: 90_000 });
-  for (const n of [3, 6]) {
-    const row = rows.nth(n);
-    const name = (await row.locator(".bi-name").textContent()).trim();
+  await app.poolRows(40);
+  const measured = (await app.sent({ type: "perform_wire" })).map((m) => m.tree);
+  const chosen = await telling(page, WIRINGS.presets.map((p) => p.shape), measured);
+  console.log(`[perform_dials] pool members whose captions name a module: ${JSON.stringify(chosen)}`);
+  expect(chosen.length, "a pool member whose caption names a module").toBeGreaterThan(0);
+  for (const { id, name, index, says } of chosen) {
     await app.stall("perform_wire");
-    await row.click();
+    await page.locator(`#bank-list .bank-item[data-id="${id}"]`).click();
     await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
     await expect(page.locator(".pf-name")).toHaveText(name);
     await frames();
     await oneEach(name);
+    // The control chosen for it named its first knob's module from the
+    // click, before the bench's rack of it landed as after.
+    const at = await page.locator(`.pf-knob[data-index="${index}"]`).getAttribute("data-i");
+    const told = await page.evaluate(([n, i]) => window.__captions.filter((c) => c.name === n && c.i === i).map((c) => c.t), [name, at]);
+    expect([...new Set(told.filter(NAMES_KNOBS))], `${name}: control ${at}'s caption, from the click`).toEqual([expect.stringContaining(says)]);
     const landed = await said();
     await goLevel(page, "patch");
     await goLevel(page, "perform");
@@ -196,7 +276,7 @@ test("PEEK and TAKE pressed while an offer grows say it is growing until it land
   const lastMix = () => page.evaluate(() => window.__bMix[window.__bMix.length - 1]);
   // B lands, B still held: every offer out is answered with Glass Pad's own
   // tree, which B then plays.
-  const glass = JSON.parse(readFileSync(path.join(__dirname, "../../apps/web/perform-wirings.json"), "utf8")).presets.find((p) => p.name === "Glass Pad");
+  const glass = WIRINGS.presets.find((p) => p.name === "Glass Pad");
   const out = await app.sent({ type: "perform_offer" });
   expect(out.length, "an offer is out").toBeGreaterThan(0);
   for (const m of out) await app.inject({ type: "perform_offered", req: m.req, re: m.rid, offer: { tree: JSON.parse(m.tree), makeup: glass.makeup, taste: false, diff: [] } });
