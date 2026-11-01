@@ -14,6 +14,17 @@
 //   back to where it was when it leaves.
 // - A refusal said while it is on is in sight, over the stage and in its own
 //   line.
+// - ⇧F to leave and ⇧F straight back, while the browser is still taking the
+//   whole screen back, leaves the new stage on once that exit lands, and on
+//   the whole screen again (#575: the exit of the stage before closed it).
+//   Whether the second ⇧F came while the exit was in flight is the test's
+//   annotation `race`: a fast enough browser lands the exit first, and then
+//   the test proves only the plain way back.
+// - Stage mode left before the browser has filled the screen hands the screen
+//   back once it has (#575: the page stayed on the whole screen with no
+//   stage). Its annotation `race` says whether the ⇧F that left came first.
+// apps/web/tests/perform.test.mjs holds that bookkeeping to every order a
+// browser may answer in.
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
@@ -69,6 +80,18 @@ const INIT = `(() => {
     window.__loud.on = false;
     return window.__loud.max;
   };
+  // Full screen as the page heard of it: each fullscreenchange, and whether
+  // the document was in full screen when each ⇧F came (before the app's own
+  // keydown, which is added later).
+  window.__fs = { changes: 0, atShiftF: [] };
+  document.addEventListener("fullscreenchange", () => window.__fs.changes++);
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.shiftKey && e.key === "F") window.__fs.atShiftF.push(!!document.fullscreenElement);
+    },
+    true,
+  );
 })();`;
 
 // Glass Pad opened from PRESETS, the rack holding it (the app opens at
@@ -128,6 +151,57 @@ test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still play
   await sounds(page, app);
   await page.keyboard.up("f");
   await expect(stage).toHaveCount(0);
+});
+
+test("⇧F to leave and ⇧F straight back keeps stage mode on, on the whole screen", async ({ page, app }) => {
+  await boot(page, app);
+  await toPerform(page, app);
+  const stage = page.locator(".st-stage");
+  const full = () => page.evaluate(() => !!document.fullscreenElement);
+  const changes = () => page.evaluate(() => window.__fs.changes);
+  await page.keyboard.press("Shift+F");
+  await expect(stage).toBeVisible();
+  // On the whole screen, and the browser has said so.
+  await expect.poll(full).toBe(true);
+  await expect.poll(changes).toBe(1);
+
+  // ⇧F leaves and ⇧F comes straight back, nothing between them.
+  await page.keyboard.press("Shift+F");
+  await page.keyboard.press("Shift+F");
+  const inFlight = await page.evaluate(() => window.__fs.atShiftF[2]);
+  test.info().annotations.push({ type: "race", description: inFlight ? "the second ⇧F came while the exit was in flight" : "the exit landed before the second ⇧F" });
+  // The first stage's exit lands and says so (the stage it closed was the
+  // new one, in the same task), and the new stage is still on.
+  await expect.poll(changes).toBeGreaterThanOrEqual(2);
+  await expect(stage).toBeVisible();
+  await expect(page.locator("html")).toHaveClass(/\bst-on\b/);
+  await expect(stage.locator(".st-name")).toHaveText("Glass Pad");
+  // It asked for the whole screen once the exit had landed, and has it.
+  await expect.poll(full).toBe(true);
+  await expect(stage).toBeVisible();
+
+  // Esc leaves, and hands the screen back.
+  await page.keyboard.press("Escape");
+  await expect(stage).toHaveCount(0);
+  await expect.poll(full).toBe(false);
+});
+
+test("stage mode left before the screen has filled hands the screen back", async ({ page, app }) => {
+  await boot(page, app);
+  await toPerform(page, app);
+  const full = () => page.evaluate(() => !!document.fullscreenElement);
+  const changes = () => page.evaluate(() => window.__fs.changes);
+  // ⇧F opens it and ⇧F leaves it, nothing between them.
+  await page.keyboard.press("Shift+F");
+  await page.keyboard.press("Shift+F");
+  await expect(page.locator(".st-stage")).toHaveCount(0);
+  const filled = await page.evaluate(() => window.__fs.atShiftF[1]);
+  test.info().annotations.push({ type: "race", description: filled ? "the screen had filled before ⇧F left" : "⇧F left before the screen had filled" });
+  // The screen fills, as the first ⇧F asked, and is handed back: two
+  // changes, and the page is not on the whole screen.
+  await expect.poll(changes).toBe(2);
+  await expect.poll(full).toBe(false);
+  await expect(page.locator(".st-stage")).toHaveCount(0);
 });
 
 test("⇧F is stage mode in PERFORM only; in PATCH it is the accented F", async ({ page, app }) => {
