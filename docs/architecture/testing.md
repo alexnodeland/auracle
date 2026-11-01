@@ -475,8 +475,8 @@ tag of the browser jobs' image, so its bump is one PR).
 **When the slow tier runs.** On `main`, in full: the newest push that
 changes what the slow tests cover (its run covers the pushes before it;
 [Latest only](#ci-tiers)) or that took a waiting nightly run's place, and
-nightly ([What `main` skips](#ci-tiers), below). A failure there opens an issue titled *Slow suite failing on main*,
-or comments on the open one. A quarantined test's failure is not one: it is
+nightly ([What `main` skips](#ci-tiers), below). A failure there opens an
+issue titled *Slow suite failing on main*, or comments on the open one. A quarantined test's failure is not one: it is
 said on that test's own issue, and the run stays green, so the issue means a
 new regression, or a quarantined test whose issue was closed
 ([Flakes](#flakes)). On demand from the Actions tab, always. On a PR, only
@@ -508,10 +508,10 @@ answer stands:
   and more (any module of the app, any spec). A docs, site or Claude Code
   push so leaves the next batch its runners, where its run would start just
   as that batch does. The base is that commit, not the push's parent, so a
-  superseded push's changes are counted by the next run that runs. One
-  push runs whatever it changed: on `main` only the newest waiting run is
-  kept, so a push that lands while the nightly run waits cancels it, and
-  that push's run then tests `main` in the night's place, as does each
+  superseded push's changes are counted by the next run that runs. But
+  on `main` only the newest waiting run is kept, so a push that lands
+  while the nightly run waits cancels it; that push's run then tests
+  `main` in the night's place, whatever the push changed, and so does each
   push after it until a run on `main` has tested green since that night.
   Without it, a docs push could cancel the night and skip, and `main`
   would move with no slow test run on it that night (the nightly run of
@@ -572,8 +572,8 @@ holds at most three for about two and a half hours (#582): GitHub starts
 its cron (05:41 UTC) 4 to 6.5 hours late, from about 09:45 to 12:00 UTC,
 when PRs are being queued, so its jobs run in stages one after another:
 the hunt's twelve runners three at a time, its report and filing, the
-*Speed budgets*' thirteen three at a time, then their report beside *Touch in WebKit* and
-the audio thread's budget. Beside its first hour, on a night `main` moved,
+*Speed budgets*' thirteen three at a time, then their report beside
+*Touch in WebKit* and the audio thread's budget. Beside its first hour, on a night `main` moved,
 *Search health*'s three long jobs: six in all, where it was ten.
 
 **The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
