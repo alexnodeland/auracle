@@ -18,6 +18,9 @@ import {
   pointsInto,
   tracePoints,
   createLiveFaces,
+  createPaintSwitch,
+  LIVE_PAINT_BUDGET_MS,
+  LIVE_PAINT_WINDOW,
 } from "../live-face.js";
 import { paintFrame } from "../live-paint.js";
 
@@ -384,6 +387,58 @@ test("a layer put out of its slot (the slot filled anew) goes back over it", () 
   L.step();
   assert.equal(made[0].parentNode, h);
   assert.equal(made.length, 1, "the same layer, its trail as it was");
+});
+
+// ---------- where the faces are painted ----------
+
+/** A clock the test turns, and a paint that takes `ms` on it (drawing an
+ *  outline, or, with `drew` false, only the fade). */
+function clocked() {
+  const c = { t: 0 };
+  c.clock = () => c.t;
+  c.paint = (ms, drew = true) => () => {
+    c.t += ms;
+    return drew;
+  };
+  return c;
+}
+
+test("the page's paint decides where the faces are painted: over budget for the median of a window, they move, and never back", () => {
+  assert.equal(LIVE_PAINT_BUDGET_MS, 2, "the live faces' budget for a frame (ADR-025)");
+  const c = clocked();
+  const sw = createPaintSwitch({ clock: c.clock });
+  // Each paint is run, and timed on the clock handed in.
+  for (let i = 1; i < LIVE_PAINT_WINDOW; i++) assert.equal(sw.time(c.paint(5)), false, `frame ${i}: the window is not full`);
+  assert.equal(c.t, 5 * (LIVE_PAINT_WINDOW - 1), "every paint ran");
+  assert.ok(Number.isNaN(sw.median));
+  assert.equal(sw.time(c.paint(5)), true, "a full window over budget: moved");
+  assert.equal(sw.median, 5);
+  // One way: a paint inside budget after does not bring the faces back.
+  for (let i = 0; i < 100; i++) assert.equal(sw.time(c.paint(0.1)), true);
+  assert.equal(sw.moved, true);
+  assert.equal(sw.frames, LIVE_PAINT_WINDOW, "and nothing is timed once moved");
+});
+
+test("a frame of the fade alone, a paint at the budget, and a few slow frames move nothing; a paint that degrades later does", () => {
+  const c = clocked();
+  const sw = createPaintSwitch({ clock: c.clock });
+  for (let i = 0; i < 50; i++) sw.time(c.paint(30, false));
+  assert.equal(sw.frames, 0, "a frame that drew no outline is not counted");
+  for (let i = 0; i < 50; i++) assert.equal(sw.time(c.paint(LIVE_PAINT_BUDGET_MS)), false, "at the budget is inside it");
+  // Fewer than half the window's frames slow (a collection, a resize): the
+  // median is the fast ones'.
+  const fast = createPaintSwitch({ clock: c.clock });
+  const few = LIVE_PAINT_WINDOW / 2 - 1;
+  for (let i = 0; i < LIVE_PAINT_WINDOW - few; i++) fast.time(c.paint(0.5));
+  for (let i = 0; i < few; i++) assert.equal(fast.time(c.paint(50)), false, `${i + 1} slow of the last ${LIVE_PAINT_WINDOW}`);
+  assert.equal(fast.median, 0.5);
+  // Fast for a while, then slower for good: once half the window is over,
+  // the median is too.
+  const later = createPaintSwitch({ clock: c.clock });
+  for (let i = 0; i < 200; i++) later.time(c.paint(0.3));
+  let slow = 0;
+  while (slow < 100 && !later.time(c.paint(5))) slow++;
+  assert.equal(slow + 1, LIVE_PAINT_WINDOW / 2, "moved once half of the last window was slow");
 });
 
 // ---------- painted in a worker (live-paint.js) ----------

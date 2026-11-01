@@ -219,6 +219,67 @@ export function traceStrokes(tr, { face, stats, box, color, silk, scale = 1, dim
  *  glow and line. */
 export const traceReach = (scale) => (18 + 56) * scale * 2 + 4;
 
+/** The live faces' budget for a frame, ms (ADR-025; live_faces.spec.js holds
+ *  the loop's own time a frame to it): the page paints the faces itself while
+ *  its paint of a frame measures inside it. */
+export const LIVE_PAINT_BUDGET_MS = 2;
+/** How many frames painted on the page the page's paint is judged over: a
+ *  sixth of a second at 60 frames a second. Enough that a few frames slowed
+ *  by something else (the first run, a collection, a resize) move nothing,
+ *  few enough that a page that paints slowly pays for no more than these
+ *  (in Firefox at the Air's Retina scale on an M3 Max, about 6 ms each). */
+export const LIVE_PAINT_WINDOW = 10;
+
+/** Where the live faces are painted, decided from what painting them on the
+ *  page costs (see the top). `time(paint)` runs `paint`, one frame's canvas
+ *  calls on the page, which returns true when it drew an outline (a frame of
+ *  the fade alone costs little, and says nothing of the glow), and times it
+ *  on `clock`; once the median of the last `window` frames that drew is over
+ *  `budget` ms, it answers true, and from then on always does. One way, for
+ *  the session: the faces never flip between the page and the painter, and a
+ *  page that measured over budget once (a CPU's blur) is not trusted under
+ *  it again. The median, so one slow frame (or a few) moves nothing, and a
+ *  window that slides, so a paint that degrades later (a larger face, a
+ *  machine that slows) still moves. */
+export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, window = LIVE_PAINT_WINDOW, clock = () => performance.now() } = {}) {
+  const times = new Float64Array(window);
+  const sorted = new Float64Array(window);
+  let n = 0;
+  let moved = false;
+  let median = NaN;
+  return {
+    time(paint) {
+      const t0 = clock();
+      const drew = paint();
+      const ms = clock() - t0;
+      if (drew && !moved) {
+        times[n % window] = ms;
+        n++;
+        if (n >= window) {
+          sorted.set(times);
+          sorted.sort();
+          const h = window >> 1;
+          median = window % 2 ? sorted[h] : (sorted[h - 1] + sorted[h]) / 2;
+          moved = median > budget;
+        }
+      }
+      return moved;
+    },
+    /** The page's paint measured over budget: the faces go to the painter. */
+    get moved() {
+      return moved;
+    },
+    /** The median of the last window, ms (NaN before the first is full). */
+    get median() {
+      return median;
+    },
+    /** Frames that drew, timed until the move. */
+    get frames() {
+      return n;
+    },
+  };
+}
+
 /** The loop for every face that hears what is played (see the top).
  *
  *  - `signals`: up to three getters, each an AnalyserNode (fftSize
