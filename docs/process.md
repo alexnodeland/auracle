@@ -343,6 +343,13 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   - The queue's runs share one concurrency group. A draft PR the queue
     closed (its batch was reset) has its run stopped when the next batch's
     starts, so it doesn't hold runners the new one needs.
+  - Each class of job that passes in full, in a PR's own run or the
+    queue's, leaves a record keyed by the files it reads, and the queue's
+    run says which it would reuse (`would reuse <class> (record <run>)`)
+    while still running everything: a dry run (#581). The operator diffs a
+    wave's batches (each run's `reuse-dry-run` artifact) before a second
+    change turns skipping on
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
 - **The required check is `CI`,** in both lanes. `main`'s ruleset requires
   it on a PR's head commit, from GitHub Actions, with no bypass for anyone,
   admins and the queue included; the fast lane's `CI` is what meets it when

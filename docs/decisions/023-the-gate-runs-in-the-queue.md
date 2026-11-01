@@ -63,8 +63,13 @@ the same jobs as `CI` and runs beside it, not after it; Mergify merges on
 both, as `main`'s ruleset requires `CI`. And the queue's runs share one
 concurrency group, so a closed draft PR's run stops when the next batch's
 starts: the first of the consequences *noted, not built* below is built,
-except for a run whose batch is the last in the queue. The rest of this
-record is as accepted.
+except for a run whose batch is the last in the queue. Since #581's first
+step, `CI` also keeps a record of each class of job that passed in full, in
+a PR's own run or the queue's, keyed by the files it reads, and the queue's
+run logs which classes it would reuse, and still runs everything: a dry run.
+Rule 4 holds as written until skipping turns on, in a second change that
+amends it with what the dry run's diff shows. The rest of this record is as
+accepted.
 
 ## Context
 

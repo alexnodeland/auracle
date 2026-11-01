@@ -168,6 +168,10 @@ jobs:
       reuse_coverage: ${{ steps.reuse.outputs.coverage }}
       reuse_browser: ${{ steps.reuse.outputs.browser }}
       reuse_run: ${{ steps.reuse.outputs.run }}
+      # Each class's record key, and in the queue's run the record of each
+      # it would reuse (a dry run, #581): JSON objects, by class.
+      keys: ${{ steps.keys.outputs.json }}
+      would_reuse: ${{ steps.lookup.outputs.json }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -393,8 +397,9 @@ jobs:
       # jobs are not run again: same files, same answer, and one more chance
       # to flake for nothing. Everything runs when no record matches (a merge
       # by hand, outside the queue), on a manual run, and when the record is
-      # missing or expired. Only a queue run's record counts: a PR's fast
-      # lane runs part of the gate, and leaves none.
+      # missing or expired. Only a queue run's record of the tree counts: a
+      # PR's fast lane runs part of the gate, and leaves none. (The records
+      # of a class below are another thing, which main does not read yet.)
       # Any error here (the API, a download, a record it cannot read) means no
       # reuse, not a red run: the jobs then simply run.
       - id: reuse
@@ -493,6 +498,72 @@ jobs:
       # changelog as well as the site and the app, and a PR that touches only
       # those skips the web job's `make dev-check`. It takes a second, so it
       # runs here, on every PR.
+      # Each class of job's record key (scripts/changes.py keys): a hash of
+      # the files that class reads, in this commit and in the main it was
+      # merged onto (HEAD^1). `CI` names the record of a class that passed
+      # by it; the queue's run looks each up (below). An error means no key,
+      # so no record and no lookup, never a red run.
+      - id: keys
+        name: The records' keys
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          keys="$(python3 scripts/changes.py keys --base HEAD^1 --json)"
+          echo "$keys" | jq .
+          echo "json=$keys" >> "$GITHUB_OUTPUT"
+
+      # A dry run of reuse in the queue (#581): for each class, a record of
+      # a run that passed it on byte-identical inputs, a PR's own run (when
+      # it ran the class in full) or an earlier queue run. Logged as `would
+      # reuse <class> (record <run>)`, and nothing is skipped: everything
+      # runs, and `CI` sets each against what ran here, so a wave's batches
+      # can be diffed before skipping turns on. Only a pull_request run of
+      # this workflow from this repository counts, as for main's reuse
+      # above. Any error means no reuse, as there.
+      - id: lookup
+        name: Records these files match (a dry run)
+        if: steps.filter.outputs.lane == 'queue' && steps.keys.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEYS: ${{ steps.keys.outputs.json }}
+        run: |
+          set -euo pipefail
+          found='{}'
+          rows=""
+          for class in rust browser worker web site tree; do
+            key="$(jq -r --arg c "$class" '.[$c] // empty' <<<"$KEYS")"
+            [ -n "$key" ] || continue
+            run="$(gh api "repos/$REPO/actions/artifacts?name=ci-record-$class-$key&per_page=20" \
+              -q "[.artifacts[] | select(.expired == false) | .workflow_run.id | select(. != $GITHUB_RUN_ID)] | first // empty")" || run=""
+            if [ -z "$run" ]; then
+              echo "would run $class: no record of key ${key:0:12}"
+              rows="$rows| $class | none |"$'\n'
+              continue
+            fi
+            IFS=$'\t' read -r event path head <<<"$(gh api "repos/$REPO/actions/runs/$run" -q '[.event, .path, .head_repository.full_name] | @tsv')" || true
+            if [ "${event:-}" = pull_request ] && [ "${path:-}" = .github/workflows/ci.yml ] && [ "${head:-}" = "$REPO" ]; then
+              echo "would reuse $class (record $run)"
+              found="$(jq -c --arg c "$class" --arg r "$run" '. + {($c): $r}' <<<"$found")"
+              rows="$rows| $class | [$run]($GITHUB_SERVER_URL/$REPO/actions/runs/$run) |"$'\n'
+            else
+              echo "would run $class: the record is from run $run (${event:-?}, ${path:-?}, ${head:-?}), which does not count"
+              rows="$rows| $class | none (run $run's does not count) |"$'\n'
+            fi
+          done
+          echo "json=$found" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Records these files match (a dry run)"
+            echo
+            echo "A class with a record would have been reused had skipping been on. Nothing was skipped: \`CI\`'s summary sets each against what ran here."
+            echo
+            echo "| Class | Record |"
+            echo "| --- | --- |"
+            printf '%s' "$rows"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: The voice (www/checkwords.py)
         run: python3 www/checkwords.py
 
@@ -1209,6 +1280,149 @@ jobs:
           name: verified-tree-${{ steps.record.outputs.tree }}
           path: verified.json
           retention-days: 14
+
+      # A record of each class of job that passed in full on these inputs
+      # (#581), named by its key (What changed's keys step): Lint, the
+      # Doctests and Coverage (`rust`); the whole browser tier, all twelve
+      # runners and not a fast lane's few specs (`browser`); Worker protocol
+      # (`worker`); Web (`web`); Site (`site`); and all of them (`tree`).
+      # From a PR's own run and the queue's, from this repository; what a
+      # class's jobs passed on byte-identical inputs is what a later run of
+      # them would answer, but for a flake. The queue's run looks them up
+      # and, for now, only says which it would reuse (What changed's lookup
+      # step). Like the record above, one that cannot be written costs a
+      # later run a reuse, never this one its green.
+      - name: Record each class that passed on these inputs
+        id: records
+        if: ${{ !cancelled() && (needs.changes.outputs.lane == 'fast' || needs.changes.outputs.lane == 'queue') && needs.changes.outputs.keys != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+        continue-on-error: true
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          KEYS: ${{ needs.changes.outputs.keys }}
+          SPECS: ${{ needs.changes.outputs.specs }}
+          LANE: ${{ needs.changes.outputs.lane }}
+        run: |
+          set -euo pipefail
+          passed() {
+            for j in "$@"; do [ "$(jq -r --arg j "$j" '.[$j].result' <<<"$RESULTS")" = success ] || return 1; done
+          }
+          ok=""
+          if passed lint doctests coverage; then ok="$ok rust"; fi
+          if passed browser && [ -z "$SPECS" ]; then ok="$ok browser"; fi
+          if passed worker; then ok="$ok worker"; fi
+          if passed web; then ok="$ok web"; fi
+          if passed site; then ok="$ok site"; fi
+          if [ "$ok" = " rust browser worker web site" ]; then ok="$ok tree"; fi
+          mkdir -p records
+          for class in $ok; do
+            key="$(jq -r --arg c "$class" '.[$c] // empty' <<<"$KEYS")"
+            [ -n "$key" ] || continue
+            jq -n --arg class "$class" --arg key "$key" --arg run "$GITHUB_RUN_ID" --arg lane "$LANE" --arg sha "$GITHUB_SHA" \
+              '{class: $class, key: $key, run: $run, lane: $lane, sha: $sha}' > "records/$class.json"
+            echo "$class=$key" >> "$GITHUB_OUTPUT"
+            echo "recorded $class (key ${key:0:12})"
+          done
+      - if: ${{ !cancelled() && steps.records.outputs.rust != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-rust-${{ steps.records.outputs.rust }}
+          path: records/rust.json
+          retention-days: 14
+      - if: ${{ !cancelled() && steps.records.outputs.browser != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-browser-${{ steps.records.outputs.browser }}
+          path: records/browser.json
+          retention-days: 14
+      - if: ${{ !cancelled() && steps.records.outputs.worker != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-worker-${{ steps.records.outputs.worker }}
+          path: records/worker.json
+          retention-days: 14
+      - if: ${{ !cancelled() && steps.records.outputs.web != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-web-${{ steps.records.outputs.web }}
+          path: records/web.json
+          retention-days: 14
+      - if: ${{ !cancelled() && steps.records.outputs.site != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-site-${{ steps.records.outputs.site }}
+          path: records/site.json
+          retention-days: 14
+      - if: ${{ !cancelled() && steps.records.outputs.tree != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-record-tree-${{ steps.records.outputs.tree }}
+          path: records/tree.json
+          retention-days: 14
+
+      # The dry run's other half (#581): beside each class the queue would
+      # have reused, what its jobs did here. A class it would have reused
+      # that went red here is what reuse would have hidden. Kept as
+      # `reuse-dry-run` too, for the diff over a wave's batches.
+      - name: What the dry run would have reused, and what ran
+        if: ${{ !cancelled() && needs.changes.outputs.lane == 'queue' }}
+        continue-on-error: true
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          WOULD: ${{ needs.changes.outputs.would_reuse }}
+          KEYS: ${{ needs.changes.outputs.keys }}
+          SPECS: ${{ needs.changes.outputs.specs }}
+        run: |
+          set -euo pipefail
+          r() { jq -r --arg j "$1" '.[$j].result' <<<"$RESULTS"; }
+          # A class's answer here: success when each of its jobs passed,
+          # else the first that did not.
+          ran() {
+            for j in "$@"; do
+              x="$(r "$j")"
+              [ "$x" = success ] || { echo "$j: $x"; return; }
+            done
+            echo success
+          }
+          here() {
+            case "$1" in
+              rust) ran lint doctests coverage ;;
+              browser) if [ -n "$SPECS" ]; then echo partial; else ran browser; fi ;;
+              tree) ran lint doctests coverage browser worker web site ;;
+              *) ran "$1" ;;
+            esac
+          }
+          out='{}'
+          {
+            echo "### What the dry run would have reused, and what ran"
+            echo
+            echo "| Class | Would reuse | Ran here |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          would="${WOULD:-}"
+          [ -n "$would" ] || would='{}'
+          for class in rust browser worker web site tree; do
+            rec="$(jq -r --arg c "$class" '.[$c] // empty' <<<"$would")"
+            if [ -n "$rec" ]; then shown="[run $rec]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$rec)"; else shown="no"; fi
+            got="$(here "$class")"
+            echo "| $class | $shown | $got |" >> "$GITHUB_STEP_SUMMARY"
+            out="$(jq -c --arg c "$class" --arg rec "$rec" --arg ran "$got" '. + {($c): {record: $rec, ran: $ran}}' <<<"$out")"
+          done
+          jq -n --arg run "$GITHUB_RUN_ID" --arg sha "$GITHUB_SHA" --argjson keys "${KEYS:-null}" --argjson classes "$out" \
+            '{run: $run, sha: $sha, keys: $keys, classes: $classes}' > reuse-dry-run.json
+          cat reuse-dry-run.json
+      - if: ${{ !cancelled() && needs.changes.outputs.lane == 'queue' && hashFiles('reuse-dry-run.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reuse-dry-run
+          path: reuse-dry-run.json
+          retention-days: 30
 
   # The check the merge queue merges on (.mergify.yml's merge_conditions):
   # green when this is the queue's run and every job `CI` needs passed. It

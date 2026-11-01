@@ -15,6 +15,14 @@ reach?" has one answer.
         for `make check-changed` to run, and says on stderr why, and what
         CI's fast lane runs for them beyond `make check`.
 
+    python3 scripts/changes.py keys [--base REV] [--json]
+        The key of each class of job's record (KEYS, below): a hash of the
+        files that class reads in the commit checked out, and of what it
+        reads of REV (HEAD^1), the commit a pull_request run's merge commit
+        went onto. Prints `class=key` for each, or one JSON object; ci.yml's
+        `changes` job reads them, its `ci` job names a record by one, and
+        the queue's run looks one up (#581).
+
 The classes (docs/architecture/testing.md § CI tiers, *The two lanes*):
 
     full    a change to CI itself: a workflow, an action, or this file. The
@@ -49,6 +57,8 @@ Python 3 standard library only.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -61,10 +71,11 @@ FULL = re.compile(r"^\.github/(workflows|actions)/|^scripts/changes\.py$")
 # `include_str!` or a path from CARGO_MANIFEST_DIR, and an example's
 # `include_str!`, which clippy reads when Lint compiles the examples
 # (--all-targets). The Rust jobs' answer depends on them as on the crates, so
-# a change to one runs them. A test in scripts/test_changes.py reads the
-# crates' sources for path literals that leave crates/, and fails when this
-# list misses one or names one no longer read (#581). A node script beside
-# the examples (live_cost.mjs) is not here: no Rust job runs it.
+# a change to one runs them, and each is in the `rust` record's key (KEYS).
+# A test in scripts/test_changes.py reads the crates' sources for path
+# literals that leave crates/, and fails when this list misses one or names
+# one no longer read (#581). A node script beside the examples
+# (live_cost.mjs) is not here: no Rust job runs it.
 RUST_READS = (
     "Cargo.lock",
     "apps/web/perform-wirings.json",
@@ -104,6 +115,49 @@ SPEC = re.compile(r"^tests/web/[^/]+\.spec\.js$")
 WORKER = re.compile(r"^(apps/web/|tests/worker/)")
 
 CLASSES = ("full", "rust", "site", "web", "smoke", "worker", "reach")
+
+# ─── the records' keys (#581) ────────────────────────────────────────────────
+#
+# A class of job that passed leaves a record (ci.yml's `ci` job), keyed by a
+# hash of the files that class reads, so a later run on byte-identical inputs
+# can find it. Today that is a dry run: the queue's run logs which classes it
+# would reuse and runs everything, until a wave's batches have been diffed.
+#
+# A key hashes the git blob id and mode of each file the class reads in the
+# commit under test, and of each file it reads in the commit the change went
+# onto (REV, HEAD^1: a pull_request run tests a merge commit, and its first
+# parent is the main it was made on), beside the files every key holds: CI
+# itself (.github/, and this file, which says what each class reads) and
+# rust-toolchain.toml, which pins the compiler's release. Each class is
+# (what it reads of the commit, what it reads of the commit it went onto).
+EVERY_KEY = re.compile(r"^(\.github/|scripts/changes\.py$|rust-toolchain\.toml$)")
+EVERYTHING = re.compile(r"")
+# Lint, the Doctests and Coverage: what builds and tests the Rust, and the
+# files outside crates/ it reads. Coverage's gate also reads the commit the
+# change went onto: each crate's floor there, and the lines changed since.
+RUST_INPUTS = re.compile(
+    r"^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.config/nextest\.toml$"
+    r"|scripts/coverage_gate\.py$|" + _READS + ")"
+)
+# The whole browser tier: the app, its specs and what runs them, the engine
+# (ENGINE) and node's version. A fast lane's few specs leave no record.
+BROWSER_INPUTS = re.compile(r"^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.node-version$)")
+# Worker protocol: worker.js and what it loads, its tests, the engine, node.
+WORKER_INPUTS = re.compile(r"^(apps/web/|tests/worker/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.node-version$)")
+# Web's `make web-check` and `make dev-check` read most of the tree, and its
+# specs' lint the suppressions file, and the files, of the commit the change
+# went onto (tests/web/suppressions.mjs, given HEAD^1).
+SPEC_LINT_BASE = re.compile(r"^tests/web/")
+KEYS = {
+    "rust": (RUST_INPUTS, RUST_INPUTS),
+    "browser": (BROWSER_INPUTS, None),
+    "worker": (WORKER_INPUTS, None),
+    "web": (EVERYTHING, SPEC_LINT_BASE),
+    # The site is built from the tree alone.
+    "site": (EVERYTHING, None),
+    # Every class at once: the full gate's record.
+    "tree": (EVERYTHING, re.compile(RUST_INPUTS.pattern + "|" + SPEC_LINT_BASE.pattern)),
+}
 
 # `make check`'s parts, in its order, and the class that reaches each.
 CHECK = (
@@ -191,18 +245,63 @@ def changed_files(base: str, cwd: str | None = None) -> tuple[str, list[str]]:
     return merge_base, sorted(set(committed) | set(untracked))
 
 
+def ls_tree(rev: str, cwd: str | None = None) -> list[tuple[str, str]]:
+    """Every file in `rev`, as (path, "mode type blob")."""
+    out = []
+    for rec in git(cwd, "ls-tree", "-r", "-z", "--full-tree", rev).split("\0"):
+        if rec:
+            meta, path = rec.split("\t", 1)
+            out.append((path, meta))
+    return out
+
+
+def keys(base: str = "HEAD^1", cwd: str | None = None) -> dict[str, str]:
+    """Each class's record key for the commit checked out (HEAD), the
+    change having gone onto `base`: 32 hex digits of a SHA-256."""
+    head = ls_tree("HEAD", cwd)
+    then = ls_tree(base, cwd)
+    every = [f"{meta}\t{path}\n" for path, meta in head if EVERY_KEY.search(path)]
+    out = {}
+    for name, (now, before) in KEYS.items():
+        h = hashlib.sha256(f"{name}\n".encode())
+        for line in every:
+            h.update(line.encode())
+        h.update(b"head\n")
+        for path, meta in head:
+            if now.search(path):
+                h.update(f"{meta}\t{path}\n".encode())
+        h.update(b"base\n")
+        for path, meta in then if before else ():
+            if before.search(path):
+                h.update(f"{meta}\t{path}\n".encode())
+        out[name] = h.hexdigest()[:32]
+    return out
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("classify", help="read changed paths on stdin, print key=true|false")
     ck = sub.add_parser("check", help="print the parts of `make check` the local change reaches")
     ck.add_argument("--base", default="origin/main")
+    ks = sub.add_parser("keys", help="print each class's record key for HEAD")
+    ks.add_argument("--base", default="HEAD^1", help="the commit the change went onto (HEAD^1)")
+    ks.add_argument("--json", action="store_true", help="one JSON object rather than class=key lines")
     args = ap.parse_args(argv)
 
     if args.cmd == "classify":
         c = classify(sys.stdin.read().splitlines())
         for k in CLASSES:
             print(f"{k}={'true' if c[k] else 'false'}")
+        return 0
+
+    if args.cmd == "keys":
+        try:
+            k = keys(args.base)
+        except subprocess.CalledProcessError as e:
+            print(f"  cannot read HEAD and {args.base}: {(e.stderr or '').strip() or e}", file=sys.stderr)
+            return 1
+        print(json.dumps(k, sort_keys=True) if args.json else "\n".join(f"{c}={v}" for c, v in k.items()))
         return 0
 
     def say(line: str) -> None:

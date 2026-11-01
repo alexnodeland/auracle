@@ -434,14 +434,36 @@ tree>`, kept 14 days) of the jobs that passed on those files, and main's
 *What changed* job reads it: Lint, Web, the Doctests, Coverage, Worker
 protocol and the browser tier are skipped there when the record says they
 passed, and the
-run's summary says so, with a link. Only a queue run's record counts: a PR's
-fast lane runs part of the gate and leaves none. Everything runs on main
-when no record matches (a merge by hand, outside the queue), on a manual
-run, and for a PR from a fork. The Site job always runs on main: its build
-is what deploys. The *Slow suite* and the nightly flake hunt reuse no
+run's summary says so, with a link. Only a queue run's record of the tree
+counts: a PR's fast lane runs part of the gate and leaves none. Everything
+runs on main when no record matches (a merge by hand, outside the queue), on
+a manual run, and for a PR from a fork. The Site job always runs on main: its
+build is what deploys. The *Slow suite* and the nightly flake hunt reuse no
 record of the queue's: the *Slow suite* runs in full on a push that changes
 what its tests cover, and runs nothing on one that doesn't
 ([When the slow tier runs](#ci-tiers)).
+
+**A record per class, read as a dry run (#581).** Of the last 44 queue runs
+(30 October to 1 November), 24 tested a tree byte-identical to the PR's last
+green fast lane (the same head on the same `main`), and in 39 the Rust's
+inputs were those of a run that had passed it: the queue ran those jobs
+again on the same files. So
+`CI`, in a PR's own run and in the queue's, keeps a record of each class of
+job that passed in full: `rust` (Lint, the Doctests and Coverage), `browser`
+(the whole tier, all twelve runners, never a fast lane's few specs),
+`worker`, `web`, `site`, and `tree` (all of them). Each is an artifact,
+`ci-record-<class>-<key>`, kept 14 days, its key a hash of the files the
+class reads (`python3 scripts/changes.py keys`): their git blob ids in the
+commit under test and, where a gate reads the `main` it was merged onto
+(Coverage's floors and changed lines, the specs' lint's suppressions), there
+too, beside CI's own files and `rust-toolchain.toml` in every key. The
+queue's *What changed* looks up a record for each class of its own inputs,
+from this repository's runs of `ci.yml` only, and logs `would reuse <class>
+(record <run>)`; and runs everything. `CI`'s summary then sets each class it
+would have reused against what its jobs did there, and keeps the table as
+the artifact `reuse-dry-run`. A wave's batches are diffed from those before
+skipping turns on, in a second change that amends ADR-023's rule 4 with what
+the diff shows. A record that cannot be read is no reuse, never a red run.
 
 **Latest only.** A batch lands as two or three merges seconds apart, and
 only the last one's files are the files the queue tested. So main keeps its
