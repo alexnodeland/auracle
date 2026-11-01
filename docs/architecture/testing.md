@@ -1243,10 +1243,11 @@ twelve shards run three times over, three at a time: four rounds. Its
 the workflow's length together (#582). On 2026-10-31, in the shape before
 #508 (six runners two at a time, each cut at 40 minutes, beside the hunt),
 it took 2 h 23 min; on 2026-11-01, with the budgets' thirteen beside the
-hunt (up to eight runners at once), 2 h 33 min, about half of it waiting
-for runners. Both are the budget's span, the run's creation to its last
-job; `flake-hunt.yml`'s header reads Nov 1 from the engine's start too
-(2 h 19 min: the engine waited 13 minutes for a runner).
+hunt (its jobs allowed nine runners at once, and eight were ever running
+together), 2 h 33 min, about half of it waiting for runners. Both are the
+budget's span, the run's creation to its last job; `flake-hunt.yml`'s
+header reads Nov 1 from the engine's start too (2 h 19 min: the engine
+waited 13 minutes for a runner).
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a
 PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
