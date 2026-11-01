@@ -223,11 +223,21 @@ button (a small keybed) under them, and the keys come up from the bottom.
 Each level is one screen there too, LEARNING's map beside what it weighs and
 its forecasts. On any touch screen the levels' stops are a finger's size.
 
-On a phone, upright or on its side, a toast stands just under the menu bar,
-never over it, as wide as its words up to the screen's: one or two lines
-with its action beside them, over the top of the level for its moment, one
-at a time. Swipe it up to put it away (taking it back is its action's, as
-before).
+A toast never covers a control or a level's heading, at any size. It
+stands in the free space nearest the stage's bottom right, or over the
+level's picture (PERFORM's well, an EVOLVE card's, the rack, TASTE's map),
+never over anything you press. On a phone held upright it is a banner as
+wide as its words up to the screen's: one or two lines with its action
+beside them, one at a time, in the free band of the level nearest its foot
+(on PERFORM inside the well, over its floor under the sound's face; on
+EVOLVE under the cards' corners, away from the thumb that swipes a card up).
+On a phone on its side it stands where it is free, as on a wider screen.
+Where a level has no room left at its size (PERFORM on a small phone), the
+first-steps pill steps aside while the toast stands in its place, and the
+toast keeps to one row, its words beside its action. With the keys up on a
+small phone PERFORM has no room left even so, and a toast stands over the
+foot of its knobs for its moment, their middles still free to turn. Swipe it
+up to put it away (taking it back is its action's, as before).
 
 ## Hit targets
 

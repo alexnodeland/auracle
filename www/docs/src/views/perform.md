@@ -41,7 +41,9 @@ down*), never one it can’t reach. On a sound none of the controls reach
 it again on a sound one of them turns. When the steps it shows are done, it
 says what the loop was (*That is the loop. Every offer you hear, then take or
 pass, teaches it what you like.*) and goes. It says that only once, so a turn
-it comes back for later just ticks off. Its **×** stops it showing.
+it comes back for later just ticks off. Its **×** stops it showing. On a small
+phone, where the band under the pads is the only room left, the pill steps
+aside while a toast stands there and comes back when the toast goes.
 
 ## What you see
 

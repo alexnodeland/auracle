@@ -438,5 +438,5 @@ What a key does, a finger does like this:
 | <kbd>Esc</kbd> | **×** on what is open, or a tap beside a sheet |
 | <kbd>?</kbd> on PERFORM's controls | Hold a finger on one until its ring fills |
 
-On a phone a toast is a banner over the menu bar: swipe it up to put it
-away.
+On a phone a toast is a banner across the screen, clear of every control:
+swipe it up to put it away.
