@@ -226,8 +226,18 @@ test("the sixth pick always redraws the taste map, even after agreeable picks", 
     if (cycle === 2) {
       // Every pick after the first refit answers with the ratings it left
       // (`WasmEngine::belief`): every member's numbers, the ten seeds of the
-      // next generation and the ten members it may replace. The numbers move
+      // next generation and the members it may replace. The numbers move
       // with each pick, with no refit between the first five.
+      //
+      // What it may replace (`Engine::may_replace`) is one member per walk
+      // the pool has no place for (ten at size, fewer while it fills, none
+      // while every child has a place), then, once any can go, four more
+      // (`ON_TABLE_MAX`, the table's cap, whatever it holds now): its end
+      // passes over the sounds on the table as it finds them, and up to
+      // four of those it would take can be up then, each sending it one
+      // further. Marking only the ten would let it replace an unmarked
+      // sound (natively,
+      // `may_replace_bounds_a_generations_end_whatever_is_on_the_table_by_then`).
       const picked = async () => (await statuses(logFrom)).filter((e) => e.vote);
       await expect.poll(async () => (await picked()).length).toBe(6);
       const replies = await picked();
@@ -235,7 +245,8 @@ test("the sixth pick always redraws the taste map, even after agreeable picks", 
         expect(e.ratings, "a pick's reply carried no ratings").not.toBeNull();
         expect(e.ratings.rows).toBe(e.pool);
         expect(e.ratings.seeds).toBe(10);
-        expect(e.ratings.may).toBe(Math.min(10, Math.max(0, e.pool + 10 - e.target))); // fewer while the pool fills
+        const owed = Math.min(10, Math.max(0, e.pool + 10 - e.target));
+        expect(e.ratings.may).toBe(owed === 0 ? 0 : owed + 4);
       }
       expect(new Set(replies.map((e) => e.ratings.sum)).size, `the ratings did not move per pick: ${JSON.stringify(replies.map((e) => [e.pair, e.ess, e.ratings.sum]))}`).toBe(6);
     }
