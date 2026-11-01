@@ -2989,7 +2989,9 @@ worker.onmessage = (e) => {
       }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
-      // What PERFORM can play this tree on before it is measured (#290).
+      // What PERFORM can play this tree on before it is measured (#290), and
+      // what its rack calls each knob (#532).
+      if (perform && m.names) perform.namesKnown(m.json, m.names);
       if (perform && m.first) perform.firstKnown(m.json, m.first);
       setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
@@ -3014,6 +3016,9 @@ worker.onmessage = (e) => {
       // a later click has superseded an earlier one.
       if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
       if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
+      // What its rack calls each knob, for PERFORM's controls (#532): for
+      // any panel, unlike its `first`.
+      if (perform && m.names) perform.namesKnown(m.json, m.names);
       // Its `first` is predicted for the panel in force now, which the one
       // held since its rows (`poolTrees`) may not be.
       if (perform && m.first) perform.firstKnown(m.json, m.first);
@@ -10961,7 +10966,9 @@ function voicePoolEarly(id) {
     return;
   }
   // Its `first` was predicted for the panel in force when it was sent: for
-  // another panel, PERFORM waits for the one `bench_opening` brings.
+  // another panel, PERFORM waits for the one `bench_opening` brings. What
+  // its rack calls each knob is the same for every panel (#532).
+  if (perform && held.names) perform.namesKnown(held.json, held.names);
   if (perform && held.first && (held.controls ?? null) === perform.panelControls()) perform.firstKnown(held.json, held.first);
   voiceEarly(held.json, held.makeup, { id, label: benchName(id) });
 }

@@ -42,11 +42,36 @@ test("a patch file opened twice lands once, and the second time is the sound it 
   await w.close();
 });
 
+// A tree on its way to the voices ahead of its bench rack carries its knobs'
+// names as that rack will have them (#532): an open's `bench_opening` (the
+// member's described rack) and an edit's `tree_json` (the rack its `bench`
+// reply brings).
+test("an open's tree and an edit's carry their knobs' names, as the bench's rack then has them", { timeout: TIMEOUT }, async (t) => {
+  const w = await workerFor(t, { seed: SEED });
+  const [views] = await w.send({ type: "taste_views" });
+  const id = (views.views || views).ranked[0].id;
+  const names = (rack) => rack.modules.flatMap((m) => m.knobs.map((k) => [k.addr, m.title, k.label]));
+  const opened = await w.send({ type: "edit_begin", id });
+  const early = opened.find((r) => r.type === "bench_opening");
+  const bench = opened.find((r) => r.type === "bench");
+  assert.ok(early && bench, "the open spoke early, then landed");
+  assert.deepEqual(early.names, names(bench.rack), "the open's names are its rack's");
+  // The same tree set again (a Take sends one): its tree for the voices, then its rack.
+  const set = await w.send({ type: "edit_set_tree", json: early.json, makeup: early.makeup });
+  const live = set.find((r) => r.type === "tree_json");
+  const after = set.find((r) => r.type === "bench");
+  assert.ok(live && after, "the edit spoke early, then landed");
+  assert.deepEqual(live.names, names(after.rack), "the edit's names are its rack's");
+  await w.close();
+});
+
 // Main opens a pool member in the click's own task from the tree and makeup
 // it already holds (#306): each member's are sent once, beside the first
 // rows that list it (`trees`, worker.js `newTrees`), and a member that joins
-// later (a preset loaded) comes with the rows it joins in, alone.
-test("each pool member's tree and makeup reach main once, beside the first rows that list it", { timeout: TIMEOUT }, async (t) => {
+// later (a preset loaded) comes with the rows it joins in, alone. With them
+// go its knobs' names as its rack has them (`names`, #532), which PERFORM's
+// controls say from the click, before the bench's rack of it comes back.
+test("each pool member's tree, makeup and knobs' names reach main once, beside the first rows that list it", { timeout: TIMEOUT }, async (t) => {
   const w = await workerFor(t, { seed: SEED });
   const held = new Map();
   const take = (r) => {
@@ -67,6 +92,11 @@ test("each pool member's tree and makeup reach main once, beside the first rows 
     assert.ok(Number.isFinite(x.makeup) && x.makeup > 0, `member ${id} has a makeup`);
     // Its `first` is for the panel it was predicted for: the six, named null.
     assert.equal(x.controls, null, `member ${id}'s first says which panel it was predicted for`);
+    // Its knobs as its rack names them: every knob of the rack the engine
+    // describes for it, with its module's title.
+    const [described] = await w.send({ type: "describe", id });
+    const rack = described.rack.modules.flatMap((m) => m.knobs.map((k) => [k.addr, m.title, k.label]));
+    assert.deepEqual(x.names, rack, `member ${id}'s knobs' names are its rack's`);
   }
   const bytes = JSON.stringify(Object.fromEntries(held)).length;
   console.log(`${ids.length} members' trees: ${(bytes / 1024).toFixed(1)} KB, ${(bytes / ids.length / 1024).toFixed(1)} KB each`);

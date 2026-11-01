@@ -1661,13 +1661,16 @@ export function createPerform(host) {
   }
 
   // A knob as the rack names it, `{ module, label }`, for the sound in hand:
-  // a preset's from the rack description shipped with its wiring
-  // (`shippedRack`), at once; any other sound's from the bench's rack once it
-  // holds this sound (`host.knobInfo`); until then its label alone, in the
-  // rack's words (`knobLabel`), never the site it is addressed by ("cut").
+  // from the names the worker sent with its tree (`namesKnown`), or a
+  // preset's from the rack description shipped with its wiring
+  // (`shippedRack`: a preset voiced from memory at the click, before its
+  // `bench_opening`), at once; else from the bench's rack once it holds this
+  // sound (`host.knobInfo`); else its label alone, in the rack's words
+  // (`knobLabel`), never the site it is addressed by ("cut").
   function knobOf(addr) {
-    const shippedHit = shippedRack(state.cur && state.cur.json)?.get(addr);
-    if (shippedHit) return shippedHit;
+    const json = state.cur && state.cur.json;
+    const hit = (json && named.get(json)?.get(addr)) || shippedRack(json)?.get(addr);
+    if (hit) return hit;
     const info = host.knobInfo ? host.knobInfo(addr, 0) : null;
     return { module: (info && info.module) || "", label: (info && info.module && info.label) || knobLabel(addr) };
   }
@@ -2118,6 +2121,19 @@ export function createPerform(host) {
   // its shape, its live knobs and a wiring predicted from the knob table, by
   // tree text, the last few.
   const firsts = new Map();
+  // What the rack calls each knob of a tree (the worker's `names`, riding
+  // with the tree to the voices, #532): addr -> { module, label }, by tree
+  // text, the last few. The controls name their knobs from it (`knobOf`).
+  const named = new Map();
+  function namesKnown(json, names) {
+    if (!json || !Array.isArray(names)) return;
+    named.delete(json);
+    named.set(json, new Map(names.map(([a, module, label]) => [a, { module: module || "", label: label || knobLabel(a) }])));
+    while (named.size > 8) named.delete(named.keys().next().value);
+    // The sound in hand's, arriving after its controls were painted: they
+    // say them now, in place.
+    if (state.visible && state.cur && state.cur.json === json) knobs.forEach(paintKnob);
+  }
   function firstKnown(json, first) {
     firsts.delete(json);
     firsts.set(json, first);
@@ -5258,6 +5274,7 @@ export function createPerform(host) {
     ensureWired,
     patchChanged,
     firstKnown,
+    namesKnown,
     // The panel's set as a `perform_wire` names it to the worker (null for
     // the six): what a `first` predicted for this panel was asked with.
     panelControls() {

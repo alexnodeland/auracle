@@ -1,16 +1,17 @@
 // PERFORM's dials and the pads beside them (#532, #523).
 //
 // - A control's caption names its knobs in the rack's words (its
-//   description's labels: "cutoff", "mod depth"), from the moment a sound
-//   opens, and never says a word twice. A sound opens in the click's task and
-//   the bench's rack of it comes back about a render later; the captions
-//   were drawn in that gap from the rack still there, the last sound's, and
-//   read the knobs' sites ("cut · cut +1", "mdepth · rate +2") until a
-//   re-measurement repainted them, seconds later. A preset's rack ships with
-//   its wiring, so its captions are the same before its bench rack lands as
-//   after; a pool sound's name their knobs' labels until then, and their
-//   modules after. Every caption shown is read, by an observer installed
-//   before boot: a read after the open would miss the gap.
+//   description's labels: "cutoff", "mod depth", with the module where two
+//   share a name), from the moment a sound opens, and never says a word
+//   twice. A sound opens in the click's task and the bench's rack of it
+//   comes back about a render later; the captions were drawn in that gap
+//   from the rack still there, the last sound's, and read the knobs' sites
+//   ("cut · cut +1", "attack · dec +2") until a re-measurement repainted
+//   them, seconds later ("filter cutoff +2", "attack +3"). A pool sound's
+//   names now ride with its tree, and a preset's rack ships with its wiring:
+//   each caption is the same before the bench's rack lands as after, and as
+//   PERFORM drawn afresh. Every caption shown is read, by an observer
+//   installed before boot: a read after the open would miss the gap.
 // - A dial or the XY pad pressed with the mouse takes the focus with no
 //   ring, once a key has been pressed too (any key in Chromium, Tab in
 //   Firefox, made focus a script gives count as the keyboard's: the ring
@@ -56,6 +57,19 @@ test("a control's caption names its knobs in the rack's words from the moment a 
   await goLevel(page, "perform");
   await app.reached();
   const frames = () => page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))));
+  // Each control's knob-naming captions while `name` was the sound shown:
+  // one, the same before the bench's rack of it landed as after.
+  const oneEach = async (name) => {
+    const shown = await page.evaluate((n) => window.__captions.filter((c) => c.name === n), name);
+    const byDial = {};
+    for (const c of shown.filter((c) => NAMES_KNOBS(c.t))) (byDial[c.i] ||= new Set()).add(c.t);
+    console.log(`[perform_dials] ${name}: ${JSON.stringify(Object.fromEntries(Object.entries(byDial).map(([i, s]) => [i, [...s]])))}`);
+    expect(Object.keys(byDial).length, `${name}: some control names its knobs`).toBeGreaterThan(0);
+    for (const [i, said] of Object.entries(byDial)) expect([...said], `${name}: control ${i}'s caption`).toHaveLength(1);
+  };
+  // What the controls say, captions and tooltips (*raises filter cutoff*).
+  const said = () =>
+    page.evaluate(() => [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => `${k.querySelector(".pf-k-sub").textContent} | ${k.title}`));
   for (const name of ["Glass Pad", "Acid Line", "Cathedral", "Reese"]) {
     // Its shipped wiring stays the one in hand: the re-check it is owed
     // never reaches the engine, so a caption changes only with the words.
@@ -66,25 +80,15 @@ test("a control's caption names its knobs in the rack's words from the moment a 
     await expect(page.locator(".pf-name")).toHaveText(name);
     // The bench's rack has landed, and the frame after it painted.
     await frames();
-    const shown = await page.evaluate((n) => window.__captions.filter((c) => c.name === n), name);
-    const byDial = {};
-    for (const c of shown.filter((c) => NAMES_KNOBS(c.t))) (byDial[c.i] ||= new Set()).add(c.t);
-    console.log(`[perform_dials] ${name}: ${JSON.stringify(Object.fromEntries(Object.entries(byDial).map(([i, s]) => [i, [...s]])))}`);
-    expect(Object.keys(byDial).length, `${name}: some control names its knobs`).toBeGreaterThan(0);
-    // The same words before its bench rack landed as after.
-    for (const [i, said] of Object.entries(byDial)) expect([...said], `${name}: control ${i}'s caption`).toHaveLength(1);
+    await oneEach(name);
   }
-  // A pool sound, whose rack does not ship: opened from the bank. Once its
-  // bench rack has landed, its controls say what PERFORM drawn afresh says
-  // (a trip to PATCH and back paints every control again): the modules are
-  // in the tooltips (*raises filter cutoff*) and, where two knobs share a
-  // name, in the captions. They read the labels alone, without the
-  // modules, until the rack came, and kept them.
+  // Pool sounds, whose racks do not ship, opened from the bank, their
+  // guesses' measurements stalled as the presets' re-checks are. Once the
+  // bench's rack has landed, their controls also say what PERFORM drawn
+  // afresh says (a trip to PATCH and back paints every control again).
   await bankTab(page, "pool");
   const rows = page.locator("#bank-list .bank-item[data-id]");
   await app.engine((timeout) => expect.poll(() => rows.count(), { timeout }).toBeGreaterThan(6), { ms: 90_000 });
-  const said = () =>
-    page.evaluate(() => [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => `${k.querySelector(".pf-k-sub").textContent} | ${k.title}`));
   for (const n of [3, 6]) {
     const row = rows.nth(n);
     const name = (await row.locator(".bi-name").textContent()).trim();
@@ -93,6 +97,7 @@ test("a control's caption names its knobs in the rack's words from the moment a 
     await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
     await expect(page.locator(".pf-name")).toHaveText(name);
     await frames();
+    await oneEach(name);
     const landed = await said();
     await goLevel(page, "patch");
     await goLevel(page, "perform");
