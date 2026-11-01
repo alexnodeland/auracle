@@ -567,7 +567,9 @@ pub enum StructError {
     /// The operation does not apply to this node kind.
     #[error("{0}")]
     Invalid(String),
-    /// The edit would exceed the size/depth ceilings.
+    /// The edit would exceed the size/depth ceilings: the size and the depth
+    /// the patch would have had, so a reader can tell which ceiling it passed
+    /// (PATCH's head reddens that one's count).
     #[error("the patch would pass its limits ({0} modules, depth {1})")]
     TooBig(usize, usize),
     /// The edit would stack more CV processors on one cable than the realtime
@@ -1821,8 +1823,9 @@ pub fn normalize_tree(tree: &mut PatchTree) -> Normalized {
 }
 
 fn check_ceilings(tree: &mut PatchTree) -> Result<(), StructError> {
-    if tree.root.size() > MAX_SIZE || tree.root.depth() > MAX_DEPTH {
-        return Err(StructError::TooBig(MAX_SIZE, MAX_DEPTH));
+    let (size, depth) = (tree.root.size(), tree.root.depth());
+    if size > MAX_SIZE || depth > MAX_DEPTH {
+        return Err(StructError::TooBig(size, depth));
     }
     if max_mod_depth_of(&mut tree.root) > MAX_MOD_DEPTH {
         return Err(StructError::ModTooDeep(MAX_MOD_DEPTH));

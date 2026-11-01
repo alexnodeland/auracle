@@ -51,7 +51,8 @@ ceilings breeding searches within (24 modules, a depth of 6, a modulation depth
 of 3) it says that too: one short of it, its number in amber (*5/6 depth*);
 at it, the whole count in amber (*6/6 depth*), since a patch at a ceiling has
 no room to grow. An edit that would take the patch past one is refused, and
-that count turns red while the refusal is said. Under
+the count of the ceiling it would pass shows in red while the refusal is
+said, however far from it the patch was. Under
 [the model view](#the-model-view-in-patch) the subtitle becomes the belief
 line instead: what the model makes of this sound.
 

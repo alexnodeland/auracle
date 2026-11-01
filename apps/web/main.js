@@ -7989,12 +7989,21 @@ function treeBudget(tree) {
 // amber, as the model's own marks are, the whole count where a tight one
 // lights only its number.
 const budgetRefused = { cells: new Set(), timer: 0 };
-/** An edit was refused: if for a ceiling (the grammar's `StructError::TooBig`,
- *  "would pass its limits", for the size and the depth; `ModTooDeep`,
- *  "modulation chain would exceed depth", for the mod depth), redden it. */
+/** An edit was refused: if at a ceiling, redden that one. The grammar's
+ *  `StructError::TooBig` ("would pass its limits (25 modules, depth 6)")
+ *  carries the size and the depth the patch would have had, so the ceiling
+ *  is the one its count passes; `ModTooDeep` ("modulation chain would exceed
+ *  depth") is the mod depth's. */
 function budgetRefusal(error) {
-  const cells = /pass its limits/.test(error) ? ["size", "depth"]
-    : /modulation chain would exceed depth/.test(error) ? ["mod"] : [];
+  const big = /pass its limits \((\d+) modules, depth (\d+)\)/.exec(error || "");
+  let cells = [];
+  if (big) {
+    if (Number(big[1]) > BUDGET.size) cells.push("size");
+    if (Number(big[2]) > BUDGET.depth) cells.push("depth");
+    // Counts that pass neither are the ceilings themselves, as an engine
+    // before #530 said them: either may be the one.
+    if (!cells.length) cells = ["size", "depth"];
+  } else if (/modulation chain would exceed depth/.test(error || "")) cells = ["mod"];
   if (!cells.length) return;
   budgetRefused.cells = new Set(cells);
   clearTimeout(budgetRefused.timer);
@@ -8021,10 +8030,13 @@ function renderBudget() {
     // room to spend — so unless the numbers were asked for (Show
     // measurements) it says only what is tight or full, and nothing
     // otherwise. The warning itself is never held back.
-    .filter(([n, max]) => engineerMode || state(n, max))
+    // …and a ceiling an edit was just refused at is shown, in red, however
+    // far the patch is from it now: a chain dropped deep in a patch can pass
+    // a depth it was nowhere near.
+    .filter(([n, max, , id]) => engineerMode || state(n, max) || budgetRefused.cells.has(id))
     .map(([n, max, label, id]) => {
       const st = state(n, max);
-      const refused = st && budgetRefused.cells.has(id) ? " refused" : "";
+      const refused = budgetRefused.cells.has(id) ? " refused" : "";
       return `<span class="bg-cell ${st}${refused}"><b>${n}</b>/${max} ${label}</span>`;
     });
   el.innerHTML = cells.join(`<span class="bg-sep">·</span>`);

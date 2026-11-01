@@ -31,5 +31,7 @@
 - **A patch at a ceiling no longer reads as an error.** A full budget in
   the head (*6/6 depth*) was red, the color of danger, though nothing was
   wrong. It's amber now, the whole count, where a budget one short shows
-  only its number in amber. It turns red only while an edit refused at that
-  ceiling is being said (`patch_fit.spec.js`, #530).
+  only its number in amber. Red is kept for an edit refused at a ceiling:
+  while the refusal is said, the count of the ceiling it would pass shows in
+  red, and only that one, and the refusal names the size and depth the patch
+  would have had (`patch_fit.spec.js`, #530).

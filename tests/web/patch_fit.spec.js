@@ -36,7 +36,10 @@
 //   big to fit, opened from there, opens where it starts.
 // - The head's full depth budget (6/6) is amber at rest, as the tight one is,
 //   never red; an edit refused at that ceiling (a second filter in series)
-//   turns it red while the refusal is said, and it is amber again after.
+//   is said with the depth it would have made (7), turns that count red, and
+//   no other, as the refusal is said (read as it is drawn), and it is amber
+//   again after; an edit refused for the size instead turns the size's count
+//   red, shown though it is far from its ceiling, and leaves the depth amber.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
 const { rackAtRest, settled } = require("./patch_page");
 
@@ -390,6 +393,19 @@ test.describe("a laptop, 1280 × 800", () => {
 });
 
 test("a full depth budget is amber at rest, and red only while an edit refused at it is said", async ({ page, app }) => {
+  // Every count the head draws in red, as it is drawn: read in the task that
+  // drew it, on the app's clock, not by a poll that may come after the
+  // refusal has been said and the red has gone (ADR-022).
+  await page.addInitScript(() => {
+    window.__budgetRed = [];
+    document.addEventListener("DOMContentLoaded", () => {
+      const el = document.getElementById("budget");
+      new MutationObserver(() => {
+        const red = [...el.querySelectorAll(".bg-cell.refused")].map((c) => ({ text: c.textContent, color: getComputedStyle(c).color }));
+        if (red.length) window.__budgetRed.push(red);
+      }).observe(el, { childList: true, subtree: true });
+    });
+  });
   await patchAtFit(app);
   const ink = (v) => page.evaluate((name) => {
     const s = document.createElement("span");
@@ -405,8 +421,10 @@ test("a full depth budget is amber at rest, and red only while an edit refused a
   await expect(depth).toHaveClass(/\bfull\b/);
   await expect(depth).toHaveCSS("color", amber);
   await expect(depth.locator("b")).toHaveCSS("color", amber);
+  expect(await page.evaluate(() => window.__budgetRed), "red at rest").toEqual([]);
   // A second filter in series after the first one (its ⋯'s duplicate) would
-  // make the patch seven deep: refused, and said.
+  // make the patch seven deep: refused, and said, with the size and the
+  // depth it would have had.
   const first = await page.evaluate(() => {
     const gs = [...document.querySelectorAll('#rack-svg .rack-controls g.mod-group[data-kind="filter"]')];
     gs.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
@@ -415,10 +433,25 @@ test("a full depth budget is amber at rest, and red only while an edit refused a
   await page.locator(`#rack-svg .rack-controls g.mod-group[data-key="${first}"]`).focus();
   await page.keyboard.press("F2");
   await page.locator("#ctx-menu .cm-item", { hasText: /^duplicate/ }).click();
-  await app.toast(/didn’t happen: the patch would pass its limits/);
-  await expect(depth).toHaveClass(/\brefused\b/);
-  await expect(depth).toHaveCSS("color", red);
+  await app.toast(/didn’t happen: the patch would pass its limits \(\d+ modules, depth 7\)/);
+  // The depth, and only the depth (the size is nowhere near its ceiling),
+  // went red as the refusal was said.
+  expect(await page.evaluate(() => window.__budgetRed[0]), "the counts drawn red").toEqual([{ text: "6/6 depth", color: red }]);
   // Amber again once the refusal has been said.
   await expect(depth).not.toHaveClass(/\brefused\b/, { timeout: 15_000 });
+  await expect(depth).toHaveCSS("color", amber);
+  await expect(page.locator("#budget .bg-cell.refused")).toHaveCount(0);
+
+  // Refused for the size instead, as the engine refuses an edit to a patch
+  // of 24 modules (answered here, for this patch is nowhere near): the size
+  // goes red, shown though it is not near its ceiling, and the full depth
+  // stays amber.
+  const before = await page.evaluate(() => window.__budgetRed.length);
+  await app.answer("edit_set_tree", { type: "edit_rejected", error: "the patch would pass its limits (25 modules, depth 6)" });
+  await page.locator(`#rack-svg .rack-controls g.mod-group[data-key="${first}"]`).focus();
+  await page.keyboard.press("F2");
+  await page.locator("#ctx-menu .cm-item", { hasText: /^duplicate/ }).click();
+  await app.toast(/didn’t happen: the patch would pass its limits \(25 modules, depth 6\)/);
+  expect(await page.evaluate((k) => window.__budgetRed[k], before), "the counts drawn red").toEqual([{ text: expect.stringMatching(/^\d+\/24 modules$/), color: red }]);
   await expect(depth).toHaveCSS("color", amber);
 });
