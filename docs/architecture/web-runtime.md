@@ -1222,7 +1222,11 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   weights, in buffers made once) against the same bank, fading like phosphor
   and cleared in silence. The moving layer is `live-face.js`'s trace
   (`traceFade`, `traceHear`, `traceDraw`) at full size, the one every live
-  face draws.
+  face draws. Its full screen is the browser's to grant and take back, each
+  a frame or more after it was asked for: `stageScreen` keeps which stage
+  asked for what, so a stage asks only once the app's own exit has landed,
+  is in full screen only by its own request, and is closed by leaving full
+  screen only when the browser left by itself (#575).
 - **Live faces** (`live-face.js` `createLiveFaces`, `bootLiveFaces` in
   `main.js`): the face of a sound being played draws stage mode's moving
   layer over it, inline at its own size, on a canvas laid over the face
