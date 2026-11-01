@@ -5079,15 +5079,26 @@ body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
    scroll above it (#527): SKIP and TEACH IT sat under the fold, with nothing
    to say they were there. The foot takes the card's bottom padding as its
    own, so it covers the cards to the window's edge, opaque as the panel is
-   there, and a fade at its top says they go on under it. It stands over a
-   picked card (35, `[aria-pressed]`) and its ▶ (36). */
+   there, and a fade at its top says they go on under it. It stands over
+   every card (35: each holds its pick in `[aria-pressed]`, picked or not)
+   and its ▶ (36).
+   The dialog keeps that room clear for the focus: a card or ▶ that Tab
+   moves to below the fold scrolls up clear of the foot and its fade, ring
+   and all (the browser stopped it at the window's foot, under the foot),
+   and one that Shift+Tab moves to above the top comes down far enough to
+   show its ring. The room is the tallest foot's, a finger's 44 px button on
+   a short screen (s3 above it, s5 below; a phone's is s4 below), with the
+   fade's s3 and the ring's 4 px (2 out, 2 wide). The gap above the foot is
+   the fade's and the ring's, s4, so the last row's ring clears the fade
+   once the cards have scrolled to their end. */
 @media (max-width: 560px), (max-height: 600px) {
+  #warmstart { scroll-padding: var(--s1) 0 calc(var(--s3) + 44px + var(--s5) + var(--s3) + var(--s1)); } /* token-exempt: the foot's height on a short touch screen (its padding and a finger's 44 px button), its fade and the focus ring's 4 px */
   #warmstart > .warm-card { padding-bottom: 0; }
   #warmstart .warm-foot {
     position: sticky;
     bottom: 0;
     z-index: 37;
-    margin-top: var(--s3);
+    margin-top: var(--s4);
     padding: var(--s3) 0 var(--s5);
     background: var(--panel);
   }

@@ -25632,7 +25632,8 @@ function renderWarmStart(all) {
   // Land on the first ▶: hearing comes before choosing. On a touch screen it
   // lands with no ring: moved there by a script with no key pressed yet, the
   // focus wore the keyboard's ring on a phone (#527). Tab from there moves it
-  // on, ringed, as anywhere.
+  // on, ringed, as anywhere, and each stop scrolls clear of the foot that
+  // stays at the screen's foot (style.css, `#warmstart`'s scroll-padding).
   grid.querySelector(".wi-play")?.focus(COARSE ? { focusVisible: false } : undefined);
 }
 
