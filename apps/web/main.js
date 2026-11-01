@@ -17322,19 +17322,21 @@ let menuOpenedAt = 0;
 // keystroke goes nowhere.
 let menuOpener = null;
 
-/** The well's room for a menu about the rack (#530): from its top to the
- *  foot's (the camera, the readout, TEACH), which a menu must not cover. */
+/** The well's room for a menu about the rack (#530): side to side, and from
+ *  its top to the foot's (the camera, the readout, TEACH), which a menu must
+ *  not cover. */
 function wellRoom() {
   const fr = $("rack-frame")?.getBoundingClientRect();
   const foot = $("pt-foot")?.getBoundingClientRect();
   if (!fr || !fr.height) return null;
-  return { top: fr.top, bottom: foot && foot.height ? Math.min(fr.bottom, foot.top) : fr.bottom };
+  return { left: fr.left, right: fr.right, top: fr.top, bottom: foot && foot.height ? Math.min(fr.bottom, foot.top) : fr.bottom };
 }
 
-/** Open the one floating menu at (x, y). `place.within` (`{top, bottom}`)
- *  is the room it should open inside, where it fits: down from `y`, else up
- *  to `place.above` (its bottom edge there; `y` unless given), else held
- *  inside it; only a menu taller than that room falls back to the window. */
+/** Open the one floating menu at (x, y). `place.within` (`{left, right,
+ *  top, bottom}`) is the room it should open inside, where it fits: right
+ *  from `x`, else held inside it; down from `y`, else up to `place.above`
+ *  (its bottom edge there; `y` unless given), else held inside it. Only a
+ *  menu wider or taller than that room falls back to the window, that way. */
 function showMenu(x, y, head, rows, place) {
   const menu = $("ctx-menu");
   menuRows = rows;
@@ -17365,11 +17367,15 @@ function showMenu(x, y, head, rows, place) {
   menu.style.left = "0px";
   menu.style.top = "0px";
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
   // The room it opens in: the window, or what `place` asks for inside it.
-  // Opened downward from a module low in the well, the structure menu cut
-  // through the well's foot, over the readout about that very module and
-  // TEACH (#530): it opens up instead, or is held inside the well.
+  // Opened from a module near the well's right edge, the structure menu ran
+  // on over the levels' rail beside the well (#530): it is held inside.
+  const lx = Math.max(8, place?.within ? place.within.left + 4 : 8);
+  const hx = Math.min(window.innerWidth - 8, place?.within ? place.within.right - 4 : Infinity);
+  const left = hx - lx >= mw ? Math.max(lx, Math.min(x, hx - mw)) : Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  // Opened downward from a module low in the well, it cut through the
+  // well's foot, over the readout about that very module and TEACH (#530):
+  // it opens up instead, or is held inside the well.
   const lo = Math.max(8, place?.within ? place.within.top + 4 : 8);
   const hi = Math.min(window.innerHeight - 8, place?.within ? place.within.bottom - 4 : Infinity);
   const above = place?.above ?? y;

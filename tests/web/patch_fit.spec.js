@@ -21,9 +21,10 @@
 // - At 1440 × 900 the same patch fits with every name at 11 px or larger and
 //   no rack text under 9 px, the rest past the right edge, and FIT after a
 //   zoom comes back to that fit.
-// - At 1440 the structure menu of a module low in the well (HOLD) opens where
-//   it fits, never over the well's foot (the camera, the readout, TEACH), by
-//   its ⋯ and by F2.
+// - At 1440 the structure menu of a module low in the well and near its
+//   right edge (HOLD) opens where it fits, never over the well's foot (the
+//   camera, the readout, TEACH) and never past the well's sides (over the
+//   levels' rail), by its ⋯ and by F2.
 // - The head's full depth budget (6/6) is amber at rest, as the tight one is,
 //   never red; an edit refused at that ceiling (a second filter in series)
 //   turns it red while the refusal is said, and it is amber again after.
@@ -167,13 +168,17 @@ test("PATCH's fit at 1440 prints every module's name at the type floor, and FIT 
   await expect.poll(async () => near(await viewBox(page), fitted), { timeout: 5_000 }).toBe(true);
 });
 
-test("the structure menu of a module low in the well opens where it fits, clear of the well's foot", async ({ page, app }) => {
+test("the structure menu of a module low in the well opens where it fits, inside the well and clear of its foot", async ({ page, app }) => {
   await patchAtFit(app);
   const clear = () => page.evaluate(() => {
     const m = document.getElementById("ctx-menu").getBoundingClientRect();
     const foot = document.getElementById("pt-foot").getBoundingClientRect();
     const frame = document.getElementById("rack-frame").getBoundingClientRect();
-    return { open: m.height > 0, clear: m.bottom <= foot.top + 0.5 && m.top >= frame.top - 0.5 };
+    return {
+      open: m.height > 0,
+      clear: m.bottom <= foot.top + 0.5 && m.top >= frame.top - 0.5,
+      inside: m.left >= frame.left - 0.5 && m.right <= frame.right + 0.5,
+    };
   });
   // By its ⋯: select HOLD with a press on its plate, then its ⋯.
   const plate = page.locator('#rack-svg .rack-plates g[data-kind="hold"] .mod-plate').first();
@@ -183,14 +188,14 @@ test("the structure menu of a module low in the well opens where it fits, clear 
   const dots = await page.locator('#rack-svg g.mod-group[data-kind="hold"] .mod-menu-btn text').boundingBox();
   await page.mouse.click(dots.x + dots.width / 2, dots.y + dots.height / 2);
   await expect(page.locator("#ctx-menu")).toBeVisible();
-  expect(await clear()).toEqual({ open: true, clear: true });
+  expect(await clear()).toEqual({ open: true, clear: true, inside: true });
   await page.keyboard.press("Escape");
   await expect(page.locator("#ctx-menu")).toBeHidden();
   // By F2 on the plate.
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="hold"]').focus();
   await page.keyboard.press("F2");
   await expect(page.locator("#ctx-menu")).toBeVisible();
-  expect(await clear()).toEqual({ open: true, clear: true });
+  expect(await clear()).toEqual({ open: true, clear: true, inside: true });
 });
 
 test("a full depth budget is amber at rest, and red only while an edit refused at it is said", async ({ page, app }) => {
