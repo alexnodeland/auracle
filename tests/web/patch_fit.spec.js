@@ -17,12 +17,15 @@
 //   in the well answers at its middle, never a ⋯'s or a lock's pad; a
 //   finger's tap beside an out ○ (not on it) picks its cable up, opening no
 //   module's sheet, and every socket it lights answers at its middle; one
-//   beside a ⋯ opens its menu, and one beside a lock locks it; the face at OUT is 44 px or more once the
-//   edge has carried the camera to it; and FIT frames the patch as it opened
-//   again.
+//   beside a ⋯ opens its menu, and one beside a lock locks it, each
+//   answered in the tap's own task (and timed, a budget); the face at OUT
+//   is 44 px or more once the edge has carried the camera to it; and FIT
+//   frames the patch as it opened again.
 // - At 1440 × 900 the same patch fits with every name at 11 px or larger and
 //   no rack text under 9 px, the rest past the right edge, and FIT after a
-//   zoom comes back to that fit.
+//   zoom comes back to that fit; a step of the wheel across a tier of the
+//   silkscreen is timed in its handler (a budget), and every name is
+//   condensed to its room once the rack is at rest.
 // - At 1440 the structure menu of a module low in the well and near its
 //   right edge (HOLD) opens where it fits, never over the well's foot (the
 //   camera, the readout, TEACH) and never past the well's sides (over the
@@ -140,8 +143,10 @@ const underPads = (page) => page.evaluate(() => {
 /** A point of bare panel 14 to 18 px from the middle of one of the rack's
  *  reach targets (`sel`: an out ○'s nut, or ⋯'s or a lock's pad) that
  *  plainly means it, as reach.js reads a finger: every other socket, ⋯ and
- *  lock more than 1.6 times as far. With its module's key and name. */
-const beside = (page, sel) => page.evaluate((sel) => {
+ *  lock more than 1.6 times as far. `offPlates`: on the rack or a pocket,
+ *  not on a plate's panel, where a touch screen's own aim could move the
+ *  tap onto a knob beside it. With its module's key and name. */
+const beside = (page, sel, { offPlates = false } = {}) => page.evaluate(([sel, offPlates]) => {
   const f = document.getElementById("rack-scroll").getBoundingClientRect();
   const svg = document.getElementById("rack-svg");
   const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -154,6 +159,7 @@ const beside = (page, sel) => page.evaluate((sel) => {
         if (x < f.left + 4 || x > f.right - 4 || y < f.top + 4 || y > f.bottom - 4) continue;
         const t = document.elementFromPoint(x, y);
         if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl, .mod-title")) continue;
+        if (offPlates && t.closest(".rack-plates g[data-key]") && !t.matches(".ctrl-well")) continue;
         if (all.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > 1.6 * d)) {
           const key = s.el.closest("[data-key]").getAttribute("data-key");
           const title = svg.querySelector(`.rack-plates g[data-key="${key}"] .mod-title`)?.textContent ?? "";
@@ -163,7 +169,7 @@ const beside = (page, sel) => page.evaluate((sel) => {
     }
   }
   return null;
-}, sel);
+}, [sel, offPlates]);
 /** A finger's tap at (x, y), and what it answered with: whether `sel`
  *  matched once the lift's own task was done (`inTask`), and how long after
  *  the lift it first did (`ms`), both on the page's clock, read as the page
@@ -283,9 +289,9 @@ test.describe("a phone, 390 × 844", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#rack-svg")).not.toHaveClass(/\bwiring\b/);
 
-    // A finger's tap beside a ⋯, on bare panel and plainly meaning it,
-    // opens that module's menu, as a tap on it does; no sheet opens.
-    const dots = await beside(page, ".mod-menu-btn > rect");
+    // A finger's tap beside a ⋯, on bare rack and plainly meaning it, opens
+    // that module's menu, as a tap on it does; no sheet opens.
+    const dots = await beside(page, ".mod-menu-btn > rect", { offPlates: true });
     expect(dots, "a point of panel beside a ⋯").not.toBeNull();
     const menu = await tapTimed(page, dots.x, dots.y, "#ctx-menu:not(.hidden)");
     expect(menu.inTask, "the menu open in the tap's own task").toBe(true);
@@ -296,7 +302,7 @@ test.describe("a phone, 390 × 844", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#ctx-menu")).toBeHidden();
     // …and one beside a lock locks its module.
-    const lock = await beside(page, ".mod-lock > rect");
+    const lock = await beside(page, ".mod-lock > rect", { offPlates: true });
     expect(lock, "a point of panel beside a lock").not.toBeNull();
     const locked = await tapTimed(page, lock.x, lock.y, `#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`);
     expect(locked.inTask, "the module locked in the tap's own task").toBe(true);
@@ -349,6 +355,33 @@ test("PATCH's fit at 1440 prints every module's name at the type floor, and FIT 
   await expect.poll(async () => near(await viewBox(page), fitted)).toBe(false);
   await page.locator("#pt-fit").click();
   await expect.poll(async () => near(await viewBox(page), fitted), { timeout: 5_000 }).toBe(true);
+
+  // A step of the wheel in, from the fit, across a tier of the silkscreen:
+  // answered in its own handler without laying the page out for the names
+  // (timed, a budget of a frame), and once the rack is at rest every name
+  // is condensed to its room again at its new size.
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+  const step = await page.evaluate(async () => {
+    const el = document.getElementById("rack-scroll");
+    const svg = document.getElementById("rack-svg");
+    const r = el.getBoundingClientRect();
+    const tiers = svg.dataset.illegible;
+    for (let i = 0; i < 24; i++) {
+      const t0 = performance.now();
+      el.dispatchEvent(new WheelEvent("wheel", { deltaY: -12, ctrlKey: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }));
+      const ms = performance.now() - t0;
+      if (svg.dataset.illegible !== tiers) return { ms, from: tiers, to: svg.dataset.illegible };
+      await new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)));
+    }
+    return null;
+  });
+  expect(step, "a wheel step that crosses a tier").not.toBeNull();
+  app.budget(`a zoom step across a silkscreen tier (${step.from} → ${step.to}): its handler`, step.ms, 16);
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+  const over = await page.evaluate(() => [...document.querySelectorAll("#rack-svg .rack-plates .mod-title")]
+    .filter((t) => Number(t.dataset.fit || 0) > 0 && t.getBBox().width > Number(t.dataset.fit) + 1)
+    .map((t) => `${t.textContent} ${t.getBBox().width.toFixed(1)} of ${t.dataset.fit}`));
+  expect(over, "names past their room").toEqual([]);
 });
 
 test("the structure menu opens inside the well, clear of its foot, and a module's whole menu scrolls there", async ({ page, app }) => {

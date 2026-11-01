@@ -31,6 +31,7 @@
 //   keys' drawer, and EVOLVE's PICK is on the screen with no scroll (each
 //   level is one screen: phone_fits.spec.js).
 const { test, expect, goLevel, landed, runCommand } = require("./fixtures");
+const { rackAtRest, walkRightEdge } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
 const LEVELS = ["learning", "taste", "perform", "patch", "evolve"];
@@ -186,7 +187,11 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     });
     await app.boot();
     await goLevel(page, "patch");
-    // ENV / OUT: every patch has one, in its main chain.
+    // ENV / OUT: every patch has one, in its main chain, at its end, where
+    // the well's right edge carries the camera (the fit shows where the
+    // patch starts, #519).
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    await walkRightEdge(app);
     const plate = page.locator('#rack-svg g[data-kind="amp"]:not(.mod-group) .mod-plate');
     await expect(plate).toBeVisible();
     // The plate at rest, across three frames: the camera's fit is a tween.
@@ -195,17 +200,21 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
       const a = at();
       requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done(a === at()))));
     })), { timeout: 30_000 }).toBe(true);
-    // Bare panel on the plate, clear of its knobs and jacks.
+    // Bare panel on the plate, clear of its knobs and jacks, and of a
+    // finger's reach of its ⋯ (main.js `tapReach`).
     const at = await plate.evaluate((p) => {
       const b = p.getBoundingClientRect();
       const group = document.querySelector('#rack-svg g.mod-group[data-kind="amp"]');
       const ctrls = [...group.querySelectorAll("[data-addr], [data-stop], .jack, .mod-menu-btn, .mod-lock, .lock-dot")].map((e) => e.getBoundingClientRect());
+      const pads = [...document.querySelectorAll("#rack-svg .mod-menu-btn > rect, #rack-svg .mod-lock > rect")].map((e) => e.getBoundingClientRect())
+        .map((r) => [r.left + r.width / 2, r.top + r.height / 2]);
       let best = null;
       for (let fx = 0.08; fx < 0.95; fx += 0.04) {
         for (let fy = 0.08; fy < 0.95; fy += 0.04) {
           const x = b.left + fx * b.width;
           const y = b.top + fy * b.height;
           if (document.elementFromPoint(x, y) !== p) continue;
+          if (pads.some(([px, py]) => Math.hypot(px - x, py - y) < 24)) continue;
           const d = Math.min(...ctrls.map((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))));
           if (!best || d > best.d) best = { x, y, d };
         }
