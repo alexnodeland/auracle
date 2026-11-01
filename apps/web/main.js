@@ -744,7 +744,8 @@ let faceLanded = 0; // bumped when any face lands, so a missing one is looked fo
 // once, wherever a preset shows by its index (the warm start's cards, the
 // PRESETS rows), with no request to the engine, where the file's render
 // namespace, and for a preset with an AUDIO IN its clip, are the session's
-// (`renderNs`, `auditionClip`: shipped-faces.js `presetFace`). Anything else
+// (`renderNs`, and the clip every input hears, `audioIn.sharedClip`:
+// shipped-faces.js `presetFace`). Anything else
 // is asked of the engine, which renders it, as before the file. Asked before
 // the file lands, a preset's face waits for it (`shippedHeld`), at most
 // SHIPPED_FACES_WAIT_MS, so a stalled fetch never keeps a face from being
@@ -780,7 +781,7 @@ function shippedKeyOf(target) {
   if (!shippedFaces) return null;
   const index = Number(target.slice(1));
   const row = (presetRows || []).find((r) => r.index === index);
-  const hit = row ? presetFace(shippedFaces, row.name, { ns: renderNs, clip: auditionClip }) : null;
+  const hit = row ? presetFace(shippedFaces, row.name, { ns: renderNs, clip: audioIn.sharedClip() }) : null;
   if (!hit) return null;
   if (lruGet(faceByKey, hit.key) === undefined) lruSet(faceByKey, hit.key, hit.face);
   return hit.key;
@@ -2513,11 +2514,13 @@ function send(msg, transfer) {
 // stimulus, the featurizer's RENDER_EPOCH and the quiver version), from its
 // `ready`. Null until then, or from a binary too old to say.
 let renderNs = null;
-// The content id of the audition clip sounds with an AUDIO IN are measured
-// with (the built-in reference until an input is captured), from `ready` and
-// every `audition_clip` the worker posts. PERFORM keys a listening sound's
-// wiring by it. Null until then, or from a binary too old to say.
-let auditionClip = null;
+// Which audition clip each input's sounds are measured with (the built-in
+// reference until that input is captured, #147) is AUDIO IN's to hold
+// (audio-in.js `clip`, clips.js), from `ready` and every `audition_clip` the
+// worker posts: PERFORM keys a listening sound's wiring by the clips of the
+// inputs it reads (`audioIn.clipTag`), and a preset's shipped face is drawn
+// only while every input hears the clip it was rendered with
+// (`audioIn.sharedClip`).
 
 // PATCH's own module (patch.js): the model's guess at its socket, each cable's
 // measured level, a patch from nothing, and the module sheet on touch. It
@@ -2803,11 +2806,12 @@ worker.onmessage = (e) => {
       $("alarm").dataset.tag = "quarantine";
       break;
     }
-    // Which clip sounds with an AUDIO IN are measured with: after a restore,
-    // and in reply to a capture (audio-in.js sends it as `set_audition_clip`;
-    // `ok` is there only then). A clip the engine took measured the pool's
-    // listeners again, so their ratings moved, and it is saved with the
-    // session from now on.
+    // Which clip each input's sounds with an AUDIO IN are measured with
+    // (`clips`): after a restore, and in reply to a capture of one input
+    // (audio-in.js sends it as `set_input_clip`, by slot; `ok` and `slot` are
+    // there only then). A clip the engine took measured again the pool's
+    // listeners on that input, so their ratings moved, and it is saved with
+    // the session from now on.
     // The sounds a restore kept safe for a recording, and the answer to one
     // recorded again (takes.js).
     case "held_sounds": {
@@ -2828,16 +2832,17 @@ worker.onmessage = (e) => {
       break;
     }
     case "audition_clip": {
-      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
+      // First, so what keys a sound by its clips reads the new ones.
+      audioIn.clip(m);
       // A preset with an AUDIO IN is drawn from the shipped file under the
       // reference clip only (`shippedKeyOf`).
       facesChanged();
       if (m.views) applyViews(m.views);
       if (m.status) applyStatus(m.status);
-      audioIn.clip(m);
-      // A sound in hand that listens is measured through the clip, so its
-      // lean under the model view is asked again (PERFORM's key for it
-      // carries the clip, as its wiring's does).
+      // A sound in hand that listens is measured through its inputs' clips,
+      // so its lean under the model view is asked again when one of them
+      // moved (PERFORM's key for it carries them, as its wiring's does); a
+      // clip on an input it doesn't read asks nothing.
       if (perform) perform.clipChanged();
       if (m.ok) scheduleSave();
       break;
@@ -3617,8 +3622,7 @@ worker.onmessage = (e) => {
     // budget readout cannot restate a number the grammar has since moved.
     case "ready": {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
-      auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
-      if (m.clip) audioIn.clip({ clip: m.clip });
+      if (m.clip || m.clips) audioIn.clip({ clip: m.clip, clips: m.clips });
       takes.setLimit(m.takeSeconds);
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
@@ -5821,8 +5825,9 @@ async function bootPerform() {
     // …and in φ, as this binary renders it: a wiring measured under another
     // render namespace (a new quiver, a new featurizer) is re-measured.
     renderNs: () => renderNs,
-    // …and, for a sound with an AUDIO IN, the clip its φ was measured with.
-    clipTag: () => auditionClip,
+    // …and, for a sound with an AUDIO IN, the clips its φ was measured with:
+    // each input's it reads, named as the engine's render key names them.
+    clipTag: (json) => audioIn.clipTag(json),
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,

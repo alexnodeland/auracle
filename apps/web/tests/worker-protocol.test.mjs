@@ -109,7 +109,7 @@ test("main numbers every request it sends, from 1, in one place, and leaves the 
   const buf = new ArrayBuffer(8);
   const asked = { type: "edit_param", addr: "a", value: 1 };
   send(asked);
-  send({ type: "set_audition_clip", samples: buf }, [buf]);
+  send({ type: "set_input_clip", slot: 0, samples: buf }, [buf]);
   send({ type: "render", id: 3 });
   assert.deepEqual(posted.map((p) => p.msg.rid), [1, 2, 3]);
   assert.deepEqual(posted[0].msg, { type: "edit_param", addr: "a", value: 1, rid: 1 });

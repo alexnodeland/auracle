@@ -1,9 +1,10 @@
 // The farm hears the phrase the session measures with (Plan-007 task 4,
 // docs/architecture/web-runtime.md "The farm's phrase"): the phrase carries
-// the session's audition clip, so when a capture or a restore changes the
-// clip, every farm worker standing is handed the new phrase before any work
-// that would be measured with it. Until then a worker's render of a sound
-// that listens carries the old clip, and the sound is measured again here.
+// each input's audition clip (#147), so when a capture of an input or a
+// restore changes a clip, every farm worker standing is handed the new phrase
+// before any work that would be measured with it. Until then a worker's
+// render of a sound that listens carries the old clip, and the sound is
+// measured again here.
 //
 // worker.js runs here as it is, over the built engine (harness.mjs), and the
 // farm is ports the test holds (`fakeCrew`): what reaches a farm worker, and
@@ -19,16 +20,22 @@ const SEED = 1;
 // A test that hangs fails here, well inside the CI job's limit.
 const TIMEOUT = 150_000;
 
-/** Six seconds of a tone on two channels, as AUDIO IN's capture sends it. */
+/** Six seconds of a tone on two channels, as AUDIO IN's capture of input 1
+ *  sends it. */
 function capture(rate = 48_000) {
   const frames = 6 * rate;
   const samples = new Float32Array(frames * 2);
   for (let i = 0; i < frames; i++) samples[2 * i] = samples[2 * i + 1] = 0.25 * Math.sin((2 * Math.PI * 440 * i) / rate);
-  return { type: "set_audition_clip", samples, channels: 2, sampleRate: rate };
+  return { type: "set_input_clip", slot: 0, samples, channels: 2, sampleRate: rate };
 }
 
-/** Does a phrase handed to a farm worker carry the captured clip? */
-const withClip = (m) => m.type === "phrase" && "clip" in JSON.parse(m.json);
+/** Does a phrase handed to a farm worker carry a captured clip: every
+ *  input's (`clip`), or an input's own (`clips`)? */
+const withClip = (m) => {
+  if (m.type !== "phrase") return false;
+  const phrase = JSON.parse(m.json);
+  return "clip" in phrase || "clips" in phrase;
+};
 
 test("a capture hands every farm worker standing the new phrase", { timeout: TIMEOUT }, async (t) => {
   const crew = fakeCrew(2);
@@ -56,6 +63,7 @@ test("a capture hands every farm worker standing the new phrase", { timeout: TIM
   const msg = capture();
   const [reply] = await w.send(msg, { transfer: [msg.samples.buffer] });
   assert.equal(reply.ok, true, "the engine took the capture");
+  assert.equal(reply.slot, 0);
   assert.equal(reply.clip.source, "captured");
   assert.equal(reply.farmResent, 2, "the reply counts the workers handed the phrase");
   // Port messages arrive in order: anything sent to a worker after this is
@@ -80,7 +88,7 @@ test("a restore that installs a captured clip hands boot's crew the clip's phras
   const after = w.replies.length;
   await w.boot({ seed: SEED, saved, farmPorts: crew.ports });
   const restored = w.repliesOf("audition_clip", { after }).pop();
-  assert.equal(restored && restored.clip.source, "captured", "the restore installed the saved clip");
+  assert.equal(restored && restored.clips[0].source, "captured", "the restore installed the saved clip");
   // The crew as a whole rendered the bank (which worker took which entry is
   // the order of their answers); every worker standing heard the clip's
   // phrase, and before any render it was handed.

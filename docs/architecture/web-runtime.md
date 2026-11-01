@@ -204,14 +204,15 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   only under the view. It is asked when the view comes up over PERFORM,
   when PERFORM comes into sight with the view up, when the sound or the
   panel changes (a sound that listens included, when main reports a new
-  audition clip: `perform.clipChanged` on `audition_clip`), and when main
-  reports the posterior moved (`perform.posteriorChanged`: on `fitted`, on
-  a `status` carrying `ratings`, and on `imported`, whose engine has no
-  posterior until its refit); once per sound, posterior and panel
-  (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the clip is
-  part of a listening sound's key), never per frame. A lean of the same
-  sound stays drawn until a newer one lands; one asked under another
-  posterior or panel is not shown when the view comes up.
+  clip on an input it reads: `perform.clipChanged` on `audition_clip`), and
+  when main reports the posterior moved (`perform.posteriorChanged`: on
+  `fitted`, on a `status` carrying `ratings`, and on `imported`, whose
+  engine has no posterior until its refit); once per sound, posterior and
+  panel (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the
+  clips of the inputs it reads are part of a listening sound's key), never
+  per frame. A lean of the same sound stays drawn until a newer one lands;
+  one asked under another posterior or panel is not shown when the view
+  comes up.
 
 ### ⌘K, the one list
 
@@ -645,12 +646,12 @@ A request whose handler throws is answered with `engine_error`, carrying its
 `re`. What the worker says of its own accord carries no `re`: `busy` and
 `idle`, a log line, a crew wanted or reaped (`farm_want`, `farm_done`), the
 boot's fill (`fill_progress`, `repaired`, `playable`, `filled`, a restore's
-`audition_clip`, `restore_failed` and `fitted`, and `boot_failed` once `ready`
-has gone: `init` itself is answered by `ready`, or by `boot_failed` before
-it), a face that was `pending` when its `faces` request was answered, the
-sound of your own re-ranked when the presets' file lands (`own_sound` with
-`presets`), and the `engine_error` for a rejection nothing awaited
-(`request: null`).
+`audition_clip` with each input's clip, `restore_failed` and `fitted`, and
+`boot_failed` once `ready` has gone: `init` itself is answered by `ready`,
+or by `boot_failed` before it), a face that was `pending` when its `faces`
+request was answered, the sound of your own re-ranked when the presets'
+file lands (`own_sound` with `presets`), and the `engine_error` for a
+rejection nothing awaited (`request: null`).
 
 The reply path in `worker.js` is one function, `emit`, behind three names,
 so the echo cannot be forgotten:
@@ -1136,7 +1137,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   once the bank's own faces are in (`faceStats`, which it is drawn
   against), and used only where the file's render namespace is the
   session's (`renderNs`, from `ready`) and, for a preset with an AUDIO IN,
-  while the session hears the reference clip (`auditionClip`); otherwise
+  while every input hears the reference clip (`audioIn.sharedClip`, which
+  is null once the inputs' clips differ); otherwise
   the preset is asked of the engine and rendered,
   as before the file. A preset's ask made while the file is on its way waits
   for it (`shippedHeld`), at most `SHIPPED_FACES_WAIT_MS` (3 s), so a stalled
@@ -1633,8 +1635,12 @@ the reply carries its palette `index`, and the page lays it on the panel by
 that index (`alignWiring`) and names a control back by it (an aimed offer's
 `control`, a graft's `k`, `indexAt`), never by its position. `wireKey` holds
 the set as well as the patch (`#controls=` and the set, empty for the six),
-and for a sound with an AUDIO IN the audition clip, on the patch's part
-before the set (`wireKeyOf`: `patch|clip:<id>#controls=<set>`). A
+and for a sound with an AUDIO IN the clips of the inputs it reads, on the
+patch's part before the set (`wireKeyOf`: `patch|clip:<clips>#controls=<set>`;
+`host.clipTag(json)`, clips.js `clipKey`: the one clip's id when every input
+the sound reads hears it, as the engine's render key names it, and otherwise
+each input with its clip's id, `0:<id>+1:<id>`), so a clip of an input the
+sound does not read leaves its wiring where it was. A
 placed control is measured lazily, on the sound in hand and only in sight
 (`measurePanel`), borrowing what other sets of that patch measured
 (`borrowWiring`) meanwhile; a measurement of a set the panel has since left is
@@ -2203,7 +2209,7 @@ behind, and the run's underruns fell from 791 to 943 to 73 to 201.
 
 The player's input in a patch (Plan-007 task 4,
 [ADR-015](../decisions/015-audio-in.md)) is `audio-in.js` on the main thread,
-the voices' input in the worklet, and the clip in the engine.
+the voices' input in the worklet, and each input's clip in the engine.
 
 - **Permission.** `queueStruct` (every structural gesture's funnel) calls
   `audioIn.added()` when the op carries an `AudioIn`, inside the gesture; that
@@ -2246,26 +2252,49 @@ the voices' input in the worklet, and the clip in the engine.
   outside the keys' allocation (no key, unison, arp or `all_off` takes it), in
   the parameter table, carried across swaps like a held note. A patch that
   does not listen has none.
-- **The clip.** On first listen (the voices' input over −50 dBFS and the
-  session's clip still the reference, and no capture refused since) or NEW CLIP, `audio-in.js` records 6 s
-  of the source through a one-shot `auracle-tap` worklet node (it ends its
-  processor once its take is handed back, or dropped when the capture is cut
-  short) and posts
-  `set_audition_clip {samples, channels, sampleRate}` (transferred) to the
-  engine worker, in the `now` lane. The reply is `audition_clip` with `ok`,
-  the engine's `note`, `clip`, `remeasured` and `unmeasured`, `farmResent`
-  (how many farm workers were handed the new phrase) and, when listeners were
-  measured again, `views` and `status`; main applies them, tells PERFORM
-  (`perform.clipChanged`: the lean of a sound in hand that listens is asked
-  again under the model view) and saves the session, which carries the clip.
-  Restores and `ready` post `audition_clip` with the status only.
-- **The farm's phrase.** The phrase carries the clip, so the worker sends the
-  `phrase` handshake again to the crew standing after a clip is taken
-  (`farmResendPhrase`), and in a staged restore right after
-  `import_session_deferred_v2` installs a captured clip, before any bank job
-  goes out (port messages are ordered). A crew raised later gets the current
-  phrase in `farmSetup`. `farm.js` keeps its open render store when the
-  namespace is unchanged (the namespace never sees the clip).
+- **The clips** (#147). Each input has a clip of its own: the engine
+  measures a sound through the clip of each input slot it reads. On an
+  input's first listen (an input the bench reads, or one lent for a
+  recording, over −50 dBFS, while no clip has been captured from it and the
+  engine has refused no capture of it since) or its module's NEW CLIP (the
+  input that module reads, the keys' or the meter's only),
+  `audio-in.js` records 6 s of that input's source through a one-shot
+  `auracle-tap` worklet node (it ends its processor once its take is handed
+  back, or dropped when the capture is cut short) and posts
+  `set_input_clip {slot, samples, channels, sampleRate}` (transferred) to
+  the engine worker, in the `now` lane. Each input captures on its own, two
+  at once if they first play together. The reply is `audition_clip` with the
+  `slot`, `ok`, the engine's `note`, `clip` (that slot's status),
+  `remeasured` and `unmeasured` (only the members that read that slot),
+  `clips` (every slot's status, in slot order: `WasmEngine::input_clip`),
+  `farmResent` (how many farm workers were handed the new phrase) and, when
+  listeners were measured again, `views` and `status`; main hands it to
+  AUDIO IN first (`audioIn.clip`: which clip each input hears, clips.js),
+  then applies them, tells PERFORM (`perform.clipChanged`: the lean of a
+  sound in hand that listens is asked again under the model view, if its
+  inputs' clips moved) and saves the session, which carries each slot's
+  clip. A restore and an `audition_clip` request post `audition_clip` with
+  the status only: `clip`, the clip every slot hears, and `clips`; `ready`
+  carries the same two on itself. The app never sets that clip (the
+  engine's `set_audition_clip`, which would take every slot's own away): it
+  is the reference, or the one clip of a session saved before slots had
+  their own, which every input hears until it has its own. So clips.js
+  counts an input as captured only when its clip is captured and is not
+  that one (`clips[s].id` against `clip`, read from `ready` and a restore
+  only, since a capture's reply's `clip` is its slot's), and an input still
+  on an older session's clip is captured on its first listen, the input
+  the clip came from too (nothing tells which it was); the members that
+  read it are measured again through that capture's reply, as for any
+  capture. A refusal holds back that input's first listen only, until its
+  NEW CLIP.
+- **The farm's phrase.** The phrase carries every slot's clip, so the worker
+  sends the `phrase` handshake again to the crew standing after a clip is
+  taken (`farmResendPhrase`), and in a staged restore right after
+  `import_session_deferred_v2` installs a captured clip on any slot, before
+  any bank job goes out (port messages are ordered). A crew raised later
+  gets the current phrase in `farmSetup`. `farm.js` keeps its open render
+  store when the namespace is unchanged (the namespace never sees the
+  clips).
 
 ### TRACK and CAPTURE
 
