@@ -163,7 +163,7 @@ const SETTLE_MS = 5_000;
  *  around the sound where the hand left it and home stays home (perform.js
  *  `applyWired`), and a control whose half it closed stops at the centre,
  *  the sound still moved (web-runtime.md § PERFORM on the main thread).
- *  Waiting for it instead cost about 15 s a test here, behind the pool's
+ *  Waiting for it instead cost about 10 s a test here, behind the pool's
  *  fill (perform_instant.spec.js's test that waits for one takes 23 to 88 s
  *  on CI). */
 async function moveFromHome(page, app, { touch = false } = {}) {
