@@ -13482,10 +13482,10 @@ function buildRack(svg, rack, opts) {
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
       // A finger gets a wider pad (the plate is a few hundred units wide),
-      // 44 units across, the pocket's height and no more: grown taller, or
-      // with the camera under 1×, a pad lay over the module's own name and
-      // over a neighbour's sockets, and took their taps (#519). A finger
-      // that misses it, beside it on bare panel, still reaches it
+      // 44 units across, and about the pocket's height and no more: grown
+      // taller, or with the camera under 1×, a pad lay over the module's own
+      // name and over a neighbour's sockets, and took their taps (#519). A
+      // finger that misses it, beside it on bare panel, still reaches it
       // (`tapReach`).
       hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, 22);
       menuG.addEventListener("click", (ev) => {
