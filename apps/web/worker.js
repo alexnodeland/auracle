@@ -3952,6 +3952,23 @@ async function dispatch(m) {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
     }
+    // The sounds on EVOLVE's table (main's `holdTable`): the pair up and the
+    // pair of a pick still in its undo window, in place of what was held. No
+    // generation's end, preset load or import replaces them until main says
+    // they are put away (`WasmEngine::set_on_table`), so the pick's
+    // `record_duel` finds both its sides when the window closes (#452).
+    // Answered with what is held, the ratings and, while a generation is
+    // open, what its end will replace: holding a sound changes what may be
+    // replaced, as a save does (`pinned`). A binary without the call holds
+    // nothing, and says so (`ids: []`).
+    case "on_table": {
+      let ids = [];
+      if (typeof engine.set_on_table === "function") {
+        ids = Array.from(engine.set_on_table(new Uint32Array(m.ids || [])));
+      }
+      post({ type: "on_table", ids, ratings: engineRatings(), retiring: openRetiring() });
+      break;
+    }
     // The styles (θ with its spread, shares, exemplars) under the posterior as
     // it stands, asked for after every pick: a pick reweights the draws, so
     // θ's mean moves with it, and LEARNING's bars and its replay follow.
@@ -4025,9 +4042,11 @@ async function dispatch(m) {
       break;
     }
     // The three vote routes answer with `recorded`: `false` when the engine
-    // took nothing because the id is no longer in the pool — a duel side
-    // evicted by a generation, a preset load or an import inside the 7 s undo
-    // window. The engine always dropped that vote; the app used to count it,
+    // took nothing because the id is no longer in the pool — a sound evicted
+    // by a generation, a preset load or an import inside the 7 s undo window
+    // (a pick's pair is held through its window, `on_table`, so for a pick
+    // only a side gone before the pair was held). The engine always dropped
+    // that vote; the app used to count it,
     // score it and toast "rated". `vote` rides back so main can undo what it
     // did optimistically. `!== false` so a stale binary (no boolean) still
     // reads as recorded.

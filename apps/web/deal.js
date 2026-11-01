@@ -101,6 +101,15 @@ export function holdsCut(pair, cut) {
   return pair.some((id) => cut.has(id));
 }
 
+/** The sounds on the table, as the engine is told to hold them (`on_table`,
+ *  `Engine::set_on_table`): the pair up (`table`, or null while the table
+ *  waits) and the pair of the pick held in its undo window (`held`, or
+ *  null), each once, the table's first. The pair dealt ahead is not on it:
+ *  nobody has seen it, and a side it loses deals it again (`usable`). */
+export function onTable(table, held) {
+  return [...new Set([...(table || []), ...(held || [])])];
+}
+
 /** May `pair` go up, or wait as the next pair? Not when a side was cut
  *  since (`cut`) or left the pool (`gone`), nor when it is the pair on the
  *  table, the pair just put away (`left`) or the pick held in its undo

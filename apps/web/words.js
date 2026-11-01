@@ -539,7 +539,8 @@ export function bredRatings(seedName, seedP, childName, childP) {
  *  - `will`: the running generation's end will replace it, stopped now or
  *    run out (`refine_child`'s `retiring`: the lowest members not kept, as
  *    many as its children put the pool over size, under the posterior it
- *    opened with, so a child taken in adds one and takes none away). Each
+ *    opened with, so a child taken in adds one and takes none away; a save,
+ *    or a sound up on the table, hands its place to the next lowest). Each
  *    child still to come adds the next lowest, so it is not the whole of
  *    what may go: "will", not "may".
  *  The longest fits the stars' place on the narrowest bank (200 px). */

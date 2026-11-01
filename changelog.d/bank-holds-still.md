@@ -24,6 +24,9 @@
   toast says why with **OPEN IT**.
 - **A generation's end no longer swaps the pair you're about to pick.** When
   it replaced one of the two sounds on EVOLVE's cards, another pair went up
-  under your pointer. Now the pair stays: the replaced sound's card says so
-  and its ▶ goes off, and your next pick (which can't teach anything about a
-  sound that's gone, and says so) or **ANOTHER PAIR** puts up the next pair.
+  under your pointer. Now it leaves the pair on the cards alone. Only a
+  generation that ends in the instant a new pair goes up can still replace
+  one of its sounds, and then the pair stays: the replaced sound's card says
+  so and its ▶ goes off, and your next pick (which can't teach anything about
+  a sound that's gone, and says so) or **ANOTHER PAIR** puts up the next
+  pair.

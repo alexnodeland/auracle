@@ -79,7 +79,10 @@ Two loops share one pool of patches.
    retires the lowest members not kept (`Candidate::kept`: saved, or kept as
    new by `commit_edit` and not yet in a recorded pick, at most
    `unjudged_cap` of those), so a patch saved mid-generation is never
-   retired. `refine` is that loop run serially, and `refine_begin` +
+   retired. Nor is a sound on EVOLVE's table (`set_on_table`: the pair up
+   and the pair of a pick in its undo window, which the app sends; not
+   saved), so a pick's vote finds both its sides when its window closes;
+   `Engine::spared` is the one rule every eviction applies. `refine` is that loop run serially, and `refine_begin` +
    `refine_seed` the same loop one walk per call. ⚡ *evolve from this* is one
    job over the same path (`refine_from`, or `refine_from_job` +
    `refine_from_absorb` / `refine_from_walk`), with locks; its seed is

@@ -171,7 +171,7 @@ const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
-  { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer },
+  { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer, onTable },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
   { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
@@ -3966,6 +3966,14 @@ worker.onmessage = (e) => {
       if (warmPending) { warmPending = false; renderWarmStart(m.rows); }
       else if (bankFilter === "presets") renderBank();
       else renderBankCounts(); // the tab says how many even from another bank
+      break;
+    }
+    // What the table holds changes what a generation may replace, and while
+    // one runs what its end will (`holdTable`): the marks follow, as a save's.
+    case "on_table": {
+      if (m.ratings && views) views.ratings = m.ratings;
+      takeRetiring(m);
+      if (mayGoShown) markMayGo(true);
       break;
     }
     case "pinned": {
@@ -7983,6 +7991,7 @@ function placePair(pair, meta) {
     mark("pair-dealt");
     send({ type: "duel_shown", a: currentDuel[0], b: currentDuel[1] });
   }
+  holdTable(); // the pair up, and any pick still in its window
   renderPlayDuel();
   // The table's sounds are asked for now, with no settle delay: the pair is
   // up, and a refit armed by the last pick is about to queue (#300).
@@ -8030,6 +8039,7 @@ const dealer = createDealer({
 function dealAnother() {
   const prev = currentDuel;
   currentDuel = null;
+  holdTable(); // the pair put away goes; the next one up says itself
   if (dealer.another(prev)) return;
   dealing = true;
   setDuelControlsEnabled(false);
@@ -8068,6 +8078,30 @@ function takeBackNewest() {
 // "picked it, then unpicked it" records the user's mouse, not their taste.
 let pendingVote = null; // { timer, commit, pair, key, toast, back, armsFit }
 
+// The sounds on the table, as the engine holds them (deal.js `onTable`,
+// `Engine::set_on_table`): the pair up and the pair of the pick held in its
+// undo window. No generation's end, preset load or import replaces them until
+// they are put away, so a pick's vote finds both its sides when its window
+// closes (#452). It used to be refused when a side went in the window. Told
+// whenever either changes, once a task (a pick commits the last pick, holds
+// its own pair and puts the next pair up in one task), and after every vote
+// that task sends, so the engine records a pick before it lets its pair go.
+// Its reply carries what may be replaced, which the hold changes.
+let tableSent = "";
+let tableQueued = false;
+function holdTable() {
+  if (tableQueued) return;
+  tableQueued = true;
+  queueMicrotask(() => {
+    tableQueued = false;
+    const ids = onTable(currentDuel, pendingVote ? pendingVote.pair : null);
+    const key = [...ids].sort((x, y) => x - y).join();
+    if (key === tableSent) return;
+    tableSent = key;
+    send({ type: "on_table", ids });
+  });
+}
+
 function commitPendingVote() {
   if (!pendingVote) return;
   clearTimeout(pendingVote.timer);
@@ -8076,6 +8110,7 @@ function commitPendingVote() {
   releaseTakeBack(v.back);
   retireToastUndo(v.toast);
   v.commit();
+  holdTable(); // after its vote: the engine records it before it lets the pair go
 }
 
 /** A pick's window closed (or the tab is being left): into the log, and if it
@@ -8092,6 +8127,7 @@ function retractVote() {
   const { pair, key, toast, back } = pendingVote;
   pendingVote = null;
   releaseTakeBack(back);
+  holdTable(); // the pick's pair goes back up, or, a side gone, goes
   duelsSinceFit = Math.max(0, duelsSinceFit - 1);
   fitDue = duelsSinceFit >= FIT_EVERY;
   // Uncounted everywhere it was counted: PICKS, the meter's copy, the pips
@@ -8138,7 +8174,8 @@ function tableGone() {
   return currentDuel ? currentDuel.filter((id) => goneIds.has(id)) : [];
 }
 /** A side of the pair on the table left the pool (a generation ended, or a
- *  preset load or an import made room): its card says so, and its ▶, ⇄ and
+ *  preset load or an import made room) before the engine held it (`holdTable`:
+ *  the round trip after it went up, or an engine without the hold): its card says so, and its ▶, ⇄ and
  *  ↓ PATCH go quiet (there is no sound left to play, show or open). Its
  *  pick stays live: it puts up the next pair (`choose`). */
 function markTableGone() {
@@ -8206,6 +8243,7 @@ function choose(side) {
     commit: () => send({ type: "record_duel", a, b, choseA }),
   };
   pendingVote.back = holdTakeBack(() => retractVote());
+  holdTable(); // held through its window, beside the next pair up
   const win = choseA ? a : b;
   const lose = choseA ? b : a;
   // `replace`: only one vote is ever undoable (this one commits the last), so
@@ -10027,7 +10065,9 @@ function rateRow(rating, explicitId) {
 
 // A vote the engine did not take (`status.recorded === false`): the id left
 // the pool inside the undo window — a generation landed, a preset loaded, a
-// patch was imported — and the log never saw it. Undo what the UI did on the
+// patch was imported — and the log never saw it. A pick's pair is held
+// through its window (`holdTable`), so for a pick only a side gone before
+// the engine held it comes here. Undo what the UI did on the
 // assumption it would, then say so; "rated ★" over a vote that went nowhere is
 // the app stating something untrue about the model.
 function voteDropped(v) {

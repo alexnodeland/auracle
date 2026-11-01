@@ -37,7 +37,11 @@ there](../../reference/audition/phrase.html).
 A pick counts the moment you make it: **TAUGHT** in the menu bar and the pips
 move at once. For seven seconds you can take it back, with <kbd>⌘Z</kbd>
 (Ctrl Z) or **NOT WHAT I MEANT** on its toast (*Picked Glass Pad over Soft
-Wash.*). After that it goes into the log for good.
+Wash.*). After that it goes into the log for good. Nothing replaces the two
+sounds of a pick in those seven seconds, nor the pair on the table: not a
+generation, not a preset or a patch file you open. So a pick on a whole pair
+counts, unless a generation ended in the moment the pair went up
+([below](#breed-a-generation)).
 
 <kbd>⌘Z</kbd> in EVOLVE only ever takes back a pick or a cut. With none to
 take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
@@ -200,8 +204,8 @@ walks with the time left (*⚡ breeding 3/10 · about 40 s*), at every level.
 **GENERATIONS**, at the top of EVOLVE beside its name, counts the generation
 once its first child lands. Hover **EVOLVE POOL** while it breeds and the bank marks this
 generation’s seeds, and **WILL BE REPLACED** on the sounds its end will
-replace so far; each child still to come can add one more, so save what you
-want to keep.
+replace so far, passing over the pair on the table while it’s up; each child
+still to come can add one more, so save what you want to keep.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
 GENERATION 1**, tagged **NEW** with a green dot until you hear it, and can be
@@ -218,11 +222,13 @@ under New say the same.
 
 When the generation ends, its toast says what joined and what was replaced,
 and **REPLACED · GENERATION 1** at the foot of the pool lists the replaced
-sounds by name. If it replaced a sound of the pair on the table, the pair
-stays where it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line
-reads *Replaced in the pool.* A pick or ANOTHER PAIR deals the next pair. A
-pick on that pair teaches nothing (the sound is gone, so the engine can't
-take it), says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
+sounds by name. It never replaces a sound of the pair on the table, nor of a
+pick you can still take back. Only if it ends in the moment a new pair goes
+up can it replace one of that pair’s sounds, and then the pair stays where
+it is: that card dims, its ▶, ⇄ and ↓ PATCH go off, and its line reads
+*Replaced in the pool.* A pick or ANOTHER PAIR deals the next pair. A pick on
+that pair teaches nothing (the sound is gone, so the engine can't take it),
+says so, and puts up the next pair. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
 has the marks, and [Compare](../bank.md#compare-a-sound-beside-its-seed) shows
 a child beside its seed.
 
@@ -252,8 +258,9 @@ spare. The same seeds give the same children however many workers walk them.
 A child joins the pool only if the model rates it above the sound it would
 replace: the lowest-rated one it can, not saved, nor kept as new and still
 waiting for its first pick
-([the bank](../bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
-When the generation ends, those sounds
+([the bank](../bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)),
+nor on the table or in a pick you can still take back.
+When the generation ends, the lowest-rated sounds it can replace then
 are replaced to bring the pool back to its size, and the toast names them
 (the first three, then *and N more*). A sound you save before then is never
 among them, even while the generation is still running. A child bred early
