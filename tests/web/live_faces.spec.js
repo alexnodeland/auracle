@@ -12,12 +12,13 @@
 // - The sound's mark on TASTE's map lights while its phrase plays.
 // - The face in flight between the levels draws what sounds while it flies.
 // - Under reduced motion nothing over a face moves: no layer is drawn while
-//   a key sounds.
+//   a key sounds, and no face painter (live-paint.js's worker) is started.
 // - The layers painted in their worker (live-paint.js) are the same pixels,
 //   frame by frame, as the same frames painted on the page.
-// - A frame of live faces is cheap: the loop's own time a frame, and the
-//   long tasks while a key sounds, on the reference profile at the Air's
-//   Retina scale, are budgets.
+// - A frame of live faces is cheap: the loop's own time a frame it sends
+//   the painter, its share of the main thread, and the long tasks while a
+//   key sounds, on the reference profile at the Air's Retina scale, are
+//   budgets.
 //
 // It reads each face's layer (`.face-live`, a canvas over the face, which
 // shows the pictures the worker paints, so read by drawing it onto a canvas
@@ -317,7 +318,18 @@ test.describe("at the Air's Retina scale", () => {
           layers: () => [...big.querySelectorAll("canvas.face-live"), ...small.querySelectorAll("canvas.face-live")],
         };
       };
-      const there = loop(() => new Worker(`./live-paint.js?v=${v}`, { type: "module" }), 0);
+      // The painter, and whether the loop gave up on it (live-face.js
+      // `paintHere` ends it, and paints on the page from then on).
+      let gaveUp = false;
+      const there = loop(() => {
+        const w = new Worker(`./live-paint.js?v=${v}`, { type: "module" });
+        const end = w.terminate.bind(w);
+        w.terminate = () => {
+          gaveUp = true;
+          end();
+        };
+        return w;
+      }, 0);
       const here = loop(null, 0);
       const shown = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
       const out = { frames: 0, compared: 0, differing: [], lit: 0, cleared: 0, painted: 0, sizes: [] };
@@ -331,8 +343,12 @@ test.describe("at the Air's Retina scale", () => {
         t += 1000 / 60;
         there.step();
         here.step();
-        // The worker's frame, painted…
-        for (let i = 0; i < 200 && there.lf.counts.painted < there.lf.counts.posted; i++) await new Promise((ok) => setTimeout(ok, 1));
+        // The worker's frame, painted, however long that takes (the first
+        // starts the worker, fetches its module and paints a glow at
+        // 916×998, on a loaded runner too): a step taken before would find
+        // the painter busy and only wait, and the two loops would part. A
+        // painter the loop gave up on answers no more.
+        while (!gaveUp && there.lf.counts.painted < there.lf.counts.posted) await new Promise((ok) => setTimeout(ok, 1));
         // …and shown (a frame or two after), compared with the page's.
         let same = false;
         let diff = -1;
@@ -362,6 +378,7 @@ test.describe("at the Air's Retina scale", () => {
         if (lit) out.lit++;
         else out.cleared++;
       }
+      out.gaveUp = gaveUp;
       out.painted = there.lf.counts.painted;
       out.sizes = here.layers().map((c) => [c.width, c.height]);
       // The worker's layers show its pictures (no 2D context: nothing was
@@ -371,6 +388,7 @@ test.describe("at the Air's Retina scale", () => {
       return out;
     });
     test.info().annotations.push({ type: "frames compared", description: JSON.stringify(got) });
+    expect(got.gaveUp, "the loop kept its painter").toBe(false);
     expect(got.shown, "the worker's loop showed its pictures").toBe(true);
     expect(got.drawnHere, "the other loop drew on the page").toBe(true);
     expect(got.painted, "the worker painted the frames").toBeGreaterThan(50);
@@ -392,28 +410,54 @@ test.describe("on the reference profile, at the Air's Retina scale", () => {
   test.use({ deviceScaleFactor: AIR_SCALE });
 
   test("a frame of live faces is cheap on the reference profile", async ({ page, app }) => {
-    // The loop's own time each frame (live-face.js `liveFacesFrame`), the
-    // page's time showing the pictures the worker answers with (its
-    // `onmessage`), and every long task, from the page's clock; and the
-    // worker's own time painting each frame (live-paint.js answers each with
-    // it).
+    // The loop's own time each call (live-face.js `liveFacesFrame`), and
+    // whether the call sent the painter a frame: a call that finds the
+    // painter still busy with the last only asks for the next (a few
+    // microseconds), and is not a frame. The page's time showing the
+    // pictures the worker answers with (its `onmessage`), and when each
+    // frame sent was shown; every long task, from the page's clock; and the
+    // worker's own time painting each frame (live-paint.js answers each
+    // with it).
     await page.addInitScript(() => {
       const raf = window.requestAnimationFrame.bind(window);
+      const calls = (window.__liveCalls = []);
       const frames = (window.__liveFrames = []);
+      let posted = false;
+      // The page's frames so far (every callback of one is handed its time).
+      let pageFrames = 0;
+      let lastAt = -1;
       window.requestAnimationFrame = (cb) =>
         raf((t) => {
+          if (t !== lastAt) {
+            lastAt = t;
+            pageFrames++;
+          }
           if (cb.name !== "liveFacesFrame") return cb(t);
+          posted = false;
           const t0 = performance.now();
           cb(t);
-          frames.push(performance.now() - t0);
+          const ms = performance.now() - t0;
+          calls.push(ms);
+          if (posted) frames.push(ms);
         });
       const painted = (window.__painted = []);
       const shown = (window.__shown = []);
+      // Each frame from its sending to its pictures shown: ms, and the
+      // page's frames from the one that read it to the one that shows it
+      // (1: the next; painted on the page, it showed in its own).
+      const late = (window.__late = []);
       const W = window.Worker;
       window.Worker = class extends W {
         constructor(url, opts) {
           super(url, opts);
           if (!/live-paint\.js/.test(String(url))) return;
+          const sent = new Map();
+          const post = this.postMessage.bind(this);
+          this.postMessage = (m, ...rest) => {
+            posted = true;
+            sent.set(m.frame, { at: performance.now(), frame: pageFrames });
+            return post(m, ...rest);
+          };
           this.addEventListener("message", (e) => painted.push(e.data.ms));
           // The page's handler, timed.
           Object.defineProperty(this, "onmessage", {
@@ -421,7 +465,11 @@ test.describe("on the reference profile, at the Air's Retina scale", () => {
               this.addEventListener("message", (e) => {
                 const t0 = performance.now();
                 f(e);
-                shown.push(performance.now() - t0);
+                const t1 = performance.now();
+                shown.push(t1 - t0);
+                const s = sent.get(e.data.frame);
+                sent.delete(e.data.frame);
+                if (s) late.push({ ms: t1 - s.at, frames: pageFrames - s.frame + 1 });
               });
             },
           });
@@ -442,10 +490,7 @@ test.describe("on the reference profile, at the Air's Retina scale", () => {
     await page.keyboard.down("a");
     await app.engine((timeout) => expect.poll(() => lit(page, "#view-perform .pf-faces"), { timeout }).toBeGreaterThan(50), { ms: 30_000 });
     const got = await page.evaluate(async (ms) => {
-      window.__liveFrames.length = 0;
-      window.__painted.length = 0;
-      window.__shown.length = 0;
-      window.__long.length = 0;
+      for (const k of ["__liveCalls", "__liveFrames", "__painted", "__shown", "__late", "__long"]) window[k].length = 0;
       // Every frame the page draws meanwhile, to say how smooth it stayed.
       let frames = 0;
       let on = true;
@@ -456,34 +501,45 @@ test.describe("on the reference profile, at the Air's Retina scale", () => {
       requestAnimationFrame(count);
       await new Promise((ok) => setTimeout(ok, ms));
       on = false;
-      const f = window.__liveFrames.slice().sort((a, b) => a - b);
-      const sh = window.__shown.slice().sort((a, b) => a - b);
-      const total = f.reduce((a, b) => a + b, 0) + sh.reduce((a, b) => a + b, 0);
-      const w = window.__painted.slice().sort((a, b) => a - b);
+      const sorted = (a) => a.slice().sort((x, y) => x - y);
+      const sum = (a) => a.reduce((x, y) => x + y, 0);
+      const mid = (a) => (a.length ? a[a.length >> 1] : null);
+      const f = sorted(window.__liveFrames);
+      const sh = sorted(window.__shown);
+      const w = sorted(window.__painted);
       return {
+        // The calls that sent the painter a frame, and those that waited.
         n: f.length,
+        waited: window.__liveCalls.length - f.length,
         fps: (frames * 1000) / ms,
-        p50: f[f.length >> 1],
-        p95: f[Math.floor(f.length * 0.95)],
-        max: f[f.length - 1],
-        share: total / ms,
+        p50: mid(f),
+        p95: f.length ? f[Math.floor(f.length * 0.95)] : null,
+        max: f.length ? f[f.length - 1] : null,
+        // Every call, a frame or a wait, and showing every answer.
+        share: (sum(window.__liveCalls) + sum(sh)) / ms,
         // The page's time showing each answer's pictures (median).
         shown: sh.length,
-        showP50: sh.length ? sh[sh.length >> 1] : null,
+        showP50: mid(sh),
         long: window.__long.slice(),
         dpr: devicePixelRatio,
-        // The worker's: frames painted, a frame's time there (median).
+        // The worker's: frames painted, a second, and a frame's time there
+        // (median).
         painted: w.length,
-        paintP50: w.length ? w[w.length >> 1] : null,
+        paintedFps: (w.length * 1000) / ms,
+        paintP50: mid(w),
+        // From a frame's sending to its pictures shown (medians).
+        lateMs: mid(sorted(window.__late.map((l) => l.ms))),
+        lateFrames: mid(sorted(window.__late.map((l) => l.frames))),
       };
     }, HELD_MS);
     await page.keyboard.up("a");
-    expect(got.n, "the faces were drawn each frame the key sounded").toBeGreaterThan(10);
     test.info().annotations.push({ type: "live faces", description: JSON.stringify(got) });
+    expect(got.n, "the loop sent the painter the faces' frames while the key sounded").toBeGreaterThan(10);
+    expect(got.painted, "and the painter answered them").toBeGreaterThan(10);
     // A throttled page is paused now and then (CDP's throttle), and a frame
-    // that takes the pause looks long: the median is the frame's cost, the
-    // share of the window the live faces' whole cost on the page (the loop,
-    // and showing the worker's pictures).
+    // that takes the pause looks long: the median of the frames sent is the
+    // frame's cost, the share of the window the live faces' whole cost on
+    // the page (the loop's every call, and showing the worker's pictures).
     app.budget("a frame of live faces at PERFORM, the loop's own time (median)", got.p50, 2);
     app.budget("the live faces' share of the main thread while a key sounds at PERFORM (percent)", got.share * 100, 10);
     app.budget("the longest task while a key sounds at PERFORM", got.long.length ? Math.max(...got.long) : 0, 50);
