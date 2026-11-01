@@ -501,6 +501,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **or** | The word between EVOLVE's two cards, a silk label | vs, versus |
 | **listening…** | PERFORM measuring a sound's controls | measuring… (that is a figure's) |
 | **not measured yet** | A PERFORM control playing on a wiring borrowed from a measured relative or predicted from the knob table, until the sound's measurement lands | a guess, estimate, provisional |
+| *after you let go* / *in a moment* | PERFORM's wait for a measurement held back from the controls: *after you let go* while a hand is on a control or the XY pad, *in a moment* when nothing is held and only a control's sweep or the second and a half after a touch is left; on a waiting control's label and tooltip (*It turns after you let go of the controls.* / *It turns in a moment.*), the XY pad's note and the status line (*heard: the controls turn after you let go* / *… in a moment*) | wait, soon, release, when you're done |
 | **measuring…** | Renders on their way for an answer or the lesson: a figure, or the lesson's shape, while the engine renders and measures the sound in hand | listening… (that is PERFORM's), loading… |
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
