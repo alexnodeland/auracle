@@ -11,6 +11,7 @@ import {
   MORPH, MORPH_GONE, MORPH_SHOWN, WHERE_SLIDE, flightEnds, easeInOut, flightAt,
   WHEEL_STEP, WHEEL_IDLE_MS, WHEEL_LOCK_MS, wheelStep, wheelOwner, PINCH_IN, PINCH_OUT, pinchStep,
   rank, fuzzy, hitMarks, cmdkList, SOUNDS_SHOWN,
+  cmdkLines, cmdkFirst, cmdkRestPx, CMDK_ROW_PX, CMDK_ROW_TOUCH_PX, CMDK_GROUP_PX, CMDK_TALL,
 } from "../levels.js";
 
 test("the axis runs out to in, with EVOLVE beside PERFORM", () => {
@@ -297,4 +298,50 @@ test("with a query the group with the best hit leads, its hits best first, and e
     { name: "Sounds", items: [{ label: "Pool Party" }], cap: SOUNDS_SHOWN },
   ], "pool");
   assert.equal(prefix[0].hits[0].item.label, "Pool Party");
+});
+
+test("the list's lines are each group's name, then its rows, and each row knows its line", () => {
+  const groups = cmdkList([
+    { name: "This level", items: [{ label: "Another pair" }, { label: "Play A" }] },
+    { name: "Anywhere", items: [{ label: "Octave up" }] },
+    { name: "Sounds", items: [{ label: "Glass Pad" }], cap: SOUNDS_SHOWN },
+  ], "");
+  const { plan, rows } = cmdkLines(groups);
+  assert.deepEqual(plan, [{ group: "This level" }, { row: 0 }, { row: 1 }, { group: "Anywhere" }, { row: 2 }, { group: "Sounds" }, { row: 3 }]);
+  assert.deepEqual(rows.map((r) => [r.item.label, r.at]), [["Another pair", 1], ["Play A", 2], ["Octave up", 4], ["Glass Pad", 6]]);
+  // Each row keeps the letters cmdkList marked for it.
+  const typed = cmdkLines(cmdkList([{ name: "Anywhere", items: [{ label: "Octave up" }] }], "oct"));
+  assert.deepEqual(typed.rows[0].marks, [0, 1, 2]);
+  assert.deepEqual(cmdkLines([]), { plan: [], rows: [] });
+});
+
+test("a key draws enough lines to fill the list at its tallest, and the rest keep their height", () => {
+  // At its tallest the list stands 72% of the window, and no row is shorter
+  // than 40 px: the lines drawn at once always reach past its foot.
+  for (const h of [568, 844, 900, 1440]) {
+    const n = cmdkFirst(h);
+    assert.ok((n - 3) * CMDK_ROW_PX >= h * CMDK_TALL, `${n} lines fill ${h} px`);
+    assert.ok(n < 40, `${n} lines, not the whole list, at ${h} px`);
+  }
+  assert.equal(cmdkFirst(900), Math.ceil((900 * 0.72) / 40) + 3);
+  // A window that has not said its height draws a desktop's worth.
+  assert.equal(cmdkFirst(0), cmdkFirst(900));
+  assert.equal(cmdkFirst(NaN), cmdkFirst(900));
+  const plan = [{ group: "This level" }, { row: 0 }, { row: 1 }, { group: "Anywhere" }, { row: 2 }];
+  assert.equal(cmdkRestPx(plan, 0), 3 * CMDK_ROW_PX + 2 * CMDK_GROUP_PX);
+  assert.equal(cmdkRestPx(plan, 3), CMDK_ROW_PX + CMDK_GROUP_PX);
+  assert.equal(cmdkRestPx(plan, 3, { row: CMDK_ROW_TOUCH_PX, group: 30.5 }), 48 + 30.5);
+  // The stylesheet's heights: a row's least, a finger's, a group's name.
+  assert.deepEqual([CMDK_ROW_PX, CMDK_ROW_TOUCH_PX, CMDK_GROUP_PX], [40, 48, 32]);
+  assert.equal(cmdkRestPx(plan, plan.length), 0);
+  assert.equal(cmdkRestPx(plan, 99), 0);
+});
+
+test("a label ranked again, after thousands of others, ranks and marks as it did", () => {
+  const label = "Download your taste";
+  const first = [rank("taste", label), rank("dyt", label), hitMarks("taste", label), hitMarks("dyt", label)];
+  // Past the store of labels kept (it empties and fills again).
+  for (let i = 0; i < 2500; i++) rank("taste", `Sound ${i} taste`);
+  assert.deepEqual([rank("taste", label), rank("dyt", label), hitMarks("taste", label), hitMarks("dyt", label)], first);
+  assert.deepEqual(first, [80 - 2, 20, [14, 15, 16, 17, 18], [0, 9, 14]]);
 });

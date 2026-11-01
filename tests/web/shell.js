@@ -65,6 +65,17 @@ function commandRow(page, label) {
   return page.locator("#cmdk-list .cmdk-it").filter({ has: page.locator(".cmdk-lab", { hasText: exact }) });
 }
 
+/** Wait until ⌘K's list is drawn whole: it draws the rows in sight with the
+ *  key or the letter and the rest in idle time after (#513), so a spec that
+ *  reads every row (not one it finds by its label) waits for them. Each row
+ *  says how long the whole list is (`aria-setsize`). */
+async function listWhole(page) {
+  await expect.poll(() => page.evaluate(() => {
+    const rows = document.querySelectorAll("#cmdk-list .cmdk-it");
+    return !rows.length || rows.length === Number(rows[0].getAttribute("aria-setsize"));
+  }), { message: "⌘K's list drawn whole" }).toBe(true);
+}
+
 /** Run a command from ⌘K's list as a player does with the mouse: ⌘K's
  *  button, the label typed, its row clicked; and wait for the list to close.
  *  What it opens (a panel, a file's picker) is the caller's to wait for. */
@@ -79,4 +90,4 @@ async function runCommand(page, label) {
   await expect(list).toBeHidden();
 }
 
-module.exports = { goLevel, landed, openKeys, bankTab, modelView, openCatalog, commandRow, runCommand };
+module.exports = { goLevel, landed, openKeys, bankTab, modelView, openCatalog, commandRow, runCommand, listWhole };

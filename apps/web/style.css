@@ -6508,8 +6508,13 @@ g.performed .knob-value { fill: var(--phos-b); }
 .guide { position: absolute; left: var(--s5); bottom: var(--s4); z-index: 6; max-width: calc((100% - var(--rail-w)) / 2 - var(--s5)); }
 .guide.hidden, body:not([data-level="perform"]):not([data-level="patch"]) .guide { display: none; }
 /* PATCH leaves the pill a row under its well, as PERFORM does. */
-body[data-level="patch"]:has(#guide:not(.hidden)) #view-patch { padding-bottom: calc(var(--s7) + var(--s2)); }
-body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7); }
+/* Each room for the pill is asked of the stage, whose child the pill is,
+   and of its children only: asked of body, it was asked again across the
+   whole page at every element added or taken away anywhere in it, so each
+   of ⌘K's letters restyled more of the page, and slower (#513). :where()
+   keeps each rule's specificity. */
+body[data-level="patch"] :where(.stage):has(> #guide:not(.hidden)) > #view-patch { padding-bottom: calc(var(--s7) + var(--s2)); }
+body :where(.stage):has(> #guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7); }
 .guide .next {
   display: inline-flex;
   align-items: center;
@@ -8234,7 +8239,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .pf-right { flex: 1 1 0; }
   /* The guide pill stands over the controls' column here, which keeps
      room for it at its foot; the well needs none. */
-  body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: 0; }
+  body :where(.stage):has(> #guide:not(.hidden)) .view.perform .pf-left { padding-bottom: 0; }
   .pf-head { gap: 0; }
   .pf-blurb:empty { display: none; }
   .pf-knob svg { max-width: 60px; }
@@ -8822,7 +8827,7 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 @media (max-width: 700px) and (min-height: 501px) {
   /* While the guide pill is up it stands at the foot of PERFORM's column,
      in room kept for it there, over none of the pads. */
-  body:has(#guide:not(.hidden)) .view.perform .pf-right { padding-bottom: calc(var(--s7) + var(--s2)); }
+  body :where(.stage):has(> #guide:not(.hidden)) .view.perform .pf-right { padding-bottom: calc(var(--s7) + var(--s2)); }
 }
 @media (max-width: 700px) and (min-height: 800px) {
   /* Tall enough to keep the well with the keys up: the controls take their
