@@ -2438,7 +2438,19 @@ steps down until one is:
    nearest its corner first, down to `LANE_NARROWEST` (240 px): PERFORM's
    well on a phone on its side, a little narrower than a toast, with the
    controls filling the rest;
-4. then it keeps clear of the strips and panels, as it did before #517,
+4. on a phone held upright, the banner is narrowed to the inside of a
+   picture between the controls that stand along its sides (`bannerColumn`
+   in toasts.js: a control within the picture's height, at least half as
+   tall, reaching to within `LANE_INSET` of a side), at its own shape and
+   then, in a column `LANE_NARROWEST` or wider, one row. That is PATCH's
+   rack while the patch is wider than the well (#519): its edges (*n ›*,
+   *‹ n*) run down the well's sides from 48 px below its top to 48 px above
+   its foot, and a banner across the screen meets them at every height but
+   the well's top, 32 px of free band where one row needs 46. The banner
+   stands left of *n ›*, at 21 to 325 px across at 390 × 844 (the edge from
+   333) and 21 to 310 at 375 × 667 (from 318), and between the two edges
+   once the camera is inside the patch (65 to 310 at 375 × 667);
+5. then it keeps clear of the strips and panels, as it did before #517,
    and failing that stands in its corner.
 
 The last rung is reached with the keys' drawer up on a small phone: PERFORM
@@ -2454,7 +2466,8 @@ floor of PERFORM's well under its face, and on EVOLVE the free band nearest
 the top, under the cards' corners, where no thumb starts the swipe that
 picks. Over one picture (PERFORM's well, the rack, TASTE's map) it is
 narrowed to the picture's inside, as a caption is, rather than laid across
-its frame (`insetBanner`). Its counter keeps to its words' row where the
+its frame (`insetBanner`), and over the rack with PATCH's edges up, to the
+part between them (rung 4). Its counter keeps to its words' row where the
 row has room for it. A swipe up puts it away. It used to stand just under
 the menu bar, over PERFORM's share button and KEEP/BACK, EVOLVE's pips and
 its small TASTE map. On a phone on its side a banner as wide as the screen
@@ -2465,7 +2478,8 @@ as wide as its words and placed as on a desk, left of the levels' stops.
 
 The controls drawn on TASTE's map and PATCH's rack are not kept clear of
 (`LANE_SURFACES`): their sounds and modules reach to every corner, and there
-is nowhere clear of them to go. On TASTE a toast lets the pointer through to
+is nowhere clear of them to go. PATCH's edges are not drawn on the rack but
+stand over it in its frame, and are kept clear of like any control. On TASTE a toast lets the pointer through to
 the sound under it, and only its buttons and links take a click (#412).
 
 A toast that reports a change to the player's sounds (`bank: true`: a sound

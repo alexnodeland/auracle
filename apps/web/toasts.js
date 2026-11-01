@@ -412,3 +412,32 @@ export function placeLane({ size, bounds, reserved = [], pictures = [], prefer =
   }
   return best ? { left: best.t.left, top: best.t.top } : null;
 }
+
+/** Where a phone's banner may be narrowed to over a picture that has
+ *  controls standing along its sides: the picture's inside, `inset` from its
+ *  edges, and `gap` clear of each reserved rect that runs along a side, as
+ *  `{left, right}`, or null when no control stands along either side. A
+ *  control runs along a side when it lies within the picture's height, is at
+ *  least half as tall, and reaches to within `inset` of that side: PATCH's
+ *  edges (*n ›*, *‹ n*), shown while the patch is wider than the well, which
+ *  a banner across the screen meets at every height but the top of the well
+ *  (#519). Its `placeLane` is then given `bounds` from `left` to `right`. */
+export function bannerColumn(picture, reserved = [], { gap = LANE_GAP, inset = LANE_INSET } = {}) {
+  const E = 0.5;
+  const p = picture;
+  const mid = (p.left + p.right) / 2;
+  let left = p.left + inset;
+  let right = p.right - inset;
+  let narrowed = false;
+  for (const r of reserved) {
+    if (r.top < p.top - E || r.bottom > p.bottom + E || r.bottom - r.top < (p.bottom - p.top) / 2) continue;
+    if (r.right <= mid && r.left <= p.left + inset + E && r.right > p.left + E) {
+      left = Math.max(left, r.right + gap);
+      narrowed = true;
+    } else if (r.left >= mid && r.right >= p.right - inset - E && r.left < p.right - E) {
+      right = Math.min(right, r.left - gap);
+      narrowed = true;
+    }
+  }
+  return narrowed && right > left ? { left, right } : null;
+}

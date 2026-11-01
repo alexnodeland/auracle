@@ -171,7 +171,7 @@ const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
-  { createShell }, { createGuide }, { createToastLane, placeLane, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS, TOAST_MS }, { createDealer, onTable },
+  { createShell }, { createGuide }, { createToastLane, placeLane, bannerColumn, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS, TOAST_MS }, { createDealer, onTable },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
   { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
@@ -5018,6 +5018,15 @@ function positionToastLane({ fresh = false } = {}) {
   //  - elsewhere, the toast is narrowed to the inside of a picture, the
   //    nearest its corner first (PERFORM's well on a phone on its side is a
   //    little narrower than a toast, and the controls fill the rest);
+  //  - on a phone, the banner is narrowed to the inside of a picture whose
+  //    sides have controls standing along them, between those controls
+  //    (toasts.js `bannerColumn`), at its own shape and then one row, the
+  //    picture nearest the level's foot first: PATCH's edges (*n ›*), shown
+  //    while the patch is wider than the well, run down the well's sides
+  //    from 48 px below its top to 48 px above its foot, and a banner
+  //    across the screen met the right one at every height (#519). One row
+  //    is tried only where the column is LANE_NARROWEST or wider; at its own
+  //    shape the action goes under the words when they need the room;
   //  - then clear of the teaching strips and the panels at least, as the
   //    lane always was, and failing that, its corner.
   const yielding = guide ? reserved.filter((r) => r !== guide) : reserved;
@@ -5029,25 +5038,53 @@ function positionToastLane({ fresh = false } = {}) {
     .map((p) => ({ p, w: Math.floor(p.right - p.left - 2 * LANE_INSET) }))
     .filter(({ w }) => w < size.w && w >= LANE_NARROWEST)
     .sort((a, b) => (bounds.right - a.p.right) + (bounds.bottom - a.p.bottom) - ((bounds.right - b.p.right) + (bounds.bottom - b.p.bottom)));
+  const columns = phone ? pictures
+    .map((p) => ({ p, c: bannerColumn(p, yielding) }))
+    .filter(({ c }) => c)
+    .sort((a, b) => (prefer === "top" ? a.p.top - b.p.top : b.p.bottom - a.p.bottom))
+    .map(({ c }) => c) : [];
+  const inColumn = (c, tight) => () => {
+    holder.classList.toggle("tight", tight);
+    holder.style.left = `${Math.round(c.left)}px`;
+    holder.style.right = `${Math.round(window.innerWidth - c.right)}px`;
+  };
   const rungs = [
     { keep: reserved },
     ...(guide ? [{ keep: yielding }] : []),
     ...(phone ? [{ keep: yielding, shape: () => holder.classList.add("tight") }] : []),
     ...narrower.map(({ w }) => ({ keep: yielding, shape: () => { holder.style.maxWidth = `${w}px`; } })),
+    ...columns.flatMap((c) => [
+      { keep: yielding, column: true, shape: inColumn(c, false) },
+      ...(c.right - c.left >= LANE_NARROWEST ? [{ keep: yielding, column: true, shape: inColumn(c, true) }] : []),
+    ]),
   ];
   let kept = reserved;
   let at = null;
+  // Placed in a column (`bannerColumn`): already narrowed, `insetBanner`
+  // has nothing to do.
+  let inAColumn = false;
   for (const rung of rungs) {
     if (rung.shape) {
       rung.shape();
       size = measured();
     }
-    at = placeLane({ size, bounds, reserved: rung.keep, pictures, prefer });
+    // A banner in a column stands across it, so its bounds are the column.
+    const t = rung.column ? holder.getBoundingClientRect() : null;
+    at = placeLane({ size, bounds: t ? { ...bounds, left: t.left, right: t.right } : bounds, reserved: rung.keep, pictures, prefer });
     kept = rung.keep;
-    if (at) break;
+    if (at) {
+      inAColumn = !!rung.column;
+      break;
+    }
   }
   if (!at && narrower.length) {
     holder.style.maxWidth = "";
+    size = measured();
+  }
+  if (!at && columns.length) {
+    holder.style.left = "";
+    holder.style.right = "";
+    holder.classList.add("tight");
     size = measured();
   }
   if (!at) {
@@ -5057,7 +5094,7 @@ function positionToastLane({ fresh = false } = {}) {
   }
   if (phone) {
     holder.style.top = `${Math.round(at.top)}px`;
-    insetBanner(holder, at, size, pictures, kept, prefer);
+    if (!inAColumn) insetBanner(holder, at, size, pictures, kept, prefer);
   } else {
     // Anchored by its bottom, so a toast that grows (a line more) grows
     // upward, and nothing jumps when one leaves.
@@ -5150,9 +5187,11 @@ function laneObstacles() {
 // pill, the line under EVOLVE's cards: their size, which is none while they
 // are hidden). The lane is placed again then, not only when the next toast
 // arrives, a frame later and once for any number of changes, and never
-// under the hand (`laneUnderHand`). PERFORM builds its parts after boot, so
-// what is watched is gathered each time the lane is placed.
-const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-xy", ".pf-why-body", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".md-foot", "#taste-time"];
+// under the hand (`laneUnderHand`). PATCH's edges come and go as the camera
+// moves past the patch's ends (a banner over the rack on a phone is narrowed
+// beside them). PERFORM builds its parts after boot, so what is watched is
+// gathered each time the lane is placed.
+const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-xy", ".pf-why-body", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".pt-edge", ".md-foot", "#taste-time"];
 let laneFrame = 0;
 function laneLater() {
   if (laneFrame || !$("toasts")?.firstChild) return;

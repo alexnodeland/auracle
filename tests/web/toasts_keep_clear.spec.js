@@ -28,6 +28,9 @@
 // - The toast covers none of the level's heading (HEADS: its title, PERFORM's
 //   share button and KEEP/BACK, EVOLVE's pips and line and its small map),
 //   each of which must be in the level (a phone hides EVOLVE's title).
+// - On a phone held upright at PATCH, with the patch wider than the well,
+//   the toast stands clear of the edges (*n ›*, and *‹ n* once a tap on
+//   *n ›* brings it up under the toast), which are controls like any other.
 // - On a phone, a swipe up on the banner puts it away: the swipe itself
 //   (`.swiped`, which nothing but a swipe adds), not its window running out.
 // - A change under the receipt (what each generation did, opened from the
@@ -267,6 +270,30 @@ for (const [width, height, crowded] of [[390, 844], [375, 667, true], [844, 390]
     });
   });
 }
+
+// PATCH's edges (#519) are controls a finger needs, and they run down the
+// well's sides: while the patch is wider than the well, *n ›* (and once the
+// camera is inside the patch, *‹ n*) stands from 48 px below the well's top
+// to 48 px above its foot. A banner across the screen met the right one at
+// every height it could stand at, so with nowhere free the lane kept clear
+// of the strips alone and stood over *n ›* (at 375 × 667, 438 to 484 px
+// down, across the edge's 318 to 362). It now stands narrowed between the
+// edges (toasts.js `bannerColumn`), and moves when an edge comes up under
+// it: *‹ n*, brought up by a tap on *n ›*.
+test.describe("a phone, 375 × 667, PATCH's edges", () => {
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true });
+
+  test("on a phone a toast over the rack stands between PATCH's edges, and moves clear of one that comes up under it", async ({ page, app }) => {
+    await app.boot();
+    await receiptAt(page, app, "patch");
+    await expect(page.locator("#pt-edge-r"), "n ›: the patch is wider than the well at its fit").toBeVisible();
+    await expect(page.locator("#pt-edge-l")).toBeHidden();
+    await expect.poll(() => covered(page, "patch", false), { message: "what a pick's receipt covers at patch, n › up", timeout: SETTLE_MS }).toEqual([]);
+    await page.locator("#pt-edge-r").tap();
+    await expect(page.locator("#pt-edge-l"), "‹ n: a module past the well's left edge too").toBeVisible();
+    await expect.poll(() => covered(page, "patch", false), { message: "what a pick's receipt covers at patch, both edges up", timeout: SETTLE_MS }).toEqual([]);
+  });
+});
 
 /** Go to a level by a tap on its stop, as a finger does. */
 async function tapLevel(page, level) {

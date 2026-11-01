@@ -20,8 +20,10 @@
   on the rack beside a module's ⋯ or its lock is theirs, and a tap beside
   an out ○ picks its cable up, as a tap right on them does, while a tap
   anywhere else on a module's panel, or on its name, opens its settings,
-  however small the module is drawn. The face at OUT is at least 44 px across
-  (`patch_fit.spec.js`, #519).
+  however small the module is drawn. The face at OUT is at least 44 px
+  across, and on a phone held upright a toast over the rack is narrowed to
+  stand beside the edges' *n ›* and *‹ n* rather than across them
+  (`patch_fit.spec.js`, `toasts_keep_clear.spec.js`, #519).
 
 ### Fixed: PATCH's structure menu and its ceilings stay out of the way
 

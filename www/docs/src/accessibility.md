@@ -232,6 +232,8 @@ wide as its words up to the screen's: one or two lines with its action
 beside them, one at a time, in the free band of the level nearest its foot
 (on PERFORM inside the well, over its floor under the sound's face; on
 EVOLVE under the cards' corners, away from the thumb that swipes a card up).
+Over PATCH's rack, when the patch is wider than the well, it is narrowed to
+stand beside the edges (*n ›*, *‹ n*) rather than across them.
 On a phone on its side it stands where it is free, as on a wider screen.
 Where PERFORM has no other room (on a small phone, or with the XY pad or HOW
 IT WORKS filling the well), the first-steps pill steps aside while the toast
