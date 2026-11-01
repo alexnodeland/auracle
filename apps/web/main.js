@@ -4878,7 +4878,7 @@ function dropToast(el) {
   toastLane.drop(el);
 }
 
-// What the lane may never cover (rule 2, toasts.js `placeLane`), measured
+// What the lane keeps clear of (rule 2, toasts.js `placeLane`), measured
 // each time a toast shows and whenever the page under it changes:
 //  - every control in the level on screen and in the stage around it (the
 //    rail, the guide pill): LANE_CONTROLS, all but those drawn on a surface
@@ -4998,7 +4998,8 @@ function positionToastLane({ fresh = false } = {}) {
   const prefer = phone ? (PHONE_FROM_TOP.has(level) ? "top" : "bottom") : "corner";
   const { reserved, pictures, strips, guide } = laneObstacles();
   // Nowhere free of every control (a level crowded at this size: PERFORM on
-  // a small phone, the XY pad filling the well), it steps down:
+  // a small phone, the XY pad or HOW IT WORKS filling the well), it steps
+  // down:
   //  - the guide pill gives way, a hint that comes back when the toast goes
   //    (`laneOverGuide`);
   //  - on a phone, the banner is one row (`.toasts.tight`): its words, two

@@ -2337,16 +2337,17 @@ remark nearest the front of the queue is cut (a queue position, not an age:
 and a refusal last of all. An undo and a refusal are never dropped for their
 age.
 
-The lane never covers a control or a level's heading (#517). Each time a
-toast comes on screen, and whenever the page under it changes (a panel
-opening, a part of the level growing or going: a frame later, once for any
-number of changes), `positionToastLane` in main.js measures what it must
-keep clear of: every control in the level shown and in the stage around it
-(the rail's stops, the guide pill), the level's heading and the lines read
-with it (PERFORM's head with KEEP/BACK's slot, kept while it is empty, and
-its status line; EVOLVE's question and pips, each card's foot with its
-name, PLAY and PICK, and the line saying how the pair was dealt), and the
-teaching strips and panels
+The lane keeps clear of every control and level heading (#517), but in the
+one case the last rung below describes. Each time a toast comes on screen,
+and whenever the page under it changes (a panel opening, a part of the
+level growing or going, the XY pad or HOW IT WORKS filling PERFORM's well:
+a frame later, once for any number of changes), `positionToastLane` in
+main.js measures what it must keep clear of: every control in the level
+shown and in the stage around it (the rail's stops, the guide pill), the
+level's heading and the lines read with it (PERFORM's head with KEEP/BACK's
+slot, kept while it is empty, and its status line; EVOLVE's question and
+pips, each card's foot with its name, PLAY and PICK, and the line saying
+how the pair was dealt), and the teaching strips and panels
 (`LANE_CONTROLS`, `LANE_HEADS`, `LANE_STRIPS`, `LANE_COLUMNS`). What it may
 stand over is a level's picture (`LANE_PICTURES`: PERFORM's well, an EVOLVE
 card's well, the rack, TASTE's map, LEARNING's panels), wholly inside one
@@ -2359,17 +2360,26 @@ used to cover EVOLVE POOL and *what each generation did*; at 1280 × 720 on
 PERFORM it used to cover rows of UNDER THE HOOD and the rail's PATCH stop.
 The toast's own size is watched too (a line more, its counter), and a
 change under it does not move it while the pointer rests on it or a finger
-is on it (ADR-025): it moves when the hand leaves.
+is on it (ADR-025): it moves when the hand leaves. A mouse or a pen counts
+while it is on the toast (the lane's own pointerenter and pointerleave, and
+`:hover`), a finger only while it touches the banner (`laneTouched`): a
+touch screen leaves `:hover` on what a finger last tapped, and read alone it
+held the banner over the XY pad opened under it after a tap on its words.
 
 With no spot free of every control (a level crowded at its size), it
 steps down until one is:
 
-1. the guide pill gives way, hidden with its place kept while the toast
-   stands over it and back when it goes (`laneOverGuide`): PERFORM at
-   375 × 667, where the band under the pads is the pill's;
+1. the guide pill gives way while the toast stands over it, its place
+   kept, and is back when it goes (`laneOverGuide`): unseen, the pointer
+   passing through it and its × hidden, its step still a status in the
+   accessibility tree. Measured on PERFORM: at 375 × 667 in each of the
+   well's modes, where the band under the pads is the pill's; at 390 × 844
+   with the XY pad or HOW IT WORKS up; at 844 × 390 for a short toast with
+   the XY pad up; and, for some toasts, at 1280 × 720 with the XY pad up;
 2. on a phone held upright, the banner is one row (`.toasts.tight`): its
-   words, two lines at most, beside its action rather than over it, which
-   is what that band holds;
+   words (two lines at most, the phone's clamp on them) beside its action
+   rather than over it, which is what the band under PERFORM's pads holds
+   at 375 × 667;
 3. elsewhere, the toast is narrowed to the inside of a picture, the
    nearest its corner first, down to `LANE_NARROWEST` (240 px): PERFORM's
    well on a phone on its side, a little narrower than a toast, with the

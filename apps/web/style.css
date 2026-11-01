@@ -4867,7 +4867,8 @@ html:not(.engineer) .dn-sig { display: none; }
 
 /* ---------- toasts & the alarm strip ---------- */
 /* One lane, placed by `positionToastLane` in the free spot nearest the
-   stage's bottom right, clear of every control (toasts.js `placeLane`).
+   stage's bottom right, clear of every control where the level leaves one
+   (toasts.js `placeLane`; web-runtime.md § Toasts for where it does not).
    It used to stack up from the bottom centre — straight over PICK A / PICK B,
    so the recovery affordance obscured the app's core teaching action. The
    z-index is deliberately BELOW anything holding a pressed state or a teaching
@@ -8468,8 +8469,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
      taller for two characters. */
   .toast:has(> .toast-stack:not(.hidden)) .toast-msg { flex-basis: 9em; }
   /* Where no band of the level holds the banner at its own shape, it is one
-     row (main.js `positionToastLane`'s rungs): its words, two lines at most,
-     beside its action rather than over it. */
+     row (main.js `positionToastLane`'s rungs): its words, two lines at most
+     (`.toast-msg`'s clamp above), beside its action rather than over it. */
   .toasts.tight .toast { flex-wrap: nowrap; }
   .toasts.tight .toast-msg { flex: 1 1 0; }
   .toast.swiped { transform: translateY(-120%); opacity: 0; transition: transform var(--d-move) var(--e-settle), opacity var(--d-move) var(--e-settle); }
