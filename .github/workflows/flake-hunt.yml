@@ -178,10 +178,13 @@ jobs:
   # tests/web/profile.js): each runner times a calibration render at its
   # first boot and slows the engine worker and every farm worker until a
   # render takes the reference machine's time, boots with ?farm=2, and in
-  # Chromium throttles the page by the same rate; each shard's summary says
-  # what it measured, and each budget names the profile beside its figure. A
-  # spec's own slowed worker.js is kept on it (the fixture serves a spec's
-  # `workerPrefix` after its own slowed engine; patch_audible's, #166).
+  # Chromium throttles the page by the same rate up to the profile's cap
+  # (`pageRateMax` in tests/web/profiles.json), the Air's CPU against an
+  # M-series one; each shard's summary says what it measured and
+  # what is an estimate, and each budget names the profile beside its
+  # figure. A spec's own slowed worker.js is kept on it (the fixture serves
+  # a spec's `workerPrefix` after its own slowed engine; patch_audible's,
+  # #166).
   # In Chromium and in Firefox (D10): Firefox has no throttle for a page, so
   # there the engine and the farm are slowed and the page is not, and it
   # needs an audio server the image lacks (a step below starts one). The
@@ -195,13 +198,16 @@ jobs:
   # report below folds on main), so each ends about ten minutes inside its
   # 40. On 2026-10-31, three runners a browser dealt by the gate's timings
   # were each cut at 40 minutes, and 74 of the 167 tests in Chromium and 32
-  # in Firefox never ran: on the profile a test takes about seven times its
+  # in Firefox never ran: on the profile a test took about seven times its
   # time on the gate in Chromium (about 230 minutes in all) and three and a
   # half in Firefox (about 140). Three at a time, the count the hunt's
   # comment above holds: about two and three quarter hours a night (the
   # maintainer accepted about three, 2026-10-31). Wider would be over sooner
   # and hold more of the account's twenty while the hunt runs; fewer,
-  # longer runners would leave less of each cut to spare.
+  # longer runners would leave less of each cut to spare. These figures are
+  # the 1,100 ms profile's: #509 lowered the estimate, each test is shorter
+  # on the new one, and as `perf`'s timings refresh, each runner's share and
+  # the night fall; the first nights on it give the new figures.
   perf:
     name: Speed budgets (${{ matrix.browser }} ${{ matrix.shard }})
     needs: engine
@@ -297,8 +303,8 @@ jobs:
   # a proxy for an offer bred from it), against half a quantum divided by
   # this runner's rate on the reference profile, which it measures first by
   # the profile's own calibration render (tests/web/profiles.json, whose
-  # reference is ADR-025's estimate until the Air measures it, so the limit
-  # is about three times too strict for now). The run's summary names each
+  # reference is an estimate until the Air measures it: ADR-025's figure
+  # times the speed-ups measured since). The run's summary names each
   # preset over the limit and the issue it waits on (#320: a voice count
   # from the sound's own cost), and says it is not judged at #320's ceiling
   # until that exists.

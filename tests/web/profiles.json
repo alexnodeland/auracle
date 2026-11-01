@@ -5,8 +5,11 @@
       "name": "air",
       "machine": "a 2018 or 2019 MacBook Air (Intel 1.6 GHz dual-core i5, 2 cores, 4 threads), in Firefox",
       "preset": "Solo Flight",
-      "referenceMs": 1100,
-      "referenceIs": "ADR-025's estimate, not yet measured on the Air",
+      "referenceMs": 356,
+      "referenceIs": "an estimate, not yet measured on the Air: ADR-025's 1,100 ms times the three speed-ups measured since",
+      "referenceMethod": "1,100 ms (ADR-025, 2026-10-06, when a render took about 240 ms on an M3 Max) × 0.804 (#353, knobs folded: the bench's 18 trees in Firefox's worker, 6345 to 5103 ms) × 0.606 (#393, quiver-dsp 0.4.1 and norm_sqr: the 18 in wasm, 9691 to 5870 ms of CPU) × 0.665 (#406, the block walk: the 18 in wasm, 3053 to 2029 ms of CPU) = 356 ms; docs/notes/render-cost-2026-10/README.md, § Built and § In the browsers. A measurement on the Air replaces it (tests/web/AGENTS.md, The reference profile)",
+      "pageRateMax": 4.5,
+      "pageRateMaxIs": "an estimate of how much slower the Air's CPU is than an M-series one: ADR-025's 1 to 1.2 s there against about 240 ms on an M3 Max",
       "farm": 2
     }
   }

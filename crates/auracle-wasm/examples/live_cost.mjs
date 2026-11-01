@@ -27,10 +27,10 @@
 //                     first as tests/web/profile.js does in a browser: the profile's calibration
 //                     render (tests/web/profiles.json: its preset's farm render with its audio, one
 //                     to warm up, then the median of its runs) against that render's time on the
-//                     reference (its `referenceIs` says how that is known: for now ADR-025's
-//                     estimate, not a measurement on the Air), here in node, the V8 Chromium runs,
-//                     in the thread's CPU time as the sweep is (a machine as slow as the
-//                     reference, or slower, is at ×1).
+//                     reference (its `referenceIs` says how that is known: an estimate until the
+//                     Air is measured, with `referenceMethod`'s sum beside it while it is one),
+//                     here in node, the V8 Chromium runs, in the thread's CPU time as the sweep is
+//                     (a machine as slow as the reference, or slower, is at ×1).
 //                     With ms, that many ms of CPU here, for a hand run. Each preset over the
 //                     limit is named with the issue it waits on (#320: a voice count from the
 //                     sound's own cost). Not yet judged at #320's ceiling: the

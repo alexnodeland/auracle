@@ -310,16 +310,18 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     `profile.js`), in Chromium and in Firefox. A test that booted on a
     profile names it beside each budget's figure, with the rates its boot
     ran at (`… ms of 100 ms on air in chromium (engine, farm and page
-    ×4.4)`, or `(engine ×4, farm and page ×1)` where a spec's `slowEngine`
-    is more than the profile's), and carries the annotation `profile`, what
-    its calibration measured and those rates.
+    ×2.9)`, `(engine and farm ×5.2, page ×4.5)` where the render's rate is
+    over a page cap of ×4.5, or `(engine ×4, farm and page ×1)` where a spec's
+    `slowEngine` is more than the profile's), and carries the annotation
+    `profile`, what its calibration measured and those rates.
   - *The reference profile* is the reference machine (a 2018 or 2019
     MacBook Air, an Intel 1.6 GHz dual-core i5, in Firefox) as near as this
     one can make it: `app.boot({ profile: "air" })`, or every boot with
     `AURACLE_PROFILE=air`, slows the wasm in the engine worker and in every
     farm worker until a render takes the reference's time, boots with
     `?farm=2` unless the spec's own `query` names a width, and in Chromium
-    throttles the page by the same rate (Firefox has no throttle for a page).
+    throttles the page by the same rate up to the Air's CPU against an
+    M-series one (`pageRateMax`; Firefox has no throttle for a page).
     The rate is measured once a run, at its first boot that asks (in UI
     mode, which keeps the output directory, once a session and engine
     build): one preset's render here, against its time on the reference; a
@@ -329,7 +331,35 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     and the rates the boot runs at. The engine takes the largest of the
     profile's rate, `slowEngine` and `AURACLE_CPU_THROTTLE` (which by hand
     slows the engine's wasm and throttles the page, and leaves the farm at
-    full speed), and the page the larger of the profile's and the throttle.
+    full speed), and the page the larger of the profile's page rate and the
+    throttle.
+    *Measured and estimated:* the render here is measured every run (`one
+    render of Solo Flight … ms here (measured)`, in each runner's
+    calibration line and each test's `profile` annotation). The render's
+    time on the Air (`referenceMs`) and the page's cap (`pageRateMax`) are
+    estimates until the Air is measured, each marked so in `profiles.json`
+    (`referenceIs`, `pageRateMaxIs`, which the lines print beside the
+    figure), the first with its sum beside it (`referenceMethod`: ADR-025's
+    1,100 ms times the three speed-ups measured since). [`testing.md` §
+    Rules](../../docs/architecture/testing.md#rules) has today's figures,
+    how each was estimated and the rates the runners reach; no other
+    description states either figure. To measure them on the Air, in
+    Firefox (`npx playwright install firefox` once), quiet and on power:
+
+    ```bash
+    cd tests/web
+    AURACLE_PROFILE=air AURACLE_BROWSER=firefox AURACLE_TEST_PORT=8690 \
+      ../../www/video/tools/one_browser.sh npx playwright test \
+      reference_profile.spec.js --grep-invert @slow --reporter=line
+    ```
+
+    It prints `profile air in firefox: one render of Solo Flight … ms
+    here`: that figure is `referenceMs`, and `referenceIs` says where and
+    when it was measured (`referenceMethod` goes). Its `page throttle: …
+    ms on a page with no profile` there, against the same line on an
+    M-series machine in Firefox, is `pageRateMax` (and `pageRateMaxIs`
+    says so). Then `testing.md` § Rules' two *Estimated* bullets become
+    what was measured.
     `AURACLE_BROWSER=firefox` runs the specs in Firefox, in a project named
     `firefox` (the gate's is `chromium`); on Linux Firefox's AudioContext
     starts only with an audio server running (PulseAudio: with none, as in
