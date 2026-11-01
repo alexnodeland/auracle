@@ -142,7 +142,8 @@ every bank row shows its actions (and every preset its **▶**) at rest, on a
 line under its name, so a sound can be heard, rated, saved or cut without
 opening it. On a phone a bank row is a list's row, as a phone's own are: its
 name and its **▶** at rest, and swiped left it slides out its other
-actions (**★**, save, cut) at its end; swipe it back, scroll the list or tap
+actions (**★**, save, cut) at its end, the name keeping the room to their left
+and ending in an ellipsis where it doesn’t fit; swipe it back, scroll the list or tap
 another row and they go. They are still there for a screen reader, a
 keyboard and a mouse: focus in the row slides them out as a swipe does. **MODEL**’s press and hold is the model view under a finger, and
 two fingers spread or pinched on the stage zoom between the levels (two

@@ -961,18 +961,23 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
   scrollbar-color: var(--plate-edge) transparent;
 }
 
-/* A row: the face's column, then one line (two for a bred sound). The
-   actions, the seed and may-be-replaced words, the model view's percentage
-   and IN POOL sit over the row's end, so a name has the row's width at rest
-   and never moves for a mark. */
+/* A row: the face's column, then two lines, always two. The first is the
+   name, which has the row's whole width and is never covered: the seed and
+   may-be-replaced words, the model view's percentage and (on a touch screen)
+   IN POOL sit over its end, and the mark column keeps it at one x. The second
+   is the actions' (a bred sound's lineage shares it): their own strip, kept
+   whether they show or not, so a row is the height it is at rest, under the
+   pointer and with the stars out, and nothing under the hand moves (#312,
+   #534). The name that does not fit ends in an ellipsis, its full text in
+   its tooltip. */
 .bank-item {
   position: relative;
   flex: none;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  min-height: 40px;
+  justify-content: flex-start;
+  gap: 0;
+  min-height: 48px; /* the name's line, then the actions' 22 px strip and its 5 px foot */
   padding: var(--s1) var(--s2) var(--s1) calc(var(--s2) + 26px + var(--s3)); /* token-exempt: the width kept for the face (26 px, the mock's), not spacing */
   border-radius: var(--r1);
   /* A 2px rail on the left carries row state: green for the sound you're
@@ -1080,7 +1085,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 }
 /* A bred sound's lineage, under its name and aligned with it: the seed it
    grew from and what changed. Pressed, it opens Compare. */
-.bank-item .bi-sub { display: flex; gap: var(--s2); min-width: 0; }
+.bank-item .bi-sub { display: flex; align-items: center; gap: var(--s2); min-width: 0; min-height: 22px; }
 .bank-item .bi-from {
   flex: 1;
   min-width: 0;
@@ -1100,18 +1105,21 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item .bi-from:hover { color: var(--silk); }
 
 /* What sits over the row's end: placed the same way, each on a ground that
-   fades in from the row, so what it covers reads as passing under it. */
+   fades in from the row, so what it covers reads as passing under it. The
+   words are on the name's line, level with it; the actions are on the line
+   under it, where no name is. */
 .bank-item .bi-flag,
 .bank-item .bi-acts,
 .preset-item .pb-in {
   position: absolute;
   right: var(--s1);
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   padding-left: var(--s4);
 }
+.bank-item .bi-flag { top: var(--s1); height: 17px; } /* token-exempt: the name's line: --t-body at 1.2 */
+.bank-item .bi-acts, .preset-item .pb-in { bottom: 5px; } /* token-exempt: the strip's foot: the row's 48 less the name's line, the strip and the model view's bar (3 px, 2 px tall) */
+.preset-item .pb-in { height: 22px; } /* token-exempt: the strip's, which it shares */
 /* Pointing at EVOLVE POOL marks what a generation does, as the model chose it
    (amber): its seeds, and what it may replace, each in a word at the row's
    end and on the rail. A seed whose bud is out (`.seeding`) is lit the same. */
@@ -1133,13 +1141,14 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item.seed,
 .bank-item.seeding { border-left-color: var(--phos-b); }
 .bank-item.may-go { border-left-style: dashed; border-left-color: var(--phos-b-dim); }
-/* The row's actions, on approach: the pointer, the keyboard cursor, focus.
-   Hidden (`visibility`), they cannot be pressed either, so nothing invisible
-   is live; and they become pressable a press's length after the pointer
-   arrives (`--d-press`, step-end), so a quick click on a row or its name
-   opens it rather than landing on an action that appeared under it. The
-   strip itself never takes the pointer, only its buttons, so the name it
-   passes over can still be double-clicked where no button sits. */
+/* The row's actions, on approach: the pointer, the keyboard cursor, focus,
+   on the line under the name. Hidden (`visibility`), they cannot be pressed
+   either, so nothing invisible is live; and they become pressable a press's
+   length after the pointer arrives (`--d-press`, step-end), so a quick click
+   on a row opens it rather than landing on an action that appeared under it.
+   The strip itself never takes the pointer, only its buttons, so a bred
+   sound's lineage line, which it passes over, can still be pressed where no
+   button sits. */
 .bank-item .bi-acts {
   gap: 2px;
   background: linear-gradient(to right, transparent, var(--panel-hi) var(--s4));
@@ -1153,12 +1162,13 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item:focus-within .bi-acts,
 .bank-item.kbd .bi-acts,
 .bank-item.rating .bi-acts { visibility: visible; opacity: 1; }
-/* The actions give the row's end to the word only when they are away. */
+/* The word at the row's end gives way while the actions show: one thing at a
+   time says what the row is for. */
 .bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: hidden; }
 .bank-item .bi-acts button {
   flex: none;
   width: 24px;
-  height: 24px;
+  height: 22px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -1209,12 +1219,13 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
    over the row's end, and its bar along the row's foot, the band how sure it
    is and the tick its guess. Before a fit there is no guess: "·", and the bar
    hatched. Over the row, not beside the name, so no name moves or narrows
-   when it shows. */
+   when it shows; on the name's line, so it is never over the actions. */
 .bank-item .bi-pct {
   position: absolute;
   right: var(--s2);
-  top: 50%;
-  transform: translateY(-50%);
+  top: var(--s1);
+  height: 17px; /* token-exempt: the name's line: --t-body at 1.2 */
+  line-height: 17px; /* token-exempt: as the height */
   min-width: 30px;
   padding-left: var(--s4);
   background: linear-gradient(to right, transparent, var(--panel) var(--s4));
@@ -1282,9 +1293,9 @@ body.model-view .bank-item:not(:hover, .under):not(.rating) .bi-acts { visibilit
 .bank-item.budding .bi-name { visibility: hidden; }
 
 /* A preset: the face and the name, IN POOL at the end once it is in the pool,
-   and ▶ on approach. Every preset row keeps IN POOL's place. */
+   and ▶ on approach. IN POOL is on the line under the name, where the ▶ is, so
+   the name has the row's whole width: neither takes any of it. */
 .preset-item {
-  padding-right: calc(var(--s2) + 52px); /* token-exempt: the width IN POOL takes, kept on every preset row */
   --row-ground: var(--panel); /* the row's own ground, for what fades in over its end */
 }
 .preset-item:hover, .preset-item.kbd { --row-ground: var(--panel-hi); }
@@ -4239,23 +4250,33 @@ kbd { font-family: var(--font-mono); }
   /* A bank row's actions and a preset's ▶, on every row at rest: a tap on
      a row opens it (and goes to PATCH), so hover-to-reveal would leave a
      finger no way to hear, rate, save or cut a sound without opening it.
-     They sit on a line of their own under the name, in the name's column,
-     so no name is covered or cut; what sits over the row's end (the seed
-     and may-be-replaced words, the model view's percentage, IN POOL) stays
+     They sit on a line of their own under the name, as a mouse's do, but
+     in the row's flow and a finger's size, the whole width of the row's
+     content (the buttons give up width before a cut would be left out of
+     reach, down to 31 px each for a bred sound's five in the narrowest
+     bank), so no name is covered or cut, and the stars, as tall as the
+     buttons, take the line they leave as it is: a row is as tall with them
+     out as without. What sits over the row's end (the seed and
+     may-be-replaced words, the model view's percentage, IN POOL) stays
      level with the name. */
+  .bank-item { gap: 2px; }
   .bank-item .bi-acts {
     position: static;
+    bottom: auto;
     transform: none;
     visibility: visible;
     opacity: 1;
     background: none;
-    padding-left: calc(30px + var(--s1) + var(--s2)); /* token-exempt: under the name, past the mark column's 30 px */
+    padding-left: 0;
   }
-  .preset-item .bi-acts { padding-left: 0; }
+  .bank-item .bi-acts button { flex: 0 1 44px; min-width: 0; min-height: 44px; }
+  .bank-item .bi-acts .stars { flex: 1 1 0; min-width: 0; }
+  .bank-item .bi-acts { gap: 0; }
   body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: visible; opacity: 1; }
+  .preset-item { padding-right: calc(var(--s2) + 52px); } /* token-exempt: the width IN POOL takes, kept on every preset row here, where it is level with the name */
   .bank-item .bi-flag,
   .bank-item .bi-pct,
-  .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
+  .preset-item .pb-in { top: var(--s1); bottom: auto; transform: none; height: 20px; }
   .bank-item:hover .bi-flag, .bank-item.under .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
   /* The ▶ is on its own line here, so IN POOL keeps the row's end. */
   .preset-item:is(:hover, .under, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
@@ -7987,6 +8008,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* A word about your sounds, said while the sheet is up, stands over it. */
   body.bank-open .toasts { z-index: 43; }
 }
+/* On its side a phone has width to spare, and a row's swiped actions have
+   need of it: with 320 px, four buttons of a finger's size left a name 25 px
+   (#534). */
+@media (max-height: 500px) and (max-width: 999px) {
+  .bank { width: min(420px, 86vw); }
+}
 
 /* ---- a phone held upright ---- */
 @media (max-width: 700px) and (min-height: 501px) {
@@ -8703,27 +8730,56 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 
 /* A bank row on a phone (#134), as a phone's own lists' rows: its name and
    its ▶ at rest, the ▶ at the row's end; swiped left, its other actions
-   (★, save, cut) slide out beside the ▶ over the row's end, on the row's
-   ground (main.js `bankSwipedId`). A row's stars folded out stay out. */
+   (★, save, cut) slide out beside the ▶ at the row's end, on the row's
+   ground (main.js `bankSwipedId`). A row's stars folded out stay out. The
+   name gives them the room they take: its box ends where they begin, and
+   what does not fit ends in an ellipsis, never under them (#534). The
+   buttons are a finger's size (`--hit`), the stars as tall and a thumb's
+   width. */
 @media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
-  .bank-item { touch-action: pan-y; padding-right: calc(44px + var(--s2)); } /* token-exempt: the ▶'s 44 px target, not spacing */
+  .bank-item {
+    --hit: 24px; /* token-exempt: the ▶'s column and the strip's buttons, a mouse's size */
+    --star: 24px; /* token-exempt: a star's width in the strip */
+    touch-action: pan-y;
+    min-height: 40px;
+    justify-content: center;
+    gap: 2px;
+    padding-right: calc(var(--hit) + var(--s2) + var(--s1)); /* the ▶'s column: its button, the strip's padding and its offset from the row's end */
+  }
   .bank-item .bi-acts {
     position: absolute;
     right: var(--s1);
     top: 50%;
+    bottom: auto;
     transform: translateY(-50%);
     padding-left: var(--s2);
     gap: 0;
     background: var(--panel-hi);
     border-radius: var(--r1);
   }
+  @media (pointer: coarse) {
+    .bank-item {
+      --hit: 44px; /* token-exempt: a finger's size */
+      --star: 32px; /* token-exempt: a thumb's width for a star */
+    }
+  }
+  .bank-item .bi-acts button { flex: 0 0 var(--hit); width: var(--hit); } /* the width too: Firefox sizes a strip that is placed over the row by it, not by the basis */
+  .bank-item .bi-acts .stars { flex: none; }
+  .bank-item .bi-acts .star { flex: 0 0 var(--star); width: var(--star); }
+  /* The name's box ends where the strip that shows begins: the row's end
+     already holds the ▶'s column, so the name gives up what the strip takes
+     beyond it. Three more buttons (four for a bred sound's compare), or the
+     five stars less the ▶'s. */
+  .bank-item:not(.preset-item):is(.acts-open, :focus-within) .bi-top { padding-right: calc(3 * var(--hit)); }
+  .bank-item.bred:is(.acts-open, :focus-within) .bi-top { padding-right: calc(4 * var(--hit)); }
+  .bank-item.rating:not(.preset-item) .bi-top { padding-right: calc(5 * var(--star) - var(--hit)); }
   /* Away, but in the accessibility tree and the tab order: a screen
      reader, a keyboard or a mouse reaches them, and focus inside the row
      slides them out as a swipe does. */
   .bank-item:not(.acts-open):not(.rating):not(:focus-within) .bi-acts > :not(.bi-hear) { position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
   .bank-item:not(.acts-open):not(.rating):not(:focus-within) .bi-acts { background: none; }
   .bank-item.acts-open .bi-acts { animation: acts-out var(--d-state) var(--e-settle); box-shadow: -8px 0 12px var(--panel-hi); }
-  .bank-item .bi-flag, .bank-item .bi-pct { right: calc(44px + var(--s2)); } /* token-exempt: past the ▶'s 44 px target */
+  .bank-item .bi-flag, .bank-item .bi-pct { right: calc(var(--hit) + var(--s2)); }
 }
 @keyframes acts-out { from { transform: translate(24px, -50%); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bank-item.acts-open .bi-acts { animation: none; } }

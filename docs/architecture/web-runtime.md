@@ -1991,7 +1991,12 @@ showing shows them at once (`.under`, `bankUnder`, until the pointer moves
 off it or leaves the list, a draw landing as it leaves included): drawn new,
 it would take the approach's delay to show them again, and a hidden ▶ takes
 no focus or click meanwhile (#458). A draw of its own drops what waits
-(`bankHand.drop`).
+(`bankHand.drop`). Pointing at a row moves no row: each is two lines (48 px),
+the name on the first and the actions, or the stars ★ folds out in their
+place, on the second, which it keeps shown or not, so the row is as tall with them out as
+without (#534; on a touch tablet the line is the buttons', 44 px, always
+shown, and on a phone the name's box gives up what the swiped actions or the
+stars take, an ellipsis ending what does not fit).
 None runs between a press on the list and its release (`bankPressed`): it
 runs after the click, a held draw whose rest ran out meanwhile as itself,
 gliding (`bankAfterPress`). A press also ends on the list's `contextmenu`, the
