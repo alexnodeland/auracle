@@ -8,7 +8,7 @@ a generation may replace.</p>
 <!-- film:composing --><!-- /film:composing -->
 
 <figure>
-<img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name." loading="eager" width="280" height="766">
+<img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name, with a bred sound’s lineage under it." loading="eager" width="280" height="766">
 <figcaption><strong>The bank.</strong> Three tabs, Find a sound, and a row
 for each sound: its face, a mark for where it came from, and its name. The
 green rail marks the sound you’re playing, a silk rail a saved sound, and an
@@ -56,8 +56,8 @@ preset is found by that preset’s too. Typing in the field plays no notes.
    hand in the menu bar (from EVOLVE, and from PATCH, whose rack follows once
    the sound has opened). The well keeps the face it had until the new one
    lands; with reduced motion set, the new face is simply there.
-2. Point at a row (or put the bank’s cursor on it) and its actions appear at
-   its end (on a touch screen they are always there, under the name): **▶**
+2. Point at a row (or put the bank’s cursor on it) and its actions appear on
+   the line under its name (on a touch screen they are always there): **▶**
    plays the standard phrase without opening it.
 3. **★** opens five stars in the actions’ place: press one to rate the sound
    and teach the model what you think of it. From the keyboard,
@@ -72,9 +72,10 @@ level; [the keys](#the-bank-from-the-keyboard) are below.
 ## Reading a row
 
 <figure>
-<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, a glyph and a name, with its actions at the end: play, a star, a save icon, and a cross." loading="lazy" width="280" height="40">
-<figcaption><strong>One row,</strong> with its actions showing: they sit over
-the row’s end while you point at it.</figcaption>
+<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, NEW, a green dot and the name Soft Wash on the first line; on the line under it the start of its lineage, and at that line’s end the actions: compare, play, a filled star, a save icon and a cross." loading="lazy" width="280" height="48">
+<figcaption><strong>One row,</strong> with its actions showing at the end of the
+line under its name while you point at it. This sound is a bred one, so its
+lineage line shares that line and passes under them.</figcaption>
 </figure>
 
 - **The face**, left of the name, is the sound’s [face](./faces.md): its
@@ -101,7 +102,15 @@ the row’s end while you point at it.</figcaption>
 - **The name** comes from what the sound is, and it keeps that name as the
   bank changes around it. Double-click it to rename it. NEW and the dot sit in
   a column every row keeps left of the name, so the name never moves for
-  them.
+  them. On a computer’s or a tablet’s screen a name has the row’s width, the
+  first of the row’s two lines. The actions and the stars are on the second,
+  so pointing at the row or opening its stars never covers the name. On a
+  phone the actions you swipe out and the stars share the name’s line and take
+  the room at its end: the name ends where they begin. A name too long for the
+  room it has ends in an ellipsis, and the whole of it is in its tooltip. The
+  words a row carries while you point at **EVOLVE POOL** (**SEED**, **MAY BE REPLACED**) and the
+  model view’s percentage are the exceptions: they stand over the end of the
+  name’s line while they show.
 - **The line under a bred sound’s name** says which seed it grew from and
   what changed: *from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*, the first
   three changes and then how many more. The modules are counted, so the line
@@ -110,11 +119,16 @@ the row’s end while you point at it.</figcaption>
   only where one module went and another came. Click the line, the row’s
   EVOLVE mark among its actions, or press <kbd>c</kbd> on the row, to
   [compare](#compare-a-sound-beside-its-seed) the sound with its seed.
-- **The actions**, at the row’s end when you point at it or the cursor is on
-  it: the EVOLVE mark for a bred sound (compare), **▶**, **★**, the save icon
-  and **×**. Out of sight they can’t be pressed either. On a touch screen
-  every row shows them at rest, on a line under its name, since a tap on the
-  row would open it.
+- **The actions**, on the line under the name, at the row’s end, when you
+  point at it or the cursor is on it: the EVOLVE mark for a bred sound
+  (compare), **▶**, **★**, the save icon and **×**. Out of sight they can’t be
+  pressed either. Every row keeps that line, so a row is as tall with its
+  actions or its stars showing as without, and none moves when you point at
+  one. On a touch screen every row shows them at rest, on a line under its
+  name, since a tap on the row would open it. On a phone the **▶** is at the
+  row’s end and the others slide out beside it when you swipe the row left;
+  the name keeps the room to their left, and ends in an ellipsis where it
+  doesn’t fit.
   - **▶** plays the standard phrase, and shows **■** while it plays. If it has
     to be rendered first, a dotted amber ring says it’s on its way.
   - **★** opens the five stars; a rated sound’s ★ is filled. Rating teaches
@@ -141,8 +155,9 @@ rest, the rows that moved gliding to their places, and the list scrolls so the
 row under the pointer stays where it was, as far as it can scroll. What you do
 yourself shows at once: a star leaves the row under the pointer where it is,
 and a cut takes its row out and the rows below close up. The tabs' counts
-change at once: they move no row. Turning a knob redraws no row, so a click
-on the bank is never lost to one.
+change at once: they move no row. Pointing at a row, and opening its stars,
+move none either. Turning a knob redraws no row, so a click on the bank is
+never lost to one.
 
 ## What the model thinks of each: hold ⌥
 
@@ -273,8 +288,8 @@ lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
    more sounds are marked than the generation can replace, because when it
    ends it passes over the pair up then, and a pick you can still take back,
    and replaces the next sounds instead. The
-   words sit at the row’s end, where its actions come when you point at the
-   row, so no name moves.
+   words sit at the row’s end, on the name’s line, and give way while you point
+   at the row, so no name moves.
 2. Save any you want to keep before you press it.
 
 The marks are the engine’s own lists, and they move as your picks move the
@@ -321,9 +336,11 @@ The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the lowest-rated sound it can. The toast names what it
 replaced (*It replaced the lowest-rated sound it could: Bell Jar.*), and saved
 sounds are never among them, nor is a sound you kept as new that hasn’t been in
-a pick yet. From then on the row reads **IN POOL** at its end, just left of its
-**▶** whenever the **▶** shows (on a touch screen, where the **▶** is under the
-name, it stays at the end), and a second click opens the same copy.
+a pick yet. From then on the row reads **IN POOL** at its end, on the line under its name,
+just left of its **▶** whenever the **▶** shows (on a tablet, where the **▶** is
+on a line of its own, it stays level with the name at the end; on a phone it is
+level with the name too, left of the **▶**, and the name stops short of it), and a
+second click opens the same copy.
 
 The presets are worth playing through early. They are what the [warm
 start](./teaching.md#the-warm-start) draws from, and they cover the range of

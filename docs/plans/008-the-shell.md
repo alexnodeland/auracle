@@ -88,9 +88,18 @@ not framed). ADR-017 records §6 Q1.
 - **The mark column stays.** The mock's row is face then name. The origin
   glyph, NEW and the unheard dot keep their column left of the name (a mark
   never moves a name), so names start 34 px further right than the mock's.
-  The seed and may-be-replaced words sit over the row's end like the
-  actions, and give way to them; IN POOL did the same on a preset row,
-  whose rows keep its width (since #130 it stands left of the ▶ instead). Presets drop the ▤ glyph (their tab says it).
+  The seed and may-be-replaced words sit over the end of the name's line,
+  and give way to the actions; since #534 those are not over the row's end
+  but on the line under the name (a row is two lines, 48 px, the second
+  kept whether the actions show or not, so the row is as tall with the
+  stars out as without; a touch tablet's strip is the row's width, a
+  phone's name ends where its swiped strip or its stars begin). IN POOL did
+  the same on a preset row, whose rows kept its width (since #130 it stands
+  left of the ▶ instead, and since #534 on a mouse's screen it is on the ▶'s
+  line, so a preset's name has the row's whole width; under a coarse pointer
+  it stays level with the name, a tablet's preset rows keeping its width and
+  a phone's name stopping short of it, left of the ▶). Presets drop the ▤
+  glyph (their tab says it).
 - **Head extras.** The bank note is each tab's title, and the "what's this?"
   link went with it: the tour's `?` at the end of the find row starts at the
   tab you are on (`tourStepFor`). `#bank-count` is POOL's "+N", `#pin-budget`
@@ -605,7 +614,7 @@ into C2a and C2b; round 2's decisions govern PATCH):
 | Head extras | None | "bank" label, `#bank-count`, `#pin-budget`, tour `?`, `#bank-note` line | `renderPinBudget` and `renderBankNote` text | The pin budget moves to the SAVED tab's title, with its count amber at cap. The note becomes each tab's title. The tour becomes a ⌘K entry (PR D) |
 | Find a sound | Search field, filtering name, category and blurb | None | `bankSource` (7547) | `#bank-find`. Filters rows and presets as the source is built. A text input, so the note-key guard (main.js 5408) already holds. Esc clears it |
 | Presets by category | Groups with a count | `renderPresetBank` (7977) emits `.pb-cat` | As is | Restyled to `.bank-group` plus a count |
-| Row | Face 26 px, name, optional "seed"/"may go" mark, actions on hover or focus (compare, ▶, ★, save, cut), pct and liking bar only under the model view | `bankRow` (7741): face slot, origin glyph, name, NEW and the unheard dot, lineage line, utility bar, pct, ▶, five stars, save, id | Ids and classes on what survives: `.bank-item[data-id]`, `.bi-name`, `.bi-hear`, `.bi-flag`, `.bi-from`, `.bank-group.new/.replaced`, `.replaced-names` | Layout to the mock (one line, two for a child with "from X · diff"). Stars collapse to one ★ action, with 1–5 rating the cursor row as today (`rateRow`). `.bi-u` and `.bi-pct` show only under `body.model-view` |
+| Row | Face 26 px, name, optional "seed"/"may go" mark, actions on hover or focus (compare, ▶, ★, save, cut), pct and liking bar only under the model view | `bankRow` (7741): face slot, origin glyph, name, NEW and the unheard dot, lineage line, utility bar, pct, ▶, five stars, save, id | Ids and classes on what survives: `.bank-item[data-id]`, `.bi-name`, `.bi-hear`, `.bi-flag`, `.bi-from`, `.bank-group.new/.replaced`, `.replaced-names` | Layout to the mock (one line, two for a child with "from X · diff"; as built, two lines on every row since #534). Stars collapse to one ★ action, with 1–5 rating the cursor row as today (`rateRow`). `.bi-u` and `.bi-pct` show only under `body.model-view` |
 | New, Replaced, unheard dot | As built in #94, mock 565–585 | Built | All of it | – |
 | Taking a sound up | The face flies from the row into the level's `anchor()` (`A.takeUp` 157) | Click opens on the bench | `openOnBench` | PR C: `shell.takeUp(id, srcCanvas)` |
 

@@ -94,7 +94,7 @@ try:
 except (OSError, KeyError, ValueError):
     pass
 ' "$RAW/rects.json")"
-if [ -n "$ROW" ]; then echo "bank-row: $ROW, from rects.json"; else ROW=280x40+0+317; echo "bank-row: no rects.json, the fixed $ROW"; fi
+if [ -n "$ROW" ]; then echo "bank-row: $ROW, from rects.json"; else ROW=280x48+0+317; echo "bank-row: no rects.json, the fixed $ROW"; fi
 crop play.png      "$ROW"           bank-row.webp
 # The three-pick warm start, cropped to the card, border to border. The rest of
 # the frame is the app behind a scrim and carries nothing.

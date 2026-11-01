@@ -9731,7 +9731,7 @@ const ROW_ICON = {
 };
 
 // The row whose ★ is open, by id, so a redraw keeps it open: ★ folds the
-// five stars out over the row's actions, and a star pressed, the pointer
+// five stars out in the row's actions' place, and a star pressed, the pointer
 // leaving the row or Esc folds them back. 1–5 rate the cursor row without it.
 let ratingId = null;
 function foldStars() {
@@ -9742,10 +9742,11 @@ function foldStars() {
 }
 
 // A bank row, to the mock (Plan-008): the face, the mark column and the name
-// on one line (a bred sound's "from its seed · what changed" on a second),
-// the seed or may-be-replaced mark at its end while EVOLVE POOL is pointed
-// at, and its actions over the row's end on approach (the pointer, the
-// keyboard cursor, focus): compare, ▶, ★, save and cut. The model's guess,
+// on the first of its two lines (a bred sound's "from its seed · what
+// changed" on the second), the seed or may-be-replaced mark at the end of the
+// first while EVOLVE POOL is pointed at, and its actions at the end of the
+// second on approach (the pointer, the keyboard cursor, focus): compare, ▶,
+// ★, save and cut, which are never over the name (#534). The model's guess,
 // its percentage and its bar, is the model view's (⌥): drawn on every row,
 // shown only under `body.model-view`.
 function bankRow(r, fitted) {
@@ -9810,8 +9811,8 @@ function bankRow(r, fitted) {
   // name is in the same place, at the same width, with or without them: the
   // origin glyph, or NEW in its place for the latest generation's children
   // (always ⚡, bred); and the unheard dot in the gap after it. The seed and
-  // may-be-replaced words sit over the row's end, as its actions do, and
-  // never move or narrow the name either.
+  // may-be-replaced words sit over the end of the name's line, and never
+  // move or narrow the name either; its actions are on the line under it.
   el.innerHTML = `${faceSlot("row", { id: r.id })}
     <div class="bi-top">
       <span class="bi-mark">${
@@ -9821,7 +9822,7 @@ function bankRow(r, fitted) {
           ? `<span class="bi-new" title="Bred in the latest generation">new</span>`
           : `<span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>`
       }${unheard.has(r.id) ? `<span class="bi-dot" title="Not heard yet" aria-hidden="true"></span>` : ""}</span>
-      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} · ` : ""}Double-click to rename">${esc(r.name)}</span>
+      <span class="bi-name ${r.named ? "custom" : ""}" title="${esc(r.name)} · ${sig && engineerMode ? `${esc(sig)} · ` : ""}Double-click to rename">${esc(r.name)}</span>
       <span class="bi-id">#${r.id}</span>
     </div>${
       lin

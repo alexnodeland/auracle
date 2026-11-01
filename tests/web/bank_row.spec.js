@@ -1,10 +1,11 @@
 // A bank row's actions exist on approach, as the mock draws them (Plan-008
-// PR B): compare, ▶, ★, save and cut sit over the row's end when the pointer
-// is on it or the keyboard cursor is, and not at rest, when they can't be
-// pressed either. Cut can then be pressed. Its reveal rules once lost to the
-// rule that hides it (CSS specificity), so the control could never appear.
-// ★ folds the five stars out in the actions' place, and a star rates. And
-// m in the list saves the row under the cursor once a press, held or not.
+// PR B): compare, ▶, ★, save and cut sit on the line under the name, at the
+// row's end, when the pointer is on it or the keyboard cursor is, and not at
+// rest, when they can't be pressed either. Cut can then be pressed. Its
+// reveal rules once lost to the rule that hides it (CSS specificity), so the
+// control could never appear. ★ folds the five stars out in the actions'
+// place, and a star rates. And m in the list saves the row under the cursor
+// once a press, held or not.
 const { test, expect, bankTab } = require("./fixtures");
 
 test("a bank row's cut appears on hover and can be pressed", async ({ page, app }) => {
