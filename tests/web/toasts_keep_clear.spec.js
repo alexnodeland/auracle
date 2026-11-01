@@ -174,8 +174,23 @@ async function moveFromHome(page, app, { touch = false } = {}) {
   if (await sheet.isVisible()) await press(sheet);
   await press(page.locator("#bank-tab-presets"));
   await app.hold("perform_wired");
+  const opened = await app.now();
   await press(page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name"));
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
+  // Glass Pad's own arrival, not its name over the rack: a dealt sound can
+  // be called Glass Pad too (the generator's adjectives hold Glass, its
+  // nouns Pad), and once the preset joins it is Glass Pad 2 (a preset's name
+  // is claimed first), which reads as Glass Pad to a contains-check before
+  // the open and after. The press asked for the preset; its answer put it in
+  // the pool (an id of 0 is "the pool is still filling", and no bench open
+  // follows); the bench open main then asked for, by that id, has landed.
+  await expect.poll(async () => (await app.sent({ type: "load_preset", open: true }, { after: opened })).length, "the press asked for Glass Pad").toBe(1);
+  const [load] = await app.sent({ type: "load_preset", open: true }, { after: opened });
+  const loaded = await app.replyTo(load, { timeout: 60_000 });
+  expect(loaded.id, "Glass Pad joined the pool").toBeGreaterThan(0);
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "edit_begin", id: loaded.id }, { after: opened })).length, { timeout }).toBe(1), { ms: 30_000 });
+  const [begin] = await app.sent({ type: "edit_begin", id: loaded.id }, { after: opened });
+  await app.replyTo(begin, { timeout: 60_000 });
+  await expect(page.locator("#rack-subject")).toContainText("Glass Pad");
   await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
   await level("perform");
   await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
