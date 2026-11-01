@@ -5,10 +5,10 @@ description: >
   .claude/workflows/ (ship-issues, fix-flake, triage-backlog, review-pr,
   mutants-burndown), and do the operator's part around each run: worktrees,
   the in-progress comment, the launch, reading the result, voice drafts as
-  one batch, shipping and watching with scripts/ops/, rebasing on a
-  conflict, and the clean-up. Use when the maintainer asks for a wave, a
-  triage, or one of those workflows by name; one task by hand is the ship
-  skill.
+  one batch, shipping in groups, queueing them together and watching with
+  scripts/ops/, rebasing on a conflict, and the clean-up. Use when the
+  maintainer asks for a wave, a triage, or one of those workflows by name;
+  one task by hand is the ship skill.
 ---
 
 # Ship a wave
@@ -162,42 +162,83 @@ one is reworded in the existing words first.
 
 ## 6. Ship
 
+A wave ships in groups of up to three PRs: the queue's batch holds three and
+tests them on one full gate, but it waits only six minutes for company, and a
+PR enters once its own checks are green, so PRs queued as each turns green
+land in batches of their own. A group's PRs are opened **held** and queued
+together in step 7. Group the PRs that will be green about together: a group
+queues when its slowest PR is, and a crate PR's *Mutants* run takes up to 40
+minutes.
+
 ```bash
-"$REPO/scripts/ops/ship_pr.sh" [--full-ci] [--priority] "$WT" claude/<topic> "<title>" <scratch>/pr-<key>.md
+"$REPO/scripts/ops/ship_pr.sh" --hold [--full-ci] [--priority] "$WT" claude/<topic> "<title>" <scratch>/pr-<key>.md
 ```
 
-It refuses a dirty worktree, a branch that isn't the worktree's or isn't
-`claude/*`, and a title or body `PR checks` would fail (it runs `main`'s
-`scripts/pr_checks.py` on them); then it pushes, opens the PR labelled
-`queue` and comments `@mergifyio queue`. When `gh pr create` fails (GitHub's
-GraphQL API can fail while its REST API works), it does each of those
-through the REST API, and finds a PR whose create answered nothing by its
-branch. `--priority` is for a fix to CI or
-to a flaky test. `--full-ci` is for a PR the Slow suite covers
-(`wf_result.py` says which, from the report's `needs_full_ci`): it opens the
-PR with `full-ci` and does not queue it; queue it once its Slow suite is
-green, with the two commands it prints. A wave's PRs land minutes apart, so
-a slow test one of them broke is caught on its own PR, not on `main` with
-several to suspect (by hand, a `full-ci` PR is queued at once:
-`process.md` § CI and merging).
+Run it for each PR of the group, with the command `wf_result.py` printed and
+`--hold` added. It refuses a dirty worktree, a branch that isn't the
+worktree's or isn't `claude/*`, and a title or body `PR checks` would fail (it
+runs `main`'s `scripts/pr_checks.py` on them); then it pushes and opens the PR
+with neither the `queue` label nor the `@mergifyio queue` comment. When
+`gh pr create` fails (GitHub's GraphQL API can fail while its REST API works),
+it does each of those through the REST API, and finds a PR whose create
+answered nothing by its branch.
 
-## 7. Watch
+- **Without `--hold`,** the PR is labelled `queue` and commented on as it
+  opens, and enters the queue when its own checks are green. Use that for a PR
+  that ships alone, and for a `--priority` fix (to CI or to a flaky test),
+  which goes into the next batch ahead of the rest and should not wait for
+  company. A held PR no one queues never merges: step 7 is not optional.
+- **`--full-ci`** is for a PR the Slow suite covers (`wf_result.py` says
+  which, from the report's `needs_full_ci`): it opens the PR with `full-ci`
+  and does not queue it, held or not. `queue_group.sh` queues it once its
+  Slow suite is green, with the rest of its group. A wave's PRs land minutes
+  apart, so a slow test one of them broke is caught on its own PR, not on
+  `main` with several to suspect (by hand, a `full-ci` PR is queued at once:
+  `process.md` § CI and merging).
+
+## 7. Queue the group, then watch
+
+```bash
+"$REPO/scripts/ops/queue_group.sh" [--drop-red] <n> <n> <n>
+```
+
+Run it as a background task (`run_in_background`), which tells you when it
+exits; one detached with `&` tells no one. It waits on the state, every 30
+seconds, until each PR's `CI`, `PR checks` and `Mutants in the changed code`
+are green on its head (and, for a `full-ci` PR, its Slow suite too). Then it labels every PR `queue` and comments
+`@mergifyio queue` on each, all at once, so they enter the queue within
+seconds and share a batch. It prints `queued: #<n> …` and exits 0. Start it
+once every PR of the group is open.
+
+- **A PR goes red** (a check failed or timed out, a `full-ci` PR's Slow suite
+  failed or was cancelled, or its Slow suite never ran), **or closes:** it
+  stops, queues nothing, exits 1 and names the PR. Fix it on its branch (the
+  [`ship`](../ship/SKILL.md) skill's steps 6 and 7 say how to read and fix
+  each), push, and run `queue_group.sh` again for the group; it reads the
+  state afresh. With `--drop-red` it leaves that PR out, says so, and queues
+  the rest; the PR you left out is queued alone, once fixed
+  (`gh -R alexnodeland/auracle pr edit <n> --add-label queue`, then
+  `pr comment <n> --body "@mergifyio queue"`).
+- **It exits 2 (`still waiting`)** after six hours (`--for HOURS`): something
+  is stuck and nothing was queued. Look.
+
+Then watch the queue until each PR merges:
 
 ```bash
 "$REPO/scripts/ops/watch_queue.sh" <n> [<n> ...]
 ```
 
-Run it as a background task (`run_in_background`), which tells you when it
-exits; one detached with `&` tells no one. It exits when a PR merges,
-closes, is dequeued, goes red on its own `CI` or `PR checks`, or, for a
-`full-ci` PR not yet queued, when its Slow suite finishes. It reads each
-check by its latest run, and doesn't count a `dequeued` label left on after
-a requeue while Mergify's queue check is running. Start it again for the
-PRs still open.
+As a background task too. It exits when a PR merges, closes, is dequeued, goes
+red on its own `CI` or `PR checks`, or, for a `full-ci` PR not yet queued,
+when its Slow suite finishes. It reads each check by its latest run, and
+doesn't count a `dequeued` label left on after a requeue while Mergify's queue
+check is running. Start it again for the PRs still open.
 
 - **`MERGED`:** step 9.
-- **`Slow suite green`:** queue it (`gh -R alexnodeland/auracle pr edit <n> --add-label queue`,
-  then `pr comment <n> --body "@mergifyio queue"`). Red: as `CI red`.
+- **`Slow suite green`:** for a `full-ci` PR not in a group, queue it
+  (`queue_group.sh <n>` does, as a group of one; or
+  `gh -R alexnodeland/auracle pr edit <n> --add-label queue`, then
+  `pr comment <n> --body "@mergifyio queue"`). Red: as `CI red`.
 - **`CI red`, `PR checks red`, `dequeued`:** the [`ship`](../ship/SKILL.md)
   skill's steps 6 and 7 say how to read and fix each. A red test the PR
   doesn't touch, for a cause outside it, is quarantined on sight with one
