@@ -591,7 +591,14 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   // asserted: a crew with a guess's renders out closes only after their
   // writes, and may start the walk meanwhile.
   await page.evaluate((i) => window.__pwLet(i), walkAgain);
-  console.log(`⚡ stop answered in ${Math.round(stopped._at - stop._at)} ms (${stopped.reason})`);
+  const stopMs = Math.round(stopped._at - stop._at);
+  console.log(`⚡ stop answered in ${stopMs} ms (${stopped.reason})`);
+  // How fast: the engine answers a stop on arrival, once any call it is in
+  // (a render, say) returns. The 3 s bound it was held to, as a budget
+  // (ADR-022), so a slow runner records it and never fails on it. ADR-025's
+  // 100 ms is not met yet (587 ms once at a throttle of 4) and moves in the
+  // issue that makes it true.
+  app.budget("⚡'s stop → answered", stopMs, 3_000);
   expect(stopped.type).toBe("evolved_from");
   expect(stopped.reason).toBe("stopped");
   expect(stopped.childId).toBe(0);
