@@ -191,13 +191,27 @@ test("the face in flight draws what sounds while it flies", async ({ page, app }
 test.describe("under reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("nothing over a face moves while a key sounds", async ({ page, app }) => {
+  test("nothing over a face moves while a key sounds, and no face painter is started", async ({ page, app }) => {
+    // Each face painter started (live-paint.js's worker): the loop never
+    // runs, so none is, not even while the page is idle after boot (the
+    // loop's warm-up, which starts it where there is motion).
+    await page.addInitScript(() => {
+      const W = window.Worker;
+      window.__painters = 0;
+      window.Worker = class extends W {
+        constructor(url, opts) {
+          super(url, opts);
+          if (/live-paint\.js/.test(String(url))) window.__painters++;
+        }
+      };
+    });
     await boot(app);
     await page.keyboard.down("a");
     await app.engine((timeout) => expect.poll(() => peakDb(page), { timeout }).toBeGreaterThan(-40), { ms: 30_000 });
     await app.quiet();
     await page.keyboard.up("a");
     await expect(page.locator("canvas.face-live")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__painters), "no face painter was started").toBe(0);
   });
 });
 

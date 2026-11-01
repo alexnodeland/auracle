@@ -604,6 +604,33 @@ test("a frame the worker could not finish hands its faces back to the page", () 
   assert.equal(count(made[1].ctx.ops, "stroke"), 2, "painted here");
 });
 
+test("the painter starts while the page is idle, and never under reduced motion until a face is drawn", () => {
+  const { doc, made, host } = showingPage();
+  const voices = analyser(0.3);
+  let workers = 0;
+  let still = true;
+  const L = loop({ signals: [() => voices], doc, held: () => true, still: () => still, paintWorker: () => (workers++, heldWorker()) });
+  L.lf.add(face(host(), 1));
+  L.lf.warm(48000);
+  assert.equal(workers, 0, "under reduced motion, no painter");
+  L.lf.wake();
+  assert.equal(L.step(), false);
+  assert.equal(workers, 0);
+  // Motion back: the first face drawn starts it.
+  still = false;
+  L.lf.wake();
+  L.step();
+  assert.equal(workers, 1);
+  assert.ok(made[0].renderer, "and its layer shows the painter's pictures");
+  // With motion, the idle warm-up starts it before any face is drawn.
+  let others = 0;
+  const M = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => (others++, heldWorker()) });
+  M.lf.warm(48000);
+  assert.equal(others, 1);
+  M.lf.warm(48000);
+  assert.equal(others, 1, "once");
+});
+
 test("a browser that cannot show a worker's pictures paints here", () => {
   const { doc, made, host } = showingPage({ shows: false });
   const voices = analyser(0.3);

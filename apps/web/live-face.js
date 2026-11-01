@@ -554,10 +554,13 @@ export function createLiveFaces({
     wake,
     /** Measure a silent frame once, so the first sound's frame does not pay
      *  for the meter's first run (its band weights, and code not yet
-     *  compiled): called while the page is idle. */
+     *  compiled), and start the face painter, so it does not pay for that
+     *  either: called while the page is idle. Under reduced motion the loop
+     *  never runs, so no painter is started (a face drawn once motion is
+     *  back starts it). */
     warm(sampleRate) {
       meter.measure(sum.fill(0), sampleRate);
-      startPainter();
+      if (!still()) startPainter();
     },
     /** The face in flight between the levels (shell.js draws it each frame
      *  on its own canvas, cleared each frame, so it has no trail): what the

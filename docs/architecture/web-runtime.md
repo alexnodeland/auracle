@@ -45,8 +45,9 @@ history of each choice.
 - **The face painter** paints the live faces' layers (see [Faces](#faces),
   the live faces): the canvas calls main decides each frame, made on
   canvases of its own and answered with a picture of each, which main shows
-  as it is. Started while the page is idle; where it cannot run, main paints
-  them itself.
+  as it is. Started while the page is idle (never under reduced motion,
+  where the faces are still), or at the first live face drawn; where it
+  cannot run, main paints them itself.
 - **A restore** goes one bank entry at a time, in bank order, with
   "recalling n of m sounds…" posted as each lands: on the farm while a
   worker is ready, and in the engine worker otherwise, each entry there read
