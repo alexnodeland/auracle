@@ -1,12 +1,13 @@
 // Unit tests for perform.js's pure arithmetic: what a knob sounds at, the
 // bases that keep it there when controls leave the panel, a control's sweep
-// by ear, and what a measurement waiting on the controls says it waits for;
-// and stage mode's full screen (`stageScreen`): which stage the browser's
-// grants and exits belong to, against a browser that takes its time.
+// by ear, what a measurement waiting on the controls says it waits for, and
+// what PEEK and TAKE say with nothing in B; and stage mode's full screen
+// (`stageScreen`): which stage the browser's grants and exits belong to,
+// against a browser that takes its time.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS, waitWords, stageScreen } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS, waitWords, stageScreen, growingOffer, notOffered } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -466,4 +467,31 @@ test("an exit the browser refuses does not keep the next stage from asking", asy
   assert.equal(c.entered, true);
   await b.frame();
   assert.deepEqual(st.closed, []);
+});
+
+test("the offer B shows growing is one out for this sound, not withdrawn and not an unclaimed spare", () => {
+  const out = (...entries) => new Map(entries.map((q, i) => [i + 1, q]));
+  const offer = (more = {}) => ({ kind: "perform_offer", gen: 3, ...more });
+  assert.equal(growingOffer(new Map(), 3), null);
+  // A pressed Offer's, or Wander's.
+  const pressed = offer();
+  assert.equal(growingOffer(out(pressed), 3), pressed);
+  // A spare grown ahead is out of sight until Offer claims it.
+  assert.equal(growingOffer(out(offer({ spare: { at: new Map() } })), 3), null);
+  const claimed = offer({ spare: { at: new Map() }, promote: true });
+  assert.equal(growingOffer(out(claimed), 3), claimed);
+  // An aimed offer another turn replaced, and one for the sound before.
+  assert.equal(growingOffer(out(offer({ superseded: true }), offer({ gen: 2 })), 3), null);
+  // Not a measurement or a drift.
+  assert.equal(growingOffer(out({ kind: "perform_wire", gen: 3 }, { kind: "perform_drift", gen: 3 }), 3), null);
+  // The spare an aimed turn set aside, beside the aimed offer it grows for.
+  const aimed = offer({ aim: { k: 0, sign: 1, word: "brighter" } });
+  assert.equal(growingOffer(out(offer({ spare: { at: new Map() }, promote: false }), aimed), 3), aimed);
+});
+
+test("PEEK and TAKE with nothing in B say an offer is growing while one is, and that none was asked for otherwise", () => {
+  assert.equal(notOffered("peek", { kind: "perform_offer" }), "Still growing an offer. Keep holding Peek to hear it as it lands.");
+  assert.equal(notOffered("take", { kind: "perform_offer" }), "Still growing an offer. Take it once it’s in B.");
+  assert.equal(notOffered("peek", null), "Nothing offered yet. Press Offer first.");
+  assert.equal(notOffered("take", null), "Nothing offered yet. Press Offer, or turn Wander up.");
 });

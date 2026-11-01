@@ -1333,7 +1333,7 @@ function newTrees(ranked) {
     }
     const json = engine.tree_json_of(r.id);
     if (!json || json === "null") continue;
-    (out ||= {})[r.id] = { json, makeup: engine.makeup_of(r.id), first: performFirst(json), controls: performControls ?? null };
+    (out ||= {})[r.id] = { json, makeup: engine.makeup_of(r.id), first: performFirst(json), controls: performControls ?? null, names: namesOf(r.id) };
     now.set(r.id, r.sexpr);
   }
   treesSent.clear();
@@ -1413,6 +1413,7 @@ function postLiveTree(edited, why, makeup) {
     makeup: makeup != null ? makeup : engine.edit_makeup(),
     knobs,
     first: performFirst(json),
+    names: knobNamesOf(() => engine.edit_describe()),
     why: why || undefined,
   });
 }
@@ -2474,6 +2475,28 @@ function performFirst(json) {
   } catch (_) {
     return undefined;
   }
+}
+
+// Each knob of a tree as its rack names it (the engine's rack description,
+// `describe_of` for a pool member, `edit_describe` for the bench's tree):
+// `[[addr, module, label], …]`, riding with the tree to the voices beside
+// `first`, so PERFORM's controls name their knobs as PATCH's rack will from
+// the moment the sound opens, where they read the last sound's rack until
+// the bench's of this one came back (#532). Undefined from a binary
+// without it, or when the rack can't be read: PERFORM then names a knob by
+// its label until the bench's rack lands.
+function knobNamesOf(describe) {
+  try {
+    const rack = JSON.parse(describe());
+    const out = [];
+    for (const mod of rack.modules) for (const k of mod.knobs || []) out.push([k.addr, mod.title || "", k.label || ""]);
+    return out.length ? out : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+function namesOf(id) {
+  return typeof engine.describe_of === "function" ? knobNamesOf(() => engine.describe_of(id)) : undefined;
 }
 
 // Every preset's measurement, for the presets nearest a sound of your own:
@@ -4181,7 +4204,7 @@ async function dispatch(m) {
       // one render sooner. The `bench` reply that follows vets it.
       const early = engine.tree_json_of(m.id);
       if (early && early !== "null") {
-        post({ type: "bench_opening", more: true, id: m.id, json: early, makeup: engine.makeup_of(m.id), first: performFirst(early) });
+        post({ type: "bench_opening", more: true, id: m.id, json: early, makeup: engine.makeup_of(m.id), first: performFirst(early), names: namesOf(m.id) });
       }
       const ok = engine.edit_begin(m.id);
       if (ok) postBench({ subject: m.id });
