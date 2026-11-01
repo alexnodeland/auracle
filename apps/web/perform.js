@@ -316,6 +316,79 @@ function wanderPace(w) {
   return { period: 24, steps: 40, glide: 0, sigma: 0.05 };
 }
 
+// Stage mode's full screen (#575). The browser grants it and takes it back in
+// its own time: a request or an exit resolves a frame or more later (on a
+// Mac, after its animation), and the fullscreenchange that says so later
+// still. So each stage claims only the full screen it asked for:
+// - it asks once any exit the app asked for has landed. Asked while one is in
+//   flight (⇧F to leave, ⇧F straight back), a document still in full screen
+//   grants it at once and then leaves, and the stage that had just opened
+//   was closed by the exit of the one before it;
+// - it is in full screen (`entered`) once its own request is granted while
+//   it is still the stage on, and only then does leaving full screen close
+//   it: that leave is the browser's own (its Esc, its bar), since the app's
+//   exits come after its stage has closed;
+// - a request granted after its stage has gone, with no stage on, is handed
+//   back: leaving before the screen filled leaves no full screen behind.
+// Full screen is a courtesy: the stage covers the window either way, so a
+// refusal is not news. `doc` is the document (`fullscreenElement`,
+// `exitFullscreen`, `documentElement.requestFullscreen`), `close` closes the
+// stage on. Pure but for `doc`, for the unit tests (tests/perform.test.mjs).
+export function stageScreen(doc, close) {
+  let on = null; // the stage on
+  let leaving = null; // the app's latest exit, until it lands
+  const leave = () => {
+    if (!doc.fullscreenElement) return;
+    let p;
+    try {
+      p = doc.exitFullscreen?.();
+    } catch {
+      return;
+    }
+    if (!p?.then) return;
+    const mine = p
+      .then(
+        () => {},
+        () => {},
+      )
+      .then(() => {
+        if (leaving === mine) leaving = null;
+      });
+    leaving = mine;
+  };
+  const ask = (s) => {
+    if (on !== s) return;
+    if (leaving) return void leaving.then(() => ask(s));
+    let p;
+    try {
+      p = doc.documentElement.requestFullscreen?.();
+    } catch {
+      return;
+    }
+    p?.then?.(
+      () => {
+        if (on === s) s.entered = true;
+        else if (!on) leave();
+      },
+      () => {},
+    );
+  };
+  return {
+    open(s) {
+      on = s;
+      ask(s);
+    },
+    shut(s) {
+      if (on === s) on = null;
+      leave();
+    },
+    // fullscreenchange
+    changed() {
+      if (on?.entered && !doc.fullscreenElement) close();
+    },
+  };
+}
+
 export function createPerform(host) {
   const root = host.root;
   root.innerHTML = "";
@@ -4098,6 +4171,7 @@ export function createPerform(host) {
   ctlActs.append(arrangeBtn, whyBtn);
   corner.append(xyBtn, stageBtn);
   let stageOn = null; // {root, cv, trail, name, raf, entered, back, …}
+  const fullScreen = stageScreen(document, () => closeStage());
   // `liveSlots`' answer, made once.
   const liveSlotsNow = { a: heldFace, b: null };
   function openStage() {
@@ -4192,12 +4266,9 @@ export function createPerform(host) {
     });
     const toasts = document.getElementById("toasts");
     if (toasts) stageOn.watch.observe(toasts, { childList: true });
-    try {
-      const fs = document.documentElement.requestFullscreen?.();
-      if (fs && fs.then) fs.then(() => stageOn && (stageOn.entered = true)).catch(() => {});
-    } catch {
-      /* full screen is a courtesy: the stage covers the window either way */
-    }
+    // The whole screen, asked for this stage (`stageScreen`, which keeps
+    // who asked for what).
+    fullScreen.open(stageOn);
     stageOn.raf = requestAnimationFrame(stageFrame);
   }
   function closeStage() {
@@ -4210,14 +4281,14 @@ export function createPerform(host) {
     s.root.remove();
     s.behind.forEach((e) => (e.inert = false));
     document.documentElement.classList.remove("st-on");
-    if (document.fullscreenElement) document.exitFullscreen?.().catch?.(() => {});
+    fullScreen.shut(s);
     if (s.back && s.back.isConnected) s.back.focus?.({ preventScroll: true });
     // The well's faces are in sight again: they hear what still sounds.
     host.liveWake?.();
   }
-  document.addEventListener("fullscreenchange", () => {
-    if (stageOn && stageOn.entered && !document.fullscreenElement) closeStage();
-  });
+  // Leaving full screen by the browser's own means (its Esc, its bar) leaves
+  // stage mode too.
+  document.addEventListener("fullscreenchange", () => fullScreen.changed());
   // ⇧F opens stage mode in PERFORM only, as the mock has it, and leaves it
   // from anywhere. In PERFORM it takes the place of F's accent (the note keys
   // play harder with Shift); everywhere else ⇧F is the accented F it always

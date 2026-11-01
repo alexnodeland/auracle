@@ -1,10 +1,12 @@
 // Unit tests for perform.js's pure arithmetic: what a knob sounds at, the
 // bases that keep it there when controls leave the panel, a control's sweep
-// by ear, and what a measurement waiting on the controls says it waits for.
+// by ear, and what a measurement waiting on the controls says it waits for;
+// and stage mode's full screen (`stageScreen`): which stage the browser's
+// grants and exits belong to, against a browser that takes its time.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS, waitWords } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf, relativeOf, predictedOf, graftIntent, reachesNone, sweptTo, SWEEP_MS, waitWords, stageScreen } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -240,4 +242,228 @@ test("a measurement waiting on the controls asks a hand to let go only when one 
   // None held: a sweep by ear playing, or the 1.5 s after a touch, which
   // end by themselves.
   assert.equal(waitWords(false), "in a moment");
+});
+
+// A browser's full screen as Chromium was measured doing it (#575): a request
+// or an exit lands when the test says (`land`, in the order they were asked),
+// and the fullscreenchange that says so comes at the next frame (`frame`). A
+// request made while the document is in full screen, an exit still in flight
+// included, is granted at once, with no change to say. `leaveByItself` is the
+// browser's own exit (its Esc, its bar).
+function slowBrowser() {
+  const el = {};
+  const doc = { fullscreenElement: null, documentElement: el };
+  const todo = []; // what the browser has yet to do, in order
+  let changes = 0; // fullscreenchanges waiting for the next frame
+  const b = { doc, asked: 0, exits: 0, refuseExits: false, screen: null };
+  el.requestFullscreen = () => {
+    b.asked++;
+    if (doc.fullscreenElement) return Promise.resolve();
+    return new Promise((ok) =>
+      todo.push(() => {
+        doc.fullscreenElement = el;
+        changes++;
+        ok();
+      }),
+    );
+  };
+  doc.exitFullscreen = () => {
+    b.exits++;
+    if (!doc.fullscreenElement) return Promise.reject(new TypeError("not in full screen"));
+    return new Promise((ok, no) =>
+      todo.push(() => {
+        if (b.refuseExits) return no(new TypeError("refused"));
+        doc.fullscreenElement = null;
+        changes++;
+        ok();
+      }),
+    );
+  };
+  const settle = () => new Promise((r) => setImmediate(r));
+  b.land = async () => {
+    assert.ok(todo.length, "the browser has nothing in flight");
+    todo.shift()();
+    await settle();
+  };
+  b.frame = async () => {
+    for (; changes > 0; changes--) b.screen.changed();
+    await settle();
+  };
+  b.leaveByItself = async () => {
+    doc.fullscreenElement = null;
+    changes++;
+    await b.frame();
+  };
+  b.idle = () => todo.length === 0;
+  return b;
+}
+// Stage mode as perform.js runs it: ⇧F opens a stage or closes the one on,
+// and `closed` lists the stages the full screen's bookkeeping closed.
+function stageOf(b) {
+  const st = { on: null, closed: [] };
+  b.screen = stageScreen(b.doc, () => {
+    st.closed.push(st.on);
+    st.close();
+  });
+  st.open = (name) => {
+    st.on = { name, entered: false };
+    b.screen.open(st.on);
+    return st.on;
+  };
+  st.close = () => {
+    const s = st.on;
+    st.on = null;
+    b.screen.shut(s);
+  };
+  return st;
+}
+
+test("⇧F to leave and ⇧F straight back, before the screen has left, keeps the new stage on, on the whole screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  const a = st.open("A");
+  await b.land();
+  await b.frame();
+  assert.equal(a.entered, true);
+  // ⇧F leaves: the exit is in flight, and the screen is still full.
+  st.close();
+  assert.equal(b.exits, 1);
+  // ⇧F again before it lands: the new stage asks once it has.
+  const c = st.open("B");
+  assert.equal(b.asked, 1, "a request while the exit is in flight is granted at once, and then lost to it");
+  await b.land(); // the exit lands
+  await b.frame(); // and says so
+  assert.deepEqual(st.closed, [], "the exit of the stage before closed this one");
+  assert.equal(st.on, c);
+  assert.equal(b.asked, 2);
+  await b.land(); // B's own request
+  await b.frame();
+  assert.equal(c.entered, true);
+  assert.equal(b.doc.fullscreenElement, b.doc.documentElement);
+  assert.deepEqual(st.closed, []);
+});
+
+test("⇧F three times, faster than the screen fills, ends on a stage on the whole screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  await b.land(); // A's request is granted; its change waits for the frame
+  st.close(); // ⇧F leaves before that frame
+  const c = st.open("B"); // and ⇧F comes back
+  await b.frame(); // A's change, the screen full
+  await b.land(); // A's exit lands
+  await b.frame();
+  await b.land(); // B's own request
+  await b.frame();
+  assert.deepEqual(st.closed, []);
+  assert.equal(st.on, c);
+  assert.equal(c.entered, true);
+  assert.equal(b.doc.fullscreenElement, b.doc.documentElement);
+});
+
+test("a stage is in full screen by its own request only", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  const a = st.open("A");
+  st.close(); // left before A's request was granted
+  const c = st.open("B");
+  await b.land(); // A's request, granted late
+  assert.equal(a.entered, false);
+  assert.equal(c.entered, false, "A's grant marked B");
+  await b.land(); // B's own
+  assert.equal(c.entered, true);
+  await b.frame();
+  assert.deepEqual(st.closed, []);
+});
+
+test("a grant that comes after its stage has gone leaves the stage on now in full screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  st.close(); // left before A's request was granted: nothing to leave yet
+  const c = st.open("B"); // and ⇧F straight back
+  await b.land(); // A's request, granted late, with B on
+  await b.land(); // B's own
+  await b.frame();
+  // Handing A's grant back would have left B with an exit in flight, and
+  // that exit, landing, would have closed it.
+  assert.equal(b.exits, 0, "A's late grant handed back the screen B is on");
+  assert.ok(b.idle());
+  assert.deepEqual(st.closed, []);
+  assert.equal(c.entered, true);
+  assert.equal(b.doc.fullscreenElement, b.doc.documentElement);
+});
+
+test("a stage closed while it waits on the last one's exit never asks for the screen", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  await b.land();
+  await b.frame();
+  st.close(); // ⇧F leaves: A's exit is in flight
+  st.open("B"); // ⇧F: B waits on that exit
+  st.close(); // ⇧F: B leaves before it has landed, a second exit
+  await b.land(); // A's exit
+  await b.land(); // B's
+  await b.frame();
+  // Asked once both had landed, it would have filled the window with no
+  // stage on it, and handed it straight back.
+  assert.equal(b.asked, 1, "B asked for the screen after it had closed");
+  assert.ok(b.idle());
+  assert.equal(b.doc.fullscreenElement, null);
+  assert.deepEqual(st.closed, []);
+});
+
+test("a stage left before the screen filled leaves no full screen behind", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  st.close(); // nothing to leave yet: the request is still in flight
+  assert.equal(b.exits, 0);
+  await b.land(); // the request is granted, with no stage on
+  assert.equal(b.exits, 1, "the screen was not handed back");
+  await b.land();
+  await b.frame();
+  assert.equal(b.doc.fullscreenElement, null);
+  assert.ok(b.idle());
+});
+
+test("leaving full screen by the browser's own means leaves stage mode; a stage never in full screen stays", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  const a = st.open("A");
+  await b.land();
+  await b.frame();
+  await b.leaveByItself(); // the browser's Esc
+  assert.deepEqual(st.closed, [a]);
+  assert.equal(st.on, null);
+  assert.equal(b.exits, 0, "the screen had already left");
+  // A stage whose request was refused stays on, over the window.
+  const refused = slowBrowser();
+  refused.doc.documentElement.requestFullscreen = () => Promise.reject(new TypeError("no gesture"));
+  const st2 = stageOf(refused);
+  const c = st2.open("B");
+  await new Promise((r) => setImmediate(r));
+  await refused.leaveByItself();
+  assert.equal(c.entered, false);
+  assert.deepEqual(st2.closed, []);
+  assert.equal(st2.on, c);
+});
+
+test("an exit the browser refuses does not keep the next stage from asking", async () => {
+  const b = slowBrowser();
+  const st = stageOf(b);
+  st.open("A");
+  await b.land();
+  await b.frame();
+  b.refuseExits = true;
+  st.close();
+  const c = st.open("B");
+  assert.equal(b.asked, 1);
+  await b.land(); // the exit, refused: the screen stays full
+  assert.equal(b.asked, 2, "B never asked");
+  // Still in full screen, B's request is granted at once.
+  assert.equal(c.entered, true);
+  await b.frame();
+  assert.deepEqual(st.closed, []);
 });
