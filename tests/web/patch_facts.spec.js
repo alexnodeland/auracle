@@ -28,7 +28,7 @@
 // The worker is reached through the fixture's tap (fixtures.js): the faces
 // a page asks for, with their trees, and every face it is handed back.
 const { test, expect, goLevel } = require("./fixtures");
-const { openPreset } = require("./patch_page.js");
+const { openPreset, rackAtRest, knobInReach } = require("./patch_page.js");
 const { FLOOR_MS } = require("./perform_budget.js");
 
 /** Select a module on the canvas by its kind, as a press on its plate does. */
@@ -231,6 +231,9 @@ test("a bred sound shows what its generation changed: from its seed and how many
     return id !== s && window.__tap.last.bench && window.__tap.last.bench.subject === id ? id : null;
   }, seedId), { timeout }).not.toBeNull(), { ms: 240_000 });
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
+  // The child's arrival played out (the camera's fit is a tween): a knob is
+  // pressed where it rests, below.
+  await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
   // What the engine recorded of it, and what the canvas should mark.
   const want = await page.evaluate(() => {
     const id = window.__aur.wb.subjectId;
@@ -272,14 +275,22 @@ test("a bred sound shows what its generation changed: from its seed and how many
   if (rowParts != null) expect(at.from).toContain(`· ${rowParts} change`);
 
   // An edit: the bench is no longer the child as bred, and the marks go.
-  const hit = page.locator("#rack-svg g[data-addr] > .knob-hit").first();
-  const b = await hit.boundingBox();
+  // Turned on a knob a press reaches: a child wider than the well runs past
+  // its right edge, whose chip lies over the knob at the chain's end, and a
+  // press on the chip pans the rack, turning nothing (#590).
+  const knob = await knobInReach(page);
+  expect(knob, "a knob on the canvas a press reaches").not.toBeNull();
   const t0 = await app.now();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.move(knob.x, knob.y);
   await page.mouse.down();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 30, { steps: 5 });
+  await page.mouse.move(knob.x, knob.y + knob.dy, { steps: 5 });
   await page.mouse.up();
-  await app.reply("bench", { after: t0 });
+  // The turn goes to the engine as the hand lets go (behind any edit still
+  // in the bench lane), and its answer lands.
+  await app.engine((timeout) => expect.poll(async () => (await app.sent("edit_param", { after: t0 })).length,
+    { timeout, message: "the turn was sent to the engine" }).toBeGreaterThan(0), { ms: 30_000 });
+  const [turn] = await app.sent("edit_param", { after: t0 });
+  await app.replyTo(turn);
   await expect(page.locator("#rack-meta .pt-from")).toHaveCount(0);
   await expect(page.locator("#rack-svg .lineage-tick, #rack-svg .knob-seed")).toHaveCount(0);
   // Undo to as opened: the child as bred again, and its marks with it.
