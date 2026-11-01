@@ -345,10 +345,11 @@ scripts/ops/rows_resolve.py keeps both. -->
   waits in a row (*What changed*, the engine's job, the browser runners, the
   *Browser report* and `CI`, then `Full gate`) and Coverage's six (its
   build, three runners and its report between *What changed* and `CI`). On
-  the sixteen queue runs from 18 October to 1 November that took over
-  twenty minutes, the waits the chain no longer has were a median of 3.0
-  minutes for the engine's job, 1.0 for the *Browser report*, 4.9 and 3.6
-  for Coverage's build and report, and 0.6 for `Full gate` after `CI`.
+  the sixteen queue runs that took over twenty minutes, from the queue's
+  first on 30 October to 15:00 UTC on 1 November, the waits the chain no
+  longer has were a median of 3.0 minutes for the engine's job, 1.0 for the
+  *Browser report*, 4.9 and 3.6 for Coverage's build and report, and 0.6
+  for `Full gate` after `CI`.
 - **The queue's runs share one concurrency group** (`ci-merge-queue`,
   cancelling the run in progress). The queue checks one batch at a time, so
   a new queue run means the draft PR before it was closed (its batch was
@@ -772,10 +773,13 @@ Each waited for a runner of its own, one after another, and on a busy
 account the waits, not the tests, set the merge queue's length (*A queue run
 waits for at most three runners in a row*, above).
 
-**How long.** About seven minutes on one runner: on the queue runs of 18
-October to 1 November the build took 1.9 minutes (median) and the three
-slices' tests 4.5 between them (5.3 at most), so the job ends beside the
-browser tier's slowest runner (7.4, median), which starts when it does. A
+**How long.** About seven minutes on one runner. On the merge queue's 45
+runs to 1 November (its first was on 30 October), the old build job's setup
+took 0.4 minutes and its build 1.8 (medians), and the three slices' tests
+4.4 between them (3.6 to 5.4): about 7.1 minutes in all (7.6 at the 90th
+percentile, 8.2 at most), against 7.4 and 7.8 for the browser tier's
+slowest runner, which starts when it does. So the job ends beside it, and
+after it in 8 of the 37 runs that ran all twelve, by 0.6 minutes at most. A
 figure from the old jobs' steps until a run of the new one measures it.
 Instrumented, the tier takes about 1.2 times its plain time (1,257
 test-seconds against 1,029, measured on a 16-core Mac on Oct 5). #181's
@@ -1310,7 +1314,7 @@ them.
 | The fast lane's `CI` answer, a Rust PR (with the Makefile, setup.sh) | 12 min | the design: up to about 10 | not measured yet |
 | The fast lane's `CI` answer, a CI PR (a workflow or an action) | 15 min | the design: about 12 | not measured yet |
 | The queue's run: created to `Full gate` and `CI` done | 15 min | the design: about 12 | not measured yet |
-| Coverage: the *Coverage* job, start to end (before #580, *Coverage build*'s start to the report's end) | 9 min | the design: about 7 (its build's and its tests' times on three runners, Oct 18 to Nov 1) | not measured yet |
+| Coverage: the *Coverage* job, start to end (before #580, *Coverage build*'s start to the report's end) | 9 min | the design: about 7 (its build's and its tests' times on three runners, the queue's 45 runs to Nov 1) | not measured yet |
 | The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | measured: 7.6 / 8.4 / 9.8 min | 228 shards |
 | The browser fast tier in total: the first shard's start to the last one's end | 19 min | measured: 12.4 / 15.7 / 19.0 min | 19 runs |
 | The browser fast tier in total: runner-minutes a run | 108 | measured: 86.4 / 89.9 / 94.0 | 19 runs |
