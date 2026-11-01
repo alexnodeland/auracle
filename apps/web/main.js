@@ -25633,9 +25633,20 @@ function renderWarmStart(all) {
   // lands with no ring: moved there by a script with no key pressed yet, the
   // focus wore the keyboard's ring on a phone (#527). Tab from there moves it
   // on, ringed, as anywhere, and each stop scrolls clear of the foot that
-  // stays at the screen's foot (style.css, `#warmstart`'s scroll-padding).
+  // stays at the screen's foot (style.css, `#warmstart`'s scroll-padding,
+  // and the grid's `focusin` below).
   grid.querySelector(".wi-play")?.focus(COARSE ? { focusVisible: false } : undefined);
 }
+
+// Firefox moves the keyboard's focus onto a card or ▶ that is partly in
+// sight without scrolling any of it: one half under the foot, or half above
+// the window's top with its ring cut off, stayed there (#527). Chromium
+// scrolls it into the room `#warmstart`'s scroll-padding keeps clear of the
+// foot; so does this, the rest of the way, in every engine. Only a focus with
+// a ring: a tap's focus stays where the finger put it.
+$("warm-grid").addEventListener("focusin", (e) => {
+  if (e.target.matches(":focus-visible")) e.target.scrollIntoView({ block: "nearest" });
+});
 
 // Hearing a preset means having it: the only way the engine can render one is
 // to insert it, and `load_preset` returns the existing id when the identical
