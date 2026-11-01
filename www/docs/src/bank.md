@@ -102,11 +102,13 @@ lineage line shares that line and passes under them.</figcaption>
 - **The name** comes from what the sound is, and it keeps that name as the
   bank changes around it. Double-click it to rename it. NEW and the dot sit in
   a column every row keeps left of the name, so the name never moves for
-  them. A name has the row’s width, the first of the row’s two lines. The
-  actions and the stars are on the second, so pointing at the row or opening
-  its stars never covers the name: a name too long for the row ends in an
-  ellipsis, and the whole of it is in its tooltip. The words a row carries
-  while you point at **EVOLVE POOL** (**SEED**, **MAY BE REPLACED**) and the
+  them. On a computer’s or a tablet’s screen a name has the row’s width, the
+  first of the row’s two lines. The actions and the stars are on the second,
+  so pointing at the row or opening its stars never covers the name. On a
+  phone the actions you swipe out and the stars share the name’s line and take
+  the room at its end: the name ends where they begin. A name too long for the
+  room it has ends in an ellipsis, and the whole of it is in its tooltip. The
+  words a row carries while you point at **EVOLVE POOL** (**SEED**, **MAY BE REPLACED**) and the
   model view’s percentage are the exceptions: they stand over the end of the
   name’s line while they show.
 - **The line under a bred sound’s name** says which seed it grew from and
