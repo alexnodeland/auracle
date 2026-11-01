@@ -34,12 +34,12 @@ name: Flake hunt
 # there is a red CI health run, not a red hunt.
 #
 # It holds at most three runners at once (#582). GitHub starts this cron
-# 4.5 to 6 hours late (from 09:46 to 12:00 UTC over Oct 18 to Nov 1), when
-# PRs are being queued, and each runner it holds is one the merge queue's
-# next batch can wait for. So its jobs run in stages, one after another,
-# none holding more than three (scripts/test_ci_skip.py counts the most
-# its jobs can hold at once from their `needs` and `max-parallel`, in
-# dev-check):
+# (05:41 UTC) 4 to 6.5 hours late (from 09:46 to 12:00 UTC over Oct 18 to
+# Nov 1), when PRs are being queued, and each runner it holds is one the
+# merge queue's next batch can wait for. So its jobs run in stages, one
+# after another, none holding more than three (scripts/test_ci_skip.py
+# counts the most its jobs can hold at once from their `needs` and
+# `max-parallel`, in dev-check):
 #
 # 1. the engine, one runner;
 # 2. the hunt's twelve runners, three at a time: about 70 minutes;
@@ -56,10 +56,13 @@ name: Flake hunt
 # waits for runners. Side by side (the hunt four at a time beside the
 # budgets three at a time, up to nine at once) the same jobs come to
 # about an hour and a quarter with no wait; that night, waiting for
-# runners other repositories held, they took 2 h 20 min. Every test still
-# gets its verdict and every runner its share and its time limit; the
-# answers come later in the day. A stage starts whatever the one before
-# it found (`!cancelled()`), so a red hunt still has its budgets judged.
+# runners, they took 2 h 19 min from the engine's start to the last job,
+# and 2 h 33 min from the run's creation, the span testing.md's budget
+# reads (the engine itself waited 13 minutes for a runner). Every test
+# still gets its verdict and every runner its share and its time limit;
+# the answers come later in the day. A stage starts whatever the one
+# before it found (`!cancelled()`), so a red hunt still has its budgets
+# judged.
 
 on:
   schedule:

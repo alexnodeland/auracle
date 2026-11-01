@@ -569,10 +569,10 @@ fast lanes are done, twenty. On Saturdays the weekly run's two leave
 eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
 PR's fast lane then waits for runners. At night the *Flake hunt* workflow
 holds at most three for about two and a half hours (#582): GitHub starts
-its cron 4.5 to 6 hours late, from about 10:00 to 12:00 UTC, when PRs are
-being queued, so its jobs run in stages one after another: the hunt's
-twelve runners three at a time, its report and filing, the *Speed budgets*'
-thirteen three at a time, then their report beside *Touch in WebKit* and
+its cron (05:41 UTC) 4 to 6.5 hours late, from about 09:45 to 12:00 UTC,
+when PRs are being queued, so its jobs run in stages one after another:
+the hunt's twelve runners three at a time, its report and filing, the
+*Speed budgets*' thirteen three at a time, then their report beside *Touch in WebKit* and
 the audio thread's budget. Beside its first hour, on a night `main` moved,
 *Search health*'s three long jobs: six in all, where it was ten.
 
@@ -1242,8 +1242,10 @@ twelve shards run three times over, three at a time: four rounds. Its
 the workflow's length together (#582). On 2026-10-31, in the shape before
 #508 (six runners two at a time, each cut at 40 minutes, beside the hunt),
 it took 2 h 23 min; on 2026-11-01, with the budgets' thirteen beside the
-hunt (up to eight runners at once), 2 h 32 min, about half of it waiting
-for runners.
+hunt (up to eight runners at once), 2 h 33 min, about half of it waiting
+for runners. Both are the budget's span, the run's creation to its last
+job; `flake-hunt.yml`'s header reads Nov 1 from the engine's start too
+(2 h 19 min: the engine waited 13 minutes for a runner).
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a
 PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
