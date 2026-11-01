@@ -14676,8 +14676,11 @@ function applyView() {
   // short-circuits before anything is laid out. See `syncFitHint`.
   syncFitHint();
   if (effectiveLod() !== lodApplied) scheduleRelod();
-  // Which tiers of silkscreen are big enough to print at this zoom. A class
-  // flip, and only when a tier crosses 8px — see `syncSilkFloor`.
+  // Which tiers of silkscreen are big enough to print at this zoom: a class
+  // flip, only when a tier crosses its floor (`--t-rack-micro`, 9 px; a
+  // name's, `--t-label`, 11 px), and then the names condensed to their room
+  // again at their new size, measured in one pass (`syncSilkFloor`,
+  // `fitSilk`).
   syncSilkFloor();
 }
 
@@ -14946,6 +14949,8 @@ const NAME_TOKEN = "--t-rack-value";
 let silkPx = null; // tier → px, read off the tokens once
 let silkUnder = null;
 let silkFitOwed = false; // the names' fit waits for the rack to be on screen (`fitSilk`)
+let silkFitFrame = 0; // the frame the names' fit waits for (`fitSilkAtFrame`)
+let inViewFrame = false; // a camera tween's step is running (`tweenView`)
 function syncSilkFloor() {
   const svg = $("rack-svg");
   if (!svg) return;
@@ -14966,31 +14971,55 @@ function syncSilkFloor() {
   }
   // A name condensed to its room at one size is condensed again at the other
   // (`fitSilk`): its `textLength` would stretch it, or squeeze it, to a width
-  // measured for the size it no longer prints at.
-  if (moved || silkFitOwed) fitSilk(svg);
+  // measured for the size it no longer prints at. Measured at the frame, not
+  // in the gesture that crossed the line: a wheel's step, or a pinch's, is
+  // answered without laying the page out for it (`fitSilkAtFrame`).
+  if (moved || silkFitOwed) fitSilkAtFrame();
+}
+
+/** `fitSilk` at the start of the next frame, before the page is laid out
+ *  for it: the class the crossing flipped makes that layout anyway, and the
+ *  names' widths are read in it, once. Inside a frame already (a camera
+ *  tween's step, `inViewFrame`), now, so no frame shows a name at its new
+ *  size with its old condensing. */
+function fitSilkAtFrame() {
+  if (inViewFrame) { fitSilk($("rack-svg")); return; }
+  if (silkFitFrame) return;
+  silkFitFrame = requestAnimationFrame(() => {
+    silkFitFrame = 0;
+    const svg = $("rack-svg");
+    if (svg) fitSilk(svg);
+  });
 }
 
 /** Silkscreen never overruns its room (`buildRack`'s `fitLabels`): each
  *  name, label and hint wider than its `data-fit` is condensed to it, and
  *  one that fits is left as set. Measured again when a tier crosses the
- *  silkscreen floor, since the names print larger under it. */
+ *  silkscreen floor, since the names print larger under it
+ *  (`fitSilkAtFrame`), in three passes: every condensing taken off, every
+ *  width read, then the ones too wide condensed, so the page is laid out
+ *  once for them all rather than once a label. */
 function fitSilk(svg) {
   // Behind another level the rack measures nothing (a hidden SVG's boxes
   // are empty): owed until it is on screen again.
   silkFitOwed = !svg.getClientRects().length;
   if (silkFitOwed) return;
-  for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name, .gp-name")) {
-    const avail = Number(t.dataset.fit || 0);
-    if (!avail) continue;
+  const texts = [...svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name, .gp-name")]
+    .filter((t) => Number(t.dataset.fit || 0) > 0);
+  for (const t of texts) {
     t.removeAttribute("textLength");
     t.removeAttribute("lengthAdjust");
-    let w = 0;
-    try { w = t.getBBox().width; } catch (_) { continue; }
-    if (w > avail) {
+  }
+  const widths = texts.map((t) => {
+    try { return t.getBBox().width; } catch (_) { return 0; }
+  });
+  texts.forEach((t, i) => {
+    const avail = Number(t.dataset.fit);
+    if (widths[i] > avail) {
       t.setAttribute("textLength", avail.toFixed(1));
       t.setAttribute("lengthAdjust", "spacingAndGlyphs");
     }
-  }
+  });
 }
 
 function syncLodBtn() {
@@ -15257,7 +15286,8 @@ function tweenView(t, ms, ease) {
     view.zoom = from.zoom * Math.pow(t.zoom / from.zoom, e);
     view.x = from.x + (t.x - from.x) * e;
     view.y = from.y + (t.y - from.y) * e;
-    applyView();
+    inViewFrame = true;
+    try { applyView(); } finally { inViewFrame = false; }
     viewTween = u < 1 ? requestAnimationFrame(step) : null;
   };
   viewTween = requestAnimationFrame(step);
