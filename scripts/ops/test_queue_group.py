@@ -14,6 +14,7 @@ is the one queue_state.py is tested on. Python 3 standard library only.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,12 +27,14 @@ sys.path.insert(0, HERE)
 from test_queue_state import MUTANTS, check, gates, pr  # noqa: E402
 
 GROUP = os.path.join(HERE, "queue_group.sh")
+MERGIFY = os.path.join(HERE, "..", "..", ".mergify.yml")
 REPO = "o/r"
 
 # The fake gh. FAKE_GH says what fails, as a comma list of "<call>" (for
 # every PR) or "<call>:<pr>": "view" (gh pr view), "view-first" (only its
-# first call fails), "edit" (gh pr edit), "comment" (gh pr comment),
-# "rest-label" and "rest-comment" (the REST calls).
+# first call fails), "view-alternate" (its first call fails, its second does
+# not, its third fails, and so on), "edit" (gh pr edit), "comment" (gh pr
+# comment), "rest-label" and "rest-comment" (the REST calls).
 FAKE_GH = textwrap.dedent(
     """\
     #!/usr/bin/env python3
@@ -53,6 +56,17 @@ FAKE_GH = textwrap.dedent(
                 f.write(key + " ")
         return key in flags
 
+    def nth_call(key):
+        # 1 the first time it is asked, 2 the second, and so on.
+        path = os.environ["FAKE_GH_STATE"]
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+        n = state["seen"].get(key, 0) + 1
+        state["seen"][key] = n
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return n
+
     def staged(section, key):
         # The next document staged for this key; the last one repeats.
         path = os.environ["FAKE_GH_STATE"]
@@ -68,8 +82,12 @@ FAKE_GH = textwrap.dedent(
     if args[:2] == ["-R", "o/r"]:
         args = args[2:]
     if args[:2] == ["pr", "view"]:
-        if fail("view", args[2]) or (fail("view-first", args[2]) and not staged_flag("viewed" + args[2])):
-            sys.stderr.write("GraphQL: Something went wrong while executing your query.\\n")
+        if (
+            fail("view", args[2])
+            or (fail("view-first", args[2]) and not staged_flag("viewed" + args[2]))
+            or (fail("view-alternate", args[2]) and nth_call("alternate" + args[2]) % 2 == 1)
+        ):
+            sys.stderr.write(f"GraphQL: PR {args[2]}: Something went wrong while executing your query.\\n")
             sys.exit(1)
         print(json.dumps(staged("views", args[2])))
     elif args[:2] == ["run", "view"]:
@@ -163,6 +181,7 @@ class QueueGroup(unittest.TestCase):
         done, calls = self.group("11", "12", "13", views={11: [GREEN], 12: [GREEN], 13: [GREEN]})
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(done.stdout, "queued: #11 #12 #13\n")
+        self.assertNotIn("a batch holds", done.stderr)
         self.assertQueued(calls, 11, 12, 13)
         # Every PR was read before any was queued, and none read after: the
         # group enters in one go, not as each is found green.
@@ -173,6 +192,18 @@ class QueueGroup(unittest.TestCase):
         for n in "11", "12", "13":
             order = [c[0] + c[1] for c in calls if len(c) > 2 and c[2] == n and c[1] in ("edit", "comment")]
             self.assertEqual(order, ["predit", "prcomment"])
+
+    def test_more_prs_than_a_batch_holds_are_warned_of_and_still_queued(self):
+        # The size the script warns at is the queue's: .mergify.yml's
+        # batch_size on its default rule, read here so the two cannot part.
+        with open(MERGIFY, encoding="utf-8") as f:
+            size = int(re.search(r"name: default\b.*?batch_size: (\d+)", f.read(), re.DOTALL).group(1))
+        group = [str(n) for n in range(11, 11 + size + 1)]
+        done, calls = self.group(*group, views={int(n): [GREEN] for n in group})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "queued: " + " ".join("#" + n for n in group) + "\n")
+        self.assertIn(f"{size + 1} PRs, and a batch holds {size}", done.stderr)
+        self.assertQueued(calls, *group)
 
     def test_it_waits_on_the_state_until_every_pr_is_green(self):
         done, calls = self.group(
@@ -246,12 +277,22 @@ class QueueGroup(unittest.TestCase):
         self.assertQueued(calls, 11, 12)
 
     def test_a_cancelled_slow_suite_is_forgotten_when_the_next_poll_shows_it_running(self):
-        # Cancelled, running, cancelled, running (and so on): never two polls in a row.
-        cancelled = pr(*gates(), *slow(conclusion="CANCELLED"), labels=("full-ci",))
+        # Cancelled, running, cancelled, green: never two cancelled polls in a
+        # row, so the group is never stopped, and it queues when the suite is
+        # green. Staged by state, with no clock: a script that kept the
+        # memory of the first cancelled poll would stop on the third.
+        cancelled = pr(*gates(), *slow(run=300, conclusion="CANCELLED"), labels=("full-ci",))
         again = pr(*gates(), *slow(run=301, status="IN_PROGRESS"), labels=("full-ci",))
-        done, calls = self.group("12", "--for", "0.0005", views={12: [cancelled, again, cancelled, again]}, runs={300: ["completed"], 301: ["in_progress"]})
-        self.assertEqual(done.returncode, 2, done.stderr)
-        self.assertNothingQueued(calls)
+        green = pr(*gates(), *slow(run=301), labels=("full-ci",))
+        done, calls = self.group(
+            "12",
+            views={12: [cancelled, again, cancelled, green]},
+            runs={300: ["completed"], 301: ["in_progress", "completed"]},
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "queued: #12\n")
+        self.assertEqual([c[2] for c in calls if c[:2] == ["pr", "view"]], ["12"] * 4)
+        self.assertQueued(calls, 12)
 
     def test_drop_red_queues_the_rest_and_says_who_was_left_out(self):
         views = {11: [GREEN], 12: [pr(*gates(ci="FAILURE"), labels=())], 13: [WAITING, GREEN]}
@@ -320,6 +361,28 @@ class QueueGroup(unittest.TestCase):
         self.assertIn("Something went wrong", done.stderr)
         self.assertNothingQueued(calls)
         self.assertEqual(len([c for c in calls if c[:2] == ["pr", "view"] and c[2] == "12"]), 10)
+
+    def test_unreadable_polls_that_are_not_in_a_row_never_stop_the_group(self):
+        # PR 12 cannot be read on every other poll: eleven of the twenty-two,
+        # more than the ten that stop a group, but never two in a row. PR 11
+        # is on its way for those twenty-one polls, then green.
+        done, calls = self.group(
+            "11", "12", views={11: [WAITING] * 21 + [GREEN], 12: [GREEN]}, fails="view-alternate:12"
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "queued: #11 #12\n")
+        self.assertQueued(calls, 11, 12)
+        views_of_12 = [c for c in calls if c[:2] == ["pr", "view"] and c[2] == "12"]
+        self.assertEqual(len(views_of_12), 22)
+
+    def test_every_pr_gh_cannot_read_is_named_with_its_own_error(self):
+        done, calls = self.group("11", "12", "13", views={11: [GREEN], 12: [GREEN], 13: [GREEN]}, fails="view:11,view:12")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("can't read #11 #12 on 10 polls running", done.stderr)
+        # Each one's own error, not the last one's: gh's message names its PR.
+        self.assertIn("#11: GraphQL: PR 11:", done.stderr)
+        self.assertIn("#12: GraphQL: PR 12:", done.stderr)
+        self.assertNothingQueued(calls)
 
     # Queueing, when gh fails -------------------------------------------------------
 

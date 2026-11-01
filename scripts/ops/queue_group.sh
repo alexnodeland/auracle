@@ -9,9 +9,11 @@
 # until each PR's `CI`, `PR checks` and `Mutants in the changed code` are
 # green on its head (and, for a PR carrying `full-ci`, its Slow suite too),
 # then label every one `queue` and comment `@mergifyio queue` on it, all at
-# once, so the group enters the queue within seconds and shares a batch (up
-# to three PRs). What counts is queue_state.py's rule (`--ready`): each check
-# read by its latest run, a skipped or neutral one not a success.
+# once, so the group enters the queue within seconds and shares a batch. A
+# batch holds up to three PRs (`batch_size`): a fourth is warned of on stderr
+# and queued all the same, to be tested in a later batch. What counts is
+# queue_state.py's rule (`--ready`): each check read by its latest run, a
+# skipped or neutral one not a success.
 #
 # It stops, queues nothing, exits 1 and names the PR when one goes red (a
 # check failed or timed out, a full-ci PR's Slow suite failed or was
@@ -33,11 +35,13 @@
 # you when it exits; one detached with `&` tells no one. It prints
 # `queued: #N ...` on stdout, and a line on stderr whenever what it waits on
 # changes. A PR gh cannot read on one poll (the network) is read again on the
-# next; ten polls running in which some PR cannot be read stop it, exit 1,
-# so a mistyped number is not waited on for hours. Each PR's label and
-# comment go through gh and, when that fails (GitHub's GraphQL API can fail
-# while its REST API works), through the REST API, as in ship_pr.sh. Exit 1
-# also when one could not be queued, and the line says which.
+# next; ten polls in a row in which some PR cannot be read stop it, exit 1,
+# naming each PR it could not read with gh's own words, so a mistyped number
+# is not waited on for hours. A poll that reads them all starts the count
+# again. Each PR's label and comment go through gh and, when that fails
+# (GitHub's GraphQL API can fail while its REST API works), through the REST
+# API, as in ship_pr.sh. Exit 1 also when one could not be queued, and the
+# line says which.
 # The repository is the origin remote's (GH_REPO overrides).
 set -uo pipefail
 for v in $(env | sed -n 's/^\(GIT_[A-Z_]*\)=.*/\1/p'); do unset "$v"; done
@@ -72,6 +76,13 @@ for n in $args; do
   case " $prs " in *" $n "*) ;; *) prs="$prs $n" ;; esac
 done
 prs=${prs# }
+# The merge queue's batch_size (.mergify.yml): a group of more is tested in
+# more than one batch, which is what grouping is for avoiding.
+batch=3
+set -- $prs
+if [ $# -gt $batch ]; then
+  echo "queue_group.sh: $# PRs, and a batch holds $batch (batch_size in .mergify.yml): the queue will test them in more than one batch" >&2
+fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="${GH_REPO:-$(git -c core.fsmonitor=false -C "$here" remote get-url origin | sed -E 's#\.git$##; s#^.*github\.com[:/]##')}"
@@ -98,7 +109,7 @@ unread=0      # polls running in which some PR could not be read
 while :; do
   ready="" waiting="" stop_n="" stop_msg="" cant="" cancelled_now=""
   for n in $live; do
-    if ! json=$(gh -R "$repo" pr view "$n" --json state,labels,statusCheckRollup 2>"$tmp/err"); then
+    if ! json=$(gh -R "$repo" pr view "$n" --json state,labels,statusCheckRollup 2>"$tmp/err-$n"); then
       cant="$cant #$n"
       waiting="$waiting #$n"
       continue
@@ -146,7 +157,9 @@ while :; do
 
   if [ -n "$cant" ]; then unread=$(( unread + 1 )); else unread=0; fi
   if [ $unread -ge 10 ]; then
-    echo "queue_group.sh: nothing queued; can't read$cant on $unread polls running: $(tail -n 1 "$tmp/err" 2>/dev/null)" >&2
+    errs=""
+    for c in $cant; do errs="$errs${errs:+; }$c: $(tail -n 1 "$tmp/err-${c#\#}" 2>/dev/null)"; done
+    echo "queue_group.sh: nothing queued; can't read$cant on $unread polls running: $errs" >&2
     exit 1
   fi
 
