@@ -33,24 +33,18 @@ async function tapPlate(app, kind) {
   await stillAt(page, `#rack-svg g[data-kind="${kind}"]:not(.mod-group) .mod-plate`);
   // The point of bare panel farthest from every control on the plate: a
   // touch screen moves a tap onto anything that answers one nearby (a knob's
-  // lock dot, a plate button), and a tap there is that control's. Beside a
-  // ⋯ or a lock (within a finger's reach of its middle, main.js `tapReach`)
-  // it is theirs, so a modulator's plate, little more than its pocket's
-  // width at the fit (#519), is tapped below them.
+  // lock dot, a plate button), and a tap there is that control's.
   const at = await page.evaluate((k) => {
     const plate = document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`);
     const b = plate.getBoundingClientRect();
     const group = document.querySelector(`#rack-svg g.mod-group[data-kind="${k}"]`);
     const ctrls = [...group.querySelectorAll("[data-addr], [data-stop], .jack, .mod-menu-btn, .mod-lock, .lock-dot")].map((e) => e.getBoundingClientRect());
-    const pads = [...document.querySelectorAll("#rack-svg .mod-menu-btn > rect, #rack-svg .mod-lock > rect")].map((e) => e.getBoundingClientRect())
-      .map((r) => [r.left + r.width / 2, r.top + r.height / 2]);
     let best = null;
     for (let fx = 0.08; fx < 0.95; fx += 0.04) {
       for (let fy = 0.08; fy < 0.95; fy += 0.04) {
         const x = b.left + fx * b.width;
         const y = b.top + fy * b.height;
         if (document.elementFromPoint(x, y) !== plate) continue;
-        if (pads.some(([px, py]) => Math.hypot(px - x, py - y) < 24)) continue;
         const d = Math.min(...ctrls.map((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))));
         if (!best || d > best.d) best = { x, y, d };
       }

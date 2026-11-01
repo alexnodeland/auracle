@@ -1012,13 +1012,18 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   where it is, aimed by a hand (`viewUserSet`) or by the keys
   (`ensureRackVisible`'s pans and ".", `viewAimed`); another sound
   (`benchOpens`) is framed as any patch is.
-  On a touch screen a tap on bare panel beside an out ○, a module's ⋯ or
-  its lock is that control's by reach.js's rule, among them all and every
-  socket (`tapReach`, asked by patch.js's tap before the module's sheet
-  opens): the cable picked up, the menu opened, the module locked. ⋯'s and
-  the lock's own pads are 44 units across and 22 tall, on the pocket's line,
-  and never grown with the camera, so they stay off a neighbour's sockets
-  and their own module's name (patch_fit checks each at the phone's fit).
+  On a touch screen a tap on bare panel beside an out ○, or on the rack (or
+  the pocket) beside a module's ⋯ or its lock, is that control's by
+  reach.js's rule, among them all and every socket (`tapReach`, asked by
+  patch.js's tap before the module's sheet opens): the cable picked up, the
+  menu opened, the module locked. A plate's panel and name stay its
+  module's (its sheet): ⋯ and the lock do not reach over a plate, and the
+  faceplate has a click listener so a touch screen's own aim, which moves a
+  tap onto the nearest thing that answers one, keeps a tap on it there.
+  ⋯'s and the lock's own pads are 44 units across and 22 tall, on the
+  pocket's line, and never grown with the camera, so they stay off a
+  neighbour's sockets and their own module's name (patch_fit checks each at
+  the phone's fit).
 - **The selection** (`plateSel`, set by a press on bare panel in the rack's
   pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
   both of a module's groups `.selected`; the readout (`renderSpecDock` into

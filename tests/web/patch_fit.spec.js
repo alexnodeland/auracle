@@ -17,8 +17,10 @@
 //   in the well answers at its middle, never a ⋯'s or a lock's pad; a
 //   finger's tap beside an out ○ (not on it) picks its cable up, opening no
 //   module's sheet, and every socket it lights answers at its middle; one
-//   beside a ⋯ opens its menu, and one beside a lock locks it, each
-//   answered in the tap's own task (and timed, a budget); the face at OUT
+//   beside a ⋯ on the rack opens its menu, and one beside a lock locks it,
+//   each answered in the tap's own task (and timed, a budget), while a
+//   finger on a module's panel beside its ⋯, or on any name in the well,
+//   opens that module's sheet and locks nothing; the face at OUT
 //   is 44 px or more once the edge has carried the camera to it; and FIT
 //   frames the patch as it opened again.
 // - At 1440 × 900 the same patch fits with every name at 11 px or larger and
@@ -143,10 +145,11 @@ const underPads = (page) => page.evaluate(() => {
 /** A point of bare panel 14 to 18 px from the middle of one of the rack's
  *  reach targets (`sel`: an out ○'s nut, or ⋯'s or a lock's pad) that
  *  plainly means it, as reach.js reads a finger: every other socket, ⋯ and
- *  lock more than 1.6 times as far. `offPlates`: on the rack or a pocket,
- *  not on a plate's panel, where a touch screen's own aim could move the
- *  tap onto a knob beside it. With its module's key and name. */
-const beside = (page, sel, { offPlates = false } = {}) => page.evaluate(([sel, offPlates]) => {
+ *  lock more than 1.6 times as far. `where` it lies: "off" the plates (on
+ *  the rack or a pocket, where ⋯ and the lock reach out), on a "plate"'s
+ *  panel (its module's, where they do not), or "any". With its module's
+ *  key and name. */
+const beside = (page, sel, { where = "any" } = {}) => page.evaluate(([sel, where]) => {
   const f = document.getElementById("rack-scroll").getBoundingClientRect();
   const svg = document.getElementById("rack-svg");
   const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -159,7 +162,8 @@ const beside = (page, sel, { offPlates = false } = {}) => page.evaluate(([sel, o
         if (x < f.left + 4 || x > f.right - 4 || y < f.top + 4 || y > f.bottom - 4) continue;
         const t = document.elementFromPoint(x, y);
         if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl, .mod-title")) continue;
-        if (offPlates && t.closest(".rack-plates g[data-key]") && !t.matches(".ctrl-well")) continue;
+        const onPlate = !!t.closest(".rack-plates g[data-key]") && !t.matches(".ctrl-well");
+        if ((where === "off" && onPlate) || (where === "plate" && !t.matches(".mod-plate"))) continue;
         if (all.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > 1.6 * d)) {
           const key = s.el.closest("[data-key]").getAttribute("data-key");
           const title = svg.querySelector(`.rack-plates g[data-key="${key}"] .mod-title`)?.textContent ?? "";
@@ -169,7 +173,7 @@ const beside = (page, sel, { offPlates = false } = {}) => page.evaluate(([sel, o
     }
   }
   return null;
-}, [sel, offPlates]);
+}, [sel, where]);
 /** A finger's tap at (x, y), and what it answered with: whether `sel`
  *  matched once the lift's own task was done (`inTask`), and how long after
  *  the lift it first did (`ms`), both on the page's clock, read as the page
@@ -291,7 +295,7 @@ test.describe("a phone, 390 × 844", () => {
 
     // A finger's tap beside a ⋯, on bare rack and plainly meaning it, opens
     // that module's menu, as a tap on it does; no sheet opens.
-    const dots = await beside(page, ".mod-menu-btn > rect", { offPlates: true });
+    const dots = await beside(page, ".mod-menu-btn > rect", { where: "off" });
     expect(dots, "a point of panel beside a ⋯").not.toBeNull();
     const menu = await tapTimed(page, dots.x, dots.y, "#ctx-menu:not(.hidden)");
     expect(menu.inTask, "the menu open in the tap's own task").toBe(true);
@@ -302,13 +306,43 @@ test.describe("a phone, 390 × 844", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#ctx-menu")).toBeHidden();
     // …and one beside a lock locks its module.
-    const lock = await beside(page, ".mod-lock > rect", { offPlates: true });
+    const lock = await beside(page, ".mod-lock > rect", { where: "off" });
     expect(lock, "a point of panel beside a lock").not.toBeNull();
     const locked = await tapTimed(page, lock.x, lock.y, `#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`);
     expect(locked.inTask, "the module locked in the tap's own task").toBe(true);
     app.budget("a tap beside a lock → its module locked", locked.ms, 100);
     await expect(page.locator(`#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`)).toHaveCount(1);
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+
+    // A module's panel and its name are the module's: a finger on its panel
+    // beside its ⋯, or on its name, opens its settings in the sheet, not the
+    // menu, and locks nothing. (A modulator's plate at the fit is little
+    // more than its pocket's width; a touch screen's own aim once moved a
+    // finger on its name onto its ⋯.)
+    const locks = () => page.locator("#rack-svg .mod-lock.on").evaluateAll((ls) => ls.map((l) => l.closest("[data-key]").getAttribute("data-key")));
+    const lockedBefore = await locks();
+    const sheetOf = async (x, y, title) => {
+      // The last sheet gone from over the point (it slides away).
+      await expect.poll(() => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("#rack-svg"), [x, y])).toBe(true);
+      await page.touchscreen.tap(x, y);
+      await expect(page.locator("#module-sheet")).toHaveClass(/\bon\b/);
+      await expect(page.locator("#module-sheet .ms-name")).toHaveText(title);
+      await expect(page.locator("#ctx-menu")).toBeHidden();
+      await page.locator("#module-sheet .ms-x").tap();
+      await expect(page.locator("#module-sheet")).not.toHaveClass(/\bon\b/);
+    };
+    const panel = await beside(page, ".mod-menu-btn > rect", { where: "plate" });
+    expect(panel, "a point of a plate's panel beside its ⋯").not.toBeNull();
+    await sheetOf(panel.x, panel.y, panel.title);
+    // Every name in the well, once the sheet has gone from over it.
+    const shownNames = () => page.evaluate(() => [...document.querySelectorAll("#rack-svg .rack-plates .mod-title")].map((t) => {
+      const r = t.getBoundingClientRect();
+      const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+      return { x, y, title: t.textContent, on: !!document.elementFromPoint(x, y)?.closest("#rack-svg") };
+    }).filter((n) => n.on));
+    await expect.poll(async () => (await shownNames()).length, { message: "names in the well" }).toBeGreaterThan(2);
+    for (const n of await shownNames()) await sheetOf(n.x, n.y, n.title);
+    expect(await locks(), "the modules locked").toEqual(lockedBefore);
 
     // The edge carries the camera along, to OUT: the face there is a
     // finger's size. FIT frames the patch as it opened again.

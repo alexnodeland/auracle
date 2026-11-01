@@ -4,9 +4,10 @@
 //
 // A socket is drawn a few px across at the rack's fitted zoom on a phone, far
 // under a finger. A lit one (a destination: a module in hand, a cable being
-// placed) reaches out for a press or a drop, and at rest an out ○, a
-// module's ⋯ and its lock reach out for a tap, which picks the cable up,
-// opens the menu or locks the module (main.js `tapReach`, #519); only when
+// placed) reaches out for a press or a drop, and at rest an out ○, and a
+// module's ⋯ and its lock over the rack around them, reach out for a tap,
+// which picks the cable up, opens the menu or locks the module (main.js
+// `tapReach`, #519); only when
 // the finger is unambiguous: the nearest within `reach` px of its centre,
 // and no other within 1.5 times that distance. Anything else (no socket
 // near, two about as near) is no socket: the press or the drop does what

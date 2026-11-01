@@ -13465,6 +13465,12 @@ function buildRack(svg, rack, opts) {
         el.addEventListener("pointerenter", () => hot(true));
         el.addEventListener("pointerleave", () => hot(false));
       }
+      // The plate answers a tap (its sheet, patch.js's tap), and says so to
+      // the browser: a touch screen's own aim moves a tap on what answers
+      // none onto the nearest thing that does, and moved a finger on a
+      // module's name onto the ⋯ or the lock beside it (#519). The tap is
+      // handled where it lifts; the click it makes has nothing left to do.
+      plateG.addEventListener("click", () => {});
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
       // The glyph lives in a group so a finger can be given more to aim at
       // than the 10px ellipsis itself. Both glyphs sit in the well now: the
@@ -22706,6 +22712,11 @@ function tapReach(ev, target) {
   for (const c of svg.querySelectorAll(".mod-menu-btn > rect, .mod-lock > rect")) at(c, { pad: c });
   const hit = socketMeant(cands, ev.clientX, ev.clientY, REACH_PRESS_PX);
   if (!hit) return false;
+  // ⋯ and the lock reach out over the rack and their pocket, not over a
+  // plate: a modulator's is little more than its pocket's width at the fit,
+  // and a tap on a module's panel or its name opens its sheet.
+  // (`target` is the press's element: a pointer event's target.)
+  if (hit.pad && target.closest(".rack-plates g[data-key]") && !target.matches(".ctrl-well")) return false;
   if (hit.pad) {
     // Its own click, at the finger: ⋯'s opens the menu there (and stops,
     // so the click-outside guard never sees it), the lock's locks. The
