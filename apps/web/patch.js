@@ -518,6 +518,9 @@ export function createPatch(host) {
     plate.appendChild(svgEl("rect", { x: 0, y: 0, width: at.w, height: at.h, rx: 8 }, "gp-body"));
     const t1 = svgEl("text", { x: 14, y: 22 }, "gp-name");
     t1.textContent = name;
+    // Its room, for when it prints larger under the type floor and is
+    // condensed again (main.js `fitSilk`), as a module's name is.
+    t1.dataset.fit = String(at.w - 40);
     const t2 = svgEl("text", { x: 14, y: 40 }, "gp-word");
     t2.textContent = "guess";
     const t3 = svgEl("text", { x: 14, y: at.h - 16 }, "gp-p");
@@ -1205,6 +1208,10 @@ export function createPatch(host) {
       const t = d.target;
       if (!t || !t.closest) return;
       if (t.closest(".jack, .mod-menu-btn, .mod-lock, .lock-dot, .rack-guess, [data-stop]")) return;
+      // A tap within a finger's reach of an out ○, a ⋯ or a lock is that
+      // control's: the cable picked up, the menu opened, the module locked
+      // (main.js `tapReach`, #519).
+      if (host.tapReach && host.tapReach(e, t)) return;
       const g = t.closest("[data-key]");
       if (!g) return;
       const knob = t.closest("[data-addr]");

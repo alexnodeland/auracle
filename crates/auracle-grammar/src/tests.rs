@@ -1487,6 +1487,65 @@ fn validate_tree_refuses_what_apply_struct_op_refuses() {
     );
 }
 
+/// A refusal at the size and depth ceilings says what the patch would have
+/// been, the size and the depth, so PATCH's head can redden the ceiling it
+/// passed and not the other (#530): too deep, and too big but shallow.
+#[test]
+fn a_refusal_at_the_ceilings_names_the_size_and_depth_it_would_have_made() {
+    let vco = || term::AudioNode::Vco {
+        uid: Uid::NEW,
+        wave: term::Waveform::Saw,
+        octave: 0,
+        detune: 0.5,
+        mod_depth: 0.3,
+        modulation: term::ModNode::None,
+    };
+    let mix = |a, b| term::AudioNode::Mix {
+        balance: 0.5,
+        a: Box::new(a),
+        b: Box::new(b),
+        uid: Uid::NEW,
+    };
+    let mut tree = presets::presets()[0].1.clone();
+    // Too deep: filters over a mix of two, one past the depth ceiling.
+    tree.root = mix(vco(), vco());
+    while tree.root.depth() <= mutate::MAX_DEPTH {
+        tree.root = default_filter_over(tree.root);
+    }
+    let (size, depth) = (tree.root.size(), tree.root.depth());
+    assert_eq!(
+        (size, depth),
+        (mutate::MAX_DEPTH + 2, mutate::MAX_DEPTH + 1)
+    );
+    assert_eq!(
+        validate_tree(&tree).unwrap_err(),
+        format!("the patch would pass its limits ({size} modules, depth {depth})")
+    );
+    // Too big, and inside the depth: a full tree of mixes five deep.
+    fn full(depth: usize, leaf: &dyn Fn() -> term::AudioNode) -> term::AudioNode {
+        if depth == 1 {
+            return leaf();
+        }
+        term::AudioNode::Mix {
+            balance: 0.5,
+            a: Box::new(full(depth - 1, leaf)),
+            b: Box::new(full(depth - 1, leaf)),
+            uid: Uid::NEW,
+        }
+    }
+    tree.root = full(5, &vco);
+    assert!(tree.root.size() > mutate::MAX_SIZE && tree.root.depth() <= mutate::MAX_DEPTH);
+    assert_eq!(
+        validate_tree(&tree).unwrap_err(),
+        "the patch would pass its limits (31 modules, depth 5)"
+    );
+    // At the size ceiling, and not past it: let through.
+    let four = mix(mix(vco(), vco()), mix(vco(), vco()));
+    tree.root = mix(full(4, &vco), default_filter_over(four));
+    assert_eq!(tree.root.size(), mutate::MAX_SIZE);
+    assert!(validate_tree(&tree).is_ok());
+}
+
 /// A filter wrapping `inner`, built without going through the op vocabulary
 /// — the point of the test above is to construct a tree the vocabulary
 /// would never return.

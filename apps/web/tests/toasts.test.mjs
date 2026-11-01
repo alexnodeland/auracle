@@ -2,11 +2,13 @@
 // the screen, each one's window, `replace`, `urgent`, the backlog's trim and
 // the stale drop. The DOM is a fake that records what the lane did with each
 // toast, and the clock and the timers are node:test's mock timers. Then where
-// the lane stands (`placeLane`), on rects measured from the app at its sizes.
+// the lane stands (`placeLane`, and on a phone the column a banner is narrowed
+// to between a picture's side controls, `bannerColumn`), on rects measured
+// from the app at its sizes.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createToastLane, placeLane, MAX_TOASTS, UNDO_WINDOW_MS, TOAST_MS, TOAST_STALE_MS, LANE_GAP, LANE_INSET } from "../toasts.js";
+import { createToastLane, placeLane, bannerColumn, MAX_TOASTS, UNDO_WINDOW_MS, TOAST_MS, TOAST_STALE_MS, LANE_GAP, LANE_INSET } from "../toasts.js";
 
 /** The fade's length in these tests (the app's is `--d-move`). */
 const FADE = 500;
@@ -694,4 +696,46 @@ test("placeLane: from the top, the first free band under the head and the well's
 test("placeLane: nowhere free is null, for the caller's fallback", () => {
   assert.equal(placeLane({ size: { w: 300, h: 50 }, bounds: R([0, 0, 400, 300]), reserved: [R([0, 0, 400, 300])] }), null);
   assert.equal(placeLane({ size: { w: 0, h: 0 }, bounds: R([0, 0, 400, 300]) }), null);
+});
+
+// PATCH on a phone, 375 × 667, at its fit, as measured (#519): the patch is
+// wider than the well, so n › runs down the well's right side, from 48 px
+// below its top to 48 px above its foot.
+const PATCH_PHONE = {
+  bounds: R([8, 58, 367, 601]),
+  reserved: [
+    R([12, 64, 363, 190]), // the head, with its action row
+    R([318, 247, 362, 552]), // n ›
+    R([27, 494, 287, 538]), // FIT, the zoom, MAP, the layout
+    R([210, 544, 350, 588]), // TEACH
+    R([25, 492, 350, 588]), // the well's foot
+  ],
+  pictures: [R([13, 199, 362, 600])],
+};
+const EDGE_L = R([13, 247, 57, 552]); // ‹ n, once the camera is inside the patch
+
+test("placeLane: on PATCH on a phone with n › up, a banner across the screen finds no free band", () => {
+  // The band over the well above n › is 32 px; a one-row banner is 46.
+  assert.equal(placeLane({ ...PATCH_PHONE, size: { w: 359, h: 46 }, prefer: "bottom" }), null);
+});
+
+test("bannerColumn: the rack's inside left of n ›, the gap clear of it; with ‹ n up too, between them", () => {
+  const [rack] = PATCH_PHONE.pictures;
+  assert.deepEqual(bannerColumn(rack, PATCH_PHONE.reserved), { left: 13 + LANE_INSET, right: 318 - LANE_GAP });
+  assert.deepEqual(bannerColumn(rack, [...PATCH_PHONE.reserved, EDGE_L]), { left: 57 + LANE_GAP, right: 318 - LANE_GAP });
+});
+
+test("placeLane: a banner in the column stands over the rack's floor above its foot, clear of n ›", () => {
+  const c = bannerColumn(PATCH_PHONE.pictures[0], PATCH_PHONE.reserved);
+  const size = { w: c.right - c.left, h: 70 };
+  const at = placeLane({ ...PATCH_PHONE, bounds: { ...PATCH_PHONE.bounds, left: c.left, right: c.right }, size, prefer: "bottom" });
+  assert.deepEqual(at, { left: c.left, top: 494 - LANE_GAP - 70 });
+  for (const r of PATCH_PHONE.reserved) assert.ok(!overlaps(at, size, r), `clear of ${JSON.stringify(r)}`);
+});
+
+test("bannerColumn: none for a picture with no control along its sides", () => {
+  // PERFORM's well on a phone: XY and the stage in its corner are a control
+  // inside it, but not a side's length; the rest lie outside it.
+  assert.equal(bannerColumn(PERFORM_PHONE.pictures[0], PERFORM_PHONE.reserved), null);
+  assert.equal(bannerColumn(R([0, 0, 400, 300])), null);
 });
