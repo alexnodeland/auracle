@@ -2840,8 +2840,9 @@ worker.onmessage = (e) => {
       if (m.views) applyViews(m.views);
       if (m.status) applyStatus(m.status);
       // A sound in hand that listens is measured through its inputs' clips,
-      // so its lean under the model view is asked again (PERFORM's key for
-      // it carries them, as its wiring's does).
+      // so its lean under the model view is asked again when one of them
+      // moved (PERFORM's key for it carries them, as its wiring's does); a
+      // clip on an input it doesn't read asks nothing.
       if (perform) perform.clipChanged();
       if (m.ok) scheduleSave();
       break;
