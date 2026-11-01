@@ -1,4 +1,5 @@
-// A toast never covers a control or a level's heading, at any size (#517).
+// A toast keeps clear of every control and every level's heading, at every
+// size (#517), but with the keys up on a small phone (below).
 // After every pick, the receipt (*Picked … over …*, NOT WHAT I MEANT) stood
 // over EVOLVE's foot at 1440 × 900 and 1280 × 720: a press at EVOLVE POOL's
 // middle reached the toast, so EVOLVE POOL and *what each generation did*
@@ -24,8 +25,10 @@
 //   or, where nothing is free (PERFORM at 375 × 667), the guide pill gives
 //   way while it stands over it, hidden rather than covered.
 // - The toast covers none of the level's heading (HEADS: its title, PERFORM's
-//   share button and KEEP/BACK, EVOLVE's pips and line and its small map).
-// - On a phone, a swipe up on the banner still puts it away.
+//   share button and KEEP/BACK, EVOLVE's pips and line and its small map),
+//   each of which must be in the level (a phone hides EVOLVE's title).
+// - On a phone, a swipe up on the banner puts it away: the swipe itself
+//   (`.swiped`, which nothing but a swipe adds), not its window running out.
 // - A change under the receipt (what each generation did, opened from the
 //   keyboard where it stands) does not move it while the pointer rests on
 //   it (ADR-025); it moves clear once the pointer leaves.
@@ -114,7 +117,9 @@ const UNDER_THE_TOAST = ({ foot, heads }) => {
     else if (meets(seen(e))) out.push(`the toast meets ${name(e)}`);
   }
   for (const sel of heads) {
-    for (const e of view.querySelectorAll(sel)) if (shown(e) && meets(seen(e))) out.push(`the toast covers ${sel}`);
+    const els = [...view.querySelectorAll(sel)];
+    if (!els.length) out.push(`${sel} is not in the level`);
+    for (const e of els) if (shown(e) && meets(seen(e))) out.push(`the toast covers ${sel}`);
   }
   return out;
 };
@@ -173,6 +178,16 @@ for (const { width, height, touch } of [{ width: 1440, height: 900 }, { width: 1
 /** Do two of Playwright's boxes overlap? */
 const boxesMeet = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
+/** The pick's receipt on screen, and the wait until it is at rest: its
+ *  entry (`toast-in`, 8 px down into place over `--d-state`) played out, so
+ *  its box is where the lane put it. */
+async function atRest(page) {
+  const receipt = page.locator("#toasts .toast:not(.out)", { hasText: /^Picked .+ over .+/ });
+  await expect(receipt).toBeVisible();
+  await expect.poll(() => receipt.evaluate((el) => el.getAnimations().length), "the receipt's entry played out").toBe(0);
+  return receipt;
+}
+
 // ADR-025: a change under the receipt never moves it from under the hand.
 // What each generation did, opened from the keyboard under EVOLVE's receipt
 // at 1440 × 900, would take the receipt's place: while the pointer rests on
@@ -181,8 +196,8 @@ const boxesMeet = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < 
 test("a change under a toast waits while the pointer rests on it, and the toast moves clear once it leaves", async ({ page, app }) => {
   await app.boot();
   await pick(page, app);
-  const receipt = page.locator("#toasts .toast:not(.out)", { hasText: /^Picked .+ over .+/ });
   await expect.poll(() => covered(page, "evolve", true), { message: "what a pick's receipt covers at evolve", timeout: SETTLE_MS }).toEqual([]);
+  const receipt = await atRest(page);
   await receipt.locator(".toast-msg").hover();
   const held = await receipt.boundingBox();
   await page.locator("#lineage-btn").focus();
@@ -211,9 +226,12 @@ for (const [width, height] of [[390, 844], [375, 667], [844, 390]]) {
       // A swipe up on the toast puts it away (main.js `note`), wherever it
       // stands now: a finger of the browser's own (CDP, as
       // touch_gestures.spec.js makes one), on its words, 40 px up in four
-      // moves.
-      const receipt = page.locator("#toasts .toast:not(.out)", { hasText: /^Picked .+ over .+/ });
-      await expect(receipt).toBeVisible();
+      // moves. The element itself is held, since a toast whose window ran
+      // out also leaves the lane: a swipe marks it `.swiped` and takes it
+      // off at once (within two seconds here, well inside what is left of
+      // its window), and nothing else marks it so.
+      const receipt = await atRest(page);
+      const swiped = await receipt.elementHandle();
       const box = await receipt.locator(".toast-msg").boundingBox();
       const x = Math.round(box.x + box.width / 2);
       const y = Math.round(box.y + box.height / 2);
@@ -223,7 +241,7 @@ for (const [width, height] of [[390, 844], [375, 667], [844, 390]]) {
       await finger("touchStart", 0);
       for (const dy of [10, 20, 30, 40]) await finger("touchMove", dy);
       await finger("touchEnd");
-      await expect(receipt).toHaveCount(0);
+      await expect.poll(() => swiped.evaluate((el) => ({ swiped: el.classList.contains("swiped"), onScreen: el.isConnected })), { message: "the receipt, swiped up", timeout: 2_000 }).toEqual({ swiped: true, onScreen: false });
     });
   });
 }
