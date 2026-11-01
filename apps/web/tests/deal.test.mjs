@@ -7,7 +7,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDealer, usable, holdsCut, samePair, RETRIES } from "../deal.js";
+import { createDealer, usable, holdsCut, samePair, onTable, RETRIES } from "../deal.js";
 
 const P = [1, 7];
 const Q = [2, 10];
@@ -108,6 +108,15 @@ test("a pair may go up unless a side is cut or gone, or it is the pair on the ta
   assert.equal(usable(Q, at()), false, "a side gone from the pool");
   assert.equal(samePair(P, [7, 1]), true);
   assert.equal(samePair(null, P), false);
+});
+
+test("the table holds the pair up and the pick held in its undo window, each sound once", () => {
+  assert.deepEqual(onTable(Q, P), [2, 10, 1, 7], "the pair up, then the pick's");
+  assert.deepEqual(onTable(null, P), [1, 7], "a waiting table holds the pick alone");
+  assert.deepEqual(onTable(Q, null), [2, 10], "no pick held");
+  assert.deepEqual(onTable(null, null), [], "nothing up and no pick: nothing held");
+  assert.deepEqual(onTable([10, 2], Q), [10, 2], "a pick taken back puts its own pair up: one sound held once");
+  assert.deepEqual(onTable([2, 7], P), [2, 7, 1], "a pair sharing a sound with the pick");
 });
 
 test("the waiting table puts up the first answer it may, and asks for the pair after once its sounds are here", () => {

@@ -749,7 +749,9 @@ pub struct Candidate {
 
 impl Candidate {
     /// Whether no eviction may take this member on its own account: saved
-    /// (pinned), or kept as new and not yet in a pick. The one rule
+    /// (pinned), or kept as new and not yet in a pick. Persisted with the
+    /// member; [`Engine::spared`] adds what the engine holds for the moment (a
+    /// ⚡ seed in flight, the sounds on the table), and is the rule
     /// [`Engine::insert_candidate`] and every eviction order apply.
     pub fn kept(&self) -> bool {
         self.pinned || self.unjudged
@@ -1352,6 +1354,10 @@ pub const PENDING_CHECKS: usize = 32;
 /// throws away.
 pub const DEALT_UNSHOWN: usize = 8;
 
+/// How many sounds the table holds at most ([`Engine::set_on_table`]): the
+/// pair EVOLVE shows, and the pair of a pick still in its undo window.
+pub const ON_TABLE_MAX: usize = 4;
+
 pub struct Engine {
     /// Configuration.
     pub cfg: SessionConfig,
@@ -1453,6 +1459,11 @@ pub struct Engine {
     /// as `unknown_seed`. Not persisted: a walk in flight does not survive
     /// a reload.
     evolving: HashMap<u64, (WalkContext, WalkJob)>,
+    /// The sounds on the table ([`Engine::set_on_table`]): no eviction takes
+    /// them until the frontend says they are put away. Not persisted: a pair
+    /// on the table and a pick in its undo window do not survive a reload, so
+    /// a restore starts with none.
+    on_table: Vec<u64>,
     /// What the last generation to finish retired ([`Engine::retired`]). Not
     /// persisted: it describes a call, like `last_refine`.
     retired: Vec<u64>,
@@ -1521,6 +1532,7 @@ impl Engine {
             last_refine: RefineOutcome::Idle,
             open: None,
             evolving: HashMap::new(),
+            on_table: Vec::new(),
             retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
             clip_unreadable: None,
@@ -2485,10 +2497,58 @@ impl Engine {
         self.last_refine
     }
 
+    /// Whether no eviction may take this member now: kept
+    /// ([`Candidate::kept`]: saved, or kept as new and not yet in a pick),
+    /// the seed of a ⚡ walk in flight, or on the table
+    /// ([`Engine::set_on_table`]). The one rule [`Engine::insert_candidate`]
+    /// and every eviction order apply, beside the caller's own `protect`.
+    fn spared(&self, c: &Candidate) -> bool {
+        self.spared_off_table(c) || self.on_table.contains(&c.id)
+    }
+
+    /// [`Engine::spared`] for a member put away: kept, or the seed of a ⚡
+    /// walk in flight. What a generation's end still passes over whatever
+    /// the table holds by then ([`Engine::may_replace`]).
+    fn spared_off_table(&self, c: &Candidate) -> bool {
+        c.kept() || self.evolving.contains_key(&c.id)
+    }
+
+    /// Hold `ids` as the sounds on the table, in place of what was held: the
+    /// pair the frontend shows and the pair of a pick still in its undo
+    /// window. Until a later call leaves one out, no eviction takes it (a
+    /// generation's end, a preset, an import, a ⚡ child's trim), so the vote
+    /// a pick becomes when its window closes finds both its sides in the
+    /// pool, and [`Engine::retiring`] passes over it. [`Engine::may_replace`]
+    /// does not: a sound up when a generation opens is put away long before
+    /// it ends, and can go then. Ids not in the pool are passed over, and so are
+    /// repeats; at most [`ON_TABLE_MAX`] are held, the first given. Returns
+    /// what is held, in the order given.
+    ///
+    /// A frontend that never calls this holds nothing, and every eviction is
+    /// what it was without it (ADR-001: no stream is read here, so a seed
+    /// deals what it dealt). Not persisted: a restore holds nothing.
+    pub fn set_on_table(&mut self, ids: &[u64]) -> &[u64] {
+        self.on_table.clear();
+        for &id in ids {
+            if self.on_table.len() == ON_TABLE_MAX {
+                break;
+            }
+            if self.find(id).is_some() && !self.on_table.contains(&id) {
+                self.on_table.push(id);
+            }
+        }
+        &self.on_table
+    }
+
+    /// The sounds on the table, as [`Engine::set_on_table`] last held them.
+    pub fn on_table(&self) -> &[u64] {
+        &self.on_table
+    }
+
     /// Insert a hand-made candidate — an edit or a preset — evicting the worst
-    /// member at once if the pool is full (never `protect`, never a kept one,
-    /// [`Candidate::kept`]: saved, or kept as new and not yet in a pick; never
-    /// the seed of a ⚡ walk in flight). It always lands when anything is evictable: the player asked for
+    /// member at once if the pool is full (never `protect`, never one
+    /// [`Engine::spared`]: saved, kept as new and not yet in a pick, the seed
+    /// of a ⚡ walk in flight, or on the table). It always lands when anything is evictable: the player asked for
     /// it. Refined children do not come here; they must earn their slot and
     /// wait for the generation's end ([`Engine::admit_refined`]).
     fn insert_candidate(
@@ -2518,9 +2578,7 @@ impl Engine {
                 .pool
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| {
-                    Some(c.id) != protect && !c.kept() && !self.evolving.contains_key(&c.id)
-                })
+                .filter(|(_, c)| Some(c.id) != protect && !self.spared(c))
                 .min_by(|(_, x), (_, y)| {
                     let (sx, ux) = rank(x);
                     let (sy, uy) = rank(y);
@@ -2557,8 +2615,8 @@ impl Engine {
     }
 
     /// The pool members an eviction takes first, lowest first: every member
-    /// that is neither kept ([`Candidate::kept`]: saved, or kept as new and
-    /// not yet in a pick) nor in `protect`, ranked by `(standardized,
+    /// that is neither spared ([`Engine::spared`]: saved, kept as new and not
+    /// yet in a pick, a ⚡ seed in flight, or on the table) nor in `protect`, ranked by `(standardized,
     /// utility)` ascending, utility under `judge` — a member without φ_std
     /// ranks worst explicitly, for the reason [`Engine::insert_candidate`]
     /// gives. Ties keep pool order, so the first of equals goes first, which
@@ -2566,25 +2624,32 @@ impl Engine {
     /// time.
     fn eviction_order(&self, protect: &HashSet<u64>) -> Vec<(usize, f64)> {
         let judge = self.judge();
-        self.eviction_order_by(protect, |i| mix_utility(judge, &self.pool[i].phi_std))
+        self.eviction_order_by(protect, |i| mix_utility(judge, &self.pool[i].phi_std), true)
     }
 
     /// [`Engine::eviction_order`] with each member's utility given by pool
     /// index rather than taken under [`Engine::judge`]: a generation not yet
     /// opened would rank under the posterior it would open with, the current
-    /// one.
+    /// one. With `table` false, the sounds on the table rank as if put away
+    /// ([`Engine::spared_off_table`]), as a generation's end may find them.
     fn eviction_order_by(
         &self,
         protect: &HashSet<u64>,
         utility: impl Fn(usize) -> f64,
+        table: bool,
     ) -> Vec<(usize, f64)> {
+        let spared = |c: &Candidate| {
+            if table {
+                self.spared(c)
+            } else {
+                self.spared_off_table(c)
+            }
+        };
         let mut rows: Vec<(usize, bool, f64)> = self
             .pool
             .iter()
             .enumerate()
-            .filter(|(_, c)| {
-                !c.kept() && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
-            })
+            .filter(|(_, c)| !spared(c) && !protect.contains(&c.id))
             .map(|(i, c)| (i, !c.phi_std.is_empty(), utility(i)))
             .collect();
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
@@ -2835,7 +2900,8 @@ impl Engine {
     }
 
     /// Close the open generation, if any, and retire the lowest members not
-    /// kept ([`Candidate::kept`]) until the pool is back to [`SessionConfig::pool_size`].
+    /// spared ([`Engine::spared`]: kept, a ⚡ seed in flight, or on the
+    /// table) until the pool is back to [`SessionConfig::pool_size`].
     /// Returns the retired ids, lowest first.
     ///
     /// This is **stop**: the children absorbed so far stay, results still in
@@ -2951,8 +3017,10 @@ impl Engine {
 
     /// The members a generation opened now could retire, lowest first: no
     /// member outside this list can leave the pool at its end, whatever its
-    /// walks breed, as long as nothing else changes the pool meanwhile (a
-    /// save, an edit, a preset, a ⚡ child).
+    /// walks breed and whatever is on the table by then
+    /// ([`Engine::set_on_table`]), as long as nothing else changes the pool
+    /// meanwhile (a save, an edit, a preset, a ⚡ child) and no sound kept as
+    /// new has its first pick (it competes from then, [`Candidate::kept`]).
     ///
     /// [`Engine::refine_jobs`] opens with a finish, which retires
     /// [`Engine::retiring`]: those come first. Then each of the generation's
@@ -2960,10 +3028,22 @@ impl Engine {
     /// finish retires only as many members as the children put the pool over
     /// size, lowest first under the posterior it opened with (the current
     /// one). A member with that many evictable members below it is never
-    /// reached, so the rest of the list is the lowest `pool + w − pool_size`
-    /// evictable members (`w` of them when the pool is at size, fewer while
-    /// it fills): not kept ([`Candidate::kept`]: saved, or kept as new and not
-    /// yet in a pick), and not the seed of a ⚡ in flight.
+    /// reached, so next come the lowest `pool + w − pool_size` evictable
+    /// members (`w` of them when the pool is at size, fewer while it fills):
+    /// not spared ([`Engine::spared`]: saved, kept as new and not yet in a
+    /// pick, the seed of a ⚡ in flight, or on the table), what the end would
+    /// take with the table as it stands, and the first is what an insert
+    /// takes now.
+    ///
+    /// The end passes over the sounds on the table as it finds them, and the
+    /// table moves while the generation runs (the player keeps picking): a
+    /// sound up now can be put away by then, and up to [`ON_TABLE_MAX`] of
+    /// those it would take can be up then, each sending it one member
+    /// further. So the list goes on with the members next up with the table
+    /// put away ([`Engine::spared_off_table`]), up to [`ON_TABLE_MAX`] of
+    /// them. Together they are the lowest `pool + w − pool_size` +
+    /// [`ON_TABLE_MAX`] evictable members with the table put away, whatever
+    /// it holds now: the end can take no member with more of them below it.
     ///
     /// The engine does not know what the app has cut: a cut member is in the
     /// pool, ranks low, and is in this list like any other.
@@ -2994,12 +3074,19 @@ impl Engine {
         if owed == 0 {
             return out;
         }
-        out.extend(
-            self.eviction_order_by(&HashSet::new(), utility)
+        let ids = |table: bool| {
+            self.eviction_order_by(&first, &utility, table)
                 .into_iter()
                 .map(|(i, _)| self.pool[i].id)
-                .filter(|id| !first.contains(id))
-                .take(owed),
+        };
+        // What its end would take with the table as it stands, then as far
+        // past that as the table it finds could send it.
+        out.extend(ids(true).take(owed));
+        let listed: HashSet<u64> = out.iter().copied().collect();
+        out.extend(
+            ids(false)
+                .filter(|id| !listed.contains(id))
+                .take(ON_TABLE_MAX),
         );
         out
     }
@@ -4316,6 +4403,8 @@ impl Engine {
         // and neither has a ⚡ walk from it.
         self.open = None;
         self.evolving.clear();
+        // Nor is anything on the table: a restored session deals afresh.
+        self.on_table.clear();
         self.pool.clear();
         self.audio_lru.clear();
         self.shown_pairs.clear();

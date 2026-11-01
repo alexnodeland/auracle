@@ -255,15 +255,22 @@ The pool holds 40 sounds. A generation’s children join it as they are bred,
 and when the generation ends (or you stop it), it replaces the lowest-rated
 sounds it can to bring it back to 40: not a saved sound, nor one you kept as
 new that is still waiting for its first pick
-([above](#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)). The
+([above](#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)), nor
+the pair on EVOLVE’s table or a pick you can still take back. The
 toast names them: *Generation 3: 4 new sounds in the pool. It replaced the 4
 lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
 
 1. Hover **EVOLVE POOL** in EVOLVE (or move the focus to it). The ten sounds
    the next generation would breed from get a solid amber rail and **SEED**;
    the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
-   other sound can be replaced when it ends. A saved sound is never marked,
-   and nor is a sound you kept as new that hasn’t been in a pick yet. The
+   other sound can be replaced when it ends, but for a sound you kept as new
+   that has its first pick while the generation runs. A saved sound is never
+   marked, and nor is a sound you kept as new that hasn’t been in a pick yet. The
+   pair on EVOLVE’s table can be marked: nothing replaces it while it’s up,
+   but you’ll have put it away long before the generation ends. Up to four
+   more sounds are marked than the generation can replace, because when it
+   ends it passes over the pair up then, and a pick you can still take back,
+   and replaces the next sounds instead. The
    words sit at the row’s end, where its actions come when you point at the
    row, so no name moves.
 2. Save any you want to keep before you press it.
@@ -277,7 +284,9 @@ you stop it now or let it finish: none before its first child, then one more
 with each child it takes in. That isn’t all that can go: each child still to
 come can add the next lowest-rated sound it can replace. A save still keeps a sound
 while the generation runs: its mark goes, and the sound that will be replaced
-in its place is marked instead.
+in its place is marked instead. The pair on EVOLVE’s table, and a pick you can
+still take back, are kept the same way, but only while they’re there: once a
+pair is put away, its marks come back.
 
 While ⚡ evolve from this walks, hovering **EVOLVE POOL** marks its seed, and
 **MAY BE REPLACED** on the one sound its child would replace: the

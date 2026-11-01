@@ -1651,8 +1651,8 @@ fn next_seeds_and_may_replace_are_what_a_generation_does() {
     assert_eq!(seeds[0], top, "a saved patch seeds like any other");
     assert_eq!(
         may.len(),
-        engine.cfg.refine_seeds,
-        "a full pool can lose one member per walk"
+        engine.cfg.refine_seeds + ON_TABLE_MAX,
+        "a full pool can lose one member per walk, and the table can send its end past as many as it holds"
     );
     assert!(
         !may.contains(&top) && !may.contains(&bottom),
@@ -1723,7 +1723,11 @@ fn may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving() {
     let ranked = engine.ranked();
     let lowest = engine.pool[ranked[ranked.len() - 1].0].id;
     let before = engine.may_replace();
-    assert_eq!(before.len(), walks - 2, "two empty places owe two fewer");
+    assert_eq!(
+        before.len(),
+        walks - 2 + ON_TABLE_MAX,
+        "two empty places owe two fewer"
+    );
     assert_eq!(before[0], lowest);
     // As many empty places as walks: the generation's children fill them,
     // and nothing may be replaced.
@@ -2257,6 +2261,244 @@ fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
     assert!(
         engine.find(kept).is_none(),
         "a judged sound rated lowest was not replaced"
+    );
+}
+
+/// **A sound on the table is not replaced until it is put away** (#452).
+/// The app holds the pair EVOLVE shows and the pair of a pick still in its
+/// undo window (`set_on_table`), so the vote that pick becomes when the
+/// window closes finds both its sides in the pool. Before, a generation's
+/// end, a preset or an import inside the window could replace a side, and
+/// the vote was refused. Held here: the two members every eviction takes
+/// first. They stay marked (a generation's end comes long after they are
+/// put away), though what an end would take now passes them over; more
+/// presets are opened than the pool holds, a patch is imported and a
+/// generation runs, and both are still there; the pick on them is
+/// recorded. Put away, they compete again, and the next preset replaces
+/// the lowest.
+#[test]
+fn a_sound_on_the_table_is_not_replaced_until_it_is_put_away() {
+    let mut engine = taught(0x7AB1E);
+    let (size, walks) = (engine.cfg.pool_size, engine.cfg.refine_seeds);
+    let may = engine.may_replace();
+    let pair = [may[0], may[1]];
+    assert_eq!(engine.set_on_table(&pair), pair);
+    let marked = engine.may_replace();
+    assert_eq!(
+        marked[..walks],
+        may[2..walks + 2],
+        "what an end would take now is not the next members up"
+    );
+    let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
+    assert_eq!(
+        set(&marked),
+        set(&may),
+        "the table moved what may be replaced"
+    );
+    assert_eq!(engine.belief().may_replace, marked);
+
+    // One more preset than the pool holds: the first would have replaced
+    // the pair's lower side (`may_replace`'s first is the first an insert
+    // takes), and every one is passed over it.
+    let mut opened = 0;
+    for (name, tree) in auracle_grammar::presets().into_iter().take(size + 1) {
+        if engine.insert_preset(tree, name).is_some() {
+            opened += 1;
+        }
+    }
+    assert!(opened > size, "only {opened} presets opened");
+    assert_eq!(engine.pool.len(), size);
+    let here = |e: &Engine| pair.iter().all(|&id| e.find(id).is_some());
+    assert!(here(&engine), "a preset replaced a sound on the table");
+    engine
+        .import_patch(fresh_preset(0), "Shared")
+        .expect("the import lands");
+    assert_eq!(engine.pool.len(), size);
+    assert!(here(&engine), "an import replaced a sound on the table");
+
+    // A generation, bred as the farm breeds it: nothing it will replace is
+    // on the table while it runs, and its end replaces neither.
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB1F))
+        .expect("taught");
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+        let retiring = engine.retiring();
+        assert!(
+            pair.iter().all(|id| !retiring.contains(id)),
+            "a running generation will replace a sound on the table: {retiring:?}"
+        );
+    }
+    assert_eq!(engine.refine_progress(), None, "the generation did not end");
+    assert!(
+        !engine.retired().is_empty(),
+        "the generation replaced nothing, so it could not have replaced the table"
+    );
+    assert!(
+        here(&engine),
+        "a generation's end replaced a sound on the table"
+    );
+    assert!(pair.iter().all(|id| !engine.retired().contains(id)));
+
+    // The pick the pair was held for: recorded, its lower side losing.
+    let logged = engine.log.len();
+    let (a, b) = (engine.find(pair[0]).unwrap(), engine.find(pair[1]).unwrap());
+    engine.record_duel(a, b, false);
+    assert_eq!(engine.log.len(), logged + 1, "the pick was not recorded");
+
+    // Put away: both compete again, and the lower is the next to go.
+    assert!(engine.set_on_table(&[]).is_empty());
+    assert!(engine.on_table().is_empty());
+    let order: Vec<u64> = engine
+        .eviction_order(&HashSet::new())
+        .into_iter()
+        .map(|(i, _)| engine.pool[i].id)
+        .collect();
+    assert!(
+        pair.iter().all(|id| order.contains(id)),
+        "a sound put away is still spared: {order:?}"
+    );
+    assert_eq!(
+        order[0], pair[0],
+        "the precondition: it is still the first an eviction takes"
+    );
+    assert!(engine.insert_preset(fresh_preset(1), "Fresh").is_some());
+    assert!(
+        engine.find(pair[0]).is_none(),
+        "a sound put away was not replaced"
+    );
+}
+
+/// What the table holds: sounds of the pool, each once, four at most (the
+/// pair up and the pair of a pick in its window), the first given; each
+/// call holds what it names and nothing else; and nothing after a restore,
+/// which is not saved with the session.
+#[test]
+fn the_table_holds_four_sounds_of_the_pool_at_most_and_a_restore_holds_none() {
+    let mut engine = taught(0x7AB2);
+    let may = engine.may_replace();
+    assert!(
+        may.len() >= 2 * ON_TABLE_MAX,
+        "too few marks to tell: {may:?}"
+    );
+    let absent = engine.pool.iter().map(|c| c.id).max().unwrap() + 1;
+    // An id the pool does not hold and a repeat take no place, and past
+    // four nothing more is held.
+    let asked: Vec<u64> = [absent, may[0], may[0]]
+        .into_iter()
+        .chain(may[1..].iter().copied())
+        .collect();
+    assert_eq!(engine.set_on_table(&asked), &may[..ON_TABLE_MAX]);
+    assert_eq!(engine.on_table(), &may[..ON_TABLE_MAX]);
+    assert_eq!(
+        engine.may_replace().first(),
+        Some(&may[ON_TABLE_MAX]),
+        "a fifth sound was held"
+    );
+    // The next call holds what it names, in place of what was held.
+    let next = &may[ON_TABLE_MAX..2 * ON_TABLE_MAX];
+    assert_eq!(engine.set_on_table(next), next);
+    assert_eq!(engine.may_replace().first(), Some(&may[0]));
+    // A restore holds nothing, into the same engine too.
+    let state = engine.export_state();
+    engine.import_state(state);
+    assert!(engine.on_table().is_empty(), "a restore kept the table");
+    assert_eq!(engine.may_replace().first(), Some(&may[0]));
+}
+
+/// **What MAY BE REPLACED marks at the press bounds what the generation's
+/// end replaces, whatever is on the table by then** (#452). The end passes
+/// over the sounds on the table as it finds them (read then, as pins are),
+/// and the player keeps picking while a generation runs, so the table it
+/// finds is not the one at the press. Two ways that reached a sound the
+/// marks had left out, when the marks passed over the table at the press:
+///
+/// - a sound up at the press, put away before the end: never marked, and
+///   the first the end takes;
+/// - the sounds the end would take first, up when it ends: passed over,
+///   so the end reaches as far past the marks as the table holds of them.
+///
+/// So the marks are the lowest the end could take whatever the table
+/// holds, `ON_TABLE_MAX` past what it would take now, those first.
+#[test]
+fn may_replace_bounds_a_generations_end_whatever_is_on_the_table_by_then() {
+    let mut engine = taught(0x7AB3);
+    let walks = engine.cfg.refine_seeds;
+    let set = |ids: &[u64]| ids.iter().copied().collect::<HashSet<u64>>();
+    let children = |e: &Engine| -> HashSet<u64> {
+        e.lineage
+            .iter()
+            .filter(|ev| ev.generation == e.generation)
+            .map(|ev| ev.child_id)
+            .collect()
+    };
+    let at_rest = engine.may_replace();
+    assert_eq!(
+        at_rest.len(),
+        walks + ON_TABLE_MAX,
+        "not one member per walk and the table's reach past them"
+    );
+
+    // Up at the press, put away while it runs: marked, though the end
+    // would pass it over now, and replaced at the end.
+    let pair = [at_rest[0], at_rest[1]];
+    engine.set_on_table(&pair);
+    let marked = engine.may_replace();
+    assert_eq!(
+        set(&marked),
+        set(&at_rest),
+        "the table moved what is marked"
+    );
+    assert_eq!(
+        marked[0], at_rest[2],
+        "not what the end would take now first"
+    );
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB3))
+        .expect("taught");
+    engine.set_on_table(&[at_rest[2], at_rest[3]]);
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    let (retired, born) = (engine.retired().to_vec(), children(&engine));
+    assert!(
+        retired.contains(&pair[0]),
+        "the precondition: the end replaced the sound put away, {retired:?}"
+    );
+    assert!(
+        retired
+            .iter()
+            .all(|id| marked.contains(id) || born.contains(id)),
+        "the end replaced {retired:?}, outside {marked:?}"
+    );
+
+    // Nothing up at the press, and the two it would take first up at the
+    // end: it reaches past them. Two walks, so one child reaches past the
+    // first two marks.
+    engine.cfg.refine_seeds = 2;
+    engine.set_on_table(&[]);
+    let marked = engine.may_replace();
+    assert_eq!(marked.len(), 2 + ON_TABLE_MAX);
+    let (ctx, jobs) = engine
+        .refine_jobs(&mut StdRng::seed_from_u64(0x7AB4))
+        .expect("taught");
+    engine.set_on_table(&marked[..2]);
+    let order: Vec<usize> = (0..jobs.len()).collect();
+    for r in farm_walks(&ctx, &jobs, &order) {
+        engine.refine_absorb(r);
+    }
+    let (retired, born) = (engine.retired().to_vec(), children(&engine));
+    assert!(
+        retired.iter().any(|id| !marked[..2].contains(id)),
+        "the precondition: the end reached past the two up, {retired:?}"
+    );
+    assert!(
+        retired
+            .iter()
+            .all(|id| marked.contains(id) || born.contains(id)),
+        "the end replaced {retired:?}, outside {marked:?}"
     );
 }
 

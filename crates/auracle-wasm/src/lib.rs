@@ -1504,6 +1504,21 @@ impl WasmEngine {
         self.engine.duel_shown(u64::from(a), u64::from(b))
     }
 
+    /// The sounds on EVOLVE's table now (ids): the pair up and the pair of a
+    /// pick still in its undo window, in place of what was held. No eviction
+    /// takes them until a later call leaves them out, so the pick's vote
+    /// finds both its sides when it commits ([`Engine::set_on_table`]).
+    /// Returns the ids held: those in the pool, each once, four at most
+    /// (`ON_TABLE_MAX`), in the order given.
+    pub fn set_on_table(&mut self, ids: Vec<u32>) -> Vec<u32> {
+        let ids: Vec<u64> = ids.into_iter().map(u64::from).collect();
+        self.engine
+            .set_on_table(&ids)
+            .iter()
+            .map(|&id| id as u32)
+            .collect()
+    }
+
     fn duel_json(&self, choice: Option<auracle_session::DuelChoice>) -> String {
         #[derive(Serialize)]
         struct Row {
@@ -1707,10 +1722,13 @@ impl WasmEngine {
     /// Record a duel outcome between candidate ids. Returns `false` — and
     /// records **nothing** — when either id is no longer in the pool.
     ///
-    /// That happens: a duel side can be evicted by an evolve, a preset load or
-    /// an import inside the undo window, and the vote then arrives for a patch
-    /// that is gone. It used to vanish silently while the app counted it as
-    /// taken and toasted "rated"; a dropped vote is the app's to report.
+    /// A pick's pair is held on the table through its undo window
+    /// ([`WasmEngine::set_on_table`]), so no evolve, preset load or import
+    /// evicts a side of it before its vote arrives. It can still happen to a
+    /// pair evicted before the page said it was up (a generation ending in
+    /// that round trip), and then the vote arrives for a patch that is gone.
+    /// It used to vanish silently while the app counted it as taken and
+    /// toasted "rated"; a dropped vote is the app's to report.
     pub fn record_duel(&mut self, a: u32, b: u32, chose_a: bool) -> bool {
         let (a, b) = (a as u64, b as u64);
         match (self.engine.find(a), self.engine.find(b)) {
@@ -1856,10 +1874,11 @@ impl WasmEngine {
     }
 
     /// Stop (or close) the open generation: the children absorbed so far stay,
-    /// the lowest members not kept (`Candidate::kept`: saved, or kept as new
-    /// and not yet in a pick) are retired until the pool is back to size,
-    /// and results still in flight will read `"stale"`. Returns the retired
-    /// ids as a JSON array, lowest first. Idempotent.
+    /// the lowest members not spared (`Engine::spared`: saved, kept as new
+    /// and not yet in a pick, a ⚡ seed in flight, or on the table,
+    /// [`WasmEngine::set_on_table`]) are retired until the pool is back to
+    /// size, and results still in flight will read `"stale"`. Returns the
+    /// retired ids as a JSON array, lowest first. Idempotent.
     pub fn refine_finish(&mut self) -> String {
         json_or(&self.engine.refine_finish(), "[]")
     }
@@ -2639,9 +2658,11 @@ impl WasmEngine {
     /// the parents EVOLVE POOL would refine from if pressed now, best first,
     /// exactly as [`WasmEngine::refine_jobs`] would choose them (`[]` before
     /// the first fit). `may_replace` are the members that generation could
-    /// retire, lowest first: no other member can leave at its end unless
-    /// something else changes the pool meanwhile. It includes members the
-    /// app has cut, which the engine does not know about.
+    /// retire, lowest first: no other member can leave at its end, whatever
+    /// is on the table by then ([`WasmEngine::set_on_table`]), unless
+    /// something else changes the pool meanwhile (`Engine::may_replace`). It
+    /// includes members the app has cut, which the engine does not know
+    /// about.
     pub fn belief(&self) -> String {
         json_or(
             &self.engine.belief(),

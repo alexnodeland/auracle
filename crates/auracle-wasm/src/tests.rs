@@ -459,6 +459,27 @@ fn each_input_slots_clip_crosses_the_boundary() {
     assert!(!fine["note"].as_str().unwrap().contains("didn't load"));
 }
 
+/// The table's sounds cross as `u32` ids both ways: what the engine holds
+/// comes back, an id the pool does not hold passed over, and an empty list
+/// holds nothing. Which evictions pass them over is the engine's
+/// (`a_sound_on_the_table_is_not_replaced_until_it_is_put_away`).
+#[test]
+fn the_table_is_set_and_answered_in_u32_ids() {
+    let mut engine = WasmEngine::new(3, 6);
+    while engine.fill_step(3) > 0 {}
+    let ids = pool_ids(&engine);
+    let absent = ids.iter().max().unwrap() + 1;
+    let held = engine.set_on_table(vec![ids[2], absent, ids[0]]);
+    assert_eq!(held, vec![ids[2], ids[0]]);
+    assert_eq!(
+        engine.engine.on_table(),
+        [u64::from(ids[2]), u64::from(ids[0])],
+        "not the engine's own hold"
+    );
+    assert!(engine.set_on_table(Vec::new()).is_empty());
+    assert!(engine.engine.on_table().is_empty());
+}
+
 /// The menu bar's TAUGHT tooltip splits the count by kind from
 /// `status()`: a duel is a pick, a rating a star, a keep/kill a cut, and
 /// the three add up to `observations`.
