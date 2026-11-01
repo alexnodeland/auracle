@@ -104,7 +104,10 @@ Until then, the model hears it through a built-in plucked phrase.
   into it.
 - A toast says when a capture starts (*Capturing 6 s of …*, naming the input),
   and when the model has the clip.
-- The clips are saved with your session, in this browser.
+- The clips are saved with your session, in this browser. A session saved
+  before inputs had clips of their own keeps its one clip for every input,
+  and doesn’t capture an input the first time you play into it: press that
+  input’s **NEW CLIP** to give it its own.
 - **NEW CLIP** captures its module’s input again, even on a module whose input
   line says *meter only*. Play what you mean to play through the sound while
   it runs. Every sound with AUDIO IN on that input in the pool is rated again
