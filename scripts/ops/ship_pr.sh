@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ship_pr.sh [--full-ci] [--priority] WORKTREE BRANCH TITLE BODY_FILE
+# ship_pr.sh [--full-ci] [--hold] [--priority] WORKTREE BRANCH TITLE BODY_FILE
 #
 # The operator's push of an agent's reviewed branch (docs/process.md § Pull
 # requests; the ship-wave skill): check the title and the issue lines as
@@ -8,9 +8,12 @@
 # PR's number and link.
 #
 #   --full-ci   label it `full-ci` (the Slow suite runs on it) and do not
-#               queue it yet: queue it once its Slow suite is green
-#               (watch_queue.sh says "Slow suite green"), with the two
+#               queue it yet: queue_group.sh queues it once its Slow suite is
+#               green (watch_queue.sh says "Slow suite green"), or the two
 #               commands this prints.
+#   --hold      open it without the `queue` label and without the queue's
+#               comment: a wave's PRs are held and then queued together,
+#               once all are green, by queue_group.sh, so they share a batch.
 #   --priority  label it `priority`: a fix to CI or to a flaky test goes into
 #               the queue's next batch ahead of the rest.
 #
@@ -29,10 +32,12 @@ set -euo pipefail
 for v in $(env | sed -n 's/^\(GIT_[A-Z_]*\)=.*/\1/p'); do unset "$v"; done
 
 full_ci=0
+hold=0
 priority=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --full-ci) full_ci=1; shift ;;
+    --hold) hold=1; shift ;;
     --priority) priority=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     --) shift; break ;;
@@ -40,7 +45,7 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
-[ $# -eq 4 ] || { echo "usage: ship_pr.sh [--full-ci] [--priority] WORKTREE BRANCH TITLE BODY_FILE" >&2; exit 2; }
+[ $# -eq 4 ] || { echo "usage: ship_pr.sh [--full-ci] [--hold] [--priority] WORKTREE BRANCH TITLE BODY_FILE" >&2; exit 2; }
 wt=$1 branch=$2 title=$3 body=$4
 
 git() { command git -c core.fsmonitor=false "$@"; }
@@ -69,11 +74,14 @@ fi
 
 git -C "$wt" push -q -u origin "$branch"
 
+# `queue` queues the PR (the label alone does: .mergify.yml), so a held PR
+# has none, and may have no label at all. An empty array is an unbound
+# variable to bash 3.2 under `set -u`, hence the ${a[@]+...} below.
 labels=()
-[ $full_ci = 1 ] && labels+=(full-ci) || labels+=(queue)
+if [ $full_ci = 1 ]; then labels+=(full-ci); elif [ $hold = 0 ]; then labels+=(queue); fi
 [ $priority = 1 ] && labels+=(priority)
 create=() add=()
-for l in "${labels[@]}"; do create+=(--label "$l"); add+=(-f "labels[]=$l"); done
+for l in ${labels[@]+"${labels[@]}"}; do create+=(--label "$l"); add+=(-f "labels[]=$l"); done
 
 # The queue's comment, through REST when gh's own command fails.
 queue_it() {
@@ -81,7 +89,7 @@ queue_it() {
     gh api --method POST "repos/$repo/issues/$1/comments" -f "body=@mergifyio queue" >/dev/null; })
 }
 
-if url=$(cd "$tmp" && gh -R "$repo" pr create --base main --head "$branch" --title "$title" --body-file "$body" "${create[@]}" | tail -1) &&
+if url=$(cd "$tmp" && gh -R "$repo" pr create --base main --head "$branch" --title "$title" --body-file "$body" ${create[@]+"${create[@]}"} | tail -1) &&
     [ -n "$url" ]; then
   n=${url##*/}
 else
@@ -96,13 +104,22 @@ else
   case "$n" in
     ''|*[!0-9]*) echo "ship_pr.sh: no PR for $branch: gh pr create and the REST API both failed. The branch is pushed; open it by hand" >&2; exit 1 ;;
   esac
-  (cd "$tmp" && gh api --method POST "repos/$repo/issues/$n/labels" "${add[@]}" >/dev/null)
+  # A POST with no label is a 422, so a held PR with no label asks for none.
+  if [ ${#add[@]} -gt 0 ]; then
+    (cd "$tmp" && gh api --method POST "repos/$repo/issues/$n/labels" "${add[@]}" >/dev/null)
+  fi
   url="https://github.com/$repo/pull/$n"
 fi
 if [ $full_ci = 1 ]; then
   echo "$n $url"
-  echo "opened with full-ci, not queued. Once its Slow suite is green (scripts/ops/watch_queue.sh $n), queue it:"
+  echo "opened with full-ci, not queued. Queue it with its group, once its checks and its Slow suite are green (scripts/ops/queue_group.sh waits for them):"
+  echo "  scripts/ops/queue_group.sh $n [the group's other PRs]"
+  echo "or, once its Slow suite is green (scripts/ops/watch_queue.sh $n), by hand:"
   echo "  gh -R $repo pr edit $n --add-label queue && gh -R $repo pr comment $n --body '@mergifyio queue'"
+elif [ $hold = 1 ]; then
+  echo "$n $url"
+  echo "opened held, not queued. Queue it with the rest of its group, once all are green:"
+  echo "  scripts/ops/queue_group.sh $n [the group's other PRs]"
 elif queue_it "$n"; then
   echo "$n $url"
 else
