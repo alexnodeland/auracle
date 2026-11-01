@@ -1,18 +1,23 @@
 // A live face's layer, painted: the canvas calls of one frame of a trace
-// (live-face.js decides what each frame draws; this only draws it). The same
-// calls run on the page (stage mode, the face in flight between the levels,
-// and every inline face where there is no worker) and in a worker of their
-// own, which paints every inline live face on a canvas of its own and answers
-// each frame with a picture of each layer it painted, which the page shows
-// as it is: the same pixels as the frame painted on the page.
+// (live-face.js decides what each frame draws, and where it is painted; this
+// only draws it). The same calls run on the page (stage mode, the face in
+// flight between the levels, and every inline face while the page's paint
+// measures inside the live faces' budget) and in a worker of their own, the
+// face painter, which paints every inline live face on a canvas of its own
+// once the page's paint measures over it, and answers each frame with a
+// picture of each layer it painted, which the page shows as it is: the same
+// pixels as the frame painted on the page.
 //
 // Why a worker: the trace's two outlines glow (`shadowBlur`), and a browser
 // that draws a canvas on the CPU (Firefox, and any browser without a GPU)
 // blurs them on the thread that asks. On the main thread that was 2 ms of
-// every frame a key sounded at PERFORM, 7 ms on a Retina screen (Firefox on
-// an M3 Max, #512): the time a note-on, a knob's write and a pointer move
-// waited behind. In the worker the page's part of a frame is what is heard
-// and where, a message, and showing the pictures.
+// every frame a key sounded at PERFORM, 7 ms at the Air's Retina scale
+// (Firefox on an M3 Max, #512): the time a note-on, a knob's write and a
+// pointer move waited behind. In the worker the page's part of a frame is
+// what is heard and where, a message, and showing the pictures. Where the
+// page's calls measure a fraction of a millisecond (Chromium, which records
+// them and draws them after the frame's script), the page keeps them
+// (live-face.js `createPaintSwitch`, which says what that timing sees).
 //
 // Imports nothing, so the worker loads it under the build's stamp alone (a
 // worker has no import map: a bare `./faces.js` there would be a second copy
@@ -90,30 +95,44 @@ export function paintLayer(cv, g, op) {
   if (op.n) paintStrokes(g, op.strokes, op.n);
 }
 
-/** A frame from the page, in the worker: each face's frame (`faces`: `{id,
- *  …paintLayer's op}`) on the layer of that id, made by `make()` the first
- *  time it is painted. Returns the ids of the layers painted, once each. */
+/** A frame from the page, in the worker: the layers the page painted until
+ *  it handed them over (`seed`: `{id, bitmap}`, each a picture of a layer as
+ *  the page left it, drawn as it is on a layer of that size), then each
+ *  face's frame (`faces`: `{id, …paintLayer's op}`) on the layer of that id,
+ *  made by `make()` the first time it is painted. Returns the ids of the
+ *  layers painted, once each. */
 export function paintFrame(layers, m, make) {
   const painted = [];
-  for (const op of m.faces) {
-    let l = layers.get(op.id);
+  const layerOf = (id) => {
+    let l = layers.get(id);
     if (!l) {
       const cv = make();
       l = { cv, g: cv.getContext("2d") };
-      layers.set(op.id, l);
+      layers.set(id, l);
     }
+    if (!painted.includes(id)) painted.push(id);
+    return l;
+  };
+  for (const { id, bitmap } of m.seed || []) {
+    const l = layerOf(id);
+    l.cv.width = bitmap.width;
+    l.cv.height = bitmap.height;
+    l.g.drawImage(bitmap, 0, 0);
+  }
+  for (const op of m.faces) {
+    const l = layerOf(op.id);
     paintLayer(l.cv, l.g, op);
-    if (!painted.includes(op.id)) painted.push(op.id);
   }
   return painted;
 }
 
 // Run as a worker: every frame the page sends is painted, and answered with
 // a picture of each layer painted (none for a layer of no size), and the
-// time it took on this thread. The page sends the next frame once this one
-// is answered. A frame that fails says so (`failed`), as one that throws
-// while it paints does (the page's `error`): the page then paints its faces
-// itself.
+// time it took on this thread. The page's first message is an empty frame,
+// whose answer says the worker is up, and the page sends the next frame once
+// this one is answered. A frame that fails says so (`failed`), as one that
+// throws while it paints does (the page's `error`): the page then paints its
+// faces itself.
 if (typeof DedicatedWorkerGlobalScope !== "undefined" && self instanceof DedicatedWorkerGlobalScope) {
   const layers = new Map();
   const make = () => new OffscreenCanvas(1, 1);
@@ -121,6 +140,7 @@ if (typeof DedicatedWorkerGlobalScope !== "undefined" && self instanceof Dedicat
     const t0 = performance.now();
     const frame = e.data.frame;
     const ids = paintFrame(layers, e.data, make);
+    for (const { bitmap } of e.data.seed || []) bitmap.close();
     Promise.all(
       ids.map((id) => {
         const cv = layers.get(id).cv;

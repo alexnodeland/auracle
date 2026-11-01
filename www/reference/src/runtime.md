@@ -20,7 +20,7 @@ the architecture more than any design preference did.</p>
 | **Main** | UI, Web Audio graph | `main.js`, never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js`: pool fill, fits, refinement, workbench |
 | **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation’s walks and ⚡, `task → posterior` for a refit |
-| **Face painter** | An `OffscreenCanvas` for each face of a sound being played, nothing else | `live-paint.js`: each frame of what is drawn over those faces, answered with a picture of each |
+| **Face painter** | An `OffscreenCanvas` for each face of a sound being played, nothing else | `live-paint.js`: each frame of what is drawn over those faces, answered with a picture of each, where main's own paint of them is over budget |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -32,18 +32,23 @@ No nested workers (Safari shipped those only in 16.4), no `SharedArrayBuffer`,
 no COOP/COEP headers, no build step, and no server change. Those constraints are
 why the topology is a star around the engine worker rather than a tree.
 
-The face painter is main's own, outside that star, and holds no wasm. The
-face of a sound being played answers what is heard
-([the guide](../docs/faces.html#while-you-play-it)): each frame, main
+The face painter is main's own, outside that star, and holds no wasm, and
+it runs only where it pays. The face of a sound being played answers what is
+heard ([the guide](../docs/faces.html#while-you-play-it)): each frame, main
 measures what is heard and decides what is drawn over each such face (each
-outline's points, color and glow, and the trail's fade); the painter makes
-those canvas calls and answers with a picture of each face, which main shows
-as it is, so a frame is shown one round trip after it is read. The glow is a blur, and a browser that draws canvases on the CPU
-makes it on the thread that asks: on the main thread, in Firefox at a Retina
-screen's scale on a fast laptop (an M3 Max), that was 7 ms of every frame,
-and more on a slower machine. One frame is with the painter at a
-time. Main paints the faces itself, with the same calls, where the painter
-cannot run.
+outline's points, color and glow, and the trail's fade), and times its own
+canvas calls. While they take less than the live faces' 2 ms a frame (the
+median of the last ten frames), main makes them itself and a frame shows in
+the frame that read it: Chromium draws canvases on the GPU and only records
+the calls. The glow is a blur, though, and a browser that draws canvases on
+the CPU makes it on the thread that asks: on the main thread, in Firefox at
+a Retina screen's scale on a fast laptop (an M3 Max), that was 7 ms of
+every frame, and more on a slower machine. Once main's calls measure over,
+it starts the painter, hands it each face as it stands, and from then on,
+for the session, the painter makes those calls and answers with a picture of
+each face, which main shows as it is, so a frame is shown one round trip
+after it is read. One frame is with the painter at a time. Main paints the
+faces itself, with the same calls, where the painter cannot run.
 
 ## The AudioWorklet’s hostile environment
 
