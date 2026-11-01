@@ -791,7 +791,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The version the Makefile's LLVM_COV_VERSION names (0.7 and later
       # instrument only the workspace's crates; 0.6 took thirteen times as long).
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: cargo-llvm-cov@0.9.1,nextest
       # The tests' profiles only; the gate below reads them.
@@ -1158,7 +1158,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-engine
           path: apps/web/pkg
