@@ -189,6 +189,59 @@ class ShipPr(unittest.TestCase):
         self.assertEqual(self.api(calls, "repos/o/r/issues/281/comments"), [])
         self.assertFalse(any(c["argv"][2:4] == ["pr", "comment"] for c in calls))
         self.assertIn("not queued", done.stdout)
+        self.assertIn("scripts/ops/queue_group.sh 281", done.stdout)
+
+    def test_hold_opens_the_pr_without_the_queue_label_or_the_comment(self):
+        done, calls = self.ship("--hold")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.split("\n")[0], "281 https://github.com/o/r/pull/281")
+        self.assertIn("not queued", done.stdout)
+        self.assertIn("scripts/ops/queue_group.sh 281", done.stdout)
+        (create,) = calls
+        self.assertEqual(create["argv"][:4], ["-R", REPO, "pr", "create"])
+        # Everything else is as without it: the checked title and body, the base and the head.
+        self.assertEqual(create["argv"][create["argv"].index("--title") + 1], TITLE)
+        self.assertEqual(create["argv"][create["argv"].index("--head") + 1], "claude/thing")
+        self.assertNotIn("--label", create["argv"])
+        self.assertNotIn("queue", create["argv"])
+
+    def test_hold_through_rest_asks_for_no_label_and_no_comment(self):
+        done, calls = self.ship("--hold", fails="create")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("through the REST API", done.stderr)
+        self.assertEqual(done.stdout.split("\n")[0], "281 https://github.com/o/r/pull/281")
+        (pulls,) = self.api(calls, "repos/o/r/pulls")
+        self.assertEqual(pulls["input"], {"base": "main", "head": "claude/thing", "title": TITLE, "body": BODY})
+        # A label call with no label is a 422; a comment would queue it.
+        self.assertEqual(self.api(calls, "repos/o/r/issues/281/labels"), [])
+        self.assertEqual(self.api(calls, "repos/o/r/issues/281/comments"), [])
+        self.assertFalse(any(c["argv"][2:4] == ["pr", "comment"] for c in calls))
+
+    def test_hold_with_priority_keeps_the_priority_label_only(self):
+        done, calls = self.ship("--hold", "--priority")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        create = calls[0]["argv"]
+        self.assertEqual([create[i + 1] for i, a in enumerate(create) if a == "--label"], ["priority"])
+        self.assertEqual(len(calls), 1)
+        done, calls = self.ship("--hold", "--priority", fails="create")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        (labels,) = self.api(calls, "repos/o/r/issues/281/labels")
+        self.assertEqual([a for a in labels["argv"] if a.startswith("labels[]=")], ["labels[]=priority"])
+        self.assertEqual(self.api(calls, "repos/o/r/issues/281/comments"), [])
+
+    def test_hold_with_full_ci_is_labelled_full_ci_and_never_queue(self):
+        done, calls = self.ship("--hold", "--full-ci")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        create = calls[0]["argv"]
+        self.assertEqual([create[i + 1] for i, a in enumerate(create) if a == "--label"], ["full-ci"])
+        self.assertEqual(len(calls), 1)
+        self.assertIn("not queued", done.stdout)
+
+    def test_a_pr_not_held_is_queued_as_before(self):
+        done, calls = self.ship()
+        create = calls[0]["argv"]
+        self.assertEqual([create[i + 1] for i, a in enumerate(create) if a == "--label"], ["queue"])
+        self.assertEqual(calls[1]["argv"][2:4], ["pr", "comment"])
 
     def test_no_pr_anywhere_fails_and_labels_nothing(self):
         done, calls = self.ship(fails="create,rest,lookup")

@@ -23,7 +23,7 @@ saved workflows ([Waves](#waves)).
 | 5. Briefed | What the builder needs: scope, decisions, tests, docs, report | The issue body, or a brief it links | The operator |
 | 6. Built | Commits on `claude/<topic>`, in a worktree of its own (`.claude/worktrees/<topic>`) | A branch | An agent on the model the operator chose, or a person |
 | 7. Reviewed | Ranked findings, fixed; the fixes re-reviewed | The review's report | The `reviewer` agent |
-| 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` | GitHub PRs | The operator, or a contributor for their own branch |
+| 8. Proposed | A pull request that names its issues (`Closes #N`, `Refs #N`), labelled `queue` (a wave's PRs are labelled together, once all are green) | GitHub PRs | The operator, or a contributor for their own branch |
 | 9. Checked | Green `CI` (the fast lane), `PR checks` and `Mutants in the changed code` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
@@ -233,7 +233,9 @@ Findings come back ranked, and review is **one round**:
 
 - The operator pushes an agent's branch and opens the PR, in the merge queue:
   `gh pr create --base main --head claude/<topic> --title "<type>(<scope>): <what is true now>" --body-file <file> --label queue`,
-  and the label queues it ([CI and merging](#ci-and-merging)).
+  and the label queues it ([CI and merging](#ci-and-merging)). A wave's PRs
+  are opened held, without the label, and queued together
+  ([Waves](#waves)).
   A contributor opens theirs from their own branch or fork, and the
   maintainer adds the label once it is reviewed.
 - **The title** is the squash commit's subject on `main`, so it starts as a
@@ -373,9 +375,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   generations or PERFORM's offers. It is none of the queue's conditions;
   without the label, the push to `main` is where a slow test catches the
   change. By hand, a `full-ci` PR is queued at once. A wave holds it out of
-  the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`, [Waves](#waves)): a
-  wave's PRs land minutes apart, and a slow test one of them broke would
-  turn up on `main` with several to suspect.
+  the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`,
+  then `scripts/ops/queue_group.sh`, which waits for the suite;
+  [Waves](#waves)): a wave's PRs land minutes apart, and a slow test one of
+  them broke would turn up on `main` with several to suspect.
 - **Wait on the state, never a fixed time:** poll until the run completes,
   or the PR merges or leaves the queue, then read what happened.
 - **The merge queue merges**
@@ -387,7 +390,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     Protections is active for the repository in Mergify's dashboard, which
     the maintainer switched on on 2026-10-08 (not enforced). A
     `@mergifyio queue` comment is for putting a PR back that left the
-    queue, or the box Mergify's comment offers.
+    queue, or the box Mergify's comment offers. A wave's PRs are the
+    exception: they are opened without the label and labelled together
+    ([Waves](#waves)).
   - It enters the queue once its fast lane's `CI`, its `PR checks` and its
     `Mutants in the changed code` are green. All three are
     required of every PR, in either of `.mergify.yml`'s queues. A crate
@@ -395,7 +400,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     after its fast lane is green.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
-    at most ten minutes for company. One batch is tested at a time.
+    at most six minutes for company, counted from its first PR's entry. A
+    wave's PRs are queued together, in groups of up to three, so they share
+    a batch ([Waves](#waves)). One batch is tested at a time.
   - Green, the queue squash-merges each PR of the batch on its own, the head
     that was tested, so nothing pushed after the check merges unchecked. Each
     commit is `<title> (#<n>)` with the PR's commit messages. The queue never pushes to
@@ -546,10 +553,21 @@ The operator's loop:
    `other_area` becomes an issue.
 5. **Approve.** The wave's voice drafts (the words, where, the `voice.md`
    row), as one question; approved rows are committed on their branch.
-6. **Ship.** `scripts/ops/ship_pr.sh` checks the title and body as
-   `PR checks` will, pushes, opens the PR and queues it; with `--full-ci`, it
-   opens the PR with `full-ci` and it is queued once its Slow suite is green.
-7. **Watch.** `scripts/ops/watch_queue.sh`, as a background task, until each
+6. **Ship,** in groups of up to three. A batch holds three PRs and waits
+   six minutes for company, counted from its first PR's entry, and a PR
+   enters once its own checks are green, so PRs queued as each turns green
+   would land in batches of their own. `scripts/ops/ship_pr.sh --hold` checks
+   the title and body as `PR checks` will, pushes, and opens the PR with
+   neither the `queue` label nor the queue's comment; with `--full-ci`, it
+   opens the PR with `full-ci`, also not queued. A PR that ships alone, and a
+   `priority` fix, is opened without `--hold`: labelled and queued at once.
+7. **Queue the group, and watch.** `scripts/ops/queue_group.sh`, as a
+   background task, waits until each held PR's `CI`, `PR checks` and
+   `Mutants in the changed code` are green on its head (a `full-ci` PR's Slow
+   suite too), then labels every one `queue` and comments `@mergifyio queue`
+   on each, within seconds of one another, so they share a batch. A PR gone
+   red stops it, naming the PR and queuing nothing (`--drop-red` queues the
+   rest). Then `scripts/ops/watch_queue.sh`, as a background task, until each
    PR merges, goes red or leaves the queue. A conflict is rebased with
    diff3 and its row-wise parts resolved by `scripts/ops/rows_resolve.py`,
    pushed with a lease to its `claude/` branch, and put back in the queue
