@@ -195,7 +195,7 @@ const {
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
-  dealRule, jobEta,
+  dealRule, jobEta, knobLabel,
 } = words;
 const PATCH_WORDS = words;
 const shell = createShell({
@@ -3034,7 +3034,9 @@ worker.onmessage = (e) => {
       }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
-      // What PERFORM can play this tree on before it is measured (#290).
+      // What PERFORM can play this tree on before it is measured (#290), and
+      // what its rack calls each knob (#532).
+      if (perform && m.names) perform.namesKnown(m.json, m.names);
       if (perform && m.first) perform.firstKnown(m.json, m.first);
       setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
@@ -3059,6 +3061,9 @@ worker.onmessage = (e) => {
       // a later click has superseded an earlier one.
       if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
       if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
+      // What its rack calls each knob, for PERFORM's controls (#532): for
+      // any panel, unlike its `first`.
+      if (perform && m.names) perform.namesKnown(m.json, m.names);
       // Its `first` is predicted for the panel in force now, which the one
       // held since its rows (`poolTrees`) may not be.
       if (perform && m.first) perform.firstKnown(m.json, m.first);
@@ -6141,6 +6146,9 @@ async function bootPerform() {
     },
     locks: () => [...lockedAddrs()],
     note,
+    // A toast whose claim stopped being true (B was growing an offer, and it
+    // landed): off the lane now, on screen or waiting.
+    dropNote: (el) => dropToast(el),
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
     heldCount: () => heldNotes.size,
     // Whether a note is still held (or sustained): PERFORM draws the knobs
@@ -6197,8 +6205,12 @@ async function bootPerform() {
     attractStarted: () => explain && explain.close(),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
+    // Not while the voices play a sound on its way to the bench
+    // (`voicesAheadOfRack`): the rack is still the last sound's, and an
+    // address both share can be another module there. The knob is then its
+    // label in the rack's words, with no module (`knobLabel`).
     knobInfo: (addr, v) => {
-      for (const m of wb.rack?.modules || []) {
+      for (const m of (voicesAheadOfRack() ? null : wb.rack?.modules) || []) {
         const k = (m.knobs || []).find((x) => x.addr === addr);
         if (!k) continue;
         const fk = m.knobs.find((x) => x.addr.endsWith("#fkind"));
@@ -6212,7 +6224,7 @@ async function bootPerform() {
         if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
         return { module: m.title, label: k.label, text };
       }
-      return { module: "", label: addr.split("#").pop(), text: knobUnit(addr, v) };
+      return { module: "", label: knobLabel(addr), text: knobUnit(addr, v) };
     },
     // Opening PATCH re-renders the rack, which can replace the node found on
     // the first frame, so the pulse re-finds its knob until the rack settles.
@@ -11123,7 +11135,9 @@ function voicePoolEarly(id) {
     return;
   }
   // Its `first` was predicted for the panel in force when it was sent: for
-  // another panel, PERFORM waits for the one `bench_opening` brings.
+  // another panel, PERFORM waits for the one `bench_opening` brings. What
+  // its rack calls each knob is the same for every panel (#532).
+  if (perform && held.names) perform.namesKnown(held.json, held.names);
   if (perform && held.first && (held.controls ?? null) === perform.panelControls()) perform.firstKnown(held.json, held.first);
   // Its face is its row's: the hand shows it in this task, not after the
   // engine has been asked (#522).

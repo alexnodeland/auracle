@@ -268,7 +268,9 @@ const benchEngine = () => ({
   perform_knobs: () => "[]",
   edit_makeup: () => 1,
   edit_render: () => [0, 0, 0],
-  edit_describe: () => "{}",
+  // The bench's rack, and a pool member's: one knob each (#532's `names`).
+  edit_describe: () => JSON.stringify({ modules: [{ title: "filter", knobs: [{ addr: "node#cut", label: "cutoff" }] }] }),
+  describe_of: (id) => JSON.stringify({ modules: [{ title: "vco", knobs: [{ addr: `node#det${id}`, label: "detune" }] }] }),
   edit_vet_ok: () => true,
   edit_vet_silent: () => false,
   sample_rate: () => 48000,
@@ -284,7 +286,7 @@ const benchEngine = () => ({
 
 test("a bench edit's early tree and an open's early tree are not its last reply: the bench is", async () => {
   const w = worker({}, {
-    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst"],
+    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst", "knobNamesOf", "namesOf"],
     engine: benchEngine(),
     prelude: ["let performControls;"],
   });
@@ -303,12 +305,16 @@ test("a bench edit's early tree and an open's early tree are not its last reply:
   // asked of that tree, for the six until a measurement names a set.
   assert.deepEqual(repliesTo(w.out, 1)[0].first, { shape: '{"tree":1}', controls: null });
   assert.deepEqual(repliesTo(w.out, 4)[0].first, { shape: '{"tree":2}', controls: null });
+  // …and its knobs as its rack names them (#532): an edit's from the bench's
+  // tree, an open's from the member it opens.
+  assert.deepEqual(repliesTo(w.out, 1)[0].names, [["node#cut", "filter", "cutoff"]]);
+  assert.deepEqual(repliesTo(w.out, 4)[0].names, [["node#det4", "vco", "detune"]]);
 });
 
 test("a first wiring is asked for the panel the last measurement named, and an engine without one sends none", async () => {
   const engine = benchEngine();
   const w = worker({}, {
-    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst"],
+    lifts: ["dispatch", "postLiveTree", "postBench", "performFirst", "knobNamesOf", "namesOf"],
     engine,
     stubs: { holdFloor: async () => {}, measure: async () => {} },
     prelude: ["let performControls;", "const treesSent = new Map([[4, \"(tree)\"]]);"],

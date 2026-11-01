@@ -1751,6 +1751,23 @@ control turns, so nothing you hear moves and a turned control keeps its
 place (unless the measurement closed the half it is on, where it stops at
 the centre).
 
+A control names the knobs it turns (its caption, its tooltip, the hood) as
+PATCH's rack names them, from the moment its sound opens (#532). Beside
+`first` the same three carry `names`, each knob of the tree's rack
+description as `[addr, module, label]` (`describe_of` for a pool member,
+`edit_describe` for the bench's tree), for any panel; main hands them to
+PERFORM with the tree (`namesKnown`). A preset voiced from memory at the
+click, before its `bench_opening`, is named from the rack shipped with its
+wiring (the file's `rack`). Else the bench's rack, once it holds the sound:
+main's `knobInfo` does not read it while the voices play a sound on its way
+to it (`voicesAheadOfRack`), when it is still the last sound's, and
+`rackChanged` repaints the controls in the frame after it lands. Else the
+knob's label alone (words.js `knobLabel`, the rack's labels by site, held
+to describe.rs by its unit test). They used to read the last sound's rack
+in that gap, and printed a knob's site where it had none ("cut · cut +1").
+The caption is two names, or one and how many more where two would run
+past 24 characters or say a word twice (`knobCaption`).
+
 No wiring lands under the hand (#304). A first measurement, a background
 re-check, a guess's measurement and a Take's all wait while a control or the
 XY pad is held, however still, and for 1.5 s after the last touch or release
