@@ -111,11 +111,12 @@ measured with audition clips, from quiver to the PATCH plate.
      (engine, #147): a clip per input slot (`PhraseSpec::clips`), a stream
      per slot each AUDIO IN reads by its own slot, and a render key that
      names each slot's clip when they differ. *Done* (web, #147): a capture
-     per device on its first listen, NEW CLIP per input, the worker's
-     `set_input_clip` and every slot's status (`clips`) on `ready`, a
-     capture's reply and a restore, the farm's phrase re-sent after one, and
-     PERFORM's key naming each slot's clip (`clips.js`). Open: the live
-     voices' stream per slot (#148).
+     per input on its first listen (one still on the one clip of a session
+     saved before inputs had their own included), NEW CLIP per input, the
+     worker's `set_input_clip` and every slot's status (`clips`) on
+     `ready`, a capture's reply and a restore, the farm's phrase re-sent
+     after one, and PERFORM's key naming each slot's clip (`clips.js`).
+     Open: the live voices' stream per slot (#148).
 4. **Web capture.** *Done* (web), the live face included (#104,
    `the square draws the input's live face…` in `audio_in.spec.js`)
    (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
@@ -144,8 +145,9 @@ measured with audition clips, from quiver to the PATCH plate.
      load and never saved, USE HEADPHONES under it and in its toast;
    - the clip on first listen (task 3's web half); *done*: 6 s of each input
      the bench reads once it carries a signal, sent as that input's own
-     (`set_input_clip`, #147); a module's NEW CLIP captures the input it
-     reads again;
+     (`set_input_clip`, #147), while no clip has been captured from it (in a
+     session saved before inputs had their own, an input on its one clip
+     too); a module's NEW CLIP captures the input it reads again;
    - the farm's phrase re-sent after a capture and after a restore that
      installs a clip; *done* (`farmResendPhrase`);
    - **held sounds** (task 6); *done* (the second web PR): the pool's tab

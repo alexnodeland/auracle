@@ -10,5 +10,6 @@
 - **NEW CLIP captures its own module's input,** even on a module that says
   *meter only*, and only the sounds on that input are rated again.
 - **Each input's clip is saved with your session** and comes back with it.
-  A session saved before this keeps its one clip for every input until you
-  press an input's NEW CLIP.
+  A session saved before this comes back with its one clip on every input,
+  and each input is still captured as its own the first time you play into
+  it, the input that clip came from too.

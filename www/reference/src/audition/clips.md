@@ -198,12 +198,14 @@ The web app captures a clip of each input the player plays into
 - **On an input’s first listen.** When an input a sound on the bench reads,
   or one lent to a recording (a CAPTURE’s RECORD, or RECORD AGAIN on a sound
   kept safe, `lend`), first carries a signal (over −50 dBFS RMS,
-  `CLIP_SIGNAL_DB`) while the engine still hears that input through the
-  reference, it records `CLIP_SECONDS` (6 s) of it, before the patch, at the
-  browser’s rate. Each input waits for its own signal, so a patch reading two
-  inputs has each captured when it is first played. The engine cuts a
-  capture to the phrase (about 5.05 s), so the capture leaves room over it; a
-  mono input is sent as one channel.
+  `CLIP_SIGNAL_DB`) while no clip has been captured from that input (the
+  engine hears it through the reference, or through the one clip of a
+  session saved before inputs had their own, below), it records
+  `CLIP_SECONDS` (6 s) of it, before the patch, at the browser’s rate. Each
+  input waits for its own signal, so a patch reading two inputs has each
+  captured when it is first played. The engine cuts a capture to the phrase
+  (about 5.05 s), so the capture leaves room over it; a mono input is sent as
+  one channel.
 - **On NEW CLIP**, whatever the input holds: a module’s NEW CLIP captures the
   input that module reads, whether the keys read it or its meter only.
 - It is sent to the engine worker as `set_input_clip` with the input’s slot,
@@ -218,8 +220,15 @@ capture of one input is that input’s own, not another’s. So in a new session
 an input that has not been listened to is heard through the reference, and
 the clip every input hears is the reference, unless a session saved before
 inputs had clips of their own brought its one clip back. Such a session’s
-inputs all hear that clip, so none is captured again by itself, as none was
-before; NEW CLIP gives an input its own.
+inputs all hear that clip until each has its own. Since the app never sets
+it, a captured clip that every input hears is always such a session’s, and
+an input heard through it has no clip captured from it: its first listen
+captures it (`clips.js`’s `firstListen` compares the input’s clip with the
+one every input hears, `clip` on `ready` and a restore’s `audition_clip`).
+Nothing tells which input the old clip came from, so that input is captured
+again too, at the cost of one capture and of measuring again the sounds
+that read it, in the background. An input with a clip of its own, captured
+in this session or restored as its own, is left alone.
 
 A silent capture is refused (see above) and changes nothing; the app shows the
 engine’s sentence and does not capture that input again by itself.

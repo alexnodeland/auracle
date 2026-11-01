@@ -2221,9 +2221,9 @@ the voices' input in the worklet, and each input's clip in the engine.
 - **The clips** (#147). Each input has a clip of its own: the engine
   measures a sound through the clip of each input slot it reads. On an
   input's first listen (an input the bench reads, or one lent for a
-  recording, over −50 dBFS, while the engine still hears that input through
-  the reference and has refused no capture of it since) or its module's NEW
-  CLIP (the input that module reads, the keys' or the meter's only),
+  recording, over −50 dBFS, while no clip has been captured from it and the
+  engine has refused no capture of it since) or its module's NEW CLIP (the
+  input that module reads, the keys' or the meter's only),
   `audio-in.js` records 6 s of that input's source through a one-shot
   `auracle-tap` worklet node (it ends its processor once its take is handed
   back, or dropped when the capture is cut short) and posts
@@ -2244,10 +2244,15 @@ the voices' input in the worklet, and each input's clip in the engine.
   carries the same two on itself. The app never sets that clip (the
   engine's `set_audition_clip`, which would take every slot's own away): it
   is the reference, or the one clip of a session saved before slots had
-  their own, which then stands for every input until its NEW CLIP (no
-  first listen captures an input that hears it, as none did before slots
-  had clips of their own). A refusal holds back that input's first listen
-  only, until its NEW CLIP.
+  their own, which every input hears until it has its own. So clips.js
+  counts an input as captured only when its clip is captured and is not
+  that one (`clips[s].id` against `clip`, read from `ready` and a restore
+  only, since a capture's reply's `clip` is its slot's), and an input still
+  on an older session's clip is captured on its first listen, the input
+  the clip came from too (nothing tells which it was); the members that
+  read it are measured again through that capture's reply, as for any
+  capture. A refusal holds back that input's first listen only, until its
+  NEW CLIP.
 - **The farm's phrase.** The phrase carries every slot's clip, so the worker
   sends the `phrase` handshake again to the crew standing after a clip is
   taken (`farmResendPhrase`), and in a staged restore right after
