@@ -25606,6 +25606,8 @@ function renderWarmStart(all) {
       warmPrewarmPump();
       warmCardsSend();
       $("warm-go").disabled = warmPicked.size !== 3;
+      // The third pick lights it: TEACH IT is the next step (#527).
+      $("warm-go").classList.toggle("lit", warmPicked.size === 3);
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
         : warmPicked.size === 0 ? "pick any three"
@@ -25615,6 +25617,7 @@ function renderWarmStart(all) {
     grid.appendChild(cell);
   });
   $("warm-go").disabled = true;
+  $("warm-go").classList.remove("lit");
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
   // Every deal starts with none picked. The last deal's picks used to stay
@@ -25626,9 +25629,24 @@ function renderWarmStart(all) {
   warmPrewarmPump();
   warmCardsSend();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
-  // Land on the first ▶: hearing comes before choosing.
-  grid.querySelector(".wi-play")?.focus();
+  // Land on the first ▶: hearing comes before choosing. On a touch screen it
+  // lands with no ring: moved there by a script with no key pressed yet, the
+  // focus wore the keyboard's ring on a phone (#527). Tab from there moves it
+  // on, ringed, as anywhere, and each stop scrolls clear of the foot that
+  // stays at the screen's foot (style.css, `#warmstart`'s scroll-padding,
+  // and the grid's `focusin` below).
+  grid.querySelector(".wi-play")?.focus(COARSE ? { focusVisible: false } : undefined);
 }
+
+// Firefox moves the keyboard's focus onto a card or ▶ that is partly in
+// sight without scrolling any of it: one half under the foot, or half above
+// the window's top with its ring cut off, stayed there (#527). Chromium
+// scrolls it into the room `#warmstart`'s scroll-padding keeps clear of the
+// foot; so does this, the rest of the way, in every engine. Only a focus with
+// a ring: a tap's focus stays where the finger put it.
+$("warm-grid").addEventListener("focusin", (e) => {
+  if (e.target.matches(":focus-visible")) e.target.scrollIntoView({ block: "nearest" });
+});
 
 // Hearing a preset means having it: the only way the engine can render one is
 // to insert it, and `load_preset` returns the existing id when the identical
