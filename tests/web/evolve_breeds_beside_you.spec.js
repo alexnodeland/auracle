@@ -189,9 +189,15 @@ async function askedAfter(app, pattern, t) {
 
 /** The last reply to `asked` (`app.replyTo`, an engine wait), with its place
  *  in the tap's one count of requests and replies (`_n`), to order it
- *  against another reply. */
-async function answerTo(app, asked, timeout) {
-  const reply = await app.replyTo(asked, { timeout });
+ *  against another reply. `why`: what it means when that reply never comes,
+ *  said ahead of the wait's own failure. */
+async function answerTo(app, asked, timeout, why) {
+  let reply;
+  try {
+    reply = await app.replyTo(asked, { timeout });
+  } catch (err) {
+    throw new Error(`${why}: ${err.message}`, { cause: err });
+  }
   const mine = (await app.replies(reply.type)).find((r) => [].concat(r.re).includes(asked.rid) && !r.more);
   return { ...reply, _n: mine._n };
 }
@@ -487,8 +493,9 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   // A ▶ on a row the page has never asked to hear, from the n-th on, so it
   // goes to the engine rather than to a buffer the page already holds: that
   // row's own render request, and the last reply to it (not the first render
-  // reply after the click, which can be a dealt card's).
-  const bankPlay = async (n) => {
+  // reply after the click, which can be a dealt card's). `why`: what it
+  // means when that reply never comes.
+  const bankPlay = async (n, why) => {
     const heard = new Set((await app.replies("render")).map((r) => r.id));
     const ids = await bankIds(page);
     const id = ids.slice(n).find((x) => !heard.has(x));
@@ -498,7 +505,7 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
     const t = await app.now();
     await row.locator(".bi-hear").click();
     const asked = await askedAfter(app, { type: "render", id }, t);
-    return { asked, reply: await answerTo(app, asked, 30_000) };
+    return { asked, reply: await answerTo(app, asked, 30_000, why) };
   };
   /** The id of the next walk the gate holds after the first `k`. */
   const heldWalk = async (k) => {
@@ -523,15 +530,17 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   const walk = await heldWalk(held);
 
   // While it walks: a deal in EVOLVE, and a bank row's ▶, each its own
-  // request's reply.
+  // request's reply, waited for with the walk still held. That wait is the
+  // proof neither waits for ⚡: one that did would never be answered here,
+  // and the wait fails saying so.
   await goLevel(page, "evolve");
   await expect(page.locator("#skip-duel")).toBeEnabled();
   const skipAt = await app.now();
   await page.locator("#skip-duel").click();
   await expect(page.locator("#choose-a")).toBeEnabled();
   const deal = await askedAfter(app, { type: "duel" }, skipAt);
-  const dealt = await answerTo(app, deal, 30_000);
-  const played = await bankPlay(12);
+  const dealt = await answerTo(app, deal, 30_000, "the deal waited for ⚡'s walk");
+  const played = await bankPlay(12, "the ▶ waited for ⚡'s walk");
   const dealMs = Math.round(dealt._at - deal._at);
   const playMs = Math.round(played.reply._at - played.asked._at);
   console.log(`during ⚡ (its walk held): deal ${dealMs} ms; ▶ ${playMs} ms`);
@@ -546,11 +555,13 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   // Let it land.
   const letAt = await app.now();
   await page.evaluate((i) => window.__pwLet(i), walk);
-  const first = await answerTo(app, evolve, 300_000);
+  const first = await answerTo(app, evolve, 300_000, "⚡ did not land once its walk was let through");
   expect(first.type).toBe("evolved_from");
-  // The deal and the ▶ were answered before ⚡ landed, by the tap's count
-  // (ADR-022: the order is the assertion). The ▶ cost its own render (its
-  // pending ring said so meanwhile); it used to wait for the whole walk.
+  // The deal and the ▶ were answered while the walk was held, and nothing of
+  // ⚡'s had landed then (above): that held wait is the proof. The tap's
+  // count records the same order (ADR-022: order, not milliseconds). The ▶
+  // cost its own render (its pending ring said so meanwhile); it used to
+  // wait for the whole walk.
   expect(dealt._n, "the deal waited for ⚡ to land").toBeLessThan(first._n);
   expect(played.reply._n, "the ▶ waited for ⚡ to land").toBeLessThan(first._n);
   console.log(`⚡ landed ${Math.round((first._at - letAt) / 100) / 10} s after its walk was let through: child ${first.childId}, reason ${first.reason}`);
@@ -573,7 +584,7 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   const walkAgain = await heldWalk(heldAgain);
   await page.locator("#job-stop").click();
   const stop = await askedAfter(app, { type: "refine_from_stop" }, againAt);
-  const stopped = await answerTo(app, again, 30_000);
+  const stopped = await answerTo(app, again, 30_000, "⚡'s stop was not answered");
   // The stopped walk let through at once, so a result could land: the stop
   // reaped its crew (worker.js `crewReap`), or the crew, still up, walks it
   // for nobody and the result is dropped as it lands. Which one is not
