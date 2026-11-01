@@ -125,11 +125,11 @@ is dashed, under the module it moves. The selected module (the one you pressed
 on, or the keyboard stands on) has its edge and name lit, and its **⋯** (its
 [structure menu](../rack.md#the--menu)) and **▢** (its lock) on its top edge,
 at the right; the others show them under the pointer. A locked module's edge is
-solid amber. Drawn smaller than its own size (a narrow window, a big patch,
-the catalog open beside it), each module's name prints larger, so at the fit
-it never reads smaller than the rest of the app's text, and the values and
-labels go once they would print smaller than the rack's own type; every knob
-is still there to turn. Zoomed out further by hand, each module keeps three of its knobs to
+solid amber. Under **detail: automatic** (the default), drawn smaller than
+its own size (a narrow window, a big patch, the catalog open beside it), each
+module's name prints larger, so at the fit it never reads smaller than the
+rest of the app's text, and the values and labels go once they would print
+smaller than the rack's own type; every knob is still there to turn. Zoomed out further by hand, each module keeps three of its knobs to
 read; zoom in for the rest. See [reading and editing the rack](../rack.md).
 
 **OUT and the face.** The amp's lead runs to **OUT**, and past it stands the

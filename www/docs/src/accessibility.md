@@ -285,10 +285,11 @@ map, and named in words everywhere they appear.
 The rack is the exception, because it’s drawn to its zoom. Its labels are 9 to
 13 px at 1×, and grow as you zoom in. A label that would print smaller than
 9 px, the rack's smallest at 1×, is left off, unless detail is set to full.
-A module's name prints larger wherever it would print under the panels'
-11 px, and the rack's fit stops where that larger name is 11 px, so no name
-at the fit is smaller (a patch too big to fit at that size pans). A glyph on a button (▶, ✓) is sized to its
-button.
+Under detail: automatic, a module's name prints larger wherever it would
+print under the panels' 11 px, and the rack's fit stops where that larger
+name is 11 px, so no name at the fit is smaller (a patch too big to fit at
+that size pans); under detail: full, every label prints at its own size. A
+glyph on a button (▶, ✓) is sized to its button.
 
 Your browser’s own zoom (<kbd>⌘+</kbd> and <kbd>⌘−</kbd>; Ctrl + and Ctrl −
 off a Mac) scales the whole page. Over the stage, <kbd>Ctrl</kbd> and the
