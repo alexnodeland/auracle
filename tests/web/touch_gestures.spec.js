@@ -29,7 +29,8 @@
 //   SOUND / TASTE switch at its top left or the time track along its foot,
 //   where a press is the control's (#573). A sound placed past every other's
 //   left and top sits below the switch, where a long press on it shows the
-//   model view and a tap opens it.
+//   model view and a tap opens it. (That the layout keeps every sound clear
+//   of both however crowded is taste-geom.test.mjs's; this, its wiring.)
 //
 // In Chromium the touches are the browser's own (CDP's
 // `Input.dispatchTouchEvent`), so pointer events, touch events and the click
@@ -332,10 +333,17 @@ test("a long press on a card, a bank row and a dot on TASTE's map shows the mode
 
 /** TASTE's map with one sound past every other's left and top, at the
  *  map's top left where the SOUND / TASTE switch stands, and six crowding
- *  in past the foot, where the time track runs; the rest where the engine
- *  put them. The corner is not the sound in hand, so a tap on it opens a
- *  sound. Returns the views, the same map mirrored (another moment) and
- *  the corner's id. */
+ *  in past the others' foot, toward the time track; the rest where the
+ *  engine put them. The corner lands at the switch's side of the map's top,
+ *  where the old frame drew it under the switch. The six crowd the foot,
+ *  but seldom far enough to have reached the track even on the old frame:
+ *  they check the wiring there (what a finger touches at the foot of the
+ *  map as drawn, and style.css's track where the frame expects it). The
+ *  layout's clamp at the foot, which keeps every sound off the track
+ *  however crowded, is taste-geom.test.mjs's to hold. The corner is not the
+ *  sound in hand (a row is live before this is called), so a tap on it
+ *  opens a sound. Returns the views, the same map mirrored (another moment)
+ *  and the corner's id. */
 function edgeViews(page) {
   return page.evaluate(() => {
     const v = JSON.parse(JSON.stringify(window.__tap.facts.views));
@@ -385,7 +393,10 @@ function marksOnMap(page, points) {
 
 /** The sound whose card a mouse pointing at `at` (on the page) brings up,
  *  or null: where TASTE draws a sound, read from the map itself, as
- *  taste_hold.spec.js reads it. The card goes down before and after. */
+ *  taste_hold.spec.js reads it. The card goes down before and after, and
+ *  the mouse leaves the map (the canvas and its well, as a real pointer
+ *  leaving fires on each), so the map's hand is not left held: places a
+ *  later views post brings are not kept waiting on it. */
 function soundAt(page, at) {
   return page.evaluate((at) => {
     const cv = document.getElementById("taste-crt");
@@ -395,17 +406,26 @@ function soundAt(page, at) {
     cv.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX: at.x, clientY: at.y }));
     const id = plate.classList.contains("on") ? Number(plate.dataset.id) : null;
     down();
+    for (const el of [cv, document.getElementById("taste-well")]) el.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
     return id;
   }, at);
 }
 
 test("every sound on TASTE's map can be touched: none is drawn under its SOUND / TASTE switch or its time track", async ({ page, app }) => {
   await app.boot();
-  await expect.poll(() => page.evaluate(() => (window.__tap.facts.views?.map?.points || []).filter((p) => p.id != null).length)).toBeGreaterThanOrEqual(8);
+  // The views main asks for once the app is playable: an engine's reply,
+  // which may wait behind a fill batch.
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => (window.__tap.facts.views?.map?.points || []).filter((p) => p.id != null).length), {
+    timeout,
+    message: "a map of 8 sounds or more",
+  }).toBeGreaterThanOrEqual(8));
   // Only the maps the test posts land from here.
   await app.hold([{ views: true }]);
   await goLevel(page, "taste");
   await landed(page);
+  // The sound in hand (its row live, once the engine answers boot's
+  // edit_begin), so the corner is another, and only the tap can open it.
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item.live")).toHaveCount(1, { timeout }));
   const { views, mirrored, corner, status } = await edgeViews(page);
   // Two new maps are two moments: the track along the foot shows.
   await app.inject({ type: "fitted", views: mirrored, status });
