@@ -144,8 +144,9 @@ the menu bar until it lands. While you play, what you hear is drawn over the
 face, and fades when the sound stops ([while you play
 it](../faces.md#while-you-play-it)). Coming to PATCH from another level, the
 face flies here from where that level drew it (or fades in, from a level that
-doesn’t draw it), and a sound opened from the bank flies here from its row
-once it is in your hands.
+doesn’t draw it). A sound opened from the bank while you’re here flies from
+its row to the sound in hand in the menu bar, and OUT shows its face once
+the rack is that patch.
 
 **Without this module.** Select a module and, over the face at OUT, a dashed
 outline shows the face of the patch without it: what that module does to the
