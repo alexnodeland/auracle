@@ -1,0 +1,40 @@
+### Fixed: PATCH reads at its fit on every screen, a phone's included
+
+- **A big patch opens at a size you can read, and the rest is a swipe
+  away.** The camera used to shrink the whole patch into the well whatever
+  that cost: on a phone held upright the seeded session's first sound drew
+  its fourteen modules as a thin band across the middle of the well, their
+  names under 3 px tall and their sockets 3 px across, and on a 1440 px
+  screen its names were under 8 px. Now the fit (on opening, and **FIT** or
+  ⇧Home) stops where every module's name is as large as the app's smallest
+  text, and a patch that is still too big shows where it starts, with the
+  rest past the well's right edge: drag or swipe to it, press the edge's
+  *n ›*, or open **MAP** to see it all. Once you've moved the camera over a
+  patch that big, with your hands or the keys, an edit leaves it where you
+  put it.
+- **Nothing on the rack is drawn too small to read.** Drawn smaller than
+  its own size, each module's name prints larger, and the knob labels, the
+  readouts and OUT's name step aside before they would print smaller than
+  the rack's own smallest type. Every knob is still there to turn.
+- **A finger reaches what it needs at the fit.** On a touch screen, a tap
+  on the rack beside a module's ⋯ or its lock is theirs, and a tap beside
+  an out ○ picks its cable up, as a tap right on them does, while a tap
+  anywhere else on a module's panel, or on its name, opens its settings,
+  however small the module is drawn. The face at OUT is at least 44 px
+  across, and on a phone held upright a toast over the rack is narrowed to
+  stand beside the edges' *n ›* and *‹ n* rather than across them
+  (`patch_fit.spec.js`, `toasts_keep_clear.spec.js`, #519).
+
+### Fixed: PATCH's structure menu and its ceilings stay out of the way
+
+- **A module's ⋯ menu opens where it fits.** Opened on a module low in the
+  well, the menu ran down over the well's foot, covering the readout about
+  that very module and TEACH. It now opens inside the well, upward when
+  there's no room below, and a menu taller than the well scrolls inside it.
+- **A patch at a ceiling no longer reads as an error.** A full budget in
+  the head (*6/6 depth*) was red, the color of danger, though nothing was
+  wrong. It's amber now, the whole count, where a budget one short shows
+  only its number in amber. Red is kept for an edit refused at a ceiling:
+  while the refusal is said, the count of the ceiling it would pass shows in
+  red, and only that one, and the refusal names the size and depth the patch
+  would have had (`patch_fit.spec.js`, #530).

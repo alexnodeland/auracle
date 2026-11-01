@@ -964,7 +964,10 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   no longer scaled by the frame's height), with its 8% band below the line.
   Above it, where the silkscreen floor takes the readouts (`data-illegible`
   `value`), the names and head settings print larger, as compact draws them
-  (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
+  (`svg.lod-compact`), and every knob stays a control. The floor is the
+  rack's own smallest type at 1× (`--t-rack-micro`, `SILK_FLOOR_PX`), and a
+  name under the app's type floor (`--t-label`, the `name` tier) prints
+  larger at any zoom under 1× (#519). Compact keeps AUDIO
   IN's and CAPTURE's lanes. Audio cables
   are level S-curves (`wirePathD`); a cable into a module placed behind its
   source by hand takes a right-angle run below both instead. The rack's
@@ -1011,9 +1014,29 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   counts it, so every fit shows it). Its slot is the bench's face
   (`setFaceSlot(..., "out", {tree: benchTreeJson})`), so it is never an
   estimate, and its press is the rack's ▶ (`playBench`, `playWaitCancel`).
-- **Fits** keep the well's own chrome clear (`fitBox`): the top line
-  (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open, the catalog
-  (`catalogReserve`), as they keep the scope's corner (`scopeReserve`).
+- **Fits** keep the well's own chrome clear (`fitRoom`, which `fitBox` frames
+  in): the top line (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open,
+  the catalog (`catalogReserve`), as they keep the scope's corner
+  (`scopeReserve`). A fit of the whole patch stops at the readable zoom
+  (`fitRead`, where a name printed larger is at `--t-label`, about 0.65×;
+  #519): a patch that does not fit there shows where it starts (its sources)
+  and its top, and the rest pans. After an edit to such a patch (`aimCamera`,
+  `fitHolds` in the same room), a camera aimed anywhere but that fit is left
+  where it is, aimed by a hand (`viewUserSet`) or by the keys
+  (`ensureRackVisible`'s pans and ".", `viewAimed`); another sound
+  (`benchOpens`) is framed as any patch is.
+  On a touch screen a tap on bare panel beside an out ○, or on the rack (or
+  the pocket) beside a module's ⋯ or its lock, is that control's by
+  reach.js's rule, among them all and every socket (`tapReach`, asked by
+  patch.js's tap before the module's sheet opens): the cable picked up, the
+  menu opened, the module locked. A plate's panel and name stay its
+  module's (its sheet): ⋯ and the lock do not reach over a plate, and the
+  faceplate has a click listener so a touch screen's own aim, which moves a
+  tap onto the nearest thing that answers one, keeps a tap on it there.
+  ⋯'s and the lock's own pads are 44 units across and 22 tall, on the
+  pocket's line, and never grown with the camera, so they stay off a
+  neighbour's sockets and their own module's name (patch_fit checks each at
+  the phone's fit).
 - **The selection** (`plateSel`, set by a press on bare panel in the rack's
   pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
   both of a module's groups `.selected`; the readout (`renderSpecDock` into
@@ -1039,7 +1062,9 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for
-  `openStructMenu`. Esc closes one thing a press. Whatever floats spends
+  `openStructMenu`, which opens inside the well, clear of its foot, upward
+  where there is no room below, and cut to the well's height, scrolling,
+  where it is taller (`showMenu`'s `place`, `wellRoom`; #530). Esc closes one thing a press. Whatever floats spends
   it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
   pop-up, the scope or picture panel, the bank tour, KEYS ⋯, a
   context menu; main's Esc chain closes all that are open together, and
@@ -2493,6 +2518,23 @@ while it is on the toast (the lane's own pointerenter and pointerleave, and
 touch screen leaves `:hover` on what a finger last tapped, and read alone it
 held the banner over the XY pad opened under it after a tap on its words.
 
+On a phone held upright, a banner across the screen that meets a control
+standing along a picture's side is first narrowed to the picture's inside
+between such controls (`bannerColumn` in toasts.js: a control within the
+picture's height, at least half as tall, reaching to within `LANE_INSET`
+of a side), still clear of every control and the guide pill. That is
+PATCH's rack while the patch is wider than the well (#519): its edges
+(*n ›*, *‹ n*) run down the well's sides from 48 px below its top to 48 px
+above its foot, and a banner across the screen meets them at every height
+but the well's top, 32 px of free band where one row needs 46. The banner
+stands left of *n ›*, over the rack's floor above its foot: at 21 to 325
+px across at 390 × 844 (the edge from 333) and 21 to 310 at 375 × 667
+(from 318), and between the two edges once the camera is inside the patch
+(65 to 310 at 375 × 667). On PATCH's first visit its steps stay in sight
+in the pill under the well, which the banner across the screen stood over
+before. No other picture has such a control, so what follows is as it
+was for every other level.
+
 With no spot free of every control (a level crowded at its size), it
 steps down until one is:
 
@@ -2511,7 +2553,10 @@ steps down until one is:
    nearest its corner first, down to `LANE_NARROWEST` (240 px): PERFORM's
    well on a phone on its side, a little narrower than a toast, with the
    controls filling the rest;
-4. then it keeps clear of the strips and panels, as it did before #517,
+4. on a phone held upright, the banner in a picture's column again (above),
+   over the guide pill now, at its own shape and then, in a column
+   `LANE_NARROWEST` or wider, one row;
+5. then it keeps clear of the strips and panels, as it did before #517,
    and failing that stands in its corner.
 
 The last rung is reached with the keys' drawer up on a small phone: PERFORM
@@ -2527,19 +2572,23 @@ floor of PERFORM's well under its face, and on EVOLVE the free band nearest
 the top, under the cards' corners, where no thumb starts the swipe that
 picks. Over one picture (PERFORM's well, the rack, TASTE's map) it is
 narrowed to the picture's inside, as a caption is, rather than laid across
-its frame (`insetBanner`). Its counter keeps to its words' row where the
-row has room for it. A swipe up puts it away. It used to stand just under
-the menu bar, over PERFORM's share button and KEEP/BACK, EVOLVE's pips and
-its small TASTE map. On a phone on its side a banner as wide as the screen
-finds no band clear of the controls beside the well, so the toast there is
-as wide as its words and placed as on a desk, left of the levels' stops.
+its frame (`insetBanner`), and over the rack with PATCH's edges up, to the
+part between them (`bannerColumn`, above). Its counter keeps to its words'
+row where the row has room for it. A swipe up puts it away. It used to
+stand just under the menu bar, over PERFORM's share button and KEEP/BACK,
+EVOLVE's pips and its small TASTE map. On a phone on its side a banner as
+wide as the screen finds no band clear of the controls beside the well, so
+the toast there is as wide as its words and placed as on a desk, left of
+the levels' stops.
 `toasts_keep_clear.spec.js` holds all of this at 1440 × 900, 1280 × 720,
 820 × 1180, 390 × 844, 375 × 667 and 844 × 390.
 
 The controls drawn on TASTE's map and PATCH's rack are not kept clear of
 (`LANE_SURFACES`): their sounds and modules reach to every corner, and there
-is nowhere clear of them to go. On TASTE a toast lets the pointer through to
-the sound under it, and only its buttons and links take a click (#412).
+is nowhere clear of them to go. PATCH's edges are not drawn on the rack but
+stand over it in its frame, and are kept clear of like any control. On TASTE
+a toast lets the pointer through to the sound under it, and only its buttons
+and links take a click (#412).
 
 A toast that reports a change to the player's sounds (`bank: true`: a sound
 joined or left the pool, or was saved or released) has its turn whatever
