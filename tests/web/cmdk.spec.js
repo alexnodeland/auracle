@@ -141,14 +141,12 @@ test("⌘K and Ctrl K open the list over any level, its own commands first, at o
 });
 
 test("the key draws the rows in sight at once and the rest after, the list at its whole height from the first frame", async ({ page, app }) => {
+  // A window of a known height: its list shows about twenty lines, and
+  // PERFORM's list holds over fifty, which this test needs.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await app.boot();
-  // Opened once, so the list has measured its rows.
-  await page.keyboard.press("Meta+k");
-  await expect(list(page)).toBeVisible();
-  await listWhole(page);
-  await page.keyboard.press("Escape");
   // In the key's own task: the rows the list can show, the first chosen.
-  const at = await page.evaluate(() => {
+  const opened = () => page.evaluate(() => {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", metaKey: true, bubbles: true }));
     const ul = document.getElementById("cmdk-list");
     const rows = [...ul.querySelectorAll(".cmdk-it")];
@@ -166,12 +164,21 @@ test("the key draws the rows in sight at once and the rest after, the list at it
       first: rows[0].id,
     };
   });
+  const first = await opened();
+  // The rest come after the rows the key drew: counted before anything
+  // waits on what a row says of the whole list.
+  await expect.poll(() => options(page).count(), { message: "the key drew the rows in sight, and the rest came after" }).toBeGreaterThan(first.drawn);
+  await listWhole(page);
+  expect(first.whole, "each row said how long the whole list is").toBe(await options(page).count());
+  expect(first.fills, "the rows drawn fill the list").toBe(true);
+  expect(first.footIn, "the list's foot is inside the dialog while the list fills").toBe(true);
+  expect(first.places).toEqual(first.places.map((_, i) => i + 1));
+  expect(first.chosen).toBe(first.first);
+  await page.keyboard.press("Escape");
+  // Opened again, with its rows measured: the list stood at the height the
+  // rest take.
+  const at = await opened();
   expect(at.drawn, "the key drew the rows in sight, not every row").toBeLessThan(at.whole);
-  expect(at.fills, "the rows drawn fill the list").toBe(true);
-  expect(at.footIn, "the list's foot is inside the dialog while the list fills").toBe(true);
-  expect(at.places).toEqual(at.places.map((_, i) => i + 1));
-  expect(at.chosen).toBe(at.first);
-  // The rest come after, and the list stood at the height they take.
   await expect(options(page)).toHaveCount(at.whole);
   const whole = await page.evaluate(() => {
     const ul = document.getElementById("cmdk-list");
