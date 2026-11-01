@@ -395,7 +395,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     after its fast lane is green.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
-    at most ten minutes for company. One batch is tested at a time.
+    at most six minutes for company, counted from its first PR's entry. A
+    wave's PRs are queued together, in groups of up to three, so they share
+    a batch ([Waves](#waves)). One batch is tested at a time.
   - Green, the queue squash-merges each PR of the batch on its own, the head
     that was tested, so nothing pushed after the check merges unchecked. Each
     commit is `<title> (#<n>)` with the PR's commit messages. The queue never pushes to

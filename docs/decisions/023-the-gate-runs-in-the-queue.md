@@ -37,9 +37,11 @@ mutant of the Rust the PR changed that survives keeps it out of the queue
 ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
 Both are Mergify's queue conditions, not the ruleset's. Since #260, a batch
 waits ten minutes for company, not three: on 2026-10-06, with three, ten of
-fifteen batches held one PR (`.mergify.yml` says why). Since #272, the
-view-to-spec map the consequences ask for is local: `make browser-changed`
-runs the specs of the views a `main.js` change draws; in CI such a change
+fifteen batches held one PR (`.mergify.yml` says why). Since #583, it waits
+six: in the three days before 2026-11-01, 29 lone PRs waited about ten minutes
+each for a partner that did not come, and the operator now queues a wave's PRs
+as a group. Since #272, the view-to-spec map the consequences ask for is
+local: `make browser-changed` runs the specs of the views a `main.js` change draws; in CI such a change
 still gets only the smoke before the queue. Since #456, the fast lane also
 burns in the spec files a PR adds or edits: three times each, on up to
 three runners of their own sized by `main`'s times (*Burn-in*), inside the
