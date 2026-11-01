@@ -17,8 +17,10 @@
 # check failed or timed out, a full-ci PR's Slow suite failed or was
 # cancelled) or closes or merges, or when a full-ci PR's gates are green and
 # its Slow suite never ran: no PR waits for the rest while the rest wait for
-# it. A PR that is merely slow is waited for, a cancelled run included (a
-# newer run may not have its check yet).
+# it. A PR that is merely slow is waited for. So is a cancelled run of a
+# gate, and a cancelled Slow suite until a second poll still shows it: a
+# newer run may not have its check yet (opening a PR with `full-ci` starts
+# two runs of the Slow suite, and the second cancels the first).
 #
 #   --drop-red   leave such a PR out, say so, and queue the rest. The exit
 #                is 1 only when nothing is left, or a PR could not be queued.
@@ -91,9 +93,10 @@ limit=$(awk -v h="$hours" 'BEGIN { l = int(h * 3600); print (l < 1 ? 1 : l) }')
 live=$prs     # the PRs still in the group
 left_out=""   # "#N <why>, ..." for those --drop-red dropped
 shown=""      # the last progress line
+cancelled=""  # the PRs whose Slow suite showed as cancelled on the last poll
 unread=0      # polls running in which some PR could not be read
 while :; do
-  ready="" waiting="" stop_n="" stop_msg="" cant=""
+  ready="" waiting="" stop_n="" stop_msg="" cant="" cancelled_now=""
   for n in $live; do
     if ! json=$(gh -R "$repo" pr view "$n" --json state,labels,statusCheckRollup 2>"$tmp/err"); then
       cant="$cant #$n"
@@ -109,12 +112,19 @@ while :; do
       status=(--run-status "${s:-unknown}")
     fi
     what=$(printf '%s' "$json" | python3 "$here/queue_state.py" --ready ${status[@]+"${status[@]}"})
+    # A cancelled Slow suite stops the group only when the last poll showed
+    # it too; the first time it is waited on.
+    if [ "$what" = "Slow suite cancelled" ]; then
+      cancelled_now="$cancelled_now $n"
+      case " $cancelled " in *" $n "*) ;; *) what="" ;; esac
+    fi
     case "$what" in
       "") waiting="$waiting #$n" ;;
       ready) ready="$ready #$n" ;;
       *) stop_n="$stop_n $n"; stop_msg="$stop_msg${stop_msg:+, }#$n $what" ;;
     esac
   done
+  cancelled=$cancelled_now
 
   if [ -n "$stop_n" ]; then
     if [ $drop_red = 0 ]; then

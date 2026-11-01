@@ -227,6 +227,32 @@ class QueueGroup(unittest.TestCase):
                 self.assertIn(f"stopped at #12 {why}", done.stderr)
                 self.assertNothingQueued(calls)
 
+    def test_a_cancelled_slow_suite_stops_the_group_when_a_second_poll_shows_it_too(self):
+        # Opening a PR with full-ci starts two Slow suite runs and the second
+        # cancels the first: for a moment the cancelled one is all there is.
+        cancelled = pr(*gates(), *slow(conclusion="CANCELLED"), labels=("full-ci",))
+        done, calls = self.group("11", "12", views={11: [GREEN], 12: [cancelled]}, runs={300: ["completed"]})
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn("stopped at #12 Slow suite cancelled", done.stderr)
+        self.assertEqual([c[2] for c in calls if c[:2] == ["pr", "view"]], ["11", "12", "11", "12"])
+        self.assertNothingQueued(calls)
+
+    def test_a_cancelled_slow_suite_replaced_by_a_green_one_is_not_a_stop(self):
+        cancelled = pr(*gates(), *slow(run=300, conclusion="CANCELLED"), labels=("full-ci",))
+        replaced = pr(*gates(), *slow(run=300, conclusion="CANCELLED"), *slow(run=301), labels=("full-ci",))
+        done, calls = self.group("11", "12", views={11: [GREEN], 12: [cancelled, replaced]}, runs={300: ["completed"], 301: ["completed"]})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "queued: #11 #12\n")
+        self.assertQueued(calls, 11, 12)
+
+    def test_a_cancelled_slow_suite_is_forgotten_when_the_next_poll_shows_it_running(self):
+        # Cancelled, running, cancelled, running (and so on): never two polls in a row.
+        cancelled = pr(*gates(), *slow(conclusion="CANCELLED"), labels=("full-ci",))
+        again = pr(*gates(), *slow(run=301, status="IN_PROGRESS"), labels=("full-ci",))
+        done, calls = self.group("12", "--for", "0.0005", views={12: [cancelled, again, cancelled, again]}, runs={300: ["completed"], 301: ["in_progress"]})
+        self.assertEqual(done.returncode, 2, done.stderr)
+        self.assertNothingQueued(calls)
+
     def test_drop_red_queues_the_rest_and_says_who_was_left_out(self):
         views = {11: [GREEN], 12: [pr(*gates(ci="FAILURE"), labels=())], 13: [WAITING, GREEN]}
         done, calls = self.group("--drop-red", "11", "12", "13", views=views)
