@@ -39,8 +39,10 @@
 //   keep the face they had until it lands, and show the new one, drawn
 //   whole, the frame it is gone. No frame shows the well or the chip empty,
 //   more than one face in the well, or the new face at rest in the hand
-//   while it still flies. A preset the pool doesn't hold, opened from
-//   PRESETS, flies the same way while the engine loads it. A face on an
+//   while it still flies. A sound picked in ⌘K's list flies from its bank
+//   row the same way, while the bank shows that row. A preset the pool
+//   doesn't hold, opened from PRESETS, flies the same way while the engine
+//   loads it. A face on an
 //   EVOLVE card opened by its body, or by ↓ patch as the levels move to
 //   PATCH, flies from the card the same way, into the menu bar's chip.
 // - A second sound opened while the first still flies (40 or 120 ms later)
@@ -540,6 +542,33 @@ test("opening a sound from the bank flies one face into the well, and the well i
   const [taken] = await app.marks("taken-up", { after: t0 });
   expect(taken.detail.level).toBe("perform");
   near(taken.detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
+});
+
+test("a sound picked in ⌘K's list flies from its bank row into the well the same way", async ({ page, app }) => {
+  await performWithFaces(app);
+  const { row, name } = await rowToOpen(page);
+  const id = await row.getAttribute("data-id");
+  // The bank shows its row whole, as the guide says the flight needs.
+  expect(await page.evaluate((i) => {
+    const a = document.getElementById("bank-list").getBoundingClientRect();
+    const b = document.querySelector(`#bank-list .bank-item[data-id="${i}"]`).getBoundingClientRect();
+    return b.height > 0 && b.top >= a.top - 1 && b.bottom <= a.bottom + 1;
+  }, id), "the row is in the bank's view").toBe(true);
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type(name);
+  await expect(page.locator("#cmdk-list .cmdk-it").first().locator(".cmdk-lab")).toHaveText(name);
+  const t0 = await app.now();
+  const seen = await watchOpen(page, "#cmdk-list .cmdk-it");
+  expect(seen.task.flying, "the face flies in the pick's own task").toBe(true);
+  expect([seen.task.well, seen.task.chip], "the hand keeps its face while the new one flies").toEqual(["old", "old"]);
+  expect([seen.task.title, seen.task.name], "PERFORM's title and the menu bar's name, in the pick's task").toEqual([name, name]);
+  expect(seen.emptyWell, `frames with the well empty, of ${seen.frames}`).toBe(0);
+  expect(seen.emptyChip, `frames with the menu bar's chip empty, of ${seen.frames}`).toBe(0);
+  expect(seen.manyInWell, "frames with more than one face in the well").toBe(0);
+  expect(seen.twice, "frames with the new face at rest in the hand while it still flies").toBe(0);
+  expect(seen.landed, "the frame the flight is gone, the well and the chip show the new face").toEqual({ well: "new", chip: "new" });
+  const [taken] = await app.marks("taken-up", { after: t0 });
+  expect(taken.detail.level).toBe("perform");
 });
 
 test("a second sound opened while the first still flies flies alone, and the hand never shows the first at rest", async ({ page, app }) => {
