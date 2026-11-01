@@ -76,7 +76,7 @@
 // then), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
-const { rackAtRest } = require("./patch_page");
+const { rackAtRest, walkRightEdge } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
 // The lists a finger scrolls (a phone's own lists do): nothing else may.
@@ -433,12 +433,8 @@ test.describe("PATCH under a finger, 390 × 844", () => {
     await patchOnAPhone(page, app);
     // The fit shows where the patch starts: the well's right edge carries the
     // camera to OUT, a module a press.
-    const edge = page.locator("#pt-edge-r");
-    await expect.poll(async () => {
-      if (await edge.isVisible()) await edge.tap();
-      return edge.isVisible();
-    }, { timeout: 30_000, intervals: [600] }).toBe(false);
-    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    await walkRightEdge(app);
+    await expect(page.locator("#pt-edge-r")).toBeHidden();
     // The ▶ at OUT: 21 px from its middle each way is still its.
     const ring = await page.locator("#rack-play").evaluate((b) => {
       const r = b.getBoundingClientRect();

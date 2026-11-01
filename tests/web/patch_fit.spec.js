@@ -41,7 +41,7 @@
 //   again after; an edit refused for the size instead turns the size's count
 //   red, shown though it is far from its ceiling, and leaves the depth amber.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
-const { rackAtRest, settled } = require("./patch_page");
+const { rackAtRest, settled, walkRightEdge } = require("./patch_page");
 
 const TYPE_FLOOR = 11; // --t-label
 const RACK_FLOOR = 9; // --t-rack-micro
@@ -279,12 +279,9 @@ test.describe("a phone, 390 × 844", () => {
     // The edge carries the camera along, to OUT: the face there is a
     // finger's size. FIT frames the patch as it opened again.
     const fitted = await viewBox(page);
-    const edge = page.locator("#pt-edge-r");
     // Each press brings the nearest module past it to the middle.
-    await expect.poll(async () => {
-      if (await edge.isVisible()) await edge.tap();
-      return edge.isVisible();
-    }, { timeout: 30_000, intervals: [600] }).toBe(false);
+    await walkRightEdge(app);
+    await expect(page.locator("#pt-edge-r")).toBeHidden();
     await expect.poll(() => page.evaluate(() => {
       const f = document.getElementById("rack-scroll").getBoundingClientRect();
       const p = document.getElementById("rack-play").getBoundingClientRect();
