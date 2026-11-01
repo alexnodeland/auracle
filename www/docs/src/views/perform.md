@@ -41,7 +41,10 @@ down*), never one it can’t reach. On a sound none of the controls reach
 it again on a sound one of them turns. When the steps it shows are done, it
 says what the loop was (*That is the loop. Every offer you hear, then take or
 pass, teaches it what you like.*) and goes. It says that only once, so a turn
-it comes back for later just ticks off. Its **×** stops it showing.
+it comes back for later just ticks off. Its **×** stops it showing. When
+PERFORM has no other room for a toast (on a small phone, or with the XY pad or
+HOW IT WORKS filling the well), the pill steps aside while the toast stands in
+its place, and comes back, **×** and all, when the toast goes.
 
 ## What you see
 

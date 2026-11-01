@@ -4866,7 +4866,9 @@ html:not(.engineer) .dn-sig { display: none; }
 .duel-centre { display: flex; flex-direction: column; align-items: center; gap: var(--s1); }
 
 /* ---------- toasts & the alarm strip ---------- */
-/* One lane, top-right of the rack frame, positioned by `positionToastLane`.
+/* One lane, placed by `positionToastLane` in the free spot nearest the
+   stage's bottom right, clear of every control where the level leaves one
+   (toasts.js `placeLane`; web-runtime.md § Toasts for where it does not).
    It used to stack up from the bottom centre — straight over PICK A / PICK B,
    so the recovery affordance obscured the app's core teaching action. The
    z-index is deliberately BELOW anything holding a pressed state or a teaching
@@ -6507,6 +6509,14 @@ g.performed .knob-value { fill: var(--phos-b); }
    shows on PERFORM, and PERFORM keeps it a row of room under the well. */
 .guide { position: absolute; left: var(--s5); bottom: var(--s4); z-index: 6; max-width: calc((100% - var(--rail-w)) / 2 - var(--s5)); }
 .guide.hidden, body:not([data-level="perform"]):not([data-level="patch"]) .guide { display: none; }
+/* Where a level has no other room for a toast (PERFORM on a small phone, or
+   with the XY pad or HOW IT WORKS filling the well), the pill gives way
+   while the toast stands over it, its place kept (main.js `laneOverGuide`):
+   unseen and out of the pointer's way, its × out of reach, and its step
+   still a status a screen reader hears as it comes up (hidden whole, it
+   left the accessibility tree, and a step that came up then went unsaid). */
+.guide.under-toast { opacity: 0; pointer-events: none; }
+.guide.under-toast button { visibility: hidden; }
 /* PATCH leaves the pill a row under its well, as PERFORM does. */
 /* Each room for the pill is asked of the stage, whose child the pill is,
    and of its children only: asked of body, it was asked again across the
@@ -8424,13 +8434,15 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   body * { -webkit-tap-highlight-color: transparent; }
 }
 
-/* A word on a phone stands just under the menu bar, never over it: as wide
-   as its words up to the screen's, on one or two lines with the action
-   beside them (or under them when they need the room). The lane shows one
-   at a time (toasts.js), so no stack grows down over the level. A swipe up
-   puts it away (main.js). */
+/* A word on a phone held upright is a banner across the screen, in the
+   free band of the level nearest its foot (main.js `positionToastLane` sets
+   its top, and over a picture its sides): as wide as its words up to the
+   screen's, on one or two lines with the action beside them (or under them
+   when they need the room). The lane shows one at a time (toasts.js), so no
+   stack grows over the level. A swipe up puts it away (main.js), on a phone
+   on its side too. */
 @media (max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px) {
-  .toasts { left: calc(var(--s2) + env(safe-area-inset-left, 0px)); right: calc(var(--s2) + env(safe-area-inset-right, 0px)) !important; align-items: flex-end; z-index: 39; }
+  .toasts { left: calc(var(--s2) + env(safe-area-inset-left, 0px)); right: calc(var(--s2) + env(safe-area-inset-right, 0px)); align-items: flex-end; z-index: 39; }
   .toast {
     max-width: 100%;
     flex-wrap: wrap;
@@ -8452,8 +8464,23 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   }
   .toast-undo { flex: none; margin-left: auto; min-height: 36px; white-space: nowrap; }
   .toast-stack { flex: none; }
+  /* The counter keeps to the words' row where it has room (the words keep
+     9em beside the action): on a row of its own it made the banner a row
+     taller for two characters. */
+  .toast:has(> .toast-stack:not(.hidden)) .toast-msg { flex-basis: 9em; }
+  /* Where no band of the level holds the banner at its own shape, it is one
+     row (main.js `positionToastLane`'s rungs): its words, two lines at most
+     (`.toast-msg`'s clamp above), beside its action rather than over it. */
+  .toasts.tight .toast { flex-wrap: nowrap; }
+  .toasts.tight .toast-msg { flex: 1 1 0; }
   .toast.swiped { transform: translateY(-120%); opacity: 0; transition: transform var(--d-move) var(--e-settle), opacity var(--d-move) var(--e-settle); }
   .model-tag { max-width: calc(100vw - 2 * var(--s3)); }
+}
+/* On a phone on its side the toast is not a banner: it stands where it is
+   free, as on a desk (main.js `positionToastLane`), as wide as its words up
+   to a desk's toast. */
+@media (max-height: 500px) and (max-width: 999px) {
+  .toast { max-width: min(360px, 62vw); }
 }
 
 /* The keys' drawer, a phone held upright: one row of its controls (the
