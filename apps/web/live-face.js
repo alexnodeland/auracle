@@ -19,7 +19,8 @@
 //   bands), however many faces show it, into buffers made once. It runs only
 //   while something is played or a trace is still fading, and draws only the
 //   faces on screen; under reduced motion it never runs, and the faces stay
-//   still.
+//   still. What each frame draws is decided here; the canvas calls are
+//   live-paint.js's.
 //
 // ADR-012: what moves is a measurement of what is heard, never a guess. A face
 // listens only to the signal that is its own sound (main.js says which: the
@@ -29,6 +30,11 @@
 // analysers, which are handed in, so it is unit-tested (tests/live-face.test.mjs).
 import { FACE_BANDS, FACE_FRAME, createLiveMeter, whiten, smooth } from "./faces.js";
 import { tint } from "./vessel.js";
+// Under this module's own stamp, as the other modules ask for theirs.
+const { tracePoints, paintFade, paintStrokes, paintLayer, FADE_NONE, FADE_STEP, FADE_CLEAR } = await import(
+  `./live-paint.js${new URL(import.meta.url).search}`
+);
+export { tracePoints };
 
 /** How loud, as the mock reads it: −42 dBFS (RMS) is nothing, −8 is all. */
 export const LIVE_QUIET_DB = -42;
@@ -74,7 +80,9 @@ export function createTrace() {
     lit: new Float64Array(FACE_BANDS), // the face's own outline, smoothed
     litFace: null, // what `lit` was taken of
     litStats: null,
-    pts: new Float64Array(FACE_BANDS * 4), // a vessel's points, x and y
+    // The frame's two outlines, to paint (`traceStrokes`): the vessel's own,
+    // lit, then what sounds; each its points (x and y), color, width and glow.
+    strokes: [0, 1].map(() => ({ pts: new Float64Array(FACE_BANDS * 4), style: "", width: 0, shadow: "", blur: 0 })),
     has: false, // `live` holds the last frame's
     loud: 0, // how loud, eased (the mock's `s.loud`)
     loudAt: -Infinity, // when it last heard a sound
@@ -115,24 +123,21 @@ export function traceHear(tr, reading, stats, now) {
  *  the whole canvas is cleared outright, once. `color` is only for its
  *  alpha. */
 export function traceFade(ctx, tr, x, y, w, h, now, still, color) {
-  if (still || now - tr.loudAt > LIVE_CLEAR_MS) {
-    if (!tr.cleared) clearAll(ctx);
-    tr.cleared = true;
-    return;
-  }
-  tr.cleared = false;
-  ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.fillStyle = tint(color, LIVE_FADE);
-  ctx.fillRect(x, y, w, h);
-  ctx.restore();
+  const step = traceFadeStep(tr, now, still);
+  paintFade(ctx, step, x, y, w, h, step === FADE_STEP ? tint(color, LIVE_FADE) : "");
 }
 
-function clearAll(ctx) {
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.restore();
+/** What `traceFade` does this frame, decided (live-paint.js paints it):
+ *  `FADE_CLEAR` once a moment after the last sound (or at once, `still`),
+ *  `FADE_NONE` after that, and `FADE_STEP` while the trail fades. */
+export function traceFadeStep(tr, now, still) {
+  if (still || now - tr.loudAt > LIVE_CLEAR_MS) {
+    const step = tr.cleared ? FADE_NONE : FADE_CLEAR;
+    tr.cleared = true;
+    return step;
+  }
+  tr.cleared = false;
+  return FADE_STEP;
 }
 
 /** A vessel's outline points into `out` (`[x0, y0, x1, y1, …]`): exactly
@@ -155,18 +160,6 @@ export function pointsInto(out, dev, box, scale = 1) {
   return out;
 }
 
-/** The path of points made by `pointsInto` (`m` of them), joined as vessel.js
- *  `traceVessel` joins them: quadratic curves through their midpoints. */
-export function tracePoints(ctx, p, m) {
-  ctx.beginPath();
-  ctx.moveTo((p[2 * (m - 1)] + p[0]) / 2, (p[2 * (m - 1) + 1] + p[1]) / 2);
-  for (let i = 0; i < m; i++) {
-    const k = (i + 1) % m;
-    ctx.quadraticCurveTo(p[2 * i], p[2 * i + 1], (p[2 * i] + p[2 * k]) / 2, (p[2 * i + 1] + p[2 * k + 1]) / 2);
-  }
-  ctx.closePath();
-}
-
 /** The face's own outline, against the bank and smoothed as stage mode lights
  *  it, taken again only when the face or the bank changed. */
 function litOf(tr, face, stats) {
@@ -183,26 +176,29 @@ function litOf(tr, face, stats) {
  *  lit by how loud it is, then, where the face is large enough (`trace`),
  *  what sounds now in silk. In `color` (the face's: the sound's green, B's
  *  amber), its lines and glow at `scale` (1: stage mode's), at `dim`. */
-export function traceDraw(ctx, tr, { face, stats, box, color, silk, scale = 1, dim = 1, trace = true }) {
-  const n = FACE_BANDS;
-  const loud = tr.loud;
+export function traceDraw(ctx, tr, opts) {
   tr.cleared = false;
-  ctx.save();
-  tracePoints(ctx, pointsInto(tr.pts, litOf(tr, face, stats), box), 2 * n);
-  ctx.strokeStyle = tint(color, (0.12 + 0.55 * loud) * dim);
-  ctx.lineWidth = Math.max(1, 2 * scale);
-  ctx.shadowColor = tint(color, 0.9 * dim);
-  ctx.shadowBlur = (18 + loud * 56) * scale;
-  ctx.stroke();
-  if (trace) {
-    tracePoints(ctx, pointsInto(tr.pts, smooth(tr.live, 1, tr.sm), box), 2 * n);
-    ctx.strokeStyle = tint(silk, 0.95 * dim);
-    ctx.lineWidth = Math.max(1, (1.6 + loud * 1.6) * scale);
-    ctx.shadowColor = tint(color, 0.95 * dim);
-    ctx.shadowBlur = (10 + loud * 30) * scale;
-    ctx.stroke();
-  }
-  ctx.restore();
+  paintStrokes(ctx, tr.strokes, traceStrokes(tr, opts));
+}
+
+/** What `traceDraw` paints, decided into `tr.strokes` (live-paint.js
+ *  `paintStrokes` paints them): how many, 1 or 2. */
+export function traceStrokes(tr, { face, stats, box, color, silk, scale = 1, dim = 1, trace = true }) {
+  const loud = tr.loud;
+  const lit = tr.strokes[0];
+  pointsInto(lit.pts, litOf(tr, face, stats), box);
+  lit.style = tint(color, (0.12 + 0.55 * loud) * dim);
+  lit.width = Math.max(1, 2 * scale);
+  lit.shadow = tint(color, 0.9 * dim);
+  lit.blur = (18 + loud * 56) * scale;
+  if (!trace) return 1;
+  const now = tr.strokes[1];
+  pointsInto(now.pts, smooth(tr.live, 1, tr.sm), box);
+  now.style = tint(silk, 0.95 * dim);
+  now.width = Math.max(1, (1.6 + loud * 1.6) * scale);
+  now.shadow = tint(color, 0.95 * dim);
+  now.blur = (10 + loud * 30) * scale;
+  return 2;
 }
 
 /** How far past its box a face's trace can reach, at `scale`: its widest
@@ -258,18 +254,41 @@ export function createLiveFaces({
   let frameNo = 0;
   let pending = false;
   const counts = { frames: 0, reads: 0, measures: 0 };
-
   function add({ place }) {
+    const tr = createTrace();
     const f = {
       place,
       p: { host: null, hw: 0, hh: 0, box: { x: 0, y: 0, w: 0, h: 0 }, face: null, stats: null, color: "", hears: 0, inHand: false, key: "" },
-      tr: createTrace(),
+      tr,
       cv: null,
       ctx: null,
+      W: -1, // the layer's size in px, as last set
+      H: -1,
+      // This frame's painting of the layer (live-paint.js `paintLayer`).
+      op: { id: faces.length, size: null, k: 0, fade: FADE_NONE, rect: [0, 0, 0, 0], fadeStyle: "", n: 0, strokes: null },
       on: false,
     };
     faces.push(f);
     return f;
+  }
+
+  // A face's layer, made the first time it is drawn.
+  function layer(f) {
+    if (f.cv) return;
+    const cv = doc.createElement("canvas");
+    cv.className = "face-live";
+    cv.setAttribute("aria-hidden", "true");
+    f.W = f.H = -1;
+    f.cv = cv;
+    f.ctx = cv.getContext("2d");
+  }
+
+  // The face's frame (`f.op`) painted. A frame that changes nothing is not
+  // painted at all.
+  function paint(f) {
+    const op = f.op;
+    if (!op.size && op.fade === FADE_NONE && !op.n) return;
+    paintLayer(f.cv, f.ctx, op);
   }
 
   function wake() {
@@ -280,7 +299,15 @@ export function createLiveFaces({
 
   // A face's layer, gone blank (off screen, reduced motion, stage mode).
   function wipe(f) {
-    if (f.ctx && !f.tr.cleared) clearAll(f.ctx);
+    if (f.cv && !f.tr.cleared) {
+      const op = f.op;
+      op.size = null;
+      op.k = 0;
+      op.fade = FADE_CLEAR;
+      op.n = 0;
+      op.strokes = null;
+      paint(f);
+    }
     f.tr.cleared = true;
     f.tr.has = false;
     f.tr.loud = 0;
@@ -370,34 +397,43 @@ export function createLiveFaces({
     }
   }
 
+  // A face's frame: its layer's size, the trail's fade, and what it heard
+  // (`traceFade`'s and `traceDraw`'s, decided here and painted by `paint`).
   function draw(f, r, t, k, ink) {
     const p = f.p;
-    if (!f.cv) {
-      f.cv = doc.createElement("canvas");
-      f.cv.className = "face-live";
-      f.cv.setAttribute("aria-hidden", "true");
-      f.ctx = f.cv.getContext("2d");
-    }
+    layer(f);
     // The slot's own drawing may have been put back since (a face slot is
     // filled anew when its face or the bank changes): the layer goes back
     // over it, its trail as it was.
     if (f.cv.parentNode !== p.host) p.host.append(f.cv);
+    const op = f.op;
     const W = Math.round(p.hw * k);
     const H = Math.round(p.hh * k);
-    if (f.cv.width !== W || f.cv.height !== H) {
-      f.cv.width = W;
-      f.cv.height = H;
+    op.size = null;
+    if (f.W !== W || f.H !== H) {
+      f.W = W;
+      f.H = H;
+      op.size = [W, H];
       f.tr.cleared = true;
     }
-    const g = f.ctx;
-    g.setTransform(k, 0, 0, k, 0, 0);
+    op.k = k;
     const b = p.box;
     const scale = traceScale(b.h);
     const m = traceReach(scale);
-    traceFade(g, f.tr, b.x - m, b.y - m, b.w + 2 * m, b.h + 2 * m, t, false, p.color);
-    if (!p.face || !traceHear(f.tr, r, p.stats, t)) return;
-    if (p.inHand) lastHand = f.tr;
-    traceDraw(g, f.tr, { face: p.face, stats: p.stats, box: b, color: p.color, silk: ink, scale, trace: b.h >= LIVE_TRACE_MIN_H });
+    op.fade = traceFadeStep(f.tr, t, false);
+    op.rect[0] = b.x - m;
+    op.rect[1] = b.y - m;
+    op.rect[2] = b.w + 2 * m;
+    op.rect[3] = b.h + 2 * m;
+    op.fadeStyle = op.fade === FADE_STEP ? tint(p.color, LIVE_FADE) : "";
+    op.n = 0;
+    if (p.face && traceHear(f.tr, r, p.stats, t)) {
+      if (p.inHand) lastHand = f.tr;
+      f.tr.cleared = false;
+      op.n = traceStrokes(f.tr, { face: p.face, stats: p.stats, box: b, color: p.color, silk: ink, scale, trace: b.h >= LIVE_TRACE_MIN_H });
+    }
+    op.strokes = op.n ? f.tr.strokes : null;
+    paint(f);
   }
 
   return {

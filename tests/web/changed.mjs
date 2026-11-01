@@ -55,6 +55,7 @@ export const MODULES = {
   "apps/web/vessel.js": ["faces", "perform_stage", "shell_zoom", "live_faces"],
   // The faces that hear what is played, and stage mode's moving layer.
   "apps/web/live-face.js": ["live_faces", "perform_stage"],
+  "apps/web/live-paint.js": ["live_faces", "perform_stage"],
   "apps/web/guide.js": ["guide_pill", "first_run"],
   "apps/web/deal.js": ["evolve_ahead", "evolve_truth", "evolve_feedback", "budgets"],
   "apps/web/bank-find.js": ["bank_find"],
