@@ -48,8 +48,11 @@ knob. With another layout it says *packed tight* or *placed by hand*. After it
 come what is happening to the patch: *opening Glass Pad…*, *2 locked*,
 *silent: nothing reaches the output*, *1 edit waiting*. Near one of the
 ceilings breeding searches within (24 modules, a depth of 6, a modulation depth
-of 3) it says that too, in amber (*5/6 depth*), and in red at one: a patch at a
-ceiling has no room to grow, and a hand-built patch past one is refused. Under
+of 3) it says that too: one short of it, its number in amber (*5/6 depth*);
+at it, the whole count in amber (*6/6 depth*), since a patch at a ceiling has
+no room to grow. An edit that would take the patch past one is refused, and
+the count of the ceiling it would pass shows in red while the refusal is
+said, however far from it the patch was. Under
 [the model view](#the-model-view-in-patch) the subtitle becomes the belief
 line instead: what the model makes of this sound.
 
@@ -122,12 +125,12 @@ is dashed, under the module it moves. The selected module (the one you pressed
 on, or the keyboard stands on) has its edge and name lit, and its **⋯** (its
 [structure menu](../rack.md#the--menu)) and **▢** (its lock) on its top edge,
 at the right; the others show them under the pointer. A locked module's edge is
-solid amber. When the patch is too wide for the well to show its labels at a
-size you can read (a narrow window, a big patch, the catalog open beside it),
-the values and labels are left off and each module's name and setting print
-larger; every knob is still there to turn. Smaller still, each module keeps
-three of its knobs to read; zoom in for the rest. See [reading and editing the
-rack](../rack.md).
+solid amber. Under **detail: automatic** (the default), drawn smaller than
+its own size (a narrow window, a big patch, the catalog open beside it), each
+module's name prints larger, so at the fit it never reads smaller than the
+rest of the app's text, and the values and labels go once they would print
+smaller than the rack's own type; every knob is still there to turn. Zoomed out further by hand, each module keeps three of its knobs to
+read; zoom in for the rest. See [reading and editing the rack](../rack.md).
 
 **OUT and the face.** The amp's lead runs to **OUT**, and past it stands the
 sound's [face](../faces.md): the face of the patch as it stands, measured on
@@ -177,7 +180,11 @@ AUDIO IN modules that read the same input show it as one stream fanning out
 to each.
 
 **The edges.** When the patch is wider than the view, each side says how many
-modules lie past it (*‹ 2*, *3 ›*); a press brings the nearest one in.
+modules lie past it (*‹ 2*, *3 ›*); a press brings the nearest one in (the
+amp with OUT and its face, as one). A patch
+too big for the well at the size its names read (a big patch, a phone) opens
+at that size showing where it starts, and the rest past the right edge: drag
+to it, press *n ›*, or press **MAP** for the whole patch.
 
 **The model's guess,** along the well's top once the model has fitted your
 taste: *GUESS · REVERB*, then its reason in the model's italic, then how
@@ -391,8 +398,9 @@ On a phone held upright the head is stacked over the well (the name, what the
 patch is made of, then the acts on one line), and the readout takes its own
 line over the camera at the well's foot. With the keys up the well is short,
 and keeps only the rack: the words and the well's foot come back when the keys
-go. Two fingers on the patch zoom it. On a phone on its side the catalog
-(**ADD MODULE**) is the screen's height.
+go. The patch opens at the size its names read, showing where it starts:
+swipe across the well for the rest. Two fingers on the patch zoom it. On a phone on
+its side the catalog (**ADD MODULE**) is the screen's height.
 
 Tap a module to open its settings in a sheet: every knob as a wide slider with
 **−** and **+** steps, every named setting as its choices, AUDIO IN's input
@@ -403,7 +411,9 @@ Hold **−** or **+** to keep stepping. Close it with **×**, a swipe down, a ta
 outside, or <kbd>Esc</kbd>. **REMOVE MODULE** at its foot deletes the module,
 as **delete** in its ⋯ menu does. Every module shows its **⋯** on a touch
 screen; hold a finger on a module for the same menu, where **what goes here?**
-is too. Press and hold **MODEL** for [the model view](#the-model-view-in-patch)
+is too. A tap on the rack beside a module's ⋯ or its lock is theirs, as a
+tap on them is (a tap on the module itself opens its settings), and a tap
+beside an out ○ picks its cable up; then tap beside a lit ○ to put it in. Press and hold **MODEL** for [the model view](#the-model-view-in-patch)
 while your finger stays down, or tap it to keep it up.
 
 ```admonish info collapsible=true title="How it works: edits in order"
@@ -448,7 +458,7 @@ catalog works* (its walkthrough), *How to read this patch*, *⚡ Evolve from thi
 knobs*, *Lock wiring*, *Clear locks*), *Keep as new* and *Undo to as opened*
 once you have edited, *Undo an edit* (<kbd>⌘Z</kbd>, one step) and *Redo an
 edit* (<kbd>⇧⌘Z</kbd>), the camera (*Fit the
-whole patch* <kbd>⇧Home</kbd>, *Fit what you’re on* <kbd>.</kbd>, *Actual
+patch* <kbd>⇧Home</kbd>, *Fit what you’re on* <kbd>.</kbd>, *Actual
 size* <kbd>⌘0</kbd>, *Zoom out on the patch* <kbd>⌘−</kbd>, *Zoom in on the
 patch* <kbd>⌘=</kbd>, *Show the minimap*), the three layouts, *The first
 module* (<kbd>Home</kbd>) and *The last module, at OUT* (<kbd>End</kbd>),
