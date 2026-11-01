@@ -164,6 +164,28 @@ const beside = (page, sel) => page.evaluate((sel) => {
   }
   return null;
 }, sel);
+/** A finger's tap at (x, y), and what it answered with: whether `sel`
+ *  matched once the lift's own task was done (`inTask`), and how long after
+ *  the lift it first did (`ms`), both on the page's clock, read as the page
+ *  changes (an observer over the document) rather than by a poll. */
+async function tapTimed(page, x, y, sel) {
+  await page.evaluate((sel) => {
+    const T = (window.__tapTimed = { at: null, lift: null, inTask: null });
+    const look = () => {
+      if (T.at == null && document.querySelector(sel)) T.at = performance.now();
+      return T.at != null;
+    };
+    const mo = new MutationObserver(() => { if (look()) mo.disconnect(); });
+    mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+    addEventListener("pointerup", (e) => {
+      T.lift = e.timeStamp;
+      setTimeout(() => { T.inTask = look(); }, 0);
+    }, { capture: true, once: true });
+  }, sel);
+  await page.touchscreen.tap(x, y);
+  await expect.poll(() => page.evaluate(() => window.__tapTimed.inTask)).not.toBeNull();
+  return page.evaluate(() => ({ inTask: window.__tapTimed.inTask, ms: window.__tapTimed.at - window.__tapTimed.lift }));
+}
 /** A module's whole menu (ten verbs) from F2 on its plate: inside the well
  *  and clear of its foot, cut to the well where it is taller and scrolled
  *  by End to `delete`. */
@@ -244,7 +266,9 @@ test.describe("a phone, 390 × 844", () => {
     // picks its cable up; no module's sheet opens.
     const out = await beside(page, ".jack[data-outkey]:not(.modjack) .j-nut");
     expect(out, "a point of panel beside an out ○").not.toBeNull();
-    await page.touchscreen.tap(out.x, out.y);
+    const pick = await tapTimed(page, out.x, out.y, "#rack-svg.wiring");
+    expect(pick.inTask, "the cable picked up in the tap's own task").toBe(true);
+    app.budget("a tap beside an out ○ → its cable picked up", pick.ms, 100);
     await expect(page.locator("#rack-svg")).toHaveClass(/\bwiring\b/);
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
     // Every socket it lights is its own at its middle, for the finger that
@@ -263,7 +287,9 @@ test.describe("a phone, 390 × 844", () => {
     // opens that module's menu, as a tap on it does; no sheet opens.
     const dots = await beside(page, ".mod-menu-btn > rect");
     expect(dots, "a point of panel beside a ⋯").not.toBeNull();
-    await page.touchscreen.tap(dots.x, dots.y);
+    const menu = await tapTimed(page, dots.x, dots.y, "#ctx-menu:not(.hidden)");
+    expect(menu.inTask, "the menu open in the tap's own task").toBe(true);
+    app.budget("a tap beside a ⋯ → its menu open", menu.ms, 100);
     await expect(page.locator("#ctx-menu")).toBeVisible();
     await expect(page.locator("#ctx-menu .cm-title-name")).toHaveText(dots.title);
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
@@ -272,7 +298,9 @@ test.describe("a phone, 390 × 844", () => {
     // …and one beside a lock locks its module.
     const lock = await beside(page, ".mod-lock > rect");
     expect(lock, "a point of panel beside a lock").not.toBeNull();
-    await page.touchscreen.tap(lock.x, lock.y);
+    const locked = await tapTimed(page, lock.x, lock.y, `#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`);
+    expect(locked.inTask, "the module locked in the tap's own task").toBe(true);
+    app.budget("a tap beside a lock → its module locked", locked.ms, 100);
     await expect(page.locator(`#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`)).toHaveCount(1);
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
 
