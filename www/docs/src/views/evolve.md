@@ -23,7 +23,8 @@ every sound.</figcaption>
 1. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ PLAY** on each card) to hear
    A and B. Press again to stop.
 2. Click a card’s body to play that sound live on the keys, when the phrase
-   doesn’t tell two sounds apart.
+   doesn’t tell two sounds apart. Its face flies from the card to the sound
+   in hand in the menu bar.
 3. Press <kbd>←</kbd> or <kbd>→</kbd> (or **PICK A**, **PICK B**) for the one
    you’d reach for.
 4. Press **ANOTHER PAIR** (<kbd>N</kbd>) to deal a new pair without picking.
@@ -82,7 +83,8 @@ its well and its **▶ PLAY** is dimmed; press it anyway and a dotted amber
 ring says your press was taken, and the phrase plays the moment the audio
 arrives. In the well’s corner, **⇄ CIRCUIT** flips the face to the patch’s
 modules (and back, **⇄ FACE**), and **↓ PATCH** opens the sound in
-[PATCH](./play.md) without picking. Hold <kbd>⌥</kbd> for [the model
+[PATCH](./play.md) without picking, its face flying from the card to the
+sound in hand in the menu bar as you go. Hold <kbd>⌥</kbd> for [the model
 view](../reading-the-model.md#the-model-view) and each card also shows the
 style that rates it highest, and the card the model favours says so before
 you pick: *it guesses this · 62% · leaning*. The names come from what the

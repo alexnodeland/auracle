@@ -727,6 +727,9 @@ const faceTreeByRef = new Map(); // tree ref -> tree text, to ask with
 const faceAsked = new Set();    // targets asked and not yet answered ("i12", "r…")
 const faceNone = new Set();     // targets the engine has no face for (a tree that does not vet)
 const faceWanted = new Set();   // targets to ask for at the next send
+// The hand's slots held while a sound flies into it (`holdHand`): slot ->
+// what it was last pointed at meanwhile, `{kind, t}`, or null for nothing yet.
+const faceHolds = new Map();
 let faceStats = null;           // the bank's mean and spread (faces.js `bankStats`)
 let faceBankKeys = "";          // the keys those were taken over
 let faceEpoch = 0;              // bumped when they change: every face redraws
@@ -787,7 +790,12 @@ function shippedKeyOf(target) {
   if (!shippedFaces) return null;
   const index = Number(target.slice(1));
   const row = (presetRows || []).find((r) => r.index === index);
-  const hit = row ? presetFace(shippedFaces, row.name, { ns: renderNs, clip: audioIn.sharedClip() }) : null;
+  return row ? shippedFaceKey(row.name) : null;
+}
+/** Preset `name`'s shipped face, filed in `faceByKey`, and its key; or null
+ *  where the session renders it (`presetFace`). */
+function shippedFaceKey(name) {
+  const hit = shippedFaces ? presetFace(shippedFaces, name, { ns: renderNs, clip: audioIn.sharedClip() }) : null;
   if (!hit) return null;
   if (lruGet(faceByKey, hit.key) === undefined) lruSet(faceByKey, hit.key, hit.face);
   return hit.key;
@@ -1046,8 +1054,6 @@ function facesChanged() {
     // A card waiting on its face. Only the card: the rack's readout builds the
     // rack to measure it, and this runs on every bank render.
     if (imageState.scope === "card") imageSync();
-    // A sound taken up from the bank, waiting for its face to be shown.
-    if (takeUpArm) takeUpCheck();
   });
 }
 /** The bank's mean and spread, over the faces of the rows the bank shows
@@ -1119,14 +1125,35 @@ function paintFaces(root = document) {
     idleSoon(faceIdle);
   }
 }
-function paintFaceSlot(el) {
+/** Draw a slot's face. A slot already showing one gives it up only once the
+ *  new picture is decoded, and then in one step: a picture just put in is
+ *  drawn after its decode, and until then the slot would be empty for a
+ *  frame or more (#522). `now`: in this task, for a picture already decoded
+ *  (the hand's, while a face flew in: `handPictures`). */
+function paintFaceSlot(el, { now = false } = {}) {
   const target = el.dataset.face;
   if (!target) return;
   const key = faceKeyOfTarget(target) || "";
   const drawn = `${key}|${faceEpoch}|${!!faceStats}`;
   if (el.dataset.drawn === drawn) return;
-  el.innerHTML = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
-  el.dataset.drawn = el.innerHTML ? drawn : "";
+  const html = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
+  el.dataset.drawn = html ? drawn : "";
+  const was = el.querySelector(":scope > img.face");
+  if (now || !html || !was || !was.complete || !was.naturalWidth) {
+    el.innerHTML = html;
+    return;
+  }
+  // Made in the page's own document, where it loads (a template's content
+  // is inert: its picture never loads, and Firefox refuses its decode).
+  const box = document.createElement("span");
+  box.innerHTML = html;
+  const img = box.firstElementChild;
+  // Still the picture this slot wants when it is ready (another may have
+  // been asked for meanwhile, and is drawn instead).
+  const swap = () => {
+    if (el.dataset.drawn === drawn && el.dataset.face === target) el.replaceChildren(img);
+  };
+  img.decode().then(swap, swap);
 }
 /** A slot's markup, for a row or card built as HTML. Always there, at its
  *  size, with or without a face in it. `lazy`: asked for only once the slot
@@ -1204,9 +1231,12 @@ function faceSlotInView(target) {
 function faceLazyDrop() {
   for (const t of faceLazy) faceDrop(t);
 }
-/** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none. */
-function setFaceSlot(el, kind, t) {
+/** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none.
+ *  A slot of the hand held while a sound flies into it keeps what it draws,
+ *  and takes the last of these when the flight lands (`holdHand`). */
+function setFaceSlot(el, kind, t, { now = false } = {}) {
   if (!el) return;
+  if (faceHolds.has(el)) return void faceHolds.set(el, { kind, t });
   const [w, h] = FACE_SIZE[kind];
   el.classList.add("face-slot", `face-${kind}`);
   el.dataset.kind = kind;
@@ -1217,12 +1247,15 @@ function setFaceSlot(el, kind, t) {
     el.style.height = `${h}px`;
   }
   const target = faceTarget(t);
-  if (target && target === el.dataset.face) return void paintFaceSlot(el);
+  if (target && target === el.dataset.face) return void paintFaceSlot(el, { now });
   if (target) el.dataset.face = target;
   else delete el.dataset.face;
   el.dataset.drawn = "";
-  el.innerHTML = "";
-  if (target) paintFaceSlot(el);
+  // The face it showed stays until the new one is drawn in its place
+  // (`paintFaceSlot`); with no new one to draw (none yet, or no sound) the
+  // slot is empty, as it is.
+  if (!target) return void (el.innerHTML = "");
+  paintFaceSlot(el, { now });
 }
 
 // ---------- the face carried between the levels (Plan-008 §2.3) ----------
@@ -1234,10 +1267,13 @@ function setFaceSlot(el, kind, t) {
 // lands only where a level draws that same face (the same render key).
 
 /** The render key of the face a slot draws, read without layout; null while
- *  it draws none. */
+ *  it draws none. A slot of the hand held while a sound flies into it
+ *  (`holdHand`) still draws the face it had, and says the one it will show
+ *  when the flight lands: the flight is steered there. */
 function faceKeyOf(el) {
   if (!el || !el.isConnected || !faceStats) return null;
-  const target = el.dataset.face;
+  const hold = faceHolds.get(el);
+  const target = hold ? faceTarget(hold.t) : el.dataset.face;
   const key = target && faceKeyOfTarget(target);
   if (!key || !faceByKey.has(key) || !el.querySelector("img.face") || !FACE_SIZE[el.dataset.kind]) return null;
   return key;
@@ -3465,9 +3501,13 @@ worker.onmessage = (e) => {
           openedTreeJson = m.treeJson;
         }
       }
-      // A sound taken up from the bank is in hand: its face flies once the
-      // level shows it (now, or when its face lands, `facesChanged`).
-      if (m.subject !== undefined && takeUpArm) takeUpCheck();
+      // A sound opened, unedited: the bench's tree is that pool sound's, and
+      // its face the one its row draws, so the hand, the face at OUT and
+      // the move between the levels draw it now (`knowFace`; the engine is
+      // asked all the same).
+      if (m.subject !== undefined && !wb.dirty && m.treeJson && m.treeJson !== "null") {
+        knowFace(m.treeJson, faceKeyById.get(m.subject), { confirm: true });
+      }
       // Every reply, not only the structural ones, and after the tree lands
       // because the tree is the only thing that can answer either half: which
       // uid the engine gave a hole this edit made, and which marks now name a
@@ -3535,6 +3575,10 @@ worker.onmessage = (e) => {
         (!(earlyOpen && !subjectLoad) && liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
       liveOptimisticJson = null;
       if (openedEarly && liveTreeJson !== m.treeJson) {
+        // The same sound with the bench's node uids (a preset voiced from
+        // the shipped file): the same face, so the well keeps it as
+        // PERFORM's tree text follows.
+        knowFaceAs(m.treeJson, liveTreeJson);
         liveTreeJson = m.treeJson;
         if (perform && perform.followTree) perform.followTree(m.treeJson);
       }
@@ -6061,8 +6105,12 @@ async function bootPerform() {
     guide,
     // A modal dialog showing keeps the pad keys, as it keeps the level keys.
     blocked: () => modalUp(),
-    // A face into one of PERFORM's slots: the sound in hand's, or B's.
-    face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
+    // A face into one of PERFORM's slots: the sound in hand's, or B's. The
+    // first is the well's, where a sound taken up flies (`holdHand`).
+    face: (el, kind, json) => {
+      if (kind === "well") wellFaceEl = el;
+      setFaceSlot(el, kind, json ? { tree: json } : null);
+    },
     // Where one of them draws its face, and which face it is (`anchor`).
     faceBox: (el) => faceBoxOf(el),
     // A tree's face and the bank it is drawn against, for a drawing of
@@ -8132,11 +8180,15 @@ function selectDuelSide(side) {
   const id = side === "a" ? currentDuel[0] : currentDuel[1];
   if (goneIds.has(id)) return; // replaced: nothing left to open (`markTableGone`)
   if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
+  // Its face flies from the card into your hands, from EVOLVE (PATCH's
+  // strip shows no card: nothing flies from there).
+  const t = takeUpFrom($(`face-${side}`), { id });
   voicePoolEarly(id); // heard before the cards are redrawn
   setDuelSelection(side);
   bankScrollTo = id;
   bankScrollAt = performance.now();
   openOnBench(id);
+  takeUpFly(t);
 }
 
 $("pd-back").onclick = () => {
@@ -9776,16 +9828,16 @@ function bankRow(r, fitted) {
     if (e.target.closest("button")) return;
     if (e.detail > 1) return; // a double-click's second click: a rename, not another open
     kbdRowId = r.id;
-    // Its face as the row shows it now: opening it redraws the bank. The
-    // sound is opened where you are, as Enter and ⌘K open one: its face
+    // The sound is opened where you are, as Enter and ⌘K open one: its face
     // flies from the row to where this level draws the sound you're playing
-    // (`takeUpCheck`). Only what says PATCH goes there (↓ PATCH, How it
-    // works' knob).
-    // Its face's key first, while the row is still the bank's (voicing
-    // redraws the bank), with no layout read; then heard.
-    armTakeUp(el.querySelector(":scope > .face-slot"), { id: r.id });
+    // (`takeUpFly`), in this task. Only what says PATCH goes there (↓ PATCH,
+    // How it works' knob).
+    // Where its face is, read while the row is still the bank's (voicing
+    // redraws the bank); then heard, and on its way to the bench.
+    const t = takeUpFrom(el.querySelector(":scope > .face-slot"), { id: r.id });
     voicePoolEarly(r.id);
     openOnBench(r.id);
+    takeUpFly(t);
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
@@ -10032,10 +10084,11 @@ function openPreset(p, el) {
   const inBank = loadedId != null && !!rowOf(loadedId);
   const row = el || document.querySelector(`#bank-list .preset-item[data-index="${p.index}"]`);
   const slot = row ? row.querySelector(":scope > .face-slot") : null;
-  // The row's face is read (its key, no layout) before the voices take the
-  // sound: voicing redraws the bank, and this row with it.
+  // Where the row draws its face is read before the voices take the sound:
+  // voicing redraws the bank, and this row with it. It flies from there in
+  // this task (`takeUpFly`).
+  const t = takeUpFrom(slot, inBank ? { id: loadedId } : { index: p.index });
   if (inBank) {
-    armTakeUp(slot, { id: loadedId });
     if (poolTrees.has(loadedId)) voicePoolEarly(loadedId);
     else voicePresetEarly(p, loadedId);
     openOnBench(loadedId);
@@ -10051,7 +10104,6 @@ function openPreset(p, el) {
       row.classList.add("loading");
       row.setAttribute("aria-busy", "true");
     }
-    armTakeUp(slot, { index: p.index });
     // Into the voices, from the shipped file. That redraws the bank, whose
     // new row says it is loading (`presetClicks`).
     voicePresetEarly(p);
@@ -10059,6 +10111,7 @@ function openPreset(p, el) {
     openAskedAt = performance.now();
     send({ type: "load_preset", index: p.index, open: true });
   }
+  takeUpFly(t);
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
@@ -10446,9 +10499,11 @@ $("bank-list").addEventListener("keydown", (e) => {
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
     bankScrollAt = performance.now();
+    // Its face flies from its row, if the row is in sight (`takeUpFly`).
+    const t = takeUpFrom(document.querySelector(`#bank-list .bank-item[data-id="${id}"] > .face-slot`), { id });
     voicePoolEarly(id);
-    armTakeUp(document.querySelector(`#bank-list .bank-item[data-id="${id}"] > .face-slot`), { id });
     openOnBench(id);
+    takeUpFly(t);
   } else if (e.key.toLowerCase() === "m") {
     // Save from the keyboard, since the row's buttons are deliberately out of
     // the tab order and a screen-reader user would otherwise have no path to
@@ -10821,6 +10876,8 @@ function unvoiceEarly() {
   const e = earlyOpen;
   earlyOpen = null;
   if (!e || !live) return;
+  // A face still flying in is not coming: the hand shows what it goes back to.
+  takeUpOff(null);
   // TASTE's ring follows the sound in hand (`inHandId`).
   if (e.id != null) drawTaste();
   // The bench's patch, muted if its last vet failed (an open that landed
@@ -10840,7 +10897,18 @@ function unvoiceEarly() {
  *  the voices now, from memory. */
 function voicePresetEarly(p, id = null) {
   const v = presetVoiced(p.name);
-  if (v) voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
+  if (!v) return;
+  knowPresetFace(p.name, v.json, id);
+  voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
+}
+/** A preset's tree, about to be voiced, is drawn with the preset's face at
+ *  once: its shipped one where the session's renders are the file's
+ *  (`shippedFaceKey`), else its pool sound's (`id`), confirmed by the
+ *  engine. */
+function knowPresetFace(name, json, id = null) {
+  const shipped = shippedFaceKey(name);
+  if (shipped) knowFace(json, shipped);
+  else if (id != null) knowFace(json, faceKeyById.get(id), { confirm: true });
 }
 /** The name of the sound the player opened last: a preset on its way (its
  *  name, from the click), a pool sound on its way, or the bench's; null when
@@ -10898,45 +10966,114 @@ function openingName() {
   const p = index != null ? (presetRows || []).find((r) => r.index === index) : null;
   return p ? p.name : null;
 }
-// ---------- a sound taken up from the bank (Plan-008 C3, `shell.takeUp`) ----------
-// Opening a sound from the bank (its row clicked, Enter on it, a preset)
-// carries its face from the row to where the level you're at draws the sound
-// you're playing. Not at the click: the sound reaches your hands when the
-// engine has opened it (the bench's reply), and the face flies once the
-// engine has said the face of that render, the same face as the row's
-// (ADR-012), which is when the level draws it too. An open the player did
-// not ask for (boot's first sound, booth attract) takes nothing up.
-let takeUpArm = null; // {id} or {index}, and the render key of the face its row drew
-/** Is this armed open the one for pool sound `id`? */
-function takeUpFor(arm, id) {
-  return arm.id != null ? arm.id === id : presetIds.get(arm.index) === id;
+// ---------- a sound taken up from the bank or a card (Plan-008 C3, `shell.takeUp`) ----------
+// Opening a sound from the bank (its row clicked, Enter on it, a preset,
+// ⌘K's Sounds) or from an EVOLVE card (its body, ↓ patch) carries its face
+// from where it was shown to where the level you're at draws the sound
+// you're playing (PERFORM's well, a sound's mark on TASTE's map), or, where
+// the level has no place for it yet, to the sound in hand in the menu bar.
+// In the click's own task (ADR-025), as the voices take the sound (#306):
+// the face is the one the row drew, filed under the render key of the tree
+// the voices take (`knowFace`), so no render is waited for. Meanwhile the
+// hand (the well, the menu bar's chip, the face at OUT) keeps the face it
+// had, and shows the new one the frame the flight is gone: never empty, and
+// never the face twice (#522). An open the player did not ask for (boot's
+// first sound, booth attract) takes nothing up, and under reduced motion
+// the hand shows the new face in the click's task.
+let wellFaceEl = null; // PERFORM's well's slot (perform.js's `host.face`)
+let takeUpNow = null; // the sound taken up and flying: {id} or {index}, and `from`
+let handPics = []; // the hand's new pictures, decoded while the face flies
+/** The hand: every slot that shows the sound in hand. */
+function handSlots() {
+  return [wellFaceEl, $("inhand-face"), $("out-face")].filter(Boolean);
 }
-/** Remember the row's face as the open is asked for: its key only, with no
- *  layout read, ahead of the voices taking the sound (which redraws the bank,
- *  so the row is read before it). Where it is is read when it flies. */
-function armTakeUp(slot, which) {
-  const key = faceKeyOf(slot);
-  takeUpArm = key ? { ...which, key } : null;
+/** Hold the hand: each slot keeps the face it draws, whatever it is pointed
+ *  at meanwhile (`setFaceSlot`), until `releaseHand`. */
+function holdHand() {
+  for (const el of handSlots()) if (!faceHolds.has(el)) faceHolds.set(el, null);
 }
-/** The armed sound is in hand and its face is known: it flies, from where
- *  its row draws it now. No clock decides: the face of the bench's render
- *  is the engine's to say (the faces reply after the bench's), and a slower
- *  engine only says it later, so the arm waits for it (ADR-022). It goes
- *  when the moment has passed for good: another sound asked for
- *  (`openOnBench`), or the sound in hand already another face (an edit
- *  landed first). */
-function takeUpCheck() {
-  const t = takeUpArm;
-  if (!t || wb.subjectId == null || benchPending != null || !takeUpFor(t, wb.subjectId)) return;
-  const held = heldFace();
-  if (!held) return;
-  takeUpArm = null;
-  if (held.key !== t.key) return;
-  const slot = t.id != null
-    ? document.querySelector(`#bank-list .bank-item[data-id="${t.id}"] > .face-slot`)
-    : document.querySelector(`#bank-list .preset-item[data-index="${t.index}"] > .face-slot`);
-  const from = slot && inBankView(slot) ? faceBoxOf(slot) : null;
-  if (from && from.key === t.key) shell.takeUp(from.box, t.key);
+/** Let the hand go: each slot shows what it was last pointed at, all in
+ *  one task. */
+function releaseHand() {
+  const held = [...faceHolds];
+  faceHolds.clear();
+  handPics = [];
+  for (const [el, p] of held) if (p) setFaceSlot(el, p.kind, p.t, { now: true });
+}
+/** The pictures the hand will show when it is let go, drawn and decoded
+ *  now, while the face flies, so the frame it lands draws them at once. */
+function handPictures() {
+  const waits = [];
+  for (const [el, p] of faceHolds) {
+    if (!p || !el.isConnected) continue;
+    const src = /src="([^"]+)"/.exec(faceMarkup(faceTarget(p.t), p.kind))?.[1];
+    if (!src) continue;
+    const img = new Image();
+    img.src = src;
+    handPics.push(img);
+    waits.push(img.decode().catch(() => {}));
+  }
+  return Promise.all(waits);
+}
+/** Is the sound taken up the one for pool sound `id`? */
+function takeUpFor(t, id) {
+  return t.id != null ? t.id === id : presetIds.get(t.index) === id;
+}
+/** Before the voices take a sound (`which`: `{id}` or a preset's
+ *  `{index}`): where `slot`, its row's or card's face, draws it, read now
+ *  (taking it redraws the bank), and the hand held. Null when nothing will
+ *  fly: reduced motion, a slot that draws no face or is out of sight, or
+ *  the sound already in hand. A face still flying is put down first. */
+function takeUpFrom(slot, which) {
+  shell.takeUpCut();
+  if (!slot || !motionMs("--d-zoom")) return null;
+  if (slot.closest("#bank-list") && !inBankView(slot)) return null;
+  const from = faceBoxOf(slot);
+  if (!from || faceKeyOf($("inhand-face")) === from.key) return null;
+  takeUpNow = { ...which, from };
+  holdHand();
+  return takeUpNow;
+}
+/** The voices have it: its face flies, if the hand is to show that face
+ *  (the menu bar's chip, pointed at the tree the voices took); else, or
+ *  with nowhere to fly, the hand shows what it holds at once. */
+function takeUpFly(t) {
+  if (!t || takeUpNow !== t) return;
+  const done = () => {
+    if (takeUpNow !== t) return;
+    takeUpNow = null;
+    releaseHand();
+  };
+  if (faceKeyOf($("inhand-face")) !== t.from.key) return void done();
+  // The well's picture is the large one, drawn and encoded once a bank:
+  // after this task, so the flight's first frame is not kept waiting.
+  const ready = new Promise((ok) => setTimeout(() => handPictures().then(ok), 0));
+  if (!shell.takeUp(t.from.box, t.from.key, { ready, landed: done })) done();
+}
+/** Another sound asked for, or the open taken back: a face still flying is
+ *  not this one's, and is put down. */
+function takeUpOff(id) {
+  if (takeUpNow && (id == null || !takeUpFor(takeUpNow, id))) shell.takeUpCut();
+}
+/** Tree `json`'s face is the one filed under `key`, already here: a pool
+ *  sound's (`faceKeyById`), a preset's shipped one, or that of the same
+ *  tree with other node uids. A render key is the tree's without its uids
+ *  and the clips it hears (auracle-features `render_key`), so the tree a
+ *  row opens is that row's face, and it is drawn at once rather than after
+ *  a round trip to an engine that may be busy for seconds. `confirm`: the
+ *  engine is asked all the same, from its memo, and its answer stands (a
+ *  sound that hears an input whose clip has changed since it joined). */
+function knowFace(json, key, { confirm = false } = {}) {
+  if (!json || json === "null" || !key || !faceByKey.has(key)) return;
+  const ref = faceTarget({ tree: json });
+  if (lruGet(faceKeyByRef, ref) !== undefined) return;
+  lruSet(faceKeyByRef, ref, key);
+  if (confirm) wantFace(ref);
+}
+/** `json` is `same` with other node uids: the face of one is the other's. */
+function knowFaceAs(json, same) {
+  const target = same && same !== "null" ? faceTarget({ tree: same }) : "";
+  knowFace(json, target ? lruGet(faceKeyByRef, target) : null);
 }
 
 /** Into the voices, and PERFORM, in the click's task and before anything
@@ -10959,6 +11096,9 @@ function voicePoolEarly(id) {
   // Its `first` was predicted for the panel in force when it was sent: for
   // another panel, PERFORM waits for the one `bench_opening` brings.
   if (perform && held.first && (held.controls ?? null) === perform.panelControls()) perform.firstKnown(held.json, held.first);
+  // Its face is its row's: the hand shows it in this task, not after the
+  // engine has been asked (#522).
+  knowFace(held.json, faceKeyById.get(id), { confirm: true });
   voiceEarly(held.json, held.makeup, { id, label: benchName(id) });
 }
 
@@ -10969,8 +11109,8 @@ function voicePoolEarly(id) {
  *  opened. */
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
-  // Another sound asked for: a face waiting to be taken up is not this one's.
-  if (takeUpArm && !takeUpFor(takeUpArm, id)) takeUpArm = null;
+  // Another sound asked for: a face still flying is not this one's.
+  takeUpOff(id);
   voicePoolEarly(id);
   benchPending = id;
   // ↺ cannot go while a sound is on its way (`revertRefusal`): its state
@@ -13010,7 +13150,8 @@ function renderSubject() {
   if (!nameEl || !metaEl) return;
   const fam = (t) => { if (famEl) famEl.textContent = t ? `· ${t}` : ""; };
   // The face at OUT is the bench's: its latest render's, an edit's once its
-  // render lands (the same target as the header's chip).
+  // render lands. It is the rack's, so an open on its way changes it with
+  // the rack, after the header's chip, which shows what the voices play.
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   const outTarget = !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId };
   if (hearingSide && currentDuel) {
@@ -17629,18 +17770,20 @@ function onDescribed(id, rack) {
 
 $("flip-a").onclick = () => setFlip("a", !flipped.a);
 $("flip-b").onclick = () => setFlip("b", !flipped.b);
-$("promote-a").onclick = () => {
+// ↓ patch: the card's sound into your hands and PATCH, where the rack
+// follows once the engine has opened it. Its face flies from the card into
+// the hand as the levels move (`takeUpFly`), in the click's task.
+function promote(side) {
   if (!currentDuel) return;
-  send({ type: "log_event", kind: "promote", id: currentDuel[0], value: 1 });
-  openOnBench(currentDuel[0]);
+  const id = currentDuel[side === "a" ? 0 : 1];
+  send({ type: "log_event", kind: "promote", id, value: 1 });
+  const t = takeUpFrom($(`face-${side}`), { id });
+  openOnBench(id);
   showView("patch");
-};
-$("promote-b").onclick = () => {
-  if (!currentDuel) return;
-  send({ type: "log_event", kind: "promote", id: currentDuel[1], value: 1 });
-  openOnBench(currentDuel[1]);
-  showView("patch");
-};
+  takeUpFly(t);
+}
+$("promote-a").onclick = () => promote("a");
+$("promote-b").onclick = () => promote("b");
 
 // Faceplate silkscreen. Two knobs on a 168-unit plate share a 56-unit pitch,
 // and at the rack label size anything past seven characters overruns its
@@ -25762,6 +25905,9 @@ $("warm-go").onclick = () => {
   const shipped = first ? presetVoiced(first.name) : null;
   if (known != null && rowOf(known)) { quietBench.add(known); openOnBench(known); }
   else if (shipped && live) {
+    // Its face too, from the shipped faces the cards drew it with: the well
+    // and the menu bar's chip show it in this task (#522).
+    knowPresetFace(first.name, shipped.json);
     voiceEarly(shipped.json, shipped.makeup, { index: first.index, label: first.name });
     earlyOpen.warm = true;
   } else openExpect = { name: first ? first.name : "the sound you picked", at: performance.now() };
@@ -26352,9 +26498,10 @@ function cmdkSounds() {
       kbdRowId = r.id;
       bankScrollTo = r.id;
       bankScrollAt = performance.now();
+      const t = takeUpFrom(document.querySelector(`#bank-list .bank-item[data-id="${r.id}"] > .face-slot`), { id: r.id });
       voicePoolEarly(r.id);
-      armTakeUp(document.querySelector(`#bank-list .bank-item[data-id="${r.id}"] > .face-slot`), { id: r.id });
       openOnBench(r.id);
+      takeUpFly(t);
     },
   }));
   const pooled = new Set(live.map((r) => r.id));

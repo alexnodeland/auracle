@@ -7,6 +7,12 @@
 // one, so the first card clicked read "teach it" with nothing marked, and
 // TEACH IT taught the last deal's three again.
 //
+// TEACH IT puts the first pick's face in PERFORM's well and the menu bar's
+// chip in the press's own task, drawn from the presets' faces the app ships
+// (the ones the cards were drawn with): they were empty for 0.6 to 1.5 s,
+// until the engine had rendered the pick (#522). Neither is empty after,
+// frame by frame, until the pick is on the bench and its tree text follows.
+//
 // The warm start's first run, its 18 preferences and PERFORM's first steps
 // after it, are `first_run.spec.js`'s, which is not on the fixture yet (#170).
 //
@@ -24,6 +30,8 @@
 // foot, under it: the last card's ▶ hidden whole on a 390 × 844 phone, and
 // every third-row ▶ on a 667 × 375 one, where Shift+Tab back up also cut the
 // top of the ring off a card it scrolled to the window's top.
+const fs = require("fs");
+const path = require("path");
 const { test, expect, runCommand } = require("./fixtures");
 
 /** What the warm start shows wrong on the screen it is on: SKIP or the button
@@ -148,6 +156,43 @@ for (const [width, height] of [[390, 844], [375, 667], [667, 375]]) {
   });
 }
 
+const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/preset-faces.json"), "utf8"));
+/** The key the worker files a preset's face under, by the preset's name. */
+const SHIPPED_KEY = new Map(SHIPPED.presets.map((p) => [p.name, `${SHIPPED.ns}/${p.key}`]));
+
+// In the page: press TEACH IT and read, in the press's own task, the face
+// PERFORM's well and the menu bar's chip are drawn from (the render key of
+// the picture each slot draws, its `data-drawn`; null with no picture) and
+// the name in the menu bar, and before it. Then every animation frame,
+// until `window.__teachWatch.stop()`, count the frames either slot draws no
+// picture whole (none, or one not decoded yet), and say the first: its
+// frame, which slot was bare and whether it held a picture at all.
+const PRESS_TEACH = `(() => {
+  const slots = [document.querySelector("#view-perform .pf-faces > .pf-face"), document.getElementById("inhand-face")];
+  const pic = (el) => el.querySelector(":scope > img.face");
+  const key = (el) => (pic(el) ? (el.dataset.drawn || "").split("|")[0] || null : null);
+  const W = (window.__teachWatch = { frames: 0, empty: 0, which: null, on: true });
+  const step = () => {
+    if (!W.on) return;
+    W.frames += 1;
+    const bare = slots.map((el) => {
+      const img = pic(el);
+      return !img || !img.complete || !img.naturalWidth;
+    });
+    if (bare.some(Boolean)) {
+      W.empty += 1;
+      W.which = W.which || { frame: W.frames, bare, held: slots.map((el) => !!pic(el)) };
+    }
+    requestAnimationFrame(step);
+  };
+  W.stop = () => { W.on = false; return { frames: W.frames, empty: W.empty, which: W.which }; };
+  const before = { well: key(slots[0]), chip: key(slots[1]) };
+  document.getElementById("warm-go").click();
+  const seen = { before, well: key(slots[0]), chip: key(slots[1]), name: document.getElementById("live-label").textContent };
+  requestAnimationFrame(step);
+  return seen;
+})()`;
+
 test("the warm start run again starts with no card picked and teaches the three picked on it", async ({ page, app }) => {
   await app.boot({ warmed: false });
   // On a desktop the focus lands on the first ▶, as the keyboard hears first.
@@ -194,4 +239,23 @@ test("the warm start run again starts with no card picked and teaches the three 
   expect([...sent.picked].sort((a, b) => a - b)).toEqual(want);
   await app.replyTo(sent);
   await expect(page.locator("#duel-count")).toHaveText("36");
+});
+
+test("TEACH IT puts the first pick's face in the well and the menu bar's chip in the press's own task, and neither is empty after", async ({ page, app }) => {
+  await app.boot({ warmed: false });
+  await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }));
+  const cards = page.locator(".warm-cell .warm-item");
+  await expect(cards.nth(1).locator(".face-slot > img.face")).toBeVisible();
+  for (const i of [1, 4, 7]) await cards.nth(i).click();
+  const first = (await cards.nth(1).locator(".wi-name").textContent()).trim();
+  const pressed = await page.evaluate(PRESS_TEACH);
+  expect(pressed.name, "the first pick in hand").toBe(first);
+  expect(pressed.before.well, "the well drew another sound before the press").not.toBe(SHIPPED_KEY.get(first));
+  expect([pressed.well, pressed.chip], "the first pick's shipped face, in the press's own task").toEqual([SHIPPED_KEY.get(first), SHIPPED_KEY.get(first)]);
+  // Until the first pick is on the bench, and the result is said.
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText(new RegExp(`^${first}`), { timeout }), { ms: 60_000 });
+  await app.answered({ types: ["warm_start", "edit_begin"], lanes: ["bench"] });
+  const watched = await page.evaluate(() => window.__teachWatch.stop());
+  expect(watched.empty, `frames with the well or the chip empty, of ${watched.frames} (the first: ${JSON.stringify(watched.which)})`).toBe(0);
+  await expect(page.locator("#view-perform .pf-faces > .pf-face > img.face")).toHaveCount(1);
 });
