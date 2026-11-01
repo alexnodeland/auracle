@@ -73,6 +73,10 @@ SLOW_CLASSES = ("full", "rust", "reach")
 # Events that run a workflow on main itself: a PR's run (a fork may name its
 # branch main) is never a base.
 MAIN_EVENTS = ("push", "schedule", "workflow_dispatch")
+# A run by hand of these measures what its inputs asked for (Search
+# health's `seeds`), and the API does not say what they were, so it never
+# stands for a night, which measures the defaults: it is looked past.
+HAND_INPUTS_MEASURE = ("search-health.yml",)
 
 
 class Undecided(Exception):
@@ -169,15 +173,19 @@ def nightly(runs: Runs, sha: str) -> tuple[bool, str]:
     """A scheduled run: (run?, why). It stands on the newest run of its
     workflow on main that tested anything, whatever started it: the
     nightly run, a push's run or a run by hand (a cold one too), all of
-    one seeded workflow."""
+    one seeded workflow; for a workflow in HAND_INPUTS_MEASURE, not a run
+    by hand."""
     # A cancelled run gave no answer; one that skipped (a night or a push
     # that stood on another run, or a push superseded) ran only the job
     # that decided so, and is passed over as not tested. A red run is
     # seen, never looked past to an older green one.
+    events = tuple(
+        e for e in MAIN_EVENTS if not (e == "workflow_dispatch" and runs.workflow in HAND_INPUTS_MEASURE)
+    )
     finished = [
         r
         for r in runs.list("status=completed")
-        if r.get("event") in MAIN_EVENTS
+        if r.get("event") in events
         and r.get("status") == "completed"
         and r.get("conclusion") not in (None, "cancelled", "skipped")
     ]

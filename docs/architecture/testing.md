@@ -522,7 +522,8 @@ answer stands:
   head is the commit** the newest run of it on `main` that tested anything
   tested green, whatever that run was: a night's, a push's (the *Slow
   suite*'s, in full or in a cancelled night's place) or one by hand, a
-  `cold` one too (*Search health*'s whatever its seeds). Both are seeded,
+  `cold` one too (not *Search health*'s by hand, which measures the seeds
+  it was asked for, and the API does not say which). Both are seeded,
   so the same commit gives the same answer whatever started the run that
   gave it. A red run is that answer too, and the night runs again; a run
   that skipped, a night's or a push's, tested nothing and is looked past,

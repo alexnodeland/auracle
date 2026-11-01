@@ -189,6 +189,18 @@ class Nightly(unittest.TestCase):
         self.assertIn("runs/2)", why)
         self.assertIn("a run by hand", why)
 
+    def test_search_health_s_run_by_hand_is_looked_past_whatever_its_seeds(self):
+        # Its `seeds` input changes the tables, and the API doesn't return
+        # it: a green run by hand at the head stands for no night.
+        api = FakeAPI([run(2, HEAD, 31, event="workflow_dispatch"), run(1, OLD, 30)], {2: TESTED, 1: TESTED})
+        go, why, error = K.decide("nightly", "search-health.yml", ENV, api)
+        self.assertEqual((go, error), (True, False))
+        self.assertIn("runs/1)", why)
+        api = FakeAPI([run(2, HEAD, 31, event="workflow_dispatch"), run(1, HEAD, 30)], {2: TESTED, 1: TESTED})
+        go, why, error = K.decide("nightly", "search-health.yml", ENV, api)
+        self.assertEqual((go, error), (False, False))
+        self.assertIn("runs/1)", why)
+
     def test_after_a_push_ran_in_a_cancelled_night_s_place_the_next_night_skips(self):
         # Night 2 was cancelled while it waited, and push 3 tested main in
         # its place (main-push), green: the next night, at that commit,
