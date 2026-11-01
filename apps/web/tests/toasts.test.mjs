@@ -1,11 +1,12 @@
 // Unit tests for the toast lane's queue (toasts.js): the order toasts reach
 // the screen, each one's window, `replace`, `urgent`, the backlog's trim and
 // the stale drop. The DOM is a fake that records what the lane did with each
-// toast, and the clock and the timers are node:test's mock timers.
+// toast, and the clock and the timers are node:test's mock timers. Then where
+// the lane stands (`placeLane`), on rects measured from the app at its sizes.
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createToastLane, MAX_TOASTS, UNDO_WINDOW_MS, TOAST_MS, TOAST_STALE_MS } from "../toasts.js";
+import { createToastLane, placeLane, MAX_TOASTS, UNDO_WINDOW_MS, TOAST_MS, TOAST_STALE_MS, LANE_GAP, LANE_INSET } from "../toasts.js";
 
 /** The fade's length in these tests (the app's is `--d-move`). */
 const FADE = 500;
@@ -601,4 +602,96 @@ test("takeBack: behind a plain remark on screen it waits behind every refusal, u
   l.say("Picked A over B.", { ...TAKE_BACK, replace: "vote" });
   assert.equal(l.onScreen(), "plain 1");
   assert.deepEqual(l.waiting(), ["Saved Glass Pad.", "an edit's undo", "Picked A over B.", "plain 2"]);
+});
+
+// ---------- where the lane stands (rule 2) ----------
+
+/** A rect from [left, top, right, bottom], as the page measures one. */
+const R = ([left, top, right, bottom]) => ({ left, top, right, bottom });
+/** Does `t` (at `at`, of `size`) overlap `r`? */
+const overlaps = (at, size, r) => at.left < r.right && at.left + size.w > r.left && at.top < r.bottom && at.top + size.h > r.top;
+
+// EVOLVE at 1280 × 720, as measured (#517): the receipt of a pick, 360 × 58,
+// stood at the corner over EVOLVE POOL and what each generation did.
+const EVOLVE_LAPTOP = {
+  size: { w: 360, h: 58 },
+  bounds: R([288, 62, 1264, 632]),
+  reserved: [
+    R([304, 80, 835, 181]), // the question, its pips and line
+    R([900, 80, 1160, 220]), // the small TASTE map
+    R([542, 249, 698, 272]), R([991, 249, 1147, 272]), // the cards' corners
+    R([304, 514, 500, 548]), R([753, 514, 950, 548]), // the cards' names
+    R([515, 514, 711, 548]), R([965, 514, 1160, 548]), // PLAY and PICK
+    R([304, 564, 639, 587]), // another pair and how the pair was dealt
+    R([1040, 564, 1160, 598]), R([933, 602, 1160, 626]), // EVOLVE POOL, the lineage
+    R([1232, 230, 1272, 470]), // the levels' stops
+  ],
+  pictures: [R([304, 236, 711, 502]), R([753, 236, 1160, 502])],
+};
+
+test("placeLane: with the corner taken, the lane stands in the free spot nearest it, over a picture and inside it", () => {
+  const at = placeLane(EVOLVE_LAPTOP);
+  assert.ok(at, "a spot");
+  for (const r of EVOLVE_LAPTOP.reserved) assert.ok(!overlaps(at, EVOLVE_LAPTOP.size, r), `clear of ${JSON.stringify(r)}`);
+  // Inside card B's well, its inset from the well's right and bottom edges.
+  assert.deepEqual(at, { left: 1160 - LANE_INSET - 360, top: 502 - LANE_INSET - 58 });
+});
+
+test("placeLane: a free corner is the lane's", () => {
+  // PERFORM at 1440 × 900: a one-line toast fits under the pads.
+  const at = placeLane({ size: { w: 300, h: 38 }, bounds: R([288, 62, 1424, 812]), reserved: [R([828, 685, 1320, 773])] });
+  assert.deepEqual(at, { left: 1124, top: 774 });
+});
+
+test("placeLane: beside a control it keeps the gap", () => {
+  // A control in the corner: the nearest spot is over it (68 px away), not
+  // beside it (158 px), and the gap is kept either way.
+  const at = placeLane({ size: { w: 200, h: 40 }, bounds: R([0, 0, 1000, 600]), reserved: [R([850, 540, 1000, 600])] });
+  assert.deepEqual(at, { left: 800, top: 540 - LANE_GAP - 40 });
+  // With the band above it taken too, beside it.
+  const beside = placeLane({ size: { w: 200, h: 40 }, bounds: R([0, 0, 1000, 600]), reserved: [R([850, 540, 1000, 600]), R([700, 300, 1000, 535])] });
+  assert.deepEqual(beside, { left: 850 - LANE_GAP - 200, top: 560 });
+});
+
+test("placeLane: never across a picture's edge", () => {
+  // The free spots nearest the corner would straddle the well's left edge;
+  // the lane stands wholly inside it, or wholly beside it.
+  const well = R([500, 100, 900, 500]);
+  const at = placeLane({ size: { w: 300, h: 50 }, bounds: R([0, 0, 1000, 600]), reserved: [R([0, 520, 1000, 600])], pictures: [well] });
+  const t = { left: at.left, top: at.top, right: at.left + 300, bottom: at.top + 50 };
+  const inside = t.left >= well.left + LANE_INSET && t.right <= well.right - LANE_INSET && t.top >= well.top + LANE_INSET && t.bottom <= well.bottom - LANE_INSET;
+  const clear = t.right <= well.left || t.left >= well.right || t.bottom <= well.top || t.top >= well.bottom;
+  assert.ok(inside || clear, JSON.stringify(t));
+});
+
+// PERFORM on a phone, 390 × 844, as measured: the banner stood under the menu
+// bar over the title's share button and KEEP/BACK's slot (#517).
+const PERFORM_PHONE = {
+  size: { w: 374, h: 46 },
+  bounds: R([8, 58, 382, 776]),
+  reserved: [
+    R([8, 60, 382, 104]), // the head: the title, share, KEEP/BACK's slot
+    R([273, 125, 369, 169]), // the well's corner: XY and the stage
+    R([8, 357, 181, 407]), // the panes' tabs
+    R([8, 412, 382, 430]), // the status line
+    R([8, 439, 382, 644]), // the controls
+    R([8, 652, 382, 722]), // the pads
+    R([12, 730, 378, 774]), // the guide pill
+  ],
+  pictures: [R([8, 112, 382, 349])],
+};
+
+test("placeLane: a phone's banner stands in the free band nearest the bottom, over the floor of PERFORM's well", () => {
+  const at = placeLane({ ...PERFORM_PHONE, prefer: "bottom" });
+  assert.deepEqual(at, { left: 8, top: 349 - LANE_INSET - 46 });
+});
+
+test("placeLane: from the top, the first free band under the head and the well's corner", () => {
+  const at = placeLane({ ...PERFORM_PHONE, prefer: "top" });
+  assert.deepEqual(at, { left: 8, top: 169 + LANE_GAP });
+});
+
+test("placeLane: nowhere free is null, for the caller's fallback", () => {
+  assert.equal(placeLane({ size: { w: 300, h: 50 }, bounds: R([0, 0, 400, 300]), reserved: [R([0, 0, 400, 300])] }), null);
+  assert.equal(placeLane({ size: { w: 0, h: 0 }, bounds: R([0, 0, 400, 300]) }), null);
 });

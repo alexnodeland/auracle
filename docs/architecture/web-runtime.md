@@ -2353,7 +2353,7 @@ EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
 
-One lane, bottom right, one visible toast with a counter. A later toast with
+One lane, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
 jumps the queue (and honours `replace` too), and the toast it interrupts
 comes back behind it with a fresh window (its wait for the stale drop
@@ -2366,11 +2366,82 @@ remark nearest the front of the queue is cut (a queue position, not an age:
 and a refusal last of all. An undo and a refusal are never dropped for their
 age.
 
-The lane steps over the strips it must not cover and beside the tall panels
-(`LANE_STRIPS`, `LANE_COLUMNS` in main.js). TASTE's map fills its level and
-has sounds in every corner, so there is nowhere clear of it to go: on TASTE a
-toast lets the pointer through to the sound under it, and only its buttons
-and links take a click (#412).
+The lane keeps clear of every control and level heading (#517), but in the
+one case the last rung below describes. Each time a toast comes on screen,
+and whenever the page under it changes (a panel opening, a part of the
+level growing or going, the XY pad or HOW IT WORKS filling PERFORM's well:
+a frame later, once for any number of changes), `positionToastLane` in
+main.js measures what it must keep clear of: every control in the level
+shown and in the stage around it (the rail's stops, the guide pill), the
+level's heading and the lines read with it (PERFORM's head with KEEP/BACK's
+slot, kept while it is empty, and its status line; EVOLVE's question and
+pips, each card's foot with its name, PLAY and PICK, and the line saying
+how the pair was dealt), and the teaching strips and panels
+(`LANE_CONTROLS`, `LANE_HEADS`, `LANE_STRIPS`, `LANE_COLUMNS`). What it may
+stand over is a level's picture (`LANE_PICTURES`: PERFORM's well, an EVOLVE
+card's well, the rack, TASTE's map, LEARNING's panels), wholly inside one
+and never across its edge. `placeLane` in toasts.js (pure, unit-tested)
+picks the free spot nearest the stage's bottom right, lining the toast up
+against the edges of what it measured. So at 1440 × 900 a pick's receipt
+on PERFORM stands over the floor of the well, under the sound's face, and
+on EVOLVE over the foot of card B's well, above its PLAY and PICK, where it
+used to cover EVOLVE POOL and *what each generation did*; at 1280 × 720 on
+PERFORM it used to cover rows of UNDER THE HOOD and the rail's PATCH stop.
+The toast's own size is watched too (a line more, its counter), and a
+change under it does not move it while the pointer rests on it or a finger
+is on it (ADR-025): it moves when the hand leaves. A mouse or a pen counts
+while it is on the toast (the lane's own pointerenter and pointerleave, and
+`:hover`), a finger only while it touches the banner (`laneTouched`): a
+touch screen leaves `:hover` on what a finger last tapped, and read alone it
+held the banner over the XY pad opened under it after a tap on its words.
+
+With no spot free of every control (a level crowded at its size), it
+steps down until one is:
+
+1. the guide pill gives way while the toast stands over it, its place
+   kept, and is back when it goes (`laneOverGuide`): unseen, the pointer
+   passing through it and its × hidden, its step still a status in the
+   accessibility tree. Measured on PERFORM: at 375 × 667 in each of the
+   well's modes, where the band under the pads is the pill's; at 390 × 844
+   with the XY pad or HOW IT WORKS up; at 844 × 390 for a short toast with
+   the XY pad up; and, for some toasts, at 1280 × 720 with the XY pad up;
+2. on a phone held upright, the banner is one row (`.toasts.tight`): its
+   words (two lines at most, the phone's clamp on them) beside its action
+   rather than over it, which is what the band under PERFORM's pads holds
+   at 375 × 667;
+3. elsewhere, the toast is narrowed to the inside of a picture, the
+   nearest its corner first, down to `LANE_NARROWEST` (240 px): PERFORM's
+   well on a phone on its side, a little narrower than a toast, with the
+   controls filling the rest;
+4. then it keeps clear of the strips and panels, as it did before #517,
+   and failing that stands in its corner.
+
+The last rung is reached with the keys' drawer up on a small phone: PERFORM
+then keeps no band a toast fits (at 375 × 667 the band under the pads is
+37 px, a one-row banner 46), and the toast stands above the pads, over the
+foot of the second row of knobs (their labels and the lower edge of their
+dials, their middles still pressed); on a phone on its side it stands over
+the knobs' labels. Nothing is free there to move it to.
+
+On a phone held upright the toast is a banner across the screen, so only
+its height is chosen: the free band nearest the foot of the level, over the
+floor of PERFORM's well under its face, and on EVOLVE the free band nearest
+the top, under the cards' corners, where no thumb starts the swipe that
+picks. Over one picture (PERFORM's well, the rack, TASTE's map) it is
+narrowed to the picture's inside, as a caption is, rather than laid across
+its frame (`insetBanner`). Its counter keeps to its words' row where the
+row has room for it. A swipe up puts it away. It used to stand just under
+the menu bar, over PERFORM's share button and KEEP/BACK, EVOLVE's pips and
+its small TASTE map. On a phone on its side a banner as wide as the screen
+finds no band clear of the controls beside the well, so the toast there is
+as wide as its words and placed as on a desk, left of the levels' stops.
+`toasts_keep_clear.spec.js` holds all of this at 1440 × 900, 1280 × 720,
+820 × 1180, 390 × 844, 375 × 667 and 844 × 390.
+
+The controls drawn on TASTE's map and PATCH's rack are not kept clear of
+(`LANE_SURFACES`): their sounds and modules reach to every corner, and there
+is nowhere clear of them to go. On TASTE a toast lets the pointer through to
+the sound under it, and only its buttons and links take a click (#412).
 
 A toast that reports a change to the player's sounds (`bank: true`: a sound
 joined or left the pool, or was saved or released) has its turn whatever

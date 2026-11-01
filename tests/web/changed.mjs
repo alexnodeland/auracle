@@ -77,7 +77,7 @@ export const MODULES = {
   // fixture writes and reads the store through it too (`reuseRenders`).
   "apps/web/render-store.js": ["faces", "farm_close", "evolve_breeds_beside_you", "evolve_generation_timing", "fixture_renders"],
   // The toast lane's queue: main.js's `note` hands it every toast.
-  "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap"],
+  "apps/web/toasts.js": ["failure_flows", "evolve_truth", "fixture_tap", "toasts_keep_clear"],
   // What waits for the hand: a refit's views over the bank and the maps,
   // and a measurement over PERFORM's controls (`heldOrTouched`).
   "apps/web/hand.js": ["evolve_refit", "taste_marks", "taste_hold", "bank_row", "perform_recentre", "perform_wire_time"],
@@ -101,7 +101,7 @@ export const VIEWS = {
     specs: [
       "shell_levels", "shell_zoom", "model_view", "guide_pill", "cmdk", "first_run", "warm_start", "film_chip", "text_fits", "type_scale",
       "shell_phone", "phone_fits", "keys_for_the_platform", "responsive", "session_seed", "restore", "budgets", "smoke", "failure_flows",
-      "live_faces", "boot_modules", "farm_close", "touch_gestures", "keys_wake_audio", "bar_order",
+      "live_faces", "boot_modules", "farm_close", "touch_gestures", "keys_wake_audio", "bar_order", "toasts_keep_clear",
     ],
     sample: ["smoke", "failure_flows", "shell_levels"],
   },
