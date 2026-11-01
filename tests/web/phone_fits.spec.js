@@ -62,11 +62,13 @@
 //   scrolls instead of cutting: nothing scrolls sideways, nothing is out of
 //   reach, and what a finger reaches is still its size.
 //
-// - A toast stands at the top of the screen, under the menu bar, and covers
-//   none of a level's primary controls.
+// - A toast covers none of a level's primary controls (it stands in the
+//   level's free band: toasts_keep_clear.spec.js holds it to every control
+//   and heading).
 //
-// What it does not claim: that a toast never covers some other control
-// for the seconds it is up, or that the guide pill never does (a covered
+// What it does not claim: that a toast covers no other control for the
+// seconds it is up (toasts_keep_clear.spec.js holds that, with a pick's
+// receipt at each level), or that the guide pill never does (a covered
 // control is skipped, as a finger could not press it either), anything of
 // the hood pane for a sound whose controls turn no knob (it has no rows
 // then), or anything at a tablet's size
@@ -132,7 +134,7 @@ const MISFITS = ({ primary, fits = true, lists = [] }) => {
     const inSight = r.top >= 0 && r.bottom <= floor + 1 && r.left >= 0 && r.right <= innerWidth + 1;
     if (!inSight && !scrolls(e)) out.push(`${e.id ? "#" + e.id : "." + [...e.classList].join(".")} is out of reach at ${Math.round(r.top)}–${Math.round(r.bottom)}`);
   }
-  // A toast stands at the top, under the menu bar, over none of these.
+  // A toast stands over none of these.
   const toasts = [...document.querySelectorAll("#toasts .toast")].map((t) => t.getBoundingClientRect()).filter((t) => t.width);
   for (const sel of primary) {
     for (const p of view.querySelectorAll(sel)) {
