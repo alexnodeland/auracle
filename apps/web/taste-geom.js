@@ -205,17 +205,41 @@ export function haloOf(like, s0) {
   return { r: s0 * (0.5 + 1.45 * k), a0: 0.03 + 0.42 * k, a1: 0.015 + 0.14 * k };
 }
 
+/** A mark's reach on the map, in marks (`s0`): the ring a sound with no
+ *  guess wears and the distance a mouse finds it from (taste.js). */
+export const MAP_MARK_REACH = 0.62;
+
+/** What stands over the map's edges, in CSS px from the edge, as style.css
+ *  draws it: the SOUND / TASTE switch at its top (`.ts-tog`: `--s3` in, and
+ *  44 px tall on a touch screen, 30 with a mouse; the frame keeps clear of
+ *  the taller at every width, as a tablet's canvas is a desktop's width and
+ *  its switch a finger's height), and the taste-over-time track at its foot
+ *  (`.ts-time`: `--s3` in, 46 px tall). A press there is the control's, not
+ *  the map's, so no sound is drawn there. */
+export const MAP_TOG_FOOT = 12 + 44;
+export const MAP_TRACK_ROOM = 12 + 46;
+/** The space left between such a control and the nearest mark's reach
+ *  (`--s1`): a mark never touches it, and the map's size, read in whole px,
+ *  can differ from the page's by a fraction without bringing one under. */
+export const MAP_EDGE_GAP = 4;
+
 /** The map's frame for a canvas `w` × `h` CSS px holding `n` sounds: the
  *  margins `mapLayout` keeps (`box`), the mark size the halos are drawn to
  *  (`s0`, sized to the room the sounds share: legible on a small screen,
- *  never crowding a large one), and the nearest two marks may sit (`minD`). */
+ *  never crowding a large one), and the nearest two marks may sit (`minD`).
+ *  Every mark, its reach included, stays clear of the switch along the top
+ *  and, with `track`, of the track along the foot (`MAP_TOG_FOOT`,
+ *  `MAP_TRACK_ROOM`, and `MAP_EDGE_GAP` beyond), so a finger or a mouse can
+ *  reach every sound. */
 export function mapFrame(w, h, n, { track = false } = {}) {
   const small = w < 520;
   const m = small ? Math.max(22, w * 0.06) : Math.max(48, w * 0.07);
   const s0 = Math.round(Math.max(20, Math.min(32, Math.sqrt((w * h) / Math.max(1, n)) * 0.5)));
+  const reach = s0 * MAP_MARK_REACH;
+  const top = MAP_TOG_FOOT + MAP_EDGE_GAP + reach;
   // With the taste-over-time track along the bottom, the sounds keep clear of it.
-  const bottom = track ? (small ? 78 : 96) : small ? 40 : 48;
-  return { box: { w, h, left: m, right: m, top: small ? 48 : 56, bottom }, s0, minD: s0 * 1.05 };
+  const bottom = track ? Math.max(small ? 78 : 96, MAP_TRACK_ROOM + MAP_EDGE_GAP + reach) : small ? 40 : 48;
+  return { box: { w, h, left: m, right: m, top, bottom }, s0, minD: s0 * 1.05 };
 }
 
 /** LEARNING's small map: each pool point `[{id, x, y}]` min–max scaled into
@@ -277,9 +301,12 @@ export const MAP_RANK_PULL = 0.55;
  *  coordinates) in a box `{w, h, left, right, top, bottom}` (size and px
  *  margins): each axis min–max scaled, pulled toward its ranks, then relaxed
  *  so no two marks sit closer than `minD` px, each held toward its own place.
- *  Pure and deterministic: the same points give the same layout. Returns a
- *  Map from id to `{x, y}`. y grows downward with the engine's second
- *  coordinate, as the map has always been drawn. */
+ *  The relaxing may push a mark into the side margins, halfway, but never
+ *  past the top or bottom one: those keep the marks clear of what stands
+ *  over the map's edges (`mapFrame`). Pure and deterministic: the same
+ *  points give the same layout. Returns a Map from id to `{x, y}`. y grows
+ *  downward with the engine's second coordinate, as the map has always been
+ *  drawn. */
 export function mapLayout(points, box, minD, iterations = 90) {
   const pts = (points || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
   const out = new Map();
@@ -305,8 +332,8 @@ export function mapLayout(points, box, minD, iterations = 90) {
   });
   const xmin = box.left * 0.5;
   const xmax = box.w - box.right * 0.5;
-  const ymin = box.top * 0.6;
-  const ymax = box.h - box.bottom * 0.6;
+  const ymin = box.top;
+  const ymax = box.h - box.bottom;
   for (let it = 0; it < iterations; it++) {
     for (let i = 0; i < arr.length; i++) {
       for (let j = i + 1; j < arr.length; j++) {

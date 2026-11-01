@@ -316,7 +316,7 @@ export function createTaste(host) {
         ctx.save();
         ctx.setLineDash([3, 4]);
         ctx.beginPath();
-        ctx.arc(q.x, q.y, S0 * 0.62, 0, Math.PI * 2);
+        ctx.arc(q.x, q.y, S0 * geom.MAP_MARK_REACH, 0, Math.PI * 2);
         ctx.strokeStyle = inkAlpha(INK.amber, 0.42);
         ctx.lineWidth = 1;
         ctx.stroke();
@@ -428,7 +428,7 @@ export function createTaste(host) {
       const q = shownPos.get(p.id);
       if (!q) continue;
       const d = Math.hypot(q.x - mx, q.y - my);
-      if (d < (reach ?? S0 * 0.62) && d < bd) { best = p.id; bd = d; }
+      if (d < (reach ?? S0 * geom.MAP_MARK_REACH) && d < bd) { best = p.id; bd = d; }
     }
     return best;
   }

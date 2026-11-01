@@ -2340,7 +2340,10 @@ body.model-view .preset-item:not(:hover, .under) .pb-in { right: var(--s1); back
 .ts-pl-like.guess { color: var(--phos-b-dim); }
 .ts-pl-acts { display: flex; gap: var(--s1); margin-top: var(--s3); }
 .ts-foot { margin: 0; min-height: 1.45em; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
-/* SOUND / TASTE, at the map's top left (prototype v2's .tog). */
+/* SOUND / TASTE, at the map's top left (prototype v2's .tog). Its inset and
+   its height on a touch screen (44 px, below) are taste-geom.js's
+   MAP_TOG_FOOT: the map draws no sound above that, where a press is the
+   switch's. */
 .ts-tog {
   position: absolute;
   top: var(--s3);
@@ -2370,7 +2373,8 @@ body.model-view .preset-item:not(:hover, .under) .pb-in { right: var(--s1); back
 /* Resting under the model view, which holds the map on its TASTE side. */
 .ts-tog:disabled { cursor: default; opacity: 0.7; }
 /* Taste over time: a slim track along the map's foot, once there are two
-   moments to move between. */
+   moments to move between. Its inset and height are taste-geom.js's
+   MAP_TRACK_ROOM: the map draws no sound below that. */
 .ts-time {
   position: absolute;
   left: var(--s3);
