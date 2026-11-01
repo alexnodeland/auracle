@@ -32,6 +32,12 @@
 // - A change under the receipt (what each generation did, opened from the
 //   keyboard where it stands) does not move it while the pointer rests on
 //   it (ADR-025); it moves clear once the pointer leaves.
+// - On a phone, the XY pad coming up under the receipt (from the keyboard)
+//   moves it clear, after a tap on its words too: a finger that has lifted
+//   holds nothing (a tap left `:hover` on the banner, which held it there).
+//   Played as a phone is, by finger: a click would leave the mouse's place
+//   behind, and the browser moves `:hover` off the banner from there when
+//   the page changes, so the hold would not show.
 //
 // What it does not claim: anything with the keys' drawer up on a phone,
 // where PERFORM keeps no band a toast fits and it stands over the foot of
@@ -40,7 +46,7 @@
 // map or on PATCH's rack, whose sounds and modules reach to every corner (a
 // toast on TASTE lets the pointer through: taste_toast.spec.js), or where
 // exactly the toast stands (toasts.test.mjs holds `placeLane`'s choices).
-const { test, expect, goLevel } = require("./fixtures");
+const { test, expect, goLevel, landed } = require("./fixtures");
 
 const LEVELS = ["evolve", "perform", "patch", "taste", "learning"];
 
@@ -245,3 +251,45 @@ for (const [width, height] of [[390, 844], [375, 667], [844, 390]]) {
     });
   });
 }
+
+/** Go to a level by a tap on its stop, as a finger does. */
+async function tapLevel(page, level) {
+  const stop = page.locator(`.rail-stop[data-level="${level}"]`);
+  await stop.tap();
+  await expect(stop).toHaveAttribute("aria-current", "location");
+  await landed(page);
+}
+
+// A finger that has lifted holds nothing (ADR-025 holds the lane under a
+// resting pointer or a finger on the banner). A tap on the banner's words
+// left `:hover` on it, and the lane read that as a hand on it: the XY pad
+// coming up under the banner then left it there, over the pad (it stood
+// there 1.5 s later in three runs of three), until something else moved it.
+// Everything is tapped, as on a phone, but the knob and the XY pad, turned
+// and opened from the keyboard, which moves no pointer.
+test.describe("a phone, 390 × 844, the XY pad", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("on a phone a toast moves clear of the XY pad coming up under it, after a tap on its words too", async ({ page, app }) => {
+    await app.boot();
+    await tapLevel(page, "perform");
+    const knob = page.locator(".pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)").first();
+    await knob.focus();
+    for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+    await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
+    await tapLevel(page, "evolve");
+    const choose = page.locator("#choose-a");
+    await app.engine((timeout) => expect(choose).toBeEnabled({ timeout }), { ms: 30_000 });
+    await choose.tap();
+    await tapLevel(page, "perform");
+    await expect.poll(() => covered(page, "perform", false), { message: "what a pick's receipt covers at perform", timeout: SETTLE_MS }).toEqual([]);
+    const receipt = await atRest(page);
+    await receipt.locator(".toast-msg").tap();
+    await page.locator(".pf-xy-btn").focus();
+    await page.keyboard.press("Enter");
+    const pad = page.locator("#pf-xy");
+    await expect(pad).toBeVisible();
+    await expect.poll(async () => boxesMeet(await receipt.boundingBox(), await pad.boundingBox()), { message: "the receipt over the XY pad", timeout: SETTLE_MS }).toBe(false);
+    await expect.poll(() => covered(page, "perform", false), { message: "what a pick's receipt covers at perform with the XY pad up", timeout: SETTLE_MS }).toEqual([]);
+  });
+});

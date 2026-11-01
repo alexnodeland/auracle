@@ -4924,14 +4924,23 @@ const PHONE_FROM_TOP = new Set(["evolve"]);
 const LANE_NARROWEST = 240;
 // A finger on the banner (a swipe under way): the lane is not moved under it.
 let laneTouched = false;
+// A mouse or a pen resting on the lane, from its own pointerenter and
+// pointerleave (below). Not a finger: `:hover` alone would hold the lane,
+// but a touch screen leaves `:hover` on what a finger last tapped, and a
+// finger's pointerleave fires once, as it lifts, so after a tap on a
+// banner's words every change under it was held until something else moved
+// the lane (at 390 × 844 the XY pad came up under the banner, and the banner
+// stayed over the pad).
+let laneHovered = false;
 // A move the hand held back, made when it leaves (`laneUnderHand`).
 let laneOwed = false;
 
 /** Is the hand on the lane? A background change never moves what is under
- *  it (ADR-025): the pointer resting on a toast's button, or a finger
- *  swiping the banner. */
+ *  it (ADR-025): a mouse or a pen resting on a toast, or a finger on the
+ *  banner. `:hover` as well, so the flag holds nothing where the pointer no
+ *  longer is (a lane moved from under a pointer that has not moved since). */
 function laneUnderHand(holder) {
-  return laneTouched || holder.matches(":hover");
+  return laneTouched || (laneHovered && holder.matches(":hover"));
 }
 
 /** Place the lane: measure the toast, the level's controls and pictures,
@@ -5127,12 +5136,13 @@ function laneObstacles() {
 // The page can change under a toast already on screen: a tour, the MIDI
 // panel, the lineage opening, a rail collapsed or expanded (their class), or
 // a part of a level growing or going (BLEND coming up in PERFORM's well
-// under an offer, the guide pill, the line under EVOLVE's cards: their
-// size). The lane is placed again then, not only when the next toast
+// under an offer, the XY pad or HOW IT WORKS filling the well, the guide
+// pill, the line under EVOLVE's cards: their size, which is none while they
+// are hidden). The lane is placed again then, not only when the next toast
 // arrives, a frame later and once for any number of changes, and never
 // under the hand (`laneUnderHand`). PERFORM builds its parts after boot, so
 // what is watched is gathered each time the lane is placed.
-const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".md-foot", "#taste-time"];
+const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-xy", ".pf-why-body", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".md-foot", "#taste-time"];
 let laneFrame = 0;
 function laneLater() {
   if (laneFrame || !$("toasts")?.firstChild) return;
@@ -5158,8 +5168,13 @@ window.addEventListener("resize", () => positionToastLane());
   for (const s of [...LANE_STRIPS, ...LANE_COLUMNS]) {
     for (const el of document.querySelectorAll(s)) watch.observe(el, { attributes: true, attributeFilter: ["class", "hidden"] });
   }
-  // The hand gone, a move it held back is made.
+  // A mouse or a pen on the lane (`laneHovered`); the hand gone, a move it
+  // held back is made.
+  $("toasts")?.addEventListener("pointerenter", (e) => {
+    if (e.pointerType !== "touch") laneHovered = true;
+  });
   $("toasts")?.addEventListener("pointerleave", () => {
+    laneHovered = false;
     if (laneOwed) positionToastLane();
   });
 }
