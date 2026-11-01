@@ -12,7 +12,9 @@
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
 // - On a sound none of the controls reach, the turn is left out, pip and
-//   all, and asked for again on a sound one of them turns (#480).
+//   all, and asked for again on a sound one of them turns (#480). The
+//   closing line is said once: a turn done there after it ticks off without
+//   a second, and `auracle-guide` keeps that it was said (`ended`).
 const { test, expect, goLevel, modelView, SEED } = require("./fixtures");
 
 // A first visit whose sound in hand, once measured, none of the six controls
@@ -129,14 +131,25 @@ test("the first steps' old ticks carry over into the pill, and the old key goes"
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   const store = await page.evaluate(() => ({ old: localStorage.getItem("auracle-perform-steps"), now: JSON.parse(localStorage.getItem("auracle-guide")) }));
   expect(store.old).toBeNull();
-  expect(store.now).toEqual({ done: ["play"], closed: [] });
+  expect(store.now).toEqual({ done: ["play"], closed: [], ended: [] });
 });
 
-test("on a sound none of the controls reach, the pill leaves the turn out, and asks for it again on a sound one turns", async ({ page, app }) => {
+test("on a sound none of the controls reach, the pill leaves the turn out, and on a sound one turns asks for it with no second closing line", async ({ page, app }) => {
   test.setTimeout(240_000);
   await boot(app, { seed: NONE_REACH_SEED });
   const now = page.locator("#guide .pf-step.now");
   const done = page.locator("#guide .pips i.done");
+  // Every closing line the pill says from here on, counted as it goes up:
+  // one stays up seven seconds, so a wait for the pill to hide can't tell
+  // one from two.
+  await page.evaluate(() => {
+    window.__closings = 0;
+    new MutationObserver((ms) => {
+      for (const m of ms) for (const n of m.addedNodes) if (n.matches?.(".pf-step.all") || n.querySelector?.(".pf-step.all")) window.__closings++;
+    }).observe(document.getElementById("guide"), { childList: true, subtree: true });
+  });
+  const closings = () => page.evaluate(() => window.__closings);
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")));
   // Measured: every control amber, none turns.
   await app.engine((timeout) => expect(page.locator(".pf-status")).toContainText("0 of 6 controls reach", { timeout }));
   await expect(page.locator(".pf-deck .pf-knob.search"), "every control amber").toHaveCount(6);
@@ -147,17 +160,33 @@ test("on a sound none of the controls reach, the pill leaves the turn out, and a
   await expect(now, "after the note, the offer: no turn asked for").toContainText("Press OFFER");
   await expect(pips(page)).toHaveCount(4);
   await expect(done).toHaveCount(1);
+  // The other three (by the rail to TASTE, as the walk above goes): the
+  // four shown are done, and the closing line is said.
+  await page.locator(".pf-pad", { hasText: /^Offer$/ }).click();
+  await expect(now).toContainText(/^Press (⌥|Alt) ?↑ to zoom out to TASTE/);
+  await goLevel(page, "taste");
+  await goLevel(page, "perform");
+  await expect(now).toContainText(/^Hold (⌥|Alt) to see what the model believes/);
+  await modelView(page, true);
+  await expect(page.locator("#guide .pf-step.all")).toContainText("That is the loop");
+  await modelView(page, false);
+  await expect(pill(page)).toBeHidden({ timeout: 15_000 });
+  expect(await closings(), "the closing line, once").toBe(1);
   // A sound a control turns: the turn is back, its pip with it, and next.
   await app.openOnPerform("Glass Pad");
   await expect(now).toContainText(/^Turn [A-Z]+: drag/);
   await expect(pips(page)).toHaveCount(5);
-  await expect(done).toHaveCount(1);
-  // And a turn ticks it off.
+  await expect(done).toHaveCount(4);
+  // A turn ticks it off, and the pill goes without saying the closing line
+  // again.
   const k = page.locator(".pf-deck .pf-knob:not(.search):not(.pending)").first();
   await k.focus();
   for (let i = 0; i < 6; i++) await page.keyboard.press(/half-hi/.test(await k.getAttribute("class")) ? "ArrowDown" : "ArrowUp");
-  await expect(now).toContainText("Press OFFER");
-  await expect(done).toHaveCount(2);
+  await expect.poll(async () => (await stored()).done, { message: "the turn ticked off" }).toContain("turn");
+  expect(await closings(), "no second closing line").toBe(1);
+  await expect(pill(page)).toBeHidden();
+  // Kept with what was done, so a reload doesn't say it again either.
+  expect((await stored()).ended).toEqual(["perform"]);
 });
 
 test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", async ({ page, app }) => {

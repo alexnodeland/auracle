@@ -1012,12 +1012,14 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   middles lie past the view.
 - **First steps** are per level (guide.js `levels`, `setLevel` from
   `levelChanged`), and so is ×: `auracle-guide` keeps `closed` as the levels
-  closed (an old `closed: true` reads as PERFORM's). PATCH's four tick in
-  `playBench` and `firstNotePlayed` (play it), `sendEdit`, `setLock` and
-  `startEvolveFrom`; a dismissed bench tour (`auracle-bench-tour`) counts the
-  last three done and a sound already played (`auracle-played`) the first
-  (`markDone`). TEACH's chip counts the picks to the first refit, and
-  `renderNextStep` says nothing about them while a pair is dealt.
+  closed (an old `closed: true` reads as PERFORM's). A level's closing line
+  is said once: `ended` keeps the levels that said it, beside `closed`.
+  PATCH's four tick in `playBench` and `firstNotePlayed` (play it),
+  `sendEdit`, `setLock` and `startEvolveFrom`; a dismissed bench tour
+  (`auracle-bench-tour`) counts the last three done and a sound already
+  played (`auracle-played`) the first (`markDone`). TEACH's chip counts the
+  picks to the first refit, and `renderNextStep` says nothing about them
+  while a pair is dealt.
 
 ## Faces
 
@@ -1715,7 +1717,9 @@ steps are added to the guide pill (`guide.js`, `host.guide`), which keeps what
 was done as `auracle-guide` and migrates `auracle-perform-steps` into it. A
 step may carry a `skip`: the turn's is `reachesNone` (every control on the
 panel a search control), which leaves it out, its pip and the closing line's
-count with it, while such a sound is in hand (#480).
+count with it, while such a sound is in hand (#480). The closing line is said
+once (`ended`), so the turn, back on a sound a control reaches and done after
+the line, ticks off without a second.
 
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls

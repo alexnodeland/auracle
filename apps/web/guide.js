@@ -8,13 +8,18 @@
 // belong to more than one level. A step the sound in hand gives no way to do
 // is left out while it is in hand (its `skip`: PERFORM's turn on a sound none
 // of the controls reach, #480), pip and all, and comes back with a sound that
-// has one.
+// has one. A level's closing line is said once: when the steps it shows are
+// done, and not again when a step left out comes back and is done.
 //
 // What has been done is the player's, kept in localStorage as
-// `auracle-guide` ({done: [ids], closed: [levels]}), JS-owned. × stops one
-// level's steps: PERFORM's × leaves PATCH's to show. A `closed: true` from
-// before the levels had their own (C1, when PERFORM's were the only steps)
-// reads as PERFORM's. The first steps kept their ticks as
+// `auracle-guide` ({done: [ids], closed: [levels], ended: [levels]}),
+// JS-owned. × stops one level's steps: PERFORM's × leaves PATCH's to show.
+// `ended` is the levels whose closing line has been said, kept with the rest
+// so a reload doesn't say it again. A `closed: true` from before the levels
+// had their own (C1, when PERFORM's were the only steps) reads as PERFORM's.
+// A record from before `ended` reads as no line said: whoever heard one then
+// had done every step it closed, and hears it again only after steps added
+// since (C3's two, as Plan-008 meant). The first steps kept their ticks as
 // `auracle-perform-steps` (an array of ids) before the pill: read once into
 // the new key and removed (`readGuide`).
 
@@ -26,7 +31,8 @@ export const OLD_STEPS_KEY = "auracle-perform-steps";
  *  (`migrated` true: the caller writes the new key and removes the old).
  *  Anything unreadable is a fresh start. Pure, for the unit tests. */
 export function readGuide(get) {
-  const fresh = { done: [], closed: [], migrated: false };
+  const fresh = { done: [], closed: [], ended: [], migrated: false };
+  const levels = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string"))] : []);
   let raw = null;
   try {
     raw = get(GUIDE_KEY);
@@ -37,9 +43,8 @@ export function readGuide(get) {
     try {
       const v = JSON.parse(raw);
       const done = Array.isArray(v?.done) ? v.done.filter((x) => typeof x === "string") : [];
-      const closed = v?.closed === true ? ["perform"]
-        : Array.isArray(v?.closed) ? [...new Set(v.closed.filter((x) => typeof x === "string"))] : [];
-      return { done: [...new Set(done)], closed, migrated: false };
+      const closed = v?.closed === true ? ["perform"] : levels(v?.closed);
+      return { done: [...new Set(done)], closed, ended: levels(v?.ended), migrated: false };
     } catch {
       return fresh;
     }
@@ -54,7 +59,7 @@ export function readGuide(get) {
   try {
     const v = JSON.parse(old);
     const done = Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-    return { done: [...new Set(done)], closed: [], migrated: true };
+    return { done: [...new Set(done)], closed: [], ended: [], migrated: true };
   } catch {
     return { ...fresh, migrated: true };
   }
@@ -76,7 +81,9 @@ export function stepsShown(steps, level, done) {
  *  the sound in hand gives no way to do it (`stepsShown`). `setLevel(level)`
  *  says which level is up; `done(id)` ticks one off; `refresh()` draws the
  *  pill again when what a step says or skips may have changed; `ends` is
- *  each level's closing line, said when the last step it shows is done. */
+ *  each level's closing line, said once, when the last step it shows is
+ *  done: a level whose line was said (`ended`) doesn't say it again when a
+ *  step left out comes back and is done. */
 export function createGuide({ el, ends = {} }) {
   const steps = [];
   let level = "perform";
@@ -84,9 +91,10 @@ export function createGuide({ el, ends = {} }) {
   const st = readGuide((k) => localStorage.getItem(k));
   const done = new Set(st.done);
   const closed = new Set(st.closed); // the levels whose × was pressed
+  const ended = new Set(st.ended); // the levels whose closing line was said
   const save = () => {
     try {
-      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed: [...closed] }));
+      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed: [...closed], ended: [...ended] }));
     } catch {
       /* a per-viewer convenience; in memory is enough for this visit */
     }
@@ -167,10 +175,14 @@ export function createGuide({ el, ends = {} }) {
       if (done.has(id) || !steps.some((s) => s.id === id)) return;
       const wasOpen = !closed.has(level) && !allDoneOn(level);
       done.add(id);
+      // The level's last step, and its line not said yet (a step left out
+      // that came back after it, the turn, ends with no second line).
+      const closing = allDoneOn(level) && wasOpen && ends[level] && !ended.has(level);
+      if (closing) ended.add(level);
       save();
-      if (!allDoneOn(level) || !wasOpen || !ends[level]) return render();
-      // The level's last step: its pip fills and one line says what the loop
-      // was, for a few seconds, then the pill goes.
+      if (!closing) return render();
+      // Its pip fills and one line says what the loop was, for a few
+      // seconds, then the pill goes.
       el.innerHTML = "";
       el.classList.remove("hidden");
       const pill = make("div", "next pf-steps");

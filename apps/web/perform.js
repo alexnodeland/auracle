@@ -4446,7 +4446,8 @@ export function createPerform(host) {
     { id: "play", text: () => (keysInDrawer() ? "Tap KEYS, then play the keybed" : coarse() ? "Play it: tap the keybed" : "Play a key: A to L, or tap the keybed") },
     // Left out while the sound in hand is one no control reaches (#480):
     // the pips and the closing line count the steps left, and it is back
-    // with a sound a control turns.
+    // with a sound a control turns (done after the closing line was said,
+    // it ticks off without a second: guide.js says it once).
     { id: "turn", text: turnStep, skip: () => reachesNone(state.wire) },
     { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];

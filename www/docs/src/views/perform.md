@@ -38,7 +38,10 @@ the first three above, then zoom out to [TASTE](./taste.md)
 step names a control that turns on this sound (*Turn BRIGHT: drag up or
 down*), never one it can’t reach. On a sound none of the controls reach
 (every one amber), the pill leaves that step out, pip and all, and asks for
-it again on a sound one of them turns. Its **×** stops it showing.
+it again on a sound one of them turns. When the steps it shows are done, it
+says what the loop was (*That is the loop. Every offer you hear, then take or
+pass, teaches it what you like.*) and goes. It says that only once, so a turn
+it comes back for later just ticks off. Its **×** stops it showing.
 
 ## What you see
 
