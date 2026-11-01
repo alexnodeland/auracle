@@ -5047,9 +5047,13 @@ body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
   animation: listen 1.1s ease-in-out infinite; /* token-exempt: a loop's period, not a transition */
 }
 @media (prefers-reduced-motion: reduce) { .wi-play.loading { animation: none; } }
+/* On a touch screen the ▶ is a finger's size, 44 px (the touch rule further
+   down holds every ▶ to it), and the card keeps its words clear of all of
+   it. The room kept was a 34 px ▶'s, so a 44 px one sat over the end of a
+   blurb (#527). */
 @media (pointer: coarse) {
-  .wi-play { width: 34px; height: 34px; }
-  .warm-cell .warm-item { padding-right: 46px; } /* token-exempt: the ▶'s column on touch: 34px wide, 6px in from the edge, 6px clear of the words */
+  .wi-play { width: 44px; height: 44px; }
+  .warm-cell .warm-item { padding-right: 56px; } /* token-exempt: the ▶'s column on touch: 44px wide, 6px in from the edge, 6px clear of the words */
 }
 /* A phone: two columns, and the ▶ takes a row
    under the words rather than a column beside them, which left a 98 px card
@@ -5059,11 +5063,70 @@ body[data-level="taste"] .toasts .toast .toast-stack { pointer-events: auto; }
   .warm-card { margin: auto; padding: var(--s5) var(--s4) var(--s4); }
   .warm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .warm-cell .warm-item { padding-right: var(--s3); }
-  .warm-cell .warm-item { padding-bottom: 46px; } /* token-exempt: the ▶'s row on a phone: 34px tall, 6px up from the edge, 6px clear of the words */
+  .warm-cell .warm-item { padding-bottom: 40px; } /* token-exempt: the ▶'s row on a phone: 28px tall, 6px up from the edge, 6px clear of the words */
+}
+@media (max-width: 560px) and (pointer: coarse) {
+  .warm-cell .warm-item { padding-bottom: 56px; } /* token-exempt: the ▶'s row on a phone: 44px tall, 6px up from the edge, 6px clear of the words */
 }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 .warm-tour { margin-right: auto; color: var(--phos-a); font-size: var(--t-body); text-decoration: none; }
 .warm-tour:hover, .warm-tour:focus-visible { text-decoration: underline; }
+/* The warm start scrolls whenever its card is taller than the window, a
+   phone upright or on its side, and stays centred while it fits: an auto
+   margin takes only the room there is. Centred by the flexbox, a card taller
+   than a phone on its side had its title above the window and SKIP below it,
+   and neither could be scrolled to. */
+#warmstart { align-items: flex-start; overflow-y: auto; }
+#warmstart > .warm-card { margin: auto; }
+/* Where the card can run past the window (a phone, upright or on its side,
+   or a short window), its foot stays at the window's foot while the nine
+   scroll above it (#527): SKIP and TEACH IT sat under the fold, with nothing
+   to say they were there. The foot takes the card's bottom padding as its
+   own, so it covers the cards to the window's edge, opaque as the panel is
+   there, and a fade at its top says they go on under it. It stands over
+   every card (35: each holds its pick in `[aria-pressed]`, picked or not)
+   and its ▶ (36).
+   The dialog keeps that room clear for the focus: a card or ▶ that Tab
+   moves to below the fold scrolls up clear of the foot and its fade, ring
+   and all (the browser stopped it at the window's foot, under the foot),
+   and one that Shift+Tab moves to above the top comes down far enough to
+   show its ring. The room is the tallest foot's, a finger's 44 px button on
+   a short screen (s3 above it, s5 below; a phone's is s4 below), with the
+   fade's s3 and the ring's 4 px (2 out, 2 wide). The gap above the foot is
+   the fade's and the ring's, s4, so the last row's ring clears the fade
+   once the cards have scrolled to their end. */
+@media (max-width: 560px), (max-height: 600px) {
+  #warmstart { scroll-padding: var(--s1) 0 calc(var(--s3) + 44px + var(--s5) + var(--s3) + var(--s1)); } /* token-exempt: the foot's height on a short touch screen (its padding and a finger's 44 px button), its fade and the focus ring's 4 px */
+  #warmstart > .warm-card { padding-bottom: 0; }
+  #warmstart .warm-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 37;
+    margin-top: var(--s4);
+    padding: var(--s3) 0 var(--s5);
+    background: var(--panel);
+  }
+  #warmstart .warm-foot::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: var(--s3);
+    background: linear-gradient(to top, var(--panel), transparent);
+    pointer-events: none;
+  }
+}
+@media (max-width: 560px) {
+  #warmstart .warm-foot { padding-bottom: var(--s4); }
+}
+/* Three picked: TEACH IT is the next step, and it lights as a pad does
+   (`.pf-pad.lit`), an amber edge and glow, where until the third pick it is
+   dim (main.js `renderWarmStart`). Pressed, it is `.hw-btn`'s press. */
+#warm-go.lit:not(:active) {
+  border-color: var(--phos-b);
+  box-shadow: var(--lift), 0 0 12px var(--phos-b-30), 0 3px 0 var(--shadow-ink);
+}
 
 /* ---------- the commit duel ---------- */
 /* Deliberately the warm-start's card, not a new one: it is the same act — the

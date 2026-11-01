@@ -54,8 +54,10 @@ first.</figcaption>
 The card is headed **PICK THE THREE YOU’D REACH FOR**, over nine presets drawn
 one per family from the library, each with its [face](../faces.md), which
 comes with the app, so it is there with the card. The button under them
-counts down as you pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then
-reads **TEACH IT**.
+counts down as you pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**). At the
+third pick it reads **TEACH IT** and lights up amber: that’s the next step. On
+a phone the cards scroll, and **SKIP** and the button stay at the bottom of
+the screen.
 
 When you press it, PERFORM opens on your first pick, and **TAUGHT** in the
 menu bar reads 18. The toast says what happened: *Your three taught it 18
