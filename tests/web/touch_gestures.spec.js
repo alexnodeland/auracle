@@ -25,6 +25,11 @@
 // - A long press selects no text (the page's selection is empty while held
 //   and after, and what is held cannot be selected), and lets no page menu
 //   through.
+// - Every sound on TASTE's map can be touched: none is drawn under the
+//   SOUND / TASTE switch at its top left or the time track along its foot,
+//   where a press is the control's (#573). A sound placed past every other's
+//   left and top sits below the switch, where a long press on it shows the
+//   model view and a tap opens it.
 //
 // In Chromium the touches are the browser's own (CDP's
 // `Input.dispatchTouchEvent`), so pointer events, touch events and the click
@@ -323,6 +328,111 @@ test("a long press on a card, a bank row and a dot on TASTE's map shows the mode
   await touch(cdp, "touchStart", [{ x: tapped.x, y: tapped.y }]);
   await touch(cdp, "touchEnd", []);
   await app.engine((timeout) => expect(rowOf(tapped.id)).toHaveClass(/\blive\b/, { timeout }), { ms: 30_000 });
+});
+
+/** TASTE's map with one sound past every other's left and top, at the
+ *  map's top left where the SOUND / TASTE switch stands, and six crowding
+ *  in past the foot, where the time track runs; the rest where the engine
+ *  put them. The corner is not the sound in hand, so a tap on it opens a
+ *  sound. Returns the views, the same map mirrored (another moment) and
+ *  the corner's id. */
+function edgeViews(page) {
+  return page.evaluate(() => {
+    const v = JSON.parse(JSON.stringify(window.__tap.facts.views));
+    const live = document.querySelector("#bank-list .bank-item.live")?.dataset.id;
+    const pts = v.map.points.filter((p) => p.id != null);
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const others = pts.filter((p) => String(p.id) !== live);
+    Object.assign(others[0], { x: x0 - (x1 - x0) * 0.25, y: y0 - (y1 - y0) * 0.25 });
+    for (const p of others.slice(1, 7)) Object.assign(p, { x: (x0 + x1) / 2, y: y1 + (y1 - y0) * 0.25 });
+    const mirrored = JSON.parse(JSON.stringify(v));
+    for (const p of mirrored.map.points) p.x = -p.x;
+    return { views: v, mirrored, corner: others[0].id, status: window.__tap.facts.status };
+  });
+}
+
+/** Every sound on TASTE's map, for the map's `points`, by the app's own
+ *  layout (taste-geom.js): its centre on the page and the id of what a
+ *  finger there touches (`elementFromPoint`); and, against the frame the
+ *  layout keeps, where style.css draws the switch's foot and the track's
+ *  top, in px on the map. */
+function marksOnMap(page, points) {
+  return page.evaluate(async (points) => {
+    const geom = await import("/taste-geom.js");
+    const well = document.getElementById("taste-well");
+    const crt = document.getElementById("taste-crt").getBoundingClientRect();
+    const W = Math.max(200, well.clientWidth);
+    const H = Math.max(160, well.clientHeight);
+    const pts = points.filter((p) => p.id != null);
+    const f = geom.mapFrame(W, H, pts.length, { track: true });
+    const reach = f.s0 * geom.MAP_MARK_REACH;
+    const marks = [...geom.mapLayout(pts, f.box, f.minD)].map(([id, q]) => {
+      const x = crt.left + q.x, y = crt.top + q.y;
+      return { id, x: Math.round(x), y: Math.round(y), under: document.elementFromPoint(x, y)?.id || null };
+    });
+    return {
+      marks,
+      // The switch's foot, and the highest a mark's reach may come.
+      togFoot: document.getElementById("taste-tog").getBoundingClientRect().bottom - crt.top,
+      reachTop: f.box.top - reach,
+      // The track's top, and the lowest a mark's reach may come.
+      trackTop: document.getElementById("taste-time").getBoundingClientRect().top - crt.top,
+      reachFoot: H - f.box.bottom + reach,
+    };
+  }, points);
+}
+
+/** The sound whose card a mouse pointing at `at` (on the page) brings up,
+ *  or null: where TASTE draws a sound, read from the map itself, as
+ *  taste_hold.spec.js reads it. The card goes down before and after. */
+function soundAt(page, at) {
+  return page.evaluate((at) => {
+    const cv = document.getElementById("taste-crt");
+    const plate = document.getElementById("taste-plate");
+    const down = () => plate.classList.contains("on") && cv.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    down();
+    cv.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX: at.x, clientY: at.y }));
+    const id = plate.classList.contains("on") ? Number(plate.dataset.id) : null;
+    down();
+    return id;
+  }, at);
+}
+
+test("every sound on TASTE's map can be touched: none is drawn under its SOUND / TASTE switch or its time track", async ({ page, app }) => {
+  await app.boot();
+  await expect.poll(() => page.evaluate(() => (window.__tap.facts.views?.map?.points || []).filter((p) => p.id != null).length)).toBeGreaterThanOrEqual(8);
+  // Only the maps the test posts land from here.
+  await app.hold([{ views: true }]);
+  await goLevel(page, "taste");
+  await landed(page);
+  const { views, mirrored, corner, status } = await edgeViews(page);
+  // Two new maps are two moments: the track along the foot shows.
+  await app.inject({ type: "fitted", views: mirrored, status });
+  await app.inject({ type: "fitted", views, status });
+  await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
+  const map = await marksOnMap(page, views.map.points);
+  const at = map.marks.find((m) => m.id === corner);
+  // The places glide to the posted map: the corner's sound is where the
+  // layout puts it once its card comes up there.
+  await expect.poll(() => soundAt(page, at), { message: "the corner's sound where the layout puts it" }).toBe(corner);
+  await expect(page.locator("#taste-plate")).not.toHaveClass(/\bon\b/);
+  // What a finger at each sound touches is the map, never the switch or the
+  // track; and the frame keeps a mark's reach clear of both as style.css
+  // draws them.
+  expect(map.marks.filter((m) => m.under !== "taste-crt"), "sounds drawn under a control").toEqual([]);
+  expect(map.togFoot, "the switch's foot, against the highest a mark reaches").toBeLessThanOrEqual(map.reachTop);
+  expect(map.trackTop, "the track's top, against the lowest a mark reaches").toBeGreaterThanOrEqual(map.reachFoot);
+  // The corner's sound, under a finger: a long press shows the model view,
+  // and a tap opens it.
+  const cdp = await cdpOf(page);
+  await touch(cdp, "touchStart", [{ x: at.x, y: at.y }]);
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+  await touch(cdp, "touchEnd", []);
+  await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
+  await touch(cdp, "touchStart", [{ x: at.x, y: at.y }]);
+  await touch(cdp, "touchEnd", []);
+  await app.engine((timeout) => expect(page.locator(`#bank-list .bank-item[data-id="${corner}"]`)).toHaveClass(/\blive\b/, { timeout }), { ms: 30_000 });
 });
 
 test("a finger that moves before the hold closes is an ordinary touch: no model view", async ({ page, app }) => {
