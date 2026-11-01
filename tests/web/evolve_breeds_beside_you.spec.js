@@ -84,9 +84,11 @@ const WATCH = `(() => {
 // A gate on the farm's walks (farm.js, ahead of it: `app.boot`'s
 // `farmPrefix`): each walk a farm worker is handed waits, said on a
 // BroadcastChannel by its id, until the page lets that id through, or every
-// walk (`all`). So a generation is still breeding while the test picks
-// because the test holds it open, not because the machine was slow enough:
-// on an idle 16-core machine the farm bred all ten before three picks (#367).
+// walk (`all`). So a generation is still breeding while the test picks, and
+// ⚡ still walking while the test deals and plays, because the test holds it
+// open, not because the machine was slow enough: on an idle 16-core machine
+// the farm bred all ten before three picks (#367), and ⚡'s one walk, 2 to 9 s
+// here, landed 24 ms after a ▶'s reply (#585).
 const WALK_GATE = `(() => {
   const ch = new BroadcastChannel("pw-walks");
   const held = [];
@@ -176,6 +178,29 @@ function latencies(log, req, reply, since = 0) {
 
 const bankIds = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((el) => Number(el.dataset.id)));
+
+/** The first request matching `pattern` main sent after `t` (the page's
+ *  clock), once it has: what a gesture asked for, with its number (`rid`). */
+async function askedAfter(app, pattern, t) {
+  let asked = null;
+  await expect.poll(async () => (asked = (await app.sent(pattern, { after: t }))[0] || null) != null, { message: `a ${JSON.stringify(pattern)} request` }).toBe(true);
+  return asked;
+}
+
+/** The last reply to `asked` (`app.replyTo`, an engine wait), with its place
+ *  in the tap's one count of requests and replies (`_n`), to order it
+ *  against another reply. `why`: what it means when that reply never comes,
+ *  said ahead of the wait's own failure. */
+async function answerTo(app, asked, timeout, why) {
+  let reply;
+  try {
+    reply = await app.replyTo(asked, { timeout });
+  } catch (err) {
+    throw new Error(`${why}: ${err.message}`, { cause: err });
+  }
+  const mine = (await app.replies(reply.type)).find((r) => [].concat(r.re).includes(asked.rid) && !r.more);
+  return { ...reply, _n: mine._n };
+}
 
 test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair while it breeds", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
@@ -461,10 +486,16 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
 
 test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered while it walks, and its stop drops it", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(240_000);
-  await taught(page, app);
+  // ⚡'s walk waits at the gate (WALK_GATE) until the test lets it through,
+  // so the deal and the ▶ are asked while it walks whatever the farm's speed
+  // against the page's (#585).
+  await taught(page, app, "", { gated: true });
   // A ▶ on a row the page has never asked to hear, from the n-th on, so it
-  // goes to the engine rather than to a buffer the page already holds.
-  const bankPlay = async (n) => {
+  // goes to the engine rather than to a buffer the page already holds: that
+  // row's own render request, and the last reply to it (not the first render
+  // reply after the click, which can be a dealt card's). `why`: what it
+  // means when that reply never comes.
+  const bankPlay = async (n, why) => {
     const heard = new Set((await app.replies("render")).map((r) => r.id));
     const ids = await bankIds(page);
     const id = ids.slice(n).find((x) => !heard.has(x));
@@ -473,74 +504,113 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
     await row.hover();
     const t = await app.now();
     await row.locator(".bi-hear").click();
-    await app.engine((timeout) => expect.poll(async () => latencies(await app.log({ after: t }), "render", "render").length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
-    return latencies(await app.log({ after: t }), "render", "render")[0];
+    const asked = await askedAfter(app, { type: "render", id }, t);
+    return { asked, reply: await answerTo(app, asked, 30_000, why) };
+  };
+  /** The id of the next walk the gate holds after the first `k`. */
+  const heldWalk = async (k) => {
+    await app.engine((timeout) => page.waitForFunction((n) => window.__pwHeld.length > n, k, { timeout }), { ms: 60_000 });
+    return page.evaluate((n) => window.__pwHeld[n], k);
   };
   await app.engine((timeout) => page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout }), { ms: 60_000 });
   await goLevel(page, "patch");
   const name = (await page.locator("#rack-subject").textContent()).trim();
   await app.engine((timeout) => expect(page.locator("#rack-evolve")).toBeEnabled({ timeout }), { ms: 30_000 });
+  const since = await app.now();
+  const held = await page.evaluate(() => window.__pwHeld.length);
   await page.locator("#rack-evolve").click();
+  const evolve = await askedAfter(app, { type: "refine_from" }, since);
   await expect(page.locator("#job-text")).toHaveText(`⚡ evolving ${name}`);
   await expect(page.locator("#rack-evolve")).toBeDisabled();
   // EVOLVE POOL waits for ⚡, and says so on hover.
   await expect(page.locator("#evolve-btn")).toBeDisabled();
   await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", /EVOLVE POOL waits for it/);
   await app.engine((timeout) => expect(page.locator("#job-stop")).toBeVisible({ timeout }), { ms: 30_000 });
-  const since = await app.now();
+  // Its walk is on the farm, held: until the test lets it through, ⚡ walks.
+  const walk = await heldWalk(held);
 
-  // While it walks: a deal in EVOLVE, and a bank row's ▶.
+  // While it walks: a deal in EVOLVE, and a bank row's ▶, each its own
+  // request's reply, waited for with the walk still held. That wait is the
+  // proof neither waits for ⚡: one that did would never be answered here,
+  // and the wait fails saying so.
   await goLevel(page, "evolve");
   await expect(page.locator("#skip-duel")).toBeEnabled();
+  const skipAt = await app.now();
   await page.locator("#skip-duel").click();
   await expect(page.locator("#choose-a")).toBeEnabled();
-  // The deal ↻ asked for, answered.
-  await expect.poll(async () => latencies(await app.log({ after: since }), "duel", "duel").length).toBeGreaterThan(0);
-  const played = await bankPlay(12);
-  const playedAt = await app.now();
-  const stillWalking = await page.locator("#job-text").textContent();
-  const deals = latencies(await app.log({ after: since }), "duel", "duel");
-  console.log(`during ⚡ (still "${stillWalking}"): deal ${JSON.stringify(deals)} ms; ▶ ${played} ms`);
-  // The deal and the ▶ were both answered while ⚡ still walked: neither
-  // waited for it (ADR-022: the order is the assertion).
-  expect(stillWalking, "the deal and the ▶ waited for ⚡").toContain("⚡ evolving");
+  const deal = await askedAfter(app, { type: "duel" }, skipAt);
+  const dealt = await answerTo(app, deal, 30_000, "the deal waited for ⚡'s walk");
+  const played = await bankPlay(12, "the ▶ waited for ⚡'s walk");
+  const dealMs = Math.round(dealt._at - deal._at);
+  const playMs = Math.round(played.reply._at - played.asked._at);
+  console.log(`during ⚡ (its walk held): deal ${dealMs} ms; ▶ ${playMs} ms`);
   // How fast: a deal is a round trip with no render in it. A budget, so a
   // slow runner records it (1007 ms on one, #271) and never fails on it.
-  app.budget("a deal while ⚡ walks", deals[0], 1_000);
+  app.budget("a deal while ⚡ walks", dealMs, 1_000);
+  // Both answered, and ⚡ still walking: its slot up, nothing landed.
+  await expect(page.locator("#job-slot")).toBeVisible();
+  await expect(page.locator("#job-text")).toHaveText(`⚡ evolving ${name}`);
+  expect(await app.replies("evolved_from", { after: since }), "⚡ landed while its walk was held").toEqual([]);
 
   // Let it land.
-  const first = await app.reply("evolved_from", { timeout: 300_000 });
-  const landedAt = first._at;
-  const took = landedAt - since;
-  // The ▶ cost its own render (its pending ring said so meanwhile) and was
-  // answered while ⚡ still walked; it used to wait for the whole walk.
-  expect(playedAt, "the ▶ waited for ⚡ to land").toBeLessThan(landedAt);
-  console.log(`⚡ landed after ${Math.round(took / 100) / 10} s: child ${first.childId}, reason ${first.reason}`);
+  const letAt = await app.now();
+  await page.evaluate((i) => window.__pwLet(i), walk);
+  const first = await answerTo(app, evolve, 300_000, "⚡ did not land once its walk was let through");
+  expect(first.type).toBe("evolved_from");
+  // The deal and the ▶ were answered while the walk was held, and nothing of
+  // ⚡'s had landed then (above): that held wait is the proof. The tap's
+  // count records the same order (ADR-022: order, not milliseconds). The ▶
+  // cost its own render (its pending ring said so meanwhile); it used to
+  // wait for the whole walk.
+  expect(dealt._n, "the deal waited for ⚡ to land").toBeLessThan(first._n);
+  expect(played.reply._n, "the ▶ waited for ⚡ to land").toBeLessThan(first._n);
+  console.log(`⚡ landed ${Math.round((first._at - letAt) / 100) / 10} s after its walk was let through: child ${first.childId}, reason ${first.reason}`);
   await expect(page.locator("#job-slot")).toBeHidden();
   await expect(page.locator("#evolve-btn")).toBeEnabled();
   await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", "");
 
-  // Again, and stop it: answered at once, and nothing is added.
+  // Again, and stop it while its walk is held: the reply that lands is the
+  // stop's. Then the walk is let through, so its result could land, and
+  // nothing is added.
   await goLevel(page, "patch");
   await app.engine((timeout) => expect(page.locator("#rack-evolve")).toBeEnabled({ timeout }), { ms: 30_000 });
   const pool = (await bankIds(page)).length;
   const mark = await app.toastMark();
+  const againAt = await app.now();
+  const heldAgain = await page.evaluate(() => window.__pwHeld.length);
   await page.locator("#rack-evolve").click();
+  const again = await askedAfter(app, { type: "refine_from" }, againAt);
   await app.engine((timeout) => expect(page.locator("#job-stop")).toBeVisible({ timeout }), { ms: 30_000 });
-  const stopAt = await app.now();
+  const walkAgain = await heldWalk(heldAgain);
   await page.locator("#job-stop").click();
-  // Answered while ⚡ still walks: its stop is at once (the walk itself takes
-  // seconds), so the reply that lands is the stop's.
-  const stopped = await app.reply("evolved_from", { after: stopAt, timeout: 3_000 });
-  const stopMs = stopped._at - stopAt;
-  console.log(`⚡ stop answered in ${Math.round(stopMs)} ms (${stopped.reason})`);
+  const stop = await askedAfter(app, { type: "refine_from_stop" }, againAt);
+  const stopped = await answerTo(app, again, 30_000, "⚡'s stop was not answered");
+  // The stopped walk let through at once, so a result could land: the stop
+  // reaped its crew (worker.js `crewReap`), or the crew, still up, walks it
+  // for nobody and the result is dropped as it lands. Which one is not
+  // asserted: a crew with a guess's renders out closes only after their
+  // writes, and may start the walk meanwhile.
+  await page.evaluate((i) => window.__pwLet(i), walkAgain);
+  const stopMs = Math.round(stopped._at - stop._at);
+  console.log(`⚡ stop answered in ${stopMs} ms (${stopped.reason})`);
+  // How fast: the engine answers a stop on arrival, once any call it is in
+  // (a render, say) returns. The 3 s bound it was held to, as a budget
+  // (ADR-022), so a slow runner records it and never fails on it. ADR-025's
+  // 100 ms is not met yet (587 ms once at a throttle of 4) and moves in the
+  // issue that makes it true.
+  app.budget("⚡'s stop → answered", stopMs, 3_000);
+  expect(stopped.type).toBe("evolved_from");
   expect(stopped.reason).toBe("stopped");
   expect(stopped.childId).toBe(0);
   await expect(page.locator("#job-slot")).toBeHidden();
   await app.toast(/^⚡ stopped/, { since: mark, timeout: 15_000 });
   await expect(page.locator("#rack-evolve")).toBeEnabled();
-  // Nothing is added after the stop, over the three seconds it was always
-  // watched.
+  // Nothing is added after the stop, its walk let through, over the three
+  // seconds it was always watched: the bank as long as it was, and no answer
+  // to the stopped ⚡ but the stop's (a child bred into a full pool displaces
+  // a sound, so the bank's length alone would not show it).
   await app.quiet(3_000);
   expect((await bankIds(page)).length).toBe(pool);
+  expect(await app.replies("evolved_from", { after: againAt }), "the stopped walk's result was absorbed").toHaveLength(1);
+  await page.evaluate(() => window.__pwAll());
 });
