@@ -24,6 +24,8 @@ history of each choice.
    │                      └── farm workers (farm.js): boot's renders, and
    │                          walks (a generation, ⚡) on a crew raised on demand
    │
+   ├── postMessage ──► face painter (live-paint.js): the live faces' layers
+   │
    └── AudioWorklet (live-audio.js + LivePoly)
           N compiled voices of the current patch, the arpeggiator, the limiter
 ```
@@ -40,6 +42,11 @@ history of each choice.
   the rest from the next batch or bank entry (#285). Boot's crew is reaped
   when boot ends. A generation's walks and ⚡ evolve from this run on a crew
   raised on demand (see [The farm on demand](#the-farm-on-demand)).
+- **The face painter** paints the live faces' layers (see [Faces](#faces),
+  the live faces): the canvas calls main decides each frame, made on
+  canvases of its own and answered with a picture of each, which main shows
+  as it is. Started while the page is idle; where it cannot run, main paints
+  them itself.
 - **A restore** goes one bank entry at a time, in bank order, with
   "recalling n of m sounds…" posted as each lands: on the farm while a
   worker is ready, and in the engine worker otherwise, each entry there read
@@ -1216,9 +1223,33 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   for again. Under reduced motion it never runs, and the faces are still;
   while stage mode is open the inline faces are cleared (it draws its own).
   The meter's first run is made while the page is idle, so the first key's
-  frame does not pay for it. On the reference profile in Chromium (the page
-  throttled ×3.1), a key held at PERFORM costs the loop about 0.8 ms a frame
-  (median), about 6% of the main thread (`tests/web/live_faces.spec.js`).
+  frame does not pay for it. What each frame draws is decided on the main
+  thread (the trail's fade or its clearing, and each outline's points,
+  color, width and glow: `traceFadeStep`, `traceStrokes`) and painted in
+  the face painter, a worker of its own (`live-paint.js`): it paints each
+  layer on an `OffscreenCanvas` of its own with the same calls
+  (`paintLayer`) and answers the frame with a picture of each
+  (`createImageBitmap`), which the layer shows as it is
+  (`transferFromImageBitmap` on a `bitmaprenderer` canvas). One frame is in
+  the worker at a time: the loop reads, eases and fades a frame only once
+  the last is answered, so the trail is the same at whatever rate the
+  worker paints. The two outlines glow (`shadowBlur`), and a browser that
+  draws a canvas on the CPU blurs them on the thread that asks: on the main
+  thread, in Firefox on an M3 Max at the Air's Retina scale (×2), a key
+  held at PERFORM cost the loop 7 ms a frame (median) and 40% of the main
+  thread; with the painter, under 1 ms a frame and 1.4% (Chromium, its page
+  throttled ×4.5: 0.3 ms and 2.7% before, 0.2 ms and 2.7% after), while the
+  painter takes 7 ms a frame in Firefox there and 31 ms in Firefox on Linux
+  in Playwright's image, where it paints about 28 frames a second and the
+  page keeps 60 (`tests/web/live_faces.spec.js`, #512). The painter's
+  layers are the same pixels as the page's, frame by frame (the same spec,
+  in both browsers, and `apps/web/tests/live-face.test.mjs`, call by call).
+  A canvas handed to the worker (`transferControlToOffscreen`) was tried
+  first: in Firefox without a window (the specs' and CI's) the phrase that
+  TASTE's map was lit by fell silent for seconds in most runs while the
+  worker painted it, and the pictures do not. A browser with no worker, no
+  `bitmaprenderer` canvas, or a painter that fails has its faces painted on
+  the main thread, by the same calls.
 - **TASTE's map** draws each sound as its face (`host.drawFace`, main's
   `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
   per bank and size; a dot until the face lands, and the map is redrawn as

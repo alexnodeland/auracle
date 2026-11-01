@@ -19,8 +19,13 @@
 //   bands), however many faces show it, into buffers made once. It runs only
 //   while something is played or a trace is still fading, and draws only the
 //   faces on screen; under reduced motion it never runs, and the faces stay
-//   still. What each frame draws is decided here; the canvas calls are
-//   live-paint.js's.
+//   still. What each frame draws is decided here, on the page; the canvas
+//   calls are live-paint.js's, made in a worker of their own on canvases
+//   handed to it, where the browser can (the glow is a blur that a browser
+//   drawing on the CPU makes on the thread that asks: #512), and here where
+//   it cannot. One frame is in the worker at a time: the loop sends the next
+//   once the last is painted, so a frame there is a frame here, as slow a
+//   machine as it is.
 //
 // ADR-012: what moves is a measurement of what is heard, never a guess. A face
 // listens only to the signal that is its own sound (main.js says which: the
@@ -30,7 +35,8 @@
 // analysers, which are handed in, so it is unit-tested (tests/live-face.test.mjs).
 import { FACE_BANDS, FACE_FRAME, createLiveMeter, whiten, smooth } from "./faces.js";
 import { tint } from "./vessel.js";
-// Under this module's own stamp, as the other modules ask for theirs.
+// Under this module's own stamp: the worker loads it on its own, with no
+// import map, so it imports nothing.
 const { tracePoints, paintFade, paintStrokes, paintLayer, FADE_NONE, FADE_STEP, FADE_CLEAR } = await import(
   `./live-paint.js${new URL(import.meta.url).search}`
 );
@@ -218,6 +224,10 @@ export const traceReach = (scale) => (18 + 56) * scale * 2 + 4;
  *  - `silk()`: the live outline's color.
  *  - `flightHears(frame)`: what the face in flight hears (it is the sound in
  *    hand's).
+ *  - `paintWorker()`: a new worker running live-paint.js, which paints the
+ *    layers on canvases handed to it; with none (or a canvas that cannot be
+ *    handed over, or a worker that fails) they are painted here, the same
+ *    calls on the same canvases.
  *  - `raf`, `now`, `doc`, `dpr`: the page's, handed in for the tests.
  *
  *  `add({place})` adds a face. `place(p, frame)` says each frame where it is
@@ -234,6 +244,7 @@ export function createLiveFaces({
   off = () => false,
   silk,
   flightHears = () => 0,
+  paintWorker = null,
   raf = (f) => requestAnimationFrame(f),
   now = () => performance.now(),
   doc = typeof document !== "undefined" ? document : null,
@@ -253,7 +264,74 @@ export function createLiveFaces({
   let lastHand = null; // the trace of the sound in hand's face drawn last
   let frameNo = 0;
   let pending = false;
-  const counts = { frames: 0, reads: 0, measures: 0 };
+  const counts = { frames: 0, reads: 0, measures: 0, posted: 0, painted: 0 };
+  // The worker that paints the layers (live-paint.js), once started: the
+  // frame sent and whether it is painted yet, and each face's frame for the
+  // next. It paints each layer on a canvas of its own and answers with a
+  // picture of it, which the page's layer shows as it is
+  // (`transferFromImageBitmap`): a canvas the page hands to a worker
+  // (`transferControlToOffscreen`) froze the audio for seconds at a time in
+  // Firefox without a window (the specs', and CI's), and this does not.
+  let painter = null;
+  let painterTried = false;
+
+  function startPainter() {
+    if (painterTried || !paintWorker) return;
+    painterTried = true;
+    try {
+      const w = paintWorker();
+      painter = { w, frame: 0, waiting: false, ops: [] };
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (!painter || !m || m.frame !== painter.frame) return;
+        if (m.failed) return paintHere();
+        for (const { id, bitmap } of m.layers) show(faces[id], bitmap);
+        painter.waiting = false;
+        counts.painted++;
+      };
+      w.onerror = paintHere;
+      w.onmessageerror = paintHere;
+    } catch (_) {
+      painter = null;
+    }
+  }
+
+  // A layer as the worker painted it, shown on the face's canvas.
+  function show(f, bitmap) {
+    if (!f || !f.shown) {
+      if (bitmap) bitmap.close();
+      return;
+    }
+    const w = bitmap ? bitmap.width : 0;
+    const h = bitmap ? bitmap.height : 0;
+    if (f.cv.width !== w || f.cv.height !== h) {
+      f.cv.width = w;
+      f.cv.height = h;
+    }
+    if (bitmap) f.shown.transferFromImageBitmap(bitmap);
+  }
+
+  // The worker failed (or a layer could not show its pictures): every layer
+  // it painted goes, and is made again and painted here at the next frame.
+  function paintHere() {
+    const was = painter;
+    if (!was) return;
+    painter = null;
+    try {
+      was.w.terminate();
+    } catch (_) {
+      /* gone already */
+    }
+    for (const f of faces) {
+      if (!f.shown) continue;
+      f.cv.remove();
+      f.cv = null;
+      f.shown = null;
+      f.W = f.H = -1;
+      f.tr.cleared = true;
+    }
+  }
+
   function add({ place }) {
     const tr = createTrace();
     const f = {
@@ -261,7 +339,8 @@ export function createLiveFaces({
       p: { host: null, hw: 0, hh: 0, box: { x: 0, y: 0, w: 0, h: 0 }, face: null, stats: null, color: "", hears: 0, inHand: false, key: "" },
       tr,
       cv: null,
-      ctx: null,
+      ctx: null, // its 2D context, painted here
+      shown: null, // or what shows the worker's pictures of it
       W: -1, // the layer's size in px, as last set
       H: -1,
       // This frame's painting of the layer (live-paint.js `paintLayer`).
@@ -272,23 +351,47 @@ export function createLiveFaces({
     return f;
   }
 
-  // A face's layer, made the first time it is drawn.
+  // A face's layer, made the first time it is drawn: one that shows the
+  // worker's pictures of it when there is a worker, else one painted here.
   function layer(f) {
     if (f.cv) return;
+    startPainter();
     const cv = doc.createElement("canvas");
     cv.className = "face-live";
     cv.setAttribute("aria-hidden", "true");
     f.W = f.H = -1;
     f.cv = cv;
+    if (painter) {
+      const shown = cv.getContext("bitmaprenderer");
+      if (shown) {
+        f.shown = shown;
+        return;
+      }
+      paintHere(); // a browser with no such canvas: painted here
+    }
     f.ctx = cv.getContext("2d");
   }
 
-  // The face's frame (`f.op`) painted. A frame that changes nothing is not
-  // painted at all.
+  // The face's frame (`f.op`) painted: here, or queued for the worker. A
+  // frame that changes nothing is not painted at all.
   function paint(f) {
     const op = f.op;
     if (!op.size && op.fade === FADE_NONE && !op.n) return;
-    paintLayer(f.cv, f.ctx, op);
+    if (painter) painter.ops.push(op);
+    else paintLayer(f.cv, f.ctx, op);
+  }
+
+  // The frame's painting sent to the worker, if there is any: it answers
+  // with the pictures once it is painted, and until then no other frame is
+  // sent.
+  function flush() {
+    const w = painter;
+    if (!w || !w.ops.length) return;
+    w.frame++;
+    w.waiting = true;
+    counts.posted++;
+    w.w.postMessage({ frame: w.frame, faces: w.ops });
+    w.ops.length = 0;
   }
 
   function wake() {
@@ -343,12 +446,21 @@ export function createLiveFaces({
 
   function liveFacesFrame() {
     pending = false;
+    // The worker is still painting the last frame: this one waits for it
+    // (a frame is read, eased and faded only when it is painted, so the
+    // trail is the same at whatever rate the frames are painted).
+    if (painter && painter.waiting) {
+      pending = true;
+      raf(liveFacesFrame);
+      return;
+    }
     const t = now();
     frameNo++;
     counts.frames++;
     if (still() || off()) {
       for (const f of faces) wipe(f);
       flight.tr.has = false;
+      flush();
       return;
     }
     // Where each face is, and what it hears (the page's reads, first).
@@ -387,6 +499,7 @@ export function createLiveFaces({
       draw(f, reading(f.p.hears & sounding), t, k, ink);
     }
     if (flying && flight.stats) traceHear(flight.tr, reading(flightHears(frameNo) & sounding), flight.stats, t);
+    flush();
     // Keep going while something is played, a trail still fades, or a face
     // is in flight; else the loop idles until `wake`.
     let busy = flying || held();
@@ -444,6 +557,7 @@ export function createLiveFaces({
      *  compiled): called while the page is idle. */
     warm(sampleRate) {
       meter.measure(sum.fill(0), sampleRate);
+      startPainter();
     },
     /** The face in flight between the levels (shell.js draws it each frame
      *  on its own canvas, cleared each frame, so it has no trail): what the
@@ -468,7 +582,8 @@ export function createLiveFaces({
     get running() {
       return pending;
     },
-    /** What the loop has done: frames run, signals read, sounds measured. */
+    /** What the loop has done: frames run, signals read, sounds measured,
+     *  and frames sent to the worker and painted there. */
     get counts() {
       return counts;
     },

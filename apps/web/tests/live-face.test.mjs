@@ -19,6 +19,7 @@ import {
   tracePoints,
   createLiveFaces,
 } from "../live-face.js";
+import { paintFrame } from "../live-paint.js";
 
 /** A 2D context that records every call and every style it is given. */
 function recorder() {
@@ -383,4 +384,238 @@ test("a layer put out of its slot (the slot filled anew) goes back over it", () 
   L.step();
   assert.equal(made[0].parentNode, h);
   assert.equal(made.length, 1, "the same layer, its trail as it was");
+});
+
+// ---------- painted in a worker (live-paint.js) ----------
+
+/** A 2D context that records every call exactly, numbers unrounded. */
+function exact() {
+  const ops = [];
+  const canvas = { width: 0, height: 0 };
+  return new Proxy(
+    {},
+    {
+      get(t, k) {
+        if (k === "ops") return ops;
+        if (k === "canvas") return canvas;
+        return (...a) => ops.push([k, ...a]);
+      },
+      set(t, k, v) {
+        ops.push(["=", k, v]);
+        return true;
+      },
+    },
+  );
+}
+/** A page whose canvases can show a worker's pictures (`bitmaprenderer`),
+ *  or, with `shows` false, cannot; a 2D context is an exact recorder. */
+function showingPage({ shows = true } = {}) {
+  const made = [];
+  const doc = {
+    createElement() {
+      const cv = { width: 0, height: 0, parentNode: null, className: "", setAttribute() {}, removed: false, shownPictures: [] };
+      cv.remove = () => {
+        cv.removed = true;
+        cv.parentNode = null;
+      };
+      cv.getContext = (kind) => {
+        if (kind === "bitmaprenderer") {
+          if (!shows || cv.ctx) return null;
+          cv.renderer = { transferFromImageBitmap: (b) => cv.shownPictures.push(b) };
+          return cv.renderer;
+        }
+        if (cv.renderer) return null; // a canvas has one kind of context
+        cv.ctx = cv.ctx || exact();
+        return cv.ctx;
+      };
+      made.push(cv);
+      return cv;
+    },
+  };
+  const host = () => ({
+    append(c) {
+      c.parentNode = this;
+    },
+  });
+  return { doc, made, host };
+}
+/** A canvas of the worker's own, painted on an exact recorder. */
+const workerCanvas = () => {
+  const cv = { width: 0, height: 0, ctx: exact() };
+  cv.getContext = () => cv.ctx;
+  return cv;
+};
+/** A worker that keeps what it is sent, and answers when told. */
+function heldWorker() {
+  const w = { sent: [], onmessage: null, onerror: null, terminated: false };
+  w.postMessage = (m) => w.sent.push(structuredClone(m));
+  w.terminate = () => {
+    w.terminated = true;
+  };
+  w.answer = (frame, layers = []) => w.onmessage({ data: { frame, layers } });
+  return w;
+}
+
+test("with a worker, each layer shows the worker's pictures, and one frame is in it at a time", () => {
+  const { doc, made, host } = showingPage();
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker });
+  L.lf.add(face(host(), 1));
+  L.lf.wake();
+  assert.ok(L.step());
+  assert.equal(made.length, 1);
+  assert.ok(made[0].renderer, "the layer shows pictures");
+  assert.equal(made[0].ctx, undefined, "and is never drawn on here");
+  assert.equal(worker.sent.length, 1);
+  const op = worker.sent[0].faces[0];
+  assert.equal(op.id, 0);
+  assert.equal(op.n, 2, "the outline lit and what sounds");
+  assert.deepEqual(op.size, [300, 600]);
+  // The worker has not answered: the next frames wait, read nothing, and
+  // send nothing.
+  const reads = voices.reads;
+  const measured = L.lf.counts.measures;
+  assert.ok(L.step());
+  assert.ok(L.step());
+  assert.equal(worker.sent.length, 1, "one frame in the worker at a time");
+  assert.equal(voices.reads, reads, "a frame waiting reads nothing");
+  assert.equal(L.lf.counts.measures, measured);
+  assert.equal(L.lf.running, true, "and the loop goes on");
+  // Answered with the layer's picture: it is shown, at its size, and the
+  // next frame goes.
+  const picture = { width: 300, height: 600, close() {} };
+  worker.answer(1, [{ id: 0, bitmap: picture }]);
+  assert.equal(L.lf.counts.painted, 1);
+  assert.deepEqual(made[0].shownPictures, [picture]);
+  assert.equal(made[0].width, 300);
+  assert.equal(made[0].height, 600);
+  assert.ok(L.step());
+  assert.equal(worker.sent.length, 2);
+  assert.equal(worker.sent[1].faces[0].size, null, "the same size: not set again");
+  // An old answer does not let a frame through.
+  worker.answer(1);
+  L.step();
+  assert.equal(worker.sent.length, 2);
+});
+
+test("the worker paints the same calls, in the same order, as the page paints", () => {
+  // The same faces, sounds and clock, painted here and in a worker (whose
+  // frames live-paint.js's own `paintFrame` paints on exact recorders):
+  // every call on every layer is the same, frame by frame, through a sound,
+  // its fade and the trail cleared, a face leaving the screen and coming
+  // back, and a resize.
+  const run = (withWorker) => {
+    const { doc, made, host } = showingPage({ shows: withWorker });
+    const voices = analyser(0.3);
+    const offer = analyser(0.2, 660);
+    let size = 600;
+    let bShown = true;
+    const layers = new Map();
+    const worker = heldWorker();
+    worker.postMessage = (m) => {
+      // Painted at once, as the worker paints it, and answered.
+      const ids = paintFrame(layers, structuredClone(m), workerCanvas);
+      worker.answer(m.frame, ids.map((id) => ({ id, bitmap: null })));
+    };
+    const L = loop({ signals: [() => voices, () => offer], doc, held: () => true, paintWorker: withWorker ? () => worker : null });
+    const tall = (h) => ({
+      place(p) {
+        p.host = h;
+        p.hw = 300;
+        p.hh = size;
+        Object.assign(p.box, BOX);
+        p.face = bank[1];
+        p.stats = stats;
+        p.color = GREEN;
+        p.hears = 1;
+        p.inHand = true;
+        return true;
+      },
+    });
+    L.lf.add(tall(host()));
+    L.lf.add(face(host(), 2, { inHand: false, on: () => bShown }));
+    L.lf.wake();
+    // 16 ms a frame: the trail is cleared 1.6 s after the sound stops.
+    for (let i = 0; i < 200; i++) {
+      if (i === 20) offer.amp = 0.35;
+      if (i === 30) bShown = false;
+      if (i === 45) bShown = true;
+      if (i === 50) size = 640;
+      if (i === 70) voices.amp = offer.amp = 0;
+      L.step();
+    }
+    const painted = withWorker ? [...layers.keys()].sort().map((id) => layers.get(id).cv) : made;
+    return { painted, posted: L.lf.counts.posted, answered: L.lf.counts.painted };
+  };
+  const here = run(false);
+  const there = run(true);
+  assert.equal(here.posted, 0);
+  assert.ok(there.answered > 100 && there.answered === there.posted, "the worker painted every frame sent");
+  assert.equal(there.painted.length, here.painted.length);
+  for (let i = 0; i < here.painted.length; i++) {
+    const a = here.painted[i].ctx.ops;
+    const b = there.painted[i].ctx.ops;
+    assert.ok(count(a, "stroke") > 50 && count(a, "fillRect") > 50 && count(a, "clearRect") >= 1, `layer ${i} was painted, faded and cleared`);
+    assert.equal(b.length, a.length, `layer ${i}: as many calls`);
+    const at = a.findIndex((op, j) => JSON.stringify(op) !== JSON.stringify(b[j]));
+    assert.equal(at, -1, `layer ${i}: call ${at} differs: ${JSON.stringify(a[at])} here, ${JSON.stringify(b[at])} in the worker`);
+    assert.equal(there.painted[i].width, here.painted[i].width);
+    assert.equal(there.painted[i].height, here.painted[i].height);
+  }
+});
+
+test("a worker that fails: its layers are made again and painted here", () => {
+  const { doc, made, host } = showingPage();
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  const h = host();
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker });
+  L.lf.add(face(h, 1));
+  L.lf.wake();
+  L.step();
+  assert.ok(made[0].renderer);
+  worker.onerror(new Event("error"));
+  assert.equal(worker.terminated, true);
+  assert.equal(made[0].removed, true, "the worker's layer leaves the slot");
+  // The frame it never answered no longer holds the loop.
+  assert.ok(L.step());
+  assert.equal(made.length, 2);
+  assert.equal(made[1].parentNode, h, "a layer of the page's own, over the same face");
+  assert.equal(count(made[1].ctx.ops, "stroke"), 2, "painted here");
+  // A late answer from the worker shows nothing.
+  const late = { width: 1, height: 1, closed: false, close() { late.closed = true; } };
+  worker.answer(1, [{ id: 0, bitmap: late }]);
+  assert.deepEqual(made[0].shownPictures, []);
+});
+
+test("a frame the worker could not finish hands its faces back to the page", () => {
+  const { doc, made, host } = showingPage();
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker });
+  L.lf.add(face(host(), 1));
+  L.lf.wake();
+  L.step();
+  worker.onmessage({ data: { frame: 1, failed: "no picture" } });
+  assert.equal(worker.terminated, true);
+  assert.equal(made[0].removed, true);
+  assert.ok(L.step());
+  assert.equal(count(made[1].ctx.ops, "stroke"), 2, "painted here");
+});
+
+test("a browser that cannot show a worker's pictures paints here", () => {
+  const { doc, made, host } = showingPage({ shows: false });
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  let workers = 0;
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => (workers++, worker) });
+  L.lf.add(face(host(), 1));
+  L.lf.wake();
+  L.step();
+  L.step();
+  assert.equal(workers, 1);
+  assert.equal(worker.terminated, true);
+  assert.deepEqual(worker.sent, []);
+  assert.equal(count(made[0].ctx.ops, "stroke"), 4, "two frames, each painted here");
 });

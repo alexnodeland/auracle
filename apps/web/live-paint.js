@@ -1,8 +1,22 @@
 // A live face's layer, painted: the canvas calls of one frame of a trace
-// (live-face.js decides what each frame draws; this only draws it), for
-// stage mode, the face in flight between the levels and every inline live
-// face. Kept apart from the deciding, and importing nothing, so the same
-// calls can be made on a canvas of any thread's.
+// (live-face.js decides what each frame draws; this only draws it). The same
+// calls run on the page (stage mode, the face in flight between the levels,
+// and every inline face where there is no worker) and in a worker of their
+// own, which paints every inline live face on a canvas of its own and answers
+// each frame with a picture of each layer it painted, which the page shows
+// as it is: the same pixels as the frame painted on the page.
+//
+// Why a worker: the trace's two outlines glow (`shadowBlur`), and a browser
+// that draws a canvas on the CPU (Firefox, and any browser without a GPU)
+// blurs them on the thread that asks. On the main thread that was 2 ms of
+// every frame a key sounded at PERFORM, 7 ms on a Retina screen (Firefox on
+// an M3 Max, #512): the time a note-on, a knob's write and a pointer move
+// waited behind. In the worker the page's part of a frame is what is heard
+// and where, a message, and showing the pictures.
+//
+// Imports nothing, so the worker loads it under the build's stamp alone (a
+// worker has no import map: a bare `./faces.js` there would be a second copy
+// fetched with no stamp).
 
 /** The path of points made by live-face.js `pointsInto` (`m` of them), joined
  *  as vessel.js `traceVessel` joins them: quadratic curves through their
@@ -74,4 +88,50 @@ export function paintLayer(cv, g, op) {
   const r = op.rect;
   paintFade(g, op.fade, r[0], r[1], r[2], r[3], op.fadeStyle);
   if (op.n) paintStrokes(g, op.strokes, op.n);
+}
+
+/** A frame from the page, in the worker: each face's frame (`faces`: `{id,
+ *  …paintLayer's op}`) on the layer of that id, made by `make()` the first
+ *  time it is painted. Returns the ids of the layers painted, once each. */
+export function paintFrame(layers, m, make) {
+  const painted = [];
+  for (const op of m.faces) {
+    let l = layers.get(op.id);
+    if (!l) {
+      const cv = make();
+      l = { cv, g: cv.getContext("2d") };
+      layers.set(op.id, l);
+    }
+    paintLayer(l.cv, l.g, op);
+    if (!painted.includes(op.id)) painted.push(op.id);
+  }
+  return painted;
+}
+
+// Run as a worker: every frame the page sends is painted, and answered with
+// a picture of each layer painted (none for a layer of no size), and the
+// time it took on this thread. The page sends the next frame once this one
+// is answered. A frame that fails says so (`failed`), as one that throws
+// while it paints does (the page's `error`): the page then paints its faces
+// itself.
+if (typeof DedicatedWorkerGlobalScope !== "undefined" && self instanceof DedicatedWorkerGlobalScope) {
+  const layers = new Map();
+  const make = () => new OffscreenCanvas(1, 1);
+  self.onmessage = (e) => {
+    const t0 = performance.now();
+    const frame = e.data.frame;
+    const ids = paintFrame(layers, e.data, make);
+    Promise.all(
+      ids.map((id) => {
+        const cv = layers.get(id).cv;
+        return cv.width && cv.height ? createImageBitmap(cv) : null;
+      }),
+    ).then(
+      (pictures) => {
+        const ms = performance.now() - t0;
+        self.postMessage({ frame, ms, layers: ids.map((id, i) => ({ id, bitmap: pictures[i] })) }, pictures.filter(Boolean));
+      },
+      (err) => self.postMessage({ frame, failed: String(err) }),
+    );
+  };
 }

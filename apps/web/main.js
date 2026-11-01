@@ -163,10 +163,11 @@ const BUILD = window.__aurBuild || await (async () => {
 //    over what it would move (a refit's views land through it, #300);
 //    refit.js: what a refit landing does.
 // The modules boot builds a little later (`bootPerform`, `bootExplain`,
-// `bootBooth`, `bootLiveAudio`, `bootMidi`), asked for now, beside the rest
+// `bootBooth`, `bootLiveAudio`, `bootMidi`), and live-paint.js, which
+// live-face.js asks for once it has come, asked for now, beside the rest
 // and the worker, so each is in the module map when its turn comes. A miss
 // here is not one: the import there asks again and says what went wrong.
-for (const m of ["perform", "explain", "booth", "live-audio", "midi"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
+for (const m of ["perform", "explain", "booth", "live-audio", "midi", "live-paint"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
 const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
@@ -1461,6 +1462,8 @@ function bootLiveFaces() {
     off: () => !!(perform && perform.stage && perform.stage()),
     silk: () => INK.silk,
     flightHears: handHears,
+    // Their canvas calls, made off this thread (live-paint.js, #512).
+    paintWorker: () => new Worker(`./live-paint.js?v=${BUILD}`, { type: "module" }),
   });
   // PERFORM's well: the sound in hand, and B while it holds an offer.
   liveFaces.add({
