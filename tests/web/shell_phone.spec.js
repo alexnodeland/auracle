@@ -31,6 +31,7 @@
 //   keys' drawer, and EVOLVE's PICK is on the screen with no scroll (each
 //   level is one screen: phone_fits.spec.js).
 const { test, expect, goLevel, landed, runCommand } = require("./fixtures");
+const { rackAtRest, walkRightEdge } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
 const LEVELS = ["learning", "taste", "perform", "patch", "evolve"];
@@ -186,7 +187,11 @@ test.describe("a phone held upright, the sheet and the drawer", () => {
     });
     await app.boot();
     await goLevel(page, "patch");
-    // ENV / OUT: every patch has one, in its main chain.
+    // ENV / OUT: every patch has one, in its main chain, at its end, where
+    // the well's right edge carries the camera (the fit shows where the
+    // patch starts, #519).
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    await walkRightEdge(app);
     const plate = page.locator('#rack-svg g[data-kind="amp"]:not(.mod-group) .mod-plate');
     await expect(plate).toBeVisible();
     // The plate at rest, across three frames: the camera's fit is a tween.
