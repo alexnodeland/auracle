@@ -477,8 +477,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   three merges seconds apart, a run in progress finishes, the newest waiting
   run replaces any older one, and a run whose commit `main` has already moved
   past runs nothing, since the newest run covers it. The *Slow suite* runs on
-  `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
-  files an issue. Work off the gate leaves the
+  `main` the same way, and nightly; the *Flake hunt* nightly, three runners
+  at most. A failure there files an issue. Work off the gate leaves the
   queue its runners: a push to `main` that changes nothing the slow tests
   cover runs none of them, and the *Slow suite*'s and *Search health*'s
   nightly runs run nothing on a night `main` is still at the commit their

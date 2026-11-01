@@ -15,9 +15,12 @@ name: CI health
 # minutes. Both schedules slip: over the ten nights to 2026-10-31 the hunt
 # (cron 05:41 UTC) started 4 to 6 hours late, and CI health about as late
 # (cron 07:13 then, starting 13:13 to 14:21), twice before that night's hunt
-# had finished. The hunt now takes about three hours with its speed
-# budgets, so this cron is 5.5 hours after the hunt's: its three hours, and
-# two more for the two slips to differ by.
+# had finished. This cron is 5.5 hours after the hunt's: three hours for
+# the hunt, and two more for the two slips to differ by. Since #582 the
+# hunt holds three runners at most, its stages one after another, and
+# takes about two and a half hours with its speed budgets (flake-hunt.yml's
+# header), longer on a night a stage waits for runners, so its three hours
+# still hold it.
 
 on:
   schedule:
