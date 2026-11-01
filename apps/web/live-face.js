@@ -22,37 +22,51 @@
 //   still. What each frame draws is decided here (`traceFadeStep`,
 //   `traceStrokes`), and painted by live-paint.js's canvas calls, in one of
 //   two places, chosen by what painting on the page measures
-//   (`createPaintSwitch`):
-//   - **on the page**, in the frame that read it, while the page's paint of
-//     a frame (every face's canvas calls) measures inside the live faces'
-//     budget for a frame (`LIVE_PAINT_BUDGET_MS`, 2 ms: ADR-025), as the
-//     median of the last `LIVE_PAINT_WINDOW` frames that drew an outline.
-//     What is timed is the calls. Chromium only records them (the loop's
-//     whole frame is about 0.5 ms on the reference profile at the Air's
-//     Retina scale) and draws them after the frame's script: on a GPU that
+//   (`createPaintSwitch`), against the live faces' budget for a frame
+//   (`LIVE_PAINT_BUDGET_MS`, 2 ms: ADR-025). What is timed is the calls, and
+//   first before any face is painted: **the idle probe** (`warm`), while the
+//   page is idle after the voices are up, paints one frame of the largest
+//   face (PERFORM's well, at the size it is drawn, its two outlines at their
+//   loudest glow) on a canvas of its own that is never shown, by the calls a
+//   frame painted on the page makes, and times them (once more if that was
+//   over, the lesser kept: `LIVE_PROBE_RUNS`). A browser that draws a canvas
+//   as it is called (Firefox) pays the glow's blur in those calls, about 6
+//   ms at the Air's Retina scale on an M3 Max, against the 7 ms a frame of
+//   the real well takes there; Chromium only records them, 0.1 to 1 ms on
+//   the reference profile (its page throttled ×4.5).
+//   - **in a worker of their own**, the face painter, where the probe
+//     measures over: the painter is started then, before the first sound,
+//     and every face's layer is born a `bitmaprenderer` canvas that shows
+//     the painter's pictures, so no frame's glow is blurred on the page. The
+//     painter paints each frame on an OffscreenCanvas of its own and answers
+//     with a picture of each layer, which the layer shows as it is: a frame
+//     is shown one round trip after it is read (the next frame where the
+//     painter takes a few ms, two or three frames where it takes 30). One
+//     frame is in the worker at a time: the loop reads, eases and fades the
+//     next only once the last is answered, so the trail is the same at
+//     whatever rate the painter paints.
+//   - **on the page**, in the frame that read it, where the probe measures
+//     inside, for as long as the page's paint of a frame (every face's
+//     canvas calls) measures inside it as the faces are played: the median
+//     of the last `LIVE_PAINT_WINDOW` frames that drew an outline. Chromium
+//     draws the calls it recorded after the frame's script: on a GPU that
 //     costs the main thread next to nothing (0.2 ms after the script, on an
 //     M3 Max's Metal), and a worker would only show each frame a frame
-//     later; on none (Playwright's headless Chromium draws on SwiftShader,
-//     here and on CI) it blocks the main thread about 4.5 ms a frame after
-//     the script, which the switch does not see.
-//   - **in a worker of their own**, the face painter, once it measures over:
-//     the glow is a blur that a browser drawing on the CPU (Firefox) makes on
-//     the thread that asks, 7 ms of every frame at the Air's Retina scale on
-//     an M3 Max (#512). The painter is started then, and the page paints on
-//     until it answers that it is up; then each layer, as this frame left it,
-//     is handed to it as a picture (`createImageBitmap`), which it draws on
-//     an OffscreenCanvas of its own, so the trail goes on where it was, no
-//     frame of it lost or painted twice. From then on it paints each frame
-//     and answers with a picture of each layer, which the face's layer, a
-//     `bitmaprenderer` canvas, shows as it is: a frame is shown one round
-//     trip after it is read (the next frame where the painter takes a few
-//     ms, two or three frames where it takes 30). One frame is in the worker
-//     at a time: the loop reads, eases and fades the next only once the last
-//     is answered, so the trail is the same at whatever rate the painter
-//     paints. The move is one way, for the session: a face never flips
-//     between the two, and a paint that measured over once is not trusted
-//     under again. No painter is started before (under reduced motion the
-//     loop never runs, so none ever is).
+//     later. Drawn in software instead (SwiftShader, Chromium's software GL:
+//     a VM, a blocklisted GPU, Playwright's headless Chromium here and on
+//     CI), that drawing blocks the main thread after the script, about 4.5
+//     ms a frame at the Air's Retina scale, and neither the probe nor the
+//     window, timing the calls, sees it (#569).
+//   - **moved later**, where the window's median goes over (a larger face, a
+//     machine that slows): the painter is started then, and the page paints
+//     on until it answers that it is up; then each layer, as that frame left
+//     it, is handed to it as a picture (`createImageBitmap`), which it draws
+//     on its own canvas, so the trail goes on where it was, no frame of it
+//     lost or painted twice, and from then on it paints, as above. The move
+//     is one way, for the session: a face never flips between the two, and
+//     a paint that measured over once is not trusted under again. No painter
+//     is started otherwise; under reduced motion there is no probe and the
+//     loop never runs, so none ever is.
 //   No canvas of the page's is handed to the painter
 //   (`transferControlToOffscreen`: in Firefox without a window that froze
 //   the audio for seconds at a time). With no painter, a canvas with no
@@ -244,48 +258,74 @@ export function traceStrokes(tr, { face, stats, box, color, silk, scale = 1, dim
  *  glow and line. */
 export const traceReach = (scale) => (18 + 56) * scale * 2 + 4;
 
-
-/** The live faces' budget for a frame, ms (ADR-025; live_faces.spec.js holds
- *  the loop's own time a frame to it): the page paints the faces itself while
- *  its paint of a frame measures inside it. */
+/** The live faces' budget for a frame, ms (ADR-025), held in two places:
+ *  live_faces.spec.js holds the loop's whole call a frame to it (reading the
+ *  signals, measuring, deciding and painting or sending), as a budget, and
+ *  the switch (`createPaintSwitch`) holds the page's canvas calls for a
+ *  frame alone to it, the part a worker can take: the page paints the faces
+ *  itself while those measure inside it. */
 export const LIVE_PAINT_BUDGET_MS = 2;
-/** How many frames painted on the page the page's paint is judged over: a
- *  sixth of a second at 60 frames a second. Enough that a few frames slowed
- *  by something else (the first run, a collection, a resize) move nothing,
- *  few enough that a page that paints slowly pays for no more than these
- *  (in Firefox at the Air's Retina scale on an M3 Max, about 6 ms each). */
+/** How many frames painted on the page the page's paint is judged over,
+ *  once the idle probe has found it inside budget: a sixth of a second at 60
+ *  frames a second. Enough that a few frames slowed by something else (a
+ *  collection, a resize) move nothing, few enough that a paint that gets
+ *  slower as the faces are played (a larger face, a machine that slows) is
+ *  paid for no more than about these. */
 export const LIVE_PAINT_WINDOW = 10;
 
+/** How many times the idle probe may time its frame: once, and once more
+ *  when that measured over budget, the lesser kept, so a frame slowed by
+ *  something else (a collection, a page still busy booting, a throttled
+ *  page's pause) moves nothing. A browser that blurs on the thread that
+ *  asks pays its blur twice, once a session, while the page is idle. */
+export const LIVE_PROBE_RUNS = 2;
+
 /** Where the live faces are painted, decided from what painting them on the
- *  page costs (see the top). `time(paint)` runs `paint`, one frame's canvas
- *  calls on the page, which returns true when it drew an outline (a frame of
- *  the fade alone costs little, and says nothing of the glow), and times it
- *  on `clock`; once the median of the last `window` frames that drew is over
- *  `budget` ms, it answers true, and from then on always does. One way, for
- *  the session: the faces never flip between the page and the painter, and a
- *  page that measured over budget once (a CPU's blur) is not trusted under
- *  it again. The median, so one slow frame (or a few) moves nothing, and a
- *  window that slides, so a paint that degrades later (a larger face, a
- *  machine that slows) still moves. */
-export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, window = LIVE_PAINT_WINDOW, clock = () => performance.now() } = {}) {
-  const times = new Float64Array(window);
-  const sorted = new Float64Array(window);
+ *  page costs (see the top). `probe(paint)`, the idle probe, runs `paint`
+ *  before any face is painted and times it on `clock` (`LIVE_PROBE_RUNS`
+ *  times at most, the lesser kept): over `budget` ms, it answers true, and
+ *  from then on the switch always does. Inside it,
+ *  `time(paint)` runs `paint`, one frame's canvas calls on the page, which
+ *  returns true when it drew an outline (a frame of the fade alone costs
+ *  little, and says nothing of the glow), and times it on `clock`; once the
+ *  median of the last `frames` frames that drew is over `budget` ms, it
+ *  answers true, and from then on always does. One way, for the session:
+ *  the faces never flip between the page and the painter, and a page that
+ *  measured over budget once (a CPU's blur) is not trusted under it again.
+ *  The median, so one slow frame (or a few) moves nothing, and a window
+ *  that slides, so a paint that degrades later (a larger face, a machine
+ *  that slows) still moves. */
+export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, frames = LIVE_PAINT_WINDOW, clock = () => performance.now() } = {}) {
+  const times = new Float64Array(frames);
+  const sorted = new Float64Array(frames);
   let n = 0;
   let moved = false;
   let median = NaN;
+  let probed = NaN;
   return {
+    probe(paint) {
+      let ms = Infinity;
+      for (let i = 0; i < LIVE_PROBE_RUNS && ms > budget; i++) {
+        const t0 = clock();
+        paint();
+        ms = Math.min(ms, clock() - t0);
+      }
+      probed = ms;
+      if (ms > budget) moved = true;
+      return moved;
+    },
     time(paint) {
       const t0 = clock();
       const drew = paint();
       const ms = clock() - t0;
       if (drew && !moved) {
-        times[n % window] = ms;
+        times[n % frames] = ms;
         n++;
-        if (n >= window) {
+        if (n >= frames) {
           sorted.set(times);
           sorted.sort();
-          const h = window >> 1;
-          median = window % 2 ? sorted[h] : (sorted[h - 1] + sorted[h]) / 2;
+          const h = frames >> 1;
+          median = frames % 2 ? sorted[h] : (sorted[h - 1] + sorted[h]) / 2;
           moved = median > budget;
         }
       }
@@ -294,6 +334,10 @@ export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, window = LIVE
     /** The page's paint measured over budget: the faces go to the painter. */
     get moved() {
       return moved;
+    },
+    /** What the idle probe measured, ms (NaN before it, or without one). */
+    get probed() {
+      return probed;
     },
     /** The median of the last window, ms (NaN before the first is full). */
     get median() {
@@ -305,6 +349,14 @@ export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, window = LIVE
     },
   };
 }
+
+/** The idle probe's face (`warm`): how loud (0 to 1), and its outline, in
+ *  spreads from the bank's mean, band by band: a vessel nearly as wide as
+ *  its box at its widest (`σ(1.4 · 2)` of the half-width), as a face
+ *  sounding gets, drawn against a bank whose mean is 0 and spread 1. */
+const PROBE_LOUD = 1;
+const PROBE_DEV = Float64Array.from({ length: FACE_BANDS }, (_, b) => 2 * Math.sin((Math.PI * b) / (FACE_BANDS - 1)));
+const PROBE_STATS = { mean: new Float64Array(FACE_BANDS), spread: 1 };
 
 /** The loop for every face that hears what is played (see the top).
  *
@@ -321,10 +373,13 @@ export function createPaintSwitch({ budget = LIVE_PAINT_BUDGET_MS, window = LIVE
  *    hand's).
  *  - `paintWorker()`: a new worker running live-paint.js (the face
  *    painter), started once `paintSwitch` says the page's paint is over
- *    budget, never before (so never under reduced motion). The page paints
- *    on until it answers that it is up, then hands it each layer as a
- *    picture (`picture(canvas)`, a promise of one: `createImageBitmap`) and
- *    shows the pictures it answers each frame with (`bitmaprenderer`). With
+ *    budget, by the idle probe (`warm`) or as the faces are played, never
+ *    before (so never under reduced motion). Started by the probe, the
+ *    faces' layers are born showing its pictures; started later, the page
+ *    paints on until it answers that it is up, then hands it each layer as
+ *    a picture (`picture(canvas)`, a promise of one: `createImageBitmap`).
+ *    Either way, the page shows the pictures it answers each frame with
+ *    (`bitmaprenderer`). With
  *    none, a canvas with no `bitmaprenderer` context, a picture refused, a
  *    worker error or `messageerror`, or a frame answered `failed`, the faces
  *    are painted here, by the same calls, from then on.
@@ -412,6 +467,57 @@ export function createLiveFaces({
     } catch (_) {
       painter = null;
     }
+  }
+
+  // The idle probe (see the top): one frame of the largest face, its two
+  // outlines at their loudest glow, painted on a canvas of its own that is
+  // never shown, by the calls a frame painted here makes (`paintLayer`), and
+  // timed by the switch. First the same frame with no glow, untimed: the
+  // canvas sized and the calls run once, as a frame of the window never is
+  // a layer's first. Over budget, the faces go to the painter now.
+  function probeHere({ w, h, box }) {
+    const cv = doc.createElement("canvas");
+    const g = cv.getContext("2d");
+    if (!g) return;
+    const k = dpr();
+    const scale = traceScale(box.h);
+    const m = traceReach(scale);
+    const ink = silk();
+    const tr = createTrace();
+    tr.live.set(PROBE_DEV);
+    tr.loud = PROBE_LOUD;
+    const opts = { face: { ltas: PROBE_DEV }, stats: PROBE_STATS, box, color: ink, silk: ink, scale, trace: box.h >= LIVE_TRACE_MIN_H };
+    const op = {
+      id: -1,
+      size: [Math.round(w * k), Math.round(h * k)],
+      k,
+      fade: FADE_STEP,
+      rect: [box.x - m, box.y - m, box.w + 2 * m, box.h + 2 * m],
+      fadeStyle: tint(ink, LIVE_FADE),
+      n: traceStrokes(tr, opts),
+      strokes: tr.strokes,
+    };
+    for (let i = 0; i < op.n; i++) tr.strokes[i].blur = 0;
+    paintLayer(cv, g, op);
+    op.size = null;
+    traceStrokes(tr, opts);
+    const over = paintSwitch.probe(() => paintLayer(cv, g, op));
+    cv.width = cv.height = 0;
+    if (over) toPainter();
+  }
+
+  // The probe measured over budget: the painter started, before the first
+  // frame. A layer with no trail on it (none, until a face has sounded) is
+  // made again to show its pictures, and every frame goes to it from the
+  // first, so no frame's glow is blurred here; one with a trail still on it
+  // is handed over as it stands, at the next frame painted here, once the
+  // painter is up. With no painter, the faces are painted here.
+  function toPainter() {
+    startPainter();
+    if (!painter) return;
+    if (faces.some((f) => f.cv && !f.tr.cleared)) return;
+    for (const f of faces) if (f.cv) drop(f);
+    inWorker = true;
   }
 
   // The faces handed to the painter, at the end of a frame painted here:
@@ -756,11 +862,18 @@ export function createLiveFaces({
   return {
     add,
     wake,
-    /** Measure a silent frame once, so the first sound's frame does not pay
-     *  for the meter's first run (its band weights, and code not yet
-     *  compiled): called while the page is idle. */
-    warm(sampleRate) {
+    /** Called while the page is idle, before the first sound. Measure a
+     *  silent frame once, so the first sound's frame does not pay for the
+     *  meter's first run (its band weights, and code not yet compiled); and,
+     *  given `probe` (the largest face: its layer `w` by `h` and its vessel's
+     *  `box`, CSS px, as `place` fills `p.hw`, `p.hh` and `p.box`), time one
+     *  frame of it painted here (the idle probe, see the top), which, over
+     *  budget, starts the painter now and has the faces born painted by it.
+     *  No probe under reduced motion (nothing moves, so nothing is painted),
+     *  with no painter to move to, or once the faces have moved. */
+    warm(sampleRate, probe = null) {
       meter.measure(sum.fill(0), sampleRate);
+      if (probe && paintWorker && doc && !still() && !paintSwitch.moved) probeHere(probe);
     },
     /** The face in flight between the levels (shell.js draws it each frame
      *  on its own canvas, cleared each frame, so it has no trail): what the

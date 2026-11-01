@@ -1462,7 +1462,9 @@ function bootLiveFaces() {
     off: () => !!(perform && perform.stage && perform.stage()),
     silk: () => INK.silk,
     flightHears: handHears,
-    // Their canvas calls, made off this thread (live-paint.js, #512).
+    // The face painter (live-paint.js, #512): their canvas calls, made there
+    // where making them on this thread measures over budget, at the idle
+    // probe or later (live-face.js `createPaintSwitch`), and here otherwise.
     paintWorker: () => new Worker(`./live-paint.js?v=${BUILD}`, { type: "module" }),
   });
   // PERFORM's well: the sound in hand, and B while it holds an offer.
@@ -1504,8 +1506,12 @@ function bootLiveFaces() {
   liveFaces.add({ place: (p, n) => currentView === "taste" && markPlace(p, "taste", tasteWell, n) });
   liveFaces.add({ place: (p, n) => currentView === "learning" && markPlace(p, "learning", learnMap, n) });
   // The meter's first run, while the page is idle rather than in the frame
-  // of the first key.
-  idleSoon(() => liveFaces.warm(audioCtx.sampleRate));
+  // of the first key; and the idle probe, a frame of the largest face (PERFORM's
+  // well, at the size it is drawn, which its well scales: 458 × 499 at a
+  // 1440 × 900 window) painted here and timed, which decides before the first
+  // key whether the faces are painted here or by their painter (live-face.js).
+  const [w, h] = FACE_SIZE.well;
+  idleSoon(() => liveFaces.warm(audioCtx.sampleRate, { w, h, box: FACE_OPTS.well().box }));
 }
 
 // Workbench state.

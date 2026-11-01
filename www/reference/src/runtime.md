@@ -36,19 +36,26 @@ The face painter is main's own, outside that star, and holds no wasm, and
 it runs only where it pays. The face of a sound being played answers what is
 heard ([the guide](../docs/faces.html#while-you-play-it)): each frame, main
 measures what is heard and decides what is drawn over each such face (each
-outline's points, color and glow, and the trail's fade), and times its own
-canvas calls. While they take less than the live faces' 2 ms a frame (the
-median of the last ten frames), main makes them itself and a frame shows in
-the frame that read it: Chromium draws canvases on the GPU and only records
-the calls. The glow is a blur, though, and a browser that draws canvases on
-the CPU makes it on the thread that asks: on the main thread, in Firefox at
-a Retina screen's scale on a fast laptop (an M3 Max), that was 7 ms of
-every frame, and more on a slower machine. Once main's calls measure over,
-it starts the painter, hands it each face as it stands, and from then on,
-for the session, the painter makes those calls and answers with a picture of
-each face, which main shows as it is, so a frame is shown one round trip
-after it is read. One frame is with the painter at a time. Main paints the
-faces itself, with the same calls, where the painter cannot run.
+outline's points, color and glow, and the trail's fade). The glow is a blur,
+and a browser that draws a canvas as it is called makes it on the thread
+that asks: on the main thread, in Firefox at a Retina screen's scale on a
+fast laptop (an M3 Max), that was 7 ms of every frame, and more on a slower
+machine. Chromium only records the calls, and draws them after the frame's
+script. So main times its own canvas calls against the live faces' 2 ms a
+frame, first while the page is idle, before any sound: one frame of the
+largest face, painted on a canvas that is never shown. Over budget
+(Firefox), main starts the painter then, and from the first frame, for the
+session, the painter makes those calls and answers with a picture of each
+face, which main shows as it is, so a frame is shown one round trip after
+it is read. Inside it (Chromium), main makes them itself and a frame shows
+in the frame that read it, for as long as they measure inside as the faces
+are played (the median of the last ten frames); once they measure over,
+main starts the painter and hands it each face as it stands. One frame is
+with the painter at a time. What main times is the calls: where Chromium
+draws a canvas in software (on a machine whose GPU it doesn't use), that
+drawing after the script lands on the main thread too, and neither
+measurement sees it yet. Main paints the faces itself, with the same calls,
+where the painter cannot run.
 
 ## The AudioWorklet’s hostile environment
 

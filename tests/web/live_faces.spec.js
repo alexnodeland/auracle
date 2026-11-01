@@ -13,11 +13,15 @@
 // - The face in flight between the levels draws what sounds while it flies.
 // - Under reduced motion nothing over a face moves: no layer is drawn while
 //   a key sounds, and no face painter (live-paint.js's worker) is started.
-// - A page whose paint of the live faces measures over budget (here, its
-//   strokes on a live layer slowed) hands them to the face painter, which
-//   goes on with the trail; the layers it paints, the hand-over among them,
-//   are the same pixels, frame by frame, as the same frames painted on the
-//   page throughout.
+// - A page whose paint of a face measures over budget while it is idle
+//   (here, its glow's strokes slowed) starts the face painter then, before
+//   the first key, and the faces are born painted by it: no frame of them
+//   is painted on the page.
+// - The layers a painter paints are the same pixels, frame by frame, as the
+//   same frames painted on the page throughout, whether it took them over
+//   mid-sound, as it stood, once a window of frames painted on the page
+//   measured over budget, or painted them from the first frame, the idle
+//   probe over budget.
 // - Chromium, whose canvas calls only record the drawing, paints them on the
 //   page, in the frame that read them, on the reference profile at the
 //   Air's Retina scale, and starts no painter.
@@ -231,7 +235,9 @@ test.describe("under reduced motion", () => {
 
   test("nothing over a face moves while a key sounds, and no face painter is started", async ({ page, app }) => {
     // Each face painter started (live-paint.js's worker): the loop never
-    // runs, so nothing is painted or measured, and none is.
+    // runs, so nothing is painted or measured, and there is no idle probe
+    // (which in Firefox, blurring the glow as it is called, would measure
+    // over budget and start one), so none is.
     await page.addInitScript(PAINTERS);
     await boot(app);
     await page.keyboard.down("a");
@@ -243,15 +249,22 @@ test.describe("under reduced motion", () => {
   });
 });
 
-test("a page whose paint of the live faces is over budget hands them to the face painter, and the face stays lit", async ({ page, app }) => {
-  // The page's strokes on a live layer slowed, 3 ms each (two outlines a
-  // face, so over the 2 ms a frame the page's paint may take), as a browser
-  // that blurs the glow on the CPU is: the loop measures its own paint, and
-  // over budget hands the faces to the painter.
+test("a page whose paint of a face measures over budget while it is idle starts the face painter then, and the faces are born painted by it, lit, with no frame painted on the page", async ({ page, app }) => {
+  // Every glow stroked on a canvas that is not on the page (the idle
+  // probe's, live-face.js `warm`, and a face's own drawing) and every stroke
+  // on a live layer slowed, 3 ms each (two outlines a frame, so over the 2
+  // ms a frame the page's paint may take), as a browser that blurs the glow
+  // on the CPU is: the probe measures over, and the faces go to the painter
+  // before the first key. Each stroke on a live layer is counted: none is
+  // painted on the page.
   await page.addInitScript(() => {
+    window.__strokedHere = 0;
     const stroke = CanvasRenderingContext2D.prototype.stroke;
     CanvasRenderingContext2D.prototype.stroke = function (...a) {
-      if (this.canvas && this.canvas.classList && this.canvas.classList.contains("face-live")) {
+      const c = this.canvas;
+      const live = !!(c && c.classList && c.classList.contains("face-live"));
+      if (live) window.__strokedHere++;
+      if (live || (c && !c.isConnected && this.shadowBlur > 0)) {
         const t0 = performance.now();
         while (performance.now() - t0 < 3);
       }
@@ -260,16 +273,17 @@ test("a page whose paint of the live faces is over budget hands them to the face
   });
   await page.addInitScript(PAINTERS);
   await boot(app);
-  expect(await page.evaluate(() => window.__painters), "none before a face is painted").toBe(0);
+  // The probe ran while the page was idle, and started the painter: waited
+  // for, so the key comes after it.
+  await expect.poll(() => page.evaluate(() => window.__painters), { message: "a face painter started while the page was idle" }).toBe(1);
   await page.keyboard.down("a");
   await app.engine((timeout) => expect.poll(() => lit(page, "#out-face"), { timeout }).toBeGreaterThan(50), { ms: 30_000 });
-  // A window of frames timed on the page, the painter started and up, the
-  // layer handed over, and the frames sent to it from then on.
   await expect.poll(() => page.evaluate(() => window.__sent), { message: "frames sent to the face painter" }).toBeGreaterThan(10);
-  const got = await page.evaluate(() => ({ painters: window.__painters, handed: window.__handed }));
+  const got = await page.evaluate(() => ({ painters: window.__painters, handed: window.__handed, strokedHere: window.__strokedHere }));
   expect(got.painters, "one face painter").toBe(1);
-  expect(got.handed, "the layer handed to it as it stood").toBeGreaterThan(0);
-  expect(await layerKinds(page, "#out-face"), "the layer shows the painter's pictures").toEqual({ here: 0, shown: 1 });
+  expect(got.handed, "nothing handed to it: no layer was painted on the page first").toBe(0);
+  expect(got.strokedHere, "no frame painted on the page").toBe(0);
+  expect(await layerKinds(page, "#out-face"), "the layer was born showing the painter's pictures").toEqual({ here: 0, shown: 1 });
   expect(await lit(page, "#out-face"), "and is lit by them").toBeGreaterThan(50);
   await page.keyboard.up("a");
   await expect.poll(() => lit(page, "#out-face")).toBe(0);
@@ -282,21 +296,24 @@ const AIR_SCALE = 2;
 test.describe("at the Air's Retina scale", () => {
   test.use({ deviceScaleFactor: AIR_SCALE });
 
-  test("the live faces handed to their painter mid-sound are the same pixels, frame by frame, as painted on the page", async ({ page, app }) => {
+  test("the live faces painted by their painter, handed to it mid-sound or from the first frame, are the same pixels, frame by frame, as painted on the page", async ({ page, app }) => {
     await page.addInitScript(INIT);
     await app.boot();
-    // Two loops over the same frames: the app's own modules, the same
+    // Three loops over the same frames: the app's own modules, the same
     // sounds (a waveform made from the frame's number), the same faces and
-    // clock. One paints on the page throughout. The other is the app's way
-    // on a page whose paint is over budget (its switch's budget is one no
-    // paint meets): it paints on the page while a window of frames is
-    // timed, starts live-paint.js's worker, paints on until the worker is
-    // up, hands it each layer as it stands, and from then on the worker
-    // paints. After each frame (and once the worker has painted it and the
-    // page shows it), the two layers are compared byte for byte: a face
-    // that sounds, grows louder, is handed over, moves, is resized, falls
-    // silent, fades and is cleared, and a face too small for the live
-    // outline.
+    // clock. One paints on the page throughout. One is the app's way on a
+    // page whose paint gets over budget as the faces are played (its
+    // switch's budget is one no paint meets, and it has no idle probe): it
+    // paints on the page while a window of frames is timed, starts
+    // live-paint.js's worker, paints on until the worker is up, hands it
+    // each layer as it stands, and from then on the worker paints. One is
+    // the app's way on a page whose idle probe measured over budget
+    // (live-face.js `warm`): the worker started before the first frame, and
+    // every layer born showing its pictures. After each frame (and once each
+    // worker has painted it and the page shows it), each worker's layers
+    // are compared with the page's byte for byte: a face that sounds, grows
+    // louder, is handed over, moves, is resized, falls silent, fades and is
+    // cleared, and a face too small for the live outline.
     const got = await page.evaluate(async () => {
       const v = window.__aurBuild;
       const { createLiveFaces, createPaintSwitch, LIVE_PAINT_WINDOW } = await import(`./live-face.js?v=${v}`);
@@ -383,25 +400,54 @@ test.describe("at the Air's Retina scale", () => {
           layers: () => [...big.querySelectorAll("canvas.face-live"), ...small.querySelectorAll("canvas.face-live")],
         };
       };
-      // The painter, and whether the loop gave up on it (live-face.js
-      // `paintHere` ends it, and paints on the page from then on).
-      let gaveUp = false;
-      const there = loop(
-        () => {
+      // A painter: whether it has answered the page's first message (it is
+      // up), and whether the loop gave up on it (live-face.js `paintHere`
+      // ends it, and paints on the page from then on).
+      const painter = () => {
+        const p = { started: false, up: false, gaveUp: false };
+        p.make = () => {
+          p.started = true;
           const w = new Worker(`./live-paint.js?v=${v}`, { type: "module" });
+          w.addEventListener("message", (e) => {
+            if (e.data && e.data.frame === 0) p.up = true;
+          });
           const end = w.terminate.bind(w);
           w.terminate = () => {
-            gaveUp = true;
+            p.gaveUp = true;
             end();
           };
           return w;
-        },
-        0,
-        createPaintSwitch({ budget: -1 }),
-      );
+        };
+        return p;
+      };
+      const handedP = painter();
+      const bornP = painter();
+      const handed = loop(handedP.make, 0, createPaintSwitch({ budget: -1 }));
+      const born = loop(bornP.make, 0, createPaintSwitch({ budget: -1 }));
+      // The idle probe, before the first frame: over a budget no paint meets.
+      born.lf.warm(48000, { w: 458, h: 499, box: { x: 139, y: 38, w: 180, h: 299 } });
+      const bornAtIdle = bornP.started;
       const here = loop(null, 0);
       const shown = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
-      const out = { frames: 0, compared: 0, differing: [], lit: 0, cleared: 0, painted: 0, sizes: [], handedAt: 0, window: LIVE_PAINT_WINDOW };
+      const until = async (ok) => {
+        while (!ok()) await new Promise((r) => setTimeout(r, 1));
+      };
+      // The bytes of `b`'s layers that are not `a`'s (Infinity for a layer
+      // count or size that differs), and the lit pixels of `a`'s.
+      const differ = (a, b) => {
+        if (a.length !== b.length) return { diff: Infinity, lit: 0 };
+        let diff = 0;
+        let lit = 0;
+        for (let j = 0; j < a.length; j++) {
+          if (a[j].width !== b[j].width || a[j].height !== b[j].height) return { diff: Infinity, lit: 0 };
+          const pa = window.__pixels(a[j]);
+          const pb = window.__pixels(b[j]);
+          for (let k = 0; k < pa.length; k++) if (pa[k] !== pb[k]) diff++;
+          for (let k = 3; k < pa.length; k += 4) if (pa[k]) lit++;
+        }
+        return { diff, lit };
+      };
+      const out = { frames: 0, compared: 0, differing: [], bornDiffering: [], lit: 0, cleared: 0, sizes: [], handedAt: 0, startedAt: 0, window: LIVE_PAINT_WINDOW, bornAtIdle };
       // 60 frames a second: the trail is cleared 1.6 s (96 frames) after the
       // sound stops, at frame 50.
       for (frame = 1; frame <= 160; frame++) {
@@ -410,74 +456,82 @@ test.describe("at the Air's Retina scale", () => {
         if (frame === 40) height = 480;
         if (frame === 50) amp = 0;
         t += 1000 / 60;
-        there.step();
+        handed.step();
+        born.step();
         here.step();
-        // The frame after which the faces were handed over (the first
-        // message the loop counts as sent).
-        if (!out.handedAt && there.lf.counts.posted) out.handedAt = frame;
-        // The worker's frame, painted, however long that takes (the first
-        // starts the worker, fetches its module and paints a glow at
-        // 916×998, on a loaded runner too): a step taken before would find
-        // the painter busy and only wait, and the two loops would part. A
-        // painter the loop gave up on answers no more.
-        while (!gaveUp && there.lf.counts.painted < there.lf.counts.posted) await new Promise((ok) => setTimeout(ok, 1));
+        // The frame that started the handed loop's painter, and the frame
+        // after which the faces were handed to it (the first message the
+        // loop counts as sent).
+        if (!out.startedAt && handedP.started) out.startedAt = frame;
+        if (!out.handedAt && handed.lf.counts.posted) out.handedAt = frame;
+        // A painter started in this frame is up before the next frame is
+        // read (the first starts the worker and fetches its module, on a
+        // loaded runner too), so the frame the faces are handed over at is
+        // one of the loop's order, not of how long that took.
+        await until(() => !handedP.started || handedP.up || handedP.gaveUp);
+        // Each worker's frame, painted, however long that takes (a glow at
+        // 916×998): a step taken before would find the painter busy and
+        // only wait, and the loops would part. A painter the loop gave up
+        // on answers no more.
+        await until(() => handedP.gaveUp || handed.lf.counts.painted >= handed.lf.counts.posted);
+        await until(() => bornP.gaveUp || born.lf.counts.painted >= born.lf.counts.posted);
         // …and shown (a frame or two after), compared with the page's.
-        let same = false;
-        let diff = -1;
-        let lit = 0;
-        for (let tries = 0; tries < 10 && !same; tries++) {
+        let a = { diff: -1, lit: 0 };
+        let b = { diff: -1, lit: 0 };
+        for (let tries = 0; tries < 10 && (a.diff !== 0 || b.diff !== 0); tries++) {
           await shown();
-          const a = here.layers();
-          const b = there.layers();
-          if (a.length !== b.length) continue;
-          diff = 0;
-          lit = 0;
-          for (let j = 0; j < a.length; j++) {
-            if (a[j].width !== b[j].width || a[j].height !== b[j].height) {
-              diff = Infinity;
-              break;
-            }
-            const pa = window.__pixels(a[j]);
-            const pb = window.__pixels(b[j]);
-            for (let k = 0; k < pa.length; k++) if (pa[k] !== pb[k]) diff++;
-            for (let k = 3; k < pa.length; k += 4) if (pa[k]) lit++;
-          }
-          same = diff === 0;
+          a = differ(here.layers(), handed.layers());
+          b = differ(here.layers(), born.layers());
         }
         out.frames++;
-        if (same) out.compared++;
-        else out.differing.push({ frame, diff });
-        if (lit) out.lit++;
+        if (a.diff === 0 && b.diff === 0) out.compared++;
+        if (a.diff !== 0) out.differing.push({ frame, diff: a.diff });
+        if (b.diff !== 0) out.bornDiffering.push({ frame, diff: b.diff });
+        if (a.lit) out.lit++;
         else out.cleared++;
       }
-      out.gaveUp = gaveUp;
-      out.paintedHere = there.lf.counts.here;
-      out.painted = there.lf.counts.painted;
+      out.gaveUp = handedP.gaveUp;
+      out.bornGaveUp = bornP.gaveUp;
+      out.paintedHere = handed.lf.counts.here;
+      out.painted = handed.lf.counts.painted;
+      out.bornHere = born.lf.counts.here;
+      out.bornPainted = born.lf.counts.painted;
       out.sizes = here.layers().map((c) => [c.width, c.height]);
-      // The worker's layers show its pictures (no 2D context: nothing was
+      // The workers' layers show their pictures (no 2D context: nothing was
       // drawn on them here); the page's were drawn on.
-      out.shown = there.layers().every((c) => c.getContext("2d") === null);
+      out.shown = handed.layers().every((c) => c.getContext("2d") === null);
+      out.bornShown = born.layers().every((c) => c.getContext("2d") === null);
       out.drawnHere = here.layers().every((c) => c.getContext("2d") !== null);
       return out;
     });
     test.info().annotations.push({ type: "frames compared", description: JSON.stringify(got) });
-    expect(got.gaveUp, "the loop kept its painter").toBe(false);
+    expect(got.gaveUp, "the handed loop kept its painter").toBe(false);
+    expect(got.bornGaveUp, "the probed loop kept its painter").toBe(false);
     // A window of frames timed on the page (live-face.js
-    // `LIVE_PAINT_WINDOW`), then the hand-over while the sound plays (it
-    // stops at frame 50), with a trail to take up.
-    expect(got.handedAt, "handed over once a window of frames was timed").toBeGreaterThan(got.window);
+    // `LIVE_PAINT_WINDOW`), the painter started by the last of them, and
+    // the hand-over at the first frame after it was up, while the sound
+    // plays (it stops at frame 50), with a trail to take up.
+    expect(got.startedAt, "the painter started once a window of frames was timed").toBe(got.window);
+    expect(got.handedAt, "handed over at the first frame after it was up").toBe(got.window + 1);
     expect(got.handedAt, "while the sound played").toBeLessThan(50);
-    expect(got.paintedHere, "painted on the page until then").toBeGreaterThan(got.window);
-    expect(got.shown, "the worker's loop showed its pictures").toBe(true);
+    expect(got.paintedHere, "painted on the page until then").toBe(got.window + 1);
+    expect(got.shown, "the handed loop's layers showed its painter's pictures").toBe(true);
+    expect(got.painted, "its painter painted the frames after").toBeGreaterThan(50);
+    // The probed loop: its painter started by the probe, before any frame,
+    // and every frame painted by it.
+    expect(got.bornAtIdle, "the probed loop's painter started by the probe").toBe(true);
+    expect(got.bornHere, "no frame of the probed loop painted on the page").toBe(0);
+    expect(got.bornShown, "its layers showed its painter's pictures").toBe(true);
+    expect(got.bornPainted, "its painter painted the frames").toBeGreaterThan(50);
     expect(got.drawnHere, "the other loop drew on the page").toBe(true);
-    expect(got.painted, "the worker painted the frames after").toBeGreaterThan(50);
     expect(got.lit, "frames with something drawn").toBeGreaterThan(40);
     expect(got.cleared, "frames after the trail was cleared").toBeGreaterThan(0);
     expect(got.sizes, "drawn at the screen's scale, and resized").toEqual([
       [458 * 2, 480 * 2],
       [458 * 2, 499 * 2],
     ]);
-    expect(got.differing, "every frame the same pixels").toEqual([]);
+    expect(got.differing, "every frame the same pixels, handed over mid-sound").toEqual([]);
+    expect(got.bornDiffering, "every frame the same pixels, painted by the painter from the first").toEqual([]);
   });
 });
 

@@ -22,6 +22,7 @@ import {
   createPaintSwitch,
   LIVE_PAINT_BUDGET_MS,
   LIVE_PAINT_WINDOW,
+  LIVE_PROBE_RUNS,
 } from "../live-face.js";
 import { paintFrame } from "../live-paint.js";
 
@@ -442,6 +443,53 @@ test("a frame of the fade alone, a paint at the budget, and a few slow frames mo
   assert.equal(slow + 1, LIVE_PAINT_WINDOW / 2, "moved once half of the last window was slow");
 });
 
+test("the idle probe moves the faces before any frame when a frame of the largest face is over budget, timed twice first; inside it, the window decides", () => {
+  assert.equal(LIVE_PROBE_RUNS, 2);
+  const c = clocked();
+  // Over: timed again before the faces move, and moved for good.
+  const sw = createPaintSwitch({ clock: c.clock });
+  assert.ok(Number.isNaN(sw.probed), "nothing probed yet");
+  let runs = 0;
+  assert.equal(
+    sw.probe(() => {
+      runs++;
+      c.t += 5;
+    }),
+    true,
+  );
+  assert.equal(runs, LIVE_PROBE_RUNS, "timed again before the faces move");
+  assert.equal(sw.probed, 5);
+  assert.equal(sw.moved, true);
+  for (let i = 0; i < 20; i++) assert.equal(sw.time(c.paint(0.1)), true, "and never back");
+  assert.equal(sw.frames, 0, "the probe is no frame of the window, and nothing is timed once moved");
+  // Inside: timed once, and nothing moves.
+  const fast = createPaintSwitch({ clock: c.clock });
+  runs = 0;
+  assert.equal(
+    fast.probe(() => {
+      runs++;
+      c.t += 1;
+    }),
+    false,
+  );
+  assert.equal(runs, 1, "timed once");
+  assert.equal(fast.probed, 1);
+  assert.equal(createPaintSwitch({ clock: c.clock }).probe(() => (c.t += LIVE_PAINT_BUDGET_MS)), false, "at the budget is inside it");
+  // One slow run (a collection, a page still booting), then a fast one: the
+  // lesser is kept, and nothing moves.
+  const blip = createPaintSwitch({ clock: c.clock });
+  let n = 0;
+  assert.equal(blip.probe(() => (c.t += n++ ? 0.5 : 9)), false);
+  assert.equal(blip.probed, 0.5);
+  // A paint inside budget at idle that is slower as the faces are played:
+  // the window moves them.
+  for (let i = 0; i < 50; i++) fast.time(c.paint(0.3));
+  assert.equal(fast.moved, false);
+  let slow = 0;
+  while (slow < 100 && !fast.time(c.paint(5))) slow++;
+  assert.equal(slow + 1, LIVE_PAINT_WINDOW / 2, "moved by the window once half of it was slow");
+});
+
 /** A 2D context that records every call exactly, numbers unrounded; each
  *  `stroke` takes `strokeMs` on `clock` (`clock.t`), when one is given. */
 function exact(clock = null, strokeMs = 0) {
@@ -520,7 +568,9 @@ function heldWorker() {
   return w;
 }
 /** A page's paint over budget from its first frame that draws. */
-const overBudget = () => createPaintSwitch({ budget: -1, window: 1 });
+const overBudget = () => createPaintSwitch({ budget: -1, frames: 1 });
+/** The idle probe's face: a layer and a vessel's box as a face's. */
+const PROBE = { w: 300, h: 600, box: BOX };
 /** A picture of a layer as it stands: its size, and the calls made on it. */
 const snap = (cv) => Promise.resolve({ width: cv.width, height: cv.height, calls: cv.ctx.ops.length });
 /** What a picture's promise, and what it posts, have to do. */
@@ -547,8 +597,10 @@ test("while the page's paint is inside budget the faces are painted here, in the
   let workers = 0;
   const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => (workers++, heldWorker()), paintSwitch: createPaintSwitch({ clock: c.clock }) });
   L.lf.add(face(host(), 1));
-  L.lf.warm(48000);
-  assert.equal(workers, 0, "not by the warm-up");
+  L.lf.warm(48000, PROBE);
+  assert.equal(workers, 0, "not by the idle probe, inside budget");
+  assert.equal(made.length, 1, "the probe's canvas");
+  made.shift();
   L.lf.wake();
   for (let i = 1; i <= 100; i++) {
     L.step();
@@ -565,11 +617,126 @@ test("while the page's paint is inside budget the faces are painted here, in the
   let others = 0;
   const M = loop({ signals: [() => voices], doc: still.doc, held: () => true, still: () => true, paintWorker: () => (others++, heldWorker()), paintSwitch: createPaintSwitch({ clock: slow.clock }) });
   M.lf.add(face(still.host(), 1));
-  M.lf.warm(48000);
+  M.lf.warm(48000, PROBE);
   M.lf.wake();
   for (let i = 0; i < 50; i++) M.step();
   assert.equal(others, 0);
-  assert.equal(still.made.length, 0);
+  assert.equal(still.made.length, 0, "no probe, and no layer");
+});
+
+test("a probe over budget at idle starts the painter before the first frame, and each layer is born showing its pictures, with no frame painted here", async () => {
+  const c = clocked();
+  // Two outlines a frame at 3 ms each: 6 ms a frame on the page.
+  const { doc, made, host } = showingPage({ clock: c, strokeMs: 3 });
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  let workers = 0;
+  const h = host();
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => (workers++, worker), picture: snap, paintSwitch: createPaintSwitch({ clock: c.clock }) });
+  L.lf.add(face(h, 1));
+  L.lf.warm(48000, PROBE);
+  assert.equal(workers, 1, "started by the probe, before any frame");
+  assert.deepEqual(worker.sent, [{ frame: 0, faces: [] }], "asked whether it is up");
+  // The probe: a frame of the face, painted on a canvas of its own, never
+  // shown: once untimed with no glow, then timed with its glow, and again
+  // (it was over), then let go.
+  const probe = made[0];
+  assert.equal(probe.parentNode, null, "never shown");
+  assert.equal(probe.width, 0, "let go");
+  const glow = sets(probe.ctx.ops, "shadowBlur");
+  assert.equal(glow.length, 2 * (1 + LIVE_PROBE_RUNS), "two outlines a frame");
+  assert.deepEqual(glow.slice(0, 2), [0, 0], "untimed, no glow");
+  assert.ok(glow.slice(2).every((b) => b > 0), "timed, its glow");
+  assert.equal(count(probe.ctx.ops, "fillRect"), 1 + LIVE_PROBE_RUNS, "and the trail's fade, as a frame has");
+  // The first frame, before the painter is up: the layer is born showing
+  // its pictures, and the frame goes to it.
+  L.lf.wake();
+  L.step();
+  assert.equal(made.length, 2);
+  const layer = made[1];
+  assert.ok(layer.renderer, "born showing the painter's pictures");
+  assert.equal(layer.ctx, undefined, "never drawn on here");
+  assert.equal(layer.parentNode, h);
+  assert.equal(worker.sent.length, 2);
+  assert.equal(worker.sent[1].seed, undefined, "nothing to hand over");
+  assert.equal(worker.sent[1].faces[0].n, 2);
+  assert.deepEqual(worker.sent[1].faces[0].size, [300, 600], "the layer made, at its size, by the painter");
+  // Until it answers, no frame is read.
+  const reads = voices.reads;
+  L.step();
+  assert.equal(voices.reads, reads);
+  worker.answer(0);
+  const picture = { width: 300, height: 600, close() {} };
+  worker.answer(1, [{ id: 0, bitmap: picture }]);
+  assert.deepEqual(layer.shownPictures, [picture]);
+  for (let i = 0; i < 5; i++) {
+    L.step();
+    worker.answer(worker.sent[worker.sent.length - 1].frame);
+  }
+  assert.equal(worker.sent.length, 7);
+  assert.ok(worker.sent.every((m) => !m.seed), "no hand-over, ever");
+  assert.equal(L.lf.counts.here, 0, "no frame painted here");
+  assert.equal(made.length, 2);
+  // A painter that fails then: the faces are painted here, from then on.
+  worker.onerror(new Event("error"));
+  assert.equal(layer.removed, true);
+  L.step();
+  assert.equal(made.length, 3);
+  assert.equal(strokes(made[2]), 2, "painted here");
+  assert.equal(workers, 1);
+});
+
+test("a probe over budget while a face's trail still fades hands that layer over as it stands, once the painter is up", async () => {
+  const c = clocked();
+  const { doc, made, host } = showingPage({ clock: c, strokeMs: 3 });
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  // A window no frame fills here: only the probe moves the faces.
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker, picture: snap, paintSwitch: createPaintSwitch({ clock: c.clock, frames: 1000 }) });
+  L.lf.add(face(host(), 1));
+  L.lf.wake();
+  for (let i = 0; i < 3; i++) L.step();
+  assert.equal(strokes(made[0]), 6, "a sound played before the page was idle, painted here");
+  L.lf.warm(48000, PROBE);
+  assert.equal(worker.sent.length, 1, "the painter started");
+  L.step();
+  assert.equal(strokes(made[0]), 8, "painted here until it is up");
+  worker.answer(0);
+  L.step();
+  const calls = made[0].ctx.ops.length;
+  await settle();
+  assert.deepEqual(worker.sent[1].seed, [{ id: 0, bitmap: { width: 300, height: 600, calls } }], "the layer handed over as it stands");
+  assert.equal(made[0].removed, false, "and shown until the painter answers");
+});
+
+test("no probe with no painter to move to; a painter the probe cannot start leaves the faces painted here", () => {
+  const c = clocked();
+  const none = showingPage({ clock: c, strokeMs: 3 });
+  const voices = analyser(0.3);
+  const N = loop({ signals: [() => voices], doc: none.doc, held: () => true, paintSwitch: createPaintSwitch({ clock: c.clock }) });
+  N.lf.add(face(none.host(), 1));
+  N.lf.warm(48000, PROBE);
+  assert.equal(none.made.length, 0, "no probe");
+  const { doc, made, host } = showingPage({ clock: c, strokeMs: 3 });
+  let workers = 0;
+  const L = loop({
+    signals: [() => voices],
+    doc,
+    held: () => true,
+    paintWorker: () => {
+      workers++;
+      throw new Error("no worker here");
+    },
+    paintSwitch: createPaintSwitch({ clock: c.clock }),
+  });
+  L.lf.add(face(host(), 1));
+  L.lf.warm(48000, PROBE);
+  assert.equal(workers, 1, "the probe was over");
+  L.lf.wake();
+  for (let i = 0; i < 50; i++) L.step();
+  assert.equal(made.length, 2, "the probe's canvas, and the layer");
+  assert.equal(strokes(made[1]), 100, "every frame painted here");
+  assert.equal(workers, 1, "and none started again");
 });
 
 test("a page's paint over budget moves the faces to the painter: started then, painted here until it is up, and each layer handed over as it stands", async () => {
@@ -669,16 +836,17 @@ test("handed over, each layer shows the painter's pictures, and one frame is in 
   assert.equal(worker.sent.length, 4);
 });
 
-test("handed over mid-sound, the painter takes up each layer as the page left it, and paints the same calls, in the same order, as the page paints", async () => {
-  // The same faces, sounds and clock, painted here throughout, and painted
-  // here until a window of frames has been timed and then in a worker
-  // (whose frames live-paint.js's own `paintFrame` paints on exact
-  // recorders): each layer's calls, the page's until the hand-over and the
-  // worker's after the picture it was handed, are the page's calls, frame
-  // by frame, through a sound, its fade and the trail cleared, a face
+test("handed over mid-sound, or from the first frame by the probe, the painter paints the same calls, in the same order, as the page paints", async () => {
+  // The same faces, sounds and clock, painted here throughout; painted here
+  // until a window of frames has been timed and then in a worker (whose
+  // frames live-paint.js's own `paintFrame` paints on exact recorders); and
+  // in the worker from the first frame, the idle probe over budget: each
+  // layer's calls, the page's until the hand-over and the worker's after the
+  // picture it was handed, or the worker's alone, are the page's calls,
+  // frame by frame, through a sound, its fade and the trail cleared, a face
   // leaving the screen and coming back, and a resize.
   const WINDOW = 10;
-  const run = async (withWorker) => {
+  const run = async (withWorker, probed = false) => {
     const { doc, made, host } = showingPage({ shows: withWorker });
     const voices = analyser(0.3);
     const offer = analyser(0.2, 660);
@@ -697,7 +865,7 @@ test("handed over mid-sound, the painter takes up each layer as the page left it
       held: () => true,
       paintWorker: withWorker ? () => worker : null,
       picture: snap,
-      paintSwitch: createPaintSwitch({ budget: -1, window: WINDOW }),
+      paintSwitch: createPaintSwitch({ budget: -1, frames: WINDOW }),
     });
     const tall = (h) => ({
       place(p) {
@@ -715,6 +883,10 @@ test("handed over mid-sound, the painter takes up each layer as the page left it
     });
     L.lf.add(tall(host()));
     L.lf.add(face(host(), 2, { inHand: false, on: () => bShown }));
+    if (probed) {
+      L.lf.warm(48000, PROBE);
+      made.shift(); // the probe's canvas
+    }
     L.lf.wake();
     // 16 ms a frame: the trail is cleared 1.6 s after the sound stops.
     for (let i = 0; i < 200; i++) {
@@ -749,6 +921,17 @@ test("handed over mid-sound, the painter takes up each layer as the page left it
     assert.equal(at, -1, `layer ${i}: call ${at} differs: ${JSON.stringify(want[at])} on the page, ${JSON.stringify(got[at])} here then in the worker`);
     assert.equal(there.layers.get(i).cv.width, here.made[i].width);
     assert.equal(there.layers.get(i).cv.height, here.made[i].height);
+  }
+  const born = await run(true, true);
+  assert.equal(born.counts.here, 0, "no frame painted here");
+  assert.ok(born.counts.painted > 100 && born.counts.painted === born.counts.posted, "the worker painted every frame sent");
+  for (let i = 0; i < 2; i++) {
+    assert.ok(born.made[i].renderer && !born.made[i].ctx, `layer ${i} was born showing the painter's pictures`);
+    const want = here.made[i].ctx.ops;
+    const got = born.layers.get(i).cv.ctx.ops;
+    assert.equal(got.length, want.length, `layer ${i}: as many calls`);
+    const at = want.findIndex((op, j) => JSON.stringify(op) !== JSON.stringify(got[j]));
+    assert.equal(at, -1, `layer ${i}: call ${at} differs: ${JSON.stringify(want[at])} on the page, ${JSON.stringify(got[at])} in the worker`);
   }
 });
 
