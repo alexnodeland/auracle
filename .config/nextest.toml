@@ -1,5 +1,5 @@
 # What the Rust tests need from nextest's pool. `make test`, CI's tiers
-# (`make test-fast-tier`, the Coverage jobs, the Slow suite) and
+# (`make test-fast-tier`, the Coverage job, the Slow suite) and
 # cargo-mutants all run nextest, and it reads this file from the workspace
 # root. docs/architecture/testing.md § The local loop says what each part
 # bought, measured.
@@ -23,8 +23,8 @@ nextest-version = { recommended = "0.9.91" }
 slow-timeout = { period = "60s", terminate-after = 20 }
 
 # CI's runs (NEXTEST_PROFILE=ci, set in ci.yml and slow-suite.yml): stopped
-# at ten minutes, so a hung test ends inside its job's limit (twenty minutes
-# for a Coverage runner) and the job reports it, where the limit would cut
+# at ten minutes, so a hung test ends inside its job's limit (twenty-five
+# minutes for the Coverage job) and the job reports it, where the limit would cut
 # the job off with no report. On a runner the longest fast-tier test took
 # 70 s, instrumented (a queue run on Oct 6), and the longest slow one 77 s
 # (main's Slow suite run of Oct 31; 169 s on Oct 7), the search floor aside.

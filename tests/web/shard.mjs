@@ -55,8 +55,9 @@
 // deterministic, by count.
 //
 // The deal is a partition only if every runner reads the same timings, so CI
-// reads them once per run (the engine job uploads them as an artifact every
-// runner downloads, a re-run's too), and each runner prints a hash of the
+// reads them once per run (ci.yml's What changed, or the Slow suite's and the
+// Flake hunt's engine job, uploads them as an artifact every runner
+// downloads, a re-run's too), and each runner prints a hash of the
 // whole plan: runners of one run that print different hashes dealt from
 // different files.
 //
@@ -517,7 +518,13 @@ if (!commands[cmd]) {
   process.exit(2);
 }
 try {
-  process.exit(await commands[cmd](opts, pass));
+  const code = await commands[cmd](opts, pass);
+  // Off Linux a pipe's stdout is written asynchronously, and exiting with a
+  // write still queued cuts what it printed at the pipe's buffer (64 KiB on a
+  // Mac): the budgets summary lost its last rows to a reader that was slower
+  // than the child. An empty write's callback comes after every earlier one.
+  await new Promise((drained) => process.stdout.write("", drained));
+  process.exit(code);
 } catch (e) {
   console.error(`shard: ${e.message}`);
   process.exit(2);

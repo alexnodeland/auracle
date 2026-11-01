@@ -52,8 +52,27 @@ keeps its own PR out of the queue rather than turning a batch red, and the
 burn-in a builder ran locally before the push (`make browser-changed
 REPEAT=3`) is no longer owed: before the push only the inner loop is (the
 new spec run, and seen failing before its fix). The specs a `main.js`
-change reaches are still left to the full gate. The rest of this record is
-as accepted.
+change reaches are still left to the full gate. Since #580, the queue's run
+waits for at most three runners in a row, since every job waits for a
+runner of its own and on a busy account those waits, not the tests, ran
+batches past the queue's 45-minute `checks_timeout`: the engine is
+restored or built in *What changed*, Coverage is one job (rule 7 holds:
+the same tests, instrumented, on one runner rather than five jobs), the
+browser runners' report is a step of `CI`, and `Full gate` (rule 2) needs
+the same jobs as `CI` and runs beside it, not after it; Mergify merges on
+both, as `main`'s ruleset requires `CI`. And the queue's runs share one
+concurrency group, so a closed draft PR's run stops when the next batch's
+starts: the first of the consequences *noted, not built* below is built,
+except for a run whose batch is the last in the queue, and for a red
+batch's `CI`, which runs to its end first, so its report is kept (but for
+a batch with a job cut off by its own limit, which reads as cancelled).
+Since #581's first
+step, `CI` also keeps a record of each class of job that passed in full, in
+a PR's own run or the queue's, keyed by the files it reads, and the queue's
+run logs which classes it would reuse, and still runs everything: a dry run.
+Rule 4 holds as written until skipping turns on, in a second change that
+amends it with what the dry run's diff shows. The rest of this record is as
+accepted.
 
 ## Context
 

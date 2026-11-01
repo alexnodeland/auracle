@@ -10,7 +10,9 @@ lanes*. The last two classes read throwaway git repositories, with no
 system or global config. Python 3 standard library only.
 """
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +21,7 @@ import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import changes as C  # noqa: E402
 
@@ -95,10 +98,23 @@ class Lanes(unittest.TestCase):
             with self.subTest(f=f):
                 self.assertEqual(reached(f), {"rust", "site", "web", "smoke", "worker", "reach"})
 
-    def test_the_rust_tests_tooling_reaches_the_rust_and_no_browser(self):
+    def test_the_rust_tests_tooling_reaches_the_rust_and_no_browser_and_no_engine(self):
+        # None of them is what the engine is built from, so Worker protocol,
+        # which runs the engine, has nothing to try.
         for f in ("scripts/coverage_gate.py", "scripts/test_coverage_gate.py", "scripts/setup.sh", ".config/nextest.toml"):
             with self.subTest(f=f):
-                self.assertEqual(reached(f), {"rust", "site", "web", "worker"})
+                self.assertEqual(reached(f), {"rust", "site", "web"})
+
+    def test_a_file_the_rust_reads_outside_crates_reaches_the_rust_beside_its_own_place(self):
+        # The app's files the Rust tests read reach what an app file does, and
+        # the Rust too; the films' sound.json, the site and the Rust.
+        for f in ("apps/web/words.js", "apps/web/perform-wirings.json", "apps/web/preset-faces.json", "apps/web/tests/fixtures/sexpr-heads.json"):
+            with self.subTest(f=f):
+                self.assertEqual(reached(f), {"rust", "site", "web", "smoke", "worker", "reach"})
+        self.assertEqual(reached("www/brand/sound.json"), {"rust", "site", "web"})
+        # Its neighbours are not read by the Rust.
+        self.assertEqual(reached("apps/web/tests/faces.test.mjs"), {"site", "web", "smoke", "worker", "reach"})
+        self.assertEqual(reached("www/brand/tokens.json"), {"site", "web"})
 
     def test_the_worker_protocol_tests_reach_only_themselves(self):
         self.assertEqual(reached("tests/worker/harness.mjs"), {"worker"})
@@ -132,6 +148,60 @@ class Lanes(unittest.TestCase):
             out.splitlines(),
             ["full=false", "rust=false", "site=false", "web=false", "smoke=false", "worker=true", "reach=false"],
         )
+
+
+# A string literal in Rust, escapes included.
+LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def rust_reads_outside_crates():
+    """Each file outside crates/ that a path literal in the crates' Rust
+    names (a `../` path, from the file's directory as `include_str!` reads
+    it, or from its crate's as CARGO_MANIFEST_DIR builds it), and each such
+    literal that names nothing there."""
+    found, unresolved = set(), []
+    crates = os.path.join(ROOT, "crates")
+    for dirpath, dirs, files in os.walk(crates):
+        dirs[:] = [d for d in dirs if d != "target"]
+        for name in sorted(f for f in files if f.endswith(".rs")):
+            path = os.path.join(dirpath, name)
+            rel = os.path.relpath(path, ROOT)
+            crate = os.path.join(ROOT, *rel.split(os.sep)[:2])
+            with open(path, encoding="utf-8") as f:
+                for n, line in enumerate(f, 1):
+                    if line.lstrip().startswith("//"):
+                        continue
+                    for lit in LITERAL.findall(line):
+                        if "../" not in lit:
+                            continue
+                        tail = lit[lit.index("../") :]
+                        hits = [os.path.normpath(os.path.join(d, tail)) for d in (dirpath, crate)]
+                        hits = [h for h in hits if os.path.exists(h)]
+                        if not hits:
+                            unresolved.append(f"{rel}:{n}: {lit}")
+                        for h in hits:
+                            if os.path.commonpath([h, crates]) != crates:
+                                found.add(os.path.relpath(h, ROOT).replace(os.sep, "/"))
+    return found, unresolved
+
+
+class RustReads(unittest.TestCase):
+    """The files outside crates/ the crates' Rust reads are the Rust's to
+    run on and are in its record's key (#581), read from the sources."""
+
+    def test_the_list_is_what_the_crates_read_outside_crates(self):
+        found, unresolved = rust_reads_outside_crates()
+        self.assertEqual(unresolved, [], "a path literal in the crates names no file: fix it, or teach this scan where it points")
+        self.assertEqual(
+            sorted(found - set(C.RUST_READS)), [], "the crates read these outside crates/: add them to RUST_READS in scripts/changes.py"
+        )
+        self.assertEqual(sorted(set(C.RUST_READS) - found), [], "no crate reads these any more: take them out of RUST_READS")
+
+    def test_each_reaches_the_rust_and_is_in_its_key(self):
+        for f in C.RUST_READS:
+            with self.subTest(f=f):
+                self.assertTrue(C.classify([f])["rust"])
+                self.assertTrue(C.RUST_INPUTS.search(f))
 
 
 class CheckParts(unittest.TestCase):
@@ -207,6 +277,131 @@ class ChangedFiles(unittest.TestCase):
 
     def test_nothing_changed_is_no_file(self):
         self.assertEqual(C.changed_files("main", self.repo)[1], [])
+
+
+class Keys(unittest.TestCase):
+    """The records' keys (#581): the same files give the same key, and a
+    change to what a class reads, and only that, gives it a new one."""
+
+    FILES = {
+        ".github/workflows/ci.yml": "jobs\n",
+        "scripts/changes.py": "classes\n",
+        "rust-toolchain.toml": 'channel = "1.99.0"\n',
+        "crates/x/src/lib.rs": "fn a() {}\n",
+        "Cargo.lock": "lock\n",
+        "apps/web/main.js": "main\n",
+        "apps/web/words.js": "words\n",
+        "tests/web/a.spec.js": "spec\n",
+        "tests/web/eslint-suppressions.json": "{}\n",
+        "tests/worker/a.test.mjs": "worker\n",
+        "www/brand/sound.json": "{}\n",
+        "docs/a.md": "a\n",
+        ".node-version": "22\n",
+    }
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.repo)
+        self.git("init", "-q", "-b", "main")
+        for path, text in self.FILES.items():
+            self.write(path, text)
+        self.commit("base")
+        self.base = self.keys()
+
+    def git(self, *args):
+        return C.git(self.repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", *args)
+
+    def write(self, path, text):
+        full = os.path.join(self.repo, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
+            f.write(text)
+
+    def commit(self, msg, *flags):
+        self.git("add", "-A")
+        self.git("commit", "-q", *flags, "-m", msg)
+
+    def keys(self):
+        return C.keys("HEAD^1", self.repo) if self.git("rev-list", "--count", "HEAD").strip() != "1" else C.keys("HEAD", self.repo)
+
+    def changed(self, path, text="changed\n"):
+        """The classes whose key a commit changing `path` moves, against
+        the same files committed again unchanged."""
+        self.commit("same", "--allow-empty")
+        same = self.keys()
+        self.write(path, text)
+        self.commit("change")
+        new = self.keys()
+        self.git("reset", "-q", "--hard", "HEAD~2")
+        return {k for k in new if new[k] != same[k]}
+
+    def test_a_key_is_32_hex_digits_for_every_class(self):
+        self.assertEqual(sorted(self.base), sorted(C.KEYS))
+        for k in self.base.values():
+            self.assertRegex(k, r"^[0-9a-f]{32}$")
+
+    def test_the_same_files_give_the_same_keys_on_other_commits(self):
+        # The first commit's keys took it as its own base; these are two
+        # other commits of the same files, each on one of the same files.
+        self.commit("again", "--allow-empty")
+        self.assertEqual(self.keys(), self.base)
+        self.commit("and again", "--allow-empty")
+        self.assertEqual(self.keys(), self.base)
+
+    def test_each_change_moves_the_keys_of_the_classes_that_read_it(self):
+        everything = {"rust", "browser", "worker", "web", "site", "tree"}
+        cases = {
+            "docs/a.md": {"web", "site", "tree"},
+            "crates/x/src/lib.rs": everything,
+            "apps/web/main.js": {"browser", "worker", "web", "site", "tree"},
+            "apps/web/words.js": everything,
+            "www/brand/sound.json": {"rust", "web", "site", "tree"},
+            "tests/web/a.spec.js": {"browser", "web", "site", "tree"},
+            "tests/worker/a.test.mjs": {"worker", "web", "site", "tree"},
+            ".node-version": {"browser", "worker", "web", "site", "tree"},
+            ".github/workflows/ci.yml": everything,
+            "scripts/changes.py": everything,
+            "rust-toolchain.toml": everything,
+        }
+        for path, classes in cases.items():
+            with self.subTest(path=path):
+                self.assertEqual(self.changed(path), classes)
+
+    def test_the_rust_and_the_specs_lint_read_the_commit_the_change_went_onto(self):
+        # The same files on two different mains: Coverage's gate reads the
+        # floors and the changed lines against the main, and the specs' lint
+        # its suppressions, so their keys tell the two apart; the rest read
+        # the files alone.
+        start = self.git("rev-parse", "HEAD").strip()
+        self.write("crates/x/src/lib.rs", "fn b() {}\n")
+        self.commit("the change, on the old main")
+        on_old = C.keys("HEAD^1", self.repo)
+        self.git("checkout", "-q", start)
+        self.write("crates/x/src/lib.rs", "fn b() {}\n")
+        self.commit("main already had it")
+        self.commit("the change, on the new main", "--allow-empty")
+        on_new = C.keys("HEAD^1", self.repo)
+        self.assertEqual({k for k in on_new if on_new[k] != on_old[k]}, {"rust", "tree"})
+        self.write("tests/web/eslint-suppressions.json", '{"a.spec.js": {}}\n')
+        self.commit("main moved the suppressions")
+        self.git("checkout", "-q", "HEAD^1", "--", "tests/web/eslint-suppressions.json")
+        self.commit("the change puts them back")
+        moved = C.keys("HEAD^1", self.repo)
+        self.assertEqual({k for k in moved if moved[k] != on_new[k]}, {"web", "tree"})
+
+    def test_keys_prints_each_class_or_one_json_object(self):
+        run = [sys.executable, os.path.join(HERE, "changes.py"), "keys", "--base", "HEAD"]
+        lines = subprocess.run(run, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
+        self.assertEqual(lines, [f"{c}={k}" for c, k in self.base.items()])
+        as_json = subprocess.run([*run, "--json"], cwd=self.repo, capture_output=True, text=True, check=True).stdout
+        self.assertEqual(json.loads(as_json), self.base)
+
+    def test_a_base_it_cannot_read_is_an_error(self):
+        run = [sys.executable, os.path.join(HERE, "changes.py"), "keys", "--base", "HEAD^1"]
+        p = subprocess.run(run, cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("cannot read HEAD and HEAD^1", p.stderr)
+        self.assertEqual(p.stdout, "")
 
 
 class GitEnv(unittest.TestCase):

@@ -67,7 +67,7 @@ endif
 .DEFAULT_GOAL := all
 RUST_GOALS := all check test test-verbose test-crate test-build test-fast-tier test-slow-tier \
 	test-search-floor test-slow-rest build lint lint-fix clippy doc wasm wasm-dev wasm-check \
-	bundle coverage coverage-run coverage-archive mutants perform-wirings preset-faces \
+	bundle coverage coverage-run mutants perform-wirings preset-faces \
 	climb search-check islands budget-ab phi-stats norm-peak fit-bench closed-loop \
 	walk-payload offer-census revalidate bench-render site site-api site-tools
 ifneq ($(AURACLE_SCCACHE),0)
@@ -118,14 +118,15 @@ FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
 # space; the AudioWorklet build gets it too, and it compiles the same patches.
 WASM_STACK := 8388608
 # Added to the caller's RUSTFLAGS, not in place of them: CI sets -Dwarnings, and
-# the engine job's wasm32 build is where a warning only that target has (a
+# its wasm32 build of the engine (in ci.yml's What changed; the Slow suite's
+# and the Flake hunt's engine jobs) is where a warning only that target has (a
 # helper only the native-only items use) must fail.
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: setup film-setup web-check spec-lint all check check-changed build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools worker-test \
         test-crate nextest-installed test-build test-fast-tier test-slow-tier test-search-floor test-slow-rest \
-        llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
+        llvm-cov-installed coverage coverage-run coverage-report coverage-floors \
         mutants-installed mutants-diff mutants mutants-command \
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
@@ -552,10 +553,11 @@ test-slow-rest: nextest-installed
 # instrumented quiver's DSP loops too and took about thirteen times as long:
 # hence the version floor below, which CI pins exactly.
 #
-# In CI the run is split (ci.yml's Coverage jobs): `coverage-archive` builds
-# once into a nextest archive (COV_ARCHIVE), `coverage-run` runs one
-# partition of it on each runner (NEXTEST_ARGS='--partition slice:k/N'), and
-# `coverage-report` reads every runner's profiles against the archive.
+# CI's Coverage job runs the same two parts as `coverage`, as steps of their
+# own: `coverage-run`, then `coverage-report` with the run's summary for its
+# tables (COV_MARKDOWN) and the commit for its links (COV_LINK). One runner
+# since #580: the build, three runners by slice and a report were five jobs
+# in a row, each waiting for a runner of its own.
 #
 # Not incremental, as in CI (CARGO_INCREMENTAL=0 there): each run starts
 # from `llvm-cov clean`, so test-fast's incremental state would be written
@@ -565,9 +567,7 @@ COV := CARGO_INCREMENTAL=0 $(CARGO) llvm-cov
 COV_DIR := target/llvm-cov
 COV_SUMMARY := $(COV_DIR)/summary.json
 COV_LCOV := $(COV_DIR)/lcov.info
-COV_ARCHIVE ?=
 COV_FAST := -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))' --no-tests=fail
-COV_FROM = $(if $(COV_ARCHIVE),--nextest-archive-file $(COV_ARCHIVE),--profile test-fast)
 # CI appends the tables to the run's summary (COV_MARKDOWN) and links each
 # uncovered line (COV_LINK).
 COV_MD = $(if $(COV_MARKDOWN),--markdown $(COV_MARKDOWN))
@@ -588,31 +588,17 @@ llvm-cov-installed:
 coverage: coverage-run
 	@$(MAKE) --no-print-directory coverage-report
 
-# One instrumented run of the fast tier, profiles only: the whole tier from a
-# clean build, or with COV_ARCHIVE, the tests in that archive (one partition
-# of them, in CI).
+# One instrumented run of the fast tier from a clean build, profiles only.
 coverage-run: nextest-installed llvm-cov-installed
-ifeq ($(COV_ARCHIVE),)
 	$(COV) clean --workspace
 	$(COV) nextest --workspace --cargo-profile test-fast $(TEST_TARGETS) $(COV_FAST) --no-report $(NEXTEST_ARGS)
-else
-	mkdir -p target/llvm-cov-target
-	$(COV) nextest --archive-file $(COV_ARCHIVE) $(COV_FAST) --no-report $(NEXTEST_ARGS)
-endif
-
-# The fast tier's test binaries, instrumented, as a nextest archive (CI's
-# build for its coverage runners).
-coverage-archive: nextest-installed llvm-cov-installed
-	@test -n "$(COV_ARCHIVE)" || { printf '  name the archive: make coverage-archive COV_ARCHIVE=<file>.tar.zst\n'; exit 2; }
-	$(COV) clean --workspace
-	$(COV) nextest-archive --workspace --cargo-profile test-fast $(TEST_TARGETS) --archive-file $(COV_ARCHIVE)
 
 ## coverage-report: the reports and the gate again, from the last run's
 ## profiles (target/llvm-cov-target), without running the tests
 coverage-report: llvm-cov-installed
-	$(COV) report $(COV_FROM) --html
-	$(COV) report $(COV_FROM) --json --summary-only --output-path $(COV_SUMMARY)
-	$(COV) report $(COV_FROM) --lcov --output-path $(COV_LCOV)
+	$(COV) report --profile test-fast --html
+	$(COV) report --profile test-fast --json --summary-only --output-path $(COV_SUMMARY)
+	$(COV) report --profile test-fast --lcov --output-path $(COV_LCOV)
 	@printf '  report: %s/html/index.html\n' $(COV_DIR)
 	@rc=0; \
 	python3 scripts/coverage_gate.py floors $(COV_SUMMARY) --base $(BASE) $(COV_MD) || rc=1; \
@@ -991,7 +977,7 @@ site-landing: site-fonts site-brand
 	cp www/viz/viz.js www/viz/viz.css site/
 
 ## site-play: the instrument, at /play/. `WASM_PREBUILT=1` takes the engine
-## already in apps/web/pkg (CI's Site job downloads the one the engine job
+## already in apps/web/pkg (CI's Site job downloads the one What changed
 ## built) instead of building it again
 site-play: $(if $(filter 1,$(WASM_PREBUILT)),wasm-prebuilt,wasm)
 	mkdir -p site/play

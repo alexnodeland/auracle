@@ -114,7 +114,7 @@ In the crates:
 ## Coverage
 
 The fast tier's tests are measured with cargo-llvm-cov, and the *Coverage*
-jobs in the required `CI` check hold two things (`make coverage` runs the
+job in the required `CI` check holds two things (`make coverage` runs the
 same locally; how CI runs it is in `docs/architecture/testing.md`
 [§ Coverage](../docs/architecture/testing.md#coverage)):
 

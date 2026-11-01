@@ -89,8 +89,9 @@ jobs:
   # passes at once: each PR in the batch was judged on its own run, and
   # judging the batch again would hold a runner for up to forty minutes.
   # Nothing reads it there (Mergify requires it of each PR's own head, in
-  # its queue conditions, and merges a batch on `Full gate` alone); it still
-  # runs, so the draft PR shows it green rather than skipped.
+  # its queue conditions, and merges a batch on the draft PR's `Full gate`
+  # and `CI`, which main's ruleset requires); it still runs, so the draft PR
+  # shows it green rather than skipped.
   #
   # The name is the check .mergify.yml's queue conditions require: a change
   # to it is a change to both files.

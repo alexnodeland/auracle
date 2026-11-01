@@ -6,9 +6,10 @@ description: >
 
 # Read from the lockfile, never written by hand, so a Dependabot bump of
 # @playwright/test moves the image in the same PR with no second edit, and the
-# image's browsers are always the ones that Playwright looks for. Each
-# workflow's engine job runs this once and passes the version on as a job
-# output (a job's `container` can read `needs`, not a step).
+# image's browsers are always the ones that Playwright looks for. ci.yml's
+# What changed, and the Slow suite's and the Flake hunt's engine job, run
+# this once and pass the version on as a job output (a job's `container` can
+# read `needs`, not a step).
 
 outputs:
   version:

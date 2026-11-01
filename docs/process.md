@@ -334,6 +334,29 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   tier on twelve runners, about twelve minutes, on the tree the batch makes on top of
   `main`. It is CI on a draft PR the queue opens from a branch under
   `mergify/merge-queue/`.
+  - It waits for at most three runners in a row: *What changed* (which
+    restores or builds the engine), then every job that tests at once, then
+    `CI` and `Full gate` side by side. The queue merges on both. On a busy
+    account each wait can take minutes, and the queue gives a batch's checks
+    45 minutes, so no chain is longer
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
+  - The queue's runs share one concurrency group. A draft PR the queue
+    closed (its batch was reset) has its run stopped when the next batch's
+    starts, `CI` and `Full gate` with it, so it doesn't hold runners the new
+    one needs. A batch that went red is the exception: its tests had all
+    ended, so its `CI` runs to its end (the merged browser report, the
+    records), and the next batch's run starts once it has, usually within
+    the minute. Not when a job of it was cut off by its own limit, which
+    reads as cancelled: that batch's `CI` stops with its run, and its
+    records and merged report are lost (the runners' blob reports stay)
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
+  - Each class of job that passes in full, in a PR's own run or the
+    queue's, leaves a record keyed by the files it reads, and the queue's
+    run says which it would reuse (`would reuse <class> (record <run>)`)
+    while still running everything: a dry run (#581). The operator diffs a
+    wave's batches (each run's `reuse-dry-run` artifact) before a second
+    change turns skipping on
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
 - **The required check is `CI`,** in both lanes. `main`'s ruleset requires
   it on a PR's head commit, from GitHub Actions, with no bypass for anyone,
   admins and the queue included; the fast lane's `CI` is what meets it when
@@ -602,8 +625,11 @@ runner may make a test slower, never wrong
 how long something took is a budget, not a gate assertion.
 
 1. **Read it.** The run's summary links one HTML report of every browser
-   runner, with traces. Decide whether the app, the test or the machine is at
-   fault.
+   runner, with traces (a run without one still has each runner's blob
+   report, which merges by hand:
+   [`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers),
+   *One report*).
+   Decide whether the app, the test or the machine is at fault.
 2. **Fix it** when the cause is clear: a wait on a time rather than a state,
    an injected reply the engine can overwrite, a count a slow runner can
    double, a speed bound that should be a budget, or a real race in the app.
