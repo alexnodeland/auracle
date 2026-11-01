@@ -282,7 +282,10 @@ test("PEEK and TAKE pressed while an offer grows say it is growing until it land
   for (const m of out) await app.inject({ type: "perform_offered", req: m.req, re: m.rid, offer: { tree: JSON.parse(m.tree), makeup: glass.makeup, taste: false, diff: [] } });
   await expect(b).toHaveClass(/\bready\b/);
   // The toasts said B was growing: they went as it landed, not when their
-  // window ran out (4.2 s on, beside the offer B showed).
+  // window ran out (4.2 s on, beside the offer B showed). This reads the one
+  // on screen (TAKE's, which took the floor); PEEK's, waiting behind it, is
+  // taken out of the queue by the same drop, which toasts.test.mjs holds
+  // ("drop: a toast taken back goes at once").
   const asItLanded = await page.evaluate(() => window.__toastsAsBLanded);
   expect(asItLanded, "the toasts on screen as B landed").not.toBeNull();
   expect(asItLanded.filter((t) => /Still growing/.test(t)), "a toast still saying B is growing as it lands").toEqual([]);
