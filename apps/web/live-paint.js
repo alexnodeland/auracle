@@ -4,20 +4,24 @@
 // flight between the levels, and every inline face while the page's paint
 // measures inside the live faces' budget) and in a worker of their own, the
 // face painter, which paints every inline live face on a canvas of its own
-// once the page's paint measures over it, and answers each frame with a
-// picture of each layer it painted, which the page shows as it is: the same
-// pixels as the frame painted on the page.
+// where the page's paint measures over it (at the idle probe, before the
+// first sound, or later as the faces are played), and answers each frame
+// with a picture of each layer it painted, which the page shows as it is:
+// the same pixels as the frame painted on the page.
 //
 // Why a worker: the trace's two outlines glow (`shadowBlur`), and a browser
-// that draws a canvas on the CPU (Firefox, and any browser without a GPU)
-// blurs them on the thread that asks. On the main thread that was 2 ms of
-// every frame a key sounded at PERFORM, 7 ms at the Air's Retina scale
-// (Firefox on an M3 Max, #512): the time a note-on, a knob's write and a
-// pointer move waited behind. In the worker the page's part of a frame is
-// what is heard and where, a message, and showing the pictures. Where the
-// page's calls measure a fraction of a millisecond (Chromium, which records
-// them and draws them after the frame's script), the page keeps them
-// (live-face.js `createPaintSwitch`, which says what that timing sees).
+// that draws a canvas as it is called (Firefox) blurs them on the thread
+// that asks. On the main thread that was 2 ms of every frame a key sounded
+// at PERFORM, 7 ms at the Air's Retina scale (Firefox on an M3 Max, #512):
+// the time a note-on, a knob's write and a pointer move waited behind. In
+// the worker the page's part of a frame is what is heard and where, a
+// message, and showing the pictures. Chromium only records the calls and
+// draws them after the frame's script, so they measure a fraction of a
+// millisecond, and the page keeps them (live-face.js `createPaintSwitch`).
+// It draws them on the GPU where it uses one; drawn in software instead (a
+// VM, a blocklisted GPU, headless Chromium on CI), that drawing blocks the
+// main thread after the script, and the switch, which times the calls, does
+// not see it (#569).
 //
 // Imports nothing, so the worker loads it under the build's stamp alone (a
 // worker has no import map: a bare `./faces.js` there would be a second copy
@@ -139,8 +143,14 @@ if (typeof DedicatedWorkerGlobalScope !== "undefined" && self instanceof Dedicat
   self.onmessage = (e) => {
     const t0 = performance.now();
     const frame = e.data.frame;
-    const ids = paintFrame(layers, e.data, make);
-    for (const { bitmap } of e.data.seed || []) bitmap.close();
+    let ids;
+    try {
+      ids = paintFrame(layers, e.data, make);
+    } finally {
+      // The page's pictures, drawn or not: a frame that throws is still the
+      // page's `error`, and lets them go.
+      for (const { bitmap } of e.data.seed || []) bitmap.close();
+    }
     Promise.all(
       ids.map((id) => {
         const cv = layers.get(id).cv;

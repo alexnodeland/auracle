@@ -830,10 +830,14 @@ test("handed over, each layer shows the painter's pictures, and one frame is in 
   assert.equal(made[1].height, 640);
   assert.ok(L.step());
   assert.equal(worker.sent.length, 4);
-  // An old answer does not let a frame through.
-  worker.answer(worker.sent[2].frame);
+  // An old answer does not let a frame through, and its pictures are let
+  // go.
+  const old = { width: 300, height: 640, closed: false, close() { old.closed = true; } };
+  worker.answer(worker.sent[2].frame, [{ id: 0, bitmap: old }]);
   L.step();
   assert.equal(worker.sent.length, 4);
+  assert.equal(made[1].shownPictures.includes(old), false);
+  assert.equal(old.closed, true);
 });
 
 test("handed over mid-sound, or from the first frame by the probe, the painter paints the same calls, in the same order, as the page paints", async () => {
@@ -963,6 +967,7 @@ test("a painter that fails: its layers are made again and painted here, and no o
   const late = { width: 1, height: 1, closed: false, close() { late.closed = true; } };
   worker.answer(3, [{ id: 0, bitmap: late }]);
   assert.equal(made[1].shownPictures.includes(late), false);
+  assert.equal(late.closed, true, "and is let go");
 });
 
 test("a painter that fails while it takes the faces over leaves each layer as the page left it, painted here", async () => {
@@ -985,11 +990,20 @@ test("a painter that fails while it takes the faces over leaves each layer as th
   assert.equal(strokes(made[0]), 6, "and is painted on, here");
 });
 
-test("a layer whose picture cannot be taken stays painted here", async () => {
+test("a layer whose picture cannot be taken stays painted here, and the pictures taken of the others are let go", async () => {
   const { doc, made, host } = showingPage();
   const voices = analyser(0.3);
   const worker = heldWorker();
-  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker, picture: () => Promise.reject(new Error("no picture")), paintSwitch: overBudget() });
+  const taken = [];
+  // The first layer's picture is taken, the second's refused.
+  const picture = (cv) => {
+    if (cv !== made[0]) return Promise.reject(new Error("no picture"));
+    const b = { width: cv.width, height: cv.height, closed: false, close() { b.closed = true; } };
+    taken.push(b);
+    return Promise.resolve(b);
+  };
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker, picture, paintSwitch: overBudget() });
+  L.lf.add(face(host(), 1));
   L.lf.add(face(host(), 1));
   L.lf.wake();
   L.step();
@@ -998,9 +1012,44 @@ test("a layer whose picture cannot be taken stays painted here", async () => {
   await settle();
   assert.equal(worker.terminated, true);
   assert.equal(worker.sent.length, 1, "nothing handed over");
+  assert.equal(taken.length, 1);
+  assert.equal(taken[0].closed, true, "the picture taken is let go");
   assert.ok(L.step());
-  assert.equal(made.length, 1);
+  assert.equal(made.length, 2);
   assert.equal(strokes(made[0]), 6);
+  assert.equal(strokes(made[1]), 6);
+});
+
+test("a hand-over that cannot be sent lets its pictures go and paints here, and the loop is not left waiting", async () => {
+  const { doc, made, host } = showingPage();
+  const voices = analyser(0.3);
+  const worker = heldWorker();
+  const send = worker.postMessage;
+  worker.postMessage = (m) => {
+    if (m.seed) throw new DOMException("could not clone", "DataCloneError");
+    send(m);
+  };
+  const taken = [];
+  const picture = (cv) => {
+    const b = { width: cv.width, height: cv.height, closed: false, close() { b.closed = true; } };
+    taken.push(b);
+    return Promise.resolve(b);
+  };
+  const L = loop({ signals: [() => voices], doc, held: () => true, paintWorker: () => worker, picture, paintSwitch: overBudget() });
+  L.lf.add(face(host(), 1));
+  L.lf.wake();
+  L.step();
+  worker.answer(0);
+  L.step();
+  await settle();
+  assert.equal(worker.terminated, true);
+  assert.equal(taken.length, 1);
+  assert.equal(taken[0].closed, true, "the picture is let go");
+  const reads = voices.reads;
+  assert.ok(L.step());
+  assert.ok(voices.reads > reads, "the next frame is read");
+  assert.equal(made.length, 1);
+  assert.equal(strokes(made[0]), 6, "and painted here");
 });
 
 test("a frame the worker could not finish hands its faces back to the page", async () => {

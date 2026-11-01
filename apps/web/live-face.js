@@ -358,6 +358,12 @@ const PROBE_LOUD = 1;
 const PROBE_DEV = Float64Array.from({ length: FACE_BANDS }, (_, b) => 2 * Math.sin((Math.PI * b) / (FACE_BANDS - 1)));
 const PROBE_STATS = { mean: new Float64Array(FACE_BANDS), spread: 1 };
 
+/** The pictures a painter's answer holds, let go: an answer no layer will
+ *  show (the painter given up, a frame already past, its first). */
+function letGo(m) {
+  if (m && m.layers) for (const { bitmap } of m.layers) if (bitmap) bitmap.close();
+}
+
 /** The loop for every face that hears what is played (see the top).
  *
  *  - `signals`: up to three getters, each an AnalyserNode (fftSize
@@ -446,13 +452,13 @@ export function createLiveFaces({
       painter = p;
       w.onmessage = (e) => {
         const m = e.data;
-        if (painter !== p || !m) return;
+        if (painter !== p || !m) return letGo(m);
         if (m.failed) return paintHere();
         if (m.frame === 0) {
           p.ready = true;
-          return;
+          return letGo(m);
         }
-        if (m.frame !== p.frame) return;
+        if (m.frame !== p.frame) return letGo(m);
         for (const { id, bitmap } of m.layers) {
           if (painter === p) show(faces[id], bitmap);
           else if (bitmap) bitmap.close();
@@ -465,6 +471,7 @@ export function createLiveFaces({
       w.onmessageerror = paintHere;
       w.postMessage({ frame: 0, faces: [] });
     } catch (_) {
+      if (painter) paintHere();
       painter = null;
     }
   }
@@ -538,25 +545,30 @@ export function createLiveFaces({
       if (f.cv.width && f.cv.height) handed.push(f);
       else drop(f); // a layer of no size: made again, to show pictures
     }
-    let pictures;
-    try {
-      pictures = Promise.all(handed.map((f) => picture(f.cv)));
-    } catch (_) {
-      return paintHere();
-    }
-    pictures.then(
-      (bitmaps) => {
-        if (painter !== p) {
-          for (const b of bitmaps) b.close();
-          return;
-        }
-        const seed = handed.map((f, i) => ({ id: f.op.id, bitmap: bitmaps[i] }));
-        p.w.postMessage({ frame, faces: [], seed }, bitmaps);
-      },
-      () => {
+    // Every picture is waited for: one refused, or the painter gone, lets
+    // go of those taken, and a hand-over that cannot be sent paints here, so
+    // nothing is left waiting on an answer that will not come.
+    const taking = handed.map((f) => {
+      try {
+        return picture(f.cv);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    });
+    Promise.allSettled(taking).then((got) => {
+      const bitmaps = got.map((r) => (r.status === "fulfilled" ? r.value : null));
+      if (painter !== p || got.some((r) => r.status === "rejected")) {
+        for (const b of bitmaps) if (b) b.close();
         if (painter === p) paintHere();
-      },
-    );
+        return;
+      }
+      try {
+        p.w.postMessage({ frame, faces: [], seed: handed.map((f, i) => ({ id: f.op.id, bitmap: bitmaps[i] })) }, bitmaps);
+      } catch (_) {
+        for (const b of bitmaps) b.close();
+        if (painter === p) paintHere();
+      }
+    });
   }
 
   // A layer the next frame makes again.
@@ -698,7 +710,11 @@ export function createLiveFaces({
     w.frame++;
     w.waiting = true;
     counts.posted++;
-    w.w.postMessage({ frame: w.frame, faces: w.ops });
+    try {
+      w.w.postMessage({ frame: w.frame, faces: w.ops });
+    } catch (_) {
+      paintHere(); // a frame that cannot be sent: painted here from then on
+    }
     w.ops.length = 0;
   }
 
