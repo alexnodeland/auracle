@@ -23,7 +23,8 @@
 //   it, on the rail and in the guide pill) is reached through the toast,
 //   and no control's box meets the toast's: the toast stands clear of them,
 //   or, where nothing is free (PERFORM at 375 × 667), the guide pill gives
-//   way while it stands over it, hidden rather than covered.
+//   way while it stands over it, unseen rather than covered: its × out of
+//   reach, its step still a status a screen reader hears.
 // - The toast covers none of the level's heading (HEADS: its title, PERFORM's
 //   share button and KEEP/BACK, EVOLVE's pips and line and its small map),
 //   each of which must be in the level (a phone hides EVOLVE's title).
@@ -218,9 +219,23 @@ test("a change under a toast waits while the pointer rests on it, and the toast 
   await expect.poll(async () => boxesMeet(await receipt.boundingBox(), await strip.boundingBox()), "the receipt over the strip once the pointer has left it").toBe(false);
 });
 
-for (const [width, height] of [[390, 844], [375, 667], [844, 390]]) {
+/** The guide pill standing aside for the toast (PERFORM at 375 × 667,
+ *  where nothing else is free): its × out of reach, and its step still a
+ *  status in the accessibility tree, heard as each step comes up
+ *  (accessibility.md). Hidden whole, it left the tree. */
+async function pillAside(page) {
+  const pill = page.locator("#guide");
+  await expect(pill).toHaveClass(/\bunder-toast\b/);
+  await expect(pill.getByRole("status"), "the pill's step, to a screen reader").toHaveCount(1);
+  await expect(pill.getByRole("button", { name: "Stop showing these" }), "the pill's ×").toHaveCount(0);
+}
+
+for (const [width, height, crowded] of [[390, 844], [375, 667, true], [844, 390]]) {
   test.describe(`a phone, ${width} × ${height}`, () => {
     test.use({ viewport: { width, height }, hasTouch: true, isMobile: true });
+    // What else holds at a level, at this size: the pill standing aside on
+    // a crowded PERFORM.
+    const alsoAt = Object.fromEntries(LEVELS.map((l) => [l, crowded && l === "perform" ? pillAside : async () => {}]));
 
     test(`on a phone at ${width} × ${height} a pick's receipt covers no control and no heading at any level, and a swipe up puts it away`, async ({ page, app }) => {
       await app.boot();
@@ -228,6 +243,7 @@ for (const [width, height] of [[390, 844], [375, 667], [844, 390]]) {
       for (const level of LEVELS) {
         await receiptAt(page, app, level);
         await expect.poll(() => covered(page, level, false), { message: `what a pick's receipt covers at ${level}`, timeout: SETTLE_MS }).toEqual([]);
+        await alsoAt[level](page);
       }
       // A swipe up on the toast puts it away (main.js `note`), wherever it
       // stands now: a finger of the browser's own (CDP, as
