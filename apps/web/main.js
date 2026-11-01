@@ -163,10 +163,11 @@ const BUILD = window.__aurBuild || await (async () => {
 //    over what it would move (a refit's views land through it, #300);
 //    refit.js: what a refit landing does.
 // The modules boot builds a little later (`bootPerform`, `bootExplain`,
-// `bootBooth`, `bootLiveAudio`, `bootMidi`), asked for now, beside the rest
+// `bootBooth`, `bootLiveAudio`, `bootMidi`), and live-paint.js, which
+// live-face.js asks for once it has come, asked for now, beside the rest
 // and the worker, so each is in the module map when its turn comes. A miss
 // here is not one: the import there asks again and says what went wrong.
-for (const m of ["perform", "explain", "booth", "live-audio", "midi"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
+for (const m of ["perform", "explain", "booth", "live-audio", "midi", "live-paint"]) import(`./${m}.js?v=${BUILD}`).catch(() => {});
 const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
@@ -1461,6 +1462,12 @@ function bootLiveFaces() {
     off: () => !!(perform && perform.stage && perform.stage()),
     silk: () => INK.silk,
     flightHears: handHears,
+    // The face painter (live-paint.js, #512): their canvas calls, made there
+    // where making them on this thread measures over budget, at the idle
+    // probe or later (live-face.js `createPaintSwitch`), and here otherwise.
+    paintWorker: () => new Worker(`./live-paint.js?v=${BUILD}`, { type: "module" }),
+    // The idle probe's retake, in an idle moment of its own.
+    idle: idleSoon,
   });
   // PERFORM's well: the sound in hand, and B while it holds an offer.
   liveFaces.add({
@@ -1501,8 +1508,12 @@ function bootLiveFaces() {
   liveFaces.add({ place: (p, n) => currentView === "taste" && markPlace(p, "taste", tasteWell, n) });
   liveFaces.add({ place: (p, n) => currentView === "learning" && markPlace(p, "learning", learnMap, n) });
   // The meter's first run, while the page is idle rather than in the frame
-  // of the first key.
-  idleSoon(() => liveFaces.warm(audioCtx.sampleRate));
+  // of the first key; and the idle probe, a frame of the largest face (PERFORM's
+  // well, at the size it is drawn, which its well scales: 458 × 499 at a
+  // 1440 × 900 window) painted here and timed, which decides before the first
+  // key whether the faces are painted here or by their painter (live-face.js).
+  const [w, h] = FACE_SIZE.well;
+  idleSoon(() => liveFaces.warm(audioCtx.sampleRate, { w, h, box: FACE_OPTS.well().box }));
 }
 
 // Workbench state.
