@@ -1225,8 +1225,10 @@ export function createPerform(host) {
         wanderLetGo();
       } else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
       // A pointer's turn leaves no focus behind (as a click leaves none on a
-      // button): ↵ is then KEEP, not this control's own Enter (ADR-018). A
-      // control reached with the keyboard keeps its focus and its Enter.
+      // button): ↵ is then KEEP, not this control's own Enter (ADR-018).
+      // That holds for a control the keyboard had reached too: the press
+      // took its focus as the pointer's (`pointerFocus`), and Tab reaches it
+      // again.
       if (document.activeElement === k.wrap) k.wrap.blur();
     };
     k.wrap.addEventListener("pointerup", end);
