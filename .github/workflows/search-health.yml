@@ -19,7 +19,16 @@
 #     equivalent. Pick the ref, read the summary, diff it against main's.
 #
 #   schedule — so a regression that slipped through is found within a day
-#     rather than at the next time somebody happens to look.
+#     rather than at the next time somebody happens to look. A night when
+#     main's head is the commit the last scheduled run that tested anything
+#     tested green runs nothing (the `scope` job, scripts/ci_skip.py, #582):
+#     the measurements are seeded, so the same commit gives the same
+#     tables, and that run's summary has them. Over Oct 18 to 29, when main
+#     did not move, that was 11 of 12 nights, about 125 runner-minutes each,
+#     at the hours the merge queue runs (GitHub starts the cron 4.5 to 6
+#     hours late). The skip and the run whose answer stands are said in the
+#     run's summary. A run by hand always runs, and anything that keeps the
+#     job from deciding is a run, never a skip and never red.
 name: Search health
 
 on:
@@ -42,6 +51,46 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Is this run asked for? A run by hand always is. A scheduled one is
+  # unless main's head is the commit the last scheduled run that tested
+  # anything tested green (scripts/ci_skip.py says how it reads that). When
+  # `run` is false the three jobs below are skipped, and the run holds this
+  # one runner for a few seconds.
+  scope:
+    name: Asked for
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run: ${{ steps.why.outputs.run }}
+    steps:
+      # The script and the classifier it imports; a checkout that fails
+      # leaves no script, which is a run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Say why
+        id: why
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "$EVENT" = schedule ] &&
+            decision=$(timeout 150 python3 scripts/ci_skip.py nightly --workflow search-health.yml) &&
+            [ "$decision" = run=false ]; then
+            run=false
+          else
+            echo "$EVENT: running everything"
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   # Three jobs, not one: they share nothing but the checkout, so run side by
   # side each gets its own runner and its own clock. As a single 90-minute job
   # the scheduled run was cancelled every day — the 16-seed climb alone is
@@ -49,6 +98,8 @@ jobs:
   # which is worse than a slow one.
   stats:
     name: φ statistics and peaks
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -84,6 +135,8 @@ jobs:
 
   climb:
     name: Pool climb
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     # Measured: over 90 minutes for 16 paired seeds on a hosted runner. The
     # cap is still a cap — enough for the measurement with margin, not the
@@ -109,6 +162,8 @@ jobs:
 
   battery:
     name: Search-health battery
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:

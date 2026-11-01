@@ -59,9 +59,11 @@ The suite is about an hour and a half in one worker, so CI splits it
   nothing else.
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
-  (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a
-  PR labelled `full-ci`, and on no other PR, the quarantined ones in a job of
-  their own. It does not block merging. A separate nightly flake hunt
+  (`.github/workflows/slow-suite.yml`) runs them on main (a push that
+  changes what they cover), nightly (unless main has not moved since the
+  last green night), and on a PR labelled `full-ci`, and on no other PR, the
+  quarantined ones in a job of their own. It does not block merging. A
+  separate nightly flake hunt
   (`flake-hunt.yml`) runs the fast tier three times over, and files each
   test that fails on its own `Flaky:` issue (`flakes.mjs`).
 

@@ -57,8 +57,10 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   follows the views), on up to four runners, and the smoke pair when the app, the engine or what runs the
   specs (a helper, the config, the lockfile) changed; for
   `main.js`, `worker.js` or a crate, the smoke pair alone.
-- The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on
-  a PR only with the `full-ci` label, the quarantined tests in a job of their
+- The *Slow suite* runs `@slow` and `@quarantine` on `main` (a push that
+  changes what they cover), nightly (unless `main` has not moved since the
+  last green night), and on a PR only with the `full-ci` label, the
+  quarantined tests in a job of their
   own whose failures are said on each test's issue, never as a red run while
   that issue is open; the
   nightly *Flake hunt* runs the fast tier three times each, and files each

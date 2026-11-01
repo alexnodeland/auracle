@@ -34,21 +34,39 @@ name: Slow suite
 #   that holds an @slow or @quarantine test. Also a main.js change that
 #   reaches EVOLVE's generations or PERFORM's offers. Otherwise the push to
 #   main is where a slow test catches it.
-# - on main, in full: the latest push, and nightly. A failure there opens an
-#   issue titled "Slow suite failing on main", or comments on it if one is
-#   already open, so a regression that merged on the fast tier is found
-#   within one merge or one night. A quarantined test's failure is not one:
-#   it is said on the test's own issue, and the run stays green, so that
-#   issue means a new regression (or a quarantined test whose issue was
-#   closed, which owns no failure). Latest only: a run in progress
-#   finishes, and of the pushes that land meanwhile only the newest waits,
-#   since its run covers everything before it. A batch from the merge queue
-#   lands as two or three merges seconds apart; a run whose commit main has
-#   already moved past runs nothing (the `scope` job).
-# - on demand (Actions → Slow suite → Run workflow), in full. Ticking `cold`
-#   starts the Rust legs without the Rust cache (nothing restored, nothing
-#   saved), to read what a cold build and a cold run cost in each leg's two
-#   steps (below).
+# - on main, in full: the latest push that changes what these tests cover,
+#   and nightly. A failure there opens an issue titled "Slow suite failing
+#   on main", or comments on it if one is already open, so a regression
+#   that merged on the fast tier is found within one merge or one night. A
+#   quarantined test's failure is not one: it is said on the test's own
+#   issue, and the run stays green, so that issue means a new regression
+#   (or a quarantined test whose issue was closed, which owns no failure).
+#   Latest only: a run in progress finishes, and of the pushes that land
+#   meanwhile only the newest waits, since its run covers everything before
+#   it. A batch from the merge queue lands as two or three merges seconds
+#   apart; a run whose commit main has already moved past runs nothing (the
+#   `scope` job).
+#   A push runs nothing either when nothing these tests cover changed since
+#   the newest commit a run on main tested green (#582): the files changed
+#   since, read through scripts/changes.py's classes, are none of `rust`
+#   (the crates and how they build and test), `reach` (what the browser
+#   reads: the app, its specs and what runs them) and `full` (a workflow,
+#   an action or the classifier), which between them hold every path the
+#   list above names. A docs, site or Claude Code push then leaves the
+#   merge queue's next batch its runners; this run starts just as that
+#   batch does. The base is that commit, not the push's own parent, so a
+#   superseded push's changes are counted by the next run that runs.
+#   The nightly run, on a night when main's head is the commit the last
+#   scheduled run that tested anything tested green, runs nothing: these
+#   tests are seeded, so the same commit gives the same answer (over Oct
+#   18 to 29, when main did not move, that was 11 of 12 nights). Each skip
+#   says why in the run's summary, with the run whose answer stands
+#   (scripts/ci_skip.py), and anything that keeps the `scope` job from
+#   deciding is a run, never a skip and never red.
+# - on demand (Actions → Slow suite → Run workflow), in full, always.
+#   Ticking `cold` starts the Rust legs without the Rust cache (nothing
+#   restored, nothing saved), to read what a cold build and a cold run cost
+#   in each leg's two steps (below).
 #
 # It holds at most four runners at once (the matrices' `max-parallel`: one
 # Rust leg and three browser runners; the quarantined tests' one runner
@@ -106,14 +124,24 @@ env:
   CARGO_NET_RETRY: 10
 
 jobs:
-  # Is this run asked for? Everything but a PR is (a push to main, the
-  # nightly run, a run by hand). A PR is when it carries `full-ci`, unless
-  # this event is another label being added to it, which asks for nothing:
-  # the last push's run stands (and the concurrency group above keeps this
-  # run from cancelling it). When this job is skipped, so is every job after
-  # it, and the run costs no runner. A push to main that main has already
-  # moved past (main is ahead of it) runs nothing either (`run` is false):
-  # the newest push's run covers it, as ci.yml's changes job does for CI.
+  # Is this run asked for? A run by hand always is. A PR is when it carries
+  # `full-ci`, unless this event is another label being added to it, which
+  # asks for nothing: the last push's run stands (and the concurrency group
+  # above keeps this run from cancelling it). When this job is skipped, so
+  # is every job after it, and the run costs no runner. On main, `run` is
+  # false (every job after this one skipped, the run green, its summary
+  # saying why) for:
+  #
+  # - a push that main has already moved past (main is ahead of it): the
+  #   newest push's run covers it, as ci.yml's changes job does for CI;
+  # - a push that changes nothing these tests cover since the newest commit
+  #   a run on main tested green (scripts/ci_skip.py main-push);
+  # - the nightly run, when main's head is the commit the last scheduled
+  #   run that tested anything tested green (scripts/ci_skip.py nightly).
+  #
+  # The last two read the runs and their jobs (`actions: read`) and the
+  # compare from that commit; anything that keeps them from deciding (the
+  # checkout, the API, the time) is a run, never a skip and never red.
   scope:
     name: Asked for
     if: >-
@@ -122,9 +150,21 @@ jobs:
       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       run: ${{ steps.why.outputs.run }}
     steps:
+      # The script and the classifier it imports, on main only; a checkout
+      # that fails leaves no script, which is a run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
       - name: Say why
         id: why
         env:
@@ -142,6 +182,17 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           else
+            case "$EVENT" in
+              push) mode=main-push ;;
+              schedule) mode=nightly ;;
+              *) mode= ;;
+            esac
+            if [ -n "$mode" ] &&
+              decision=$(timeout 150 python3 scripts/ci_skip.py "$mode" --workflow slow-suite.yml) &&
+              [ "$decision" = run=false ]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "$EVENT: running everything"
           fi
           echo "run=true" >> "$GITHUB_OUTPUT"
