@@ -115,7 +115,7 @@ it lists.
 
 | | |
 |---|---|
-| <kbd>⇧Home</kbd> | Fit the whole patch (the corner's **FIT**), with the canvas in focus or nothing in focus |
+| <kbd>⇧Home</kbd> | Fit the patch (the corner's **FIT**), with the canvas in focus or nothing in focus |
 | <kbd>.</kbd> | Fit what you’re on |
 | <kbd>⌘0</kbd> | Actual size |
 | <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out / in (the corner's **−** and **+**) |

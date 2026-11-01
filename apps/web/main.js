@@ -171,7 +171,7 @@ const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
-  { createShell }, { createGuide }, { createToastLane, placeLane, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS }, { createDealer, onTable },
+  { createShell }, { createGuide }, { createToastLane, placeLane, bannerColumn, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS, TOAST_MS }, { createDealer, onTable },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
   { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
@@ -2580,6 +2580,9 @@ const patchView = createPatch({
   releaseHeldEdits: () => releaseHeldEdits(),
   removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
+  // A finger's tap beside an out ○ picks its cable up (#519), before a
+  // module's sheet opens for it.
+  tapReach: (ev, target) => tapReach(ev, target),
   // Esc has another job first: something floating, a module in hand, a cable
   // half made, or a rack knob or plate button (`data-stop`) it backs out of.
   // A new patch opens the catalog (the specimen's `np-desk`), and leaving
@@ -3670,6 +3673,8 @@ worker.onmessage = (e) => {
         // and it did not happen. Queued behind ordinary confirmations it
         // arrived seconds late and, under a burst, not at all.
         note(`That edit to ${nameOrKnown(wb.subjectId) || "the sound you’re playing"} didn’t happen: ${m.error}`, { urgent: true });
+        // …and the ceiling it was refused at, if that was why, goes red.
+        budgetRefusal(m.error);
         // Nothing happened, so nothing is owed to history — and nothing that
         // rode along with the edit is owed to HELD either. Without this the
         // next ⌘Z restored the patch the user is already looking at (a dead
@@ -5001,6 +5006,15 @@ function positionToastLane({ fresh = false } = {}) {
   const level = document.body.dataset.level;
   const prefer = phone ? (PHONE_FROM_TOP.has(level) ? "top" : "bottom") : "corner";
   const { reserved, pictures, strips, guide } = laneObstacles();
+  // On a phone, a banner across the screen that meets a control standing
+  // along a picture's side is first narrowed to the picture's inside
+  // between such controls (toasts.js `bannerColumn`), the picture nearest
+  // the level's foot first, still clear of every control and the guide
+  // pill: PATCH's edges (*n ›*, *‹ n*), shown while the patch is wider than
+  // the well, run down the well's sides from 48 px below its top to 48 px
+  // above its foot, and a banner across the screen met the right one at
+  // every height (#519). Only a picture with such a control has a column,
+  // so PERFORM's, EVOLVE's and the rest's steps below are as they were.
   // Nowhere free of every control (a level crowded at this size: PERFORM on
   // a small phone, the XY pad or HOW IT WORKS filling the well), it steps
   // down:
@@ -5013,6 +5027,10 @@ function positionToastLane({ fresh = false } = {}) {
   //  - elsewhere, the toast is narrowed to the inside of a picture, the
   //    nearest its corner first (PERFORM's well on a phone on its side is a
   //    little narrower than a toast, and the controls fill the rest);
+  //  - on a phone, the banner in a column again, over the guide pill now,
+  //    at its own shape and then, where the column is LANE_NARROWEST or
+  //    wider, one row (at its own shape the action goes under the words
+  //    when they need the room);
   //  - then clear of the teaching strips and the panels at least, as the
   //    lane always was, and failing that, its corner.
   const yielding = guide ? reserved.filter((r) => r !== guide) : reserved;
@@ -5024,26 +5042,60 @@ function positionToastLane({ fresh = false } = {}) {
     .map((p) => ({ p, w: Math.floor(p.right - p.left - 2 * LANE_INSET) }))
     .filter(({ w }) => w < size.w && w >= LANE_NARROWEST)
     .sort((a, b) => (bounds.right - a.p.right) + (bounds.bottom - a.p.bottom) - ((bounds.right - b.p.right) + (bounds.bottom - b.p.bottom)));
+  const columns = phone ? pictures
+    .map((p) => ({ p, c: bannerColumn(p, yielding) }))
+    .filter(({ c }) => c)
+    .sort((a, b) => (prefer === "top" ? a.p.top - b.p.top : b.p.bottom - a.p.bottom))
+    .map(({ c }) => c) : [];
+  const inColumn = (c, tight) => () => {
+    holder.classList.toggle("tight", tight);
+    holder.style.left = `${Math.round(c.left)}px`;
+    holder.style.right = `${Math.round(window.innerWidth - c.right)}px`;
+  };
   const rungs = [
     { keep: reserved },
+    ...columns.map((c) => ({ keep: reserved, column: true, shape: inColumn(c, false) })),
     ...(guide ? [{ keep: yielding }] : []),
     ...(phone ? [{ keep: yielding, shape: () => holder.classList.add("tight") }] : []),
     ...narrower.map(({ w }) => ({ keep: yielding, shape: () => { holder.style.maxWidth = `${w}px`; } })),
+    ...columns.flatMap((c) => [
+      ...(guide ? [{ keep: yielding, column: true, shape: inColumn(c, false) }] : []),
+      ...(c.right - c.left >= LANE_NARROWEST ? [{ keep: yielding, column: true, shape: inColumn(c, true) }] : []),
+    ]),
   ];
   let kept = reserved;
   let at = null;
+  // In a column (`bannerColumn`), and if placed there already narrowed:
+  // `insetBanner` has nothing to do.
+  let inAColumn = false;
   for (const rung of rungs) {
+    // Out of a column, the banner is across the screen again.
+    if (inAColumn && !rung.column) {
+      holder.style.left = "";
+      holder.style.right = "";
+      size = measured();
+    }
+    inAColumn = !!rung.column;
     if (rung.shape) {
       rung.shape();
       size = measured();
     }
-    at = placeLane({ size, bounds, reserved: rung.keep, pictures, prefer });
+    // A banner in a column stands across it, so its bounds are the column.
+    const t = rung.column ? holder.getBoundingClientRect() : null;
+    at = placeLane({ size, bounds: t ? { ...bounds, left: t.left, right: t.right } : bounds, reserved: rung.keep, pictures, prefer });
     kept = rung.keep;
     if (at) break;
   }
   if (!at && narrower.length) {
     holder.style.maxWidth = "";
     size = measured();
+  }
+  if (!at && inAColumn) {
+    holder.style.left = "";
+    holder.style.right = "";
+    holder.classList.add("tight");
+    size = measured();
+    inAColumn = false;
   }
   if (!at) {
     at = placeLane({ size, bounds, reserved: strips, prefer })
@@ -5052,7 +5104,7 @@ function positionToastLane({ fresh = false } = {}) {
   }
   if (phone) {
     holder.style.top = `${Math.round(at.top)}px`;
-    insetBanner(holder, at, size, pictures, kept, prefer);
+    if (!inAColumn) insetBanner(holder, at, size, pictures, kept, prefer);
   } else {
     // Anchored by its bottom, so a toast that grows (a line more) grows
     // upward, and nothing jumps when one leaves.
@@ -5145,9 +5197,11 @@ function laneObstacles() {
 // pill, the line under EVOLVE's cards: their size, which is none while they
 // are hidden). The lane is placed again then, not only when the next toast
 // arrives, a frame later and once for any number of changes, and never
-// under the hand (`laneUnderHand`). PERFORM builds its parts after boot, so
-// what is watched is gathered each time the lane is placed.
-const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-xy", ".pf-why-body", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".md-foot", "#taste-time"];
+// under the hand (`laneUnderHand`). PATCH's edges come and go as the camera
+// moves past the patch's ends (a banner over the rack on a phone is narrowed
+// beside them). PERFORM builds its parts after boot, so what is watched is
+// gathered each time the lane is placed.
+const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-xy", ".pf-why-body", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".pt-edge", ".md-foot", "#taste-time"];
 let laneFrame = 0;
 function laneLater() {
   if (laneFrame || !$("toasts")?.firstChild) return;
@@ -6856,7 +6910,7 @@ document.addEventListener("keydown", (e) => {
   const onCanvas = !e.target || e.target === document.body || e.target === document.documentElement ||
     !!e.target.closest?.("#rack-svg, #rack-scroll");
   if (currentView === "patch" && !e.defaultPrevented && !modalUp()) {
-    // ⇧Home fits the whole patch; Home and End go to the first module and to
+    // ⇧Home fits the patch (`fitAll`); Home and End go to the first module and to
     // the last (the amp, at OUT), as they do from a plate.
     if (e.key === "Home" && e.shiftKey && onCanvas) { e.preventDefault(); fitAll(true); return; }
     if ((e.key === "Home" || e.key === "End") && wb.rack && onCanvas) {
@@ -7978,6 +8032,34 @@ function treeBudget(tree) {
   return { size, depth, mod };
 }
 
+// A ceiling an edit was just refused at (#530): its count turns red while the
+// refusal is said (`TOAST_MS`), the one time a budget is danger. Full at rest
+// is not: the patch is merely as big as breeding searches, so a full count is
+// amber, as the model's own marks are, the whole count where a tight one
+// lights only its number.
+const budgetRefused = { cells: new Set(), timer: 0 };
+/** An edit was refused: if at a ceiling, redden that one. The grammar's
+ *  `StructError::TooBig` ("would pass its limits (25 modules, depth 6)")
+ *  carries the size and the depth the patch would have had, so the ceiling
+ *  is the one its count passes; `ModTooDeep` ("modulation chain would exceed
+ *  depth") is the mod depth's. */
+function budgetRefusal(error) {
+  const big = /pass its limits \((\d+) modules, depth (\d+)\)/.exec(error || "");
+  let cells = [];
+  if (big) {
+    if (Number(big[1]) > BUDGET.size) cells.push("size");
+    if (Number(big[2]) > BUDGET.depth) cells.push("depth");
+    // Counts that pass neither are the ceilings themselves, as an engine
+    // before #530 said them: either may be the one.
+    if (!cells.length) cells = ["size", "depth"];
+  } else if (/modulation chain would exceed depth/.test(error || "")) cells = ["mod"];
+  if (!cells.length) return;
+  budgetRefused.cells = new Set(cells);
+  clearTimeout(budgetRefused.timer);
+  budgetRefused.timer = setTimeout(() => { budgetRefused.cells.clear(); renderBudget(); }, TOAST_MS);
+  renderBudget();
+}
+
 function renderBudget() {
   const el = $("budget");
   if (!el) return;
@@ -7987,9 +8069,9 @@ function renderBudget() {
   // player has already spent the room the warning was about.
   const state = (n, max) => (n >= max ? "full" : n >= max - 1 ? "tight" : "");
   const cells = [
-    [b.size, BUDGET.size, "modules"],
-    [b.depth, BUDGET.depth, "depth"],
-    [b.mod, BUDGET.mod, "mod depth"],
+    [b.size, BUDGET.size, "modules", "size"],
+    [b.depth, BUDGET.depth, "depth", "depth"],
+    [b.mod, BUDGET.mod, "mod depth", "mod"],
   ]
     // A readout of three ratios with room to spare ("2/24 modules · 2/6 depth
     // · 1/3 mod depth") is engine arithmetic, not news, and it sat beside the
@@ -7997,8 +8079,15 @@ function renderBudget() {
     // room to spend — so unless the numbers were asked for (Show
     // measurements) it says only what is tight or full, and nothing
     // otherwise. The warning itself is never held back.
-    .filter(([n, max]) => engineerMode || state(n, max))
-    .map(([n, max, label]) => `<span class="bg-cell ${state(n, max)}"><b>${n}</b>/${max} ${label}</span>`);
+    // …and a ceiling an edit was just refused at is shown, in red, however
+    // far the patch is from it now: a chain dropped deep in a patch can pass
+    // a depth it was nowhere near.
+    .filter(([n, max, , id]) => engineerMode || state(n, max) || budgetRefused.cells.has(id))
+    .map(([n, max, label, id]) => {
+      const st = state(n, max);
+      const refused = budgetRefused.cells.has(id) ? " refused" : "";
+      return `<span class="bg-cell ${st}${refused}"><b>${n}</b>/${max} ${label}</span>`;
+    });
   el.innerHTML = cells.join(`<span class="bg-sep">·</span>`);
 }
 
@@ -13238,18 +13327,7 @@ function buildRack(svg, rack, opts) {
   // — so any label still wider than its pitch is condensed to fit. SVG
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
-  const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name")) {
-      const avail = Number(t.dataset.fit || 0);
-      if (!avail) continue;
-      let w = 0;
-      try { w = t.getBBox().width; } catch (_) { continue; }
-      if (w > avail) {
-        t.setAttribute("textLength", avail.toFixed(1));
-        t.setAttribute("lengthAdjust", "spacingAndGlyphs");
-      }
-    }
-  };
+  const fitLabels = () => fitSilk(svg);
 
   const isModuleLockedIn = (mod) => {
     const addrs = moduleLockAddrs(mod);
@@ -13360,7 +13438,8 @@ function buildRack(svg, rack, opts) {
     // On the canvas the pocket sits on the plate's top edge at its right,
     // above the head (whose right end is the plate's setting), and shows on
     // hover, selection or focus (style.css).
-    // A finger's two 44-unit pads need the pocket twice as wide.
+    // A finger's two 44-unit pads need the pocket twice as wide, and its
+    // reach beside them (`tapReach`) the two glyphs that far apart.
     const wellW = interactive ? (COARSE ? 96 : 48) : 0;
     const wellX = p.w - wellW - 4;
     const WELL_Y = -17;
@@ -13435,6 +13514,12 @@ function buildRack(svg, rack, opts) {
         el.addEventListener("pointerenter", () => hot(true));
         el.addEventListener("pointerleave", () => hot(false));
       }
+      // The plate answers a tap (its sheet, patch.js's tap), and says so to
+      // the browser: a touch screen's own aim moves a tap on what answers
+      // none onto the nearest thing that does, and moved a finger on a
+      // module's name onto the ⋯ or the lock beside it (#519). The tap is
+      // handled where it lifts; the click it makes has nothing left to do.
+      plateG.addEventListener("click", () => {});
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
       // The glyph lives in a group so a finger can be given more to aim at
       // than the 10px ellipsis itself. Both glyphs sit in the well now: the
@@ -13451,8 +13536,13 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      // A finger gets a wider pad (the plate is a few hundred units wide).
-      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
+      // A finger gets a wider pad (the plate is a few hundred units wide),
+      // 44 units across, and about the pocket's height and no more: grown
+      // taller, or with the camera under 1×, a pad lay over the module's own
+      // name and over a neighbour's sockets, and took their taps (#519). A
+      // finger that misses it, beside it on bare panel, still reaches it
+      // (`tapReach`).
+      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, 22);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -13470,7 +13560,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
+        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, 22);
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -14515,6 +14605,11 @@ const FIT_MAX = 1.25;
 // So: fit-to-contain wins. Below `FIT_MIN` a fit keeps going, and it carries
 // the floor down with it (`zoomFloor`) so that the clamp on the way out of
 // `applyView` does not immediately take back what it went below for.
+//
+// …until #519: a fit of the whole patch now stops at the readable zoom
+// (`fitRead`, where a module's name prints at the type floor), and what does
+// not fit there pans, the well's edges counting it and MAP showing all of it.
+// A box smaller than the patch (`fitSelection`) still fits to contain it.
 const FIT_MIN = 0.22;
 // The one hard stop, and it is arithmetic rather than taste: a zero or negative
 // zoom is a division by zero in every transform on this page.
@@ -14530,12 +14625,20 @@ function allowZoomBelow(z) {
 }
 
 const view = { x: 0, y: 0, zoom: 1 };
+// The readable fit's zoom, read off the tokens once (`fitRead`), and the last
+// whole-patch fit: whether that floor held it above what containing the
+// patch needed, and what that would have been (the stranded layout's hint
+// reads it, `syncFitHint`).
+let fitReadZoom = 0;
+const lastFit = { short: false, contain: 1 };
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
+let viewAimed = false;                // …or has the camera followed the keys off the whole patch's fit?
 let camAimed = false;                 // first fit done?
 let camHold = false;                  // leave the next build's framing alone
 let camSig = "";                      // bounding-box signature of the last build
+let camOpens = 0;                     // `benchOpens` as of the last build: another sound since?
 let viewTween = null;
 
 // The frame's size the last time it was on screen. Behind another view it
@@ -14628,8 +14731,11 @@ function applyView() {
   // short-circuits before anything is laid out. See `syncFitHint`.
   syncFitHint();
   if (effectiveLod() !== lodApplied) scheduleRelod();
-  // Which tiers of silkscreen are big enough to print at this zoom. A class
-  // flip, and only when a tier crosses 8px — see `syncSilkFloor`.
+  // Which tiers of silkscreen are big enough to print at this zoom: a class
+  // flip, only when a tier crosses its floor (`--t-rack-micro`, 9 px; a
+  // name's, `--t-label`, 11 px), and then the names condensed to their room
+  // again at their new size, measured in one pass (`syncSilkFloor`,
+  // `fitSilk`).
   syncSilkFloor();
 }
 
@@ -14774,7 +14880,14 @@ function rackBeyond() {
   const { w } = frameSize();
   const l = view.x;
   const r = view.x + w / view.zoom;
-  const list = [...rackBoxes.entries()].map(([key, b]) => ({ key, b, cx: b.x + b.w / 2 }));
+  // The amp and OUT past it are one place: the amp counts as in view once
+  // the middle of both is, so a press on the edge brings the face at OUT in
+  // with it (a fit that shows where the patch starts can leave it past the
+  // right edge, #519).
+  const amp = wb.rack?.modules.find((m) => m.kind === "amp")?.key;
+  const list = [...rackBoxes.entries()].map(([key, b]) => ({
+    key, b, cx: key === amp && rackOut ? (b.x + rackOut.x + rackOut.w) / 2 : b.x + b.w / 2,
+  }));
   return {
     left: list.filter((n) => n.cx < l).sort((a, b) => b.cx - a.cx),
     right: list.filter((n) => n.cx > r).sort((a, b) => a.cx - b.cx),
@@ -14865,11 +14978,18 @@ function scheduleRelod() {
 // fitted zoom put Glass Pad's knob labels at 5.8px at 1280×800 and First
 // Bass's at 5.7px at 1440×900 — ink on the panel that nobody could read, at a
 // size where a knob is still a perfectly good control. So each tier of rack
-// type steps aside once it would print under 8px, and returns when the camera
-// comes closer. A plate still reads by its knobs, jacks and cables, and a
-// knob still names itself on hover. Automatic detail only: "detail full" is
-// the player asking for everything, at any size, and gets it.
-const SILK_FLOOR_PX = 8;
+// type steps aside once it would print smaller than the rack's own smallest
+// type at 1× (`--t-rack-micro`, 9 px; it was 8 px until #519), and returns
+// when the camera comes closer. A plate still reads by its knobs, jacks and
+// cables, and a knob still names itself on hover. Automatic detail only:
+// "detail full" is the player asking for everything, at any size, and gets it.
+//
+// The names are held to the app's own floor, `--t-label` (11 px): a module's
+// name that would print under it prints larger (`name`, style.css's
+// `.mod-title` at `--t-rack-title` × NAME_LARGER), so a fit, which stops where
+// that larger name is at the floor (`fitRead`), never draws one smaller.
+const SILK_FLOOR_PX = parseFloat(tok("--t-rack-micro")) || 9;
+const NAME_FLOOR_PX = parseFloat(tok("--t-label")) || 11;
 // Tier → the token its size is set by (style.css). Every rack text class
 // belongs to exactly one of these; see `#rack-svg.silk-floor` there.
 const SILK_TIERS = {
@@ -14878,22 +14998,83 @@ const SILK_TIERS = {
   value: "--t-rack-value", // readouts, enum chips, and a narrow plate's title
   title: "--t-rack-title", // plate titles
 };
+// A module's name on the canvas is set at `--t-rack-value` (style.css,
+// `#rack-svg .mod-title`); under the type floor it prints larger.
+const NAME_TOKEN = "--t-rack-value";
 let silkPx = null; // tier → px, read off the tokens once
 let silkUnder = null;
+let silkFitOwed = false; // the names' fit waits for the rack to be on screen (`fitSilk`)
+let silkFitFrame = 0; // the frame the names' fit waits for (`fitSilkAtFrame`)
+let inViewFrame = false; // a camera tween's step is running (`tweenView`)
 function syncSilkFloor() {
   const svg = $("rack-svg");
   if (!svg) return;
   if (!silkPx) {
     const cs = getComputedStyle(document.documentElement);
-    silkPx = Object.entries(SILK_TIERS).map(([tier, tok]) => [tier, parseFloat(cs.getPropertyValue(tok)) || 0]);
+    silkPx = Object.entries(SILK_TIERS).map(([tier, tok]) => [tier, parseFloat(cs.getPropertyValue(tok)) || 0, SILK_FLOOR_PX]);
+    silkPx.push(["name", parseFloat(cs.getPropertyValue(NAME_TOKEN)) || 0, NAME_FLOOR_PX]);
   }
-  // Written only when a tier crosses the line, not per camera frame.
-  const under = silkPx.filter(([, px]) => px * view.zoom < SILK_FLOOR_PX).map(([tier]) => tier).join(" ");
+  // Written only when a tier crosses the line, not per camera frame. The
+  // hundredth spares a tier the float's last digit at 1× exactly.
+  const under = silkPx.filter(([, px, floor]) => px * view.zoom < floor - 0.01).map(([tier]) => tier).join(" ");
+  const auto = lodMode === "auto";
+  const moved = under !== silkUnder || auto !== svg.classList.contains("silk-floor");
+  svg.classList.toggle("silk-floor", auto);
   if (under !== silkUnder) {
     silkUnder = under;
     svg.dataset.illegible = under;
   }
-  svg.classList.toggle("silk-floor", lodMode === "auto");
+  // A name condensed to its room at one size is condensed again at the other
+  // (`fitSilk`): its `textLength` would stretch it, or squeeze it, to a width
+  // measured for the size it no longer prints at. Measured at the frame, not
+  // in the gesture that crossed the line: a wheel's step, or a pinch's, is
+  // answered without laying the page out for it (`fitSilkAtFrame`).
+  if (moved || silkFitOwed) fitSilkAtFrame();
+}
+
+/** `fitSilk` at the start of the next frame, before the page is laid out
+ *  for it: the class the crossing flipped makes that layout anyway, and the
+ *  names' widths are read in it, once. Inside a frame already (a camera
+ *  tween's step, `inViewFrame`), now, so no frame shows a name at its new
+ *  size with its old condensing. */
+function fitSilkAtFrame() {
+  if (inViewFrame) { fitSilk($("rack-svg")); return; }
+  if (silkFitFrame) return;
+  silkFitFrame = requestAnimationFrame(() => {
+    silkFitFrame = 0;
+    const svg = $("rack-svg");
+    if (svg) fitSilk(svg);
+  });
+}
+
+/** Silkscreen never overruns its room (`buildRack`'s `fitLabels`): each
+ *  name, label and hint wider than its `data-fit` is condensed to it, and
+ *  one that fits is left as set. Measured again when a tier crosses the
+ *  silkscreen floor, since the names print larger under it
+ *  (`fitSilkAtFrame`), in three passes: every condensing taken off, every
+ *  width read, then the ones too wide condensed, so the page is laid out
+ *  once for them all rather than once a label. */
+function fitSilk(svg) {
+  // Behind another level the rack measures nothing (a hidden SVG's boxes
+  // are empty): owed until it is on screen again.
+  silkFitOwed = !svg.getClientRects().length;
+  if (silkFitOwed) return;
+  const texts = [...svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name, .gp-name")]
+    .filter((t) => Number(t.dataset.fit || 0) > 0);
+  for (const t of texts) {
+    t.removeAttribute("textLength");
+    t.removeAttribute("lengthAdjust");
+  }
+  const widths = texts.map((t) => {
+    try { return t.getBBox().width; } catch (_) { return 0; }
+  });
+  texts.forEach((t, i) => {
+    const avail = Number(t.dataset.fit);
+    if (widths[i] > avail) {
+      t.setAttribute("textLength", avail.toFixed(1));
+      t.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    }
+  });
 }
 
 function syncLodBtn() {
@@ -14905,7 +15086,7 @@ function syncLodBtn() {
     lodMode === "auto"
       // The number is read out of `lodThreshold`, so the tooltip and the
       // switch cannot disagree.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off and each module's name and setting print larger; under ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and a name that would print under ${NAME_FLOOR_PX} px prints larger; under ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for compact modules."
         : "Detail: compact. Modules, titles, jacks and three knobs each to read. Click to go back to automatic.";
@@ -15160,7 +15341,8 @@ function tweenView(t, ms, ease) {
     view.zoom = from.zoom * Math.pow(t.zoom / from.zoom, e);
     view.x = from.x + (t.x - from.x) * e;
     view.y = from.y + (t.y - from.y) * e;
-    applyView();
+    inViewFrame = true;
+    try { applyView(); } finally { inViewFrame = false; }
     viewTween = u < 1 ? requestAnimationFrame(step) : null;
   };
   viewTween = requestAnimationFrame(step);
@@ -15323,26 +15505,54 @@ function scheduleScopeDuck() {
 // What the well's top line and foot take, in px (style.css `.pt-foot`).
 const PT_TOP_LINE = 30;
 const PT_FOOT = 40;
-function fitBox(box, animate, coMotion) {
+
+// ---- the readable fit (#519) ----
+// A fit used to hold the whole patch whatever that cost, and on a phone held
+// upright it cost everything: Bright Stab's fourteen modules fitted the well's
+// width at 0.2×, a 330 × 60 px band in a 360 × 620 px well, its names 3 px
+// tall and its sockets 3 px across (7.9 px names at 0.47× on a 1440 px
+// screen). A patch drawn too small to read is not a view of it. So a fit stops
+// where each module's name still prints at the type floor (`--t-label`), at
+// the size the silkscreen floor draws a name at below 1× (style.css's
+// `.mod-title` at `--t-rack-title` × NAME_LARGER), and what does not fit there
+// pans: the well's edges count the modules past each side (‹ 2, 3 ›), and MAP
+// shows the whole patch.
+const NAME_LARGER = 1.3; // style.css: calc(var(--t-rack-title) * 1.3)
+function fitRead() {
+  if (!fitReadZoom) {
+    const floor = parseFloat(tok("--t-label")) || 11;
+    const name = (parseFloat(tok("--t-rack-title")) || 13) * NAME_LARGER;
+    fitReadZoom = floor / name;
+  }
+  return fitReadZoom;
+}
+/** The room a fit of `box` has: the frame, less a margin and the well's
+ *  own chrome (the line along its top, the guess and the thing in hand; the
+ *  foot, the camera and the readout; the catalog while open), and the
+ *  scope's corner where the box would sit under it. `fitBox` frames in it,
+ *  and `fitHolds` asks of it. */
+function fitRoom(box) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve(box);
-  // The well's own chrome: the line along its top (the guess, the thing in
-  // hand), the foot (the camera, the readout), and the catalog while open.
   ins.t = Math.max(ins.t, PT_TOP_LINE);
   ins.b = Math.max(ins.b, PT_FOOT);
   ins.l = Math.max(ins.l, catalogReserve());
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
-  // No floor on the way down. Whatever it takes to hold the box is what the
-  // fit is: a plate the fit leaves outside the frame is the defect this trades
-  // against, and a patch drawn small is not a defect, it is a patch drawn
-  // small — the wheel is right there.
-  const z = clamp(
+  return { w, h, pad, ins, availW, availH };
+}
+function fitBox(box, animate, coMotion, whole = true) {
+  const { w, h, pad, ins, availW, availH } = fitRoom(box);
+  // What it takes to hold the box, and no less than the readable fit: past
+  // that the patch pans rather than shrinking out of reading.
+  const contain = clamp(
     Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
     ZOOM_ABS_MIN,
     FIT_MAX,
   );
+  const z = whole ? Math.max(contain, Math.min(fitRead(), FIT_MAX)) : contain;
+  if (whole) { lastFit.short = z > contain + 1e-6; lastFit.contain = contain; }
   // Both ends of the tween, so a fit *up* from a sub-floor camera does not get
   // its first frames clamped out from under it — the floor rises again only
   // when neither where we are nor where we are going needs it down.
@@ -15352,6 +15562,14 @@ function fitBox(box, animate, coMotion) {
   const cx = pad + ins.l + availW / 2;
   const cy = pad + ins.t + availH / 2;
   const t = { zoom: z, x: box.x + box.w / 2 - cx / z, y: box.y + box.h / 2 - cy / z };
+  // A patch wider than the well at the readable fit shows where it starts,
+  // its sources and what they feed first, as anything read from left to
+  // right opens at its beginning: its end is the amp and OUT, the same on
+  // every patch, and the face there is the sound in hand's in the menu bar.
+  // A taller one shows its top, where the signal path runs (modulators hang
+  // below it).
+  if (box.w * z > availW + 1) t.x = box.x - (pad + ins.l) / z;
+  if (box.h * z > availH + 1) t.y = box.y - (pad + ins.t) / z;
   // …but the reserve is the weaker of the two promises. At the floor the patch
   // can be bigger than what the reserve leaves, and centring it in a box it
   // overflows spills it equally both ways — half of that spill going straight
@@ -15363,6 +15581,9 @@ function fitBox(box, animate, coMotion) {
   t.x = fit(box.x + box.w - (w - pad) / z, box.x - pad / z, t.x);
   t.y = fit(box.y + box.h - (h - pad) / z, box.y - pad / z, t.y);
   viewUserSet = false;
+  // "Fit what you're on" is the player aiming the camera at a module; the
+  // whole patch's fit is the camera back at the patch.
+  viewAimed = !whole;
   if (animate) tweenView(t, motionMs(coMotion ? "--d-move" : "--d-state"), coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
 }
@@ -15386,7 +15607,7 @@ function fitSelection(animate) {
     el.getAttribute("data-key"));
   const b = key && rackBoxes.get(key);
   if (!b) return fitAll(animate);
-  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate);
+  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate, false, false);
 }
 function zoomAt(clientX, clientY, factor) {
   const before = clientToRack(clientX, clientY);
@@ -15471,11 +15692,32 @@ function aimCamera(coMotion) {
   // structural edit is compared against what is actually on screen.
   const hold = camHold;
   camHold = false;
+  // Another sound on the bench, not an edit of this one (`benchOpens`).
+  const another = camOpens !== benchOpens;
+  camOpens = benchOpens;
   // A fit to a frame that has never been on screen (the app opened in another
   // view) is a guess, not an aim: the first real showing fits without travel.
   if (!camAimed) { fitBox(contentBox(), false); camAimed = frameSeen != null; return; }
-  if (!hold && changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
+  // A patch is fitted again when the player has not aimed the camera, or
+  // when it has grown out of what they aimed at. An edit to one the readable
+  // fit cannot hold is the exception: it is fitted again only when the
+  // camera is still at the fit, where the patch starts. Aimed anywhere else,
+  // by a hand or by the keys (End, the arrows, ".", PERFORM's hand-off), a
+  // fit would carry the player back to the start, away from the module they
+  // were working on, and still not show the whole patch; on a keyboard it
+  // once did, and left the focus off-screen. Another sound is framed as any
+  // patch is: it is not where they were working.
+  const box = contentBox();
+  const refit = !another && !fitHolds(box) ? !viewUserSet && !viewAimed : !viewUserSet || !contentFullyVisible();
+  if (!hold && changed && refit) fitBox(box, true, coMotion);
   else applyView();
+}
+/** Would the readable fit hold the whole of `box`, in the room a fit of it
+ *  has (`fitRoom`)? */
+function fitHolds(box) {
+  const { availW, availH } = fitRoom(box);
+  const z = Math.min(fitRead(), FIT_MAX);
+  return box.w * z <= availW + 1 && box.h * z <= availH + 1;
 }
 
 /** Bring a control into view without the browser's help. `scrollIntoView` and
@@ -15494,6 +15736,8 @@ function ensureRackVisible(el) {
   if (r.top < f.top + m) dy = r.top - (f.top + m);
   else if (r.bottom > f.bottom - m) dy = r.bottom - (f.bottom - m);
   if (dx === 0 && dy === 0) return;
+  // The keys moving the camera are the player aiming it (`aimCamera`).
+  viewAimed = true;
   tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, motionMs("--d-state"));
 }
 
@@ -16690,7 +16934,11 @@ function settlePlaceholders() {
 // sorts, and, on the six binaries only, the one op that is meaningless
 // anywhere else. `delete` is fenced off behind a rule and printed in the red
 // the rest of the app reserves for loss.
-function openStructMenu(mod, x, y) {
+function openStructMenu(mod, x, y, above) {
+  // Inside the well, clear of its foot (#530): down from (x, y) where it
+  // fits, else up to `above` (a plate's top edge, from the keyboard); taller
+  // than the well, cut to it and scrolled (`showMenu`).
+  const place = { within: wellRoom(), above };
   if (mod.kind === "amp") {
     // A one-item menu is not a menu; it is a button wearing one. The amp's ⋯
     // has exactly one thing to offer, so it performs it.
@@ -16725,7 +16973,7 @@ function openStructMenu(mod, x, y) {
         sep: true,
         run: () => unplugMod(parentKey),
       },
-    ]);
+    ], place);
     return;
   }
 
@@ -16828,7 +17076,7 @@ function openStructMenu(mod, x, y) {
     glyph: isPlaceholderKey(key) ? EMPTY_GLYPH : spec?.glyph,
     title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
     sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
-  }, rows);
+  }, rows, place);
 }
 
 /** One line, said before the click, about what `delete` is going to cost. */
@@ -17194,7 +17442,23 @@ let menuOpenedAt = 0;
 // keystroke goes nowhere.
 let menuOpener = null;
 
-function showMenu(x, y, head, rows) {
+/** The well's room for a menu about the rack (#530): side to side, and from
+ *  its top to the foot's (the camera, the readout, TEACH), which a menu must
+ *  not cover. */
+function wellRoom() {
+  const fr = $("rack-frame")?.getBoundingClientRect();
+  const foot = $("pt-foot")?.getBoundingClientRect();
+  if (!fr || !fr.height) return null;
+  return { left: fr.left, right: fr.right, top: fr.top, bottom: foot && foot.height ? Math.min(fr.bottom, foot.top) : fr.bottom };
+}
+
+/** Open the one floating menu at (x, y). `place.within` (`{left, right,
+ *  top, bottom}`) is the room it should open inside: right from `x`, else
+ *  held inside it; down from `y`, else up to `place.above` (its bottom edge
+ *  there; `y` unless given), else held inside it. A menu taller than that
+ *  room is cut to its height and scrolls; only one wider falls back to the
+ *  window, side to side. */
+function showMenu(x, y, head, rows, place) {
   const menu = $("ctx-menu");
   menuRows = rows;
   if (!menu.contains(document.activeElement)) menuOpener = document.activeElement;
@@ -17223,28 +17487,66 @@ function showMenu(x, y, head, rows) {
   // `delete` among them — rendered off-screen with no way to reach them.
   menu.style.left = "0px";
   menu.style.top = "0px";
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
-  let top = y;
-  if (y + mh > window.innerHeight - 8) {
-    top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+  menu.style.maxHeight = "";
+  menu.scrollTop = 0;
+  const mw = menu.offsetWidth;
+  let mh = menu.offsetHeight;
+  // The room it opens in: the window, or what `place` asks for inside it.
+  // Opened from a module near the well's right edge, the structure menu ran
+  // on over the levels' rail beside the well (#530): it is held inside.
+  const lx = Math.max(8, place?.within ? place.within.left + 4 : 8);
+  const hx = Math.min(window.innerWidth - 8, place?.within ? place.within.right - 4 : Infinity);
+  const left = hx - lx >= mw ? Math.max(lx, Math.min(x, hx - mw)) : Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  // Opened downward from a module low in the well, it cut through the
+  // well's foot, over the readout about that very module and TEACH (#530):
+  // it opens up instead, or is held inside the well.
+  const lo = Math.max(8, place?.within ? place.within.top + 4 : 8);
+  const hi = Math.min(window.innerHeight - 8, place?.within ? place.within.bottom - 4 : Infinity);
+  const above = place?.above ?? y;
+  // A module's whole menu (ten verbs) is taller than the well at every size
+  // short of a big screen, and fell back to the window, over the foot again
+  // (#530). Held to its room, it is cut to the room's height and scrolls,
+  // its fade saying there is more (`cm-clamped`, below).
+  if (place?.within && mh > hi - lo && hi > lo) {
+    menu.style.maxHeight = `${Math.floor(hi - lo)}px`;
+    mh = menu.offsetHeight;
+  }
+  let top;
+  if (hi - lo >= mh) {
+    if (y + mh <= hi) top = Math.max(lo, y);
+    else if (above - mh >= lo) top = above - mh;
+    else top = Math.max(lo, hi - mh);
+  } else {
+    top = y;
+    if (y + mh > window.innerHeight - 8) {
+      top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+    }
   }
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
-  // `max-height: 70vh` can still bite on a laptop in landscape. Say so with an
-  // edge shadow rather than letting the list end in a clean cut that reads as
+  // `max-height: 70vh`, or the room it was held to, can cut the list. Say so
+  // with an edge fade rather than letting it end in a clean cut that reads as
   // "that is all of them".
-  menu.classList.toggle("cm-clamped", menu.scrollHeight > menu.clientHeight + 1);
+  menuFade();
   menuTypeahead = { buf: "", at: 0 };
   menuOpenedAt = Date.now();
   menu.querySelector(".cm-item:not([disabled])")?.focus();
 }
+
+/** The fade at a cut list's foot, while there is more below: scrolled to its
+ *  end, the last row (`delete`, on a module's menu) is not under it. */
+function menuFade() {
+  const menu = $("ctx-menu");
+  menu.classList.toggle("cm-clamped", menu.scrollTop + menu.clientHeight < menu.scrollHeight - 1);
+}
+$("ctx-menu").addEventListener("scroll", menuFade, { passive: true });
 
 function closeMenu() {
   const menu = $("ctx-menu");
   const had = menu.contains(document.activeElement);
   menu.classList.add("hidden");
   menu.classList.remove("cm-clamped");
+  menu.style.maxHeight = "";
   menuRows = [];
   if (had && menuOpener && menuOpener.isConnected) {
     try { menuOpener.focus({ preventScroll: true }); } catch (_) {}
@@ -18020,7 +18322,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
       focusRackControl(rackControls().indexOf(knobs[0]));
     } else if (e.key === "F2" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
       e.preventDefault();
-      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4);
+      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4, box.top - 4);
     } else if (e.key === "Escape") {
       // Out of the plate: the selection goes, and the next Esc closes the
       // catalog, then a new patch.
@@ -18597,8 +18899,12 @@ function syncFitHint() {
   if (!el) return;
   // Cheapest test first on purpose: this runs on every frame of every pan, and
   // `layoutSprawl` lays out a chain arrangement to answer.
+  // A fit stops at the readable zoom now (`fitRead`) and pans the rest, so
+  // the camera at the fit says nothing about a stranding: what the fit would
+  // have needed to hold the patch does (`lastFit.contain`).
   const show = !!wb.rack && layoutMode === "freeform" && rackBoxes.size > 2
-    && view.zoom < FIT_STRANDED_ZOOM && layoutSprawl() > SPRAWL_HINT;
+    && (!viewUserSet && lastFit.short ? lastFit.contain : view.zoom) < FIT_STRANDED_ZOOM
+    && layoutSprawl() > SPRAWL_HINT;
   el.classList.toggle("hidden", !show);
 }
 $("fh-reseed").onclick = () => resetPositions();
@@ -22423,6 +22729,75 @@ function litSocketNear(x, y, reach) {
   }
   return socketMeant(cands, x, y, reach)?.j || null;
 }
+/** A finger's tap beside what it can barely hit at the rack's fitted zoom,
+ *  at rest, is that control's (#519): beside an out ○ it picks the cable up,
+ *  as a tap on the socket itself does (`beginConnectPick`; then a tap beside
+ *  a lit ○ places it, `reachForSocket`); beside a module's ⋯ it opens its
+ *  menu, and beside its lock it locks it, as a tap on them does. A socket is
+ *  drawn a few px across at the fit, ⋯ and the lock a pocket's height, and a
+ *  finger needs 44. reach.js's rule decides among them all, inputs included
+ *  (`socketMeant`): the nearest within 22 px, and no other about as near.
+ *  Only a tap, never a drag (a drag from beside them pans, as before); never
+ *  on a control, which keeps its own meaning, or on a module's name, which
+ *  opens its sheet; and an input, the nearest, does nothing (a tap on one
+ *  does nothing at rest). Asked by patch.js's tap, with the press's own
+ *  target, before a module's sheet opens; true when it took it. */
+function tapReach(ev, target) {
+  if (armed || connectPick || wire || !wb.rack || currentView !== "patch") return false;
+  if (!target || target.closest?.(PLACE_CONTROLS) || target.closest?.(".mod-title")) return false;
+  const view = $("rack-scroll").getBoundingClientRect();
+  if (ev.clientX < view.left || ev.clientX > view.right || ev.clientY < view.top || ev.clientY > view.bottom) return false;
+  const svg = $("rack-svg");
+  const cands = [];
+  const at = (el, what) => {
+    const r = el.getBoundingClientRect();
+    if (r.width) cands.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, ...what });
+  };
+  for (const j of svg.querySelectorAll(".jack")) {
+    const nut = j.querySelector(".j-nut");
+    if (nut) at(nut, { jack: j });
+  }
+  // The pad's middle is the glyph's, on the pocket's line.
+  for (const c of svg.querySelectorAll(".mod-menu-btn > rect, .mod-lock > rect")) at(c, { pad: c });
+  const hit = socketMeant(cands, ev.clientX, ev.clientY, REACH_PRESS_PX);
+  if (!hit) return false;
+  // ⋯ and the lock reach out over the rack and their pocket, not over a
+  // plate: a modulator's is little more than its pocket's width at the fit,
+  // and a tap on a module's panel or its name opens its sheet.
+  // (`target` is the press's element: a pointer event's target.)
+  if (hit.pad && target.closest(".rack-plates g[data-key]") && !target.matches(".ctrl-well")) return false;
+  if (hit.pad) {
+    // Its own click, at the finger: ⋯'s opens the menu there (and stops,
+    // so the click-outside guard never sees it), the lock's locks. The
+    // finger's own click, which follows the lift onto whatever the menu
+    // now puts under it, is the tap's, already answered.
+    hit.pad.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: ev.clientX, clientY: ev.clientY }));
+    eatTapClick(ev.clientX, ev.clientY);
+    return true;
+  }
+  const key = hit.jack.getAttribute("data-outkey");
+  if (!key) return false;
+  beginConnectPick(key, hit.jack.classList.contains("modjack") ? "mod" : "audio");
+  return true;
+}
+/** The click a finger's tap makes after its lift, at (x, y), when the tap
+ *  has already been answered: taken, once; the next press, or a moment,
+ *  lets it go. */
+function eatTapClick(x, y) {
+  const eat = (c) => {
+    if (Math.hypot(c.clientX - x, c.clientY - y) > 10) return;
+    c.stopPropagation();
+    c.preventDefault();
+    done();
+  };
+  const done = () => {
+    window.removeEventListener("click", eat, true);
+    window.removeEventListener("pointerdown", done, true);
+  };
+  window.addEventListener("click", eat, true);
+  window.addEventListener("pointerdown", done, true);
+  setTimeout(done, 800);
+}
 /** A finger's press on bare panel that means a lit socket is handed to it
  *  (as a press on the socket itself), before the rack's pan and its long
  *  press see it; the click that follows at the same place is the socket's
@@ -26084,7 +26459,7 @@ shell.cmd({ id: "pt-redo", level: "patch", label: "Redo an edit", key: "⇧⌘Z"
 for (const [id, btn, label] of [["pt-lock-knobs", "lock-knobs", "Lock knobs"], ["pt-lock-wiring", "lock-structure", "Lock wiring"], ["pt-lock-clear", "lock-clear", "Clear locks"]]) {
   shell.cmd({ id, level: "patch", label, when: () => !!$(btn) && !$(btn).disabled, run: press(btn) });
 }
-patchCmd("pt-fit", "Fit the whole patch", "pt-fit", { key: "⇧Home" });
+patchCmd("pt-fit", "Fit the patch", "pt-fit", { key: "⇧Home" });
 shell.cmd({ id: "pt-fit-here", level: "patch", label: "Fit what you’re on", key: ".", run: () => fitSelection(true) });
 shell.cmd({ id: "pt-actual", level: "patch", label: "Actual size", key: "⌘0", run: () => zoomActual() });
 patchCmd("pt-zoom-out", "Zoom out on the patch", "pt-zoom-out", { key: "⌘−" });

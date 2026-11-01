@@ -51,6 +51,22 @@ async function rackAtRest(page, { timeout } = {}) {
   })), { timeout, message: "the rack came to rest" }).toBe(true);
 }
 
+/** The well's right edge pressed, by a finger, until nothing lies past it
+ *  (the camera at OUT): one press at a time, each waited out (the count it
+ *  shows drops, or it goes, and the rack comes to rest) before the next, so
+ *  no press is aimed at a chip the last one's tween is about to hide. An
+ *  engine wait each, the camera's tweens a frame at a time. */
+async function walkRightEdge(app) {
+  const { page } = app;
+  const edge = page.locator("#pt-edge-r");
+  const left = async () => ((await edge.isVisible()) ? Number(await edge.locator("b").textContent()) : 0);
+  for (let n = await left(); n > 0; n = await left()) {
+    await edge.tap();
+    await app.engine((timeout) => expect.poll(left, { timeout, message: `fewer than ${n} past the right edge` }).toBeLessThan(n), { ms: 30_000 });
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+  }
+}
+
 /** The tree on the bench, as the engine last described it (its `bench`). */
 const benchTree = (app) => app.page.evaluate(() => (window.__tap.last.bench ? window.__tap.last.bench.treeJson : null));
 
@@ -189,5 +205,5 @@ async function pinPulls(app, sure, unsure) {
 }
 
 module.exports = {
-  openPreset, rackAtRest, benchTree, laneCounts, settled, rankedGuess, guessAfter, drawnGuess, pinPulls,
+  openPreset, rackAtRest, walkRightEdge, benchTree, laneCounts, settled, rankedGuess, guessAfter, drawnGuess, pinPulls,
 };

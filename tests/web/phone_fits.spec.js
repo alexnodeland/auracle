@@ -43,13 +43,15 @@
 //   sound may reach no knob and an empty hood checks no row); of the well
 //   in XY; and of LEARNING's other two panes (what it weighs, its
 //   forecasts).
-// - PATCH at 390 × 844: the face at OUT's ▶ answers a finger 21 px from its
-//   middle each way, and goes while sockets are lit. A tap on bare panel
+// - PATCH at 390 × 844: the face at OUT's ▶ (brought into the well past its
+//   right edge, where the patch's fit leaves it, #519) answers a finger 21 px
+//   from its middle each way, and goes while sockets are lit. A tap on bare panel
 //   beside a lit socket (12 to 18 px, every other lit one over 1.6 times as
 //   far: reach.js, whose unit tests hold the rule, the ambiguous point and
 //   the drop's shorter reach) places the module in hand there, opening no
 //   module's sheet, and a tap elsewhere straight after is that control's; a
 //   finger held there opens no module's menu; and a cable being placed
+//   (the right edge pressed once, to have a lit socket clear of it)
 //   reaches a lit socket the same way, past the rack's pan.
 // - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows, on
 //   Glass Pad, are 44 px, each on the screen or in the hood's own scroll,
@@ -74,7 +76,7 @@
 // then), or anything at a tablet's size
 // (shell_phone.spec.js and perform_layout.spec.js hold those).
 const { test, expect, goLevel, landed } = require("./fixtures");
-const { rackAtRest } = require("./patch_page");
+const { rackAtRest, walkRightEdge } = require("./patch_page");
 
 const PHONE = { hasTouch: true, isMobile: true };
 // The lists a finger scrolls (a phone's own lists do): nothing else may.
@@ -429,6 +431,10 @@ test.describe("PATCH under a finger, 390 × 844", () => {
 
   test("the face at OUT answers a finger 44 px across, and a tap beside a lit socket places the module in hand there", async ({ page, app }) => {
     await patchOnAPhone(page, app);
+    // The fit shows where the patch starts: the well's right edge carries the
+    // camera to OUT, a module a press.
+    await walkRightEdge(app);
+    await expect(page.locator("#pt-edge-r")).toBeHidden();
     // The ▶ at OUT: 21 px from its middle each way is still its.
     const ring = await page.locator("#rack-play").evaluate((b) => {
       const r = b.getBoundingClientRect();
@@ -472,7 +478,16 @@ test.describe("PATCH under a finger, 390 × 844", () => {
 
   test("a cable being placed reaches a lit socket from a tap beside it, past the rack's pan", async ({ page, app }) => {
     await patchOnAPhone(page, app);
-    // Tap an output with somewhere to go (the first in the chain): the cable
+    // The fit shows where the patch starts (#519), the rest past the right
+    // edge: the one socket the first output's cable could move to there,
+    // CHORUS's input, is under that edge. A press on the edge brings CHORUS
+    // to the middle, and FILTER's output and the amp's input with it. (Not
+    // the whole patch with −: Glass Pad's amp and OUT stay past the edge at
+    // its floor, 0.3×, zoomed about the well's middle.)
+    await page.locator("#pt-edge-r").tap();
+    await expect(page.locator("#pt-edge-r b")).toHaveText("1");
+    await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
+    // Tap an output with somewhere to go (the first on the screen): the cable
     // is picked up, and the sockets it fits light.
     const out = await page.evaluate(() => {
       const outs = [...document.querySelectorAll("#rack-svg .jack[data-outkey]:not(.modjack)")].map((j) => {
