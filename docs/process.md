@@ -375,7 +375,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   generations or PERFORM's offers. It is none of the queue's conditions;
   without the label, the push to `main` is where a slow test catches the
   change (a push to `main` that changes nothing those tests cover runs
-  none of them). By hand, a `full-ci` PR is queued at once. A wave holds
+  none of them, unless it cancelled a waiting nightly run, which it then
+  stands in for). By hand, a `full-ci` PR is queued at once. A wave holds
   it out of
   the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`,
   then `scripts/ops/queue_group.sh`, which waits for the suite;
@@ -480,7 +481,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `main` the same way, and nightly; the *Flake hunt* nightly, three runners
   at most. A failure there files an issue. Work off the gate leaves the
   queue its runners: a push to `main` that changes nothing the slow tests
-  cover runs none of them, and the *Slow suite*'s and *Search health*'s
+  cover runs none of them (unless it cancelled a waiting nightly run: then
+  it runs in the night's place), and the *Slow suite*'s and *Search health*'s
   nightly runs run nothing on a night `main` is still at the commit their
   last scheduled run tested green, each saying so in its summary; a run by
   hand always runs

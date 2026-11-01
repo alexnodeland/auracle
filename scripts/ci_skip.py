@@ -19,7 +19,11 @@ already has (#582), so it can leave its runners to the merge queue.
         hold every path docs/architecture/testing.md's Slow list names. The
         base is that commit, not the push's own `before`: main keeps its
         latest run only, so a push whose run was superseded has its changes
-        tested by the next run that runs.
+        tested by the next run that runs. And it runs, whatever changed, in
+        place of a nightly run that a push cancelled while it waited (the
+        workflow's `queue: single` keeps only the newest waiting run, a
+        night's as well as a push's), until a run on main has tested green
+        since that night: the night that main moved is still tested.
 
 FILE is the workflow's file name (slow-suite.yml). It prints one line,
 `run=true` or `run=false`, for the workflow's step to pass on as its output,
@@ -27,8 +31,9 @@ and says why on stderr and in the run's summary ($GITHUB_STEP_SUMMARY), with
 a link to the run whose answer stands. Anything that keeps it from deciding
 (the API, an answer it can't read, the time) is `run=true`, said as a
 warning: an error never skips a run and never turns one red. It reads
-GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_RUN_ID and GITHUB_SERVER_URL as a
-workflow sets them, and the API through `gh` (GH_TOKEN, `actions: read`).
+GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_RUN_ID as a workflow sets them,
+and the API through `gh` (GH_TOKEN, `actions: read`); each link is a run's
+own `html_url`.
 
 "Tested" is a run in which more than one job ran: a run that skipped ran
 only the job that decided so (as scripts/ci_stats.py counts a green run).
@@ -91,6 +96,20 @@ def gh_api(path: str, deadline: float):
         raise Undecided(f"`gh api {path}` answered no JSON") from e
 
 
+def order(run) -> tuple[int, int]:
+    """Where a run comes among its workflow's runs: its run number, which
+    counts up with each new run (the API's `created_at` is a re-run's
+    time, not the run's own), then its id."""
+
+    def n(v) -> int:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
+    return n(run.get("run_number")), n(run.get("id"))
+
+
 def ran(job) -> bool:
     """A job that ran, as scripts/ci_stats.py counts one: it had a runner
     and an end other than skipped."""
@@ -113,7 +132,7 @@ class Runs:
             raise Undecided(f"the runs of {self.workflow} could not be read")
         # Newest first; this run is never its own precedent.
         mine = [r for r in runs if str(r.get("id")) != self.run_id and r.get("head_branch") == "main"]
-        return sorted(mine, key=lambda r: r.get("created_at") or "", reverse=True)
+        return sorted(mine, key=order, reverse=True)
 
     def tested(self, run) -> bool:
         page = self.api(f"repos/{self.repo}/actions/runs/{run['id']}/jobs?per_page=100")
@@ -186,12 +205,34 @@ def compare_files(api, repo: str, base: str, sha: str) -> list[str]:
     return paths
 
 
+def owed_night(runs: Runs, base) -> dict | None:
+    """The nightly run a push's run stands in for, or None. On main only
+    the newest waiting run is kept (`queue: single`), so a push that lands
+    while the nightly run waits cancels it; if that push's run then
+    skipped, main would go a night untested though it moved. So the newest
+    scheduled run, when it was cancelled before it tested anything and no
+    run on main has tested green since it was made (`base` is older), is
+    owed."""
+    nights = [r for r in runs.list("event=schedule&status=completed") if r.get("event") == "schedule"]
+    night = nights[0] if nights else None
+    if night is None or night.get("conclusion") != "cancelled" or order(night) < order(base):
+        return None
+    return None if runs.tested(night) else night
+
+
 def main_push(runs: Runs, sha: str) -> tuple[bool, str]:
     """The Slow suite on a push to main: (run?, why)."""
     green = [r for r in runs.list("status=success") if r.get("event") in MAIN_EVENTS and r.get("conclusion") == "success"]
     base = next((r for r in green if runs.tested(r)), None)
     if base is None:
         return True, f"Running: none of the last {PAGE} green runs on main tested anything, so there is no answer to stand on."
+    night = owed_night(runs, base)
+    if night is not None:
+        return True, (
+            f"Running in place of the nightly run: {link(night)} was cancelled on {day(night)} while it waited, "
+            "when a push's run took its place in the queue, and no run on main has tested green since. "
+            "This run tests main whatever the push changed, so the night main moved is still tested."
+        )
     files = compare_files(runs.api, runs.repo, base["head_sha"], sha)
     if not files:
         return False, f"**Skipped:** {link(base)} tested this very commit, {short(sha)}, green."
@@ -206,8 +247,8 @@ def main_push(runs: Runs, sha: str) -> tuple[bool, str]:
     return False, (
         f"**Skipped:** nothing the slow tests cover changed since {short(base['head_sha'])}, which {link(base)} "
         f"tested green. The {len(files)} files changed since ({shown}) are none of the Rust, the app or its specs, "
-        "or CI itself (scripts/changes.py's `rust`, `reach` and `full`). The nightly run still tests main, and a "
-        "run by hand always runs."
+        "or CI itself (scripts/changes.py's `rust`, `reach` and `full`). The next nightly run tests main (or, if a "
+        "push cancels it while it waits, that push's run does), and a run by hand always runs."
     )
 
 

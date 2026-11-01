@@ -40,7 +40,7 @@ TESTED = [job("Asked for"), job("Slow Rust (search floor)"), job("Slow browser (
 SKIPPED = [job("Asked for"), job("Slow Rust (search floor)", "skipped"), job("Slow browser (1/6)", "skipped")]
 
 
-def run(rid, sha, day, event="schedule", conclusion="success", status="completed", branch="main"):
+def run(rid, sha, day, event="schedule", conclusion="success", status="completed", branch="main", at="10:00:00"):
     return {
         "id": rid,
         "run_number": rid,
@@ -51,7 +51,7 @@ def run(rid, sha, day, event="schedule", conclusion="success", status="completed
         "event": event,
         "status": status,
         "conclusion": conclusion,
-        "created_at": f"2026-10-{day:02d}T10:00:00Z",
+        "created_at": f"2026-10-{day:02d}T{at}Z",
     }
 
 
@@ -238,6 +238,54 @@ class MainPush(unittest.TestCase):
         go, why, error = decide("main-push", FakeAPI([run(1, OLD, 30, event="push")], {1: SKIPPED}))
         self.assertTrue(go)
         self.assertFalse(error)
+
+    def test_the_base_is_the_newest_by_run_number_not_by_created_at(self):
+        # The API's created_at is a re-run's time: run 967, re-run at 09:41,
+        # tested an older commit than run 969, made at 09:11. The base is
+        # 969's commit (the fake knows no compare from 967's, so a base
+        # read by created_at would be an error here).
+        runs = [run(967, OLDER, 31, event="push", at="09:41:06"), run(969, OLD, 31, event="push", at="09:11:26")]
+        api = FakeAPI(runs, {967: TESTED, 969: TESTED}, {(OLD, HEAD): ahead("docs/x.md")})
+        go, why, error = decide("main-push", api)
+        self.assertEqual((go, error), (False, False))
+        self.assertIn("runs/969)", why)
+
+    def test_a_push_that_cancelled_the_waiting_nightly_runs_in_its_place(self):
+        # Push 1 ran green; the nightly run 2 waited behind it and was
+        # cancelled, running no job, when this push landed. Docs only, and
+        # still it runs: else main would go that night untested.
+        runs = [run(2, OLD, 31, conclusion="cancelled"), run(1, OLD, 30, event="push")]
+        api = FakeAPI(runs, {2: [], 1: TESTED}, {(OLD, HEAD): ahead("docs/process.md")})
+        go, why, error = decide("main-push", api)
+        self.assertEqual((go, error), (True, False))
+        self.assertIn("in place of the nightly run", why)
+        self.assertIn("runs/2)", why)
+        self.assertFalse(any("/compare/" in p for p in api.asked), "it compared, where the night decides")
+
+    def test_once_a_run_has_tested_green_since_the_cancelled_night_a_docs_push_skips(self):
+        # Push 3 ran in the night's place, green: the night is paid, and
+        # the next docs push skips as any would.
+        runs = [run(3, OLD, 31, event="push"), run(2, OLDER, 31, conclusion="cancelled"), run(1, OLDER, 30, event="push")]
+        api = FakeAPI(runs, {3: TESTED, 2: [], 1: TESTED}, {(OLD, HEAD): ahead("docs/process.md")})
+        go, why, _ = decide("main-push", api)
+        self.assertFalse(go)
+        self.assertIn("runs/3)", why)
+
+    def test_a_cancelled_night_a_later_night_tested_after_or_one_that_tested_is_not_owed(self):
+        # Night 4 tested main after night 2 was cancelled (red, so no base);
+        # and a night cancelled by hand after it tested gave its answer.
+        for runs, jobs in (
+            (
+                [run(4, OLD, 31, conclusion="failure"), run(2, OLD, 30, conclusion="cancelled"), run(1, OLD, 29, event="push")],
+                {4: TESTED, 2: [], 1: TESTED},
+            ),
+            ([run(2, OLD, 30, conclusion="cancelled"), run(1, OLD, 29, event="push")], {2: TESTED, 1: TESTED}),
+        ):
+            with self.subTest(night=runs[0]["id"]):
+                api = FakeAPI(runs, jobs, {(OLD, HEAD): ahead("docs/process.md")})
+                go, why, error = decide("main-push", api)
+                self.assertEqual((go, error), (False, False))
+                self.assertIn("runs/1)", why)
 
     def test_a_renamed_file_counts_by_its_old_path_too(self):
         cmp = {"status": "ahead", "files": [{"filename": "docs/old-worker.md", "previous_filename": "apps/web/worker.js"}]}

@@ -41,11 +41,11 @@ name: Slow suite
 #   quarantined test's failure is not one: it is said on the test's own
 #   issue, and the run stays green, so that issue means a new regression
 #   (or a quarantined test whose issue was closed, which owns no failure).
-#   Latest only: a run in progress finishes, and of the pushes that land
-#   meanwhile only the newest waits, since its run covers everything before
-#   it. A batch from the merge queue lands as two or three merges seconds
-#   apart; a run whose commit main has already moved past runs nothing (the
-#   `scope` job).
+#   Latest only: a run in progress finishes, and of the runs that arrive
+#   meanwhile (pushes and the nightly run) only the newest waits, since its
+#   run covers everything before it. A batch from the merge queue lands as
+#   two or three merges seconds apart; a run whose commit main has already
+#   moved past runs nothing (the `scope` job).
 #   A push runs nothing either when nothing these tests cover changed since
 #   the newest commit a run on main tested green (#582): the files changed
 #   since, read through scripts/changes.py's classes, are none of `rust`
@@ -55,7 +55,11 @@ name: Slow suite
 #   list above names. A docs, site or Claude Code push then leaves the
 #   merge queue's next batch its runners; this run starts just as that
 #   batch does. The base is that commit, not the push's own parent, so a
-#   superseded push's changes are counted by the next run that runs.
+#   superseded push's changes are counted by the next run that runs. But a
+#   push that lands while the nightly run waits cancels it (only the newest
+#   waits), and then runs whatever it changed, in the night's place, until
+#   a run on main has tested green since that night: else main could move
+#   and go that night with no slow test run on it.
 #   The nightly run, on a night when main's head is the commit the last
 #   scheduled run that tested anything tested green, runs nothing: these
 #   tests are seeded, so the same commit gives the same answer (over Oct
@@ -101,13 +105,15 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR makes its in-flight run obsolete. On main nothing is
-# cancelled: a run in progress finishes, and of the runs that arrive
+# A new push to a PR makes its in-flight run obsolete. On main no run in
+# progress is cancelled: it finishes, and of the runs that arrive
 # meanwhile (pushes, the nightly run) only the newest waits (`queue:
-# single`), since the newest covers everything before it. Adding an
-# unrelated label to a PR starts a run too (GitHub cannot filter `labeled`
-# by name); it gets a group of its own, so it does nothing rather than
-# cancel a real run.
+# single`), since the newest covers everything before it; the older
+# waiting run is cancelled. A push's run that cancels the waiting nightly
+# run so runs in full in its place, whatever the push changed (the
+# `scope` job below). Adding an unrelated label to a PR starts a run too
+# (GitHub cannot filter `labeled` by name); it gets a group of its own, so
+# it does nothing rather than cancel a real run.
 concurrency:
   group: slow-suite-${{ github.head_ref || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && '-label' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -135,7 +141,10 @@ jobs:
   # - a push that main has already moved past (main is ahead of it): the
   #   newest push's run covers it, as ci.yml's changes job does for CI;
   # - a push that changes nothing these tests cover since the newest commit
-  #   a run on main tested green (scripts/ci_skip.py main-push);
+  #   a run on main tested green (scripts/ci_skip.py main-push), unless the
+  #   newest nightly run was cancelled while it waited, before it tested
+  #   anything, and no run on main has tested green since: then this run
+  #   tests main in the night's place;
   # - the nightly run, when main's head is the commit the last scheduled
   #   run that tested anything tested green (scripts/ci_skip.py nightly).
   #
