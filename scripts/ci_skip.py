@@ -57,8 +57,9 @@ import changes  # noqa: E402
 # How far back to look: a page of the API. A month of nights, or a few
 # days of pushes; past it, nothing found means run.
 PAGE = 30
-# The whole decision's time, and one call's. The job that asks is cut at
-# five minutes, and running is always the answer when time is short.
+# The whole decision's time, and one call's. The workflow's step gives the
+# script 150 s (`timeout 150`) inside a job cut at seven minutes, and
+# running is always the answer when time is short.
 DEADLINE_S = 120
 CALL_S = 30
 # The compare API lists at most this many files; at the cap the list may

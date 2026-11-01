@@ -184,9 +184,10 @@ top of `main`, and it is what merges them. A PR may merge on the fast tier,
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push that changes what those tests cover, whose run
-covers the ones before it) and nightly unless `main` has not moved since
-the last green night, where a failure opens an issue (a quarantined test's
-is a comment on its own issue instead, while that issue is open); on a PR
+covers the ones before it) and nightly unless `main` is still at the
+commit its last nightly run tested green, where a failure opens an issue
+(a quarantined test's is a comment on its own issue instead, while that
+issue is open); on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
 the `Makefile`, `.config/nextest.toml`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s

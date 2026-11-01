@@ -632,9 +632,14 @@ hash covers the toolchains on the runner, the pinned one and the image's
 own, and the values of `RUSTFLAGS`, `CARGO_INCREMENTAL`, `CARGO_NET_RETRY`
 and `CARGO_TERM_COLOR`: a new runner image with a new Rust, a toolchain bump
 or an edit to one of those starts every run cold, until a run on `main` has
-passed the leg and saved the new key. A run the `scope` job skips as
-superseded saves none. Each leg's run summary says which cache it had, so
-a run that finds no exact match says so on its page.
+passed the leg and saved the new key. A run the `scope` job skips saves
+none: a push superseded or one that changes nothing the slow tests cover,
+and a night `main` did not move ([What `main` skips](#ci-tiers)). So after
+a new runner image with a new Rust, `ci.yml`'s *Doctests* job and a
+`full-ci` PR's legs start cold until a run that tests saves the new key: a
+push that changes Rust or the app, or a nightly run on a `main` that
+moved. Each leg's run summary says which cache it had, so a run that finds
+no exact match says so on its page.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about 100 s

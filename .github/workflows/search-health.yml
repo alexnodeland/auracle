@@ -55,11 +55,15 @@ jobs:
   # unless main's head is the commit the last scheduled run that tested
   # anything tested green (scripts/ci_skip.py says how it reads that). When
   # `run` is false the three jobs below are skipped, and the run holds this
-  # one runner for a few seconds.
+  # one runner for a few seconds. Anything that keeps it from deciding is a
+  # run, never a skip and never red, so the job's limit is above its steps':
+  # the checkout's 2 minutes and the script's 150 s, with room for the
+  # job's setup. A job cut at its own limit would leave `run` unset and
+  # the run red with nothing measured.
   scope:
     name: Asked for
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 7
     permissions:
       contents: read
       actions: read

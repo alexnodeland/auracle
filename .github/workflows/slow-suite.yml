@@ -150,7 +150,11 @@ jobs:
   #
   # The last two read the runs and their jobs (`actions: read`) and the
   # compare from that commit; anything that keeps them from deciding (the
-  # checkout, the API, the time) is a run, never a skip and never red.
+  # checkout, the API, the time) is a run, never a skip and never red. So
+  # each step has a limit and the job's is above their sum: the checkout's
+  # 2 minutes, the superseded check's 30 s and the script's 150 s are 5
+  # minutes, and 7 leaves two for the job's setup. A job cut at its own
+  # limit would leave `run` unset and the run red with nothing tested.
   scope:
     name: Asked for
     if: >-
@@ -158,7 +162,7 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 7
     permissions:
       contents: read
       actions: read
@@ -184,7 +188,7 @@ jobs:
           if [ "$EVENT" = pull_request ]; then
             echo "the PR carries full-ci: running everything"
           elif [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ] &&
-            read -r status tip <<<"$(gh api "repos/$REPO/compare/$GITHUB_SHA...main" -q '"\(.status) \(.commits[-1].sha // "")"')" &&
+            read -r status tip <<<"$(timeout 30 gh api "repos/$REPO/compare/$GITHUB_SHA...main" -q '"\(.status) \(.commits[-1].sha // "")"')" &&
             [ "$status" = ahead ] && [ -n "$tip" ]; then
             echo "superseded: main is at ${tip:0:12} now, and that push's run covers this one"
             echo "Superseded: main moved on to \`${tip:0:12}\` before this run began, and that push's run covers this one." >> "$GITHUB_STEP_SUMMARY"
@@ -293,10 +297,14 @@ jobs:
       # a run on main has saved the new key. Main saves only from this one
       # leg, only when the leg passed (rust-cache's cache-on-failure is off)
       # and only when the key was new ("Cache up-to-date" otherwise), and a
-      # run the `scope` job skips as superseded saves none. None of this was
-      # seen on PR #344, whose other leg restored main's cache by an exact
-      # match. `cold` skips the step, so a cold run neither reads nor writes
-      # the cache.
+      # run the `scope` job skips saves none: a push superseded or one that
+      # changes nothing these tests cover, and a night main did not move.
+      # So after a new runner image with a new Rust, ci.yml's Doctests job
+      # and a `full-ci` PR's legs here start cold until a run that tests
+      # here saves the new key: a push that changes Rust or the app, or a
+      # nightly run on a main that moved. None of this was seen on PR #344,
+      # whose other leg restored main's cache by an exact match. `cold`
+      # skips the step, so a cold run neither reads nor writes the cache.
       - id: cache
         if: ${{ !inputs.cold }}
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
