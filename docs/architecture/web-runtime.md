@@ -2238,8 +2238,9 @@ the voices' input in the worklet, and each input's clip in the engine.
   then applies them, tells PERFORM (`perform.clipChanged`: the lean of a
   sound in hand that listens is asked again under the model view, if its
   inputs' clips moved) and saves the session, which carries each slot's
-  clip. Restores, `ready` and an `audition_clip` request post `audition_clip`
-  with the status only: `clip`, the clip every slot hears, and `clips`. The
+  clip. A restore and an `audition_clip` request post `audition_clip` with
+  the status only: `clip`, the clip every slot hears, and `clips`; `ready`
+  carries the same two on itself. The
   app never sets that clip (the engine's `set_audition_clip`, which would
   take every slot's own away): it is the reference, or the one clip of a
   session saved before slots had their own, which then stands for every
