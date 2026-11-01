@@ -170,7 +170,7 @@ measured with audition clips, from quiver to the PATCH plate.
      is a player kind like TRACK and CAPTURE (task 2): never drawn, scored
      finite, so a player's listening patch is bred and no draw moved (no
      revalidate, perform-wirings or boot probe owed). ⚡ and generations walk a
-     listening seed, on the farm as on the engine, with the session's clip
+     listening seed, on the farm as on the engine, with each input's clip
      and the seed's takes.
 
    Constraints the engine half leaves for this task:
