@@ -3538,9 +3538,10 @@ export function createPerform(host) {
   function renderHood() {
     paintMoved();
     const addrs = hoodAddrs();
-    // The labels are part of the key: an open reaches PERFORM before PATCH's
-    // rack has named its modules, so rows built then read raw addresses
-    // ("thresh", "dec") and must be rebuilt once the names arrive.
+    // The names are part of the key: a sound with no names sent with its
+    // tree reaches PERFORM before the bench's rack names its modules, so rows
+    // built then read the knobs' labels alone and are rebuilt once the
+    // modules arrive (`knobOf`).
     const info = knobOf;
     const key = addrs.map((a) => `${a}=${info(a).module} ${info(a).label}`).join("|");
     if (key === hoodKey) return paintHood();
@@ -5004,14 +5005,13 @@ export function createPerform(host) {
   return {
     // The row under the title, where booth mode lays its attract band.
     marquee,
-    // PATCH's rack changed (a bench reply or a rebuild): the hood's rows are
-    // named from it, and an open reaches PERFORM before the rack does.
-    // The bench's rack is the sound in hand's now: its controls' captions and
-    // tooltips name the knobs with their modules where two share a name, as
-    // the rack does (`knobOf`). In the next frame, once main has finished
-    // landing the reply (until then it still counts the voices ahead of the
-    // rack, `voicesAheadOfRack`); painted in place, never rebuilt, so a
-    // control under the hand stays where it is.
+    // PATCH's rack changed (a bench reply or a rebuild), and an open reaches
+    // PERFORM before the rack does: the hood's rows and the controls'
+    // captions and tooltips are named again from it where nothing sent with
+    // the tree named them (`knobOf`). In the next frame, once main has landed
+    // the reply (until then it still counts the voices ahead of the rack,
+    // `voicesAheadOfRack`); painted in place, never rebuilt, so a control
+    // under the hand stays where it is.
     rackChanged() {
       if (!state.visible || rackQueued) return;
       rackQueued = true;
