@@ -559,7 +559,8 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", "");
 
   // Again, and stop it while its walk is held: the reply that lands is the
-  // stop's, and nothing is added.
+  // stop's. Then the walk is let through, so its result could land, and
+  // nothing is added.
   await goLevel(page, "patch");
   await app.engine((timeout) => expect(page.locator("#rack-evolve")).toBeEnabled({ timeout }), { ms: 30_000 });
   const pool = (await bankIds(page)).length;
@@ -569,10 +570,16 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   await page.locator("#rack-evolve").click();
   const again = await askedAfter(app, { type: "refine_from" }, againAt);
   await app.engine((timeout) => expect(page.locator("#job-stop")).toBeVisible({ timeout }), { ms: 30_000 });
-  await heldWalk(heldAgain);
+  const walkAgain = await heldWalk(heldAgain);
   await page.locator("#job-stop").click();
   const stop = await askedAfter(app, { type: "refine_from_stop" }, againAt);
   const stopped = await answerTo(app, again, 30_000);
+  // The stopped walk let through at once, so a result could land: the stop
+  // reaped its crew (worker.js `crewReap`), or the crew, still up, walks it
+  // for nobody and the result is dropped as it lands. Which one is not
+  // asserted: a crew with a guess's renders out closes only after their
+  // writes, and may start the walk meanwhile.
+  await page.evaluate((i) => window.__pwLet(i), walkAgain);
   console.log(`⚡ stop answered in ${Math.round(stopped._at - stop._at)} ms (${stopped.reason})`);
   expect(stopped.type).toBe("evolved_from");
   expect(stopped.reason).toBe("stopped");
@@ -580,9 +587,12 @@ test("⚡ evolve from this leaves the engine free: a deal and a ▶ are answered
   await expect(page.locator("#job-slot")).toBeHidden();
   await app.toast(/^⚡ stopped/, { since: mark, timeout: 15_000 });
   await expect(page.locator("#rack-evolve")).toBeEnabled();
-  // Nothing is added after the stop, over the three seconds it was always
-  // watched.
+  // Nothing is added after the stop, its walk let through, over the three
+  // seconds it was always watched: the bank as long as it was, and no answer
+  // to the stopped ⚡ but the stop's (a child bred into a full pool displaces
+  // a sound, so the bank's length alone would not show it).
   await app.quiet(3_000);
   expect((await bankIds(page)).length).toBe(pool);
+  expect(await app.replies("evolved_from", { after: againAt }), "the stopped walk's result was absorbed").toHaveLength(1);
   await page.evaluate(() => window.__pwAll());
 });
