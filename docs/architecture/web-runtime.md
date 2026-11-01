@@ -1038,12 +1038,14 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   middles lie past the view.
 - **First steps** are per level (guide.js `levels`, `setLevel` from
   `levelChanged`), and so is ×: `auracle-guide` keeps `closed` as the levels
-  closed (an old `closed: true` reads as PERFORM's). PATCH's four tick in
-  `playBench` and `firstNotePlayed` (play it), `sendEdit`, `setLock` and
-  `startEvolveFrom`; a dismissed bench tour (`auracle-bench-tour`) counts the
-  last three done and a sound already played (`auracle-played`) the first
-  (`markDone`). TEACH's chip counts the picks to the first refit, and
-  `renderNextStep` says nothing about them while a pair is dealt.
+  closed (an old `closed: true` reads as PERFORM's). A level's closing line
+  is said once: `ended` keeps the levels that said it, beside `closed`.
+  PATCH's four tick in `playBench` and `firstNotePlayed` (play it),
+  `sendEdit`, `setLock` and `startEvolveFrom`; a dismissed bench tour
+  (`auracle-bench-tour`) counts the last three done and a sound already
+  played (`auracle-played`) the first (`markDone`). TEACH's chip counts the
+  picks to the first refit, and `renderNextStep` says nothing about them
+  while a pair is dealt.
 
 ## Faces
 
@@ -1584,8 +1586,17 @@ XY pad is held, however still, and for 1.5 s after the last touch or release
 of one (`handsBusy`, built on `hand.js`'s `heldOrTouched`, the app's rule
 beside `createHand`, over `state.controlTouch`). Only a control's hand
 counts: a control, the XY pad, a MIDI pot or a control's arrow keys
-(`touchControl`); a pad or a pad's key is not a hand on the controls, and
-neither is the page's first moment. A wiring read from the cache for the
+(`touchControl`), and a control sweeping by ear (`hearIt`: ↵ on it, a
+mouse's long press, explain's HEAR IT; `k.sweep`), held for the whole sweep
+and touched at its end (#481: a re-check landing mid-sweep folded the swept
+offset into the centre, and the sweep then returned to its start on top of
+it); a pad or a pad's key is not a hand on the controls, and neither is the
+page's first moment. A sweep ends at once on whatever else moves its
+control (`endSweep`): a hand (a press or an arrow key puts it back where it
+began first, a pot or the XY pad sets it where they are), a re-centre (at
+the centre), the panel rebuilt or another sound (back where it began). ↵
+again starts it over, still ending where it first began, a held ↵'s repeats
+do nothing, and a sweep is never logged as a turn. A wiring read from the cache for the
 sound just opened or a control just placed (`wire`'s hit, `measurePanel`'s)
 answers the player (ADR-025), so it waits only while a control is held
 (`handHeld`), not for the 1.5 s after. What waits is kept in
@@ -1596,8 +1607,11 @@ quarter-second tick (`landDeferred`): a first measurement wires the controls
 `applyRechecked`, which takes a re-check in place when it turns the same
 knobs and re-centres through `applyWired` when it does not, or when it
 replaces a wiring a Take carried over. Until then a control already playing
-keeps its wiring and its place, and one with nothing to turn says it turns
-after you let go.
+keeps its wiring and its place, and one with nothing to turn says what it
+waits for (`waitWords`): *after you let go* while a hand holds a control or
+the XY pad (`handHolding`, not a sweep), *in a moment* when none does and
+only a sweep or the 1.5 s after a touch is left. The quarter-second tick
+draws the words again when a hand takes or lets go (`state.waitHeld`).
 
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
@@ -1726,7 +1740,12 @@ never while typing, under a modal dialog (`host.blocked`, main's `modalUp`,
 the same rule as the level keys) or with ⌘, Ctrl or ⌥; ↵ only with nothing
 focused (a focused named control takes its own Enter and stops it). The first
 steps are added to the guide pill (`guide.js`, `host.guide`), which keeps what
-was done as `auracle-guide` and migrates `auracle-perform-steps` into it.
+was done as `auracle-guide` and migrates `auracle-perform-steps` into it. A
+step may carry a `skip`: the turn's is `reachesNone` (every control on the
+panel a search control), which leaves it out, its pip and the closing line's
+count with it, while such a sound is in hand (#480). The closing line is said
+once (`ended`), so the turn, back on a sound a control reaches and done after
+the line, ticks off without a second.
 
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls

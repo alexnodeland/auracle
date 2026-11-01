@@ -1197,14 +1197,16 @@ class App {
 
   /** Count what the live voices are told to play from here on: each value
    *  written to a knob (`param`), with the page's clock at the write, read
-   *  back by `liveWrites`. A spec's way to say nothing was heard to move. */
+   *  back by `liveWrites`, and the last value written to each knob, read back
+   *  by `liveValues`. A spec's way to say nothing was heard to move. */
   countLiveWrites() {
     return this.page.evaluate(() => {
       const lv = window.__aur.getLive();
       window.__liveWrites = [];
+      window.__liveValues = {};
       if (lv.__counted) return;
       const param = lv.param.bind(lv);
-      lv.param = (...a) => (window.__liveWrites.push(performance.now()), param(...a));
+      lv.param = (...a) => (window.__liveWrites.push(performance.now()), (window.__liveValues[a[0]] = a[1]), param(...a));
       lv.__counted = true;
     });
   }
@@ -1212,6 +1214,12 @@ class App {
   /** The times of the writes counted since `countLiveWrites`. */
   liveWrites() {
     return this.page.evaluate(() => window.__liveWrites || []);
+  }
+
+  /** The last value written to each knob since `countLiveWrites`, by its
+   *  address: what the voices play there, of the knobs written. */
+  liveValues() {
+    return this.page.evaluate(() => ({ ...(window.__liveValues || {}) }));
   }
 
   /** Put the audio context in `state` as the page reads it (iOS Safari's
