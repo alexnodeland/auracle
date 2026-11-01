@@ -12,10 +12,11 @@
 //
 // What this claims, at each level (EVOLVE, PERFORM, PATCH, TASTE, LEARNING),
 // while a pick's receipt is on screen (picked in EVOLVE, then carried to the
-// level within its seven seconds), with PERFORM's sound moved from home so
-// KEEP and BACK are up, at 1440 × 900, 1280 × 720 and 820 × 1180 (a tablet
-// held upright, the desk's layout under a finger), and on a phone (390 ×
-// 844, 375 × 667, and 844 × 390 on its side):
+// level within its seven seconds), with PERFORM's sound (Glass Pad, opened
+// from the presets: `moveFromHome` says why not the sound boot deals) moved
+// from home so KEEP and BACK are up, at 1440 × 900, 1280 × 720 and 820 ×
+// 1180 (a tablet held upright, the desk's layout under a finger), and on a
+// phone (390 × 844, 375 × 667, and 844 × 390 on its side):
 //
 // - A press at the middle of each control of the level's foot and action row
 //   named in FOOT (each of which must be on screen) reaches that control.
@@ -140,14 +141,53 @@ const UNDER_THE_TOAST = ({ foot, heads }) => {
 // so a failure names what it covers, not that it went.
 const SETTLE_MS = 5_000;
 
-/** PERFORM's sound moved from home, so KEEP and BACK are up (a knob turned
- *  up from the keyboard, as perform_layout.spec.js turns one). */
-async function moveFromHome(page) {
-  await goLevel(page, "perform");
-  const knob = page.locator(".pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)").first();
+/** PERFORM's sound moved from home, so KEEP and BACK are up: Glass Pad in
+ *  hand on its shipped wiring, and a control of it turned from the keyboard
+ *  the way it opens there. Pointer moves are taps with `touch` (no mouse
+ *  left anywhere), clicks without.
+ *
+ *  Not the sound boot deals: nothing promises it a control that turns up
+ *  (#574). At 375 × 667 seed 39 deals one no control reaches (0 of 6), and
+ *  seeds 7, 22, 27 and 40 ones whose controls turn down only, so the knob
+ *  this waited for never came, for the whole of the test's time.
+ *
+ *  Opened at PATCH, through the bank's sheet where a phone has one (as
+ *  phone_fits.spec.js `presetByTouch` opens it), Glass Pad plays at once on
+ *  the wiring shipped with the app (perform-wirings.json: Bright turns both
+ *  ways), the same on every seed, and is measured again in the background
+ *  ("re-checking"). That measurement is held from main until the sound has
+ *  moved. Landed between the knob being chosen here and the first press (the
+ *  presses are a hand, which a wiring waits out), it could close the half
+ *  they push toward, or make the control a search one, and nothing would
+ *  move. Landed after, it cannot take the move away: the controls are wired
+ *  around the sound where the hand left it and home stays home (perform.js
+ *  `applyWired`), and a control whose half it closed stops at the centre,
+ *  the sound still moved (web-runtime.md § PERFORM on the main thread).
+ *  Waiting for it instead cost about 15 s a test here, behind the pool's
+ *  fill (perform_instant.spec.js's test that waits for one takes 23 to 88 s
+ *  on CI). */
+async function moveFromHome(page, app, { touch = false } = {}) {
+  const press = (target) => (touch ? target.tap() : target.click());
+  const level = (name) => (touch ? tapLevel(page, name) : goLevel(page, name));
+  await level("patch");
+  const sheet = page.locator("#bank-btn");
+  if (await sheet.isVisible()) await press(sheet);
+  await press(page.locator("#bank-tab-presets"));
+  await app.hold("perform_wired");
+  await press(page.locator(".bank-item", { hasText: "Glass Pad" }).first().locator(".bi-name"));
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
+  await expect(page.locator("body")).not.toHaveClass(/\bbank-open\b/);
+  await level("perform");
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
+  // Wired from the file at once, none waiting: a file that came too late to
+  // be read would leave the controls listening for the measurement held.
+  await app.reached({ wired: true, ms: 30_000 });
+  const knob = page.locator(".pf-deck .pf-knob:not(.search):not(.pending)").first();
+  const key = /\bhalf-hi\b/.test(await knob.getAttribute("class")) ? "ArrowDown" : "ArrowUp";
   await knob.focus();
-  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+  for (let i = 0; i < 8; i++) await page.keyboard.press(key);
   await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
+  await app.release();
 }
 
 /** Pick A in EVOLVE once its pair is up, and wait for the receipt on screen. */
@@ -177,7 +217,7 @@ for (const { width, height, touch } of [{ width: 1440, height: 900 }, { width: 1
 
     test(`a pick's receipt covers no control and no heading at any level at ${width} × ${height}`, async ({ page, app }) => {
       await app.boot();
-      await moveFromHome(page);
+      await moveFromHome(page, app);
       for (const level of LEVELS) {
         await receiptAt(page, app, level);
         await expect.poll(() => covered(page, level, true), { message: `what a pick's receipt covers at ${level}`, timeout: SETTLE_MS }).toEqual([]);
@@ -243,7 +283,7 @@ for (const [width, height, crowded] of [[390, 844], [375, 667, true], [844, 390]
 
     test(`on a phone at ${width} × ${height} a pick's receipt covers no control and no heading at any level, and a swipe up puts it away`, async ({ page, app }) => {
       await app.boot();
-      await moveFromHome(page);
+      await moveFromHome(page, app);
       for (const level of LEVELS) {
         await receiptAt(page, app, level);
         await expect.poll(() => covered(page, level, false), { message: `what a pick's receipt covers at ${level}`, timeout: SETTLE_MS }).toEqual([]);
@@ -336,11 +376,7 @@ test.describe("a phone, 390 × 844, the XY pad", () => {
 
   test("on a phone a toast moves clear of the XY pad coming up under it, after a tap on its words too", async ({ page, app }) => {
     await app.boot();
-    await tapLevel(page, "perform");
-    const knob = page.locator(".pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)").first();
-    await knob.focus();
-    for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
-    await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
+    await moveFromHome(page, app, { touch: true });
     await tapLevel(page, "evolve");
     const choose = page.locator("#choose-a");
     await app.engine((timeout) => expect(choose).toBeEnabled({ timeout }), { ms: 30_000 });
