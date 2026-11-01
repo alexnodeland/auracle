@@ -6507,11 +6507,12 @@ g.performed .knob-value { fill: var(--phos-b); }
    shows on PERFORM, and PERFORM keeps it a row of room under the well. */
 .guide { position: absolute; left: var(--s5); bottom: var(--s4); z-index: 6; max-width: calc((100% - var(--rail-w)) / 2 - var(--s5)); }
 .guide.hidden, body:not([data-level="perform"]):not([data-level="patch"]) .guide { display: none; }
-/* PATCH leaves the pill a row under its well, as PERFORM does. Asked of
-   the stage, whose child the pill is, and of its children only: asked of
-   body, it was asked again across the whole page at every element added
-   or taken away anywhere in it, so each of ⌘K's letters restyled more of
-   the page, and slower (#513). :where() keeps each rule's specificity. */
+/* PATCH leaves the pill a row under its well, as PERFORM does. */
+/* Each room for the pill is asked of the stage, whose child the pill is,
+   and of its children only: asked of body, it was asked again across the
+   whole page at every element added or taken away anywhere in it, so each
+   of ⌘K's letters restyled more of the page, and slower (#513). :where()
+   keeps each rule's specificity. */
 body[data-level="patch"] :where(.stage):has(> #guide:not(.hidden)) > #view-patch { padding-bottom: calc(var(--s7) + var(--s2)); }
 body :where(.stage):has(> #guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7); }
 .guide .next {
