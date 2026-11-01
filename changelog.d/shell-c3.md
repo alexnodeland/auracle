@@ -19,8 +19,8 @@
   zoom in and pinch to zoom out. At either end, the levels nod
   (`shell_zoom.spec.js`, #131).
 - **A sound you open from the bank flies from its row into your hands,**
-  once it has opened: to the face at OUT in PATCH, or wherever the level
-  you're at shows the sound you're playing (`shell_zoom.spec.js`, #131).
+  wherever the level you're at shows the sound you're playing, or to the
+  sound in hand in the menu bar (`shell_zoom.spec.js`, #131).
 - **PERFORM's first steps go on to the levels:** after asking for an offer,
   *Press ⌥↑ to zoom out to TASTE*, then *Hold ⌥ to see what the model
   believes*. If you had already done PERFORM's first three steps, the pill

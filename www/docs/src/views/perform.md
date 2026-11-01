@@ -753,7 +753,11 @@ bank, a card in EVOLVE or TEACH, a sound on TASTE’s map, a preset or the first
 of your picks when you teach it: the app already holds what the keys need, and
 the engine catches up behind it, so PATCH’s rack shows it once the engine has
 rendered it. Its controls work at once if PERFORM has measured it, and every
-preset ships measured.
+preset ships measured. Its face is here already too: opened from the bank
+(a row, or a sound in ⌘K’s list while its row is in the bank’s view), it
+flies from its row into the well, which keeps the face it had until the new
+one lands; opened any other way, or with reduced motion set, the new face is
+simply there.
 
 Only a sound the app doesn’t hold yet, as it starts, waits for the engine.
 The status line names it, *opening Acid Line…*, and the name above stays the

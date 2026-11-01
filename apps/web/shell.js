@@ -350,8 +350,7 @@ export function createShell(host = {}) {
   // audit finding 1).
   let moveSeq = 0;
   let moving = null; // {seq, finish(), ...}: the move in flight
-  let afterMove = []; // what waits for it to land (a sound taken up)
-  let taking = 0; // a sound taken up, in flight: when it lands
+  let taking = null; // a sound taken up, in flight: {id, level, landed, timer}
 
   /** Where `level` draws the sound you're playing, if that is the face that
    *  flies (`key`): an anchor showing another sound's face (an EVOLVE card,
@@ -368,17 +367,19 @@ export function createShell(host = {}) {
     return a && a.box && a.key === key ? a.box : null;
   }
 
-  /** The face the move carries: the sound you're playing's, from the
-   *  bench's own render (main.js `heldFace`: `faceOf`, the engine's
-   *  `face_of_key`), or null when there is none to show (an edit or an open
-   *  still at the engine, a patch that failed its check), and then nothing
-   *  flies (ADR-012: its one claim is "this is the sound you're playing"). */
+  /** The face the move carries: the sound you're playing's, the one main
+   *  has filed for the bench's tree (main.js `heldFace`: for a sound just
+   *  opened, the face its row drew until the engine's answer replaces it;
+   *  after an edit, the engine's), or null when there is none to show (an
+   *  edit or an open still at the engine, a patch that failed its check),
+   *  and then nothing flies (ADR-012: its one claim is "this is the sound
+   *  you're playing"). */
   function heldKey() {
     const h = host.heldFace ? host.heldFace() : null;
     return h && h.key ? h.key : null;
   }
 
-  /** Land the move in flight now, and whatever waited for it. */
+  /** Land the move in flight now. */
   function settle() {
     const m = moving;
     moving = null;
@@ -394,13 +395,12 @@ export function createShell(host = {}) {
     if (m) {
       clearTimeout(m.guard);
       for (const a of m.anims) a.cancel();
-      overlay.clear();
+      // Its own face only, if it flew one: a sound taken up during a move
+      // that carried none (↓ patch) lands by itself (`takeUpEnd`).
+      if (m.flyId != null) overlay.clear(m.flyId);
       puckRest();
       if (host.mark) host.mark("level-landed", { from: m.prev, to: m.level, dir: m.dir, cut: !m.done, flew: m.flew });
     }
-    const queued = afterMove;
-    afterMove = [];
-    for (const f of queued) f();
   }
 
   /** Go to `level`. `chosen`: the player asked for it (a rail stop, a level
@@ -410,13 +410,10 @@ export function createShell(host = {}) {
     if (!isLevel(level) || !levels.has(level)) return false;
     if (cur === level) return false;
     // A move in flight lands before the next starts, and a sound taken up
-    // and still flying is put down where it was going.
+    // and still flying is put down where it was going: the hand it flew to
+    // shows it now (`landed`), before the level you leave is read.
     if (moving) moving.finish();
-    if (taking) {
-      clearTimeout(taking);
-      taking = 0;
-      overlay.clear();
-    }
+    takeUpEnd(null);
     const prev = cur;
     const dir = prev ? dirOf(prev, level) : null;
     const len = prev && dir ? ms("--d-zoom") : 0;
@@ -450,7 +447,7 @@ export function createShell(host = {}) {
       settle();
       return true;
     }
-    const m = { seq, prev, level, dir, anims: [], done: false, flew: null, guard: 0 };
+    const m = { seq, prev, level, dir, key, flyId: undefined, anims: [], done: false, flew: null, guard: 0 };
     m.finish = () => {
       if (moving !== m) return;
       settle();
@@ -483,6 +480,7 @@ export function createShell(host = {}) {
       m.anims.push(out, into);
       const f = key ? flightEnds(from, to, dir) : null;
       const id = f ? overlay.fly(f, key, len) : null;
+      if (id != null) m.flyId = id;
       puckTravel(prev, level, len);
       // Landed: the face is drawn at the end of its flight, exactly where
       // the level draws it, and then the level takes over.
@@ -1029,44 +1027,65 @@ export function createShell(host = {}) {
     stage.addEventListener("pointercancel", lift, true);
   }
 
-  // ---------- a sound taken up from the bank ----------
-  /** Its face, from where the bank showed it (`from`, a box in the page, and
-   *  `key`, its render key), flies to where the level you're at draws the
-   *  sound you're playing, once the level draws it: called when the sound
-   *  has reached your hands, never before (the bench's reply). Where the
-   *  level has no place for it, it fades out where it was. After a move in
-   *  flight lands; not under reduced motion. True if it flies. */
-  function takeUp(from, key) {
+  // ---------- a sound taken up from the bank or a card ----------
+  /** Its face, from where the bank or a card showed it (`from`, a box in
+   *  the page, and `key`, its render key), flies to where the level you're
+   *  at draws the sound you're playing, or, at a level with no place for
+   *  it, to the sound in hand in the menu bar: in the caller's task, its
+   *  first frame drawn before this returns (ADR-025). The caller has put
+   *  the sound in your hands already and holds what the hands show (main.js
+   *  `holdHand`), so the place it flies to reports this face's key while it
+   *  still draws the one it replaces. `ready`: a promise the landing waits
+   *  for (the new pictures decoded, so the hand is never drawn empty).
+   *  `landed(flew)` is called exactly once: with the box it was drawn at
+   *  last when it lands, or null when it is cut short (a move, another
+   *  sound taken up); the face comes off the page in the same task, so the
+   *  hand shows it the frame the flight is gone. Not during a move that
+   *  carries a face of its own, under reduced motion, from where it would
+   *  land, or with nowhere to go: false, and `landed` is not called. */
+  function takeUp(from, key, { ready = null, landed = null } = {}) {
     const len = ms("--d-zoom");
-    if (!len || !key || !from) return false;
-    if (moving) {
-      afterMove.push(() => takeUp(from, key));
-      return true;
-    }
-    if (overlay.busy() || key !== heldKey()) return false;
+    // A move carrying its own face has the page's one flight (the level
+    // you leave lands first otherwise); one that carries none (an open on
+    // its way, ↓ patch) leaves it to this.
+    if (!len || !key || !from || (moving && moving.key)) return false;
+    // Another sound taken up and still flying: the hand is this one's now.
+    takeUpEnd(null);
     const level = cur;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (moving || cur !== level || overlay.busy()) return;
-      // Where the level draws it, or, at a level with no place for it, the
-      // sound in hand in the menu bar.
-      const hand = () => {
-        const a = host.handAnchor ? host.handAnchor() : null;
-        return a && a.box && a.key === key ? a.box : null;
-      };
-      const there = placeOf(level, key) ? () => placeOf(level, key) : hand;
-      const f = flightEnds(from, there(), null);
-      if (!f) return;
-      const id = overlay.fly(f, key, len, there);
-      taking = setTimeout(() => {
-        taking = 0;
-        const flew = overlay.land(id);
-        requestAnimationFrame(() => {
-          overlay.clear(id);
-          if (flew && host.mark) host.mark("taken-up", { level, flew });
-        });
-      }, len);
-    }));
+    const hand = () => {
+      const a = host.handAnchor ? host.handAnchor() : null;
+      return a && a.box && a.key === key ? a.box : null;
+    };
+    const there = placeOf(level, key) ? () => placeOf(level, key) : hand;
+    const to = there();
+    if (!to) return false;
+    // Already there (an EVOLVE card opened is where EVOLVE draws it).
+    if (Math.abs(to.x - from.x) < 1 && Math.abs(to.y - from.y) < 1 && Math.abs(to.h - from.h) < 1) return false;
+    const f = flightEnds(from, to, null);
+    if (!f) return false;
+    const id = overlay.fly(f, key, len, there);
+    const me = { id, level, landed, timer: 0 };
+    taking = me;
+    me.timer = setTimeout(() => {
+      me.timer = 0;
+      const flew = overlay.land(id);
+      Promise.resolve(ready).catch(() => {}).then(() => {
+        if (taking === me) takeUpEnd(flew);
+      });
+    }, len);
     return true;
+  }
+  /** The flight of a sound taken up is over: landed (`flew`, the box it
+   *  was drawn at last) or cut short (null). The hand shows what it holds
+   *  (`landed`) and the face comes off the page, in one task. */
+  function takeUpEnd(flew) {
+    const t = taking;
+    if (!t) return;
+    taking = null;
+    clearTimeout(t.timer);
+    if (t.landed) t.landed(flew);
+    overlay.clear(t.id);
+    if (flew && host.mark) host.mark("taken-up", { level: t.level, flew });
   }
 
   // ---------- ⌘K: the one list (Plan-008 §2.4) ----------
@@ -1498,6 +1517,9 @@ export function createShell(host = {}) {
     start,
     zoom,
     takeUp,
+    /** Cut a sound taken up short, if one is flying: the hand shows what it
+     *  holds now (another sound asked for, the open taken back). */
+    takeUpCut: () => takeUpEnd(null),
     /** The level shown, or null before `start`. */
     current: () => cur,
     /** Is the model view up? */

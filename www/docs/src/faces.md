@@ -44,7 +44,9 @@ the face.
 ## Where faces appear
 
 - **The menu bar**, beside the name of the sound you’re playing, at every
-  level: the face of what the keys play.
+  level: the face of what the keys play. A sound you open flies into it, or
+  into PERFORM’s well, from its row or card, and it shows the new face as
+  that one lands.
 - **[The bank](./bank.md)**, on every row, in a column left of the row’s two
   lines. A preset’s face comes with the app, so a preset row never waits for
   a render of its own.
