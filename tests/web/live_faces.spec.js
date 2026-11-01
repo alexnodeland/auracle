@@ -351,6 +351,9 @@ test.describe("at the Air's Retina scale", () => {
       let t = 1000;
       let height = 499;
       let x = 139;
+      // The idle callbacks the loops ask for (the idle probe's retake), run
+      // by the spec.
+      const idles = [];
       const loop = (paintWorker, left, paintSwitch) => {
         const big = host(left);
         const small = host(left + 460);
@@ -361,6 +364,7 @@ test.describe("at the Air's Retina scale", () => {
           silk: () => "#e8e4da",
           paintWorker,
           paintSwitch,
+          idle: (f) => idles.push(f),
           raf: (f) => (queued = f),
           now: () => t,
         });
@@ -427,9 +431,12 @@ test.describe("at the Air's Retina scale", () => {
       const bornP = painter();
       const handed = loop(handedP.make, 0, createPaintSwitch({ budget: -1 }));
       const born = loop(bornP.make, 0, createPaintSwitch({ budget: -1 }));
-      // The idle probe, before the first frame: over a budget no paint meets.
+      // The idle probe, before the first frame, over a budget no paint
+      // meets, and its retake, in an idle callback of its own.
       born.lf.warm(48000, { w: 458, h: 499, box: { x: 139, y: 38, w: 180, h: 299 } });
-      const bornAtIdle = bornP.started;
+      const retakeAsked = idles.length === 1 && !bornP.started;
+      idles.shift()();
+      const bornAtIdle = retakeAsked && bornP.started;
       const here = loop(null, 0);
       const shown = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
       const until = async (ok) => {
@@ -522,7 +529,7 @@ test.describe("at the Air's Retina scale", () => {
     expect(got.painted, "its painter painted the frames after").toBeGreaterThan(50);
     // The probed loop: its painter started by the probe, before any frame,
     // and every frame painted by it.
-    expect(got.bornAtIdle, "the probed loop's painter started by the probe").toBe(true);
+    expect(got.bornAtIdle, "the probed loop's painter started by the probe's retake, in an idle callback of its own").toBe(true);
     expect(got.bornHere, "no frame of the probed loop painted on the page").toBe(0);
     expect(got.bornShown, "its layers showed its painter's pictures").toBe(true);
     expect(got.bornPainted, "its painter painted the frames").toBeGreaterThan(50);

@@ -1466,6 +1466,8 @@ function bootLiveFaces() {
     // where making them on this thread measures over budget, at the idle
     // probe or later (live-face.js `createPaintSwitch`), and here otherwise.
     paintWorker: () => new Worker(`./live-paint.js?v=${BUILD}`, { type: "module" }),
+    // The idle probe's retake, in an idle moment of its own.
+    idle: idleSoon,
   });
   // PERFORM's well: the sound in hand, and B while it holds an offer.
   liveFaces.add({

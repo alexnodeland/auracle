@@ -1244,8 +1244,12 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   face (PERFORM's well at the size it is drawn, 240 × 480 CSS px, which its
   well scales; its two outlines at their loudest glow) on a canvas of its
   own that is never shown, by the calls a frame makes, first untimed with no
-  glow and then timed (once more if that was over, the lesser kept:
-  `LIVE_PROBE_RUNS`). In Firefox at the Air's Retina scale (×2) on an M3
+  glow and then timed. A reading inside budget decides alone; one over it
+  is taken again in an idle callback of its own (`idle`, main's
+  `idleSoon`), so no one idle task pays the glow twice, and the lesser
+  decides (`LIVE_PROBE_RUNS`). Nothing starts the painter between the two:
+  a sound played meanwhile is painted on the main thread until they
+  decide, and the window still times it. In Firefox at the Air's Retina scale (×2) on an M3
   Max one timing measured 6 to 12 ms (26 once, on a boot still busy),
   against 7 ms a frame for the real well (458 × 499 at a 1440 × 900
   window); in Chromium on the reference profile, 0.1 to 1 ms.
