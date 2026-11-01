@@ -374,7 +374,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `@quarantine` test; or a `main.js` change that reaches EVOLVE's
   generations or PERFORM's offers. It is none of the queue's conditions;
   without the label, the push to `main` is where a slow test catches the
-  change. By hand, a `full-ci` PR is queued at once. A wave holds it out of
+  change (a push to `main` that changes nothing those tests cover runs
+  none of them, unless it cancelled a waiting nightly run, which it then
+  stands in for). By hand, a `full-ci` PR is queued at once. A wave holds
+  it out of
   the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`,
   then `scripts/ops/queue_group.sh`, which waits for the suite;
   [Waves](#waves)): a wave's PRs land minutes apart, and a slow test one of
@@ -475,10 +478,19 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   three merges seconds apart, a run in progress finishes, the newest waiting
   run replaces any older one, and a run whose commit `main` has already moved
   past runs nothing, since the newest run covers it. The *Slow suite* runs on
-  `main` the same way, and nightly; the *Flake hunt* nightly. A failure there
-  files an issue. *Mutants weekly* runs on Saturdays over a part of the
-  workspace (a fifteen-week cycle aims to cover it all), and a surviving
-  mutant files one too
+  `main` the same way, and nightly; the *Flake hunt* nightly, three runners
+  at most. A failure there files an issue. Work off the gate leaves the
+  queue its runners: a push to `main` that changes nothing the slow tests
+  cover runs none of them (unless it cancelled a waiting nightly run: then
+  it runs in the night's place), and the *Slow suite*'s and *Search health*'s
+  nightly runs run nothing on a night `main`'s head is the commit their
+  newest run on `main` that tested anything tested green, a night's, a
+  push's or one by hand, each saying so in its summary; a run by hand
+  always runs
+  ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
+  *Mutants weekly* runs on Saturdays over a part of the workspace (a
+  fifteen-week cycle aims to cover it all), and a surviving mutant files
+  one too
   ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)).
 - **CI's health is measured:** `python3 scripts/ci_stats.py` reports the
   last 7 days of CI, by lane and kind of PR, and `--compare` sets each

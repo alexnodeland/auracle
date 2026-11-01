@@ -35,6 +35,7 @@ add one then conflict only when no row sorts between theirs. -->
 | Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
 | Mutants | `make mutants DIFF=1` (the code changed since `origin/main`, `BASE=` for another), `make mutants CRATE=<crate>` (needs cargo-mutants at the `Makefile`'s `MUTANTS_VERSION`: `make setup`) | A test notices when the code is wrong: every mutant cargo-mutants makes of the code (a function returning a default, a `<` made `<=`) fails a test of its crate's fast tier. Each survivor is named by file, line, function and change in `mutants.out/missed.txt` ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)) | Any Rust change, before review; a survivor there keeps the PR out of the merge queue (its *Mutants* check is required: [CI tiers](#ci-tiers)) |
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, and from that pool the same PERFORM offer, taste fit and ⚡ walk, all pinned to `crates/auracle-wasm/tests/boot_probe.json`; and every preset's face rendered in the built wasm is the one `apps/web/preset-faces.json` ships, which `tests/shipped_faces.rs` holds to the native render | A draw from an RNG, the prior, vetting, the standardizer fit, the taste model, a walk's kernel (a `fugue-ppl` or `fugue-evo` bump); regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool or a moved search owes. A preset whose face the wasm renders otherwise than the native build is drawn in the page from a face its engine does not make: the spec names it. No Rust test fails without the `gen_index` fix, or `fugue-ppl` 0.2.3's, on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
+| Off-gate skips | `python3 scripts/test_ci_skip.py` (in `make dev-check`, its `dev-ci-skip` part); against the live repository, `GITHUB_REPOSITORY=alexnodeland/auracle GITHUB_SHA=<sha> python3 scripts/ci_skip.py nightly --workflow search-health.yml` (or `main-push --workflow slow-suite.yml`) prints what that run would do, and why | When *Search health*'s and the *Slow suite*'s nightly runs skip: `main`'s head is the commit the newest run of theirs on `main` that tested anything tested green, a night's, a push's or one by hand (a `cold` one too), never a PR's, a red one never looked past and one that skipped never counted; when the *Slow suite* skips a push to `main` that changes nothing its tests cover since the newest commit a run of it on `main` tested green (by `scripts/changes.py`'s `rust`, `reach` and `full`, every path of [When the slow tier runs](#ci-tiers)); that a superseded or skipped run is never that base, nor a PR's run; that a push that cancelled the waiting nightly run runs in its place until a run on `main` has tested green since; and that any error (the API, an answer it can't read, a compare it can't trust, the time) is a run, never a skip or a red step. Beside them, that the *Flake hunt* never asks, and holds at most three runners at once: the most its jobs can hold side by side, from their `needs` and `max-parallel` (it was nine) | `scripts/ci_skip.py`, the *Asked for* jobs that call it, `scripts/changes.py`'s classes, or `flake-hunt.yml`'s jobs |
 | PR checks | `python3 scripts/pr_checks.py check --pr <n>` (reads the PR with `gh`); before a PR is opened, `PR_TITLE="…" PR_BODY="$(cat <body file>)" python3 scripts/pr_checks.py title` (and `links`); its tests, `python3 scripts/test_pr_checks.py`, are in `make dev-check` | A PR's title is a conventional subject; its body names each issue it finishes with a closing keyword of its own (`Closes #a, #b` fails: GitHub would close #a only), each it advances with `Refs`, or says why on a `No issue:` line; every issue named exists and is an issue, and none named with `Closes` is closed; a warning when `apps/web/`, `www/docs/src/` or `www/landing/` changed with no `changelog.d/` entry. `merged --pr <n> --dry-run` says what the merge job would do. The tests cover the parse, the title, the warning and the merge job on a fake API, with no network: the boxes it ticks among them (one issue; two, one still open; in a code block, a comment or a quote; a `<!--` in code, mid-line or never closed; ticked already; naming a PR; naming an issue closed as not planned; a run again, and one after a red run; a line changed between the read and the write; a read or a write that failed; another run's write putting a box back) | A PR's title or body before it is opened or edited; `scripts/pr_checks.py` |
 | Preset faces | `make preset-faces` | Regenerates `apps/web/preset-faces.json`, every preset's face (one render each, natively: about 14 s of one core's time) | A preset, the phrase, the render namespace (`RENDER_EPOCH`, the quiver version), the reference clip, the face's encoding, or anything that moves a render (`make test` says so: `tests/shipped_faces.rs`) |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
@@ -259,9 +260,9 @@ scripts/ops/rows_resolve.py keeps both. -->
 | --- | --- | --- | --- |
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, tells each closed issue's parent its count of sub-issues closed, and ticks each box in another open issue that names an issue that closed, once every issue the box names is closed as completed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`), each leg building the tests (`make test-build`) in a step of its own before it runs them ([The Rust legs](#ci-tiers)); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
-| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
-| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium by the same rate up to the profile's cap, `pageRateMax`), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), every test given its verdict: eight runners for Chromium and five for Firefox, three at a time, each dealt about 28 minutes of its browser's tests by the job's own timings (each test's last time in each browser), so each ends about ten minutes inside its 40-minute cut and the job takes about two and three quarter hours (figures from the nights on the 1,100 ms profile, before #509 lowered the estimate: each test is shorter on the new one, so as the job's timings refresh, each runner's share and the job fall, and the first nights on it give the new figures). Each budget names the profile beside its figure, and one over its limit comments on *Speed budgets over their limit* with a table of each (its figure and limit, the browser, the rates its boot ran at on the profile, the CPU it ran on, the test) and each test that failed on something else. Beside them, on a runner of its own, the audio thread's budget: `live_cost.mjs --sweep-only --gate` times every preset's live voices in node at four voices and at eight (A, and B holding the same preset, a proxy for an offer bred from it) against ADR-025's half a quantum divided by the runner's rate on the profile (its calibration render, in node, against the reference's time, `referenceMs`, an estimate until the Air measures it: [The reference profile](#rules)), and the run's summary names each preset over the limit with the issue it waits on (#320); a budget, red only when it could not measure ([Rules](#rules)) | No |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`), each leg building the tests (`make test-build`) in a step of its own before it runs them ([The Rust legs](#ci-tiers)); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On `main`, a push that changes what they cover, and nightly unless the newest run on `main` that tested anything (a night's, a push's or one by hand) tested `main`'s head green ([When the slow tier runs](#ci-tiers)); on a PR only with the `full-ci` label; by hand, always | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly, even when `main` has not moved (it boots unseeded, so the same commit can show a new flake) | The fast tier's browser specs three times each, against main, on twelve runners three at a time, the workflow's whole share ([Runners](#ci-tiers)); each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
+| Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, after the hunt and what it files | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` on the reference profile (`AURACLE_PROFILE=air`, [ADR-025](../decisions/025-every-interaction-answers-at-once.md): a render as long as on the reference machine, `?farm=2`, the page throttled in Chromium by the same rate up to the profile's cap, `pageRateMax`), in Chromium and in Firefox (each a project of its name, Firefox with PulseAudio started for it), every test given its verdict: eight runners for Chromium and five for Firefox, three at a time, each dealt about 28 minutes of its browser's tests by the job's own timings (each test's last time in each browser), so each ends about ten minutes inside its 40-minute cut and the job takes about two and three quarter hours (figures from the nights on the 1,100 ms profile, before #509 lowered the estimate: each test is shorter on the new one, and on 2026-11-01, its first night, each runner took 11 to 19 minutes with its setup and the job about 70 minutes; as the job's timings refresh, each runner's share follows). Each budget names the profile beside its figure, and one over its limit comments on *Speed budgets over their limit* with a table of each (its figure and limit, the browser, the rates its boot ran at on the profile, the CPU it ran on, the test) and each test that failed on something else. Beside them, on a runner of its own, the audio thread's budget: `live_cost.mjs --sweep-only --gate` times every preset's live voices in node at four voices and at eight (A, and B holding the same preset, a proxy for an offer bred from it) against ADR-025's half a quantum divided by the runner's rate on the profile (its calibration render, in node, against the reference's time, `referenceMs`, an estimate until the Air measures it: [The reference profile](#rules)), and the run's summary names each preset over the limit with the issue it waits on (#320); a budget, red only when it could not measure ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
@@ -409,8 +410,10 @@ run's summary says so, with a link. Only a queue run's record counts: a PR's
 fast lane runs part of the gate and leaves none. Everything runs on main
 when no record matches (a merge by hand, outside the queue), on a manual
 run, and for a PR from a fork. The Site job always runs on main: its build
-is what deploys. The *Slow suite* and the nightly flake hunt still run in
-full.
+is what deploys. The *Slow suite* and the nightly flake hunt reuse no
+record of the queue's: the *Slow suite* runs in full on a push that changes
+what its tests cover, and runs nothing on one that doesn't
+([When the slow tier runs](#ci-tiers)).
 
 **Latest only.** A batch lands as two or three merges seconds apart, and
 only the last one's files are the files the queue tested. So main keeps its
@@ -419,7 +422,8 @@ newest waiting run replaces any older one, and a run whose commit main has
 already moved past runs nothing and says so in its summary, its `CI` green
 with every job skipped. The newest push's run covers it. A run that reads
 main's tip before the batch's next merge has landed finds nothing newer, and
-runs in full. The *Slow suite* on main does the same.
+runs in full. The *Slow suite* on main does the same, and then also runs
+nothing for a push that changes nothing its tests cover.
 
 **The site deploys from CI.** On main, the Site job keeps the site it built
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
@@ -468,17 +472,18 @@ a commit SHA with its version in a comment; Dependabot
 one for `tests/web`'s npm packages (whose `@playwright/test` is also the
 tag of the browser jobs' image, so its bump is one PR).
 
-**When the slow tier runs.** On `main`, in full: the newest push (its run
-covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
-failure there opens an issue titled *Slow suite failing on main*, or comments
-on the open one. A quarantined test's failure is not one: it is said on that
-test's own issue, and the run stays green, so the issue means a new
-regression, or a quarantined test whose issue was closed
-([Flakes](#flakes)). On demand from the Actions tab. On a PR, only when the
-PR carries the `full-ci` label: adding it starts a run, and every push to
-the labelled PR runs it again; a PR without it runs nothing there. Add it to
-a PR that changes what the slow tests cover, the paths the workflow used to
-run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
+**When the slow tier runs.** On `main`, in full: the newest push that
+changes what the slow tests cover (its run covers the pushes before it;
+[Latest only](#ci-tiers)) or that took a waiting nightly run's place, and
+nightly ([What `main` skips](#ci-tiers), below). A failure there opens an
+issue titled *Slow suite failing on main*, or comments on the open one. A quarantined test's failure is not one: it is
+said on that test's own issue, and the run stays green, so the issue means a
+new regression, or a quarantined test whose issue was closed
+([Flakes](#flakes)). On demand from the Actions tab, always. On a PR, only
+when the PR carries the `full-ci` label: adding it starts a run, and every
+push to the labelled PR runs it again; a PR without it runs nothing there.
+Add it to a PR that changes what the slow tests cover, the paths the
+workflow used to run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
 `rust-toolchain.toml`, the `Makefile`, `.config/nextest.toml`, `slow-suite.yml`
 or `.github/actions/`;
 `apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
@@ -487,6 +492,56 @@ or `.github/actions/`;
 `package-lock.json`; or a spec file that holds an `@slow` or `@quarantine`
 test. Also a `main.js` change that reaches EVOLVE's generations or PERFORM's
 offers. Otherwise the push to `main` is where a slow test catches it.
+
+**What `main` skips** (#582). Work off the gate runs beside the merge
+queue's batches, and each runner it holds is one a batch can wait for, so a
+run that would only repeat an answer runs nothing (its *Asked for* job
+alone, for a few seconds) and says why in its summary, with the run whose
+answer stands:
+
+- **A push to `main` that changes nothing the slow tests cover** since the
+  newest commit a run of the *Slow suite* on `main` tested green. What they
+  cover is read through `scripts/changes.py`'s classes: `rust` (the crates
+  and how they build and test), `reach` (what the browser reads: the app,
+  its specs and what runs them) and `full` (a workflow, an action or the
+  classifier), which between them hold every path the list above names,
+  and more (any module of the app, any spec). A docs, site or Claude Code
+  push so leaves the next batch its runners, where its run would start just
+  as that batch does. The base is that commit, not the push's parent, so a
+  superseded push's changes are counted by the next run that runs. But
+  on `main` only the newest waiting run is kept, so a push that lands
+  while the nightly run waits cancels it; that push's run then tests
+  `main` in the night's place, whatever the push changed, and so does each
+  push after it until a run on `main` has tested green since that night.
+  Without it, a docs push could cancel the night and skip, and `main`
+  would move with no slow test run on it that night (the nightly run of
+  Oct 6, #325, was cancelled so, with no job run). Over Oct 18 to Nov 1,
+  3 of the 33 pushes whose run tested anything would have skipped (about
+  130 runner-minutes); no nightly run was cancelled in those days.
+- **A nightly run of the *Slow suite* or of *Search health* when `main`'s
+  head is the commit** the newest run of it on `main` that tested anything
+  tested green, whatever that run was: a night's, a push's (the *Slow
+  suite*'s, in full or in a cancelled night's place) or one by hand, a
+  `cold` one too (not *Search health*'s by hand, which measures the seeds
+  it was asked for, and the API does not say which). Both are seeded,
+  so the same commit gives the same answer whatever started the run that
+  gave it. A red run is that answer too, and the night runs again; a run
+  that skipped, a night's or a push's, tested nothing and is looked past,
+  so a night after a push that skipped stands on an older commit, and
+  runs. Over Oct 18 to 29, when `main` did not move, each would have run
+  on none of the 12 nights, since both had tested that commit green on
+  Oct 17 (about 2,100 runner-minutes saved between them). On Oct 30 and
+  31 and Nov 1, when it moved, a push's run of the *Slow suite* had tested
+  the new head green one to two hours before each night, so its nightly
+  run would have skipped those three too (about 134 runner-minutes more);
+  *Search health*, which no push runs, ran on them.
+- **Never the *Flake hunt*:** it boots unseeded, so the same commit can show
+  a new flake.
+
+A run by hand always runs. Anything that keeps the *Asked for* job from
+deciding (the checkout, the API, an answer it can't read, the time) is a
+run, never a skip and never red (`scripts/ci_skip.py`; the *Off-gate skips*
+gate above).
 
 **Runners.** The account runs at most 20 jobs at once.
 - **The queue's run** at its widest holds about 18: twelve browser runners,
@@ -501,7 +556,9 @@ offers. Otherwise the push to `main` is where a slow test catches it.
   app PR without Rust six or seven, a Rust PR eight.
 - **The *Slow suite*** holds at most four (`max-parallel`: one Rust leg and
   three browser runners; the quarantined tests' runner starts once all six
-  browser runners are done), on `main`, latest only.
+  browser runners are done), on `main`, latest only, and only for a push
+  that changes what its tests cover (one runner for a few seconds
+  otherwise).
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
   engine and Site for the deploy, and beside them the upload of the queue
   run's coverage to Codecov ([Coverage](#coverage)): three.
@@ -522,11 +579,14 @@ PR's fast lane (eight) and its *Mutants* job are nine, two such PRs
 eighteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
 fast lanes are done, twenty. On Saturdays the weekly run's two leave
 eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
-PR's fast lane then waits for runners. At night the *Flake hunt* holds four
-for about an hour and a half and its *Speed budgets* three for about two
-and three quarter hours (on the 1,100 ms profile; less since #509),
-beside *Search health*'s three long jobs: ten in all, and for the first few
-minutes *Touch in WebKit* and the audio thread's budget one each.
+PR's fast lane then waits for runners. At night the *Flake hunt* workflow
+holds at most three for about two and a half hours (#582): GitHub starts
+its cron (05:41 UTC) 4 to 6.5 hours late, from about 09:45 to 12:00 UTC,
+when PRs are being queued, so its jobs run in stages one after another:
+the hunt's twelve runners three at a time, its report and filing, the
+*Speed budgets*' thirteen three at a time, then their report beside
+*Touch in WebKit* and the audio thread's budget. Beside its first hour, on a night `main` moved,
+*Search health*'s three long jobs: six in all, where it was ten.
 
 **The Rust legs.** Each of the *Slow suite*'s two Rust legs builds the tests
 in one step (`make test-build`, 10 minutes) and runs its target in the next
@@ -584,9 +644,14 @@ hash covers the toolchains on the runner, the pinned one and the image's
 own, and the values of `RUSTFLAGS`, `CARGO_INCREMENTAL`, `CARGO_NET_RETRY`
 and `CARGO_TERM_COLOR`: a new runner image with a new Rust, a toolchain bump
 or an edit to one of those starts every run cold, until a run on `main` has
-passed the leg and saved the new key. A run the `scope` job skips as
-superseded saves none. Each leg's run summary says which cache it had, so
-a run that finds no exact match says so on its page.
+passed the leg and saved the new key. A run the `scope` job skips saves
+none: a push superseded or one that changes nothing the slow tests cover,
+and a night at a commit a run has already tested green ([What `main`
+skips](#ci-tiers)). So after a new runner image with a new Rust,
+`ci.yml`'s *Doctests* job and a `full-ci` PR's legs start cold until a run
+that tests saves the new key: a push that changes Rust or the app, or a
+nightly run at a commit no run has tested green. Each leg's run summary says which cache it had, so a run that finds
+no exact match says so on its page.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about 100 s
@@ -1171,7 +1236,7 @@ them.
 | The browser fast tier in total: the first shard's start to the last one's end | 19 min | measured: 12.4 / 15.7 / 19.0 min | 19 runs |
 | The browser fast tier in total: runner-minutes a run | 108 | measured: 86.4 / 89.9 / 94.0 | 19 runs |
 | The *Slow suite*: a green run, created to its last job done | 67 min | measured: 33.2 / 55.2 / 77.8 min | 7 runs |
-| The nightly *Flake hunt* workflow, its *Speed budgets* with it: created to its last job done | 194 min | the design: about 160 min, the budgets' thirteen runners three at a time (five on the longest lane, about 31 min each with their setup) and their report, beside the hunt's three rounds of about 20 min | not run yet |
+| The nightly *Flake hunt* workflow, its *Speed budgets* with it: created to its last job done | 182 min | the design: about 151 min on 2026-11-01's job times, its stages one after another three runners at a time: the hunt's twelve runners (about 70 min), its report and filing (about 2), the budgets' thirteen (about 70), then *Touch in WebKit* beside their report (about 8) | not run yet |
 | The nightly *Speed budgets*, a runner: each `Speed budgets (<browser> k/N)` | 38 min | the design: about 28 min of tests and 3 of setup, against a cut at 39 min of tests | not run yet |
 
 Measured figures are median / p90 / max. The kinds of PR are ci.yml's
@@ -1184,10 +1249,16 @@ leave out the wait for a runner: under wave 0, when every PR's own run was
 the full gate, a Rust, web or CI PR's took a median of 19.9 minutes (p90
 23.3, 19 runs) against a plan of about twelve, and its longest wait for a
 required job's runner was a median of 6.6 minutes. The *Flake hunt*'s
-twelve shards run three times over, four at a time: three rounds. Its
-*Speed budgets* set the workflow's length: thirteen runners three at a
-time, five on the longest lane. On 2026-10-31, in the shape before #508
-(six runners two at a time, each cut at 40 minutes), it took 2 h 23 min.
+twelve shards run three times over, three at a time: four rounds. Its
+*Speed budgets* follow, thirteen runners three at a time, and the two set
+the workflow's length together (#582). On 2026-10-31, in the shape before
+#508 (six runners two at a time, each cut at 40 minutes, beside the hunt),
+it took 2 h 23 min; on 2026-11-01, with the budgets' thirteen beside the
+hunt (its jobs allowed nine runners at once, and eight were ever running
+together), 2 h 33 min, about half of it waiting for runners. Both are the
+budget's span, the run's creation to its last job; `flake-hunt.yml`'s
+header reads Nov 1 from the engine's start too (2 h 19 min: the engine
+waited 13 minutes for a runner).
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a
 PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
