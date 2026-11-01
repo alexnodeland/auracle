@@ -380,6 +380,18 @@ scripts/ops/rows_resolve.py keeps both. -->
     steps would stop at the cancel whatever the step that calls it says: a
     composite action's steps are judged by the action's status, which the
     cancel sets to cancelled.
+  - A job cut off by its own limit reads as cancelled, like one the run's
+    cancel stopped, and nothing in `needs` tells the two apart. So a red
+    batch with such a job loses what `CI` keeps once the next batch's run
+    cancels it: `CI` is skipped, or cancelled if it had started, and with it
+    the records, the dry-run table and the merged report (the runners' blob
+    reports stay; *One report*, below). Running `CI` for it would run it in
+    every reset batch's run too. In a run that was not cancelled `CI` reads
+    the job as red, as before. Coverage's tests stop a hung test at ten
+    minutes (nextest's `ci` profile), and the browser runners and Browser
+    smoke end themselves before their limits, so what is left is a hang in a
+    compile, a download, a doctest, the node tests or the site's build. No
+    job reached its limit in the 300 runs from 6 October to 1 November.
 - A push to `main` and a run by hand are the full gate too.
 
 **How long.** The fast tier's browser tests are about seventy-five minutes
@@ -428,8 +440,9 @@ test's time from its runs that passed (*The timings come from the queue's
 run*, below). The step reports on `CI`'s answer and is not part of it: it
 carries on past an error (npm's registry slow, a download failed), inside
 five minutes of its own, and it runs to its end in a red batch's run that
-the next batch's cancelled (*The queue's runs share one concurrency group*,
-above). A run with no merged report (the step ran out of time) still has each
+the next batch's cancelled, but for a batch with a job cut off by its own
+limit (*The queue's runs share one concurrency group*, above). A run with
+no merged report (the step ran out of time, or never ran) still has each
 runner's blob report, the `blob-fast-*` artifacts, kept seven days:
 `gh run download <run> -p 'blob-fast-*' -D <dir>`, their zips copied into
 one directory, then `npx playwright merge-reports --reporter html <that

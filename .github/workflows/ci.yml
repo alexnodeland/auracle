@@ -102,7 +102,9 @@ on:
 # in a run cancelled before every job they read had ended (theirs say how):
 # a reset batch's run ends when it is cancelled. A red batch's `CI` does run
 # to its end, since its tests had all ended, so its merged report and its
-# records are kept; the next batch's run then starts when it has.
+# records are kept; the next batch's run then starts when it has. (Not when
+# a job of it was cut off by its own limit, which reads as cancelled: `CI`'s
+# comment.)
 concurrency:
   group: ${{ startsWith(github.head_ref, 'mergify/merge-queue/') && github.event.pull_request.head.repo.full_name == github.repository && 'ci-merge-queue' || format('ci-{0}', github.head_ref || github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1208,8 +1210,21 @@ jobs:
   # report below describe finished jobs, so their steps are `always()`, and
   # carry on through a cancel that comes while they run, the report's own
   # steps too (its `through-cancel`). They come after the answer, the
-  # records first, which take seconds. A job that hit its own limit reads
-  # as cancelled too, in a run that was not, and is red here, as before.
+  # records first, which take seconds.
+  #
+  # A job cut off by its own limit reads as cancelled too. In a run that was
+  # not cancelled `CI` runs and is red, as before. In a red batch's run with
+  # such a job, once the next draft PR's run cancels it, `CI` is skipped, or
+  # cancelled if it had started, and that batch keeps no records and no
+  # merged report: nothing in `needs` tells a job's own limit from the run's
+  # cancel, and an `if` that ran `CI` for it would run it in every reset
+  # batch's run as well. Coverage's hung test (nextest's ci profile stops it
+  # at ten minutes), a browser runner and Browser smoke end themselves inside
+  # their jobs' limits, and are red. What is left is a hang in a compile, a
+  # download, a doctest, the node tests or the site's build, and no job
+  # reached its limit in the 300 runs from 6 October to 1 November
+  # (docs/architecture/testing.md, *The queue's runs share one concurrency
+  # group*).
   ci:
     name: CI
     if: ${{ !cancelled() || !contains(needs.*.result, 'cancelled') }}

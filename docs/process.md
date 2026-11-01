@@ -346,7 +346,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     one needs. A batch that went red is the exception: its tests had all
     ended, so its `CI` runs to its end (the merged browser report, the
     records), and the next batch's run starts once it has, usually within
-    the minute.
+    the minute. Not when a job of it was cut off by its own limit, which
+    reads as cancelled: that batch's `CI` stops with its run, and its
+    records and merged report are lost (the runners' blob reports stay)
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
   - Each class of job that passes in full, in a PR's own run or the
     queue's, leaves a record keyed by the files it reads, and the queue's
     run says which it would reuse (`would reuse <class> (record <run>)`)

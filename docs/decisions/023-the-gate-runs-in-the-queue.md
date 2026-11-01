@@ -64,7 +64,9 @@ both, as `main`'s ruleset requires `CI`. And the queue's runs share one
 concurrency group, so a closed draft PR's run stops when the next batch's
 starts: the first of the consequences *noted, not built* below is built,
 except for a run whose batch is the last in the queue, and for a red
-batch's `CI`, which runs to its end first, so its report is kept. Since #581's first
+batch's `CI`, which runs to its end first, so its report is kept (but for
+a batch with a job cut off by its own limit, which reads as cancelled).
+Since #581's first
 step, `CI` also keeps a record of each class of job that passed in full, in
 a PR's own run or the queue's, keyed by the files it reads, and the queue's
 run logs which classes it would reuse, and still runs everything: a dry run.
