@@ -51,8 +51,8 @@
 //   the drop's shorter reach) places the module in hand there, opening no
 //   module's sheet, and a tap elsewhere straight after is that control's; a
 //   finger held there opens no module's menu; and a cable being placed
-//   (the whole patch zoomed into view with −) reaches a lit socket the same
-//   way, past the rack's pan.
+//   (the right edge pressed once, to have a lit socket clear of it)
+//   reaches a lit socket the same way, past the rack's pan.
 // - A touch tablet (768 × 1024, 1024 × 768): UNDER THE HOOD's rows, on
 //   Glass Pad, are 44 px, each on the screen or in the hood's own scroll,
 //   and the hood shows its heading and at least two of them.
@@ -482,15 +482,16 @@ test.describe("PATCH under a finger, 390 × 844", () => {
 
   test("a cable being placed reaches a lit socket from a tap beside it, past the rack's pan", async ({ page, app }) => {
     await patchOnAPhone(page, app);
-    // The whole patch in view, so the sockets the cable can reach are: the
-    // fit stops where the names read and leaves the rest past the right
-    // edge (#519); − zooms out to it.
-    await expect.poll(async () => {
-      if (await page.locator("#pt-edge-r").isVisible()) await page.locator("#pt-zoom-out").tap();
-      return page.locator("#pt-edge-r").isVisible();
-    }, { timeout: 30_000, intervals: [600] }).toBe(false);
+    // The fit shows where the patch starts (#519), the rest past the right
+    // edge: the one socket the first output's cable could move to there,
+    // CHORUS's input, is under that edge. A press on the edge brings CHORUS
+    // to the middle, and FILTER's output and the amp's input with it. (Not
+    // the whole patch with −: Glass Pad's amp and OUT stay past the edge at
+    // its floor, 0.3×, zoomed about the well's middle.)
+    await page.locator("#pt-edge-r").tap();
+    await expect(page.locator("#pt-edge-r b")).toHaveText("1");
     await app.engine((timeout) => rackAtRest(page, { timeout }), { ms: 30_000 });
-    // Tap an output with somewhere to go (the first in the chain): the cable
+    // Tap an output with somewhere to go (the first on the screen): the cable
     // is picked up, and the sockets it fits light.
     const out = await page.evaluate(() => {
       const outs = [...document.querySelectorAll("#rack-svg .jack[data-outkey]:not(.modjack)")].map((j) => {
