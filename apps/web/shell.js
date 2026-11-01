@@ -1118,7 +1118,7 @@ export function createShell(host = {}) {
   // a flex item cannot shrink past its padding and the list would push the
   // foot out of the dialog), so its scroll and its scrollbar are the whole
   // list's from the first frame. ↑ from the first row, a wheel or a touch
-  // on it, or a scroll down it draws the rest at once. The rows are
+  // on it, a scroll down it or a resize draws the rest at once. The rows are
   // laid out once, in the frame: the key's or the letter's task puts the
   // list back at its top while it is empty, and asks the layout nothing of
   // the rows it draws.
@@ -1406,8 +1406,8 @@ export function createShell(host = {}) {
       const at = kRowAt(e);
       if (e.pointerType === "mouse" && at >= 0 && kSel !== at) kMark(at, false);
     });
-    // A hand on the list's scroll draws what it scrolls to, and so does a
-    // window grown taller than the one the list opened in.
+    // A hand on the list's scroll draws what it scrolls to, and so does any
+    // resize of the window while the list is open.
     for (const ev of ["wheel", "touchmove"]) K.list.addEventListener(ev, kWhole, { passive: true });
     window.addEventListener("resize", () => {
       if (!kOpen()) return;

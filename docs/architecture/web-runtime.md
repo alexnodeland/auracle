@@ -267,10 +267,10 @@ in a text field, and neither key under another modal dialog (`host.blocked`).
   scroll and scrollbar are the whole list's from the first frame; padding
   would not do, as a flex item cannot shrink past its padding. ↑ from the
   first row draws the rest and chooses the last, and a wheel, a touch's
-  move, a scroll down the list or a taller window draws the rest at once.
-  Each row says where it stands in the whole list (`aria-posinset`,
-  `aria-setsize`), and a spec that reads every row waits for them all
-  (`listWhole`). The rows are laid out once, in the
+  move, a scroll down the list or any resize of the window while it is
+  open draws the rest at once. Each row says where it stands in the whole
+  list (`aria-posinset`, `aria-setsize`), and a spec that reads every row
+  waits for them all (`listWhole`). The rows are laid out once, in the
   frame: nothing in the key's or the letter's task asks the layout of them.
   It puts the list back at its top while the list is empty, so the first
   row is in sight however it was scrolled: an arrow's scroll is heard a
