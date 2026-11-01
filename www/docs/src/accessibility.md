@@ -261,8 +261,8 @@ cable up, as a tap on it does, rather than opening that module's settings; a
 drag from there still pans. A module's ⋯ and its lock reach out the same
 way over the rack around them: a tap there within 22 px of either, plainly
 meaning it, opens the menu or locks the module, as a tap on it does. A tap
-on a module's panel or its name opens its settings, and one on a knob or a
-socket is that one's. An input that is not lit keeps its drawn size:
+anywhere else on a module's panel, or on its name, opens its settings, and
+one on a knob or a socket is that one's. An input that is not lit keeps its drawn size:
 a tap there does nothing, and a drag from it pulls its cable out. UNDER THE
 HOOD's rows are 44 px too, the hood showing three and scrolling on its own
 to the rest.

@@ -18,9 +18,9 @@
   the rack's own smallest type. Every knob is still there to turn.
 - **A finger reaches what it needs at the fit.** On a touch screen, a tap
   on the rack beside a module's ⋯ or its lock is theirs, and a tap beside
-  an out ○ picks its cable up, as a tap right on them does, while a tap on
-  a module's panel or its name opens its settings, however small the
-  module is drawn. The face at OUT is at least 44 px across
+  an out ○ picks its cable up, as a tap right on them does, while a tap
+  anywhere else on a module's panel, or on its name, opens its settings,
+  however small the module is drawn. The face at OUT is at least 44 px across
   (`patch_fit.spec.js`, #519).
 
 ### Fixed: PATCH's structure menu and its ceilings stay out of the way
