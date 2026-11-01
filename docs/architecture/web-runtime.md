@@ -154,9 +154,9 @@ unit-tested (`tests/levels.test.mjs`):
   in the click's own task, its first frame drawn before the task ends
   (ADR-025), as the voices take the sound (#306). Before the voices take it
   main reads where the row or card draws the face (`takeUpFrom`: taking it
-  redraws the bank) and holds the hand (`holdHand`: PERFORM's well, the menu
-  bar's chip, PATCH's face at OUT), whose slots then keep the picture they
-  draw while `setFaceSlot` records what they are pointed at. The face is the
+  redraws the bank) and holds the hand (`holdHand`: PERFORM's well and the
+  menu bar's chip), whose slots then keep the picture they draw while
+  `setFaceSlot` records what they are pointed at. The face is the
   row's, by its render key, which is the key of the tree the voices take: a
   render key is the tree's without its node uids, and the clips it hears
   (auracle-features `render_key`), so main files the tree under the row's
@@ -167,20 +167,27 @@ unit-tested (`tests/levels.test.mjs`):
   it, or to the menu bar's chip (`handAnchor`) where the level has no place
   for it yet: from EVOLVE (no card holds the sound until the bench has it)
   and from PATCH, whose rack, head and face at OUT stay the patch being left
-  until the engine has opened the new one. While it flies the hand's new
-  pictures are drawn and decoded (`handPictures`, after the click's task, so
-  the first frame is not kept waiting); it lands when both are done, and
-  then, in one task, the hand shows what it was last pointed at
-  (`releaseHand`) and the face comes off the page (`takeUpEnd`), so no frame
-  shows the hand empty or the face twice. It leaves the mark `taken-up`.
-  Another sound asked for (`takeUpOff`), an open taken back
-  (`unvoiceEarly`), another take-up or a move puts it down at once
-  (`landed(null)`: the hand shows what it holds). It does not start during
-  a move that carries a face of its own; a move that carries none (↓ PATCH,
-  whose sound is still on its way to the bench) leaves the page's one
-  flight to it. Under reduced motion nothing flies and the hand shows the
-  new face as the voices take it. Every open from the bank leaves you at
-  the level you're at: only what says PATCH goes there (an EVOLVE card's
+  until the engine has opened the new one. The face at OUT is the rack's,
+  not the hand's, and is never held: it changes with the rack's head when
+  the bench's reply lands (`renderSubject`), drawn at once from the row's
+  face filed for the bench's tree (`knowFace` at the reply), whether or not
+  the flight has landed. While it flies the hand's new pictures are drawn
+  and decoded (`handPictures`, after the click's task, so the first frame
+  is not kept waiting); it lands when both are done, and then, in one task,
+  the hand shows what it was last pointed at (`releaseHand`) and the face
+  comes off the page (`takeUpEnd`), so no frame shows the hand empty, or
+  the face in it while it still flies. It leaves the mark `taken-up`. Another sound asked for
+  (`takeUpOff`), an open taken back (`unvoiceEarly`) or a move puts it down
+  at once (`landed(null)`: the hand shows what it holds, each slot keeping
+  its face until its new picture is decoded). Another take-up puts it down
+  unseen: the hand stays held, so it shows neither the face it had before
+  nor the one put down until the new one lands, and is let go at once only
+  if the new one does not fly. It does not start during a move that carries
+  a face of its own; a move that carries none (↓ PATCH, whose sound is
+  still on its way to the bench) leaves the page's one flight to it. Under
+  reduced motion nothing flies and the hand shows the new face as the
+  voices take it. Every open from the bank leaves you at the level you're
+  at: only what says PATCH goes there (an EVOLVE card's
   ↓ PATCH, How it works' knob).
 
 ### The model view
@@ -1222,11 +1229,15 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   `drawVessel`); a slot shows it drawn once per bank as an image (a PNG data
   URL); after the bank changes, the bank's rows in view are redrawn the next
   frame and the rest when the page is idle. A slot is fixed-size and present
-  whether or not its face has arrived, so no name moves for it. A slot that
-  shows a face and is given another keeps the first until the new picture
-  is decoded, then swaps them in one step (`paintFaceSlot`): a picture just
-  put in is drawn only once decoded, and the slot was empty for a frame or
-  more until then (#522). A slot given a face not here yet is empty.
+  whether or not its face has arrived, so no name moves for it. A slot of
+  the hand (PERFORM's well, the menu bar's chip) that shows a face and is
+  given another keeps the first until the new picture is decoded, then
+  swaps them in one step (`paintFaceSlot`, `inHand`): a picture just put in
+  is drawn only once decoded, and the well was empty for a frame or more
+  until then (#522). Every other slot (a row, an EVOLVE card, B, the face
+  at OUT) takes the new picture as it is put in, and may be empty until it
+  is decoded rather than show the sound before's face under the new name.
+  A slot given a face not here yet is empty.
 - **Large faces** (Plan-008 C1): PERFORM's sound in hand and B, and each
   EVOLVE card, are slots too (`FACE_SIZE` `well`, `wellb`, `evolve`), drawn
   once per bank at a fixed size with the glow and the floor's reflection

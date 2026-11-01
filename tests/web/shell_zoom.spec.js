@@ -43,11 +43,16 @@
 //   PRESETS, flies the same way while the engine loads it. A face on an
 //   EVOLVE card opened by its body, or by ↓ patch as the levels move to
 //   PATCH, flies from the card the same way, into the menu bar's chip.
+// - A second sound opened while the first still flies (40 or 120 ms later)
+//   flies alone: the first is put down unseen, and the well and the chip
+//   show only the face they had and then the second's, never the first's.
 // - However late the engine says faces (a slow engine, seconds after the
 //   sound itself), the face flies in the click's task: it is the row's,
 //   already here. At PATCH, where the rack is still the patch being left
 //   until the engine has opened the new one, it flies to the menu bar's
-//   chip, and the face at OUT is the new one once the rack is.
+//   chip, and the face at OUT changes with the rack: no frame shows the
+//   rack's head naming the new sound over OUT's old face, and OUT ends
+//   drawing the chip's face.
 // - Under reduced motion nothing flies, and the well and the chip show the
 //   new face in the click's own task: never an empty well.
 const { test, expect, goLevel, landed, bankTab } = require("./fixtures");
@@ -64,34 +69,48 @@ const OUT = [150, 250];
 // sound reaches your hands, as it is on a slow machine.
 const FACES_LATE_MS = 4_000;
 
-// In the page: `open()` a sound (a click, in this task) and watch the hand
-// through it, frame by frame. What the click's own task left (`task`), then
-// each animation frame for at least `watch` ms and until the face in flight
-// has been gone three frames. Each of PERFORM's well and the menu bar's chip
-// is "old" (the picture it drew before the click), "new" (another, drawn
-// whole) or "none" (no picture, or one not decoded yet: an empty frame).
-// Reduced in the page: how many frames showed the well or the chip empty,
-// more than one face in the well, or the new face at rest in the well or
-// the chip while the flight was still on the page; the first frame after
-// the flight; and the last.
-const WATCH_OPEN = `async (open, watch) => {
+// In the page: `open()` a sound (a click, in this task; it may schedule a
+// second) and watch the hand through it, frame by frame. What the click's
+// own task left (`task`), then each animation frame for at least `watch` ms
+// and until the face in flight has been gone three frames. Each of
+// PERFORM's well, the menu bar's chip and PATCH's face at OUT is "old" (the
+// picture it drew before the click), "new" (another, drawn whole) or "none"
+// (no picture, or one not decoded yet: an empty frame). Reduced in the
+// page: how many frames showed the well or the chip empty, more than one
+// face in the well, or the new face at rest in the well or the chip while
+// the flight was still on the page; how many showed the rack's head moved
+// on (`#rack-subject`) over OUT's old face; how many pictures the well and
+// the chip each showed whole, the one before the click among them; the
+// first frame after the flight; and the last. With `headTo`, the watch goes
+// on until the rack's head names it too (the engine has opened the sound),
+// however long that takes.
+const WATCH_OPEN = `async (open, watch, headTo = null) => {
   const well = document.querySelector("#view-perform .pf-faces > .pf-face");
   const chip = document.getElementById("inhand-face");
+  const out = document.getElementById("out-face");
+  const head = document.getElementById("rack-subject");
   const pic = (el) => el.querySelector(":scope > img.face");
-  const before = { well: pic(well)?.src ?? null, chip: pic(chip)?.src ?? null };
+  const whole = (img) => !!img && img.complete && img.naturalWidth > 0;
+  const before = { well: pic(well)?.src ?? null, chip: pic(chip)?.src ?? null, out: pic(out)?.src ?? null, head: head.textContent };
   const state = (el, was) => {
     const img = pic(el);
-    if (!img || !img.complete || !img.naturalWidth) return "none";
+    if (!whole(img)) return "none";
     return img.src === was ? "old" : "new";
   };
-  const look = () => ({
-    well: state(well, before.well),
-    wells: well.querySelectorAll("img.face").length,
-    chip: state(chip, before.chip),
-    flying: !!document.querySelector(".zoom-face.on"),
-    title: document.querySelector(".pf-name")?.textContent ?? null,
-    name: document.getElementById("live-label").textContent,
-  });
+  const shown = { well: new Set(), chip: new Set() };
+  const look = () => {
+    for (const [k, el] of [["well", well], ["chip", chip]]) if (whole(pic(el))) shown[k].add(pic(el).src);
+    return {
+      well: state(well, before.well),
+      wells: well.querySelectorAll("img.face").length,
+      chip: state(chip, before.chip),
+      out: state(out, before.out),
+      head: head.textContent,
+      flying: !!document.querySelector(".zoom-face.on"),
+      title: document.querySelector(".pf-name")?.textContent ?? null,
+      name: document.getElementById("live-label").textContent,
+    };
+  };
   const t0 = performance.now();
   open();
   const task = look();
@@ -102,7 +121,8 @@ const WATCH_OPEN = `async (open, watch) => {
       const f = look();
       frames.push(f);
       gone = f.flying ? 0 : gone + 1;
-      if ((now - t0 >= watch && gone >= 3) || now - t0 > 10000) done();
+      const there = !headTo || head.textContent.startsWith(headTo);
+      if ((now - t0 >= watch && gone >= 3 && there) || now - t0 > (headTo ? 60000 : 10000)) done();
       else requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -118,6 +138,9 @@ const WATCH_OPEN = `async (open, watch) => {
     emptyChip: frames.filter((f) => f.chip === "none").length,
     manyInWell: frames.filter((f) => f.wells > 1).length,
     twice: frames.filter((f) => f.flying && (f.well === "new" || f.chip === "new")).length,
+    outBehind: frames.filter((f) => f.head !== before.head && f.out === "old").length,
+    emptyOut: frames.filter((f) => f.out === "none").length,
+    pictures: { well: shown.well.size, chip: shown.chip.size },
     landed: after < 0 ? null : { well: frames[after].well, chip: frames[after].chip },
     last: frames[frames.length - 1],
   };
@@ -125,11 +148,14 @@ const WATCH_OPEN = `async (open, watch) => {
 // Long enough to see a face pop into the well after the click and the
 // flight land on it (#522), whenever it lands: a little over the move.
 const WATCH_MS = 1_500;
+// A player's pace between two opens, the second while the first face still
+// flies (gesture pacing, on the app's own clock, as `GAPS` is for moves).
+const OPEN_GAPS = [40, 120];
 
 /** Open what `click` presses (a CSS selector, clicked in the page), with
- *  the hand watched through it (`WATCH_OPEN`). */
-function watchOpen(page, click) {
-  return page.evaluate(`(${WATCH_OPEN})(() => document.querySelector(${JSON.stringify(click)}).click(), ${WATCH_MS})`);
+ *  the hand watched through it (`WATCH_OPEN`; `headTo`, its own). */
+function watchOpen(page, click, headTo = null) {
+  return page.evaluate(`(${WATCH_OPEN})(() => document.querySelector(${JSON.stringify(click)}).click(), ${WATCH_MS}, ${JSON.stringify(headTo)})`);
 }
 
 /** Booted with the face of the sound you're playing drawn, at PERFORM,
@@ -516,6 +542,35 @@ test("opening a sound from the bank flies one face into the well, and the well i
   near(taken.detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
 });
 
+test("a second sound opened while the first still flies flies alone, and the hand never shows the first at rest", async ({ page, app }) => {
+  await performWithFaces(app);
+  for (const gap of OPEN_GAPS) {
+    // Two rows side by side, neither the sound in hand: the second is in
+    // sight when it is clicked, as the bank scrolls to the first.
+    const rows = page.locator("#bank-list .bank-item[data-id]:not(.live)", { has: page.locator(":scope > .face-slot img.face") });
+    const [a, b] = [await rows.nth(0).getAttribute("data-id"), await rows.nth(1).getAttribute("data-id")];
+    const nameB = (await rows.nth(1).locator(".bi-name").textContent()).trim();
+    const t0 = await app.now();
+    const seen = await page.evaluate(`(${WATCH_OPEN})(() => {
+      document.querySelector('#bank-list .bank-item[data-id="${a}"]').click();
+      setTimeout(() => document.querySelector('#bank-list .bank-item[data-id="${b}"]').click(), ${gap});
+    }, ${WATCH_MS})`);
+    expect(seen.task.flying, `${gap} ms: the first face flies in its click's task`).toBe(true);
+    expect(seen.twice, `${gap} ms: frames with a face at rest in the hand other than the old one while a face flies`).toBe(0);
+    expect(seen.pictures, `${gap} ms: the well and the chip show the face they had and then the second's, never the first's`).toEqual({ well: 2, chip: 2 });
+    expect(seen.emptyWell, `${gap} ms: frames with the well empty, of ${seen.frames}`).toBe(0);
+    expect(seen.emptyChip, `${gap} ms: frames with the menu bar's chip empty, of ${seen.frames}`).toBe(0);
+    expect(seen.manyInWell, `${gap} ms: frames with more than one face in the well`).toBe(0);
+    expect(seen.landed, `${gap} ms: the frame the flight is gone, the well and the chip show the new face`).toEqual({ well: "new", chip: "new" });
+    expect(seen.last.name, `${gap} ms: the second sound in hand`).toBe(nameB);
+    // One face landed, the second's, on the well; the first was put down.
+    const taken = await app.marks("taken-up", { after: t0 });
+    expect(taken, `${gap} ms: one face landed`).toHaveLength(1);
+    near(taken[0].detail.flew, await drawnVessel(page, "#view-perform .pf-face", WELL));
+    await app.answered({ types: ["edit_begin"], lanes: ["bench"] });
+  }
+});
+
 test("a preset not in the pool, opened from PRESETS, flies its face from its row into the well, which is never empty", async ({ page, app }) => {
   await performWithFaces(app);
   await bankTab(page, "presets");
@@ -595,7 +650,7 @@ test("↓ patch flies the card's face into the menu bar's chip as the levels mov
   inside(taken.detail.flew, await boxOf(page, "#inhand-face"));
 });
 
-test("a sound opened from the bank flies in the click's task however late the engine says faces; at PATCH into the menu bar's chip, and OUT is the new face once the rack is", async ({ page, app }) => {
+test("a sound opened from the bank flies in the click's task however late the engine says faces; at PATCH into the menu bar's chip, and OUT changes with the rack", async ({ page, app }) => {
   await bootWithFaces(app);
   await app.fullPool();
   await goLevel(page, "patch");
@@ -603,7 +658,8 @@ test("a sound opened from the bank flies in the click's task however late the en
   const id = await row.getAttribute("data-id");
   await app.delay("faces", FACES_LATE_MS);
   const t0 = await app.now();
-  const seen = await watchOpen(page, `#bank-list .bank-item[data-id="${id}"]`);
+  // Watched until the rack's head names the sound: the engine has opened it.
+  const seen = await watchOpen(page, `#bank-list .bank-item[data-id="${id}"]`, name);
   expect(seen.task.flying, "the face flies in the click's own task, whatever the engine").toBe(true);
   expect(seen.emptyChip, `frames with the menu bar's chip empty, of ${seen.frames}`).toBe(0);
   expect(seen.twice, "frames with the new face at rest in the hand while it still flies").toBe(0);
@@ -613,15 +669,19 @@ test("a sound opened from the bank flies in the click's task however late the en
   // The rack is still the patch being left when the face flies: it lands
   // on the sound in hand in the menu bar.
   inside(taken.detail.flew, await boxOf(page, "#inhand-face"));
-  // Once the engine has opened it, the rack is this sound, and OUT draws
-  // its face: the face the menu bar's chip draws.
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText(new RegExp(`^${name}`), { timeout }), { ms: 60_000 });
-  await expect.poll(() => page.evaluate(() => ["out-face", "inhand-face"].map((id) => {
-    const slot = document.getElementById(id);
-    return slot.querySelector(":scope > img.face") ? (slot.dataset.drawn || "").split("|")[0] : null;
-  }))).toEqual([expect.any(String), expect.any(String)]);
+  // OUT is the rack's face: it changes with the rack's head, once the
+  // engine has opened the sound, whether or not the face has landed.
+  expect(seen.last.head, "the rack is the sound opened").toMatch(new RegExp(`^${name}`));
+  expect(seen.outBehind, `frames with the rack's head naming the new sound over OUT's old face, of ${seen.frames}`).toBe(0);
+  // And it draws the face the menu bar's chip draws: both slots pointed at
+  // the one face, and each showing a picture of it, whole, in place of the
+  // one before.
+  await expect.poll(() => page.evaluate((was) => ["out-face", "inhand-face"].map((id, i) => {
+    const img = document.getElementById(id).querySelector(":scope > img.face");
+    return !!img && img.complete && img.naturalWidth > 0 && img.src !== was[i];
+  }), [seen.before.out, seen.before.chip])).toEqual([true, true]);
   const [out, chip] = await page.evaluate(() => ["out-face", "inhand-face"].map((id) => (document.getElementById(id).dataset.drawn || "").split("|")[0]));
-  expect(out, "OUT draws the face the menu bar's chip draws").toBe(chip);
+  expect(out, "OUT is pointed at the face the menu bar's chip is").toBe(chip);
 });
 
 test.describe("under reduced motion, an open", () => {

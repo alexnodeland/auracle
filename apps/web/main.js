@@ -1128,11 +1128,14 @@ function paintFaces(root = document) {
     idleSoon(faceIdle);
   }
 }
-/** Draw a slot's face. A slot already showing one gives it up only once the
- *  new picture is decoded, and then in one step: a picture just put in is
- *  drawn after its decode, and until then the slot would be empty for a
- *  frame or more (#522). `now`: in this task, for a picture already decoded
- *  (the hand's, while a face flew in: `handPictures`). */
+/** Draw a slot's face. A slot of the hand (`inHand`) already showing one
+ *  gives it up only once the new picture is decoded, and then in one step:
+ *  a picture just put in is drawn after its decode, and until then the well
+ *  would be empty for a frame or more (#522). `now`: in this task, for a
+ *  picture already decoded (the hand's, while a face flew in:
+ *  `handPictures`). Every other slot shows its new face as it is put in, or
+ *  nothing until it is decoded, never the sound before's under another
+ *  name. */
 function paintFaceSlot(el, { now = false } = {}) {
   const target = el.dataset.face;
   if (!target) return;
@@ -1142,7 +1145,7 @@ function paintFaceSlot(el, { now = false } = {}) {
   const html = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
   el.dataset.drawn = html ? drawn : "";
   const was = el.querySelector(":scope > img.face");
-  if (now || !html || !was || !was.complete || !was.naturalWidth) {
+  if (now || !html || !inHand(el) || !was || !was.complete || !was.naturalWidth) {
     el.innerHTML = html;
     return;
   }
@@ -1254,7 +1257,7 @@ function setFaceSlot(el, kind, t, { now = false } = {}) {
   if (target) el.dataset.face = target;
   else delete el.dataset.face;
   el.dataset.drawn = "";
-  // The face it showed stays until the new one is drawn in its place
+  // The hand's face stays until the new one is drawn in its place
   // (`paintFaceSlot`); with no new one to draw (none yet, or no sound) the
   // slot is empty, as it is.
   if (!target) return void (el.innerHTML = "");
@@ -10978,17 +10981,24 @@ function openingName() {
 // In the click's own task (ADR-025), as the voices take the sound (#306):
 // the face is the one the row drew, filed under the render key of the tree
 // the voices take (`knowFace`), so no render is waited for. Meanwhile the
-// hand (the well, the menu bar's chip, the face at OUT) keeps the face it
-// had, and shows the new one the frame the flight is gone: never empty, and
-// never the face twice (#522). An open the player did not ask for (boot's
-// first sound, booth attract) takes nothing up, and under reduced motion
-// the hand shows the new face in the click's task.
+// hand (PERFORM's well and the menu bar's chip) keeps the face it had, and
+// shows the new one the frame the flight is gone: never empty, and never
+// the face twice (#522). PATCH's face at OUT is not the hand but the rack's
+// (`renderSubject`): it changes with the rack, once the engine has opened
+// the sound, wherever the face is. An open the player did not ask for
+// (boot's first sound, booth attract) takes nothing up, and under reduced
+// motion the hand shows the new face in the click's task.
 let wellFaceEl = null; // PERFORM's well's slot (perform.js's `host.face`)
 let takeUpNow = null; // the sound taken up and flying: {id} or {index}, and `from`
 let handPics = []; // the hand's new pictures, decoded while the face flies
-/** The hand: every slot that shows the sound in hand. */
+/** The hand: the slots that show the sound the keys play, PERFORM's well
+ *  and the menu bar's chip. */
 function handSlots() {
-  return [wellFaceEl, $("inhand-face"), $("out-face")].filter(Boolean);
+  return [wellFaceEl, $("inhand-face")].filter(Boolean);
+}
+/** Is `el` one of the hand's slots? */
+function inHand(el) {
+  return el === wellFaceEl || el.id === "inhand-face";
 }
 /** Hold the hand: each slot keeps the face it draws, whatever it is pointed
  *  at meanwhile (`setFaceSlot`), until `releaseHand`. */
@@ -10996,12 +11006,14 @@ function holdHand() {
   for (const el of handSlots()) if (!faceHolds.has(el)) faceHolds.set(el, null);
 }
 /** Let the hand go: each slot shows what it was last pointed at, all in
- *  one task. */
-function releaseHand() {
+ *  one task. `now`: its pictures were decoded while the face flew
+ *  (`handPictures`), so they are put in at once; else each slot keeps its
+ *  face until its new picture is decoded (a flight cut short). */
+function releaseHand({ now = true } = {}) {
   const held = [...faceHolds];
   faceHolds.clear();
   handPics = [];
-  for (const [el, p] of held) if (p) setFaceSlot(el, p.kind, p.t, { now: true });
+  for (const [el, p] of held) if (p) setFaceSlot(el, p.kind, p.t, { now });
 }
 /** The pictures the hand will show when it is let go, drawn and decoded
  *  now, while the face flies, so the frame it lands draws them at once. */
@@ -11026,14 +11038,24 @@ function takeUpFor(t, id) {
  *  `{index}`): where `slot`, its row's or card's face, draws it, read now
  *  (taking it redraws the bank), and the hand held. Null when nothing will
  *  fly: reduced motion, a slot that draws no face or is out of sight, or
- *  the sound already in hand. A face still flying is put down first. */
+ *  the sound already in hand. A face still flying is put down first, unseen
+ *  if this one flies in its place: the hand stays held, and shows neither
+ *  the face it had nor the one put down until this one lands; else the
+ *  hand is let go, to show the sound now taken. */
 function takeUpFrom(slot, which) {
+  const flying = takeUpNow;
+  // Its `landed` lets the hand go only while it is still the one flying.
+  takeUpNow = null;
   shell.takeUpCut();
-  if (!slot || !motionMs("--d-zoom")) return null;
-  if (slot.closest("#bank-list") && !inBankView(slot)) return null;
-  const from = faceBoxOf(slot);
-  if (!from || faceKeyOf($("inhand-face")) === from.key) return null;
+  const shown = slot && motionMs("--d-zoom") && !(slot.closest("#bank-list") && !inBankView(slot));
+  const from = shown ? faceBoxOf(slot) : null;
+  // The chip, while held, says the face it is to show (`faceKeyOf`).
+  if (!from || faceKeyOf($("inhand-face")) === from.key) {
+    if (flying) releaseHand({ now: false });
+    return null;
+  }
   takeUpNow = { ...which, from };
+  handPics = [];
   holdHand();
   return takeUpNow;
 }
@@ -11042,10 +11064,10 @@ function takeUpFrom(slot, which) {
  *  with nowhere to fly, the hand shows what it holds at once. */
 function takeUpFly(t) {
   if (!t || takeUpNow !== t) return;
-  const done = () => {
+  const done = (flew = null) => {
     if (takeUpNow !== t) return;
     takeUpNow = null;
-    releaseHand();
+    releaseHand({ now: flew != null });
   };
   if (faceKeyOf($("inhand-face")) !== t.from.key) return void done();
   // The well's picture is the large one, drawn and encoded once a bank:
@@ -13154,7 +13176,9 @@ function renderSubject() {
   const fam = (t) => { if (famEl) famEl.textContent = t ? `· ${t}` : ""; };
   // The face at OUT is the bench's: its latest render's, an edit's once its
   // render lands. It is the rack's, so an open on its way changes it with
-  // the rack, after the header's chip, which shows what the voices play.
+  // the rack, when the engine has opened the sound, whatever the header's
+  // chip shows meanwhile (what the voices play, or the face it had while
+  // that one still flies into it, `holdHand`).
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   const outTarget = !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId };
   if (hearingSide && currentDuel) {
