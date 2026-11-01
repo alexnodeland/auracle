@@ -21,7 +21,7 @@ name: Flake hunt
 # Its own workflow, not a job in the Slow suite, so its hours never hold that
 # workflow's queue on main.
 #
-# Beside it, the speed budgets (ADR-022): the gate records each as an
+# After it, the speed budgets (ADR-022): the gate records each as an
 # annotation and never fails on one; here they are judged, once a night, on
 # main, on the reference profile (ADR-025), in Chromium and in Firefox, each
 # test given its verdict, and the ones over their limit are listed on an
@@ -32,6 +32,37 @@ name: Flake hunt
 # CI's own health (scripts/ci_stats.py) is a workflow of its own,
 # ci-health.yml, after this one each night: a stop at the API's rate limit
 # there is a red CI health run, not a red hunt.
+#
+# It holds at most three runners at once (#582). GitHub starts this cron
+# (05:41 UTC) 4 to 6.5 hours late (from 09:46 to 12:00 UTC over Oct 18 to
+# Nov 1), when PRs are being queued, and each runner it holds is one the
+# merge queue's next batch can wait for. So its jobs run in stages, one
+# after another, none holding more than three (scripts/test_ci_skip.py
+# counts the most its jobs can hold at once from their `needs` and
+# `max-parallel`, in dev-check):
+#
+# 1. the engine, one runner;
+# 2. the hunt's twelve runners, three at a time: about 70 minutes;
+# 3. the hunt's report, then the flakes it files (two at a time) beside
+#    what no test accounts for;
+# 4. the speed budgets' thirteen runners, three at a time: about 70
+#    minutes;
+# 5. their report, Touch in WebKit and the audio thread's budget, side by
+#    side, then the budgets' filing.
+#
+# About two and a half hours from the engine to the last job, on the job
+# times of 2026-11-01 (the hunt's runners 14 to 22 minutes each, the
+# budgets' 11 to 19, Touch in WebKit 8), and longer on a night a stage
+# waits for runners. Side by side (the hunt four at a time beside the
+# budgets three at a time, up to nine at once) the same jobs come to
+# about an hour and a quarter with no wait; that night, waiting for
+# runners, they took 2 h 19 min from the engine's start to the last job,
+# and 2 h 33 min from the run's creation, the span testing.md's budget
+# reads (the engine itself waited 13 minutes for a runner). Every test
+# still gets its verdict and every runner its share and its time limit;
+# the answers come later in the day. A stage starts whatever the one
+# before it found (`!cancelled()`), so a red hunt still has its budgets
+# judged.
 
 on:
   schedule:
@@ -78,17 +109,16 @@ jobs:
           tier: perf
           seed: fast slow
 
-  # The gate's twelve shards, each run three times over: about twenty
-  # minutes a shard, so the job limit leaves room for a slow runner. Four at a
-  # time (`max-parallel`), in three rounds of about twenty minutes: it runs at
-  # night beside Search health, which holds three runners for hours, and the
-  # speed budgets' three, so together they hold ten of the account's 20 (and
-  # Touch in WebKit and the audio thread's budget one each, for their first
-  # few minutes), and a PR pushed then can wait for runners at its widest
-  # (slow-suite.yml counts the lanes'). At eight wide the hunt would be over
-  # sooner but hold fourteen, and a PR pushed then would wait for more. The
-  # Slow suite's nightly run (04:23 UTC, about twenty minutes) is over before
-  # this one starts (05:41 UTC).
+  # The gate's twelve shards, each run three times over: about seventeen
+  # minutes a shard (14 to 22 on 2026-11-01), so the job limit leaves room
+  # for a slow runner. Three at a time (`max-parallel`), the workflow's
+  # whole share (the header says why): four rounds, about 70 minutes. Wider
+  # would be over sooner but hold more of the account's 20 while PRs are
+  # queued (slow-suite.yml counts the lanes'). Search health's three long
+  # jobs (cron 04:20 UTC, as late as this one) can run beside its first hour
+  # on a night main moved; the Slow suite's nightly run (04:23 UTC, about
+  # twenty minutes) was over before this one began on every night from
+  # Oct 18 to Nov 1.
   hunt:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
@@ -107,7 +137,7 @@ jobs:
       AURACLE_GLOBAL_TIMEOUT_MIN: 40
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 3
       matrix:
         shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     steps:
@@ -141,9 +171,12 @@ jobs:
   # installed. WebKit has no CDP, so touch_gestures' finger is made in the
   # page there (its `cdpOf` says what that proves and what it does not).
   # Seeded as on the gate, each test three times; a failure is this job red.
+  # After the speed budgets, beside their report (the header's stage 5),
+  # whatever they found.
   touch-webkit:
     name: Touch in WebKit
-    needs: engine
+    needs: [engine, perf]
+    if: ${{ !cancelled() && needs.engine.result == 'success' }}
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
@@ -200,17 +233,21 @@ jobs:
   # were each cut at 40 minutes, and 74 of the 167 tests in Chromium and 32
   # in Firefox never ran: on the profile a test took about seven times its
   # time on the gate in Chromium (about 230 minutes in all) and three and a
-  # half in Firefox (about 140). Three at a time, the count the hunt's
-  # comment above holds: about two and three quarter hours a night (the
-  # maintainer accepted about three, 2026-10-31). Wider would be over sooner
-  # and hold more of the account's twenty while the hunt runs; fewer,
-  # longer runners would leave less of each cut to spare. These figures are
-  # the 1,100 ms profile's: #509 lowered the estimate, each test is shorter
-  # on the new one, and as `perf`'s timings refresh, each runner's share and
-  # the night fall; the first nights on it give the new figures.
+  # half in Firefox (about 140). Three at a time, the workflow's whole share,
+  # once the hunt and what it files are done (the header's stage 4),
+  # whatever the hunt found: about two and three quarter hours on the
+  # 1,100 ms profile (the maintainer accepted about three, 2026-10-31).
+  # Wider would be over sooner and hold more of the account's twenty while
+  # PRs are queued; fewer, longer runners would leave less of each cut to
+  # spare. #509 lowered the estimate, and each test is shorter on the new
+  # profile: on 2026-11-01, its first night, dealt by the old profile's
+  # timings, each runner took 11 to 19 minutes, its setup included, and the
+  # thirteen about 70 minutes three at a time. As `perf`'s timings refresh,
+  # each runner's share follows.
   perf:
     name: Speed budgets (${{ matrix.browser }} ${{ matrix.shard }})
-    needs: engine
+    needs: [engine, report, file-flaky, file]
+    if: ${{ !cancelled() && needs.engine.result == 'success' }}
     runs-on: ubuntu-24.04
     # In Playwright's image, as the hunt's runners: it holds Firefox too.
     container:
@@ -310,10 +347,12 @@ jobs:
   # until that exists.
   # Red only when it could not measure, which is filed with the speed
   # budgets. A runner of its own for a few minutes, so the sweep shares its
-  # cores with nothing.
+  # cores with nothing: after the speed budgets, beside their report (the
+  # header's stage 5), whatever they found.
   audio:
     name: The audio thread's budget
-    needs: engine
+    needs: [engine, perf]
+    if: ${{ !cancelled() && needs.engine.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

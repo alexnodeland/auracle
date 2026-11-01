@@ -241,7 +241,11 @@ worktree-rm:
 ## own tests), the PR checks' own tests (scripts/test_pr_checks.py: a PR's
 ## title, its issue links, the changelog's warning, what a merge does to the
 ## issues), the path classifier's tests (scripts/test_changes.py: what each
-## kind of change reaches), the Claude Code hooks against inputs they must block and pass,
+## kind of change reaches), the off-gate skip's tests (scripts/test_ci_skip.py:
+## when Search health's and the Slow suite's runs skip a head a run on main
+## has tested green or a push their tests don't cover, that an error is always a run, and that
+## the Flake hunt never asks and holds at most three runners at once), the
+## Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), the tests of the coverage gate's, the mutation
 ## report's, CI stats', the engine stamp's and the release's scripts
@@ -258,7 +262,7 @@ worktree-rm:
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
 ## run plain `make -j8 dev-check` (the pre-commit hook does).
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-changes dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-ops dev-wasm-pkg dev-release
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-changes dev-ci-skip dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-ops dev-wasm-pkg dev-release
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -284,6 +288,8 @@ dev-pr-checks:
 	@python3 scripts/test_pr_checks.py
 dev-changes:
 	@python3 scripts/test_changes.py
+dev-ci-skip:
+	@python3 scripts/test_ci_skip.py
 dev-hooks:
 	@bash .claude/checks/test_hooks.sh
 # The stage's scripts are ES modules: `node --check` on a .js with an
