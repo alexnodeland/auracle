@@ -39,8 +39,9 @@ measures what is heard and decides what is drawn over each such face (each
 outline's points, color and glow, and the trail's fade); the painter makes
 those canvas calls and answers with a picture of each face, which main shows
 as it is, so a frame is shown one round trip after it is read. The glow is a blur, and a browser that draws canvases on the CPU
-makes it on the thread that asks: on the main thread, in Firefox on a Retina
-screen, that was 7 ms of every frame. One frame is with the painter at a
+makes it on the thread that asks: on the main thread, in Firefox at a Retina
+screen's scale on a fast laptop (an M3 Max), that was 7 ms of every frame,
+and more on a slower machine. One frame is with the painter at a
 time. Main paints the faces itself, with the same calls, where the painter
 cannot run.
 
