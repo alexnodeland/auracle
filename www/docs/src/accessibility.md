@@ -216,10 +216,13 @@ On a phone held upright:
   hood, and what LEARNING weighs. On a smaller phone, or with larger text, a level that cannot
   fit scrolls rather than cutting anything off. Nothing scrolls sideways.
 - In the levels, the bank and the keys, every button, tab and field is at
-  least 44 px each way, a finger's size
-  (what is drawn on the rack at its zoom is the exception: a tapped module
-  opens its settings in a sheet), and the octave's two keys are arrows (a
-  phone has no Z and X to print).
+  least 44 px each way, a finger's size. Two things are the exception: what is
+  drawn on the rack at its zoom (a tapped module opens its settings in a
+  sheet), and a bank row's actions and stars, which are 44 px tall and as wide
+  as the row can share among them: down to 39 px for a row's four and 31 px for
+  a bred sound's five on a tablet in its narrowest bank, and 32 px for a
+  phone's five stars, so a name keeps some room. The octave's two keys are arrows (a phone has no Z and X to
+  print).
 
 On a phone on its side, the levels stay at the right edge with the keys'
 button (a small keybed) under them, and the keys come up from the bottom.

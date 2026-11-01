@@ -101,9 +101,13 @@ while you point at it.</figcaption>
 - **The name** comes from what the sound is, and it keeps that name as the
   bank changes around it. Double-click it to rename it. NEW and the dot sit in
   a column every row keeps left of the name, so the name never moves for
-  them. A name has the row’s width, the first of the row’s two lines, and
-  nothing you point at or press ever covers it: a name too long for the row
-  ends in an ellipsis, and the whole of it is in its tooltip.
+  them. A name has the row’s width, the first of the row’s two lines. The
+  actions and the stars are on the second, so pointing at the row or opening
+  its stars never covers the name: a name too long for the row ends in an
+  ellipsis, and the whole of it is in its tooltip. The words a row carries
+  while you point at **EVOLVE POOL** (**SEED**, **MAY BE REPLACED**) and the
+  model view’s percentage are the exceptions: they stand over the end of the
+  name’s line while they show.
 - **The line under a bred sound’s name** says which seed it grew from and
   what changed: *from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*, the first
   three changes and then how many more. The modules are counted, so the line
@@ -330,8 +334,9 @@ the pool and replaces the lowest-rated sound it can. The toast names what it
 replaced (*It replaced the lowest-rated sound it could: Bell Jar.*), and saved
 sounds are never among them, nor is a sound you kept as new that hasn’t been in
 a pick yet. From then on the row reads **IN POOL** at its end, on the line under its name,
-just left of its **▶** whenever the **▶** shows (on a touch screen, where the
-**▶** is on a line of its own, it stays level with the name at the end), and a
+just left of its **▶** whenever the **▶** shows (on a tablet, where the **▶** is
+on a line of its own, it stays level with the name at the end; on a phone it is
+level with the name too, left of the **▶**, and the name stops short of it), and a
 second click opens the same copy.
 
 The presets are worth playing through early. They are what the [warm
