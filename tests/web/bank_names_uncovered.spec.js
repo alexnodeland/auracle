@@ -31,6 +31,13 @@
 //   after it is where it was, with the actions or the stars out as at rest.
 // - Every action is inside the list (on a tablet at 228 px the cut sat past
 //   its edge, out of reach).
+// - A preset's IN POOL stands clear of its name's column and of its ▶ (and
+//   the strip's box) at rest, under a mouse's pointer and in the model view,
+//   at every size (on a phone it stood over its ▶).
+//
+// What it does not claim: the marks. The seed and may-be-replaced words and
+// the model view's percentage are said about a row, not pressed, and stand
+// over the end of the name's line, as they did (the bank's guide says so).
 //
 // The rows are named by the rename the player has (a double-click on the
 // name), and the bred sound's lineage is handed to main as the engine sends
@@ -39,7 +46,7 @@
 // Touch is a touch screen's (`hasTouch`), with `isMobile` besides in
 // Chromium: Playwright refuses it in Firefox, which with a touch screen alone
 // still reports a coarse pointer and lays a phone out by its width.
-const { test, expect } = require("./fixtures");
+const { test, expect, bankTab } = require("./fixtures");
 
 const TOUCH = process.env.AURACLE_BROWSER === "firefox" ? { hasTouch: true } : { hasTouch: true, isMobile: true };
 
@@ -163,6 +170,75 @@ function still(now, rest, what) {
 
 const width = (d) => d.name.r - d.name.l;
 
+// ---- a preset's IN POOL ----
+
+/** The app booted with its pool whole and no toast over the rows. */
+async function readyBank(page, app) {
+  await app.boot({ random: 20260928, reuseRenders: true });
+  await app.poolRows(40);
+  await page.addStyleTag({ content: "#toasts { display: none !important; }" });
+}
+
+/** The third preset heard, which puts it in the pool and its row says IN POOL
+ *  (`bank_row.spec.js` does the same), then the engine's replies held, so no
+ *  redraw takes the row from under a measure. Its index. A finger taps the
+ *  ▶, which a phone and a tablet show at rest; a mouse's pointer goes to it. */
+async function presetInPool(page, app, { finger }) {
+  await bankTab(page, "presets");
+  const index = await page.locator("#bank-list .preset-item").nth(2).getAttribute("data-index");
+  const at = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+  await at.hover();
+  await (finger ? at.locator(".bi-hear").tap() : at.locator(".bi-hear").click());
+  await app.engine((timeout) => expect(at.locator(".pb-in")).toBeAttached({ timeout }), { ms: 60_000 });
+  // Its sound has come and gone: a ▶ still waiting on it, or sounding, keeps
+  // its strip shown, and the held replies would keep it waiting.
+  await expect(at.locator(".bi-hear")).not.toHaveClass(/\b(loading|playing|pending)\b/, { timeout: 30_000 });
+  await app.hold({});
+  return index;
+}
+
+/** The model view, held as a keyboard holds it (⌥), for the rest of the test:
+ *  a phone's sheet stands over MODEL. */
+const modelViewHeld = async (page) => {
+  await page.keyboard.down("Alt");
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+};
+
+/** The preset row's IN POOL words, its name's column and what else shows:
+ *  each visible button and the strip, as boxes. */
+const inPoolDrawn = (page, index) =>
+  page.evaluate((index) => {
+    const row = document.querySelector(`#bank-list .preset-item[data-index="${index}"]`);
+    row.scrollIntoView({ block: "nearest", behavior: "instant" });
+    const box = (b) => ({ l: b.left, r: b.right, t: b.top, b: b.bottom });
+    const visible = (e) => { const cs = getComputedStyle(e); const b = e.getBoundingClientRect(); return cs.visibility === "visible" && cs.display !== "none" && b.width > 1 && b.height > 1; };
+    const words = document.createRange();
+    words.selectNodeContents(row.querySelector(".pb-in"));
+    const strip = row.querySelector(".bi-acts");
+    const cs = getComputedStyle(strip);
+    return {
+      row: box(row.getBoundingClientRect()),
+      column: box(row.querySelector(".bi-top").getBoundingClientRect()),
+      words: box(words.getBoundingClientRect()),
+      shown: visible(row.querySelector(".pb-in")),
+      strip: cs.visibility === "visible" && Number(cs.opacity) > 0 && visible(strip) ? box(strip.getBoundingClientRect()) : null,
+      buttons: [...strip.querySelectorAll("button")].filter(visible).map((b) => ({ kind: b.className.replace(/\s.*/, ""), ...box(b.getBoundingClientRect()) })),
+    };
+  }, index);
+
+/** IN POOL read whole and clear of the name's column and of the ▶ with its
+ *  strip, wherever the ▶ shows, inside the row. */
+function inPoolClear(d, what) {
+  expect(d.shown, `${what}: IN POOL shows`).toBe(true);
+  expect(d.words.r - d.words.l, `${what}: IN POOL has its words`).toBeGreaterThan(20);
+  expect(d.words.l, `${what}: IN POOL is inside the row's left edge`).toBeGreaterThanOrEqual(d.row.l);
+  expect(d.words.r, `${what}: IN POOL is inside the row's right edge`).toBeLessThanOrEqual(d.row.r);
+  expect(apart(d.words, d.column), `${what}: IN POOL (${Math.round(d.words.l)}–${Math.round(d.words.r)}) is clear of the name's column (${Math.round(d.column.l)}–${Math.round(d.column.r)})`).toBe(true);
+  for (const over of [...(d.strip ? [{ kind: "the strip", ...d.strip }] : []), ...d.buttons]) {
+    expect(apart(d.words, over), `${what}: IN POOL (${Math.round(d.words.l)}–${Math.round(d.words.r)}) is clear of ${over.kind} (${Math.round(over.l)}–${Math.round(over.r)})`).toBe(true);
+  }
+}
+
 // ---- a mouse ----
 
 for (const [w, h, bank] of [[1440, 900, 280], [1040, 700, 228]]) {
@@ -214,6 +290,26 @@ for (const [w, h, bank] of [[1440, 900, 280], [1040, 700, 228]]) {
       // it does at rest, and the bank at 280 px holds all but the longest.
       const long = await drawn(page, ids[3]);
       expect(long.overflows, "the 38-character name ends in an ellipsis").toBe(true);
+    });
+
+    test(`a preset's IN POOL stands clear of its name's column and its ▶ at ${w} px, at rest, under the pointer and in the model view`, async ({ page, app }) => {
+      await readyBank(page, app);
+      const index = await presetInPool(page, app, { finger: false });
+      const row = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+      // At rest: the pointer away and the focus off the ▶ that heard it.
+      await page.mouse.move(5, 5);
+      await page.evaluate(() => document.activeElement?.blur?.());
+      await expect(row.locator(".bi-acts")).toHaveCSS("opacity", "0");
+      inPoolClear(await inPoolDrawn(page, index), "at rest");
+      await row.hover();
+      await expect(row.locator(".bi-acts")).toHaveCSS("opacity", "1");
+      const hovered = await inPoolDrawn(page, index);
+      expect(hovered.buttons.map((b) => b.kind), "the ▶ shows under the pointer").toEqual(["bi-hear"]);
+      inPoolClear(hovered, "under the pointer");
+      await page.mouse.move(5, 5);
+      await modelViewHeld(page);
+      await expect(row.locator(".bi-acts")).toHaveCSS("opacity", "0");
+      inPoolClear(await inPoolDrawn(page, index), "in the model view");
     });
   });
 }
@@ -277,6 +373,16 @@ test.describe("a touch tablet at 1024 × 768 (the bank 228 px)", () => {
     }
     await expect.poll(() => layout(page, ids), { message: "the rows are where they were before any of it" }).toEqual(rest);
   });
+
+  test("a tablet's preset keeps its name's column clear of IN POOL, and IN POOL clear of its ▶", async ({ page, app }) => {
+    await readyBank(page, app);
+    const index = await presetInPool(page, app, { finger: true });
+    const at = await inPoolDrawn(page, index);
+    expect(at.buttons.map((b) => b.kind), "the ▶ is there at rest").toEqual(["bi-hear"]);
+    inPoolClear(at, "at rest");
+    await modelViewHeld(page);
+    inPoolClear(await inPoolDrawn(page, index), "in the model view");
+  });
 });
 
 for (const [w, h] of [[390, 844], [844, 390]]) {
@@ -316,6 +422,18 @@ for (const [w, h] of [[390, 844], [844, 390]]) {
         await page.keyboard.press("Escape");
         await expect(row).not.toHaveClass(/\brating\b/);
       }
+    });
+
+    test(`a phone's preset keeps its name's column clear of IN POOL, and IN POOL clear of its ▶, at ${w} × ${h}`, async ({ page, app }) => {
+      await readyBank(page, app);
+      await page.locator("#bank-btn").tap();
+      await expect(page.locator("body")).toHaveClass(/\bbank-open\b/);
+      const index = await presetInPool(page, app, { finger: true });
+      const at = await inPoolDrawn(page, index);
+      expect(at.buttons.map((b) => b.kind), "the ▶ is at the row's end at rest").toEqual(["bi-hear"]);
+      inPoolClear(at, "at rest");
+      await modelViewHeld(page);
+      inPoolClear(await inPoolDrawn(page, index), "in the model view");
     });
   });
 }

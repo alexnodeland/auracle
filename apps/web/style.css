@@ -962,14 +962,15 @@ body.model-view.model-quiet .model-tag { opacity: 0; transform: translate(-50%, 
 }
 
 /* A row: the face's column, then two lines, always two. The first is the
-   name, which has the row's whole width and is never covered: the seed and
-   may-be-replaced words, the model view's percentage and (on a touch screen)
-   IN POOL sit over its end, and the mark column keeps it at one x. The second
-   is the actions' (a bred sound's lineage shares it): their own strip, kept
-   whether they show or not, so a row is the height it is at rest, under the
-   pointer and with the stars out, and nothing under the hand moves (#312,
-   #534). The name that does not fit ends in an ellipsis, its full text in
-   its tooltip. */
+   name, which has the row's whole width, and no action or star covers it.
+   The marks, which are said about the row and are not pressed, stand over
+   its end instead, on this line: the seed and may-be-replaced words, the
+   model view's percentage and (under a coarse pointer) IN POOL; the mark
+   column keeps the name at one x. The second line is the actions' (a bred
+   sound's lineage shares it): their own strip, kept whether they show or
+   not, so a row is the height it is at rest, under the pointer and with the
+   stars out, and nothing under the hand moves (#312, #534). The name that
+   does not fit ends in an ellipsis, its full text in its tooltip. */
 .bank-item {
   position: relative;
   flex: none;
@@ -8330,7 +8331,8 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
    knobs, the pair and PICK, the rack, the map) fits without the page
    scrolling, and where there is more than fits it scrolls inside its own
    panel, never the level. And on a touch screen each thing pressed is a
-   finger's size, 44 px, and a label stays on one line. */
+   finger's size, 44 px (a bank row's acts and stars are as tall, and share
+   the row's width, below), and a label stays on one line. */
 @media (pointer: coarse) {
   .inhand-play, .model-btn, .util-btn, .hw-btn, .inspect-btn, .pf-disclose, .md-disclose,
   .ev-lineage-btn, .ts-tog, .ts-tplay, .btab, .bank-tour-btn, .midi-ind,
@@ -8348,7 +8350,11 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   /* The octave's two keys: a finger wide, and with no keyboard to name, an
      arrow each (their names are their aria-labels). */
   .kcap#oct-down, .kcap#oct-up { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; }
-  /* A sound's row in the bank: its four acts a finger's size. */
+  /* A sound's row in the bank: its four acts a finger's size tall, and as
+     wide where the row has the width. A tablet's strip is the row's width
+     shared among them, down to 39 px each for four and 31 px for a bred
+     sound's five in the narrowest bank, and a phone's stars are 32 px wide
+     (#534). */
   .bi-hear, .bi-star, .bi-save, .bi-kill { min-width: 44px; min-height: 44px; }
 }
 
@@ -8780,6 +8786,23 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
   .bank-item:not(.acts-open):not(.rating):not(:focus-within) .bi-acts { background: none; }
   .bank-item.acts-open .bi-acts { animation: acts-out var(--d-state) var(--e-settle); box-shadow: -8px 0 12px var(--panel-hi); }
   .bank-item .bi-flag, .bank-item .bi-pct { right: calc(var(--hit) + var(--s2)); }
+  /* A preset's IN POOL stands left of the ▶'s column, level with the name,
+     in every state the ▶ has (the ▶ is at the row's end, shown at rest under
+     a finger), and the name stops short of it on every preset row, so none
+     moves when a preset joins the pool. The selectors are the ones that
+     place it on a mouse's screen and under a coarse pointer, repeated: an
+     :is() list takes the weight of its heaviest member, and this has to win
+     over each of them. */
+  .preset-item { padding-right: calc(var(--hit) + var(--s2) + 2 * var(--s1) + 52px); } /* token-exempt: the ▶'s column, then the width IN POOL takes */
+  .preset-item .pb-in,
+  .preset-item:is(:hover, .under, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in,
+  body.model-view .preset-item:not(:hover, .under) .pb-in {
+    right: calc(var(--hit) + var(--s2) + var(--s1));
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    background: none;
+  }
 }
 @keyframes acts-out { from { transform: translate(24px, -50%); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bank-item.acts-open .bi-acts { animation: none; } }

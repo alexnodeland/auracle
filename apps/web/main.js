@@ -9746,7 +9746,7 @@ function foldStars() {
 // changed" on the second), the seed or may-be-replaced mark at the end of the
 // first while EVOLVE POOL is pointed at, and its actions at the end of the
 // second on approach (the pointer, the keyboard cursor, focus): compare, ▶,
-// ★, save and cut. Never over the name (#534). The model's guess,
+// ★, save and cut, which are never over the name (#534). The model's guess,
 // its percentage and its bar, is the model view's (⌥): drawn on every row,
 // shown only under `body.model-view`.
 function bankRow(r, fitted) {
