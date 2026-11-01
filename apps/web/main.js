@@ -1269,8 +1269,8 @@ function setFaceSlot(el, kind, t, { now = false } = {}) {
 // from where one level draws it to where the other does (shell.js). These say
 // where each level draws it, which face that is, and draw it in flight. Its
 // one claim is "this is the sound you're playing" (ADR-012), so it is the
-// bench's own render's face (`faceOf`: the engine's `face_of_key`), and it
-// lands only where a level draws that same face (the same render key).
+// face the page has filed for the bench's tree (`heldFace`), and it lands
+// only where a level draws that same face (the same render key).
 
 /** The render key of the face a slot draws, read without layout; null while
  *  it draws none. A slot of the hand held while a sound flies into it
@@ -1301,11 +1301,14 @@ function faceBoxOf(el) {
   return box ? { box, key } : null;
 }
 
-/** The face of the sound you're playing, by its render key: the bench's
- *  latest render's (`faceOf` on `benchTreeJson`). None while another sound
- *  is on its way to the bench or an edit is still at the engine (what you
- *  hold is about to change), and none until the engine has said the face
- *  (a patch that does not vet has none). */
+/** The face of the sound you're playing, by its render key: the one filed
+ *  for the bench's tree (`benchTreeJson`). For a sound just opened,
+ *  unedited, that is the face its row drew, filed as the bench's reply
+ *  lands (`knowFace`), until the engine's own answer for the tree replaces
+ *  it; after an edit, the engine's, once it has said it. None while another
+ *  sound is on its way to the bench or an edit is still at the engine (what
+ *  you hold is about to change), none while no face is filed, and none for
+ *  a patch the engine says has none (one that does not vet). */
 function heldFace() {
   if (benchPending != null || !benchTreeJson || benchLane.length || editInFlight || structInFlight) return null;
   const target = faceTarget({ tree: benchTreeJson });
@@ -3507,11 +3510,12 @@ worker.onmessage = (e) => {
           openedTreeJson = m.treeJson;
         }
       }
-      // A sound opened, unedited: the bench's tree is that pool sound's, and
-      // its face the one its row draws, so the hand, the face at OUT and
-      // the move between the levels draw it now (`knowFace`; the engine is
-      // asked all the same).
-      if (m.subject !== undefined && !wb.dirty && m.treeJson && m.treeJson !== "null") {
+      // A sound opened (a reply with `subject` answers `edit_begin`, and
+      // the bench is unedited, above): the bench's tree is that pool
+      // sound's, and its face the one its row draws, so the hand, the face
+      // at OUT and the move between the levels draw it now (`knowFace`; the
+      // engine is asked all the same).
+      if (m.subject !== undefined && m.treeJson && m.treeJson !== "null") {
         knowFace(m.treeJson, faceKeyById.get(m.subject), { confirm: true });
       }
       // Every reply, not only the structural ones, and after the tree lands

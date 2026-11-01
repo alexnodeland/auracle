@@ -367,11 +367,13 @@ export function createShell(host = {}) {
     return a && a.box && a.key === key ? a.box : null;
   }
 
-  /** The face the move carries: the sound you're playing's, from the
-   *  bench's own render (main.js `heldFace`: `faceOf`, the engine's
-   *  `face_of_key`), or null when there is none to show (an edit or an open
-   *  still at the engine, a patch that failed its check), and then nothing
-   *  flies (ADR-012: its one claim is "this is the sound you're playing"). */
+  /** The face the move carries: the sound you're playing's, the one main
+   *  has filed for the bench's tree (main.js `heldFace`: for a sound just
+   *  opened, the face its row drew until the engine's answer replaces it;
+   *  after an edit, the engine's), or null when there is none to show (an
+   *  edit or an open still at the engine, a patch that failed its check),
+   *  and then nothing flies (ADR-012: its one claim is "this is the sound
+   *  you're playing"). */
   function heldKey() {
     const h = host.heldFace ? host.heldFace() : null;
     return h && h.key ? h.key : null;
@@ -393,9 +395,9 @@ export function createShell(host = {}) {
     if (m) {
       clearTimeout(m.guard);
       for (const a of m.anims) a.cancel();
-      // Its own face only: a sound taken up during a move that carried
-      // none (↓ patch) lands by itself (`takeUpEnd`).
-      if (m.key) overlay.clear(m.flyId);
+      // Its own face only, if it flew one: a sound taken up during a move
+      // that carried none (↓ patch) lands by itself (`takeUpEnd`).
+      if (m.flyId != null) overlay.clear(m.flyId);
       puckRest();
       if (host.mark) host.mark("level-landed", { from: m.prev, to: m.level, dir: m.dir, cut: !m.done, flew: m.flew });
     }
