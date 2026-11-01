@@ -171,7 +171,7 @@ const [
   geom, words, { createPatch }, { createTaste },
   { decodeFace, bankStats, statsMoved }, { readPresetFaces, presetFace }, { drawVessel, vesselBox, shownBox },
   { createLiveFaces }, { poolSupport }, { createAudioIn, INPUT_LANE_H }, { createTakes, TAKE_LANE_H },
-  { createShell }, { createGuide }, { createToastLane, UNDO_WINDOW_MS }, { createDealer, onTable },
+  { createShell }, { createGuide }, { createToastLane, placeLane, LANE_GAP, LANE_INSET, UNDO_WINDOW_MS }, { createDealer, onTable },
   bootParams, { warmSample }, strainRule, { findQuery, bankMatches },
   { evolveMarks, bankMarks, retiringAfter, NO_MARKS }, { createHand, handsOf, holdRegion, keepUnder, keptInHand }, { landRefit },
   { socketMeant, REACH_PRESS_PX, REACH_DROP_PX },
@@ -217,7 +217,12 @@ const shell = createShell({
   // Where the menu bar's chip draws the sound in hand: where a sound taken
   // up from the bank lands at a level with no place for it.
   handAnchor: () => faceBoxOf($("inhand-face")),
-  mark: (name, detail) => mark(name, detail),
+  mark: (name, detail) => {
+    mark(name, detail);
+    // The level reached is laid out where it rests: the lane is placed
+    // again for it (it was placed as the move began, `levelChanged`).
+    if (name === "level-landed") positionToastLane();
+  },
   // ⌘K (Plan-008 §2.4): its keys printed for this platform, and the sounds
   // it lists (the pool and the presets), each with the face the page has
   // drawn for it and nothing asked of the engine.
@@ -4777,10 +4782,12 @@ const toastLane = createToastLane({
   view: {
     show(el) {
       $("toasts").appendChild(el);
-      positionToastLane();
+      positionToastLane({ fresh: true });
     },
     remove(el) {
       el.remove();
+      // The lane empty, the guide pill it stood over is back.
+      if (!$("toasts").firstChild) $("guide")?.classList.remove("under-toast");
     },
     // The action retires on the window boundary (toasts.js `dismiss`), and the
     // element fades out (`.toast.out`, over `--d-move`).
@@ -4834,14 +4841,22 @@ function note(text, opts = {}) {
   if (window.matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)").matches) {
     let y0 = null;
     el.addEventListener("touchstart", (e) => {
+      // The finger is on it: the lane stays where it is until it lifts.
+      laneTouched = true;
       y0 = e.target.closest?.("button") || e.touches.length > 1 ? null : e.touches[0].clientY;
     }, { passive: true });
+    const lifted = () => {
+      laneTouched = false;
+      if (laneOwed) positionToastLane();
+    };
+    el.addEventListener("touchcancel", lifted);
     el.addEventListener("touchmove", (e) => {
       if (y0 == null) return;
       e.preventDefault();
       el.style.transform = `translateY(${Math.min(0, e.touches[0].clientY - y0)}px)`;
     }, { passive: false });
     el.addEventListener("touchend", (e) => {
+      lifted();
       if (y0 == null) return;
       const dy = e.changedTouches[0].clientY - y0;
       y0 = null;
@@ -4863,107 +4878,290 @@ function dropToast(el) {
   toastLane.drop(el);
 }
 
-// What the lane may never cover, in two kinds. STRIPS are stepped over — the
-// lane moves above them: the teaching strips (rule 2), and the bands it used
-// to park on while someone was reading or reaching for them — the taste map's
-// footer, EVOLVE's record of what each generation did, the module strip under
-// the rack, HELD, and PERFORM's pad row (pressed mid-phrase). COLUMNS are
-// stepped beside — the lane moves left of
-// them: panels far taller than a toast that stand on the same bottom edge —
-// the node bank's rail, the tours on the rails, the MIDI and arp panels —
-// where stepping *over* a 460px rail would carry a toast to the top of the
-// rack. Every `.duel-controls`, not the first: B's buttons are the ones at
-// the lane's edge.
+// What the lane may never cover (rule 2, toasts.js `placeLane`), measured
+// each time a toast shows and whenever the page under it changes:
+//  - every control in the level on screen and in the stage around it (the
+//    rail, the guide pill): LANE_CONTROLS, all but those drawn on a surface
+//    the lane may stand over (LANE_SURFACES: TASTE's map and PATCH's rack,
+//    whose sounds and modules reach to their corners, so there is nowhere
+//    clear of them to go);
+//  - the level's heading and the lines read with it (LANE_HEADS): PERFORM's
+//    head with KEEP/BACK's slot, kept while it is empty because they come up
+//    there after a turn, and its status line; EVOLVE's question with its
+//    pips, each card's foot (its name, PLAY and PICK: a row, however short
+//    the name) and the line saying how the pair was dealt; PATCH's, TASTE's
+//    and LEARNING's heads; the guide pill;
+//  - the teaching strips and the panels that open over the stage or beside
+//    it (LANE_STRIPS, LANE_COLUMNS), whole: the bands the lane used to step
+//    over by hand (#517: EVOLVE's footer was not among them, and the receipt
+//    of every pick covered EVOLVE POOL).
+// What it may stand over is a level's picture (LANE_PICTURES): PERFORM's
+// well, an EVOLVE card's well, the rack, TASTE's map, LEARNING's panels;
+// wholly inside one, never across its edge.
+const LANE_CONTROLS = "button, a[href], input:not([type=hidden]), select, textarea, label, [role=slider], [role=tab], [role=button], [role=switch], [role=checkbox], [role=radio], [role=menuitem], [role=application], [tabindex='0']";
+const LANE_SURFACES = "#taste-crt, #rack-svg";
+const LANE_HEADS = [".pf-head", ".pf-moved", ".pf-status", ".ev-head-words", ".duel-foot", ".duel-deal", ".pt-head", ".ts-head", ".md-head", ".md-ph", ".guide"];
+const LANE_PICTURES = [".pf-well", ".duel-well", "#rack-scroll", ".ts-well", ".md-panel"];
+// Every `.duel-controls`, not the first: B's buttons are the ones at the
+// lane's edge.
 const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#pt-foot", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
-// On a phone (#134) the lane is at the top, under the menu bar, over the
-// sound's picture: at the bottom it stood over the guide pill, and above
-// that over PERFORM's controls and EVOLVE's picks. On one on its side the
-// cross's stops, at the right edge, are columns. The stylesheet's own
-// queries for those screens.
+// On a phone held upright (#134) the toast is a banner as wide as the
+// screen, so only its height is chosen: the free band nearest the bottom of
+// the level (over the floor of PERFORM's well, under the face), except on
+// EVOLVE, whose cards a thumb swipes up from below to pick: there it keeps
+// to the top of the free space, under the cards' corners, clear of the
+// thumb. On one on its side, a screen too wide for a banner to find a band
+// clear of the level beside the well, it is as wide as its words and stands
+// as on a desk, left of the levels' stops at the right edge. The
+// stylesheet's own queries for those screens.
 const PHONE_SCREEN = window.matchMedia("(max-width: 700px) and (min-height: 501px), (max-height: 500px) and (max-width: 999px)");
 const SHORT_SCREEN = window.matchMedia("(max-height: 500px) and (max-width: 999px)");
 const RAIL_COLUMNS = ["#rail .rail-stop", "#rail .rail-keys"];
+const PHONE_FROM_TOP = new Set(["evolve"]);
+// The narrowest a toast is made to stand inside a picture, in px: a few
+// words to a line and its action beside them.
+const LANE_NARROWEST = 240;
+// A finger on the banner (a swipe under way): the lane is not moved under it.
+let laneTouched = false;
+// A move the hand held back, made when it leaves (`laneUnderHand`).
+let laneOwed = false;
 
-/** Anchor the lane, then push it clear of whatever it must not cover.
- *  Rule 2 (toasts.js): the reserved rects are measured, not assumed. */
-function positionToastLane() {
+/** Is the hand on the lane? A background change never moves what is under
+ *  it (ADR-025): the pointer resting on a toast's button, or a finger
+ *  swiping the banner. */
+function laneUnderHand(holder) {
+  return laneTouched || holder.matches(":hover");
+}
+
+/** Place the lane: measure the toast, the level's controls and pictures,
+ *  and stand it in the free spot nearest its corner (rule 2, toasts.js
+ *  `placeLane`). `fresh`: a toast has just come on screen, and it is placed
+ *  wherever the hand is; otherwise (the page changed under it) it waits for
+ *  the hand to leave. */
+function positionToastLane({ fresh = false } = {}) {
   const holder = $("toasts");
   if (!holder || !holder.firstChild) return;
-  // Bottom-right, just above the keybar: the one edge of every view that
-  // holds nothing being worked on. The lane used to sit at the top of the rack
-  // frame, where it covered B's title and "circuit" in EVOLVE, rack plates in
-  // PATCH and the header copy in TASTE.
+  if (!fresh && laneUnderHand(holder)) {
+    laneOwed = true;
+    return;
+  }
+  laneOwed = false;
+  watchLane();
+  // Bottom-right, just above the keybar: the one corner of every view that
+  // holds the least being worked on. The lane used to sit at the top of the
+  // rack frame, where it covered B's title and "circuit" in EVOLVE, rack
+  // plates in PATCH and the header copy in TASTE.
   const bar = document.querySelector(".keybar");
   const br = bar ? bar.getBoundingClientRect() : null;
   // On a phone the levels are the bar along the bottom, and the keys a
   // drawer over it (#134): the lane stands above whichever is higher.
   const nav = $("rail") ? $("rail").getBoundingClientRect() : null;
-  const navTop = nav && nav.height > 0 && nav.width > window.innerWidth / 2 && nav.bottom >= window.innerHeight - 1 ? nav.top - 10 : window.innerHeight - 16;
-  // Anchored by its bottom, so it grows upward as toasts stack and does not
-  // jump when one leaves.
-  const floor = Math.min(br && br.height > 0 ? br.top - 10 : window.innerHeight - 16, navTop);
-  if (PHONE_SCREEN.matches) {
-    // Just under the menu bar (#134), never over it (its ▶, BANK and ⌘K
-    // stay in reach), as wide as its words up to the screen's: it stands
-    // over the top of the level for its moment, and goes up when swiped
-    // (`note`). Clear only of the cross's stops on a phone on its side.
-    const menubar = document.querySelector(".menubar");
-    holder.style.bottom = "auto";
-    holder.style.top = `${Math.round((menubar ? menubar.getBoundingClientRect().bottom : 0) + 6)}px`;
-    holder.style.right = "";
-    for (const el of SHORT_SCREEN.matches ? document.querySelectorAll(RAIL_COLUMNS.join(", ")) : []) {
-      const r = el.getBoundingClientRect();
-      const lane = holder.getBoundingClientRect();
-      if (r.width && lane.bottom > r.top && lane.top < r.bottom && lane.right > r.left && lane.left < r.right) {
-        holder.style.right = `${Math.round(window.innerWidth - r.left + 8)}px`;
-      }
+  const navTop = nav && nav.height > 0 && nav.width > window.innerWidth / 2 && nav.bottom >= window.innerHeight - 1 ? nav.top - LANE_GAP : window.innerHeight - 16;
+  const floor = Math.min(br && br.height > 0 ? br.top - LANE_GAP : window.innerHeight - 16, navTop);
+  const menubar = document.querySelector(".menubar");
+  const ceiling = (menubar ? menubar.getBoundingClientRect().bottom : 0) + 6;
+  // A banner on a phone held upright; elsewhere a toast as wide as its words.
+  const phone = PHONE_SCREEN.matches && !SHORT_SCREEN.matches;
+  // Where it may stand: on a phone on its side, left of the levels' stops at
+  // the right edge.
+  let right = window.innerWidth - 16;
+  for (const el of SHORT_SCREEN.matches ? document.querySelectorAll(RAIL_COLUMNS.join(", ")) : []) {
+    const r = el.getBoundingClientRect();
+    if (r.width && r.left > window.innerWidth / 2) right = Math.min(right, r.left - 8);
+  }
+  // The size it is, measured where it rests: a banner across the screen;
+  // otherwise at the right, where its words have their full measure. At its
+  // own shape first (a narrower or tighter one is a rung below).
+  holder.classList.remove("tight");
+  holder.style.maxWidth = "";
+  holder.style.bottom = "auto";
+  holder.style.top = `${Math.round(ceiling)}px`;
+  holder.style.left = phone ? "" : "auto";
+  holder.style.right = phone ? "" : `${Math.round(window.innerWidth - right)}px`;
+  const lane = holder.getBoundingClientRect();
+  let size = { w: lane.width, h: lane.height };
+  const stage = document.querySelector(".stage")?.getBoundingClientRect();
+  const bounds = phone
+    ? { left: lane.left, right: lane.right, top: ceiling, bottom: floor }
+    : { left: (stage ? stage.left : 0) + 8, right, top: ceiling, bottom: floor };
+  const level = document.body.dataset.level;
+  const prefer = phone ? (PHONE_FROM_TOP.has(level) ? "top" : "bottom") : "corner";
+  const { reserved, pictures, strips, guide } = laneObstacles();
+  // Nowhere free of every control (a level crowded at this size: PERFORM on
+  // a small phone, the XY pad filling the well), it steps down:
+  //  - the guide pill gives way, a hint that comes back when the toast goes
+  //    (`laneOverGuide`);
+  //  - on a phone, the banner is one row (`.toasts.tight`): its words, two
+  //    lines at most, beside its action, where it would put the action
+  //    under them (the band under PERFORM's pads at 375 × 667 holds one
+  //    row, not two);
+  //  - elsewhere, the toast is narrowed to the inside of a picture, the
+  //    nearest its corner first (PERFORM's well on a phone on its side is a
+  //    little narrower than a toast, and the controls fill the rest);
+  //  - then clear of the teaching strips and the panels at least, as the
+  //    lane always was, and failing that, its corner.
+  const yielding = guide ? reserved.filter((r) => r !== guide) : reserved;
+  const measured = () => {
+    const t = holder.getBoundingClientRect();
+    return { w: t.width, h: t.height };
+  };
+  const narrower = phone ? [] : pictures
+    .map((p) => ({ p, w: Math.floor(p.right - p.left - 2 * LANE_INSET) }))
+    .filter(({ w }) => w < size.w && w >= LANE_NARROWEST)
+    .sort((a, b) => (bounds.right - a.p.right) + (bounds.bottom - a.p.bottom) - ((bounds.right - b.p.right) + (bounds.bottom - b.p.bottom)));
+  const rungs = [
+    { keep: reserved },
+    ...(guide ? [{ keep: yielding }] : []),
+    ...(phone ? [{ keep: yielding, shape: () => holder.classList.add("tight") }] : []),
+    ...narrower.map(({ w }) => ({ keep: yielding, shape: () => { holder.style.maxWidth = `${w}px`; } })),
+  ];
+  let kept = reserved;
+  let at = null;
+  for (const rung of rungs) {
+    if (rung.shape) {
+      rung.shape();
+      size = measured();
     }
+    at = placeLane({ size, bounds, reserved: rung.keep, pictures, prefer });
+    kept = rung.keep;
+    if (at) break;
+  }
+  if (!at && narrower.length) {
+    holder.style.maxWidth = "";
+    size = measured();
+  }
+  if (!at) {
+    at = placeLane({ size, bounds, reserved: strips, prefer })
+      || { left: bounds.right - size.w, top: phone && prefer === "top" ? bounds.top : bounds.bottom - size.h };
+    kept = strips;
+  }
+  if (phone) {
+    holder.style.top = `${Math.round(at.top)}px`;
+    insetBanner(holder, at, size, pictures, kept, prefer);
+  } else {
+    // Anchored by its bottom, so a toast that grows (a line more) grows
+    // upward, and nothing jumps when one leaves.
+    holder.style.top = "auto";
+    holder.style.bottom = `${Math.round(window.innerHeight - (at.top + size.h))}px`;
+    holder.style.right = `${Math.round(window.innerWidth - (at.left + size.w))}px`;
+  }
+  laneOverGuide(guide);
+}
+
+/** The guide pill stands aside (hidden, its place kept) while the toast
+ *  stands over it, and comes back when the toast goes or moves off it. */
+function laneOverGuide(guide) {
+  const pill = $("guide");
+  if (!pill) return;
+  const t = $("toasts")?.firstChild ? $("toasts").getBoundingClientRect() : null;
+  const over = !!(t && guide && t.left < guide.right && t.right > guide.left && t.top < guide.bottom && t.bottom > guide.top);
+  pill.classList.toggle("under-toast", over);
+}
+
+/** A phone's banner standing over one picture (PERFORM's well, the rack,
+ *  TASTE's map, a LEARNING panel) is narrowed to its inside, LANE_INSET from
+ *  its sides, as a caption is, rather than laid across its frame; its edge
+ *  nearest where it was placed from stays put. Not when it spans two (both
+ *  EVOLVE cards), nor when, narrowed, it no longer fits in the band it
+ *  stood in. */
+function insetBanner(holder, at, size, pictures, reserved, prefer) {
+  const lane = holder.getBoundingClientRect();
+  const spanned = pictures.filter((p) => p.left >= lane.left - 0.5 && p.right <= lane.right + 0.5 && p.top < at.top + size.h && p.bottom > at.top);
+  const p = spanned.length === 1 ? spanned[0] : null;
+  if (!p || at.top < p.top + LANE_INSET - 0.5 || at.top + size.h > p.bottom - LANE_INSET + 0.5) return;
+  const right = holder.style.right;
+  holder.style.left = `${Math.round(p.left + LANE_INSET)}px`;
+  holder.style.right = `${Math.round(window.innerWidth - p.right + LANE_INSET)}px`;
+  const n = holder.getBoundingClientRect();
+  const top = prefer === "top" ? at.top : at.top + size.h - n.height;
+  const t = { left: n.left, right: n.right, top, bottom: top + n.height };
+  const meets = (r) => t.left < r.right - 0.5 && t.right > r.left + 0.5 && t.top < r.bottom - 0.5 && t.bottom > r.top + 0.5;
+  if (t.top < p.top + LANE_INSET - 0.5 || t.bottom > p.bottom - LANE_INSET + 0.5 || reserved.some(meets)) {
+    holder.style.left = "";
+    holder.style.right = right;
     return;
   }
-  holder.style.top = "auto";
-  holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
-  holder.style.right = "16px";
+  holder.style.top = `${Math.round(top)}px`;
+}
 
-  // The reserved rects (see LANE_STRIPS / LANE_COLUMNS), measured each time.
-  // Several passes, because clearing one can walk into another — left of the
-  // node bank is the strip under the rack — and every step only ever moves
-  // the lane up or left, so the passes cannot undo each other. A level being
-  // left (shell.js, `.leaving` while it fades) is no longer the player's:
-  // its strips are gone once the move lands, and nothing measures the lane
-  // again then, so it is placed for the level reached alone.
-  const shown = (el) => !el.classList.contains("hidden") && el.offsetParent !== null && !el.closest(".view.leaving");
-  const reserved = [
-    ...LANE_STRIPS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: false })),
-    ...LANE_COLUMNS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: true })),
-  ];
-  for (let pass = 0; pass < 6; pass++) {
-    const lane = holder.getBoundingClientRect();
-    let moved = false;
-    for (const { el, column } of reserved) {
-      const r = el.getBoundingClientRect();
-      if (r.height === 0 || r.width === 0) continue;
-      const hits = lane.bottom > r.top && lane.top < r.bottom &&
-                   lane.right > r.left && lane.left < r.right;
-      if (!hits) continue;
-      if (column) holder.style.right = `${Math.round(window.innerWidth - r.left + 8)}px`;
-      else holder.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
-      moved = true;
-      break;
-    }
-    if (!moved) break;
+/** What the lane must keep clear of and what it may stand over, measured
+ *  now (see LANE_CONTROLS and the lists beside it). A level being left
+ *  (shell.js, `.leaving` while it fades) is no longer the player's: what is
+ *  in it is gone once the move lands. With a sheet over the stage (the bank
+ *  on a narrow window) the level behind it takes no press: the sheet alone
+ *  is kept clear. Over a full-window overlay (stage mode, the lesson) there
+ *  is nothing of the level to keep clear of. */
+function laneObstacles() {
+  const shown = (el) => {
+    if (el.classList.contains("hidden") || el.closest(".view.leaving, .view:not(.on)")) return false;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    return el.checkVisibility ? el.checkVisibility({ visibilityProperty: true }) : true;
+  };
+  const rect = (el) => el.getBoundingClientRect();
+  const all = (sels) => sels.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown);
+  const strips = [...all(LANE_STRIPS), ...all(LANE_COLUMNS)].map(rect);
+  const html = document.documentElement;
+  if (html.classList.contains("st-on") || html.classList.contains("xl-on")) return { reserved: [], pictures: [], strips: [], guide: null };
+  const bank = $("bank");
+  if (document.body.classList.contains("bank-open") && bank && getComputedStyle(bank).position === "fixed") {
+    return { reserved: [rect(bank)], pictures: [], strips: [rect(bank)], guide: null };
+  }
+  const stage = document.querySelector(".stage");
+  // The guide pill's controls are its own: it is kept clear of whole, and
+  // gives way whole (`positionToastLane`'s fallback).
+  const pill = $("guide");
+  const controls = stage ? [...stage.querySelectorAll(LANE_CONTROLS)].filter((el) => !el.closest(LANE_SURFACES) && !(pill && pill.contains(el)) && shown(el)) : [];
+  // Measured as the pill is, standing aside for a toast or not: one hidden
+  // under the toast is still the pill, back once the toast moves off it.
+  const guide = pill && (pill.classList.contains("under-toast") ? !pill.classList.contains("hidden") && rect(pill).width > 0 : shown(pill)) ? rect(pill) : null;
+  return {
+    reserved: [...controls.map(rect), ...all(LANE_HEADS.filter((s) => s !== ".guide")).map(rect), ...(guide ? [guide] : []), ...strips],
+    pictures: all(LANE_PICTURES).map(rect),
+    strips,
+    guide,
+  };
+}
+
+// The page can change under a toast already on screen: a tour, the MIDI
+// panel, the lineage opening, a rail collapsed or expanded (their class), or
+// a part of a level growing or going (BLEND coming up in PERFORM's well
+// under an offer, the guide pill, the line under EVOLVE's cards: their
+// size). The lane is placed again then, not only when the next toast
+// arrives, a frame later and once for any number of changes, and never
+// under the hand (`laneUnderHand`). PERFORM builds its parts after boot, so
+// what is watched is gathered each time the lane is placed.
+const LANE_WATCH = [".pf-well", ".pf-blend-slot", ".pf-hood", ".pf-pads", ".pf-deck", ".guide", ".ev-foot", ".duel-deal", ".duel-row", "#pt-foot", ".md-foot", "#taste-time"];
+let laneFrame = 0;
+function laneLater() {
+  if (laneFrame || !$("toasts")?.firstChild) return;
+  laneFrame = requestAnimationFrame(() => {
+    laneFrame = 0;
+    positionToastLane();
+  });
+}
+const laneSized = typeof ResizeObserver === "function" ? new ResizeObserver(laneLater) : null;
+const laneWatched = new WeakSet();
+function watchLane() {
+  if (!laneSized) return;
+  // …and the toast's own: a line more, its counter, its button retired.
+  for (const el of [$("toasts"), ...LANE_WATCH.flatMap((s) => [...document.querySelectorAll(s)])]) {
+    if (laneWatched.has(el)) continue;
+    laneWatched.add(el);
+    laneSized.observe(el);
   }
 }
-window.addEventListener("resize", positionToastLane);
-// A reserved rect can open under a toast already on screen — a tour, the MIDI
-// panel, the legend after a fit, a rail collapsed or expanded — so the lane is
-// re-measured whenever one of them changes state, not only when the next
-// toast arrives.
+window.addEventListener("resize", () => positionToastLane());
 {
-  const watch = new MutationObserver(() => positionToastLane());
+  const watch = new MutationObserver(() => laneLater());
   for (const s of [...LANE_STRIPS, ...LANE_COLUMNS]) {
-    for (const el of document.querySelectorAll(s)) watch.observe(el, { attributes: true, attributeFilter: ["class"] });
+    for (const el of document.querySelectorAll(s)) watch.observe(el, { attributes: true, attributeFilter: ["class", "hidden"] });
   }
+  // The hand gone, a move it held back is made.
+  $("toasts")?.addEventListener("pointerleave", () => {
+    if (laneOwed) positionToastLane();
+  });
 }
 
 // A toast whose undo can no longer fire must not offer it. When the window has
@@ -5331,8 +5529,8 @@ function levelChanged(prev, name, { chosen = false } = {}) {
   if (name === "patch") refitRack();
   if (name === "patch") patchView.shown();
   else patchView.hidden();
-  // The lane is anchored to the rack frame, which only exists in PATCH, and it
-  // has to clear whichever teaching strip this level puts up.
+  // The lane keeps clear of the controls of the level reached (and is
+  // placed again when the move lands, the shell's `level-landed`).
   positionToastLane();
   pointFilmChip();
   // TASTE and LEARNING draw while they show, and stop when they don't.
