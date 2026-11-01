@@ -37,7 +37,9 @@ name: Flake hunt
 # 4.5 to 6 hours late (from 09:46 to 12:00 UTC over Oct 18 to Nov 1), when
 # PRs are being queued, and each runner it holds is one the merge queue's
 # next batch can wait for. So its jobs run in stages, one after another,
-# none holding more than three:
+# none holding more than three (scripts/test_ci_skip.py counts the most
+# its jobs can hold at once from their `needs` and `max-parallel`, in
+# dev-check):
 #
 # 1. the engine, one runner;
 # 2. the hunt's twelve runners, three at a time: about 70 minutes;
@@ -52,7 +54,7 @@ name: Flake hunt
 # times of 2026-11-01 (the hunt's runners 14 to 22 minutes each, the
 # budgets' 11 to 19, Touch in WebKit 8), and longer on a night a stage
 # waits for runners. Side by side (the hunt four at a time beside the
-# budgets three at a time, up to eight at once) the same jobs come to
+# budgets three at a time, up to nine at once) the same jobs come to
 # about an hour and a quarter with no wait; that night, waiting for
 # runners other repositories held, they took 2 h 20 min. Every test still
 # gets its verdict and every runner its share and its time limit; the

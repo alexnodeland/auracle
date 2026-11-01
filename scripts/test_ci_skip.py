@@ -2,7 +2,9 @@
 """ci_skip.py's tests: when Search health's and the Slow suite's nightly
 runs skip an unchanged main, when the Slow suite skips a push to main that
 changes nothing its tests cover, and that anything that keeps it from
-deciding is a run, never a skip and never an error.
+deciding is a run, never a skip and never an error. Beside them, the other
+half of #582: the Flake hunt never asks, and holds at most three runners
+at once.
 
     python3 scripts/test_ci_skip.py      (run by `make dev-check`)
 
@@ -355,7 +357,126 @@ class TheWorkflows(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertTrue(call in self.read(name), f"{name} does not run `{call}`")
-        self.assertFalse("ci_skip.py" in self.read("flake-hunt.yml"), "the Flake hunt asks to skip")
+        self.assertIsNone(re.search(r"python3 \S*ci_skip\.py", self.read("flake-hunt.yml")), "the Flake hunt asks to skip")
+
+
+def jobs_of(text):
+    """A workflow's jobs, read from its text as this repository writes them
+    (no YAML parser in the standard library): each job's `needs`, and the
+    most runners it can hold at once, its matrix's size capped by its
+    `max-parallel`. A matrix it can't size, or one dealt at run time with
+    no cap, is a failure: no width is guessed."""
+    lines = text.splitlines()
+    jobs, cur = {}, None
+    for line in lines[lines.index("jobs:") + 1 :]:
+        m = re.match(r"^  ([\w-]+):\s*$", line)
+        if m:
+            cur = jobs.setdefault(m.group(1), {"needs": [], "cap": None, "size": None, "matrix": False})
+            continue
+        if cur is None:
+            continue
+        m = re.match(r"^    needs:\s*(.+?)\s*$", line)
+        if m:
+            v = m.group(1)
+            cur["needs"] = [x.strip() for x in v.strip("[]").split(",")] if v.startswith("[") else [v]
+        if re.match(r"^      matrix:", line):
+            cur["matrix"] = True
+        m = re.match(r"^      max-parallel:\s*(\d+)", line)
+        if m:
+            cur["cap"] = int(m.group(1))
+        m = re.match(r"^        \w+:\s*\[(.*)\]\s*$", line)
+        if m:
+            cur["size"] = len(m.group(1).split(","))
+        if re.match(r"^          - \{", line):
+            cur["size"] = (cur["size"] or 0) + 1
+    widths = {}
+    for name, j in jobs.items():
+        if not j["matrix"]:
+            widths[name] = 1
+        elif j["size"] is not None:
+            widths[name] = min(j["size"], j["cap"] or j["size"])
+        elif j["cap"] is not None:
+            widths[name] = j["cap"]
+        else:
+            raise AssertionError(f"{name}'s matrix has no size this test can read and no max-parallel")
+    return {n: j["needs"] for n, j in jobs.items()}, widths
+
+
+def most_at_once(needs, widths):
+    """The most runners the jobs can hold at once: two jobs can run side by
+    side unless one needs the other, directly or through others, so the
+    most is the heaviest set of jobs no two of which are so ordered."""
+    after = {}
+
+    def before(n):
+        if n not in after:
+            after[n] = set()
+            for d in needs[n]:
+                after[n] |= {d} | before(d)
+        return after[n]
+
+    names = sorted(needs)
+    best = 0
+    for mask in range(1, 1 << len(names)):
+        pick = [n for i, n in enumerate(names) if mask >> i & 1]
+        if all(a not in before(b) and b not in before(a) for a in pick for b in pick if a != b):
+            best = max(best, sum(widths[n] for n in pick))
+    return best
+
+
+class TheFlakeHunt(unittest.TestCase):
+    """The Flake hunt holds at most three runners at once (#582): GitHub
+    starts its cron hours late, in the merge queue's hours, so its stages
+    run one after another, none wider than three."""
+
+    def test_it_holds_at_most_three_runners_at_once(self):
+        with open(os.path.join(ROOT, ".github", "workflows", "flake-hunt.yml")) as f:
+            needs, widths = jobs_of(f.read())
+        self.assertGreaterEqual(len(needs), 10, "the hunt's jobs were not all read")
+        self.assertEqual(widths["hunt"], 3)
+        self.assertEqual(widths["perf"], 3)
+        self.assertLessEqual(most_at_once(needs, widths), 3)
+
+    def test_the_count_sees_matrices_side_by_side(self):
+        # Its shape before #582: the hunt four at a time beside the budgets
+        # three at a time, and two jobs of one runner, all after the engine.
+        text = """jobs:
+  engine:
+    runs-on: x
+  hunt:
+    needs: engine
+    strategy:
+      max-parallel: 4
+      matrix:
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12"]
+  perf:
+    needs: engine
+    strategy:
+      max-parallel: 3
+      matrix:
+        include:
+          - { browser: chromium, shard: "1/8" }
+          - { browser: chromium, shard: "2/8" }
+          - { browser: chromium, shard: "3/8" }
+          - { browser: chromium, shard: "4/8" }
+  touch:
+    needs: engine
+  audio:
+    needs: [engine]
+  report:
+    needs: [hunt, perf]
+"""
+        self.assertEqual(most_at_once(*jobs_of(text)), 9)
+
+    def test_a_matrix_it_cannot_size_fails(self):
+        text = """jobs:
+  file:
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.report.outputs.flaky) }}
+"""
+        with self.assertRaises(AssertionError):
+            jobs_of(text)
 
 
 if __name__ == "__main__":

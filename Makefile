@@ -243,7 +243,8 @@ worktree-rm:
 ## issues), the path classifier's tests (scripts/test_changes.py: what each
 ## kind of change reaches), the off-gate skip's tests (scripts/test_ci_skip.py:
 ## when Search health's and the Slow suite's runs skip an unchanged main or
-## a push their tests don't cover, and that an error is always a run), the
+## a push their tests don't cover, that an error is always a run, and that
+## the Flake hunt never asks and holds at most three runners at once), the
 ## Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), the tests of the coverage gate's, the mutation
