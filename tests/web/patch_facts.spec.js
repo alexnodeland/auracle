@@ -218,7 +218,7 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
 });
 
-test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: ["@slow", "@quarantine"], annotation: { type: "issue", description: "#590" } }, async ({ page, app }) => {
+test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: "@slow" }, async ({ page, app }) => {
   test.setTimeout(120_000); // about 45 s on CI, most of it ⚡'s walk
   await app.boot({ warmed: false });
   await app.warmStart();
