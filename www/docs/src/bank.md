@@ -8,7 +8,7 @@ a generation may replace.</p>
 <!-- film:composing --><!-- /film:composing -->
 
 <figure>
-<img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name." loading="eager" width="280" height="766">
+<img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name, with a bred sound’s lineage under it." loading="eager" width="280" height="766">
 <figcaption><strong>The bank.</strong> Three tabs, Find a sound, and a row
 for each sound: its face, a mark for where it came from, and its name. The
 green rail marks the sound you’re playing, a silk rail a saved sound, and an
@@ -72,9 +72,10 @@ level; [the keys](#the-bank-from-the-keyboard) are below.
 ## Reading a row
 
 <figure>
-<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, a glyph and a name, with its actions at the end: play, a star, a save icon, and a cross." loading="lazy" width="280" height="40">
-<figcaption><strong>One row,</strong> with its actions showing at its end
-while you point at it.</figcaption>
+<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, NEW, a green dot and the name Soft Wash on the first line; on the line under it the start of its lineage, and at that line’s end the actions: compare, play, a filled star, a save icon and a cross." loading="lazy" width="280" height="48">
+<figcaption><strong>One row,</strong> with its actions showing at the end of the
+line under its name while you point at it. This sound is a bred one, so its
+lineage line shares that line and passes under them.</figcaption>
 </figure>
 
 - **The face**, left of the name, is the sound’s [face](./faces.md): its
