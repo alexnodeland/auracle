@@ -36,7 +36,12 @@ the first three above, then zoom out to [TASTE](./taste.md)
 (<kbd>⌥↑</kbd>, or a pinch on a touch screen), and hold <kbd>⌥</kbd>
 (**MODEL** on a touch screen) to see what the model believes. Its second
 step names a control that turns on this sound (*Turn BRIGHT: drag up or
-down*), never one it can’t reach. Its **×** stops it showing.
+down*), never one it can’t reach. On a sound none of the controls reach
+(every one amber), the pill leaves that step out, pip and all, and asks for
+it again on a sound one of them turns. When the steps it shows are done, it
+says what the loop was (*That is the loop. Every offer you hear, then take or
+pass, teaches it what you like.*) and goes. It says that only once, so a turn
+it comes back for later just ticks off. Its **×** stops it showing.
 
 ## What you see
 
@@ -289,23 +294,35 @@ re-centered control keeps working from where it is (see [soft
 takeover](../keyboard.md#soft-takeover)).
 
 A measurement never moves a control you are holding. While your hand is on a
-control or the XY pad, and for a second and a half after you let go, a
+control or the XY pad, or a control plays its sweep ([below](#long-press-to-hear-it)),
+and for a second and a half after you let go or the sweep ends, a
 measurement that lands waits: the control stays where you put it, and
 nothing you hear jumps. Then the measurement takes over. A control that was
-still listening keeps saying so until the measurement is in; then it says
-*after you let go*, and the status line *heard: the controls turn after you
-let go*, also on a sound that opened on a guess, whose guessed controls play
-on meanwhile. It springs back when you let go, and starts turning a second
-and a half later. Pressing a pad is not a hand on the controls: a sound you open
-right after plays at once.
+still listening keeps saying so until the measurement is in; then, while
+your hand is on a control or the XY pad, it says *after you let go*, and the
+status line *heard: the controls turn after you let go*, also on a sound
+that opened on a guess, whose guessed controls play on meanwhile. With
+nothing held (you have let go, or turned a control with the keys, or a
+control is playing its sweep), it says *in a moment* instead, and the status
+line *heard: the controls turn in a moment*. A listening
+control you held springs back when you let go, and starts turning a second
+and a half later. Pressing a pad is not a hand on the controls: a sound you
+open right after plays at once.
 
 ### Long-press to hear it
 
-A long-press with a mouse plays the control to you. Over about two and a half
-seconds it sweeps to the low end, across to the high end, and back to where it
-was. If no note is held, it plays a C3 for the length of the sweep. On a touch
-screen a long press opens the control's figure instead (below), and its **HEAR
-IT** plays the same sweep.
+A long-press with a mouse plays the control to you, and so does
+<kbd>Enter</kbd> on a control you reached with the keyboard. Over about two
+and a half seconds it sweeps to the low end, across to the high end, and back
+to where it was. If no note is held, it plays a C3 for the length of the
+sweep. On a touch screen a long press opens the control's figure instead
+(below), and its **HEAR IT** plays the same sweep. A measurement that lands
+meanwhile waits until the sweep has ended, as it does for your hand, so it
+never moves the control under the sweep. Pressing the control stops the
+sweep and puts the control back where it was, and turning it stops the sweep
+too. <kbd>Enter</kbd> while it plays starts it over. **KEEP** while it plays
+keeps the sound where the sweep has it at that moment, and the control
+re-centers from there, as after any KEEP.
 
 This is the quickest way to learn what a control does on this sound, since the
 same name moves different knobs on different patches.

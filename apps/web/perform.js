@@ -114,6 +114,15 @@ const WANDER_FIRST_MS = 1500;
 const TRUST = 0.12;
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+// A control's sweep by ear (`hearIt`): this long, from where it began down to
+// a full turn below it, up to a full turn above, and back, held to the
+// control's open halves (`span`, [lo, hi]); at `u` (0..1 of the way), where
+// the control is. At 0 and 1 it is where it began. Pure, for the unit tests.
+export const SWEEP_MS = 2400;
+export function sweptTo(start, u, [lo, hi]) {
+  const off = u < 0.25 ? -4 * u : u < 0.75 ? -1 + 4 * (u - 0.25) : 1 - 4 * (u - 0.75);
+  return clamp(start + off, lo, hi);
+}
 // Mirrors auracle_session::perform::Wiring::range: a half that the patch's
 // renders did not confirm is closed. REACH_FLOOR / 2 in σ.
 const HALF_OPEN = 0.075;
@@ -128,6 +137,18 @@ function rangeOf(w) {
 // taken patch's own measurement. Pending is "not measured yet", never "can't",
 // so it wears neither the amber search look nor its gesture.
 const turns = (w) => !!(w && !w.search && !w.pending);
+// Does no control on the panel reach this sound? Only when every one was
+// measured and can't (a search control): a control still listening, or one a
+// guess left out, may reach it once it is measured. The first steps leave
+// out "Turn …" on such a sound (#480): it could never be done there. Pure,
+// for the unit tests.
+export const reachesNone = (wire) => Array.isArray(wire) && wire.length > 0 && wire.every((w) => !!w && !!w.search);
+// When a measurement in hand waits on the controls (`waitsForHand`), what it
+// waits for, in words: a hand holding a control or the XY pad, however
+// still, is let go ("after you let go"); with none held the wait ends by
+// itself, through a control's sweep by ear or the 1.5 s after a touch ("in a
+// moment"). A sweep is no hand to let go of. Pure, for the unit tests.
+export const waitWords = (held) => (held ? "after you let go" : "in a moment");
 // The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
   (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
@@ -359,6 +380,10 @@ export function createPerform(host) {
     // control's arrow keys: the hand that holds a wiring back (`handsBusy`).
     // Never the pads or their keys, and never touched at all until one is.
     controlTouch: -Infinity,
+    // Whether a hand held the controls when the status line was last drawn:
+    // the quarter-second tick says a wait again when that changes
+    // (`waitWords`).
+    waitHeld: false,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
     visible: false,
@@ -741,7 +766,7 @@ export function createPerform(host) {
       // out (a first one, a re-check, or the panel's new set).
       const waiting = pending && (state.measuring || state.revalidating || inFlight("perform_wire"));
       k.wrap.classList.toggle("waiting", waiting);
-      const waitWord = !waiting ? "" : waitsForHand() ? "after you let go" : "listening…";
+      const waitWord = !waiting ? "" : waitsForHand() ? waitWords(handHolding()) : "listening…";
       if (k.wait.textContent !== waitWord) k.wait.textContent = waitWord;
       k.wrap.classList.toggle("search", search);
       // A guess until this patch's measurement lands (#290, ADR-012): it
@@ -818,9 +843,10 @@ export function createPerform(host) {
       } else {
         where.style.display = "none";
         const handWait = listening && waitsForHand();
-        k.sub.textContent = handWait ? "after you let go" : listening ? "listening…" : "";
+        const held = handWait && handHolding();
+        k.sub.textContent = handWait ? waitWords(held) : listening ? "listening…" : "";
         k.wrap.title = handWait
-          ? `${k.spec.name}: this sound is heard. It turns after you let go of the controls.`
+          ? `${k.spec.name}: this sound is heard. It turns ${held ? "after you let go of the controls" : "in a moment"}.`
           : listening
           ? `${k.spec.name}: listening to how this sound moves. It turns once that is done.`
           : k.spec.name;
@@ -1001,6 +1027,9 @@ export function createPerform(host) {
     let hearTimer = null;
     const lo = () => (k.spec.kind === "named" ? -1 : 0);
     const set = (v, fine) => {
+      // The hand takes the control from a sweep (`hearIt`): the value is
+      // the hand's from here.
+      endSweep(k, { back: false });
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
       k.drawn = null;
       const [sLo, sHi] = spanOf(k);
@@ -1021,6 +1050,9 @@ export function createPerform(host) {
     };
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      // A press on a control sweeping takes it back where the sweep began,
+      // and a drag starts from there, not from wherever the sweep had it.
+      endSweep(k, { push: true });
       k.held = true;
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
       k.drawn = null;
@@ -1055,6 +1087,9 @@ export function createPerform(host) {
       if (!k.wrap.hasPointerCapture(e.pointerId)) return;
       const dy = startY - e.clientY;
       if (Math.abs(dy) > 3) moved = true;
+      // A long press's sweep (`hearIt`) goes on through a tremor of the
+      // pointer; a turn takes the control from it (`set`).
+      if (k.sweep && !moved) return;
       const span = e.shiftKey ? 900 : 180;
       set(startV + (dy / span) * (1 - lo()), e.shiftKey);
       if (k.spec.kind !== "wander") touchControl();
@@ -1092,11 +1127,23 @@ export function createPerform(host) {
     });
     k.wrap.addEventListener("keydown", (e) => {
       const step = e.shiftKey ? 0.01 : 0.05;
+      // ⇧↵ is Take (ADR-018): it goes on to the page's keys. ↵ sweeps the
+      // control by ear (`hearIt`, a hand on the control while it sweeps),
+      // which is no turn: nothing is logged as one, or asked for, when the
+      // keys go quiet, and a ↵ the control refuses touches nothing.
+      if (e.key === "Enter" && !e.shiftKey && k.spec.kind === "named") {
+        e.preventDefault();
+        e.stopPropagation();
+        // Held down, it is the one press: a repeat would start it again.
+        if (e.repeat) return;
+        hearIt(k);
+        return;
+      }
+      // An arrow on a control sweeping steps from where the sweep began.
+      if (/^(Arrow(Up|Down|Left|Right)|Home)$/.test(e.key)) endSweep(k, { push: true });
       if (e.key === "ArrowUp" || e.key === "ArrowRight") set(k.value + step, true);
       else if (e.key === "ArrowDown" || e.key === "ArrowLeft") set(k.value - step, true);
       else if (e.key === "Home") set(k.spec.kind === "named" ? 0 : 0);
-      // ⇧↵ is Take (ADR-018): it goes on to the page's keys.
-      else if (e.key === "Enter" && !e.shiftKey && k.spec.kind === "named") hearIt(k);
       // Enter on Wander freezes it, as a tap does; it is not a turn.
       else if (e.key === "Enter" && !e.shiftKey && k.spec.kind === "wander") {
         e.preventDefault();
@@ -1109,9 +1156,13 @@ export function createPerform(host) {
       if (k.spec.kind === "wander") wanderGrab();
       else touchControl();
       // A run of arrow presses is one gesture: logged, and a search control
-      // asked, once the keys go quiet.
+      // asked, once the keys go quiet. The id goes when it fires: `hearIt`
+      // reads it as a run still settling, which it lets go itself.
       clearTimeout(k.keyTimer);
-      k.keyTimer = setTimeout(() => onRelease(k), 450);
+      k.keyTimer = setTimeout(() => {
+        k.keyTimer = null;
+        onRelease(k);
+      }, 450);
     });
   }
 
@@ -1131,12 +1182,16 @@ export function createPerform(host) {
   }
   // A measurement landing (a first one, a re-check, a guess's or a Take's)
   // waits while a hand is on the controls: a control or the XY pad held,
-  // however still, and for 1.5 s after the last touch or release of one
-  // (#304, the app's rule: `heldOrTouched` in hand.js). A wiring read from
-  // the cache for a sound just opened answers the player, so it waits only
-  // while a control is held. What waits is in `state.deferredWire`, and
-  // lands from the quarter-second tick (`landDeferred`).
-  const handHeld = () => knobs.some((k) => k.held) || xyHeld;
+  // however still, or sweeping by ear (`hearIt`, #481), and for 1.5 s after
+  // the last touch or release of one, or a sweep's end (#304, the app's
+  // rule: `heldOrTouched` in hand.js). A wiring read from the cache for a
+  // sound just opened answers the player, so it waits only while a control
+  // is held. What waits is in `state.deferredWire`, and lands from the
+  // quarter-second tick (`landDeferred`).
+  const handHeld = () => knobs.some((k) => k.held || !!k.sweep) || xyHeld;
+  // A hand holding a control or the XY pad: not a sweep, which ends by
+  // itself. What a wait is said in follows it (`waitWords`).
+  const handHolding = () => knobs.some((k) => k.held) || xyHeld;
   const handsBusy = () => heldOrTouched(handHeld(), state.controlTouch, performance.now());
   // The controls have nothing to turn yet, and what would wire them is in
   // hand, waiting for the hand: nothing is being listened to. A sound opened
@@ -1588,6 +1643,9 @@ export function createPerform(host) {
   const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
   const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   function recentre(k) {
+    // The centre took the control's turn, the sweep's too: a sweep ends
+    // here, at the centre, not back where it began on top of the new one.
+    endSweep(k, { back: false });
     if (k.tween) cancelAnimationFrame(k.tween);
     k.tween = null;
     const from = k.drawn != null ? k.drawn : k.value;
@@ -1659,8 +1717,22 @@ export function createPerform(host) {
     logImplicit("perform_turn", { control: k.spec.name, value: +was.toFixed(3) });
   }
 
-  // Long-press: the control explains itself by ear. A two-second sweep
-  // through both ends and back, on a held note if there is none already.
+  // The control explains itself by ear (↵ on it, a long press with a mouse,
+  // and explain's HEAR IT through `hear`): a sweep through both ends and
+  // back over SWEEP_MS, on a held note if none is down, ending where it
+  // began. A sweep is a hand on the control (#481, ADR-025): while it runs,
+  // a measurement waits as it does under a held control (`handHeld`), and
+  // for 1.5 s after it ends (`controlTouch`), so nothing lands on the swept
+  // value. A background re-check landing mid-sweep used to fold the sweep's
+  // offset into the centre, and the sweep then returned to its start on top
+  // of it: the sound ended somewhere the player never put it. It is on the knob
+  // (`k.sweep`: where it began, when it began, whether the note is its own)
+  // and ends at once on whatever ends it: its end; a hand taking the control
+  // (a press, a drag, an arrow key, a pot, the XY pad: `endSweep`); a
+  // re-centre, which folds the controls into the centre (a Keep, a glide, a
+  // wiring); the panel rebuilt (`setPanel`); another sound (`patchChanged`).
+  // ↵ again while it sweeps starts it again from the top, still ending where
+  // it first began.
   function hearIt(k) {
     const w = state.wire && state.wire[k.i];
     if (!turns(w)) {
@@ -1674,34 +1746,59 @@ export function createPerform(host) {
       );
       return;
     }
-    const start = k.value;
-    const playing = host.heldCount() > 0;
-    if (!playing) host.noteOn(48, 0.8);
-    const t0 = performance.now();
-    const D = 2400;
-    const path = (u) => (u < 0.25 ? -4 * u : u < 0.75 ? -1 + 4 * (u - 0.25) : 1 - 4 * (u - 0.75)) ;
+    touchControl();
+    if (k.sweep) {
+      k.sweep.t0 = performance.now();
+      return;
+    }
+    // A run of arrow presses (or a pot) still settling is a turn of its own:
+    // it is let go where it left the control, before the sweep moves it. Its
+    // timer clears the id when it fires, so a run let go already is not let
+    // go again (logged as a second turn).
+    if (k.keyTimer) {
+      clearTimeout(k.keyTimer);
+      k.keyTimer = null;
+      onRelease(k);
+    }
+    const own = !(host.heldCount() > 0);
+    if (own) host.noteOn(48, 0.8);
+    const s = (k.sweep = { start: k.value, t0: performance.now(), own });
     const tick = () => {
-      // The panel was rebuilt under the sweep: stop it, and its note.
-      if (k.dead) {
-        if (!playing) host.noteOff(48);
-        return;
-      }
-      const u = (performance.now() - t0) / D;
-      if (u >= 1) {
-        k.value = start;
-        state.c[k.i] = start;
-        paintKnob(k);
-        push();
-        if (!playing) host.noteOff(48);
-        return;
-      }
-      k.value = clamp(start + path(u), ...spanOf(k));
+      // Ended already (a hand, a re-centre, the panel, another sound).
+      if (k.sweep !== s) return;
+      // The panel was rebuilt under it some other way: stop it, and its note.
+      if (k.dead) return endSweep(k, { back: false });
+      const u = (performance.now() - s.t0) / SWEEP_MS;
+      if (u >= 1) return endSweep(k, { push: true, rest: true });
+      k.value = sweptTo(s.start, u, spanOf(k));
       state.c[k.i] = k.value;
       paintKnob(k);
       push();
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  }
+  // A sweep ends. `back`: the control returns to where the sweep began (not
+  // when a hand takes it, or a re-centre has put it at the centre), and
+  // `push` writes that to the voices (not when the sound is being replaced
+  // or the panel rebuilt, which write their own). `rest`: it ended on its
+  // own, and the 1.5 s a let-go control holds a measurement back runs from
+  // here (`handsBusy`), as from a release. Nothing when none runs.
+  function endSweep(k, { back = true, push: write = false, rest = false } = {}) {
+    const s = k.sweep;
+    if (!s) return;
+    k.sweep = null;
+    if (back) {
+      k.value = s.start;
+      state.c[k.i] = s.start;
+      paintKnob(k);
+      if (write) push();
+    }
+    if (s.own) host.noteOff(48);
+    if (rest) state.controlTouch = performance.now();
+  }
+  function endSweeps(how) {
+    for (const k of knobs) endSweep(k, how);
   }
 
   // ---------- worker plumbing ----------
@@ -2138,6 +2235,14 @@ export function createPerform(host) {
     // What the player asked for (a cache hit) lands once no control is
     // held; a measurement waits out the 1.5 s after the release too.
     if (state.deferredWire && !(state.deferredWire.asked ? handHeld() : handsBusy())) landDeferred();
+    // A measurement still waiting on the controls says what for
+    // (`waitWords`), which follows the hand: a control or the XY pad taken,
+    // or let go with only the 1.5 s or a sweep left, it is said again.
+    if (state.visible && waitsForHand() && handHolding() !== state.waitHeld) {
+      knobs.forEach(paintKnob);
+      if (wellMode === "xy") paintXY();
+      renderStatus();
+    }
     // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
@@ -2807,6 +2912,9 @@ export function createPerform(host) {
     push();
     sendTouch();
     renderStatus();
+    // The first steps' turn names what the fresh wiring turns, or leaves
+    // itself out when it turns nothing.
+    renderSteps();
   }
 
   // A request the engine will never answer: it threw before it could reply,
@@ -2911,6 +3019,7 @@ export function createPerform(host) {
           state.carried = false;
           state.guess = null;
           state.wireError = "couldn’t measure this patch";
+          renderSteps();
         } else if (m.error) {
           // The wiring in hand still plays; it just wasn't re-checked. A
           // guess was never measured, so it says that (#290).
@@ -3074,6 +3183,9 @@ export function createPerform(host) {
       return;
     }
     state.keeping = null;
+    // Another sound: a sweep (`hearIt`) of this one's control ends where it
+    // began, before its controls are carried over or measured again.
+    endSweeps();
     // A Take coming back from the bench, with the taken tree's live knobs: the
     // controls keep the wiring they had instead of reading "measuring…" for
     // the whole re-measurement — 14 s on a busy laptop, mid-phrase. Only the
@@ -3562,6 +3674,7 @@ export function createPerform(host) {
   // many controls reach it, re-checking it. Wander's own state is said on
   // Wander (`wanderState`).
   function renderStatus(msg) {
+    state.waitHeld = waitsForHand() && handHolding();
     host.face?.(heldFace, "well", state.cur ? state.cur.json : null);
     renderHeadWords();
     paintMoved();
@@ -3580,7 +3693,7 @@ export function createPerform(host) {
     // keeps the dials working on the old one, so it reads as a re-check, as
     // after a Take. "listening to this patch…" is for a patch with no wiring
     // yet, whose dials really are waiting.
-    else if (waitsForHand()) parts.push("heard: the controls turn after you let go");
+    else if (waitsForHand()) parts.push(`heard: the controls turn ${waitWords(handHolding())}`);
     else if (state.measuring && !state.wire) parts.push("listening to this sound…");
     else if (state.wire && state.guess) {
       // Playing on a wiring nobody measured on this sound (#290): a count of
@@ -4319,8 +4432,9 @@ export function createPerform(host) {
   // For someone who walks up to it cold — no staff, no manual. Three moves
   // are the whole loop: play, turn a control, ask for an offer. Each ticks off
   // when it happens (not when it is read), and the guide pill (guide.js,
-  // `host.guide`) retires once all three have. Per visitor: the booth's "new
-  // visitor" brings it back.
+  // `host.guide`) retires once all three have (and the levels' two main.js
+  // adds after them), or all but the turn on a sound no control reaches. Per
+  // visitor: the booth's "new visitor" brings it back.
   const coarse = () => !!window.matchMedia?.("(pointer: coarse)").matches;
   const keysInDrawer = () => {
     const t = document.getElementById("keys-toggle");
@@ -4330,7 +4444,11 @@ export function createPerform(host) {
     // On a phone the keys are a drawer, under KEYS in the bar along the
     // bottom (#134): the step says where they are.
     { id: "play", text: () => (keysInDrawer() ? "Tap KEYS, then play the keybed" : coarse() ? "Play it: tap the keybed" : "Play a key: A to L, or tap the keybed") },
-    { id: "turn", text: turnStep },
+    // Left out while the sound in hand is one no control reaches (#480):
+    // the pips and the closing line count the steps left, and it is back
+    // with a sound a control turns (done after the closing line was said,
+    // it ticks off without a second: guide.js says it once).
+    { id: "turn", text: turnStep, skip: () => reachesNone(state.wire) },
     { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];
   // Step 2 names a control that turns on *this* patch. It used to say "Turn a
@@ -4349,8 +4467,8 @@ export function createPerform(host) {
     return "Turn a named control: drag up or down";
   }
   for (const st of STEPS) host.guide?.add(st);
-  // The pill's step 2 names what this sound can turn: said again when the
-  // wiring changes.
+  // The pill's step 2 names what this sound can turn, or is left out when it
+  // turns nothing: drawn again when the wiring changes.
   function renderSteps() {
     host.guide?.refresh();
   }
@@ -4453,7 +4571,7 @@ export function createPerform(host) {
       ? "neither reaches this patch: pick two others"
       : dx ? `${kx.spec.name} doesn’t reach this patch`
         : dy ? `${ky.spec.name} doesn’t reach this patch`
-          : (px || py) && waitsForHand() ? "after you let go"
+          : (px || py) && waitsForHand() ? waitWords(handHolding())
             : (px || py) && listening ? "listening to this sound…" : "";
     xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
   }
@@ -4464,6 +4582,7 @@ export function createPerform(host) {
     for (const [i, v] of [[XY.x, cx], [XY.y, cy]]) {
       if (!xyReach(i)) continue;
       const k = knobs[i];
+      endSweep(k, { back: false });
       const [lo, hi] = rangeOf(state.wire[i]);
       k.value = clamp(v * 2 - 1, lo, hi);
       paintKnob(k);
@@ -4552,6 +4671,11 @@ export function createPerform(host) {
       return true;
     }
     state.panelLater = null;
+    // A control sweeping by ear (`hearIt`) is put back where the sweep began
+    // before the deck is rebuilt from the controls' values: the new deck
+    // would take the swept value as the control's, and the sound would stay
+    // there.
+    endSweeps();
     const old = state.panel;
     const was = (k) => old.indexOf(k);
     const sameSet = setOf(old).join(",") === setOf(next).join(",");
@@ -5020,6 +5144,8 @@ export function createPerform(host) {
     setControl(i, v01) {
       const k = knobs[i];
       if (!k) return;
+      // A pot takes the control from a sweep (`hearIt`), as a hand does.
+      endSweep(k, { back: false });
       if (k.spec.kind === "wander") wanderGrab();
       else touchControl();
       ensureWired();
@@ -5029,9 +5155,13 @@ export function createPerform(host) {
       k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);
       onKnob(k, true);
-      // A pot has no "let go": the gesture ends when it goes quiet.
+      // A pot has no "let go": the gesture ends when it goes quiet (and its
+      // id goes, as an arrow run's does).
       clearTimeout(k.keyTimer);
-      k.keyTimer = setTimeout(() => onRelease(k), 450);
+      k.keyTimer = setTimeout(() => {
+        k.keyTimer = null;
+        onRelease(k);
+      }, 450);
     },
     // The control's position as 0..1, what a MIDI pot is compared against
     // for pickup.
