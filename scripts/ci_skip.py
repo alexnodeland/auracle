@@ -3,10 +3,12 @@
 already has (#582), so it can leave its runners to the merge queue.
 
     python3 scripts/ci_skip.py nightly --workflow FILE
-        A scheduled run: skip when main's head is the commit the workflow's
-        last scheduled run that tested anything tested, and that run was
-        green. Search health and the Slow suite are seeded, so the same
-        commit gives the same answer. (The Flake hunt never asks: it boots
+        A scheduled run: skip when main's head is the commit the newest run
+        of the workflow on main that tested anything tested, and that run
+        was green. That run may be a night's, a push's (the Slow suite's)
+        or one by hand, a cold one too: Search health and the Slow suite
+        are seeded, so the same commit gives the same answer whatever
+        started the run that gave it. (The Flake hunt never asks: it boots
         unseeded, and the same commit can show a new flake.)
 
     python3 scripts/ci_skip.py main-push --workflow FILE
@@ -54,8 +56,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import changes  # noqa: E402
 
-# How far back to look: a page of the API. A month of nights, or a few
-# days of pushes; past it, nothing found means run.
+# How far back to look: a page of the API, a few days of the Slow suite's
+# runs on main (pushes and nights) or a month of Search health's; past it,
+# nothing found means run.
 PAGE = 30
 # The whole decision's time, and one call's. The workflow's step gives the
 # script 150 s (`timeout 150`) inside a job cut at seven minutes, and
@@ -155,33 +158,45 @@ def day(run) -> str:
     return (run.get("created_at") or "")[:10]
 
 
+def what(run) -> str:
+    """What started a run on main, as its summary names it."""
+    return {"schedule": "the nightly run", "push": "a push's run", "workflow_dispatch": "a run by hand"}.get(
+        run.get("event"), "a run"
+    )
+
+
 def nightly(runs: Runs, sha: str) -> tuple[bool, str]:
-    """A scheduled run: (run?, why)."""
-    # A cancelled run gave no answer; one that skipped ran only the job
-    # that decided so, and is passed over as not tested.
+    """A scheduled run: (run?, why). It stands on the newest run of its
+    workflow on main that tested anything, whatever started it: the
+    nightly run, a push's run or a run by hand (a cold one too), all of
+    one seeded workflow."""
+    # A cancelled run gave no answer; one that skipped (a night or a push
+    # that stood on another run, or a push superseded) ran only the job
+    # that decided so, and is passed over as not tested. A red run is
+    # seen, never looked past to an older green one.
     finished = [
         r
-        for r in runs.list("event=schedule&status=completed")
-        if r.get("event") == "schedule"
+        for r in runs.list("status=completed")
+        if r.get("event") in MAIN_EVENTS
         and r.get("status") == "completed"
         and r.get("conclusion") not in (None, "cancelled", "skipped")
     ]
     last = next((r for r in finished if runs.tested(r)), None)
     if last is None:
-        return True, f"Running: no scheduled run in the last {PAGE} tested main, so there is no answer to stand on."
+        return True, f"Running: none of the last {PAGE} runs on main tested anything, so there is no answer to stand on."
     if last.get("head_sha") != sha:
         return True, (
-            f"Running: main is at {short(sha)}, and the last scheduled run that tested main, {link(last)}, "
-            f"tested {short(last.get('head_sha'))}."
+            f"Running: main is at {short(sha)}, and the newest run on main that tested anything, {link(last)} "
+            f"({what(last)}), tested {short(last.get('head_sha'))}."
         )
     if last.get("conclusion") != "success":
         return True, (
-            f"Running: main is still at {short(sha)}, but the last scheduled run that tested it, {link(last)}, "
-            f"ended {last.get('conclusion')}, so it is tested again."
+            f"Running: main is still at {short(sha)}, but the newest run on main that tested it, {link(last)} "
+            f"({what(last)}), ended {last.get('conclusion')}, so it is tested again."
         )
     return False, (
-        f"**Skipped:** main is still at {short(sha)}, the commit {link(last)} tested green on {day(last)}. "
-        "This workflow is seeded, so it would give the same answer; that run's summary has it. "
+        f"**Skipped:** main is still at {short(sha)}, the commit {link(last)}, {what(last)}, tested green on "
+        f"{day(last)}. This workflow is seeded, so it would give the same answer; that run's summary has it. "
         "A run by hand (Actions → Run workflow) always runs."
     )
 
@@ -248,8 +263,9 @@ def main_push(runs: Runs, sha: str) -> tuple[bool, str]:
     return False, (
         f"**Skipped:** nothing the slow tests cover changed since {short(base['head_sha'])}, which {link(base)} "
         f"tested green. The {len(files)} files changed since ({shown}) are none of the Rust, the app or its specs, "
-        "or CI itself (scripts/changes.py's `rust`, `reach` and `full`). The next nightly run tests main (or, if a "
-        "push cancels it while it waits, that push's run does), and a run by hand always runs."
+        "or CI itself (scripts/changes.py's `rust`, `reach` and `full`). The next nightly run tests main unless a "
+        "push's run has tested it green by then (and if a push cancels it while it waits, that push's run tests main "
+        "in its place); a run by hand always runs."
     )
 
 

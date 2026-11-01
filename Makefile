@@ -242,8 +242,8 @@ worktree-rm:
 ## title, its issue links, the changelog's warning, what a merge does to the
 ## issues), the path classifier's tests (scripts/test_changes.py: what each
 ## kind of change reaches), the off-gate skip's tests (scripts/test_ci_skip.py:
-## when Search health's and the Slow suite's runs skip an unchanged main or
-## a push their tests don't cover, that an error is always a run, and that
+## when Search health's and the Slow suite's runs skip a head a run on main
+## has tested green or a push their tests don't cover, that an error is always a run, and that
 ## the Flake hunt never asks and holds at most three runners at once), the
 ## Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice

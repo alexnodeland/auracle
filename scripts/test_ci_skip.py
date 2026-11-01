@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """ci_skip.py's tests: when Search health's and the Slow suite's nightly
-runs skip an unchanged main, when the Slow suite skips a push to main that
-changes nothing its tests cover, and that anything that keeps it from
-deciding is a run, never a skip and never an error. Beside them, the other
-half of #582: the Flake hunt never asks, and holds at most three runners
-at once.
+runs skip a head a run on main has tested green, when the Slow suite skips
+a push to main that changes nothing its tests cover, and that anything
+that keeps it from deciding is a run, never a skip and never an error.
+Beside them, the other half of #582: the Flake hunt never asks, and holds
+at most three runners at once.
 
     python3 scripts/test_ci_skip.py      (run by `make dev-check`)
 
@@ -99,7 +99,9 @@ def decide(mode, api, env=ENV):
 
 
 class Nightly(unittest.TestCase):
-    """A scheduled run of Search health or the Slow suite."""
+    """A scheduled run of Search health or the Slow suite: it stands on the
+    newest run on main that tested anything, whatever started it (the
+    nightly run, a push, a run by hand)."""
 
     def test_an_unchanged_main_its_last_scheduled_run_tested_green_skips(self):
         api = FakeAPI([run(1, HEAD, 30)], {1: TESTED})
@@ -142,22 +144,86 @@ class Nightly(unittest.TestCase):
         go, _, _ = decide("nightly", api)
         self.assertTrue(go)
 
-    def test_a_push_or_a_run_by_hand_on_the_same_commit_is_not_a_scheduled_run(self):
-        api = FakeAPI([run(2, HEAD, 31, event="push"), run(1, HEAD, 31, event="workflow_dispatch")], {2: TESTED, 1: TESTED})
-        go, _, _ = decide("nightly", api)
-        self.assertTrue(go)
+    def test_a_push_s_run_that_tested_the_head_green_skips(self):
+        # Push 2 landed after the last night and ran in full, green: the
+        # night after it, at the same commit, stands on it.
+        api = FakeAPI([run(2, HEAD, 31, event="push"), run(1, OLD, 30)], {2: TESTED, 1: TESTED})
+        go, why, error = decide("nightly", api)
+        self.assertEqual((go, error), (False, False))
+        self.assertIn("**Skipped:**", why)
+        self.assertIn("runs/2)", why)
+        self.assertIn("a push's run", why)
 
-    def test_no_scheduled_run_that_tested_anything_runs(self):
-        go, why, error = decide("nightly", FakeAPI([run(1, HEAD, 30)], {1: SKIPPED}))
+    def test_a_push_s_run_at_the_head_that_tested_nothing_is_looked_past(self):
+        # Push 3 skipped (it changed nothing the slow tests cover) or was
+        # superseded: it ran only the job that decided so. The newest run
+        # that tested is push 2, at an older commit, so the night runs.
+        for jobs in (SKIPPED, [job("Asked for")]):
+            with self.subTest(jobs=len(jobs)):
+                runs = [run(3, HEAD, 31, event="push"), run(2, OLD, 31, event="push"), run(1, OLDER, 30)]
+                go, why, error = decide("nightly", FakeAPI(runs, {3: jobs, 2: TESTED, 1: TESTED}))
+                self.assertEqual((go, error), (True, False))
+                self.assertIn("runs/2)", why)
+                self.assertIn("`bbbbbbbbbbbb`", why)
+
+    def test_a_red_run_at_the_head_runs_again_whatever_its_event(self):
+        # A red push at the head is seen, not looked past to an older green
+        # run; and a red run by hand after a green night at the same commit
+        # is the newest answer, so the night runs again.
+        for runs in (
+            [run(2, HEAD, 31, event="push", conclusion="failure"), run(1, OLD, 30)],
+            [run(2, HEAD, 31, event="workflow_dispatch", conclusion="failure"), run(1, HEAD, 30)],
+        ):
+            with self.subTest(event=runs[0]["event"]):
+                go, why, error = decide("nightly", FakeAPI(runs, {2: TESTED, 1: TESTED}))
+                self.assertEqual((go, error), (True, False))
+                self.assertIn("runs/2)", why)
+                self.assertIn("failure", why)
+
+    def test_a_run_by_hand_that_tested_the_head_green_skips_cold_or_not(self):
+        # A run by hand runs every job, `cold` (no Rust cache) or not; the
+        # API carries no inputs, and a cold run's jobs are any run's.
+        api = FakeAPI([run(2, HEAD, 31, event="workflow_dispatch"), run(1, OLD, 30)], {2: TESTED, 1: TESTED})
+        go, why, error = decide("nightly", api)
+        self.assertEqual((go, error), (False, False))
+        self.assertIn("runs/2)", why)
+        self.assertIn("a run by hand", why)
+
+    def test_after_a_push_ran_in_a_cancelled_night_s_place_the_next_night_skips(self):
+        # Night 2 was cancelled while it waited, and push 3 tested main in
+        # its place (main-push), green: the next night, at that commit,
+        # stands on push 3.
+        runs = [run(3, HEAD, 31, event="push"), run(2, OLD, 31, conclusion="cancelled"), run(1, OLD, 30, event="push")]
+        go, why, error = decide("nightly", FakeAPI(runs, {3: TESTED, 2: [], 1: TESTED}))
+        self.assertEqual((go, error), (False, False))
+        self.assertIn("runs/3)", why)
+
+    def test_a_night_that_skipped_on_a_push_s_answer_passes_it_on(self):
+        # Night 3 skipped on push 2's answer; night 4, still at that
+        # commit, looks past night 3 to push 2.
+        runs = [run(3, HEAD, 31), run(2, HEAD, 30, event="push"), run(1, OLD, 29)]
+        go, why, _ = decide("nightly", FakeAPI(runs, {3: [job("Asked for")], 2: TESTED, 1: TESTED}))
+        self.assertFalse(go)
+        self.assertIn("runs/2)", why)
+
+    def test_a_pr_s_run_on_a_branch_named_main_is_no_precedent(self):
+        runs = [run(2, HEAD, 31, event="pull_request"), run(1, OLD, 30)]
+        go, why, _ = decide("nightly", FakeAPI(runs, {2: TESTED, 1: TESTED}))
+        self.assertTrue(go)
+        self.assertIn("runs/1)", why)
+
+    def test_no_run_that_tested_anything_runs(self):
+        go, why, error = decide("nightly", FakeAPI([run(2, HEAD, 31, event="push"), run(1, HEAD, 30)], {2: SKIPPED, 1: SKIPPED}))
         self.assertTrue(go)
         self.assertFalse(error)
-        self.assertIn("no scheduled run", why)
+        self.assertIn("no answer to stand on", why)
 
-    def test_it_asks_for_main_s_scheduled_runs_of_its_own_workflow(self):
+    def test_it_asks_for_main_s_finished_runs_of_its_own_workflow_of_any_event(self):
         api = FakeAPI([run(1, HEAD, 30)], {1: TESTED})
         decide("nightly", api)
         self.assertTrue(api.asked[0].startswith("repos/o/r/actions/workflows/slow-suite.yml/runs?branch=main&"))
-        self.assertIn("event=schedule", api.asked[0])
+        self.assertIn("status=completed", api.asked[0])
+        self.assertNotIn("event=", api.asked[0])
 
 
 class MainPush(unittest.TestCase):

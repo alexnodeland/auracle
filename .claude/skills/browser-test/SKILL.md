@@ -58,8 +58,9 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   specs (a helper, the config, the lockfile) changed; for
   `main.js`, `worker.js` or a crate, the smoke pair alone.
 - The *Slow suite* runs `@slow` and `@quarantine` on `main` (a push that
-  changes what they cover), nightly (unless `main` is still at the commit
-  its last nightly run tested green), and on a PR only with the `full-ci`
+  changes what they cover), nightly (unless the newest run on `main` that
+  tested anything, a night's, a push's or one by hand, tested `main`'s head
+  green), and on a PR only with the `full-ci`
   label, the quarantined tests in a job of their own whose failures are
   said on each test's issue, never as a red run while that issue is open;
   the nightly *Flake hunt* runs the fast tier three times each, and files each

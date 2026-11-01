@@ -5,10 +5,10 @@ name: CI
 # minute when they were named, the browser specs tagged @slow, and any
 # tagged @quarantine while a flake is fixed) run in the Slow suite workflow
 # (slow-suite.yml): on a push to main that changes what they cover,
-# nightly unless main is still at the commit its last nightly run tested
-# green, and on a PR that carries the `full-ci` label. Each test runs in
-# exactly one tier; docs/architecture/testing.md § CI tiers lists which and
-# why.
+# nightly unless the newest run on main that tested anything (a night's, a
+# push's or one by hand) tested main's head green, and on a PR that
+# carries the `full-ci` label. Each test runs in exactly one tier;
+# docs/architecture/testing.md § CI tiers lists which and why.
 #
 # Two lanes, one workflow (ADR-023); the `changes` job picks the lane.
 #

@@ -20,15 +20,17 @@
 #
 #   schedule — so a regression that slipped through is found within a day
 #     rather than at the next time somebody happens to look. A night when
-#     main's head is the commit the last scheduled run that tested anything
-#     tested green runs nothing (the `scope` job, scripts/ci_skip.py, #582):
-#     the measurements are seeded, so the same commit gives the same
-#     tables, and that run's summary has them. Over Oct 18 to 29, when main
-#     did not move, that was all 12 nights, about 125 runner-minutes each,
-#     at the hours the merge queue runs (GitHub starts the cron 4.5 to 7
-#     hours late: from 08:51 to 11:17 UTC over Oct 18 to Nov 1). The skip
-#     and the run whose answer stands are said in the run's summary. A run by hand always runs, and anything that keeps the
-#     job from deciding is a run, never a skip and never red.
+#     main's head is the commit the newest run on main that tested anything
+#     tested green runs nothing (the `scope` job, scripts/ci_skip.py, #582),
+#     whether that run was a night's or one by hand on main (whatever its
+#     seeds): the measurements are seeded, so the same commit gives the
+#     same tables, and that run's summary has them. Over Oct 18 to 29, when
+#     main did not move, that was all 12 nights, about 125 runner-minutes
+#     each, at the hours the merge queue runs (GitHub starts the cron 4.5
+#     to 7 hours late: from 08:51 to 11:17 UTC over Oct 18 to Nov 1). The
+#     skip and the run whose answer stands are said in the run's summary.
+#     A run by hand always runs, and anything that keeps the job from
+#     deciding is a run, never a skip and never red.
 name: Search health
 
 on:
@@ -52,11 +54,12 @@ env:
 
 jobs:
   # Is this run asked for? A run by hand always is. A scheduled one is
-  # unless main's head is the commit the last scheduled run that tested
-  # anything tested green (scripts/ci_skip.py says how it reads that). When
-  # `run` is false the three jobs below are skipped, and the run holds this
-  # one runner for a few seconds. Anything that keeps it from deciding is a
-  # run, never a skip and never red, so the job's limit is above its steps':
+  # unless main's head is the commit the newest run on main that tested
+  # anything tested green, a night's or one by hand (scripts/ci_skip.py
+  # says how it reads that). When `run` is false the three jobs below are
+  # skipped, and the run holds this one runner for a few seconds. Anything
+  # that keeps it from deciding is a run, never a skip and never red, so
+  # the job's limit is above its steps':
   # the checkout's 2 minutes and the script's 150 s, with room for the
   # job's setup. A job cut at its own limit would leave `run` unset and
   # the run red with nothing measured.

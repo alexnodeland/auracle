@@ -60,13 +60,18 @@ name: Slow suite
 #   waits), and then runs whatever it changed, in the night's place, until
 #   a run on main has tested green since that night: else main could move
 #   and go that night with no slow test run on it.
-#   The nightly run, on a night when main's head is the commit the last
-#   scheduled run that tested anything tested green, runs nothing: these
-#   tests are seeded, so the same commit gives the same answer (over Oct
-#   18 to 29, when main did not move, that was all 12 nights). Each skip
-#   says why in the run's summary, with the run whose answer stands
-#   (scripts/ci_skip.py), and anything that keeps the `scope` job from
-#   deciding is a run, never a skip and never red.
+#   The nightly run, on a night when main's head is the commit the newest
+#   run on main that tested anything tested green, runs nothing, whatever
+#   that run was: a night's, a push's (in full, or in a cancelled night's
+#   place) or one by hand, a cold one too. These tests are seeded, so the
+#   same commit gives the same answer. A push's run that skipped tested
+#   nothing, so a night after it looks past it to a run that tested an
+#   older commit, and runs. Over Oct 18 to Nov 1 that was all 15 nights:
+#   the 12 when main did not move, and the 3 when a push's run had tested
+#   main's new head green one to two hours before (about 134
+#   runner-minutes). Each skip says why in the run's summary, with the run
+#   whose answer stands (scripts/ci_skip.py), and anything that keeps the
+#   `scope` job from deciding is a run, never a skip and never red.
 # - on demand (Actions → Slow suite → Run workflow), in full, always.
 #   Ticking `cold` starts the Rust legs without the Rust cache (nothing
 #   restored, nothing saved), to read what a cold build and a cold run cost
@@ -145,8 +150,9 @@ jobs:
   #   newest nightly run was cancelled while it waited, before it tested
   #   anything, and no run on main has tested green since: then this run
   #   tests main in the night's place;
-  # - the nightly run, when main's head is the commit the last scheduled
-  #   run that tested anything tested green (scripts/ci_skip.py nightly).
+  # - the nightly run, when main's head is the commit the newest run on
+  #   main that tested anything tested green, a night's, a push's or one
+  #   by hand (scripts/ci_skip.py nightly).
   #
   # The last two read the runs and their jobs (`actions: read`) and the
   # compare from that commit; anything that keeps them from deciding (the
@@ -298,11 +304,12 @@ jobs:
       # leg, only when the leg passed (rust-cache's cache-on-failure is off)
       # and only when the key was new ("Cache up-to-date" otherwise), and a
       # run the `scope` job skips saves none: a push superseded or one that
-      # changes nothing these tests cover, and a night main did not move.
-      # So after a new runner image with a new Rust, ci.yml's Doctests job
-      # and a `full-ci` PR's legs here start cold until a run that tests
-      # here saves the new key: a push that changes Rust or the app, or a
-      # nightly run on a main that moved. None of this was seen on PR #344,
+      # changes nothing these tests cover, and a night at a commit a run
+      # has already tested green. So after a new runner image with a new
+      # Rust, ci.yml's Doctests job and a `full-ci` PR's legs here start
+      # cold until a run that tests here saves the new key: a push that
+      # changes Rust or the app, or a nightly run at a commit no run has
+      # tested green. None of this was seen on PR #344,
       # whose other leg restored main's cache by an exact match. `cold`
       # skips the step, so a cold run neither reads nor writes the cache.
       - id: cache

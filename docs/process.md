@@ -483,9 +483,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   queue its runners: a push to `main` that changes nothing the slow tests
   cover runs none of them (unless it cancelled a waiting nightly run: then
   it runs in the night's place), and the *Slow suite*'s and *Search health*'s
-  nightly runs run nothing on a night `main` is still at the commit their
-  last scheduled run tested green, each saying so in its summary; a run by
-  hand always runs
+  nightly runs run nothing on a night `main`'s head is the commit their
+  newest run on `main` that tested anything tested green, a night's, a
+  push's or one by hand, each saying so in its summary; a run by hand
+  always runs
   ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
   *Mutants weekly* runs on Saturdays over a part of the workspace (a
   fifteen-week cycle aims to cover it all), and a surviving mutant files
