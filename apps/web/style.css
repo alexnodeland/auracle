@@ -7402,15 +7402,6 @@ html.xl-on .alarm { z-index: 62; }
 #rack-svg .rack-plates g.selected .ctrl-well,
 #rack-svg .ctrl-well.locked { opacity: 1; }
 @media (pointer: coarse) { #rack-svg .ctrl-well { opacity: 1; } }
-/* On a touch screen ⋯'s and the lock's pads are 44 units, a finger's 44 px at
-   1×; under 1× the camera grows them back to 44 px (main.js `applyView` sets
-   `--finger`, 1 / the zoom), ⋯'s leftward and the lock's rightward from where
-   they meet between the glyphs, so neither takes the other's (#519). */
-@media (pointer: coarse) {
-  #rack-svg .finger-pad { transform-box: fill-box; transform-origin: center; transform: scale(var(--finger, 1)); }
-  #rack-svg .finger-pad.grow-l { transform-origin: right center; }
-  #rack-svg .finger-pad.grow-r { transform-origin: left center; }
-}
 #rack-svg .mod-title {
   font-size: var(--t-rack-value);
   font-weight: 600;

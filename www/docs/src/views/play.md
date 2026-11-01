@@ -410,9 +410,9 @@ Hold **−** or **+** to keep stepping. Close it with **×**, a swipe down, a ta
 outside, or <kbd>Esc</kbd>. **REMOVE MODULE** at its foot deletes the module,
 as **delete** in its ⋯ menu does. Every module shows its **⋯** on a touch
 screen; hold a finger on a module for the same menu, where **what goes here?**
-is too. Its ⋯ and its lock each answer a finger 44 px across at any zoom. A
-tap beside an out ○ picks its cable up, as a tap on it does; then tap beside
-a lit ○ to put it in. Press and hold **MODEL** for [the model view](#the-model-view-in-patch)
+is too. A tap beside a module's ⋯ or its lock is theirs, as a tap on them
+is, and a tap beside an out ○ picks its cable up; then tap beside a lit ○ to
+put it in. Press and hold **MODEL** for [the model view](#the-model-view-in-patch)
 while your finger stays down, or tap it to keep it up.
 
 ```admonish info collapsible=true title="How it works: edits in order"

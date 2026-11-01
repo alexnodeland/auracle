@@ -1009,10 +1009,13 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   fit there shows where it starts (its sources) and its top,
   and the rest pans; after an edit, a camera the player aimed is left where
   it is when the readable fit could not hold the patch either (`fitHolds`).
-  On a touch screen ⋯'s and the lock's 44-unit pads grow by `--finger`
-  (1 / the zoom, set in `applyView`) to stay 44 px under 1×, and a tap
-  beside an out ○ picks its cable up (`tapOutSocket`, asked by patch.js's
-  tap before the module's sheet opens).
+  On a touch screen a tap on bare panel beside an out ○, a module's ⋯ or
+  its lock is that control's by reach.js's rule, among them all and every
+  socket (`tapReach`, asked by patch.js's tap before the module's sheet
+  opens): the cable picked up, the menu opened, the module locked. ⋯'s and
+  the lock's own pads are 44 units by the pocket's 22, never grown with the
+  camera, so they never lie over another module's sockets or their module's
+  name.
 - **The selection** (`plateSel`, set by a press on bare panel in the rack's
   pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
   both of a module's groups `.selected`; the readout (`renderSpecDock` into

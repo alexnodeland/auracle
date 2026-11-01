@@ -2582,7 +2582,7 @@ const patchView = createPatch({
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
   // A finger's tap beside an out ○ picks its cable up (#519), before a
   // module's sheet opens for it.
-  tapSocket: (ev, target) => tapOutSocket(ev, target),
+  tapReach: (ev, target) => tapReach(ev, target),
   // Esc has another job first: something floating, a module in hand, a cable
   // half made, or a rack knob or plate button (`data-stop`) it backs out of.
   // A new patch opens the catalog (the specimen's `np-desk`), and leaving
@@ -12179,8 +12179,8 @@ function fingerPad(g, x, y, w, h) {
 // pads deliberately meet between the glyphs rather than around them: the strip
 // where they overlap is the gap between the two, so whichever wins there, no
 // glyph is ever stolen from.
-function hitPad(g, x, y, w, h, cls) {
-  g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }, cls));
+function hitPad(g, x, y, w, h) {
+  g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
 /** A screw's rotation, in degrees, hashed off the module's identity and the
@@ -13377,7 +13377,8 @@ function buildRack(svg, rack, opts) {
     // On the canvas the pocket sits on the plate's top edge at its right,
     // above the head (whose right end is the plate's setting), and shows on
     // hover, selection or focus (style.css).
-    // A finger's two 44-unit pads need the pocket twice as wide.
+    // A finger's two 44-unit pads need the pocket twice as wide, and its
+    // reach beside them (`tapReach`) the two glyphs that far apart.
     const wellW = interactive ? (COARSE ? 96 : 48) : 0;
     const wellX = p.w - wellW - 4;
     const WELL_Y = -17;
@@ -13469,10 +13470,12 @@ function buildRack(svg, rack, opts) {
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
       // A finger gets a wider pad (the plate is a few hundred units wide),
-      // 44 units across: a finger's 44 px at 1×, and at any zoom under it
-      // grown by the camera (`--finger`, style.css `.finger-pad`) away from
-      // the lock's beside it, so the two still meet between the glyphs.
-      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22, `finger-pad${hasLock ? " grow-l" : ""}`);
+      // 44 units across, the pocket's height and no more: grown taller, or
+      // with the camera under 1×, a pad lay over the module's own name and
+      // over a neighbour's sockets, and took their taps (#519). A finger
+      // that misses it, beside it on bare panel, still reaches it
+      // (`tapReach`).
+      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, 22);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -13490,7 +13493,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22, "finger-pad grow-r");
+        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, 22);
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -14561,7 +14564,6 @@ const view = { x: 0, y: 0, zoom: 1 };
 // reads it, `syncFitHint`).
 let fitReadZoom = 0;
 const lastFit = { short: false, contain: 1 };
-let fingerSet = ""; // the `--finger` last written on the rack (`applyView`)
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
@@ -14642,12 +14644,6 @@ function applyView() {
     "viewBox",
     `${view.x.toFixed(2)} ${view.y.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`,
   );
-  // On a touch screen a finger's pads are 44 units, its 44 px at 1×; under 1×
-  // the camera grows them back to 44 px (style.css `.finger-pad`).
-  if (COARSE) {
-    const finger = Math.max(1, 1 / view.zoom).toFixed(3);
-    if (finger !== fingerSet) { fingerSet = finger; $("rack-svg").style.setProperty("--finger", finger); }
-  }
   updateEdgeFade(vw);
   drawMinimap();
   // A cable in flight is anchored in rack space, so anything that moves the
@@ -22610,32 +22606,69 @@ function litSocketNear(x, y, reach) {
   }
   return socketMeant(cands, x, y, reach)?.j || null;
 }
-/** A finger's tap beside an out ○, at rest, picks its cable up, as a tap on
- *  the socket itself does (`beginConnectPick`; then a tap beside a lit ○
- *  places it, `reachForSocket`): a socket is drawn a few px across at the
- *  rack's fitted zoom, and a finger needs 44 (#519). Only a tap, never a drag
- *  (a drag from beside a socket pans, as before); only an output, since a
- *  tap on an input does nothing at rest; and only where no other socket is
- *  about as near (reach.js `socketMeant`). Asked by patch.js's tap, with the
- *  press's own target, before a module's sheet opens; true when it took it. */
-function tapOutSocket(ev, target) {
+/** A finger's tap beside what it can barely hit at the rack's fitted zoom,
+ *  at rest, is that control's (#519): beside an out ○ it picks the cable up,
+ *  as a tap on the socket itself does (`beginConnectPick`; then a tap beside
+ *  a lit ○ places it, `reachForSocket`); beside a module's ⋯ it opens its
+ *  menu, and beside its lock it locks it, as a tap on them does. A socket is
+ *  drawn a few px across at the fit, ⋯ and the lock a pocket's height, and a
+ *  finger needs 44. reach.js's rule decides among them all, inputs included
+ *  (`socketMeant`): the nearest within 22 px, and no other about as near.
+ *  Only a tap, never a drag (a drag from beside them pans, as before); never
+ *  on a control, which keeps its own meaning, or on a module's name, which
+ *  opens its sheet; and an input, the nearest, does nothing (a tap on one
+ *  does nothing at rest). Asked by patch.js's tap, with the press's own
+ *  target, before a module's sheet opens; true when it took it. */
+function tapReach(ev, target) {
   if (armed || connectPick || wire || !wb.rack || currentView !== "patch") return false;
-  if (!target || target.closest?.(PLACE_CONTROLS)) return false;
+  if (!target || target.closest?.(PLACE_CONTROLS) || target.closest?.(".mod-title")) return false;
   const view = $("rack-scroll").getBoundingClientRect();
   if (ev.clientX < view.left || ev.clientX > view.right || ev.clientY < view.top || ev.clientY > view.bottom) return false;
+  const svg = $("rack-svg");
   const cands = [];
-  for (const j of $("rack-svg").querySelectorAll(".jack")) {
+  const at = (el, what) => {
+    const r = el.getBoundingClientRect();
+    if (r.width) cands.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, ...what });
+  };
+  for (const j of svg.querySelectorAll(".jack")) {
     const nut = j.querySelector(".j-nut");
-    if (!nut) continue;
-    const r = nut.getBoundingClientRect();
-    if (!r.width) continue;
-    cands.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, j });
+    if (nut) at(nut, { jack: j });
   }
-  const j = socketMeant(cands, ev.clientX, ev.clientY, REACH_PRESS_PX)?.j;
-  const key = j && j.getAttribute("data-outkey");
+  // The pad's middle is the glyph's, on the pocket's line.
+  for (const c of svg.querySelectorAll(".mod-menu-btn > rect, .mod-lock > rect")) at(c, { pad: c });
+  const hit = socketMeant(cands, ev.clientX, ev.clientY, REACH_PRESS_PX);
+  if (!hit) return false;
+  if (hit.pad) {
+    // Its own click, at the finger: ⋯'s opens the menu there (and stops,
+    // so the click-outside guard never sees it), the lock's locks. The
+    // finger's own click, which follows the lift onto whatever the menu
+    // now puts under it, is the tap's, already answered.
+    hit.pad.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: ev.clientX, clientY: ev.clientY }));
+    eatTapClick(ev.clientX, ev.clientY);
+    return true;
+  }
+  const key = hit.jack.getAttribute("data-outkey");
   if (!key) return false;
-  beginConnectPick(key, j.classList.contains("modjack") ? "mod" : "audio");
+  beginConnectPick(key, hit.jack.classList.contains("modjack") ? "mod" : "audio");
   return true;
+}
+/** The click a finger's tap makes after its lift, at (x, y), when the tap
+ *  has already been answered: taken, once; the next press, or a moment,
+ *  lets it go. */
+function eatTapClick(x, y) {
+  const eat = (c) => {
+    if (Math.hypot(c.clientX - x, c.clientY - y) > 10) return;
+    c.stopPropagation();
+    c.preventDefault();
+    done();
+  };
+  const done = () => {
+    window.removeEventListener("click", eat, true);
+    window.removeEventListener("pointerdown", done, true);
+  };
+  window.addEventListener("click", eat, true);
+  window.addEventListener("pointerdown", done, true);
+  setTimeout(done, 800);
 }
 /** A finger's press on bare panel that means a lit socket is handed to it
  *  (as a press on the socket itself), before the rack's pan and its long

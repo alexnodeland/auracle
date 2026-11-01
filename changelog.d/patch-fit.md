@@ -15,10 +15,11 @@
   its own size, each module's name prints larger, and the knob labels, the
   readouts and OUT's name step aside before they would print smaller than
   the rack's own smallest type. Every knob is still there to turn.
-- **A finger reaches what it needs at the fit.** On a touch screen, each
-  module's ⋯ and lock answer a finger 44 px across at any zoom, the face at
-  OUT is at least that big, and a tap beside an out ○ picks its cable up,
-  as a tap right on it does (`patch_fit.spec.js`, #519).
+- **A finger reaches what it needs at the fit.** On a touch screen, a tap
+  beside a module's ⋯ or its lock is theirs, and a tap beside an out ○
+  picks its cable up, as a tap right on them does; a socket, a knob or a
+  module's name under the finger is always that one's. The face at OUT is
+  at least 44 px across (`patch_fit.spec.js`, #519).
 
 ### Fixed: PATCH's structure menu and its ceilings stay out of the way
 

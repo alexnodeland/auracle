@@ -13,11 +13,13 @@
 //   type floor (`--t-label`, 11 px) or larger, draws no text on the rack
 //   smaller than the rack's own smallest type (`--t-rack-micro`, 9 px), and
 //   shows where the patch starts (its first module whole, and n › at the
-//   well's right edge for the modules past it); every ⋯ and every lock is at
-//   least 44 × 44 px and answers at its middle, and so is the face at OUT
-//   once the edge has carried the camera to it; a finger's tap beside an out
-//   ○ (not on it) picks its cable up and opens no module's sheet; and FIT
-//   frames the patch as it opened again.
+//   well's right edge for the modules past it); every socket, knob and name
+//   in the well answers at its middle, never a ⋯'s or a lock's pad; a
+//   finger's tap beside an out ○ (not on it) picks its cable up, opening no
+//   module's sheet, and every socket it lights answers at its middle; one
+//   beside a ⋯ opens its menu, and one beside a lock locks it; the face at OUT is 44 px or more once the
+//   edge has carried the camera to it; and FIT frames the patch as it opened
+//   again.
 // - At 1440 × 900 the same patch fits with every name at 11 px or larger and
 //   no rack text under 9 px, the rest past the right edge, and FIT after a
 //   zoom comes back to that fit.
@@ -108,6 +110,53 @@ const ordinaryModule = (page) => page.evaluate(() => {
   gs.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
   return gs[0]?.getAttribute("data-key") ?? null;
 });
+/** The rack's own targets in the well (every socket, knob and module name)
+ *  whose middle is under a ⋯'s or a lock's pad rather than itself. */
+const underPads = (page) => page.evaluate(() => {
+  const f = document.getElementById("rack-scroll").getBoundingClientRect();
+  const svg = document.getElementById("rack-svg");
+  const under = [];
+  let checked = 0;
+  for (const c of svg.querySelectorAll(".jack .j-nut, [data-addr], .rack-plates .mod-title")) {
+    const r = c.getBoundingClientRect();
+    if (!r.width || getComputedStyle(c).visibility === "hidden") continue;
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+    if (x < f.left || x > f.right || y < f.top || y > f.bottom) continue;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !hit.closest("#rack-svg")) continue; // under the well's own chrome (an edge, the foot)
+    checked += 1;
+    const pad = hit.closest(".mod-menu-btn, .mod-lock");
+    if (pad) under.push(`${c.getAttribute("class")} of ${c.closest("[data-key]")?.getAttribute("data-key")} under ${pad.getAttribute("class")} of ${pad.closest("[data-key]")?.getAttribute("data-key")}`);
+  }
+  return { checked, under };
+});
+/** A point of bare panel 14 to 18 px from the middle of one of the rack's
+ *  reach targets (`sel`: an out ○'s nut, or ⋯'s or a lock's pad) that
+ *  plainly means it, as reach.js reads a finger: every other socket, ⋯ and
+ *  lock more than 1.6 times as far. With its module's key and name. */
+const beside = (page, sel) => page.evaluate((sel) => {
+  const f = document.getElementById("rack-scroll").getBoundingClientRect();
+  const svg = document.getElementById("rack-svg");
+  const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+  const all = [...svg.querySelectorAll(".jack .j-nut, .mod-menu-btn > rect, .mod-lock > rect")].map((el) => ({ el, ...mid(el) }));
+  for (const s of all.filter((o) => o.el.matches(sel))) {
+    for (let a = 0; a < 2 * Math.PI; a += Math.PI / 8) {
+      for (const d of [14, 18]) {
+        const x = s.x + d * Math.cos(a);
+        const y = s.y + d * Math.sin(a);
+        if (x < f.left + 4 || x > f.right - 4 || y < f.top + 4 || y > f.bottom - 4) continue;
+        const t = document.elementFromPoint(x, y);
+        if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl, .mod-title")) continue;
+        if (all.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > 1.6 * d)) {
+          const key = s.el.closest("[data-key]").getAttribute("data-key");
+          const title = svg.querySelector(`.rack-plates g[data-key="${key}"] .mod-title`)?.textContent ?? "";
+          return { x, y, key, title };
+        }
+      }
+    }
+  }
+  return null;
+}, sel);
 /** A module's whole menu (ten verbs) from F2 on its plate: inside the well
  *  and clear of its foot, cut to the well where it is taller and scrolled
  *  by End to `delete`. */
@@ -149,51 +198,48 @@ test.describe("a phone, 390 × 844", () => {
     await expect(page.locator("#pt-edge-r")).toBeVisible();
     expect(Number(await page.locator("#pt-edge-r b").textContent())).toBeGreaterThan(0);
 
-    // Every ⋯ and lock in the well: 44 × 44 px, and its own at its middle.
-    const pads = await page.evaluate(() => {
-      const f = document.getElementById("rack-scroll").getBoundingClientRect();
-      return [...document.querySelectorAll("#rack-svg .mod-menu-btn, #rack-svg .mod-lock")].map((g) => {
-        const r = g.querySelector("rect").getBoundingClientRect();
-        const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
-        if (x < f.left || x > f.right || y < f.top || y > f.bottom) return null;
-        return { what: g.getAttribute("class"), w: Math.round(r.width), h: Math.round(r.height), own: !!document.elementFromPoint(x, y)?.closest(`.${g.classList[0]}`) };
-      }).filter(Boolean);
-    });
-    expect(pads.length, "a ⋯ or a lock on the screen").toBeGreaterThan(0);
-    for (const p of pads) {
-      expect(p.w, `${p.what}'s width`).toBeGreaterThanOrEqual(44);
-      expect(p.h, `${p.what}'s height`).toBeGreaterThanOrEqual(44);
-      expect(p.own, `${p.what} answers at its middle`).toBe(true);
-    }
+    // Every socket, knob and module name in the well is its own at its
+    // middle: no ⋯'s or lock's pad lies over it (they once grew with the
+    // camera, over a neighbour's sockets and their own module's name).
+    const targets = await underPads(page);
+    expect(targets.under, "targets under a ⋯ or lock").toEqual([]);
+    expect(targets.checked, "targets on the screen").toBeGreaterThan(10);
 
     // A finger's tap beside an out ○, on the panel and not on the socket,
     // picks its cable up; no module's sheet opens.
-    const beside = await page.evaluate(() => {
-      const jacks = [...document.querySelectorAll("#rack-svg .jack")].filter((j) => j.querySelector(".j-nut")).map((j) => {
-        const r = j.querySelector(".j-nut").getBoundingClientRect();
-        return { j, x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      });
-      const f = document.getElementById("rack-scroll").getBoundingClientRect();
-      for (const s of jacks.filter((o) => o.j.matches("[data-outkey]:not(.modjack)"))) {
-        for (let a = 0; a < 2 * Math.PI; a += Math.PI / 8) {
-          for (const d of [14, 17]) {
-            const x = s.x + d * Math.cos(a);
-            const y = s.y + d * Math.sin(a);
-            if (x < f.left + 4 || x > f.right - 4 || y < f.top + 4 || y > f.bottom - 4) continue;
-            const t = document.elementFromPoint(x, y);
-            if (!t || !t.closest("#rack-svg") || t.closest("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl")) continue;
-            if (jacks.every((o) => o === s || Math.hypot(o.x - x, o.y - y) > 1.6 * d)) return { x, y };
-          }
-        }
-      }
-      return null;
-    });
-    expect(beside, "a point of panel beside an out ○").not.toBeNull();
-    await page.touchscreen.tap(beside.x, beside.y);
+    const out = await beside(page, ".jack[data-outkey]:not(.modjack) .j-nut");
+    expect(out, "a point of panel beside an out ○").not.toBeNull();
+    await page.touchscreen.tap(out.x, out.y);
     await expect(page.locator("#rack-svg")).toHaveClass(/\bwiring\b/);
     await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+    // Every socket it lights is its own at its middle, for the finger that
+    // places it.
+    const lit = await page.evaluate(() => [...document.querySelectorAll("#rack-svg .jack.legal")].map((j) => {
+      const r = j.querySelector(".j-nut").getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { key: j.getAttribute("data-childkey") || j.getAttribute("data-modkey"), own: !hit?.closest("#rack-svg") || hit.closest(".jack") === j };
+    }));
+    expect(lit.length, "sockets lit").toBeGreaterThan(0);
+    expect(lit.filter((j) => !j.own), "lit sockets under something else").toEqual([]);
     await page.keyboard.press("Escape");
     await expect(page.locator("#rack-svg")).not.toHaveClass(/\bwiring\b/);
+
+    // A finger's tap beside a ⋯, on bare panel and plainly meaning it,
+    // opens that module's menu, as a tap on it does; no sheet opens.
+    const dots = await beside(page, ".mod-menu-btn > rect");
+    expect(dots, "a point of panel beside a ⋯").not.toBeNull();
+    await page.touchscreen.tap(dots.x, dots.y);
+    await expect(page.locator("#ctx-menu")).toBeVisible();
+    await expect(page.locator("#ctx-menu .cm-title-name")).toHaveText(dots.title);
+    await expect(page.locator("#module-sheet.on")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#ctx-menu")).toBeHidden();
+    // …and one beside a lock locks its module.
+    const lock = await beside(page, ".mod-lock > rect");
+    expect(lock, "a point of panel beside a lock").not.toBeNull();
+    await page.touchscreen.tap(lock.x, lock.y);
+    await expect(page.locator(`#rack-svg g.mod-group[data-key="${lock.key}"] .mod-lock.on`)).toHaveCount(1);
+    await expect(page.locator("#module-sheet.on")).toHaveCount(0);
 
     // The edge carries the camera along, to OUT: the face there is a
     // finger's size. FIT frames the patch as it opened again.

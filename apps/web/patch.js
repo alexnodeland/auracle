@@ -1208,9 +1208,10 @@ export function createPatch(host) {
       const t = d.target;
       if (!t || !t.closest) return;
       if (t.closest(".jack, .mod-menu-btn, .mod-lock, .lock-dot, .rack-guess, [data-stop]")) return;
-      // A tap within a finger's reach of an out ○ is the socket's: it picks
-      // the cable up (main.js `tapOutSocket`, #519).
-      if (host.tapSocket && host.tapSocket(e, t)) return;
+      // A tap within a finger's reach of an out ○, a ⋯ or a lock is that
+      // control's: the cable picked up, the menu opened, the module locked
+      // (main.js `tapReach`, #519).
+      if (host.tapReach && host.tapReach(e, t)) return;
       const g = t.closest("[data-key]");
       if (!g) return;
       const knob = t.closest("[data-addr]");
