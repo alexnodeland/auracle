@@ -72,9 +72,9 @@ level; [the keys](#the-bank-from-the-keyboard) are below.
 ## Reading a row
 
 <figure>
-<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, a glyph and a name, with its actions on the line under the name, at its end: play, a star, a save icon, and a cross." loading="lazy" width="280" height="48">
-<figcaption><strong>One row,</strong> with its actions showing: they sit on
-the line under the name while you point at it.</figcaption>
+<img src="./img/bank-row.webp" alt="One bank row with its actions showing: a small face, a glyph and a name, with its actions at the end: play, a star, a save icon, and a cross." loading="lazy" width="280" height="40">
+<figcaption><strong>One row,</strong> with its actions showing at its end
+while you point at it.</figcaption>
 </figure>
 
 - **The face**, left of the name, is the sound’s [face](./faces.md): its
