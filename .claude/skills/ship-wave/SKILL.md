@@ -205,9 +205,10 @@ answered nothing by its branch.
 Run it as a background task (`run_in_background`), which tells you when it
 exits; one detached with `&` tells no one. It waits on the state, every 30
 seconds, until each PR's `CI`, `PR checks` and `Mutants in the changed code`
-are green on its head (and, for a `full-ci` PR, its Slow suite too). Then it labels every PR `queue` and comments
-`@mergifyio queue` on each, all at once, so they enter the queue within
-seconds and share a batch. It prints `queued: #<n> …` and exits 0. Start it
+are green on its head (and, for a `full-ci` PR, its Slow suite too). Then it
+labels every PR `queue` and comments `@mergifyio queue` on each, all at once,
+so they enter the queue within seconds and share a batch, which holds three:
+it warns of a fourth PR and queues it all the same. It prints `queued: #<n> …` and exits 0. Start it
 once every PR of the group is open.
 
 - **A PR goes red** (a check failed or timed out, a `full-ci` PR's Slow suite
