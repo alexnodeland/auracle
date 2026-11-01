@@ -728,8 +728,8 @@ no refit), so the model's ratings of the pool move with every pick. The
 worker says so with a `ratings` field (`engineRatings`, from
 `WasmEngine::belief`): every pool member's posterior mean, std and lens in
 ranked order, the `seeds` EVOLVE POOL would breed from if pressed now, and
-what that generation `may_replace`. No new message and no new lane: it rides
-on replies that already exist. (`ratings`, not `belief`, on the web side:
+what that generation `may_replace`. No message of its own and no new lane: it
+rides on replies sent for their own reasons. (`ratings`, not `belief`, on the web side:
 `belief` in `main.js` is the bench's guess.)
 
 - **On a pick's reply:** the `status` that answers `record_duel`,
@@ -748,7 +748,11 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
   edit's commit, an import, the warm start), so the seeds are current after
   any of them.
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
-  so the seeds and what may be replaced.
+  so the seeds and what may be replaced, and on `on_table`, which changes
+  what the engine holds on EVOLVE's table and so what an eviction would take
+  now: `may_replace`'s first part, whose first is what ⚡'s child or a preset
+  takes ([EVOLVE's next pair](#evolves-next-pair)). Each of
+  these carries `retiring` too while a generation is open.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
 `seeds` and `may_replace` in the bank (`evolveMarks` in `marks.js`, unit-tested
@@ -812,12 +816,14 @@ is the next press of EVOLVE POOL, and they are what to mark. While a
 generation is open or a ⚡ walk is out, a press would wait its turn (see
 [The worker's lanes](#the-workers-lanes)), so they describe one that has not
 started. What the running generation will replace is `refine_child`'s
-`retiring` (said *will be replaced*: it only grows, one per child admitted).
+`retiring` (said *will be replaced*: it grows, one per child admitted).
 A save, a preset or a kept edit joining the pool can change it too
 (`eviction_order` passes over saved sounds and sounds kept as new before
-their first pick, and a new member moves the lowest), so while a generation is open the `pinned`, `preset_loaded` and
-`committed` replies carry `retiring` as well (`openRetiring` in
-`worker.js`), and main repaints the marks from it.
+their first pick, and a new member moves the lowest), and so can the table:
+a sound on it is passed over while it is up, and the next lowest stands in
+for it until it is put away. So while a generation is open the `pinned`,
+`preset_loaded`, `committed` and `on_table` replies carry `retiring` as well
+(`openRetiring` in `worker.js`), and main repaints the marks from it.
 Its seeds come with its progress: every `refine_progress` carries `seeds`,
 `refine_jobs`' parents in job order (job `i` walks from `seeds[i]`). Main
 used to take the last `ratings.seeds` posted before the generation opened,
@@ -832,8 +838,10 @@ While a ⚡ walk is out (no generation open), the bank marks its seed and the
 first `pool + 1 − pool_target` of `ratings.may_replace` (one with the pool at
 size): ⚡'s child is trimmed against at once when it is absorbed
 (`evict_to_size` with the seed protected), lowest first by
-`eviction_order`, which passes over a seed in flight, and `may_replace` ranks
-the same way.
+`eviction_order`, which passes over a seed in flight and the table, and
+`may_replace`'s first part ranks the same way. Its rest is the sounds a
+generation's end could reach once the table has moved, the table put away:
+nothing ⚡'s child takes now.
 
 ## The model's guess and the cable probe
 
@@ -1876,18 +1884,44 @@ asked for, so only a cut made while a deal is out brings one back.
 `placePair` is the one place a pair goes up: anything owed to a pair being
 shown belongs there.
 
-A side of the pair on the table that leaves the pool (a generation's end, a
-preset load or an import making room) does not swap the pair: it stays where
+**A pick in its undo window keeps its pair.** The engine holds the sounds
+on the table (#452): the pair up and the pair
+of the pick held in its undo window, four at most (`onTable` in `deal.js`,
+`Engine::set_on_table`). No generation's end, preset load, import or ⚡
+child's trim replaces them, and EVOLVE POOL's marks pass them over, until
+main says they are put away. So the pick's `record_duel`, sent when its
+window closes, finds both its sides in the pool. It used to be refused when
+a side went in the window (`voteDropped`: *‹name› was replaced, so the pick
+wasn't recorded.*), and TAUGHT went back down.
+
+Main says so with `on_table` (`holdTable`), a `now`-lane request carrying
+the ids, whenever the table's pair or the pending pick's pair changes:
+`placePair`, a pick (`choose`), its commit (`commitPendingVote`), ⌘Z
+(`retractVote`) and ↻ or a pick putting the pair away (`dealAnother`). It
+is sent once a task, from a microtask, and only when the set changed: a
+pick commits the last pick, holds its own pair and puts the next pair up in
+one task, and says so once. Coming after every vote that task sent, it
+reaches the engine after the vote, so a pick is recorded before its pair is
+let go. The pair dealt ahead is not held: nobody has seen it, and a side it
+loses deals it again (`usable`). The reply, `on_table`, says what the engine
+holds (`ids`: the pool's, each once), with the `ratings` and `retiring` a
+save's reply carries, since the hold moves what an eviction would take now; main takes
+them as `pinned`'s case does. Nothing is saved: a restore holds nothing,
+and a binary without `set_on_table` holds nothing and answers `ids: []`.
+
+A side can still leave the pool before the engine hears the pair is up: a
+generation ending in the round trip between the deal and `on_table`, or an
+engine older than the hold. That side does not swap the pair: it stays where
 the hand may be reaching for it (#312, ADR-025). `applyViews` marks the side
 (`markTableGone`: `.gone` on its card, its ▶, ⇄ and ↓ PATCH off, its line
 saying so; the TEACH strip names it replaced and its ▶ for it is off), and
 the next pick or ↻ puts up the next pair. The pick (`choose`) commits a pick
 still in its undo window, as any pick does, and sends no vote of its own
 (`record_duel` refuses an id the pool no longer holds); its refusal is
-`urgent`, so it does not wait behind the generation's toast. A pick held in its undo window
-whose pair loses a side is still refused by the engine when it commits
-(`voteDropped`); keeping it valid would need the engine to hold a sound shown
-in a pair until it is put away.
+`urgent`, so it does not wait behind the generation's toast.
+`tests/web/evolve_holds_still.spec.js` holds both: a preset opened in a
+pick's window that would have replaced a side of it, with the vote counted,
+and a side gone before it was held (its end posted by the spec).
 
 A deal is refused when it is the pair of the pick held in its undo window,
 and it is judged against the pick held when the pair it was dealt behind

@@ -50,7 +50,7 @@ pub use engine::{
     Contribution, DealSchedule, DuelChoice, EditOutcome, Engine, Explanation, FitJob, FitRefused,
     FitResult, ImplicitEvent, LineageEvent, Origin, Profile, ReadmitError, RefineKeep,
     RefineOutcome, RenderPolicy, SavedFit, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
-    MIN_SESSION_OBS, OBS_PER_STYLE,
+    MIN_SESSION_OBS, OBS_PER_STYLE, ON_TABLE_MAX,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use guess::{
