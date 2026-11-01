@@ -258,8 +258,8 @@ function farmPhrase() {
 // a restore that installs a saved clip changes it after the crew standing was
 // handed the old one. Until a worker has the new one, its render of a sound
 // that listens carries the old clip's key, the engine refuses it, and the
-// sound is measured serially here instead (Plan-007 task 4). Port messages arrive in order, so a
-// job sent after this is rendered with the new clip.
+// sound is measured serially here instead (Plan-007 task 4). Port messages
+// arrive in order, so a job sent after this is rendered with the new clip.
 function farmResendPhrase() {
   if (!farm.some((f) => f.alive)) return 0;
   const { phrase, ns } = farmPhrase();
@@ -1022,8 +1022,8 @@ const EMPTY_F32 = new Float32Array(0);
 // opening a newer save, a new enum variant, one corrupt bank tree). The
 // `_checked` / `_v2` forms say `unparseable` for the second case, and that
 // verdict goes to main as `restore_failed`, which is what stops the write.
-// The session's audition clip as the engine reports it, or null from a binary
-// too old to say.
+// The clip every input slot hears unless it has its own, as the engine
+// reports it (`audition_clip`), or null from a binary too old to say.
 function auditionClip() {
   try {
     return JSON.parse(engine.audition_clip());
@@ -3614,10 +3614,11 @@ async function dispatch(m) {
         faceNs = ns;
         faceStoreOpen(); // ready for the first faces copied out of the memo
         renderStoreReady(ns); // before any farm worker opens it (`farmBoot`)
-        // The audition clip sounds with an AUDIO IN are measured with (the
-        // built-in reference until an input is captured), and each input
-        // slot's (`clips`). PERFORM keys the wiring of a sound that listens
-        // by the clips of the slots it reads.
+        // The clip every input slot hears (`clip`) and the one each slot's
+        // sounds are measured with (`clips`): the built-in reference on every
+        // slot here, since a restore comes after and says what it brought
+        // back. PERFORM keys the wiring of a sound that listens by the clips
+        // of the slots it reads.
         // The longest take a CAPTURE holds (RECORD's limit), from the grammar.
         let takeSeconds = null;
         try {

@@ -75,11 +75,12 @@ const setKey = (set) => {
 };
 // The key a measured wiring is kept under (`wireKey` in `createPerform`):
 // the patch as it is (uids dropped, so a re-minted tree is the same patch),
-// then the audition clip for a sound with an AUDIO IN (`|clip:`), then the
-// set measured unless it is the six (`#controls=`). The clip goes on the
-// patch's part, before the set, so `${patch}#controls=` still prefixes every
-// set of one patch (`borrowWiring`) and a set is never clipped off. A key
-// that is not a tree (one already composed) is itself.
+// then for a sound with an AUDIO IN the clips of the inputs it reads
+// (`|clip:`, clips.js `clipKey`: one id while they all hear one clip, else
+// each input's), then the set measured unless it is the six (`#controls=`).
+// The clips go on the patch's part, before the set, so `${patch}#controls=`
+// still prefixes every set of one patch (`borrowWiring`) and a set is never
+// clipped off. A key that is not a tree (one already composed) is itself.
 export function wireKeyOf(json, set, clip) {
   let base;
   try {
@@ -939,15 +940,15 @@ export function createPerform(host) {
   // What the lean in hand was asked for: the posterior, and the sound and
   // the panel's set as its wiring is keyed (`wireKey`: the tree PERFORM
   // measures, whose render is in the engine's memo once measured or opened
-  // on the bench, with the audition clip for a sound that listens, which is
-  // measured through it).
+  // on the bench, with the clips of the inputs a sound that listens reads,
+  // which it is measured through).
   const leanKey = () => `${state.gen}|${state.leanRev}|${state.cur ? wireKey(state.cur.json, state.panel) : ""}`;
   // Ask the engine for the lean, when the model view is up over PERFORM and
   // the one in hand is not for this sound, posterior and panel: when the
   // view comes up (`modelViewChanged`), PERFORM comes into sight (`show`),
   // the sound or the panel changes (`patchChanged`, a Keep, a glide landing,
-  // PATCH's knob writes followed, `setPanel`, a new clip for a sound that
-  // listens: `clipChanged`) and the posterior moves
+  // PATCH's knob writes followed, `setPanel`, a new clip on an input the
+  // sound reads: `clipChanged`) and the posterior moves
   // (`posteriorChanged`: a refit, a pick's reweighting, a taste file
   // opened). A lean of this sound already drawn stays until the new one
   // lands.
@@ -1876,11 +1877,12 @@ export function createPerform(host) {
   // for the six it is the patch's alone, as it was before the palette (the
   // shipped file and every cache already hold the six under that key).
   //
-  // A sound with an AUDIO IN is measured with the session's audition clip
-  // (Plan-007), so under another clip the same patch measures differently:
-  // its key carries the clip, on the patch's part, before the set
-  // (`wireKeyOf`). Only for a sound that listens, so a new clip leaves every
-  // other wiring where it was.
+  // A sound with an AUDIO IN is measured through the clip of each input it
+  // reads (Plan-007, #147), so under other clips the same patch measures
+  // differently: its key carries those inputs' clips (main's `clipTag`,
+  // clips.js `clipKey`), on the patch's part, before the set (`wireKeyOf`).
+  // Only for a sound that listens, and only the inputs it reads, so a new
+  // clip leaves every wiring that does not read its input where it was.
   function wireKey(json, set) {
     return wireKeyOf(json, set, host.clipTag ? host.clipTag(json) : null);
   }
@@ -5200,10 +5202,12 @@ export function createPerform(host) {
       state.leanRev += 1;
       askLean();
     },
-    // The audition clip changed (main's `audition_clip`: a capture, NEW
-    // CLIP, a restore). A sound in hand that listens is measured through
-    // it, so its lean is asked again (its key carries the clip, `wireKey`);
-    // any other sound's is the same, and nothing is asked.
+    // An input's clip changed (main's `audition_clip`: a capture, NEW CLIP,
+    // a restore). A sound in hand that reads that input is measured through
+    // it, so its key changes (`wireKey` carries the clips of the inputs it
+    // reads) and its lean is asked again; for any other sound, one that
+    // reads other inputs included, the key is the same and `askLean` asks
+    // nothing.
     clipChanged() {
       askLean();
     },
