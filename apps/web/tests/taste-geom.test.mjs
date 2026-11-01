@@ -21,6 +21,9 @@ import {
   haloOf,
   mapFrame,
   mapLayout,
+  MAP_MARK_REACH,
+  MAP_TOG_FOOT,
+  MAP_TRACK_ROOM,
   directionOnScreen,
   setStyles,
   arrowLength,
@@ -256,7 +259,7 @@ test("layout: every sound keeps its order along both axes, and no two sit on eac
   // Inside the frame.
   for (const q of pos.values()) {
     assert.ok(q.x >= f.box.left * 0.5 && q.x <= f.box.w - f.box.right * 0.5);
-    assert.ok(q.y >= f.box.top * 0.6 && q.y <= f.box.h - f.box.bottom * 0.6);
+    assert.ok(q.y >= f.box.top && q.y <= f.box.h - f.box.bottom);
   }
   // Opened up: no two marks on top of each other.
   let closest = Infinity;
@@ -474,4 +477,59 @@ test("the small map shades each sound drawn against the largest |z| among them",
 test("the track keeps the sounds clear of it", () => {
   const off = mapFrame(1100, 560, 40), on = mapFrame(1100, 560, 40, { track: true });
   assert.ok(on.box.bottom > off.box.bottom);
+});
+
+// A sound under the SOUND / TASTE switch could be reached by neither a
+// finger nor a mouse: a press there is the switch's (#573). The canvases a
+// phone held upright, a small phone, a desktop and a phone on its side give
+// TASTE's map.
+const MAP_SIZES = [[340, 596], [300, 470], [1100, 560], [700, 360]];
+
+/** 40 sounds: one past every other's left and top, three crowding in
+ *  beside it, and six crowding the foot, so the opening up pushes marks
+ *  toward both edges; the rest spread as `seed` deals them. */
+function edgePool(seed) {
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const pts = [];
+  for (let i = 0; i < 40; i++) pts.push({ id: i, x: rnd() * 4, y: rnd() * 4 });
+  pts[0].x = -1; pts[0].y = -1;
+  for (let k = 1; k <= 3; k++) { pts[k].x = -0.9; pts[k].y = -0.9; }
+  for (let k = 4; k <= 9; k++) { pts[k].x = 2; pts[k].y = 5; }
+  return pts;
+}
+
+test("no sound is drawn under the map's SOUND / TASTE switch or its track: every mark and its reach stay clear of both", () => {
+  for (const [w, h] of MAP_SIZES) {
+    for (const seed of [3, 7, 11, 29, 41]) {
+      const pts = edgePool(seed);
+      const f = mapFrame(w, h, pts.length, { track: true });
+      const reach = f.s0 * MAP_MARK_REACH;
+      const pos = mapLayout(pts, f.box, f.minD);
+      for (const [id, q] of pos) {
+        assert.ok(q.y - reach >= MAP_TOG_FOOT - 1e-9, `${w}×${h} seed ${seed}: sound ${id} at y ${q.y.toFixed(1)} reaches under the switch (its foot at ${MAP_TOG_FOOT})`);
+        assert.ok(q.y + reach <= h - MAP_TRACK_ROOM + 1e-9, `${w}×${h} seed ${seed}: sound ${id} at y ${q.y.toFixed(1)} reaches under the track (its top at ${h - MAP_TRACK_ROOM})`);
+      }
+      // The one past every other's left and top is at the map's top left,
+      // where the switch is: below it, not under it.
+      assert.ok(pos.get(0).x < 165, `${w}×${h}: the top-left sound is at the switch's side of the map`);
+    }
+  }
+});
+
+test("a crowded map keeps every sound inside the frame's top and bottom: the opening up never pushes one past them", () => {
+  for (const [w, h] of MAP_SIZES) {
+    // Most of the pool in one corner, as a PCA of φ often puts it, and in
+    // the corner under the switch.
+    let s = 13;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const pts = [];
+    for (let i = 0; i < 40; i++) pts.push({ id: i, x: Math.pow(rnd(), 3) * 10, y: Math.pow(rnd(), 3) * 5 });
+    for (const track of [true, false]) {
+      const f = mapFrame(w, h, pts.length, { track });
+      for (const q of mapLayout(pts, f.box, f.minD).values()) {
+        assert.ok(q.y >= f.box.top - 1e-9 && q.y <= h - f.box.bottom + 1e-9, `${w}×${h}: a mark at y ${q.y.toFixed(1)}, outside ${f.box.top.toFixed(1)} to ${(h - f.box.bottom).toFixed(1)}`);
+      }
+    }
+  }
 });

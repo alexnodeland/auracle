@@ -41,7 +41,9 @@ beside two glows, or *still a guess* beside a dashed ring.
 
 ## SOUND and TASTE
 
-The switch at the map’s top left chooses how the sounds are shown.
+The switch at the map’s top left chooses how the sounds are shown. No
+sound is drawn under it, or under the track along the map’s foot, so every
+sound can be pointed at, clicked or touched.
 
 - **SOUND**, the default, shows the sounds as they are. Once the model has
   fitted, their glows show too; before that, there are none.
