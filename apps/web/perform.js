@@ -1112,6 +1112,20 @@ export function createPerform(host) {
       const half = k.spec.kind === "named" && (sLo === 0 || sHi === 0) && sLo !== sHi;
       const pushed = half ? (v < sLo - 1e-9 ? -1 : v > sHi + 1e-9 ? 1 : 0) : 0;
       if (pushed && !k.atStop) bump(k, pushed);
+  // Focus taken by a press (a dial's, the XY pad's), so the keys go to it
+  // while it is held: a pointer's, never the keyboard's, so it draws no
+  // ring. The press's own default is prevented (no text selected, no
+  // scroll), so the browser does not focus it, and a focus a script gives
+  // is shown as the keyboard's once a key has been pressed anywhere (any key
+  // in Chromium, Tab in Firefox): the ring came up under the mouse.
+  // `focusVisible: false` says it is not; a control the keyboard had already
+  // focused is let go first, so its ring goes for the drag too. The ring
+  // stays `:focus-visible`'s, for Tab and the arrows.
+  function pointerFocus(node) {
+    if (document.activeElement === node) node.blur();
+    node.focus({ preventScroll: true, focusVisible: false });
+  }
+
       k.atStop = !!pushed;
       // A light detent at the centre of a bipolar control: home is findable
       // by feel.
@@ -1131,7 +1145,7 @@ export function createPerform(host) {
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
       k.drawn = null;
       k.atStop = false;
-      k.wrap.focus({ preventScroll: true });
+      pointerFocus(k.wrap);
       k.wrap.setPointerCapture(e.pointerId);
       startY = e.clientY;
       startV = k.value;
@@ -4670,7 +4684,7 @@ export function createPerform(host) {
   xyField.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     xyHeld = true;
-    xyField.focus({ preventScroll: true });
+    pointerFocus(xyField);
     xyField.setPointerCapture(e.pointerId);
     ensureWired();
     setXY(...xyAt(e));

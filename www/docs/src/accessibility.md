@@ -106,7 +106,9 @@ reaches, the face at OUT included (it plays the sound), and on a touch screen
 each is 40 px or more: the head's acts, the camera's corner, the menus, and a
 module's sheet with its lane's buttons.
 
-Focus is always visible, and a dialog returns focus to whatever opened it.
+Focus is always visible when the keyboard moves it, and a dialog returns
+focus to whatever opened it. A PERFORM control or the XY pad pressed with the
+mouse or a finger takes the focus without a ring.
 [Keyboard and MIDI](./keyboard.md) has the full map.
 
 ## Screen readers
