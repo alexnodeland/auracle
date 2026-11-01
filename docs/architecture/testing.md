@@ -353,8 +353,24 @@ scripts/ops/rows_resolve.py keeps both. -->
   cancelling the run in progress). The queue checks one batch at a time, so
   a new queue run means the draft PR before it was closed (its batch was
   reset: a PR in it was pushed or dequeued, or something merged from outside
-  the queue), and its run stops then, rather than holding its runners beside
-  the new one's. A PR's runs and `main`'s keep their groups.
+  the queue; or it went red), and its run stops then, rather than holding
+  its runners beside the new one's. A PR's runs and `main`'s keep their
+  groups.
+  - A cancelled run holds the group until the jobs it still runs end, and
+    the next run waits. So `CI` and `Full gate` don't run in a run
+    cancelled before every job they read had ended: a reset batch's run
+    ends when it is cancelled. (Until #580 `CI` ran there too, runner wait
+    and all, and on a PR a new push's run waited for it: 1.5 minutes in run
+    41217848348.)
+  - A red batch's tests have all ended when the next batch's run cancels
+    it, so its `CI` runs to its end: the merged browser report, the budgets
+    and the records are kept. The next batch's run starts once it has.
+    `CI` and `Full gate` are queued for runners at the same moment, and in
+    the four red queue runs to 1 November with a batch behind them, Mergify
+    opened the next draft PR 15 to 90 seconds after the first red check, so
+    that wait is usually what is left of the report's half minute, if
+    anything; longer only when `CI` waits for a runner longer than `Full
+    gate` did.
 - A push to `main` and a run by hand are the full gate too.
 
 **How long.** The fast tier's browser tests are about seventy-five minutes
@@ -402,7 +418,13 @@ also folds the run's times into the timings the next run deals by, each
 test's time from its runs that passed (*The timings come from the queue's
 run*, below). The step reports on `CI`'s answer and is not part of it: it
 carries on past an error (npm's registry slow, a download failed), inside
-five minutes of its own. A runner that would
+five minutes of its own, and it runs in a red batch's run that the next
+batch's cancelled (*The queue's runs share one concurrency group*, above).
+A run with no merged report (the step ran out of time) still has each
+runner's blob report, the `blob-fast-*` artifacts, kept seven days:
+`gh run download <run> -p 'blob-fast-*' -D <dir>`, their zips copied into
+one directory, then `npx playwright merge-reports --reporter html <that
+directory>` in `tests/web`. A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
@@ -461,7 +483,8 @@ queue's *What changed* looks up a record for each class of its own inputs,
 from this repository's runs of `ci.yml` only, and logs `would reuse <class>
 (record <run>)`; and runs everything. `CI`'s summary then sets each class it
 would have reused against what its jobs did there, and keeps the table as
-the artifact `reuse-dry-run`. A wave's batches are diffed from those before
+the artifact `reuse-dry-run`, a red batch's included (its `CI` runs to its
+end when the next batch's run cancels it). A wave's batches are diffed from those before
 skipping turns on, in a second change that amends ADR-023's rule 4 with what
 the diff shows. A record that cannot be read is no reuse, never a red run.
 

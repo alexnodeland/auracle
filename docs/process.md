@@ -342,7 +342,11 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
   - The queue's runs share one concurrency group. A draft PR the queue
     closed (its batch was reset) has its run stopped when the next batch's
-    starts, so it doesn't hold runners the new one needs.
+    starts, `CI` and `Full gate` with it, so it doesn't hold runners the new
+    one needs. A batch that went red is the exception: its tests had all
+    ended, so its `CI` runs to its end (the merged browser report, the
+    records), and the next batch's run starts once it has, usually within
+    the minute.
   - Each class of job that passes in full, in a PR's own run or the
     queue's, leaves a record keyed by the files it reads, and the queue's
     run says which it would reuse (`would reuse <class> (record <run>)`)
@@ -618,8 +622,11 @@ runner may make a test slower, never wrong
 how long something took is a budget, not a gate assertion.
 
 1. **Read it.** The run's summary links one HTML report of every browser
-   runner, with traces. Decide whether the app, the test or the machine is at
-   fault.
+   runner, with traces (a run without one still has each runner's blob
+   report, which merges by hand:
+   [`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers),
+   *One report*).
+   Decide whether the app, the test or the machine is at fault.
 2. **Fix it** when the cause is clear: a wait on a time rather than a state,
    an injected reply the engine can overwrite, a count a slow runner can
    double, a speed bound that should be a budget, or a real race in the app.

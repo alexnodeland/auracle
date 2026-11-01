@@ -89,13 +89,22 @@ on:
 # the queue checks one batch at a time (.mergify.yml: `mode: serial`,
 # `max_parallel_checks: 1`), so a new queue run means the draft PR before it
 # was closed (its batch was reset: a PR in it pushed or dequeued, or a merge
-# from outside the queue), and nothing reads that run any more. It stops
-# when the next one starts, rather than holding its runners until it ends
-# (#580: one such run used 73.5 runner-minutes beside the next batch's). The
-# prefix is .mergify.yml's queue_branch_prefix, as in the changes job and
-# `Full gate`.
+# from outside the queue; or it went red), and nothing reads that run any
+# more. It stops when the next one starts, rather than holding its runners
+# until it ends (#580: one such run used 73.5 runner-minutes beside the next
+# batch's). The prefix is .mergify.yml's queue_branch_prefix, as in the
+# changes job and `Full gate`; only from this repository, so a fork's PR
+# from a branch of that name keeps a group of its own and stops no batch.
+#
+# A cancelled run holds its group until the jobs it still runs have ended,
+# and a job whose `if` holds when the run is cancelled is still run, runner
+# wait and all: the next run waits for it. So `CI` and `Full gate` do not run
+# in a run cancelled before every job they read had ended (theirs say how):
+# a reset batch's run ends when it is cancelled. A red batch's `CI` does run
+# to its end, since its tests had all ended, so its merged report and its
+# records are kept; the next batch's run then starts when it has.
 concurrency:
-  group: ${{ startsWith(github.head_ref, 'mergify/merge-queue/') && 'ci-merge-queue' || format('ci-{0}', github.head_ref || github.ref) }}
+  group: ${{ startsWith(github.head_ref, 'mergify/merge-queue/') && github.event.pull_request.head.repo.full_name == github.repository && 'ci-merge-queue' || format('ci-{0}', github.head_ref || github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
   queue: single
 
@@ -1188,9 +1197,21 @@ jobs:
   # `PR checks` (pr-checks.yml) and `Mutants in the changed code`
   # (mutants.yml); in the queue's run it is the full gate's answer, beside
   # `Full gate` (below), the check the queue merges on.
+  #
+  # It runs whatever the jobs above did, except in a run cancelled before
+  # every one of them had ended (a newer push to the PR; a reset batch,
+  # whose next run waits on this group for whatever this run still runs:
+  # the concurrency comment above), whose answer nothing reads. A run
+  # cancelled after they had all ended (a red batch, once the queue's next
+  # draft PR starts its run) still runs it to its end: the records and the
+  # report below describe finished jobs, so their steps are `always()`, and
+  # carry on through a cancel that comes while they run. They come after
+  # the answer, the records first, which take seconds. A job that hit its
+  # own limit reads as cancelled too, in a run that was not, and is red
+  # here, as before.
   ci:
     name: CI
-    if: always()
+    if: ${{ !cancelled() || !contains(needs.*.result, 'cancelled') }}
     # `Full gate`'s list too (below): the two answer from the same results.
     needs: [changes, lint, web, doctests, coverage, site, smoke, worker, browser, burnin]
     runs-on: ubuntu-24.04
@@ -1210,35 +1231,6 @@ jobs:
             esac
           done
           echo "green"
-
-      # The browser runners' reports as one: an HTML report of every test,
-      # with the traces of what failed, uploaded when a runner failed (the
-      # run's summary links it), the speed budgets recorded over their limit
-      # listed in the summary (ADR-022), and the times folded into the
-      # timings the next run deals by: on main, saved; in the queue's run,
-      # kept for main's run to save once it reuses this one (the changes
-      # job). A fast lane's few specs fold nothing.
-      #
-      # Steps here, not a job of its own, so the queue's answer waits for one
-      # runner after the browser runners, not two (#580). It reports on the
-      # answer and is not one: whatever happens to it (npm's registry slow,
-      # a download failed), `CI` says what the results above said, as it
-      # did when the report was a job beside it. Each step carries on past
-      # an error, and the report has a limit of its own inside the job's.
-      - id: checkout
-        if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: The browser runners' report
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 5
-        uses: ./.github/actions/browser-report
-        with:
-          name: fast
-          failed: ${{ needs.browser.result == 'failure' }}
-          timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
 
       # What main reuses (the changes job's reuse step): the files this run
       # tested, as a git tree, and the jobs that passed on them. From the
@@ -1294,7 +1286,7 @@ jobs:
       # later run a reuse, never this one its green.
       - name: Record each class that passed on these inputs
         id: records
-        if: ${{ !cancelled() && (needs.changes.outputs.lane == 'fast' || needs.changes.outputs.lane == 'queue') && needs.changes.outputs.keys != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ always() && (needs.changes.outputs.lane == 'fast' || needs.changes.outputs.lane == 'queue') && needs.changes.outputs.keys != '' && github.event.pull_request.head.repo.full_name == github.repository }}
         continue-on-error: true
         env:
           RESULTS: ${{ toJSON(needs) }}
@@ -1322,42 +1314,42 @@ jobs:
             echo "$class=$key" >> "$GITHUB_OUTPUT"
             echo "recorded $class (key ${key:0:12})"
           done
-      - if: ${{ !cancelled() && steps.records.outputs.rust != '' }}
+      - if: ${{ always() && steps.records.outputs.rust != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-record-rust-${{ steps.records.outputs.rust }}
           path: records/rust.json
           retention-days: 14
-      - if: ${{ !cancelled() && steps.records.outputs.browser != '' }}
+      - if: ${{ always() && steps.records.outputs.browser != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-record-browser-${{ steps.records.outputs.browser }}
           path: records/browser.json
           retention-days: 14
-      - if: ${{ !cancelled() && steps.records.outputs.worker != '' }}
+      - if: ${{ always() && steps.records.outputs.worker != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-record-worker-${{ steps.records.outputs.worker }}
           path: records/worker.json
           retention-days: 14
-      - if: ${{ !cancelled() && steps.records.outputs.web != '' }}
+      - if: ${{ always() && steps.records.outputs.web != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-record-web-${{ steps.records.outputs.web }}
           path: records/web.json
           retention-days: 14
-      - if: ${{ !cancelled() && steps.records.outputs.site != '' }}
+      - if: ${{ always() && steps.records.outputs.site != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-record-site-${{ steps.records.outputs.site }}
           path: records/site.json
           retention-days: 14
-      - if: ${{ !cancelled() && steps.records.outputs.tree != '' }}
+      - if: ${{ always() && steps.records.outputs.tree != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1370,7 +1362,7 @@ jobs:
       # that went red here is what reuse would have hidden. Kept as
       # `reuse-dry-run` too, for the diff over a wave's batches.
       - name: What the dry run would have reused, and what ran
-        if: ${{ !cancelled() && needs.changes.outputs.lane == 'queue' }}
+        if: ${{ always() && needs.changes.outputs.lane == 'queue' }}
         continue-on-error: true
         env:
           RESULTS: ${{ toJSON(needs) }}
@@ -1416,13 +1408,42 @@ jobs:
           jq -n --arg run "$GITHUB_RUN_ID" --arg sha "$GITHUB_SHA" --argjson keys "${KEYS:-null}" --argjson classes "$out" \
             '{run: $run, sha: $sha, keys: $keys, classes: $classes}' > reuse-dry-run.json
           cat reuse-dry-run.json
-      - if: ${{ !cancelled() && needs.changes.outputs.lane == 'queue' && hashFiles('reuse-dry-run.json') != '' }}
+      - if: ${{ always() && needs.changes.outputs.lane == 'queue' && hashFiles('reuse-dry-run.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reuse-dry-run
           path: reuse-dry-run.json
           retention-days: 30
+
+      # The browser runners' reports as one: an HTML report of every test,
+      # with the traces of what failed, uploaded when a runner failed (the
+      # run's summary links it), the speed budgets recorded over their limit
+      # listed in the summary (ADR-022), and the times folded into the
+      # timings the next run deals by: on main, saved; in the queue's run,
+      # kept for main's run to save once it reuses this one (the changes
+      # job). A fast lane's few specs fold nothing.
+      #
+      # Steps here, not a job of its own, so the queue's answer waits for one
+      # runner after the browser runners, not two (#580). It reports on the
+      # answer and is not one: whatever happens to it (npm's registry slow,
+      # a download failed), `CI` says what the results above said, as it
+      # did when the report was a job beside it. Each step carries on past
+      # an error, and the report has a limit of its own inside the job's.
+      - id: checkout
+        if: ${{ always() && needs.browser.result != 'skipped' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The browser runners' report
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: ./.github/actions/browser-report
+        with:
+          name: fast
+          failed: ${{ needs.browser.result == 'failure' }}
+          timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
 
   # The check the merge queue merges on (.mergify.yml's merge_conditions):
   # green when this is the queue's run and every job `CI` needs passed. It
@@ -1444,21 +1465,28 @@ jobs:
   # main's run would then run what it would have reused and deal by older
   # times: slower, never a wrong answer.
   #
-  # A job, not a check run `CI` posts through the Checks API, which would
-  # spare its runner: GitHub lets the run's token create one (it is the
-  # GitHub Actions app's), but neither GitHub nor Mergify says that Mergify
-  # reads a check run so made as `@github-actions/Full gate`, and were it
-  # not read, every batch would wait out the queue's 45-minute
-  # checks_timeout. A job is read, as it has been since ADR-023.
+  # A job, not a check run `CI` posts through the Checks API as its last
+  # step, which would spare its runner, and on a red batch would end with
+  # `CI` rather than before its report, so the next batch's run would not
+  # wait on this one's `CI` (the concurrency comment above). GitHub lets the
+  # run's token create a check run (it is the GitHub Actions app's), but
+  # neither GitHub nor Mergify says that Mergify reads one so made as
+  # `@github-actions/Full gate`, and were it not read, every batch would
+  # wait out the queue's 45-minute checks_timeout. Until one PR has shown
+  # that it is read, a job, which is read, as it has been since ADR-023.
   #
-  # Its `if` reads the branch, not What changed's lane: a What changed that
-  # failed still gives a red `Full gate`, at once, rather than a skipped one
-  # the queue would wait on. The prefix is .mergify.yml's
-  # queue_branch_prefix, as in the changes job and the concurrency group.
+  # Its `if` reads the branch, not What changed's lane, so a What changed
+  # that failed gives a red `Full gate` beside the red `CI`, not a skipped
+  # one: the check the queue merges on says what happened (the queue leaves
+  # on `CI`'s red either way). Never in a cancelled run, not even a red
+  # batch's, as `CI` is: nothing reads it there, and it would hold the next
+  # run back.
+  # The prefix is .mergify.yml's queue_branch_prefix, as in the changes job
+  # and the concurrency group.
   full-gate:
     name: Full gate
     needs: [changes, lint, web, doctests, coverage, site, smoke, worker, browser, burnin]
-    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'mergify/merge-queue/')
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'mergify/merge-queue/') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
