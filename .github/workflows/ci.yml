@@ -481,8 +481,9 @@ jobs:
             echo "Queue run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`), and they are not run again: ${reused#, }."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The queue run's browser times, folded into main's timings by its
-      # Browser report job, saved here for the next run's deal: a cache
+      # The queue run's browser times, folded into main's timings by a step
+      # of its `CI` job (the browser runners' report), saved here for the
+      # next run's deal: a cache
       # saved by a pull_request run is that PR's alone, and main never runs
       # the tier itself when it reuses the queue's verdict. Without this, the
       # timings would stop at the last tier main ran. An error costs the next
@@ -503,10 +504,6 @@ jobs:
           path: tests/web/timings-fast.json
           key: browser-timings-fast-${{ github.run_id }}-${{ github.run_attempt }}
 
-      # The voice check (www/brand/voice.md) reads the README and the
-      # changelog as well as the site and the app, and a PR that touches only
-      # those skips the web job's `make dev-check`. It takes a second, so it
-      # runs here, on every PR.
       # Each class of job's record key (scripts/changes.py keys): a hash of
       # the files that class reads, in this commit and in the main it was
       # merged onto (HEAD^1). `CI` names the record of a class that passed
@@ -573,6 +570,10 @@ jobs:
             printf '%s' "$rows"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The voice check (www/brand/voice.md) reads the README and the
+      # changelog as well as the site and the app, and a PR that touches only
+      # those skips the web job's `make dev-check`. It takes a second, so it
+      # runs here, on every PR.
       - name: The voice (www/checkwords.py)
         run: python3 www/checkwords.py
 

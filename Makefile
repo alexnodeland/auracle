@@ -118,7 +118,8 @@ FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
 # space; the AudioWorklet build gets it too, and it compiles the same patches.
 WASM_STACK := 8388608
 # Added to the caller's RUSTFLAGS, not in place of them: CI sets -Dwarnings, and
-# the engine job's wasm32 build is where a warning only that target has (a
+# its wasm32 build of the engine (in ci.yml's What changed; the Slow suite's
+# and the Flake hunt's engine jobs) is where a warning only that target has (a
 # helper only the native-only items use) must fail.
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
@@ -976,7 +977,7 @@ site-landing: site-fonts site-brand
 	cp www/viz/viz.js www/viz/viz.css site/
 
 ## site-play: the instrument, at /play/. `WASM_PREBUILT=1` takes the engine
-## already in apps/web/pkg (CI's Site job downloads the one the engine job
+## already in apps/web/pkg (CI's Site job downloads the one What changed
 ## built) instead of building it again
 site-play: $(if $(filter 1,$(WASM_PREBUILT)),wasm-prebuilt,wasm)
 	mkdir -p site/play
