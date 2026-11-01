@@ -23,8 +23,10 @@ on stderr, and exits 3; `--compare` refuses such a run as a base.
 
 What it counts, with the definitions #177's numbers used:
 - A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job (on a
-  queue batch, its `Full gate` job, the check the queue merges on): green
-  (success), red (failure or timed out) or cancelled. A re-run is counted
+  queue batch, its `Full gate` and `CI` jobs, which the queue merges on: a
+  red one, else the one done last; `Full gate` came after `CI` until #580,
+  and runs beside it since): green (success), red (failure or timed out) or
+  cancelled. A re-run is counted
   (`reruns`), not believed. A run on main that ran nothing (main had moved
   past it, so ci.yml's `changes` job skipped everything) has no verdict.
 - Two lanes (ADR-023). A PR's own run is the fast lane, reported by the kind
@@ -42,9 +44,9 @@ What it counts, with the definitions #177's numbers used:
   are the full gate: a row of their own (queue batch), belonging to no PR. A
   push to main is a row of its own too.
 - CI wall time: the run created to its `CI` job completed (a queue batch's
-  `Full gate`), on green and red runs.
+  later of `Full gate` and `CI`), on green and red runs.
 - Runner wait: each required job's start minus its creation (a job `CI`
-  needs; on a queue batch, one `Full gate` needs), summed per run, the
+  needs; on a queue batch, every job but `Full gate`, `CI` included), summed per run, the
   longest in the run, and every one's; and the longest of all the run's jobs,
   required or not.
 - Red rate: red runs of the green and red ones; cancelled runs are left out.
@@ -66,7 +68,8 @@ What it counts, with the definitions #177's numbers used:
   runs only the specs its change reaches, on fewer).
 - Jobs: each job's time on green runs, by name with the shard numbers folded
   (`Browser (k/12)`); the Coverage chain from its build's start to its
-  report's end; and the Slow suite's and the Flake hunt's runs, created to
+  report's end (since #580 one job, *Coverage*, whose own time it is; its
+  name was the report's before); and the Slow suite's and the Flake hunt's runs, created to
   their last job done, each judged by its first attempt.
 
 Python 3 standard library only.
@@ -258,11 +261,18 @@ def superseded(run) -> bool:
 
 
 def gate_job(run) -> dict | None:
-    """The first attempt's job that answers for the run: `Full gate` on a
-    queue run (falling back on `CI` before it ran), `CI` on any other."""
+    """The first attempt's job that answers for the run: `CI`, or on a
+    queue run, of `Full gate` and `CI`, which the queue merges on, a red one
+    (`Full gate` first), else the one done last (falling back on `CI` before
+    `Full gate` ran). Until #580 `Full gate` needed `CI`, so it was the
+    last; since, the two run side by side."""
     jobs = {j.get("name"): j for j in first_attempt(run.get("jobs"))}
     if is_queue(run) and "Full gate" in jobs:
-        return jobs["Full gate"]
+        both = [j for j in (jobs["Full gate"], jobs.get("CI")) if j]
+        red = [j for j in both if j.get("conclusion") in ("failure", "timed_out")]
+        if red:
+            return red[0]
+        return max(both, key=lambda j: j.get("completed_at") or "")
     return jobs.get("CI")
 
 
@@ -307,7 +317,8 @@ def wall(run) -> float | None:
 
 def needed(run, job) -> bool:
     """A job the run's answer waits for: one `CI` needs, or on a queue run
-    one `Full gate` needs (`CI` itself and the two reports with them)."""
+    every job but `Full gate` (`CI` itself, which the queue waits for too,
+    and before #580 the reports beside it)."""
     name = job.get("name")
     if name in NOT_NEEDED:
         return False
@@ -659,7 +670,8 @@ def shard_stats(runs) -> dict:
 
 def job_stats(runs) -> dict:
     """Each job's minutes on green runs, by folded name, with the Coverage
-    chain as one more."""
+    chain as one more: from *Coverage build*'s start to the report's end
+    before #580, and the one *Coverage* job's own time since."""
     times = defaultdict(list)
     for r in runs:
         cov = []
@@ -670,8 +682,9 @@ def job_stats(runs) -> dict:
             times[fold(j["name"])].append(mins(a, b))
             if j["name"].startswith("Coverage"):
                 cov.append((a, b))
-        built = any(j.get("name") == "Coverage build" and ran(j) for j in first_attempt(r.get("jobs")))
-        if built and cov:
+        # Before #580 a build, three runners and a report; since, one job,
+        # whose span is its own.
+        if cov:
             times["Coverage, build to report"].append(mins(min(a for a, _ in cov), max(b for _, b in cov)))
     return {name: dist(times[name]) for name in sorted(times, key=natural)}
 

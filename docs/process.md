@@ -334,6 +334,15 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   tier on twelve runners, about twelve minutes, on the tree the batch makes on top of
   `main`. It is CI on a draft PR the queue opens from a branch under
   `mergify/merge-queue/`.
+  - It waits for at most three runners in a row: *What changed* (which
+    restores or builds the engine), then every job that tests at once, then
+    `CI` and `Full gate` side by side. The queue merges on both. On a busy
+    account each wait can take minutes, and the queue gives a batch's checks
+    45 minutes, so no chain is longer
+    ([`architecture/testing.md` § CI tiers](architecture/testing.md#ci-tiers)).
+  - The queue's runs share one concurrency group. A draft PR the queue
+    closed (its batch was reset) has its run stopped when the next batch's
+    starts, so it doesn't hold runners the new one needs.
 - **The required check is `CI`,** in both lanes. `main`'s ruleset requires
   it on a PR's head commit, from GitHub Actions, with no bypass for anyone,
   admins and the queue included; the fast lane's `CI` is what meets it when

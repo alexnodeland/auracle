@@ -160,7 +160,7 @@ Every change must pass `make check`:
    no test runs and step 2 already compiles
 
 That list is what CI's Lint, Web and Doctests jobs, its Rust tests (run
-instrumented, as Coverage) and its wasm32 build (the engine job, with
+instrumented, as Coverage) and its wasm32 build (in *What changed*, with
 warnings as errors) run, so "green locally" and "green in CI" are one
 claim. What CI runs that `make check` does
 not is the site build (`make site && make site-check`) with the browser smoke

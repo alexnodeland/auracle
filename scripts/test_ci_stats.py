@@ -567,6 +567,58 @@ class QueueLane(unittest.TestCase):
         self.assertEqual(S.failed_jobs(cancelled), ["Browser (1/2) (cancelled)"])
 
 
+class SideBySide(unittest.TestCase):
+    """Since #580 a queue run's `Full gate` needs the same jobs as `CI`
+    and runs beside it, and the queue merges on both."""
+
+    def side_by_side(self, rid, ci_done, gate_done, ci="success", gate="success"):
+        jobs = [
+            job("Browser (1/2)", 0, 1, 9),
+            job("Browser (2/2)", 0, 1, 9),
+            job("CI", 9, 9, ci_done, ci),
+            job("Full gate", 9, 10, gate_done, gate),
+        ]
+        red = "failure" in (ci, gate)
+        return run(rid, 0, jobs, branch="mergify/merge-queue/0a1b2c", conclusion="failure" if red else "success")
+
+    def test_the_answer_is_the_later_of_the_two(self):
+        # `CI` merges the browser report after the results, so it ends last.
+        r = self.side_by_side(40, 12, 11)
+        self.assertEqual(S.gate_job(r)["name"], "CI")
+        self.assertEqual(S.wall(r), 12)
+        self.assertEqual(S.verdict(r), "green")
+        # A `Full gate` that waited longer for its runner ends last.
+        r = self.side_by_side(41, 11, 14)
+        self.assertEqual((S.gate_job(r)["name"], S.wall(r)), ("Full gate", 14))
+
+    def test_either_red_is_a_red_batch(self):
+        r = self.side_by_side(42, 12, 10, ci="failure")
+        self.assertEqual((S.gate_job(r)["name"], S.verdict(r)), ("CI", "red"))
+        r = self.side_by_side(43, 12, 10, ci="failure", gate="failure")
+        self.assertEqual((S.gate_job(r)["name"], S.verdict(r)), ("Full gate", "red"))
+
+    def test_the_merge_waits_for_both_so_both_waits_count(self):
+        # The shards' 1 and 1, CI's 0; not Full gate's own.
+        self.assertEqual(sorted(S.waits(self.side_by_side(44, 12, 11))), [0, 1, 1])
+
+    def test_the_coverage_chain_is_the_one_job_since_and_the_five_before(self):
+        one = run(45, 0, [job("Coverage", 1, 2, 9), job("CI", 9, 9, 10)])
+        five = run(
+            46,
+            0,
+            [
+                job("Coverage build", 0, 1, 3),
+                *(job(f"Coverage ({k}/3)", 3, 4, 6 + k) for k in (1, 2, 3)),
+                job("Coverage", 9, 10, 11),
+                job("CI", 11, 11, 12),
+            ],
+        )
+        # One job's 2 to 9, and the five's 1 to 11.
+        self.assertEqual(S.job_stats([one])["Coverage, build to report"]["max"], 7)
+        self.assertEqual(S.job_stats([five])["Coverage, build to report"]["max"], 10)
+        self.assertEqual(S.job_stats([one, five])["Coverage, build to report"]["n"], 2)
+
+
 class Compare(unittest.TestCase):
     def test_changes_against_a_saved_run(self):
         base = S.measure(week(), BASE, BASE + dt.timedelta(days=1))

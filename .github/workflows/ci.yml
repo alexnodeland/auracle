@@ -24,8 +24,9 @@ name: CI
 #   specs can't be told (main.js, worker.js, a crate) runs the smoke only,
 #   with Worker protocol beside it, and a change to CI itself runs the full
 #   gate. About five minutes
-#   for docs; up to about ten when Rust changed (Coverage sets the length,
-#   about nine, an estimate), an app module's specs run (patch.js reaches
+#   for docs; up to about ten when Rust changed (Coverage sets the length:
+#   about seven minutes on one runner, after What changed has built the
+#   engine), an app module's specs run (patch.js reaches
 #   about 23 test-minutes, on four runners) or specs are burned in (planned
 #   at about six minutes a runner, seven at most). A green fast lane, with the PR's
 #   `PR checks` (pr-checks.yml) and `Mutants in the changed code`
@@ -36,6 +37,13 @@ name: CI
 #   minutes: everything, as on main, the browser tier on twelve runners. It
 #   tests the tree that lands, up to three queued PRs at once (a release PR
 #   alone), and its `Full gate` job is the check the queue merges on.
+#
+# A queue run waits for at most three runners in a row (#580): What changed
+# (which also restores or builds the engine), then the jobs that test, then
+# `CI` and `Full gate` side by side. Every job waits for a runner of its
+# own, and on a busy account each wait can be minutes, so the run has no
+# chain longer than that: Coverage is one job, and the browser runners'
+# report is a step of `CI`.
 #
 # The branch ruleset requires one check, `CI`, in both lanes. The browser
 # shards are inside it; the Slow suite is not.
@@ -76,8 +84,18 @@ on:
 # everything before it. A run that finds main already moved past its commit
 # runs nothing (the changes job). A run on main reuses the queue's verdict
 # on the same files, so the runs are short.
+#
+# The merge queue's runs share one group, whatever their draft PR's branch:
+# the queue checks one batch at a time (.mergify.yml: `mode: serial`,
+# `max_parallel_checks: 1`), so a new queue run means the draft PR before it
+# was closed (its batch was reset: a PR in it pushed or dequeued, or a merge
+# from outside the queue), and nothing reads that run any more. It stops
+# when the next one starts, rather than holding its runners until it ends
+# (#580: one such run used 73.5 runner-minutes beside the next batch's). The
+# prefix is .mergify.yml's queue_branch_prefix, as in the changes job and
+# `Full gate`.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: ${{ startsWith(github.head_ref, 'mergify/merge-queue/') && 'ci-merge-queue' || format('ci-{0}', github.head_ref || github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
   queue: single
 
@@ -112,16 +130,25 @@ jobs:
   # the site deploys from and what releases are cut from, and the queue's run
   # is the verdict main reuses, so neither is ever partly verified. Only a
   # PR's fast lane is narrowed, by the paths it changed.
+  #
+  # It also restores or builds the engine for the jobs that run it, in its
+  # last steps (below), so they start one runner wait sooner than behind a
+  # job of their own.
   changes:
     name: What changed
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # A cold wasm build (the engine's steps) and room; the rest takes
+    # seconds.
+    timeout-minutes: 20
     # actions: read, to find and download the queue run's record (the reuse
     # step) and its browser times.
     permissions:
       contents: read
       actions: read
     outputs:
+      # The Playwright version tests/web/package-lock.json locks: the tag of
+      # the image every browser job here runs in.
+      playwright: ${{ steps.playwright.outputs.version }}
       lane: ${{ steps.filter.outputs.lane }}
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
@@ -480,6 +507,28 @@ jobs:
           python3 scripts/changelog.py --check
           python3 scripts/test_changelog.py
 
+      # The engine for Site, Browser smoke, Worker protocol and the browser
+      # runners, built once per run (see the web-engine action's comment):
+      # restored from the cache when no crate changed, which is most PRs that
+      # touch the app, and ~1.5 min of wasm build otherwise. Here rather than
+      # in a job of its own: a job waits for a runner, and these steps start
+      # on the runner this job already has (#580).
+      #
+      # It also reads the Playwright version tests/web/package-lock.json
+      # locks, the tag of the image every browser job here runs in (the
+      # browser tier, the Burn-in and the Browser smoke), so a bump of
+      # @playwright/test moves the image with it; and main's browser
+      # timings, once for the whole run (see the action): every browser
+      # runner deals its tests from that one file.
+      - id: playwright
+        uses: ./.github/actions/playwright-version
+      - if: steps.filter.outputs.site == 'true' || steps.filter.outputs.browser == 'true' || steps.filter.outputs.worker == 'true' || steps.filter.outputs.burnin == 'true'
+        uses: ./.github/actions/web-engine
+      - if: (steps.filter.outputs.browser == 'true' && steps.reuse.outputs.browser != 'true') || steps.filter.outputs.burnin == 'true'
+        uses: ./.github/actions/browser-timings
+        with:
+          tier: fast
+
   # Formatting and lints share a job: `cargo fmt --check` needs no dependency
   # graph and finishes in seconds, so giving it its own runner spent more on
   # scheduling overhead than on the work. It runs first, before clippy pays for
@@ -610,45 +659,45 @@ jobs:
   # crate's line and function coverage against its floor
   # (crates/coverage-baseline.json, which only rises) and every line the PR
   # adds or changes in crates/ that no test ran (scripts/coverage_gate.py;
-  # docs/architecture/testing.md § Coverage). Three jobs, the way
-  # cargo-llvm-cov merges runs made on several machines: one build into a
-  # nextest archive, three runners that each run a slice of it and keep
-  # their profiles, and one report that reads them all against the archive.
-  # A failing test fails its Coverage runner, so these are the Rust tests'
-  # gate as well as coverage's: there is no separate uninstrumented run.
+  # docs/architecture/testing.md § Coverage). One job, as `make coverage`
+  # runs it on a workstation: the build, the tests and the report on one
+  # runner. A failing test fails it, so this is the Rust tests' gate as well
+  # as coverage's: there is no separate uninstrumented run.
   #
   # The slow tests (the search floor, `refinement_improves_pool`, ~100 s alone,
   # and nine more that took over a minute when they were named, ~260 s of test
   # time between them) are named in the Makefile (SEARCH_FLOOR, SLOW_TESTS)
   # and run in the Slow suite.
-  # These jobs run everything NOT named there, so the two tiers are exact
+  # This job runs everything NOT named there, so the two tiers are exact
   # complements by construction: a new or renamed test lands here rather than
-  # in neither, and `--no-tests=fail` turns a filter that empties a slice into
-  # a red run rather than a silently skipped gate. By `slice`, which deals the
-  # filtered list out in turn, each runner gets a third of the tests. The
-  # build names its targets (the Makefile's TEST_TARGETS), so the 34
-  # examples, which no test runs, are not compiled here; Lint's clippy
-  # --all-targets still compiles them. `make test-fast-tier` runs the same
-  # tier uninstrumented, locally.
+  # in neither, and `--no-tests=fail` turns a filter that empties the tier
+  # into a red run rather than a silently skipped gate. The build names its
+  # targets (the Makefile's TEST_TARGETS), so the 34 examples, which no test
+  # runs, are not compiled here; Lint's clippy --all-targets still compiles
+  # them. `make test-fast-tier` runs the same tier uninstrumented, locally.
   #
-  # Instrumented, the tier takes about 1.2 times its plain time (measured
-  # locally, Oct 5: 1,257 test-seconds against 1,029), so about 2,700
-  # test-seconds here, about twelve minutes on one runner. On three, with
-  # the build and the report around them, about nine (an estimate until a
-  # run measures it), inside the browser tier's path in the queue's run.
-  #
-  # The three jobs agree on paths because every runner checks the repository
-  # out at the same place: the archive's binaries, the profiles and the
-  # report all name /home/runner/work/auracle/auracle, so no job passes
-  # --workspace-remap. A job that checked out elsewhere would need it.
-  coverage-build:
-    name: Coverage build
+  # One runner, not a build, three runners by slice and a report (#580):
+  # each of those five jobs waited for a runner of its own, one after
+  # another, and on a busy account that chain, not the tests, set the
+  # queue's length. On the queue runs of Oct 18 to Nov 1 the three slices'
+  # tests took 4.5 minutes between them (median; 5.3 at most) and the build
+  # 1.9, so the job takes about seven, beside the browser runners' 7.4 (the
+  # slowest of twelve, median), and starts when they do.
+  coverage:
+    name: Coverage
     needs: changes
     if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # About seven minutes; a cold build (a new compiler or a bumped
+    # dependency) adds a few. A hung test is stopped at ten minutes of its
+    # own (.config/nextest.toml's ci profile), so after a cold build and the
+    # other tests it is still reported inside this limit.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base has to be reachable to diff against it.
+          fetch-depth: 0
       # llvm-tools only here, not in rust-toolchain.toml: every Rust job
       # installs from the file, and the component is 41 MB.
       - name: Install Rust (rust-toolchain.toml) and llvm-tools
@@ -662,90 +711,13 @@ jobs:
       - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-llvm-cov@0.9.1,nextest
-      - run: make coverage-archive COV_ARCHIVE=coverage.tar.zst
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-archive
-          path: coverage.tar.zst
-          retention-days: 3
-          if-no-files-found: error
-          # Already zstd.
-          compression-level: 0
-
-  coverage:
-    name: Coverage (${{ matrix.partition }})
-    needs: [changes, coverage-build]
-    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        partition: ["1/3", "2/3", "3/3"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust (rust-toolchain.toml) and llvm-tools
-        run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
-      # Nothing is compiled here, and nothing is fetched: the archive holds
-      # the binaries and the metadata nextest needs (no Rust cache either).
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
-        with:
-          tool: cargo-llvm-cov@0.9.1,nextest
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: coverage-archive
-      - run: make coverage-run COV_ARCHIVE=coverage.tar.zst NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-profiles-${{ strategy.job-index }}
-          path: target/llvm-cov-target/*.profraw
-          retention-days: 3
-          if-no-files-found: error
-
-  # The report: the floors, the changed lines, and the HTML report (an
-  # artifact). Its tables and every uncovered changed line, linked, are in
-  # the run's summary.
-  coverage-report:
-    name: Coverage
-    needs: [changes, coverage]
-    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_coverage != 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The merge base has to be reachable to diff against it.
-          fetch-depth: 0
-      # llvm-profdata and llvm-cov come from the pinned compiler's
-      # llvm-tools, so they read what that compiler wrote. Nothing is compiled.
-      - name: Install Rust (rust-toolchain.toml) and llvm-tools
-        run: rustup toolchain install --no-self-update && rustup component add llvm-tools && rustc --version
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
-        with:
-          tool: cargo-llvm-cov@0.9.1,nextest
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: coverage-archive
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: coverage-profiles-*
-          path: profiles
-      # The binaries where `report --nextest-archive-file` reads them, and
-      # every runner's profiles beside them. A profile is named for its
-      # process id, which two runners can share, so each keeps its runner's
-      # artifact name in front.
-      - name: Gather the binaries and the runners' profiles
-        run: |
-          set -euo pipefail
-          mkdir -p target/llvm-cov-target
-          tar --zstd -xf coverage.tar.zst -C target/llvm-cov-target
-          for dir in profiles/*/; do
-            run="$(basename "$dir")"
-            for f in "$dir"*.profraw; do mv "$f" "target/llvm-cov-target/$run-$(basename "$f")"; done
-          done
-          echo "$(find target/llvm-cov-target -maxdepth 1 -name '*.profraw' | wc -l) profiles from $(find profiles -mindepth 1 -maxdepth 1 -type d | wc -l) runners"
+      # The tests' profiles only; the gate below reads them.
+      - run: make coverage-run
+      # The report: the floors, the changed lines, and the HTML report (an
+      # artifact). Its tables and every uncovered changed line, linked, are
+      # in the run's summary.
       - run: >-
-          make coverage-report COV_ARCHIVE=coverage.tar.zst
+          make coverage-report
           BASE=origin/${{ github.base_ref || 'main' }}
           COV_MARKDOWN="$GITHUB_STEP_SUMMARY"
           COV_LINK="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}"
@@ -759,8 +731,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       # The same lcov the gate read, uploaded even when the gate failed: the
-      # tests passed (a failing one fails its runner, and this job does not
-      # run), so the numbers are true. Not from the queue's run.
+      # tests passed (a failing one stops the job before the report), so the
+      # numbers are true. Not from the queue's run.
       - name: Coverage to Codecov (rust)
         if: ${{ !cancelled() && needs.changes.outputs.lane != 'queue' && hashFiles('target/llvm-cov/lcov.info') != '' }}
         continue-on-error: true
@@ -771,11 +743,11 @@ jobs:
           flag: rust
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # No separate wasm32 check: when Rust changed, the cache key of the engine
-  # job below (crates/**, Cargo.*, the Makefile) misses and it runs
-  # `make wasm`, a full wasm32 build under this workflow's -Dwarnings (the
-  # Makefile's WASM_RUSTFLAGS adds to RUSTFLAGS rather than replacing them),
-  # which is more than `cargo check` for the target. The one change that
+  # No separate wasm32 check: when Rust changed, the cache key of the
+  # engine's steps in What changed (crates/**, Cargo.*, the Makefile) misses
+  # and they run `make wasm`, a full wasm32 build under this workflow's
+  # -Dwarnings (the Makefile's WASM_RUSTFLAGS adds to RUSTFLAGS rather than
+  # replacing them), which is more than `cargo check` for the target. The one change that
   # reaches neither is a workflow-only edit, which cannot change what the
   # compiler sees.
 
@@ -788,18 +760,18 @@ jobs:
   # that works at a domain root and 404s under a project subpath. All of those
   # would otherwise be found on the live site by a reader.
   #
-  # The instrument at /play/ is the engine job's build, downloaded, not a
-  # second one: the same bytes the browser tier tests. Rust is still needed
-  # here for the API reference (`cargo doc`), which is why this job is not in
-  # Playwright's image and the browser smoke test is a job of its own
-  # (`smoke`, below).
+  # The instrument at /play/ is the engine What changed built or restored,
+  # downloaded, not a second one: the same bytes the browser tier tests.
+  # Rust is still needed here for the API reference (`cargo doc`), which is
+  # why this job is not in Playwright's image and the browser smoke test is
+  # a job of its own (`smoke`, below).
   #
   # The site's sources are the Rust, the app and everything under www/ and
   # docs/, so it runs in the fast lane when any of them changed, and always
   # in the queue's run and on main.
   site:
     name: Site
-    needs: [changes, engine]
+    needs: changes
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -897,19 +869,19 @@ jobs:
   # A job of its own, in Playwright's image like every browser job (no apt
   # step and no browser download: .github/actions/playwright says why),
   # because Site needs Rust and mdBook, which the image does not have. It runs
-  # against apps/web and the engine job's build, the bytes /play/ is made
+  # against apps/web and What changed's engine, the bytes /play/ is made
   # from, so it needs nothing Site built. It waits for Site all the same: it
   # then takes Site's place rather than a runner beside it, and a red Site
   # stops it, as it did when the two were one job. Whatever sets `smoke` also
   # sets `site`, so Site runs before it.
   smoke:
     name: Browser smoke
-    needs: [changes, engine, site]
+    needs: [changes, site]
     if: needs.changes.outputs.smoke == 'true'
     runs-on: ubuntu-24.04
-    # The tag is the lockfile's Playwright, read by the engine job.
+    # The tag is the lockfile's Playwright, read by What changed.
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
       options: --ipc=host --init
     # The six tests take about a minute; at the config's 90 s each, all six
     # hung would take nine. AURACLE_GLOBAL_TIMEOUT_MIN is Playwright's global
@@ -963,7 +935,7 @@ jobs:
   # eight minutes, before the job's limit.
   worker:
     name: Worker protocol
-    needs: [changes, engine]
+    needs: changes
     if: needs.changes.outputs.worker == 'true' && needs.changes.outputs.reuse_worker != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
@@ -1001,37 +973,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The engine for the fast browser tier and Worker protocol, built once per
-  # run (see the action's comment): restored from the cache when no crate
-  # changed, which is most PRs that touch the app, and ~1.5 min of wasm build
-  # otherwise.
-  #
-  # It also reads main's browser timings once for the whole run (see the
-  # action): every browser runner deals its tests from that one file. And it
-  # reads the Playwright version tests/web/package-lock.json locks, the tag
-  # of the image every browser job here runs in (the browser tier and the
-  # Browser smoke), so a bump of @playwright/test moves the image with it.
-  engine:
-    name: Engine for the browser
-    needs: changes
-    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.burnin == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    outputs:
-      playwright: ${{ steps.playwright.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: playwright
-        uses: ./.github/actions/playwright-version
-      - uses: ./.github/actions/web-engine
-      - if: (needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true') || needs.changes.outputs.burnin == 'true'
-        uses: ./.github/actions/browser-timings
-        with:
-          tier: fast
-
   # The fast browser tier: every spec in tests/web not tagged @slow or
-  # @quarantine, against the engine built above; in a PR's fast lane, only
-  # the specs the change reaches (the changes job).
+  # @quarantine, against the engine What changed built or restored; in a
+  # PR's fast lane, only the specs the change reaches (the changes job).
   #
   # About 75 minutes of test time in one worker (main at 42bd322, 284 tests,
   # a fresh boot each). tests/web/shard.mjs deals them to twelve runners by
@@ -1040,9 +984,10 @@ jobs:
   # to 19. Twelve, not eight: simulated with the runners' observed spread of
   # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
   # (#177 § 3.1). The count is fixed and raised by hand. The queue's run at
-  # its widest holds about 18 runners (these twelve, Site, Worker protocol,
-  # Coverage's three, and one more); a PR's fast lane holds at most four
-  # browser runners, twelve in all (testing.md § CI tiers, Runners, does
+  # its widest holds 18 runners, in its first minutes (these twelve,
+  # Coverage, Site, Worker protocol, Lint, Web and the Doctests), then 13
+  # once the short ones are done; a PR's fast lane holds at most four
+  # browser runners, thirteen in all (testing.md § CI tiers, Runners, does
   # the sums).
   #
   # A slow runner may make a test slower, never wrong (ADR-022). A failure
@@ -1055,15 +1000,15 @@ jobs:
   # them.
   browser:
     name: Browser (${{ matrix.shard }})
-    needs: [changes, engine]
+    needs: changes
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
     runs-on: ubuntu-24.04
     # In Playwright's image, with Chromium and its system libraries in it: no
     # apt step and no browser download (#162). The tag is the lockfile's
-    # Playwright, read by the engine job; .github/actions/playwright says why
+    # Playwright, read by What changed; .github/actions/playwright says why
     # the image and why these options.
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
       options: --ipc=host --init
     # The planned ~6 minutes and room. AURACLE_GLOBAL_TIMEOUT_MIN is
     # Playwright's global timeout (tests/web/playwright.config.js), five
@@ -1101,27 +1046,6 @@ jobs:
           args: --grep-invert "@slow|@quarantine"
           files: ${{ needs.changes.outputs.specs }}
 
-  # The runners' reports as one: an HTML report of every test, with the traces
-  # of what failed, uploaded when a runner failed (the run's summary links
-  # it), the speed budgets recorded over their limit listed in the summary
-  # (ADR-022), and the times folded into the timings the next run deals by:
-  # on main, saved; in the queue's run, kept for main's run to save once it
-  # reuses this one (the changes job). A fast lane's few specs fold nothing.
-  # Not part of the `CI` check: it reports on the answer, it is not one.
-  report:
-    name: Browser report
-    needs: [changes, browser]
-    if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/browser-report
-        with:
-          name: fast
-          failed: ${{ needs.browser.result == 'failure' }}
-          timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
-
   # A PR's burn-in (#456): the spec files it adds or edits, three times
   # each, in the fast lane only (the changes job). A new spec that passes
   # once and fails one run in three is the queue's most expensive flake: it
@@ -1132,11 +1056,11 @@ jobs:
   # and a failure is fixed, never retried (testing.md § Flakes).
   burnin:
     name: Burn-in (${{ matrix.shard }})
-    needs: [changes, engine]
+    needs: changes
     if: needs.changes.outputs.burnin == 'true'
     runs-on: ubuntu-24.04
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
       options: --ipc=host --init
     # The Browser job's limits, and why (above): burnin.mjs plans each runner
     # no more than seven minutes of tests, repeats included, as the Browser
@@ -1167,7 +1091,7 @@ jobs:
           args: --grep-invert "@slow|@quarantine" --repeat-each=3
           files: ${{ needs.changes.outputs.burnin_specs }}
 
-  # The burn-in's runners as one report, as the Browser report does for the
+  # The burn-in's runners as one report, as `CI`'s report step does for the
   # tier's; it folds no times (three runs of a few files say nothing about
   # the deal). Not part of the `CI` check.
   burnin-report:
@@ -1191,14 +1115,17 @@ jobs:
   # "skipped because the change could not affect it" from "did not pass".
   # In a PR's fast lane it is what puts the PR in the merge queue, with
   # `PR checks` (pr-checks.yml) and `Mutants in the changed code`
-  # (mutants.yml); in the queue's run it is the full gate's answer (and
-  # `Full gate`, below, the check the queue merges on).
+  # (mutants.yml); in the queue's run it is the full gate's answer, beside
+  # `Full gate` (below), the check the queue merges on.
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, worker, engine, browser, burnin]
+    # `Full gate`'s list too (below): the two answer from the same results.
+    needs: [changes, lint, web, doctests, coverage, site, smoke, worker, browser, burnin]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # The answer and the records take seconds; the browser runners' report
+    # has five minutes of its own (below).
+    timeout-minutes: 10
     steps:
       - name: Check the results
         run: |
@@ -1212,6 +1139,35 @@ jobs:
             esac
           done
           echo "green"
+
+      # The browser runners' reports as one: an HTML report of every test,
+      # with the traces of what failed, uploaded when a runner failed (the
+      # run's summary links it), the speed budgets recorded over their limit
+      # listed in the summary (ADR-022), and the times folded into the
+      # timings the next run deals by: on main, saved; in the queue's run,
+      # kept for main's run to save once it reuses this one (the changes
+      # job). A fast lane's few specs fold nothing.
+      #
+      # Steps here, not a job of its own, so the queue's answer waits for one
+      # runner after the browser runners, not two (#580). It reports on the
+      # answer and is not one: whatever happens to it (npm's registry slow,
+      # a download failed), `CI` says what the results above said, as it
+      # did when the report was a job beside it. Each step carries on past
+      # an error, and the report has a limit of its own inside the job's.
+      - id: checkout
+        if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The browser runners' report
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: ./.github/actions/browser-report
+        with:
+          name: fast
+          failed: ${{ needs.browser.result == 'failure' }}
+          timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
 
       # What main reuses (the changes job's reuse step): the files this run
       # tested, as a git tree, and the jobs that passed on them. From the
@@ -1241,7 +1197,7 @@ jobs:
             if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
           fi
           jq -n --arg tree "$tree" --arg base "$base" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
-            '{tree: $tree, base: $base, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, worker: $r.worker.result, browser: $browser}}' \
+            '{tree: $tree, base: $base, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r.coverage.result, site: $r.site.result, worker: $r.worker.result, browser: $browser}}' \
             > verified.json
           cat verified.json
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
@@ -1255,29 +1211,55 @@ jobs:
           retention-days: 14
 
   # The check the merge queue merges on (.mergify.yml's merge_conditions):
-  # green when this is the queue's run and `CI` is green. It is a check of
-  # its own, not `CI`, because Mergify takes a queue whose merge conditions
-  # match its queue conditions for a one-step queue, and then merges a PR
-  # already on main's tip on the PR's own run, with no draft PR: the fast
-  # lane would be the gate again. A PR's own run skips it, so a skipped
-  # `Full gate` on a PR is expected.
+  # green when this is the queue's run and every job `CI` needs passed. It
+  # is a check of its own, not `CI`, because Mergify takes a queue whose
+  # merge conditions match its queue conditions for a one-step queue, and
+  # then merges a PR already on main's tip on the PR's own run, with no
+  # draft PR: the fast lane would be the gate again. A PR's own run skips
+  # it, so a skipped `Full gate` on a PR is expected.
   #
-  # It also waits for the Browser report, which keeps the run's browser times
-  # for main's run to save (the changes job): the queue merges once this is
-  # green, and main's run then finds them there.
+  # Beside `CI`, not after it (#580): the two need the same jobs and read
+  # the same results, so the queue's run waits for at most three runners in
+  # a row (What changed, the jobs that test, then these two at once) rather
+  # than four. Mergify waits for `CI` on the draft PR as well: main's ruleset
+  # requires it, and Mergify adds what the ruleset requires to the merge
+  # conditions (`branch_protection_injection_mode`, at its default). So a
+  # batch merges only once `CI` has also kept the run's browser times and
+  # written its record, which main's run then reads (the changes job). Were
+  # the ruleset to stop requiring `CI`, a merge could come before them, and
+  # main's run would then run what it would have reused and deal by older
+  # times: slower, never a wrong answer.
+  #
+  # A job, not a check run `CI` posts through the Checks API, which would
+  # spare its runner: GitHub lets the run's token create one (it is the
+  # GitHub Actions app's), but neither GitHub nor Mergify says that Mergify
+  # reads a check run so made as `@github-actions/Full gate`, and were it
+  # not read, every batch would wait out the queue's 45-minute
+  # checks_timeout. A job is read, as it has been since ADR-023.
+  #
+  # Its `if` reads the branch, not What changed's lane: a What changed that
+  # failed still gives a red `Full gate`, at once, rather than a skipped one
+  # the queue would wait on. The prefix is .mergify.yml's
+  # queue_branch_prefix, as in the changes job and the concurrency group.
   full-gate:
     name: Full gate
-    needs: [changes, ci, report]
-    if: always() && needs.changes.outputs.lane == 'queue'
+    needs: [changes, lint, web, doctests, coverage, site, smoke, worker, browser, burnin]
+    if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'mergify/merge-queue/')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: The queue's run passed the full gate
-        env:
-          CI_RESULT: ${{ needs.ci.result }}
         run: |
-          echo "CI: $CI_RESULT"
-          test "$CI_RESULT" = success
+          set -euo pipefail
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "upstream results: $results"
+          for r in $results; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a job of the full gate did not pass ($r)"; exit 1 ;;
+            esac
+          done
+          echo "green"
 
   # The site, published from this run's build once `CI` is green: four
   # sections under one origin (/ the landing page, /play/ the instrument,
