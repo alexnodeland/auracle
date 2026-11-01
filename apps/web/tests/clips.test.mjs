@@ -66,13 +66,46 @@ test("each input is captured on its own first listen, while the engine hears it 
   assert.equal(c.of(1).id, REF);
 });
 
-test("an older session's one clip, heard on every input, leaves first listens alone", () => {
-  // A session saved before inputs had clips of their own restores its one
-  // clip on every slot; a capture is then NEW CLIP's, as it was.
+/** Every input's status in a session saved before inputs had clips of their
+ *  own: its one captured clip, `old`, but where `own` names one. */
+const before = (own = {}) => every(Object.fromEntries(Array.from({ length: INPUT_SLOTS }, (_, s) => [s, own[s] || cap("old")])));
+
+test("a session saved before inputs had clips of their own captures each input on its first listen", () => {
+  // Its one clip comes back as the clip every input hears, captured, and
+  // every input hears it: none has a clip captured from it, so each is
+  // captured on its own first listen, the input the old clip came from too
+  // (nothing tells which that was).
   const c = createClips();
-  c.heard({ type: "audition_clip", clip: cap("old"), clips: every(Object.fromEntries(Array.from({ length: INPUT_SLOTS }, (_, s) => [s, cap("old")]))) });
-  for (let s = 0; s < INPUT_SLOTS; s++) assert.equal(c.firstListen(s), false);
+  c.heard({ type: "audition_clip", clip: cap("old"), clips: before() });
+  for (let s = 0; s < INPUT_SLOTS; s++) assert.equal(c.firstListen(s), true, `input ${s + 1} kept the old session's clip`);
   assert.equal(c.shared(), "old");
+  assert.equal(c.key(tree(ain(0))), "old", "until it is captured, an input is heard through the old clip");
+  // Input 2 captured: its reply's `clip` is input 2's own, not every
+  // input's, so every other input still waits for its own first listen.
+  c.heard({ type: "audition_clip", slot: 1, ok: true, clip: cap("bbb"), clips: before({ 1: cap("bbb") }) });
+  assert.equal(c.firstListen(1), false, "an input captured in this session was captured again by itself");
+  assert.equal(c.firstListen(0), true, "input 2's capture held input 1 back");
+  assert.equal(c.firstListen(2), true, "input 2's capture held input 3 back");
+  assert.equal(c.key(tree(ain(0))), "old");
+  assert.equal(c.key(tree(ain(1))), "bbb");
+  assert.equal(c.shared(), null);
+  // A refusal still holds back that input alone.
+  c.heard({ type: "audition_clip", slot: 2, ok: false, note: "…", clip: cap("old"), clips: before({ 1: cap("bbb") }) });
+  assert.equal(c.firstListen(2), false);
+  assert.equal(c.firstListen(0), true);
+});
+
+test("in a session saved before inputs had clips of their own, an input with its own clip is left alone", () => {
+  // Restored with input 1's own clip, captured since the old session's: only
+  // the inputs still on the old clip wait for a first listen.
+  const c = createClips();
+  c.heard({ type: "audition_clip", clip: cap("old"), clips: before({ 0: cap("aaa") }) });
+  assert.equal(c.firstListen(0), false, "an input restored with its own clip was captured again by itself");
+  assert.equal(c.firstListen(1), true);
+  // And on `ready` the same.
+  const d = createClips();
+  d.heard({ type: "ready", clip: cap("old"), clips: before({ 0: cap("aaa"), 3: cap("ddd") }) });
+  assert.deepEqual(Array.from({ length: 5 }, (_, s) => d.firstListen(s)), [false, true, true, false, true]);
 });
 
 test("a refused capture of one input keeps that input from capturing by itself until its NEW CLIP, and no other", () => {

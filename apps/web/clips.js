@@ -2,13 +2,15 @@
 // The engine measures a sound with an AUDIO IN through a clip on each input
 // slot it reads (`PhraseSpec::slot_clip`): the slot's own, captured from that
 // input, else the clip every slot hears, which is the built-in reference
-// unless an older session's one clip came back with it. The engine worker
-// says which clip each slot hears on `ready` and in every `audition_clip`
-// (`clips`, one status per slot, `WasmEngine::input_clip`). Pure, so it is
-// unit-tested (tests/clips.test.mjs): audio-in.js holds one (`createClips`)
-// and asks it which input a first listen captures, and main.js keys what a
-// listening sound's clips change by it (PERFORM's wiring and lean,
-// `clipTag`; a preset's shipped face, `sharedClip`).
+// unless a session saved before inputs had clips of their own brought its one
+// clip back. The engine worker says which clip each slot hears on `ready` and
+// in every `audition_clip` (`clips`, one status per slot,
+// `WasmEngine::input_clip`), and which clip every slot hears on `ready` and a
+// restore's (`clip`). Pure, so it is unit-tested (tests/clips.test.mjs):
+// audio-in.js holds one (`createClips`) and asks it which input a first
+// listen captures, and main.js keys what a listening sound's clips change by
+// it (PERFORM's wiring and lean, `clipTag`; a preset's shipped face,
+// `sharedClip`).
 
 /** `INPUT_SLOTS` in auracle-grammar: how many inputs a node can name. */
 export const INPUT_SLOTS = 8;
@@ -71,8 +73,10 @@ function statusOf(c) {
 export function createClips() {
   // Slot → its clip's status, from the worker's `clips`.
   let slots = [];
-  // The one clip every slot hears, from an engine too old to name a slot's
-  // (its word carries `clip` and no `clips`).
+  // The clip every slot hears unless it has its own (`audition_clip`), from
+  // the worker's `clip` on `ready` and a restore's word; never from a
+  // capture's reply, whose `clip` is that slot's own. An engine too old to
+  // name a slot's says only this (its word carries `clip` and no `clips`).
   let every = null;
   // Slots whose last capture the engine refused (silent, or unusable), this
   // page: no capture of them again by itself until NEW CLIP.
@@ -81,6 +85,16 @@ export function createClips() {
   /** Which clip input `slot` is heard through: `{source, id}`, or null
    *  before the engine has said. */
   const of = (slot) => (slots.length ? slots[slot] || null : every);
+  /** Is input `slot` heard through a clip captured from it? Its clip is
+   *  captured, and is not the clip every input hears: the app never sets
+   *  that one (`set_audition_clip`), so a captured one is a session's saved
+   *  before inputs had clips of their own, captured from whichever input the
+   *  keys played then (#147), and an input that hears it has no clip of its
+   *  own yet. */
+  const own = (slot) => {
+    const c = of(slot);
+    return c?.source === "captured" && !(slots.length && every?.source === "captured" && c.id === every.id);
+  };
 
   return {
     /** The engine worker's word on the clips: `ready`, a restore's
@@ -88,12 +102,11 @@ export function createClips() {
      *  there only then). */
     heard(m) {
       if (!m || typeof m !== "object") return;
-      if (Array.isArray(m.clips)) {
-        slots = m.clips.slice(0, INPUT_SLOTS).map(statusOf);
-      } else if (!Number.isInteger(m.slot) && statusOf(m.clip)) {
-        every = statusOf(m.clip);
-        slots = [];
-      }
+      // A capture's reply names its slot, and its `clip` is that slot's.
+      const shared = Number.isInteger(m.slot) ? null : statusOf(m.clip);
+      if (shared) every = shared;
+      if (Array.isArray(m.clips)) slots = m.clips.slice(0, INPUT_SLOTS).map(statusOf);
+      else if (shared) slots = [];
       if (Number.isInteger(m.slot) && typeof m.ok === "boolean") {
         if (m.ok) refused.delete(m.slot);
         else refused.add(m.slot);
@@ -101,9 +114,10 @@ export function createClips() {
     },
     of,
     /** Does a first listen on input `slot` capture it by itself? Only while
-     *  that input is still heard through the reference, and the engine has
-     *  not refused a capture of it since. */
-    firstListen: (slot) => of(slot)?.source === "reference" && !refused.has(slot),
+     *  that input has no clip captured from it (it hears the reference, or
+     *  an older session's one clip: `own`), and the engine has not refused a
+     *  capture of it since. */
+    firstListen: (slot) => !!of(slot) && !own(slot) && !refused.has(slot),
     /** NEW CLIP on input `slot`: a refusal stands in its way no longer. */
     retry: (slot) => {
       refused.delete(slot);

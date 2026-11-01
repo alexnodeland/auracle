@@ -5,14 +5,18 @@
 // slot's (`clips`), as `ready` and a restore carry them, so the page knows
 // which clip each input is heard through; the pool's members that read that
 // slot, and only they, are measured again, and their ratings come with it. A
-// save keeps each slot's clip (`audition_clips`). A sound reading two inputs
-// is rendered through each one's clip, in the built engine as natively. What
-// the farm is handed after one is farm.test.mjs's.
+// save keeps each slot's clip (`audition_clips`). A session saved before
+// inputs had clips of their own restores its one clip as the clip every input
+// hears, so the page (clips.js, given the worker's words as they are)
+// captures each input on its first listen and leaves one captured since. A
+// sound reading two inputs is rendered through each one's clip, in the built
+// engine as natively. What the farm is handed after one is farm.test.mjs's.
 //
 // worker.js runs here as it is, over the built engine (harness.mjs).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { workerFor } from "./harness.mjs";
+import { createClips } from "../../apps/web/clips.js";
 
 const SEED = 1;
 // A test that hangs fails here, well inside the CI job's limit.
@@ -132,6 +136,59 @@ test("a restore says which clip each input hears, as it was saved", { timeout: T
   assert.equal(restored.clips[1].source, "captured");
   assert.equal(restored.clips[2].source, "reference");
   await w.close();
+});
+
+test("a session saved before inputs had clips of their own captures each input on its first listen, and keeps the clip captured since", { timeout: TIMEOUT }, async (t) => {
+  // A session saved before inputs had clips of their own: its one clip as
+  // the clip every input hears (`audition_clip`), and no input's own. Made
+  // from a capture moved there, as an older build saved the one it took.
+  const first = await workerFor(t, { seed: SEED });
+  await sendCapture(first, capture(0, 440));
+  const [{ json }] = await first.send({ type: "save" });
+  await first.close();
+  const old = JSON.parse(json);
+  old.audition_clip = old.audition_clips["0"];
+  delete old.audition_clips;
+
+  const w = await workerFor(t, { boot: false });
+  let after = w.replies.length;
+  await w.boot({ seed: SEED, saved: JSON.stringify(old) });
+  const restored = w.repliesOf("audition_clip", { after }).pop();
+  assert.ok(restored, "the restore said nothing of the clips");
+  // Every input hears the old clip, and it is the clip every input hears:
+  // no input has a clip captured from it, so each first listen captures
+  // (clips.js `firstListen`), the input the old clip came from too.
+  assert.equal(restored.clip.source, "captured", "the old session's clip did not come back");
+  assert.equal(restored.clips.length, SLOTS);
+  assert.ok(restored.clips.every((c) => c.id === restored.clip.id), "an input heard something but the old session's clip");
+  const page = createClips();
+  page.heard(restored);
+  for (let s = 0; s < SLOTS; s++) assert.equal(page.firstListen(s), true, `input ${s + 1} was not captured on its first listen`);
+
+  // Input 1 captured: its own clip, and every other input keeps the old one.
+  const [one] = await sendCapture(w, capture(0, 660));
+  assert.equal(one.ok, true);
+  assert.notEqual(one.clips[0].id, restored.clip.id);
+  for (let s = 1; s < SLOTS; s++) assert.equal(one.clips[s].id, restored.clip.id, `input 1's capture moved input ${s + 1}'s clip`);
+  page.heard(one);
+  assert.equal(page.firstListen(0), false, "input 1 would be captured again by itself");
+  assert.equal(page.firstListen(1), true);
+
+  // Saved and restored again: input 1 hears its own, and is left alone; the
+  // rest still hear the old clip, and still wait for their first listen.
+  const [{ json: again }] = await w.send({ type: "save" });
+  await w.close();
+  const back = await workerFor(t, { boot: false });
+  after = back.replies.length;
+  await back.boot({ seed: SEED, saved: again });
+  const twice = back.repliesOf("audition_clip", { after }).pop();
+  assert.equal(twice.clip.id, restored.clip.id, "the old session's clip was lost");
+  assert.deepEqual(ids(twice.clips), ids(one.clips), "an input's clip came back as another");
+  const reloaded = createClips();
+  reloaded.heard(twice);
+  assert.equal(reloaded.firstListen(0), false, "input 1, restored with its own clip, would be captured again by itself");
+  for (let s = 1; s < SLOTS; s++) assert.equal(reloaded.firstListen(s), true, `input ${s + 1} lost its first listen`);
+  await back.close();
 });
 
 test("a sound reading two inputs is rendered through each input's own clip: its inputs swapped with their clips is the same sound, bit for bit", { timeout: TIMEOUT }, async (t) => {

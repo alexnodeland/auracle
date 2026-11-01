@@ -32,9 +32,12 @@
 //   input's; an input waits for its own signal. A module's NEW CLIP captures
 //   the input it reads, the keys' or the meter's only. Each input's clip is
 //   saved with the session, and after a reload each input hears its own
-//   again. (What the worker answers, and that the farm is then handed the
-//   phrase with the clips, after a capture or a restore, are the engine
-//   worker's: tests/worker/clips.test.mjs, farm.test.mjs.)
+//   again. A session saved before inputs had clips of their own, its one
+//   clip heard on every input, captures each input it reads on its first
+//   listen too, the one that clip came from included, and captures none of
+//   them again once it has. (What the worker answers, and that the farm is
+//   then handed the phrase with the clips, after a capture or a restore, are
+//   the engine worker's: tests/worker/clips.test.mjs, farm.test.mjs.)
 // - An unplugged input silences its module and says so; plugged back in, it
 //   is reopened and heard again.
 // - The browser's "default" is numbered as the input it stands for, even when
@@ -128,6 +131,30 @@ const storedClips = (page) =>
       get.onerror = () => { db.close(); resolve(null); };
     };
   }));
+/** Rewrite the session main stored as a build from before inputs had clips
+ *  of their own saved it: input `slot`'s own clip as the one clip every
+ *  input hears (`audition_clip`), and no input's own (`audition_clips`).
+ *  Run on a page of the app's origin with no app on it, so no autosave
+ *  writes over it. */
+const savedAsBefore = (page, slot) =>
+  page.evaluate((slot) => new Promise((resolve, reject) => {
+    const req = indexedDB.open("auracle");
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction("kv", "readwrite");
+      const kv = tx.objectStore("kv");
+      const get = kv.get("state");
+      get.onsuccess = () => {
+        const session = JSON.parse(get.result.session);
+        session.audition_clip = session.audition_clips[String(slot)];
+        delete session.audition_clips;
+        kv.put({ ...get.result, session: JSON.stringify(session) }, "state");
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  }), slot);
 const state = (page) => page.evaluate(() => window.__aur.audioIn());
 const calls = (page) => page.evaluate(() => window.__pwMic.calls.length);
 /** How many clips main sent the engine (SPY), and which inputs' they were. */
@@ -449,6 +476,51 @@ test("each input's clip is saved with the session, and each input hears its own 
   await app.quiet(2_000);
   expect((await state(page)).captures, "a restored input was armed for a first listen").toEqual({});
   expect(await clips(page)).toBe(0);
+});
+
+test("a session saved before inputs had clips of their own captures each input on its first listen", async ({ page, app }, info) => {
+  // A session of today's with input 1 captured (Fake Interface B quiet, so
+  // input 2 is not), then saved again as an older build saved it: that clip
+  // as the one every input hears, and no input's own.
+  await granted(page);
+  await boot(page, app);
+  await page.evaluate(() => window.__pwLevel("mic-b", false));
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 });
+  await app.engine((timeout) => expect.poll(() => storedClips(page), { timeout }).toEqual({ every: null, own: { 0: "captured" } }), { ms: 30_000 });
+  await page.route("**/__seed", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>seed</title>" }));
+  await page.goto("/__seed");
+  await savedAsBefore(page, 0);
+
+  // Restored, every input hears that one clip, the input it came from too
+  // (nothing tells which that was).
+  await app.visit("/");
+  await app.engine((timeout) => expect.poll(async () => (await state(page)).clips, { timeout }).toEqual(Array(8).fill("captured")), { ms: 30_000 });
+  const restored = (await app.replies("audition_clip")).pop();
+  const old = restored.clip.id;
+  expect(restored.clip.source, "the old session's clip is not the one every input hears").toBe("captured");
+  expect(restored.clips.map((c) => c.id)).toEqual(Array(8).fill(old));
+
+  // Both inputs play: each is captured on its own first listen, as its own.
+  await goLevel(page, "patch");
+  await openFile(page, THREE, info.outputDir);
+  const taken = [
+    await app.reply("audition_clip", { where: { ok: true, slot: 0 }, timeout: 40_000 }),
+    await app.reply("audition_clip", { where: { ok: true, slot: 1 }, timeout: 40_000 }),
+  ].sort((a, b) => a._n - b._n);
+  const now = taken[1].clips.map((c) => c.id);
+  expect(now[0], "input 1 kept the old session's clip").not.toBe(old);
+  expect(now[1], "input 2 kept the old session's clip").not.toBe(old);
+  expect(now[0]).not.toBe(now[1]);
+  expect(now[2], "input 3, read by nothing, lost the old session's clip").toBe(old);
+  expect((await clipSlots(page)).sort()).toEqual([0, 1]);
+  // Captured now, neither is captured again by itself.
+  await app.quiet(2_000);
+  expect((await state(page)).captures, "an input captured in this session was armed again").toEqual({});
+  expect(await clips(page)).toBe(2);
+  // Saved: each input's own, and the old clip still as every other input's.
+  await app.engine((timeout) => expect.poll(() => storedClips(page), { timeout }).toEqual({ every: "captured", own: { 0: "captured", 1: "captured" } }), { ms: 30_000 });
 });
 
 test("an unplugged input silences its module and says so, and plays again when it is back", async ({ page, app }) => {

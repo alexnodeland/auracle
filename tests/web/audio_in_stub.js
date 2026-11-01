@@ -11,6 +11,9 @@
 // `app.boot()`, so they run after the tap and before main.js.
 
 const STUB = `(() => {
+  // A page with no inputs to stub (the about:blank a visit goes through) is
+  // left as it is.
+  if (!navigator.mediaDevices) return;
   const granted0 = (() => { try { return sessionStorage.getItem("__pwMicGranted") === "1"; } catch (_) { return false; } })();
   const mic = (window.__pwMic = {
     calls: [],

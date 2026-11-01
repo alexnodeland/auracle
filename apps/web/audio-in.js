@@ -27,14 +27,15 @@
 //   is written and the open voice is let go. The meter reads the input either
 //   way, so the player sees it before they hear it.
 // - **Each input's clip on its first listen** (#147). The first time an
-//   input the bench reads carries a signal while the engine still hears it
-//   through the reference, `CLIP_SECONDS` of it are captured (the worklet's
-//   tap processor) and sent to the engine as that input's own audition clip
-//   (`set_input_clip`, by slot), which measures again every sound that reads
-//   that input. Each input is captured on its own, so a sound reading two is
-//   measured through each one's clip. A module's NEW CLIP captures its own
-//   input again. Which clip each input is heard through is the engine's word
-//   (clips.js).
+//   input the bench reads carries a signal while no clip has been captured
+//   from it (the engine hears it through the reference, or through the one
+//   clip of a session saved before inputs had their own), `CLIP_SECONDS` of
+//   it are captured (the worklet's tap processor) and sent to the engine as
+//   that input's own audition clip (`set_input_clip`, by slot), which
+//   measures again every sound that reads that input. Each input is captured
+//   on its own, so a sound reading two is measured through each one's clip.
+//   A module's NEW CLIP captures its own input again. Which clip each input
+//   is heard through is the engine's word (clips.js).
 // - **Devices come and go.** A track that ends or a device that leaves the
 //   list silences its modules and says so; the same device back is reopened.
 //
@@ -504,9 +505,11 @@ export function createAudioIn(host) {
    *  recording. */
   const slotsRead = () => new Set([...want.map((w) => w.slot), ...lent]);
   /** Arm a first-listen capture of input `slot`, if it is open, none is
-   *  under way for it, the engine still hears it through the reference, and
-   *  the engine has not refused a capture of it since (then only NEW CLIP
-   *  captures it again, as the reference page says). `force` is NEW CLIP. */
+   *  under way for it, no clip has been captured from it (clips.js
+   *  `firstListen`: it hears the reference, or an older session's one
+   *  clip), and the engine has not refused a capture of it since (then only
+   *  NEW CLIP captures it again, as the reference page says). `force` is
+   *  NEW CLIP. */
   function maybeArm(slot, force = false) {
     if (captures.has(slot)) return;
     const e = entry(slot);
