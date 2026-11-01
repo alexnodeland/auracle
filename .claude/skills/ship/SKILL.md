@@ -18,7 +18,8 @@ Several tasks at once, when the maintainer asks for a wave, go through the
 saved workflows and the [`ship-wave`](../ship-wave/SKILL.md) skill, one
 stream per item, each on files no other touches (ADR-024); its scripts
 (`scripts/ops/`: `ship_pr.sh`, `watch_queue.sh`, `rows_resolve.py`) serve one
-task as well.
+task as well; `ship_pr.sh --hold` and `queue_group.sh` are for a wave's PRs,
+queued together.
 
 Every command names the repository explicitly (`gh -R alexnodeland/auracle`,
 `git -C <path>`), so it works from any session directory. Each Bash call is a
@@ -231,7 +232,8 @@ suite* runs on a PR only with it. It covers any crate, `Cargo.toml` or
 `@quarantine` test; and a `main.js` change that reaches EVOLVE's
 generations or PERFORM's offers. The queue doesn't wait for it: by hand the
 PR is queued at once. A wave holds it out of the queue until its Slow suite
-is green (`ship_pr.sh --full-ci`; `process.md` § CI and merging says why).
+is green (`ship_pr.sh --full-ci`, then `queue_group.sh`, which waits for the
+suite; `process.md` § CI and merging says why).
 
 ## 6. The merge, waited on by state
 

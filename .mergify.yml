@@ -111,18 +111,27 @@ queue_rules:
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
     # streams of work docs/process.md allows by hand, and a Dependabot PR. A
-    # wave runs more (ADR-024); its PRs fill one batch after another.
+    # wave runs more (ADR-024); the operator queues its PRs in groups of up
+    # to three, all at once (scripts/ops/queue_group.sh), so a group shares
+    # a batch (a group of three fills it at once, without the wait below).
     batch_size: 3
     # How long a batch that isn't full waits for another PR to join it,
     # counted from the first PR's entry into the queue; then it is tested as
     # it is. The default is 30 seconds. A PR enters once its own checks are
     # green, so PRs pushed together reach the queue minutes apart. On
     # 2026-10-06, with three minutes, 10 of 15 batches held one PR, and two
-    # pairs missed each other by 48 s and by 4.5 minutes. Ten minutes lets
-    # them meet. It delays only a PR that finds the queue empty, and a batch
-    # takes 15 to 25 minutes to check anyway; a PR that arrives while a batch
-    # is being checked waits for the next one either way.
-    batch_max_wait_time: 10 minutes
+    # pairs missed each other by 48 s and by 4.5 minutes; ten minutes was set
+    # to let them meet. In the three days before 2026-11-01 it mostly bought a
+    # wait: 36 of 44 batches held one PR, and 29 lone PRs, finding the queue
+    # idle, waited about 10.2 minutes each before their draft PR started, 335
+    # minutes in all. In those three days, the 6 batches that formed during a
+    # wait had PRs 1.2 to 7.8 minutes apart. Since ten minutes was set, 18
+    # batches have held more than one PR; 15 of them formed during a wait,
+    # and six minutes keeps 11 of those 15 (#583). It delays only a PR that
+    # finds the queue empty, and the wait doesn't count toward
+    # `checks_timeout`; a PR that arrives while a batch is being checked waits
+    # for the next one either way.
+    batch_max_wait_time: 6 minutes
 
 merge_queue:
   # One batch at a time, on top of `main`: a second draft PR tested beside
