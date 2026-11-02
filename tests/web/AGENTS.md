@@ -420,11 +420,14 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
 - **PATCH's specs share `patch_page.js`**: a preset opened with its rack
   drawn and at rest (`openPreset`, and `rackAtRest` on a page: the camera's
   fit and the plates' moves are tweens, and a size read or a press aimed
-  mid-way is at another zoom), the bench lane settled (`settled`, a state:
+  mid-way is at another zoom), a knob a press reaches (`knobInReach`: the
+  first whose centre is its own hit, so not past the well's edges or under
+  an edge's chip, which a patch wider than the well puts over the knobs at
+  its end), the bench lane settled (`settled`, a state:
   every edit sent has had its last reply, and two frames later still has,
   so the rack is drawn; `laneCounts`), the model's guess as drawn and as asked (`drawnGuess`,
   `rankedGuess`, `guessAfter`), and a pinned fit (`pinPulls`). Every helper
-  but `rackAtRest` takes the test's `app`.
+  but `rackAtRest` and `knobInReach` takes the test's `app`.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
 
