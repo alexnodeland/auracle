@@ -245,13 +245,10 @@
   },
   "patch_facts.spec.js": {
     "auracle/no-aur-in-spec": {
-      "count": 6
-    },
-    "playwright/no-conditional-expect": {
-      "count": 1
+      "count": 5
     },
     "playwright/no-conditional-in-test": {
-      "count": 4
+      "count": 3
     }
   },
   "patch_from_nothing.spec.js": {

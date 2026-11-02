@@ -1,7 +1,7 @@
 // PATCH's own helpers for the patch_* specs: the rack, the bench lane and the
 // model's guess, read through the fixture's tap (fixtures.js). Each takes the
-// test's `app`, but `rackAtRest`, which reads only the page. Not a spec:
-// `playwright.config.js` matches `*.spec.js` only.
+// test's `app`, but `rackAtRest` and `knobInReach`, which read only the page.
+// Not a spec: `playwright.config.js` matches `*.spec.js` only.
 //
 // The rest is the fixture's: the seeded boot (`app.boot`, with `busy` for a
 // worker made slow on demand by `app.busy`), the warm start (`app.warmStart`),
@@ -49,6 +49,31 @@ async function rackAtRest(page, { timeout } = {}) {
       done(a === look() && !svg.querySelector(".rack-exit") && ending.length === 0);
     })));
   })), { timeout, message: "the rack came to rest" }).toBe(true);
+}
+
+/** The first knob on the canvas a press reaches, or null: a `.knob-hit`
+ *  whose centre is that hit itself by `document.elementFromPoint`, so not
+ *  past the well's edges, nor under what lies over the rack there (the
+ *  well's edge chips, buttons whose press pans the rack, #590; the foot; a
+ *  toast). The fit stops at the readable zoom, so a patch wider than the well
+ *  runs past its right edge, and the first knob in the page's order (the
+ *  amp's, at the chain's end) is then often out of reach. Its centre (the
+ *  viewport's pixels, as `page.mouse` takes them), its address, and `dy`: 30
+ *  px toward the room the knob has (down past half way, else up), so a drag
+ *  by it always changes the value (one up from 1 would send the value it
+ *  has). Read with the rack at rest (`rackAtRest`). */
+async function knobInReach(page) {
+  return page.evaluate(() => {
+    for (const hit of document.querySelectorAll("#rack-svg g[data-addr] > .knob-hit")) {
+      const r = hit.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      if (document.elementFromPoint(x, y) !== hit) continue;
+      const g = hit.parentNode;
+      return { addr: g.dataset.addr, x, y, dy: Number(g.getAttribute("aria-valuenow")) > 0.5 ? 30 : -30 };
+    }
+    return null;
+  });
 }
 
 /** The well's right edge pressed, by a finger, until nothing lies past it
@@ -205,5 +230,5 @@ async function pinPulls(app, sure, unsure) {
 }
 
 module.exports = {
-  openPreset, rackAtRest, walkRightEdge, benchTree, laneCounts, settled, rankedGuess, guessAfter, drawnGuess, pinPulls,
+  openPreset, rackAtRest, knobInReach, walkRightEdge, benchTree, laneCounts, settled, rankedGuess, guessAfter, drawnGuess, pinPulls,
 };
